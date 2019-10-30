@@ -592,57 +592,57 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 	// Create document (rev 1)
 	text := `{"key": "value", "version": "1a"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	doc, err := db.PutExistingRevWithBody("doc", body, []string{"1-a"}, false)
+	doc, revID, err := db.PutExistingRevWithBody("doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	// Add an attachment to a document (rev 2)
 	text = `{"key": "value", "version": "2a", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"2-a", "1-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"3-a", "2-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"3-a", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "4a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"4-a", "3-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"4-a", "3-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "5a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"5-a", "4-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"5-a", "4-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "6a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"6-a", "5-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"6-a", "5-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3b", "type": "pruned"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"3-b", "2-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"3-b", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3b", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"3-b", "2-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"3-b", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 }
