@@ -372,27 +372,38 @@ func (h *handler) handleGetRawDoc() error {
 	}
 
 	doc, err := h.db.GetDocument(docid, db.DocUnmarshalSync)
-
 	if err != nil {
 		return err
 	}
 
-	response := map[string]interface{}{}
-
-	if docBody := doc.Body(); docBody != nil && includeDoc {
-		response = docBody.Copy(db.BodyDeepCopy)
+	rawBytes := []byte(base.EmptyDocument)
+	if includeDoc {
+		if doc.IsDeleted() {
+			rawBytes = []byte(db.DeletedDocument)
+		} else {
+			docRawBodyBytes, err := doc.BodyBytes()
+			if err != nil {
+				return err
+			}
+			rawBytes = docRawBodyBytes
+		}
 	}
 
+	syncData := doc.SyncData
 	if redact {
 		if salt == "" {
 			salt = uuid.New().String()
 		}
-		response["_sync"] = doc.SyncData.HashRedact(salt)
-	} else {
-		response["_sync"] = doc.SyncData
+		syncData = doc.SyncData.HashRedact(salt)
 	}
 
-	h.writeJSON(response)
+	rawBytes, err = base.InjectJSONProperties(rawBytes, base.KVPair{Key: "_sync", Val: syncData})
+	if err != nil {
+
+		return err
+	}
+
+	h.writeRawJSON(rawBytes)
 	return nil
 }
 

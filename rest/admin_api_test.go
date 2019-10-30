@@ -12,6 +12,7 @@ package rest
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -1724,6 +1725,7 @@ func TestRawRedaction(t *testing.T) {
 	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
 	syncData = body["_sync"]
+	require.NotNil(t, syncData)
 	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
 	assert.NotEqual(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
 
@@ -1742,4 +1744,46 @@ func TestRawRedaction(t *testing.T) {
 	// Test that you can't use include_doc and redact at the same time
 	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?include_doc=true&redact=true", ``)
 	assertStatus(t, res, http.StatusBadRequest)
+}
+
+func TestRawTombstone(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	const docID = "testdoc"
+
+	// Create a doc
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"foo":"bar"}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
+	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
+	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
+	assert.Contains(t, string(resp.BodyBytes()), `"foo":"bar"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_deleted":true`)
+
+	// Delete the doc
+	resp = rt.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
+	assertStatus(t, resp, http.StatusOK)
+	revID = respRevID(t, resp)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, ``)
+	assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
+	assert.NotContains(t, string(resp.BodyBytes()), `"_id":"`+docID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"_rev":"`+revID+`"`)
+	assert.NotContains(t, string(resp.BodyBytes()), `"foo":"bar"`)
+	assert.Contains(t, string(resp.BodyBytes()), `"_deleted":true`)
+}
+
+// respRevID returns a rev ID from the given response, or fails the given test if a rev ID was not found.
+func respRevID(t *testing.T, response *TestResponse) (revID string) {
+	var r struct {
+		RevID *string `json:"rev"`
+	}
+	require.NoError(t, json.Unmarshal(response.BodyBytes(), &r), "couldn't decode JSON from response body")
+	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
+	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
+	return *r.RevID
 }
