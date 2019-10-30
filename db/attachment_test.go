@@ -592,57 +592,57 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 	// Create document (rev 1)
 	text := `{"key": "value", "version": "1a"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	doc, err := db.PutExistingRevWithBody("doc", body, []string{"1-a"}, false)
+	doc, revID, err := db.PutExistingRevWithBody("doc", body, []string{"1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	// Add an attachment to a document (rev 2)
 	text = `{"key": "value", "version": "2a", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"2-a", "1-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"2-a", "1-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"3-a", "2-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"3-a", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "4a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"4-a", "3-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"4-a", "3-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "5a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"5-a", "4-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"5-a", "4-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "6a", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"6-a", "5-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"6-a", "5-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3b", "type": "pruned"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"3-b", "2-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"3-b", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 
 	text = `{"key": "value", "version": "3b", "_attachments": {"att1.txt": {"stub":true,"revpos":2,"digest":"sha1-gwwPApfQR9bzBKpqoEYwFmKp98A="}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(text), &body))
-	body[BodyRev] = doc.RevID
-	doc, err = db.PutExistingRevWithBody("doc", body, []string{"3-b", "2-a"}, false)
+	body[BodyRev] = revID
+	doc, _, err = db.PutExistingRevWithBody("doc", body, []string{"3-b", "2-a"}, false)
 	assert.NoError(t, err, "Couldn't create document")
 	log.Printf("doc: %v", doc)
 }
@@ -685,6 +685,7 @@ func TestStoreAttachments(t *testing.T) {
 	revId, doc, err = db.Put("doc1", revBody)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
+	require.NotNil(t, doc)
 	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
 	attachment := doc.Attachments["att1.txt"].(map[string]interface{})
 	assert.Equal(t, "text/plain", attachment["content_type"])
@@ -699,9 +700,10 @@ func TestStoreAttachments(t *testing.T) {
 	// Include content type, encoding in attachment metadata but no attachment length.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain", "encoding": "utf-8"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = db.Put("doc1", revBody)
+	revId, doc, err = db.Put("doc2", revBody)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
+	require.NotNil(t, doc)
 	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
 	attachment = doc.Attachments["att1.txt"].(map[string]interface{})
 	assert.Equal(t, "text/plain", attachment["content_type"])
@@ -717,9 +719,10 @@ func TestStoreAttachments(t *testing.T) {
 	// Attachment length should be calculated automatically in this case.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = db.Put("doc1", revBody)
+	revId, doc, err = db.Put("doc3", revBody)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
+	require.NotNil(t, doc)
 	assert.NotEmpty(t, doc.Attachments, "Attachment metadata should be populated")
 	attachment = doc.Attachments["att1.txt"].(map[string]interface{})
 	assert.Equal(t, "text/plain", attachment["content_type"])
@@ -734,7 +737,7 @@ func TestStoreAttachments(t *testing.T) {
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"revpos": 2}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = db.Put("doc1", revBody)
+	revId, doc, err = db.Put("doc4", revBody)
 	assert.Empty(t, revId, "The revId should be empty since stub is not included in attachment")
 	assert.Empty(t, doc, "The doc should be empty since stub is not included in attachment")
 	assert.Error(t, err, "It should throw 400 Missing data of attachment error")
@@ -744,7 +747,7 @@ func TestStoreAttachments(t *testing.T) {
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
 	revText = `{"key2": "value1", "_attachments": {"att1.txt": {"stub": true}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
-	revId, doc, err = db.Put("doc2", revBody)
+	revId, doc, err = db.Put("doc5", revBody)
 	assert.Empty(t, revId, "The revId should be empty since revpos is not included in attachment")
 	assert.Empty(t, doc, "The doc should be empty since revpos is not included in attachment")
 	assert.Error(t, err, "It should throw 400 Missing/invalid revpos in stub attachment error")
