@@ -37,6 +37,10 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
+const (
+	minCompressibleJSONSize = 1000
+)
+
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
@@ -564,6 +568,32 @@ func (h *handler) disableResponseCompression() {
 	}
 }
 
+// Do not call from HTTP handlers. Use h.writeRawJSON/h.writeRawJSONStatus instead.
+// writeBytesAsJSONResponse takes the given bytes and always writes the response as JSON,
+// without checking that the client can accept it.
+func (h *handler) writeBytesAsJSONResponse(status int, b []byte) {
+	h.setHeader("Content-Type", "application/json")
+	if h.rq.Method != "HEAD" {
+		if len(b) < minCompressibleJSONSize {
+			h.disableResponseCompression()
+		}
+		h.setHeader("Content-Length", fmt.Sprintf("%d", len(b)))
+		if status > 0 {
+			h.response.WriteHeader(status)
+			h.setStatus(status, "")
+		}
+		h.response.Write(b)
+	} else if status > 0 {
+		h.response.WriteHeader(status)
+		h.setStatus(status, "")
+	}
+}
+
+// writeJSON writes the given value as a JSON response with a 200 OK status.
+func (h *handler) writeJSON(value interface{}) {
+	h.writeJSONStatus(http.StatusOK, value)
+}
+
 // Writes an object to the response in JSON format.
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
@@ -585,10 +615,15 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		jsonOut = append(buffer.Bytes(), '\n')
 	}
 
-	h._writeRawJSONStatus(status, jsonOut)
+	h.writeBytesAsJSONResponse(status, jsonOut)
 }
 
-// writeRawJSONStatus writes the given byte slice as a JSON response.
+// writeRawJSON writes the given bytes as a JSON response with a 200 OK status.
+func (h *handler) writeRawJSON(b []byte) {
+	h.writeRawJSONStatus(http.StatusOK, b)
+}
+
+// writeRawJSONStatus writes the given bytes as a JSON response.
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeRawJSONStatus(status int, b []byte) {
 	if !h.requestAccepts("application/json") {
@@ -596,39 +631,17 @@ func (h *handler) writeRawJSONStatus(status int, b []byte) {
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
-	h._writeRawJSONStatus(status, b)
+
+	h.writeBytesAsJSONResponse(status, b)
 }
 
-func (h *handler) _writeRawJSONStatus(status int, b []byte) {
-	h.setHeader("Content-Type", "application/json")
-	if h.rq.Method != "HEAD" {
-		if len(b) < 1000 {
-			h.disableResponseCompression()
-		}
-		h.setHeader("Content-Length", fmt.Sprintf("%d", len(b)))
-		if status > 0 {
-			h.response.WriteHeader(status)
-			h.setStatus(status, "")
-		}
-		h.response.Write(b)
-	} else if status > 0 {
-		h.response.WriteHeader(status)
-		h.setStatus(status, "")
-	}
-}
-
-func (h *handler) writeJSON(value interface{}) {
-	h.writeJSONStatus(http.StatusOK, value)
-}
-
-func (h *handler) writeRawJSON(b []byte) {
-	h.writeRawJSONStatus(http.StatusOK, b)
-}
-
+// writeRawJSON writes the given bytes as a plaintext response with a 200 OK status.
 func (h *handler) writeText(value []byte) {
 	h.writeTextStatus(http.StatusOK, value)
 }
 
+// writeTextStatus writes the given bytes as a plaintext response.
+// If status is nonzero, the header will be written with that status.
 func (h *handler) writeTextStatus(status int, value []byte) {
 	if !h.requestAccepts("text/plain") {
 		base.Warnf(base.KeyAll, "Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
@@ -643,7 +656,6 @@ func (h *handler) writeTextStatus(status int, value []byte) {
 		h.setStatus(status, "")
 	}
 	h.response.Write(value)
-
 }
 
 func (h *handler) addJSON(value interface{}) error {
