@@ -190,6 +190,59 @@ func TestConfigValidationCache(t *testing.T) {
 	}
 }
 
+func TestConfigValidationImport(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		err    string
+	}{
+		{
+			name:   "Import enabled, shared bucket not enabled",
+			config: `{"databases": {"db": {"import_docs":true}}}`,
+			err:    "Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled",
+		},
+		{
+			name:   "Import partitions set, shared bucket not enabled",
+			config: `{"databases": {"db": {"import_partitions":32}}}`,
+			err:    "Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled",
+		},
+		{
+			name:   "Import disabled, but partitions set",
+			config: `{"databases": {"db": {"enable_shared_bucket_access":true,"import_docs":false,"import_partitions":32}}}`,
+			err:    "Invalid configuration - import_partitions set, but import_docs disabled",
+		},
+		{
+			name:   "Too many partitions",
+			config: `{"databases": {"db": {"enable_shared_bucket_access":true,"import_partitions":2048}}}`,
+			err:    "valid range for import_partitions is: 1-1024",
+		},
+		{
+			name:   "Not enough partitions",
+			config: `{"databases": {"db": {"enable_shared_bucket_access":true,"import_partitions":0}}}`,
+			err:    "valid range for import_partitions is: 1-1024",
+		},
+		{
+			name:   "Valid partitions",
+			config: `{"databases": {"db": {"enable_shared_bucket_access":true,"import_partitions":32}}}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			buf := bytes.NewBufferString(test.config)
+			config, err := readServerConfig(buf)
+			assert.NoError(tt, err)
+			errorMessages := config.setupAndValidateDatabases()
+			if test.err != "" {
+				require.Len(t, errorMessages, 1)
+				assert.EqualError(tt, errorMessages[0], test.err)
+			} else {
+				assert.Nil(t, errorMessages)
+			}
+		})
+	}
+}
+
 // TestLoadServerConfigExamples will run LoadServerConfig for configs found under the examples directory.
 func TestLoadServerConfigExamples(t *testing.T) {
 	const exampleLogDirectory = "../examples/"
