@@ -101,7 +101,7 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 	return newAttachmentData, nil
 }
 
-// Attempts to retrieve ancestor attachments for a document.  First attempts to find and use a non-pruned ancestor.
+// Attempts to retrieve ancestor attachments for a document. First attempts to find and use a non-pruned ancestor.
 // If no non-pruned ancestor is available, checks whether the currently active doc has a common ancestor with the new revision.
 // If it does, can use the attachments on the active revision with revpos earlier than that common ancestor.
 func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string, docHistory []string) map[string]interface{} {
