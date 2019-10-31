@@ -1209,7 +1209,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	syncFnBody := newDoc.GetMutableBody()
+	syncFnBody := newDoc.GetDeepMutableBody()
 
 	// TODO: seems a bit late to do this. Could we move it earlier?
 	err = validateNewBody(syncFnBody)

@@ -918,7 +918,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 		deltaSrcRev, err := db.GetRev("doc1", "1-a", false, nil)
 		assert.NoError(b, err)
 
-		deltaSrcBody, err := deltaSrcRev.MutableBody()
+		deltaSrcBody, err := deltaSrcRev.DeepMutableBody()
 		assert.NoError(b, err)
 
 		// Stamp attachments so we can patch them

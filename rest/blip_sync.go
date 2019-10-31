@@ -903,7 +903,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
 
-		deltaSrcBody, err := deltaSrcRev.MutableBody()
+		deltaSrcBody, err := deltaSrcRev.DeepMutableBody()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to marshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
