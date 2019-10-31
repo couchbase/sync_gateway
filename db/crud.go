@@ -426,15 +426,6 @@ func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevision
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
-func (db *Database) AuthorizeDocID(docid, revid string) error {
-	doc, err := db.GetDocument(docid, DocUnmarshalSync)
-	if doc == nil {
-		return err
-	}
-	return db.authorizeDoc(doc, revid)
-}
-
-// Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
 func (db *Database) authorizeDoc(doc *Document, revid string) error {
 	user := db.user
 	if doc == nil || user == nil {
@@ -1725,32 +1716,6 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 
 // Recomputes the set of channels a User/Role has been granted access to by sync() functions.
 // This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
-	key := princ.Name()
-	if _, ok := princ.(auth.User); !ok {
-		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
-	}
-
-	var vres struct {
-		Rows []struct {
-			Value channels.TimedSet
-		}
-	}
-
-	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewAccessVbSeq, opts, &vres); verr != nil {
-		return nil, verr
-	}
-
-	channelSet := channels.TimedSet{}
-	for _, row := range vres.Rows {
-		channelSet.Add(row.Value)
-	}
-	return channelSet, nil
-}
-
-// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
-// This is part of the ChannelComputer interface defined by the Authenticator.
 func (context *DatabaseContext) ComputeRolesForUser(user auth.User) (channels.TimedSet, error) {
 	return context.ComputeSequenceRolesForUser(user)
 }
@@ -1775,27 +1740,6 @@ func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (cha
 	}
 
 	return roleChannelSet, nil
-}
-
-// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
-// This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
-	var vres struct {
-		Rows []struct {
-			Value channels.TimedSet
-		}
-	}
-
-	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewRoleAccessVbSeq, opts, &vres); verr != nil {
-		return nil, verr
-	}
-
-	roleSet := channels.TimedSet{}
-	for _, row := range vres.Rows {
-		roleSet.Add(row.Value)
-	}
-	return roleSet, nil
 }
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
@@ -1879,7 +1823,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	// Convert possibleSet to an array (possible)
 	if len(possibleSet) > 0 {
 		possible = make([]string, 0, len(possibleSet))
-		for revid, _ := range possibleSet {
+		for revid := range possibleSet {
 			possible = append(possible, revid)
 		}
 	}

@@ -956,3 +956,211 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 		}
 	})
 }
+
+func TestGetAvailableRevAttachments(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	// Create the very first revision of the document with attachment; let's call this as rev 1-a
+	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}},"version":"1-a"}`
+	doc, rev, err := db.PutExistingRevWithBody("camera", unjson(payload), []string{"1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+	ancestor := rev // Ancestor revision
+
+	// Create the second revision of the document with attachment reference;
+	payload = `{"sku":"6213101","_attachments":{"camera.txt":{"stub":true,"revpos":1}},"version":"2-a"}`
+	doc, rev, err = db.PutExistingRevWithBody("camera", unjson(payload), []string{"2-a", "1-a"}, false)
+	parent := rev // Immediate ancestor or parent revision
+	assert.NoError(t, err, "Couldn't create document")
+
+	payload = `{"sku":"6213102","_attachments":{"camera.txt":{"stub":true,"revpos":1}},"version":"3-a"}`
+	doc, rev, err = db.PutExistingRevWithBody("camera", unjson(payload), []string{"3-a", "2-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+
+	// Get available attachments by immediate ancestor revision or parent revision
+	meta, found := db.getAvailableRevAttachments(doc, parent)
+	attachment := meta["camera.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
+	assert.Equal(t, float64(20), attachment["length"])
+	assert.Equal(t, float64(1), attachment["revpos"])
+	assert.True(t, found, "Ancestor should exists")
+
+	// Get available attachments by immediate ancestor revision
+	meta, found = db.getAvailableRevAttachments(doc, ancestor)
+	attachment = meta["camera.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
+	assert.Equal(t, float64(20), attachment["length"])
+	assert.Equal(t, float64(1), attachment["revpos"])
+	assert.True(t, found, "Ancestor should exists")
+}
+
+func TestGet1xRevAndChannels(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}},"version":"1-a"}`
+	doc1, rev1, err := db.PutExistingRevWithBody("camera", unjson(payload), []string{"1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+
+	payload = `{"sku":"6213101","_attachments":{"lens.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}},"version":"2-a"}`
+	doc2, rev2, err := db.PutExistingRevWithBody("camera", unjson(payload), []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+
+	// Get the 1x revision from document with list revision enabled
+	bodyBytes, removed, err := db.get1xRevFromDoc(doc2, rev2, true)
+	assert.False(t, removed)
+	assert.NoError(t, err, "It should not throw any error")
+	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
+
+	var response = Body{}
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	log.Printf("body:%v", response)
+
+	// Get the 1x revision from document with list revision enabled
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc1, rev1, true)
+	assert.False(t, removed)
+	assert.NoError(t, err, "It should not throw any error")
+	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+
+	// Delete the revision rev2 and get the revision from doc2
+	rev3, err := db.DeleteDoc("camera", rev2)
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc2, rev3, true)
+	assert.False(t, removed)
+	assert.Error(t, err, "It should throw 404 missing error")
+	assert.Nil(t, bodyBytes, "Document body bytes should be empty")
+
+	// Get the revision details from doc2 and rev2 after rev2 is deleted
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc2, "", true)
+	assert.False(t, removed)
+	assert.NoError(t, err, "It should not throw any error")
+	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
+
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	log.Printf("body:%v", response)
+}
+
+func TestGet1xRevFromDoc(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	// Create the first revision of the document
+	payload := `{"model":"1483C002SKU","sku":"5578523","name":"Canon EOS 5D Mark IV","price":"$2,499.99","version":"1a"}`
+	doc1, rev1, err := db.PutExistingRevWithBody("camera", unjson(payload), []string{"1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+	assert.NotEmpty(t, doc1, "Document shouldn't be empty")
+	assert.Equal(t, "1-a", rev1, "Provided input revision ID should be returned")
+
+	// Create the second revision of the document
+	payload = `{"model":"1483C002SKU","sku":"5578523","name":"Canon EOS 5D Mark IV","price":"$2,499.99","version":"2a"}`
+	doc2, rev2, err := db.PutExistingRevWithBody("camera", unjson(payload), []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+	assert.NotEmpty(t, doc2, "Document shouldn't be empty")
+	assert.Equal(t, "2-a", rev2, "Provided input revision ID should be returned")
+
+	// Get the 1x revision from second doc.
+	bodyBytes, removed, err := db.get1xRevFromDoc(doc2, rev2, true)
+	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
+	assert.False(t, removed, "This shouldn't be a removed document")
+	var response = Body{}
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	assert.Equal(t, "camera", response[BodyId])
+	assert.Equal(t, "2-a", response[BodyRev])
+	assert.Equal(t, "1483C002SKU", response["model"])
+	assert.Equal(t, "Canon EOS 5D Mark IV", response["name"])
+	assert.Equal(t, "$2,499.99", response["price"])
+	assert.Equal(t, "5578523", response["sku"])
+	assert.Equal(t, "2a", response["version"])
+
+	// Get 1x revision from doc with unknown revision id; it simulates the error scenario.
+	// A 404 missing error should be thrown when trying get the body bytes of the document
+	// which doesn't exists in the database. The revision "3-a" doesn't exists in database.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc2, "3-a", true)
+	assert.Error(t, err, "It should throw 404 missing error")
+	assert.Contains(t, err.Error(), "404 missing")
+	assert.Empty(t, bodyBytes, "Provided revision doesn't exists")
+	assert.False(t, removed, "This shouldn't be a removed revision")
+	assert.Error(t, response.Unmarshal(bodyBytes), "Unexpected empty JSON input to body.Unmarshal")
+
+	// Create the third revision of the document
+	payload = `{"model":"1483C002SKU","sku":"5578523","name":"Canon EOS 5D Mark IV","price":"$2,499.99","version":"3a"}`
+	doc3, rev3, err := db.PutExistingRevWithBody("camera", unjson(payload), []string{"3-a", "2-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+	assert.NotEmpty(t, doc3, "Document shouldn't be empty")
+	assert.Equal(t, "3-a", rev3, "Provided input revision ID should be returned")
+
+	// Get the 1x revision from third doc.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc3, rev3, true)
+	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
+	assert.False(t, removed, "This shouldn't be a removed document")
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	assert.Equal(t, "camera", response[BodyId])
+	assert.Equal(t, "3-a", response[BodyRev])
+	assert.Equal(t, "1483C002SKU", response["model"])
+	assert.Equal(t, "Canon EOS 5D Mark IV", response["name"])
+	assert.Equal(t, "$2,499.99", response["price"])
+	assert.Equal(t, "5578523", response["sku"])
+	assert.Equal(t, "3a", response["version"])
+
+	// Create the fourth revision by deleting the third revision
+	rev4, err := db.DeleteDoc("camera", rev3)
+	assert.NoError(t, err, "Document should be deleted")
+	assert.NotEmpty(t, rev4, "Document revision shouldn't be empty")
+
+	// Get the document body bytes with the deleted revision, list revisions enabled.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc3, rev3, true)
+	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
+	assert.False(t, removed, "This shouldn't be a removed document")
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	assert.Equal(t, "camera", response[BodyId])
+	assert.Equal(t, "3-a", response[BodyRev])
+	assert.Equal(t, "1483C002SKU", response["model"])
+	assert.Equal(t, "Canon EOS 5D Mark IV", response["name"])
+	assert.Equal(t, "$2,499.99", response["price"])
+	assert.Equal(t, "5578523", response["sku"])
+	assert.Equal(t, "3a", response["version"])
+}
+
+func TestCheckForUpgrade(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	// Create the first revision of the document
+	payload := `{"model":"1483C002SKU","sku":"5578523","name":"Canon EOS 5D Mark IV","price":"$2,499.99","version":"1a"}`
+	doc, rev1, err := db.PutExistingRevWithBody("camera", unjson(payload), []string{"1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+	assert.NotEmpty(t, doc, "Document shouldn't be empty")
+	assert.Equal(t, "1-a", rev1, "Provided input revision ID should be returned")
+
+	doc, buc := db.checkForUpgrade("camera", DocUnmarshalAll)
+	assert.Nil(t, doc)
+	assert.Nil(t, buc)
+}
