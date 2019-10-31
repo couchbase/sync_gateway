@@ -120,7 +120,7 @@ func (rev *DocumentRevision) MutableBody() (b Body, err error) {
 	}
 
 	// store a copy of the unmarshalled body for next time we need it
-	// We need to copy it now, because the caller may modify the returned bodby between now and the next copy.
+	// We need to copy it now, because the caller may modify the returned body between now and the next copy.
 	rev._shallowCopyBody = b.Copy(BodyShallowCopy)
 
 	return b, nil
