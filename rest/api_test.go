@@ -4254,7 +4254,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 
 	var body db.Body
 
-	response := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
+	response := rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true", `{}`)
 	assertStatus(t, response, http.StatusCreated)
 	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
 	assert.NoError(t, err)

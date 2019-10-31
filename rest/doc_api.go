@@ -384,7 +384,11 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	newDoc.Deleted = deleted
 
 	newDoc.RevID = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
-	history := []string{newDoc.RevID, parentRev}
+	history := []string{newDoc.RevID}
+
+	if parentRev != "" {
+		history = append(history, parentRev)
+	}
 
 	// Handle and pull out expiry
 	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
