@@ -2281,15 +2281,9 @@ func (bucket *CouchbaseBucketGoCB) StartTapFeed(args sgbucket.FeedArguments, dbS
 
 func (bucket *CouchbaseBucketGoCB) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 
-	// TODO: Include feed type or an unsupported flag to support
-	//  legacy cbdatasource-based feed?  Depends on stablility/risk of cbgt feed
-	// TODO: Use cbgt exclusively when x.509 support is finalized
-	// Use non-cbgt cbdatasource feed when x.509 cert is present
-	if bucket.spec.Certpath != "" {
-		return StartDCPFeed(bucket, bucket.spec, args, callback, dbStats)
-	} else {
-		return StartCbgtDCPFeed(bucket, bucket.spec, args, callback, dbStats)
-	}
+	// TODO: Evaluate whether to use cbgt for non-sharded caching feed, as a way to push concurrency upstream
+	return StartDCPFeed(bucket, bucket.spec, args, callback, dbStats)
+
 }
 
 func (bucket *CouchbaseBucketGoCB) StartShardedDCPFeed(dbName string) (*CbgtContext, error) {

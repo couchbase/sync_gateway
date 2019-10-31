@@ -33,12 +33,12 @@
 
   <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="f1b8a89d740738af8cc69efa090b99d34579cd31"/>
 
-  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="f83e63d76bc41c5b61e022db2d5463f776dc545f"/>
+  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="7204b8f19bb8a873d817519821c2eca24a982f22"/>
 
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="d5dc4f6170174357adee38c22e81721d1918b09e" />
   <project name="gocb" path="godeps/src/gopkg.in/couchbase/gocb.v1" remote="couchbase" revision="d5dc4f6170174357adee38c22e81721d1918b09e" />
 
-  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="bbbfeaf52639128d7736a5a03a9011a71b152ab6"/>
+  <project name="gocbcore" path="godeps/src/gopkg.in/couchbase/gocbcore.v7" remote="couchbase" revision="45bfb9040dc54c0344f8182b5ae527cc88db2dac"/>
 
   <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
@@ -102,7 +102,7 @@
 
   <project name="testify" path="godeps/src/github.com/stretchr/testify" remote="couchbasedeps" revision="04af85275a5c7ac09d16bb3b9b2e751ed45154e5"/>
 
-  <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="6ec6ff92f71473f61dc77cfa253f61e399eb1382"/>
+  <project name="cbgt" path="godeps/src/github.com/couchbase/cbgt" remote="couchbase" revision="439bf6fbbb47569e5a79fa3c2698ac797643259f"/>
 
   <project name="blance" path="godeps/src/github.com/couchbase/blance" remote="couchbase" revision="5cd1345cca3ed72f1e63d41d622fcda73e63fea8" />
 

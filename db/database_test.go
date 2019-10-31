@@ -1631,3 +1631,241 @@ func BenchmarkPut(b *testing.B) {
 
 	db.Close()
 }
+
+var (
+	defaultProvider      = "Google"
+	clientID             = "CouchbaseSynGatewayDev"
+	callbackURL          = "https://127.0.0.1:4985/_callback"
+	callbackURLWithQuery = "https://127.0.0.1:4985/_callback?"
+	validationKey        = "some.validation.key"
+)
+
+func mockOIDCProvider() auth.OIDCProvider {
+	return auth.OIDCProvider{
+		Name:          "Google",
+		Issuer:        "https://accounts.google.com",
+		CallbackURL:   &callbackURL,
+		ClientID:      &clientID,
+		ValidationKey: &validationKey,
+	}
+}
+
+func mockOIDCProviderWithCallbackURLQuery() auth.OIDCProvider {
+	return auth.OIDCProvider{
+		Name:          "Google",
+		Issuer:        "https://accounts.google.com",
+		CallbackURL:   &callbackURLWithQuery,
+		ClientID:      &clientID,
+		ValidationKey: &validationKey,
+	}
+}
+
+func mockOIDCProviderWithNoIss() auth.OIDCProvider {
+	return auth.OIDCProvider{
+		Name:          "Microsoft",
+		CallbackURL:   &callbackURL,
+		ClientID:      &clientID,
+		ValidationKey: &validationKey,
+	}
+}
+
+func mockOIDCProviderWithNoClientID() auth.OIDCProvider {
+	return auth.OIDCProvider{
+		Name:          "Amazon",
+		Issuer:        "https://accounts.amazon.com",
+		CallbackURL:   &callbackURL,
+		ValidationKey: &validationKey,
+	}
+}
+
+func mockOIDCProviderWithNoValidationKey() auth.OIDCProvider {
+	return auth.OIDCProvider{
+		Name:        "Yahoo",
+		Issuer:      "https://accounts.yahoo.com",
+		CallbackURL: &callbackURL,
+		ClientID:    &clientID,
+	}
+}
+
+func mockOIDCOptions() *auth.OIDCOptions {
+	provider := mockOIDCProvider()
+	providers := auth.OIDCProviderMap{provider.Name: &provider}
+	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
+}
+
+func mockOIDCOptionsWithMultipleProviders() *auth.OIDCOptions {
+	differentProvider := "Couchbase"
+	provider1 := mockOIDCProvider()
+	provider2 := mockOIDCProvider()
+	providers := auth.OIDCProviderMap{provider1.Name: &provider1}
+	provider2.Name = "Youtube"
+	providers[provider2.Name] = &provider2
+	return &auth.OIDCOptions{DefaultProvider: &differentProvider, Providers: providers}
+}
+
+func mockOIDCOptionsWithMultipleProvidersCBQ() *auth.OIDCOptions {
+	differentProvider := "SalesForce"
+	provider1 := mockOIDCProvider()
+	provider2 := mockOIDCProviderWithCallbackURLQuery()
+	providers := auth.OIDCProviderMap{provider1.Name: &provider1}
+	provider2.Name = "Youtube"
+	providers[provider2.Name] = &provider2
+	return &auth.OIDCOptions{DefaultProvider: &differentProvider, Providers: providers}
+}
+
+func mockOIDCOptionsWithNoIss() *auth.OIDCOptions {
+	provider := mockOIDCProviderWithNoIss()
+	providers := auth.OIDCProviderMap{provider.Name: &provider}
+	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
+}
+
+func mockOIDCOptionsWithNoClientID() *auth.OIDCOptions {
+	provider := mockOIDCProviderWithNoClientID()
+	providers := auth.OIDCProviderMap{provider.Name: &provider}
+	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
+}
+
+func mockOIDCOptionsWithNoValidationKey() *auth.OIDCOptions {
+	provider := mockOIDCProviderWithNoValidationKey()
+	providers := auth.OIDCProviderMap{provider.Name: &provider}
+	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
+}
+
+func mockOIDCOptionsWithBadName() *auth.OIDCOptions {
+	provider := mockOIDCProvider()
+	providers := auth.OIDCProviderMap{provider.Name + "_": &provider}
+	return &auth.OIDCOptions{DefaultProvider: &defaultProvider, Providers: providers}
+}
+
+func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
+	testBucket := testBucket(t)
+	tests := []struct {
+		name          string
+		inputOptions  *auth.OIDCOptions
+		expectedError string
+	}{
+		// Provider should be skipped if no issuer is not provided in OIDCOptions. It should throw the error
+		// "OpenID Connect defined in config, but no valid OpenID Connect providers specified". Also a warning
+		// should be logged saying "Issuer and ClientID required for OIDC Provider - skipping provider"
+		{
+			name:          "TestWithNoIss",
+			inputOptions:  mockOIDCOptionsWithNoIss(),
+			expectedError: "OpenID Connect defined in config, but no valid OpenID Connect providers specified",
+		},
+		// Provider should be skipped if no client ID is not provided in OIDCOptions. It should throw the error
+		// "OpenID Connect defined in config, but no valid OpenID Connect providers specified". Also a warning
+		//	should be logged saying "Issuer and ClientID required for OIDC Provider - skipping provider"
+		{
+			name:          "TestWithNoClientID",
+			inputOptions:  mockOIDCOptionsWithNoClientID(),
+			expectedError: "OpenID Connect defined in config, but no valid OpenID Connect providers specified",
+		},
+		// If the provider name is illegal; meaning an underscore character in provider name is considered as
+		// illegal, it should throw an error stating OpenID Connect provider names cannot contain underscore.
+		{
+			name:          "TestWithWithBadName",
+			inputOptions:  mockOIDCOptionsWithBadName(),
+			expectedError: "OpenID Connect provider names cannot contain underscore",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			options := DatabaseContextOptions{
+				OIDCOptions: tc.inputOptions,
+			}
+			AddOptionsFromEnvironmentVariables(&options)
+
+			context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
+			assert.Error(t, err, "Couldn't create context for database 'db'")
+			assert.Contains(t, err.Error(), tc.expectedError)
+			assert.Nil(t, context, "Database context shouldn't be created")
+		})
+	}
+
+	testBucket.Close()
+}
+
+func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
+	testBucket := testBucket(t)
+	tests := []struct {
+		name          string
+		inputOptions  *auth.OIDCOptions
+		expectedError string
+	}{
+		// Mock valid OIDCOptions
+		{
+			name:          "TestWithValidOptions",
+			inputOptions:  mockOIDCOptions(),
+			expectedError: "",
+		},
+		// If Validation Key not defined in config for provider, it should warn auth code flow will not be
+		// supported for this provider.
+		{
+			name:          "TestWithNoValidationKey",
+			inputOptions:  mockOIDCOptionsWithNoValidationKey(),
+			expectedError: "",
+		},
+
+		// Input to simulate the scenario where the current provider is the default provider, or there's are
+		// providers defined, don't set IsDefault.
+		{
+			name:          "TestWithMultipleProviders",
+			inputOptions:  mockOIDCOptionsWithMultipleProviders(),
+			expectedError: "",
+		},
+		// Input to simulate the scenario where the current provider isn't the default provider, add the provider
+		// to the callback URL (needed to identify provider to _oidc_callback)
+		{
+			name:          "TestWithMultipleProvidersAndCustomCallbackURL",
+			inputOptions:  mockOIDCOptionsWithMultipleProvidersCBQ(),
+			expectedError: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			options := DatabaseContextOptions{
+				OIDCOptions: tc.inputOptions,
+			}
+			AddOptionsFromEnvironmentVariables(&options)
+			context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
+			assert.NoError(t, err, "Couldn't create context for database 'db'")
+			assert.NotNil(t, context, "Database context should be created")
+
+			database, err := CreateDatabase(context)
+			assert.NotNil(t, database, "Database should be created with context options")
+			assert.NoError(t, err, "Couldn't create database 'db'")
+		})
+	}
+	testBucket.Close()
+}
+
+func TestGetOIDCProvider(t *testing.T) {
+	mockedOIDCOptions := mockOIDCOptions()
+	options := DatabaseContextOptions{OIDCOptions: mockedOIDCOptions}
+	AddOptionsFromEnvironmentVariables(&options)
+	testBucket := testBucket(t)
+
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	assert.NotNil(t, context, "Database context should be created")
+
+	// Lookup default provider by empty name, which exists in database context
+	provider, err := context.GetOIDCProvider("")
+	assert.Equal(t, defaultProvider, provider.Name)
+	assert.Equal(t, defaultProvider, *options.OIDCOptions.DefaultProvider)
+	log.Printf("%v", provider)
+
+	// Lookup a provider by name which exists in database context.
+	provider, err = context.GetOIDCProvider(defaultProvider)
+	assert.Equal(t, defaultProvider, provider.Name)
+	assert.Equal(t, defaultProvider, *options.OIDCOptions.DefaultProvider)
+	log.Printf("%v", provider)
+
+	// Lookup a provider which doesn't exists in database context
+	provider, err = context.GetOIDCProvider("Unknown")
+	assert.Nil(t, provider, "Provider doesn't exists in database context")
+	assert.Contains(t, err.Error(), `No provider found for provider name "Unknown"`)
+	testBucket.Close()
+}
