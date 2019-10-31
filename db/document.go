@@ -254,7 +254,7 @@ func (doc *Document) Body() Body {
 	return doc._body
 }
 
-func (doc *Document) GetMutableBody() Body {
+func (doc *Document) GetDeepMutableBody() Body {
 	// we can avoid a deep copy by just unmarshalling raw bytes, if available
 	if doc._rawBody != nil {
 		var b Body
