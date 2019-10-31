@@ -91,14 +91,38 @@ type DocumentRevision struct {
 	Attachments AttachmentsMeta
 	Delta       *RevisionDelta
 	Deleted     bool
+
+	_shallowCopyBody Body // an unmarshalled body that can produce shallow copies
 }
 
-// MutableBody returns a copy of the given document revision as a plain body (without any special properties)
-// Callers are free to modify this body without affecting the document revision.
-func (rev *DocumentRevision) MutableBody() (b Body, err error) {
+// DeepMutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
+// Callers are free to modify any of this body without affecting the document revision.
+func (rev *DocumentRevision) DeepMutableBody() (b Body, err error) {
 	if err := b.Unmarshal(rev.BodyBytes); err != nil {
 		return nil, err
 	}
+
+	// We can't store b as _shallowCopyBody becase we know it'll be mutated more than just one-property deep.
+
+	return b, nil
+}
+
+// MutableBody returns a shallow copy of the given document revision as a plain body (without any special properties)
+// Callers are only free to modify top-level properties of this body without affecting the document revision.
+func (rev *DocumentRevision) MutableBody() (b Body, err error) {
+	// if we already have an unmarshalled body, take a copy and return it
+	if rev._shallowCopyBody != nil {
+		return rev._shallowCopyBody.Copy(BodyShallowCopy), nil
+	}
+
+	if err := b.Unmarshal(rev.BodyBytes); err != nil {
+		return nil, err
+	}
+
+	// store a copy of the unmarshalled body for next time we need it
+	// We need to copy it now, because the caller may modify the returned bodby between now and the next copy.
+	rev._shallowCopyBody = b.Copy(BodyShallowCopy)
+
 	return b, nil
 }
 
