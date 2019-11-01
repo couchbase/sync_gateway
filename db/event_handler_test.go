@@ -1,7 +1,6 @@
 package db
 
 import (
-	"log"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -88,6 +87,4 @@ func TestCallValidateFunction(t *testing.T) {
 	assert.False(t, result, "It should return false due to the syntax error in filter function")
 	assert.Error(t, err, "It should throw an error due to syntax error")
 	assert.Contains(t, err.Error(), "(anonymous): Line 1:12 Unexpected token { (and 4 more errors)")
-
-	log.Printf("err: %v", err.Error())
 }
