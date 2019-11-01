@@ -448,7 +448,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
-	var body map[string]interface{}
+	var body Body
 	callback := func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 		return []byte("data"), nil
 	}
@@ -456,43 +456,48 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// Call ForEachStubAttachment with invalid attachment; simulates the error scenario.
 	doc := `{"_attachments": "No Attachment"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback)
+	_, err = body.ToIncomingDocument()
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	// Call ForEachStubAttachment with invalid attachment; simulates the error scenario.
 	doc = `{"_attachments": {"image1.jpeg": "", "image2.jpeg": ""}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback)
+	atts := GetBodyAttachments(body)
+	err = db.ForEachStubAttachment(atts, 0x1, callback)
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
-	//assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	// Call ForEachStubAttachment with no data in attachment ; simulates the error scenario.
 	// Check whether the attachment iteration is getting skipped if revpos < minRevpos
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x2, callback)
+	atts = GetBodyAttachments(body)
+	err = db.ForEachStubAttachment(atts, 0x2, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	//// Call ForEachStubAttachment with no data in attachment and revpos; simulates the error scenario.
 	//// Check whether the attachment iteration is getting skipped if there is no revpos.
 	doc = `{"_attachments": {"image.jpg": {"stub":true}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x2, callback)
+	atts = GetBodyAttachments(body)
+	err = db.ForEachStubAttachment(atts, 0x2, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	//// Should throw invalid attachment error is the digest is not valid string or empty.
-	//doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":true}}}`
-	//assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	//err = db.ForEachStubAttachment(body, 0x1, callback)
-	//assert.Error(t, err, "It should throw 400 Invalid attachments")
-	//assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":true}}}`
+	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
+	atts = GetBodyAttachments(body)
+	err = db.ForEachStubAttachment(atts, 0x1, callback)
+	assert.Error(t, err, "It should throw 400 Invalid attachments")
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	//// Call ForEachStubAttachment with some bad digest value. Internally it should throw a missing
 	//// document error and invoke the callback function.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":"9304cdd066efa64f78387e9cc9240a70527271bc"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback)
+	atts = GetBodyAttachments(body)
+	err = db.ForEachStubAttachment(atts, 0x1, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	//// Simulate an error from the callback function; it should return the same error from ForEachStubAttachment.
@@ -501,9 +506,10 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	callback = func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 		return nil, errors.New("Can't work with this digest value!")
 	}
-	//err = db.ForEachStubAttachment(body, 0x1, callback)
-	//assert.Error(t, err, "It should throw the actual error")
-	//assert.Contains(t, err.Error(), "Can't work with this digest value!")
+	atts = GetBodyAttachments(body)
+	err = db.ForEachStubAttachment(atts, 0x1, callback)
+	assert.Error(t, err, "It should throw the actual error")
+	assert.Contains(t, err.Error(), "Can't work with this digest value!")
 }
 
 func TestGenerateProofOfAttachment(t *testing.T) {
@@ -651,9 +657,6 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 }
 
 func TestStoreAttachments(t *testing.T) {
-
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
-
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
@@ -668,6 +671,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Simulate Invalid _attachments scenario; try to put a document with bad
 	// attachment metadata. It should throw "Invalid _attachments" error.
 	revText := `{"key1": "value1", "_attachments": {"att1.txt": "YXR0MS50eHQ="}}`
+	revBody = nil
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
 	revId, doc, err := db.Put("doc1", revBody)
 	assert.Empty(t, revId, "The revId should be empty since the request has attachment")
@@ -677,6 +681,7 @@ func TestStoreAttachments(t *testing.T) {
 
 	// Simulate illegal base64 data error while storing attachments in Couchbase database.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "%$^&**"}}}`
+	revBody = nil
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
 	revId, doc, err = db.Put("doc1", revBody)
 	assert.Empty(t, revId, "The revId should be empty since illegal base64 data in attachment")
@@ -687,6 +692,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Simulate a valid scenario; attachment contains data, so store it in the database.
 	// Include content type, encoding, attachment length  in attachment metadata.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain", "encoding": "utf-8", "length": 12}}}`
+	revBody = nil
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
 	revId, doc, err = db.Put("doc1", revBody)
 	assert.NoError(t, err, "Couldn't update document")
@@ -705,7 +711,9 @@ func TestStoreAttachments(t *testing.T) {
 	// Simulate a valid scenario; attachment contains data, so store it in the database.
 	// Include content type, encoding in attachment metadata but no attachment length.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain", "encoding": "utf-8"}}}`
+	revBody = nil
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
+	assert.NoError(t, err)
 	revId, doc, err = db.Put("doc2", revBody)
 	assert.NoError(t, err, "Couldn't update document")
 	assert.NotEmpty(t, revId, "Document revision id should be generated")
@@ -724,6 +732,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Include only content type in attachment metadata but no encoding and attachment length.
 	// Attachment length should be calculated automatically in this case.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"data": "YXR0MS50eHQ=", "content_type": "text/plain"}}}`
+	revBody = nil
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
 	revId, doc, err = db.Put("doc3", revBody)
 	assert.NoError(t, err, "Couldn't update document")
@@ -742,6 +751,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Simulate error scenario for attachment without data; stub is not provided; If the data is
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
 	revText = `{"key1": "value1", "_attachments": {"att1.txt": {"revpos": 2}}}`
+	revBody = nil
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
 	revId, doc, err = db.Put("doc4", revBody)
 	assert.Empty(t, revId, "The revId should be empty since stub is not included in attachment")
@@ -752,6 +762,7 @@ func TestStoreAttachments(t *testing.T) {
 	// Simulate error scenario for attachment without data; revpos is not provided; If the data is
 	// empty in attachment, the attachment must be a stub that repeats a parent attachment.
 	revText = `{"key2": "value1", "_attachments": {"att1.txt": {"stub": true}}}`
+	revBody = nil
 	assert.NoError(t, base.JSONUnmarshal([]byte(revText), &revBody))
 	revId, doc, err = db.Put("doc5", revBody)
 	assert.Empty(t, revId, "The revId should be empty since revpos is not included in attachment")

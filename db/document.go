@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -163,6 +164,9 @@ func (b Body) ExtractSpecialProperties() (*SpecialProperties, error) {
 	delete(b, BodyExpiry)
 
 	bodyAttachments := GetBodyAttachments(b)
+	if bodyAttachments == nil && b[BodyAttachments] != nil {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid attachments")
+	}
 	delete(b, BodyAttachments)
 
 	bodyRevisions, _ := b[BodyRevisions].(map[string]interface{})

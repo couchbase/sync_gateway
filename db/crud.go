@@ -11,7 +11,6 @@ package db
 
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -761,9 +760,6 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		if err != nil {
 			return nil, nil, nil, err
 		}
-
-		// TODO: Work out why this fixes issue with TestStoreAttachments.... If this nil is removed TestStoreAttachments fails
-		newDoc._syncFnBody = nil
 		newDoc.UpdateRevID(newRev)
 
 		if err := doc.History.addRevision(newDoc.DocID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
@@ -1173,9 +1169,6 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	if err != nil {
 		return
 	}
-
-	test, _ := base.JSONMarshal(syncFnBody)
-	fmt.Println(string(test))
 
 	// TODO: seems a bit late to do this. Could we move it earlier?
 	err = validateNewBody(syncFnBody)
