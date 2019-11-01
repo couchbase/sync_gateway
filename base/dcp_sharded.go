@@ -10,7 +10,7 @@ import (
 )
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
-const NumPIndexes = 16
+const DefaultImportPartitions = 16
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
@@ -21,7 +21,7 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) (*CbgtContext, error) {
 
 	cbgtContext, err := initCBGTManager(dbName, bucket, spec)
 	if err != nil {
@@ -29,7 +29,7 @@ func StartShardedDCPFeed(dbName string, bucket Bucket, spec BucketSpec) (*CbgtCo
 	}
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, bucket, spec)
+	err = cbgtContext.StartManager(dbName, bucket, spec, numPartitions)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func cbgtFeedParams(spec BucketSpec) (string, error) {
 // TODO: If the index definition already exists in the cfg, it appears like this step can be bypassed,
 //       as we don't currently have a scenario where we want to update an existing index def.  Needs
 //       additional testing to validate.
-func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec BucketSpec) error {
+func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
 
 	// sourceType is based on cbgt.source_gocouchbase non-public constant.
 	// TODO: Request that cbgt make this and source_gocb public.
@@ -99,12 +99,16 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 		return pkgerrors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(bucket.GetName()))
 	}
 
-	// Calculate partitionsPerPIndex required to hit target NumPIndexes
-	partitionsPerPIndex := int(vbNo) / NumPIndexes
+	// Calculate partitionsPerPIndex required to hit target DefaultImportPartitions
+	if numPartitions == 0 || numPartitions > vbNo {
+		numPartitions = DefaultImportPartitions
+	}
+
+	partitionsPerPIndex := vbNo / numPartitions
 
 	planParams := cbgt.PlanParams{
-		MaxPartitionsPerPIndex: partitionsPerPIndex, // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
-		NumReplicas:            0,                   // No replicas required for SG sharded feed
+		MaxPartitionsPerPIndex: int(partitionsPerPIndex), // num vbuckets per Pindex.  Multiple Pindexes could be assigned per node.
+		NumReplicas:            0,                        // No replicas required for SG sharded feed
 	}
 
 	// TODO: If this isn't well-formed JSON, cbgt emits errors when opening locally persisted pindex files.  Review
@@ -136,6 +140,7 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	)
 	manager.Kick("NewIndexesCreated")
 
+	Infof(KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
 	return err
 
 }
@@ -266,7 +271,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec) (err error) {
+func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
 
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
@@ -276,7 +281,7 @@ func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(c.Manager, dbName, bucket, spec)
+	err = createCBGTIndex(c.Manager, dbName, bucket, spec, numPartitions)
 	if err != nil {
 		Errorf(KeyDCP, "cbgt index creation failed: %v", err)
 		return err

@@ -24,7 +24,7 @@ func TestN1qlQuery(t *testing.T) {
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
-	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	bucket, ok := AsGoCBBucket(testBucket)
 	if !ok {
 		t.Fatalf("Requires gocb bucket")
 	}

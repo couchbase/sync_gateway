@@ -178,6 +178,7 @@ type DbConfig struct {
 	Roles                     map[string]*db.PrincipalConfig `json:"roles,omitempty"`                        // Initial roles
 	RevsLimit                 *uint32                        `json:"revs_limit,omitempty"`                   // Max depth a document's revision tree can grow to
 	AutoImport                interface{}                    `json:"import_docs,omitempty"`                  // Whether to automatically import Couchbase Server docs into SG.  Xattrs must be enabled.  true or "continuous" both enable this.
+	ImportPartitions          *uint16                        `json:"import_partitions,omitempty"`            // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
 	ImportFilter              *string                        `json:"import_filter,omitempty"`                // Filter function (import)
 	ImportBackupOldRev        bool                           `json:"import_backup_old_rev"`                  // Whether import should attempt to create a temporary backup of the previous revision body, when available.
 	EventHandlers             interface{}                    `json:"event_handlers,omitempty"`               // Event handlers (webhook)
@@ -453,6 +454,29 @@ func (dbConfig DbConfig) validate() []error {
 		dbConfig.DeltaSync.Enabled = nil
 	}
 
+	// Import validation
+	autoImportEnabled, err := dbConfig.AutoImportEnabled()
+	if err != nil {
+		errorMessages = append(errorMessages, err)
+	}
+	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
+		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
+	}
+
+	if dbConfig.AutoImport != nil && autoImportEnabled && !dbConfig.UseXattrs() {
+		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled"))
+	}
+
+	if dbConfig.ImportPartitions != nil {
+		if !dbConfig.UseXattrs() {
+			errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
+		} else if !autoImportEnabled {
+			errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but import_docs disabled"))
+		} else if *dbConfig.ImportPartitions < 1 || *dbConfig.ImportPartitions > 1024 {
+			errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "import_partitions", "1-1024"))
+		}
+	}
+
 	return errorMessages
 
 }
@@ -463,16 +487,6 @@ func (dbConfig *DbConfig) validateSgDbConfig() []error {
 
 	if err := dbConfig.validate(); err != nil {
 		errorMessages = append(errorMessages, err...)
-	}
-
-	autoImportEnabled, err := dbConfig.AutoImportEnabled()
-	if err != nil {
-		errorMessages = append(errorMessages, err)
-
-	}
-
-	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
-		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
 	}
 
 	return errorMessages

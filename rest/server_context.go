@@ -353,6 +353,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 	importOptions.BackupOldRev = config.ImportBackupOldRev
 
+	if config.ImportPartitions == nil {
+		importOptions.ImportPartitions = base.DefaultImportPartitions
+	} else {
+		importOptions.ImportPartitions = *config.ImportPartitions
+	}
+
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
 	warnings := config.deprecatedConfigCacheFallback()
 	for _, warnLog := range warnings {

@@ -4213,17 +4213,25 @@ func TestBasicGetReplicator2(t *testing.T) {
 
 	// Get a document with rev using replicator2
 	response = rt.SendAdminRequest("GET", "/db/doc1?replicator2=true&rev="+revID, ``)
-	assertStatus(t, response, http.StatusOK)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.Equal(t, "bar", body["foo"])
+	if base.IsEnterpriseEdition() {
+		assertStatus(t, response, http.StatusOK)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		assert.Equal(t, "bar", body["foo"])
+	} else {
+		assertStatus(t, response, http.StatusNotImplemented)
+	}
 
 	// Get a document without specifying rev using replicator2
 	response = rt.SendAdminRequest("GET", "/db/doc1?replicator2=true", ``)
-	assertStatus(t, response, http.StatusOK)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.Equal(t, "bar", body["foo"])
+	if base.IsEnterpriseEdition() {
+		assertStatus(t, response, http.StatusOK)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		assert.Equal(t, "bar", body["foo"])
+	} else {
+		assertStatus(t, response, http.StatusNotImplemented)
+	}
 }
 
 func TestAttachmentGetReplicator2(t *testing.T) {
@@ -4241,38 +4249,58 @@ func TestAttachmentGetReplicator2(t *testing.T) {
 
 	// Get a document with rev using replicator2
 	response = rt.SendAdminRequest("GET", "/db/doc1?replicator2=true", ``)
-	assertStatus(t, response, http.StatusOK)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.Equal(t, "bar", body["foo"])
-	assert.Contains(t, body[db.BodyAttachments], "hello.txt")
+	if base.IsEnterpriseEdition() {
+		assertStatus(t, response, http.StatusOK)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		assert.Equal(t, "bar", body["foo"])
+		assert.Contains(t, body[db.BodyAttachments], "hello.txt")
+	} else {
+		assertStatus(t, response, http.StatusNotImplemented)
+	}
 }
 
 func TestBasicPutReplicator2(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	var body db.Body
+	var (
+		body  db.Body
+		revID string
+		err   error
+	)
 
-	response := rt.SendAdminRequest("PUT", "/db/doc1", `{}`)
-	assertStatus(t, response, http.StatusCreated)
-	err := base.JSONUnmarshal(response.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.True(t, body["ok"].(bool))
-	revID := body["rev"].(string)
+	response := rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true", `{}`)
+	if base.IsEnterpriseEdition() {
+		assertStatus(t, response, http.StatusCreated)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		assert.True(t, body["ok"].(bool))
+		revID = body["rev"].(string)
+	} else {
+		assertStatus(t, response, http.StatusNotImplemented)
+	}
 
 	// Put basic doc with replicator2 flag and ensure it saves correctly
 	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID, `{"foo": "bar"}`)
-	assertStatus(t, response, http.StatusCreated)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.True(t, body["ok"].(bool))
+	if base.IsEnterpriseEdition() {
+		assertStatus(t, response, http.StatusCreated)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		assert.True(t, body["ok"].(bool))
+	} else {
+		assertStatus(t, response, http.StatusNotImplemented)
+	}
 
 	response = rt.SendAdminRequest("GET", "/db/doc1", ``)
-	assertStatus(t, response, http.StatusOK)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.Equal(t, "bar", body["foo"])
+	if base.IsEnterpriseEdition() {
+		assertStatus(t, response, http.StatusOK)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		assert.Equal(t, "bar", body["foo"])
+	} else {
+		assertStatus(t, response, http.StatusNotFound)
+	}
 }
 
 func TestDeletedPutReplicator2(t *testing.T) {
@@ -4289,23 +4317,31 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	revID := body["rev"].(string)
 
 	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID+"&deleted=true", "{}")
-	assertStatus(t, response, http.StatusCreated)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.True(t, body["ok"].(bool))
-	revID = body["rev"].(string)
+	if base.IsEnterpriseEdition() {
+		assertStatus(t, response, http.StatusCreated)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		assert.True(t, body["ok"].(bool))
+		revID = body["rev"].(string)
 
-	response = rt.SendAdminRequest("GET", "/db/doc1", ``)
-	assertStatus(t, response, http.StatusNotFound)
+		response = rt.SendAdminRequest("GET", "/db/doc1", ``)
+		assertStatus(t, response, http.StatusNotFound)
+	} else {
+		assertStatus(t, response, http.StatusNotImplemented)
+	}
 
 	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID+"&deleted=false", `{}`)
-	assertStatus(t, response, http.StatusCreated)
-	err = base.JSONUnmarshal(response.Body.Bytes(), &body)
-	assert.NoError(t, err)
-	assert.True(t, body["ok"].(bool))
+	if base.IsEnterpriseEdition() {
+		assertStatus(t, response, http.StatusCreated)
+		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		assert.NoError(t, err)
+		assert.True(t, body["ok"].(bool))
 
-	response = rt.SendAdminRequest("GET", "/db/doc1", ``)
-	assertStatus(t, response, http.StatusOK)
+		response = rt.SendAdminRequest("GET", "/db/doc1", ``)
+		assertStatus(t, response, http.StatusOK)
+	} else {
+		assertStatus(t, response, http.StatusNotImplemented)
+	}
 }
 
 func TestWebhookSpecialProperties(t *testing.T) {

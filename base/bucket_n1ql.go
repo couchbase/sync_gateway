@@ -248,7 +248,7 @@ func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("GetIndexMeta for index %s", indexName)
+	description := fmt.Sprintf("WaitForIndexOnline for index %s", indexName)
 	err, _ := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
 
 	return err
@@ -258,9 +258,11 @@ func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
 func (bucket *CouchbaseBucketGoCB) waitForBucketExistence(indexName string, shouldExist bool) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
-		exists, _, getMetaErr := bucket.GetIndexMeta(indexName)
-		if getMetaErr != nil {
-			return false, getMetaErr, nil
+		// GetIndexMeta has its own error retry handling,
+		// but keep the retry logic up here for checking if the index exists.
+		exists, _, err := bucket.GetIndexMeta(indexName)
+		if err != nil {
+			return false, err, nil
 		}
 		// If it's in the desired state, we're done
 		if exists == shouldExist {
@@ -271,13 +273,47 @@ func (bucket *CouchbaseBucketGoCB) waitForBucketExistence(indexName string, shou
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("GetIndexMeta for index %s", indexName)
+	description := fmt.Sprintf("waitForBucketExistence for index %s", indexName)
 	err, _ := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
 
 	return err
 }
 
+type getIndexMetaRetryValues struct {
+	exists bool
+	meta   *gocb.IndexInfo
+}
+
 func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, meta *gocb.IndexInfo, err error) {
+
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		exists, meta, err := bucket.getIndexMetaWithoutRetry(indexName)
+		if err != nil {
+			// retry
+			return true, err, nil
+		}
+		return false, nil, getIndexMetaRetryValues{
+			exists: exists,
+			meta:   meta,
+		}
+	}
+
+	// Kick off retry loop
+	description := fmt.Sprintf("GetIndexMeta for index %s", indexName)
+	err, val := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	if err != nil {
+		return false, nil, err
+	}
+
+	valTyped, ok := val.(getIndexMetaRetryValues)
+	if !ok {
+		return false, nil, fmt.Errorf("Expected GetIndexMeta retry value to be getIndexMetaRetryValues but got %T", val)
+	}
+
+	return valTyped.exists, valTyped.meta, nil
+}
+
+func (bucket *CouchbaseBucketGoCB) getIndexMetaWithoutRetry(indexName string) (exists bool, meta *gocb.IndexInfo, err error) {
 	statement := fmt.Sprintf("SELECT state from system:indexes WHERE indexes.name = '%s' AND indexes.keyspace_id = '%s'", indexName, bucket.GetName())
 	n1qlQuery := gocb.NewN1qlQuery(statement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
