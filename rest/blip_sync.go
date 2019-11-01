@@ -228,9 +228,9 @@ func (ctx *blipSyncContext) notFound(rq *blip.Message) {
 func (ctx *blipSyncContext) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
 	switch logLevel {
 	case base.LevelError:
-		base.ErrorfCtx(ctx.db.Ctx, logKey, format, args...)
+		base.ErrorfCtx(ctx.db.Ctx, format, args...)
 	case base.LevelWarn:
-		base.WarnfCtx(ctx.db.Ctx, logKey, format, args...)
+		base.WarnfCtx(ctx.db.Ctx, format, args...)
 	case base.LevelInfo:
 		base.InfofCtx(ctx.db.Ctx, logKey, format, args...)
 	case base.LevelDebug:
@@ -374,7 +374,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.Warnf(base.KeyAll, "[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+			base.Warnf("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
@@ -482,7 +482,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.Warnf(base.KeyAll, "[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+			base.Warnf("[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
@@ -582,7 +582,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
-		base.Warnf(base.KeyAll, "Handle changes got error: %v", err)
+		base.Warnf("Handle changes got error: %v", err)
 		return err
 	}
 
@@ -827,7 +827,7 @@ func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID str
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
-					base.Warnf(base.KeyAll, "[%s] PANIC handling 'sendRevision' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+					base.Warnf("[%s] PANIC handling 'sendRevision' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 					bh.close()
 				}
 			}()

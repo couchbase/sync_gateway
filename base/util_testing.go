@@ -343,7 +343,7 @@ func (tbm *TestBucketManager) FlushBucket() error {
 	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
 		err = tbm.Bucket.Flush()
 		if err != nil {
-			Warnf(KeyAll, "Error flushing bucket: %v  Will retry.", err)
+			Warnf("Error flushing bucket: %v  Will retry.", err)
 		}
 		shouldRetry = (err != nil) // retry (until max attempts) if there was an error
 		return shouldRetry, err, nil
@@ -373,7 +373,7 @@ func (tbm *TestBucketManager) FlushBucket() error {
 		}
 
 		// Still items left, wait a little bit and try again
-		Warnf(KeyAll, "TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
+		Warnf("TestBucketManager.EmptyBucket(): still %d items in bucket after flush, waiting for no items.  Will retry.", itemCount)
 		time.Sleep(time.Millisecond * 500)
 
 		numTries += 1

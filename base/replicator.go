@@ -76,7 +76,7 @@ func (r *Replicator) StopReplications() error {
 	for id, rep := range r.replications {
 		Infof(KeyReplicate, "Stopping replication %s", UD(id))
 		if err := rep.Stop(); err != nil {
-			Warnf(KeyAll, "Error stopping replication %s.  It's possible that the replication was already stopped and this can be safely ignored. Error: %v.", id, err)
+			Warnf("Error stopping replication %s.  It's possible that the replication was already stopped and this can be safely ignored. Error: %v.", id, err)
 		}
 		Infof(KeyReplicate, "Stopped replication %s", UD(id))
 	}
@@ -171,7 +171,7 @@ func (r *Replicator) runOneShotReplication(parameters sgreplicate.ReplicationPar
 		go func() {
 			defer r.removeReplication(parameters.ReplicationId)
 			if _, err := replication.WaitUntilDone(); err != nil {
-				Warnf(KeyAll, "async one-shot replication %s failed: %v", UD(parameters.ReplicationId), err)
+				Warnf("async one-shot replication %s failed: %v", UD(parameters.ReplicationId), err)
 			}
 		}()
 		return replication, nil

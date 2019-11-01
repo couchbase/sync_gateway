@@ -652,8 +652,7 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 		h.logStatus(101, "Upgraded to WebSocket protocol")
 		defer func() {
 			if err := conn.Close(); err != nil {
-				base.WarnfCtx(h.db.Ctx, base.KeyAll, "WebSocket connection (%s) closed with error %v",
-					h.formatSerialNumber(), err)
+				base.WarnfCtx(h.db.Ctx, "WebSocket connection (%s) closed with error %v", h.formatSerialNumber(), err)
 			}
 			base.InfofCtx(h.db.Ctx, base.KeyHTTP, "%s:     --> WebSocket closed", h.formatSerialNumber())
 		}()
@@ -791,7 +790,7 @@ func readWebSocketMessage(conn *websocket.Conn) ([]byte, error) {
 	var message []byte
 	if err := websocket.Message.Receive(conn, &message); err != nil {
 		if err != io.EOF {
-			base.Warnf(base.KeyAll, "Error reading initial websocket message: %v", err)
+			base.Warnf("Error reading initial websocket message: %v", err)
 			return nil, err
 		}
 	}

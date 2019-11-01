@@ -174,7 +174,7 @@ func (user *userImpl) Authenticate(password string) bool {
 
 	// exit early if old hash is present
 	if user.OldPasswordHash_ != nil {
-		base.Warnf(base.KeyAll, "User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
+		base.Warnf("User account %q still has pre-beta password hash; need to reset password", base.UD(user.Name_))
 		return false // Password must be reset to use new (bcrypt) password hash
 	}
 
@@ -189,7 +189,7 @@ func (user *userImpl) Authenticate(password string) bool {
 		// e.g: in the case of bcryptCost changes
 		if err := user.auth.rehashPassword(user, password); err != nil {
 			// rehash is best effort, just log a warning on error.
-			base.Warnf(base.KeyAll, "Error when rehashing password for user %s: %v", base.UD(user.Name()), err)
+			base.Warnf("Error when rehashing password for user %s: %v", base.UD(user.Name()), err)
 		}
 	} else {
 		// no hash, but (incorrect) password provided

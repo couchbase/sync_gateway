@@ -252,7 +252,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 			if strings.Contains(err.Error(), "not enough indexer nodes") {
 				return false, fmt.Errorf("Unable to create indexes with the specified number of replicas (%d).  Increase the number of index nodes, or modify 'num_index_replicas' in your Sync Gateway database config.", numReplica), nil
 			}
-			base.Warnf(base.KeyAll, "Error creating index %s: %v - will retry.", indexName, err)
+			base.Warnf("Error creating index %s: %v - will retry.", indexName, err)
 		}
 		return err != nil, err, nil
 	}
@@ -273,7 +273,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok {
-		base.Warnf(base.KeyAll, "Using a non-Couchbase bucket: %T - indexes will not be created.", bucket)
+		base.Warnf("Using a non-Couchbase bucket: %T - indexes will not be created.", bucket)
 		return nil
 	}
 
@@ -332,7 +332,7 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 				queryStatement := replaceSyncTokensQuery(index.readinessQuery, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
-					base.Warnf(base.KeyAll, "Query error for statement [%s], err:%v", queryStatement, queryErr)
+					base.Warnf("Query error for statement [%s], err:%v", queryStatement, queryErr)
 					indexErrors <- queryErr
 				}
 				base.Debugf(base.KeyQuery, "Index %s verified as ready", base.MD(index.fullIndexName(useXattrs)))
@@ -395,7 +395,7 @@ func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs b
 	for _, indexName := range removalCandidates {
 		removed, err := removeObsoleteIndex(bucket, indexName, previewOnly)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Unexpected error when removing index %q: %s", indexName, err)
+			base.Warnf("Unexpected error when removing index %q: %s", indexName, err)
 		}
 		if removed {
 			removedIndexes = append(removedIndexes, indexName)

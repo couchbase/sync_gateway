@@ -99,7 +99,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *oid
 			}
 		}
 		if err = op.InitOIDCClient(); err != nil {
-			base.Errorf(base.KeyAll, "Unable to initialize OIDC client: %v", err)
+			base.Errorf("Unable to initialize OIDC client: %v", err)
 		}
 	})
 
@@ -117,7 +117,7 @@ func (op *OIDCProvider) InitUserPrefix() error {
 
 	issuerURL, err := url.ParseRequestURI(op.Issuer)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unable to parse issuer URI when initializing user prefix - using provider name")
+		base.Warnf("Unable to parse issuer URI when initializing user prefix - using provider name")
 		op.UserPrefix = op.Name
 		return nil
 	}

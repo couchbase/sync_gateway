@@ -107,7 +107,7 @@ func (em *EventManager) raiseEvent(event Event) error {
 		case em.asyncEventChannel <- event:
 		case <-time.After(time.Duration(em.waitTime) * time.Millisecond):
 			// Event queue channel is full - ignore event and log error
-			base.Warnf(base.KeyAll, "Event queue full - discarding event: %s", base.UD(event.String()))
+			base.Warnf("Event queue full - discarding event: %s", base.UD(event.String()))
 			return errors.New("Event queue full")
 		}
 	}

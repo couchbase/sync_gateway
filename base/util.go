@@ -67,7 +67,7 @@ func CreateUUID() string {
 	bytes := make([]byte, 16)
 	n, err := rand.Read(bytes)
 	if n < 16 {
-		Panicf(KeyAll, "Failed to generate random ID: %s", err)
+		Panicf("Failed to generate random ID: %s", err)
 	}
 	return fmt.Sprintf("%x", bytes)
 }
@@ -370,7 +370,7 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 			if err == nil {
 				err = NewRetryTimeoutError(description, numAttempts)
 			}
-			Warnf(KeyAll, "RetryLoop for %v giving up after %v attempts", description, numAttempts)
+			Warnf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
 		Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
@@ -978,7 +978,7 @@ func ExpvarVar2Int(expvarVar expvar.Var) int64 {
 	}
 	asInt, ok := expvarVar.(*expvar.Int)
 	if !ok {
-		Warnf(KeyAll, "ExpvarVar2Int could not convert %v to *expvar.Int", expvarVar)
+		Warnf("ExpvarVar2Int could not convert %v to *expvar.Int", expvarVar)
 		return 0
 	}
 	return asInt.Value()
