@@ -150,6 +150,10 @@ func (h *handler) handleGetDoc() error {
 }
 
 func (h *handler) handleGetDocReplicator2(docid, revid string) error {
+	if !base.IsEnterpriseEdition() {
+		return base.HTTPErrorf(http.StatusNotImplemented, "replicator2 endpoints are only supported in EE")
+	}
+
 	rev, err := h.db.GetRev(docid, revid, true, nil)
 	if err != nil {
 		return err
@@ -357,6 +361,10 @@ func (h *handler) handlePutDoc() error {
 }
 
 func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err error) {
+	if !base.IsEnterpriseEdition() {
+		return base.HTTPErrorf(http.StatusNotImplemented, "replicator2 endpoints are only supported in EE")
+	}
+
 	bodyBytes, err := h.readBody()
 	if err != nil {
 		return err
