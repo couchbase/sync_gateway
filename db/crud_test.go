@@ -1,15 +1,14 @@
 package db
 
 import (
-	"log"
-	"testing"
-	"time"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"log"
+	"testing"
+	"time"
 )
 
 type treeDoc struct {
@@ -1147,32 +1146,29 @@ func TestCheckForUpgrade(t *testing.T) {
 	assert.NoError(t, err, "Couldn't create database 'db'")
 
 	// Create the first revision of the document
-	docId := "356779a9a1696714480f57fa3fb66d4c"
-	payload := `{"city":"Los Angeles"}`
-	doc, rev1, err := db.PutExistingRevWithBody(docId, unjson(payload), []string{"1-a"}, false)
-	assert.NoError(t, err, "Couldn't create document")
-	assert.NotEmpty(t, doc, "Document shouldn't be empty")
-	assert.Equal(t, "1-a", rev1, "Provided input revision ID should be returned")
-
-	// Check scenario where xattrs is being used already;
-	context.Options.EnableXattr = false
-	doc, buc := db.checkForUpgrade(docId, DocUnmarshalAll)
-	assert.Nil(t, doc, "An upgrade isn't going to be in progress")
-	assert.Nil(t, buc, "An upgrade isn't going to be in progress")
-
-	// Simulate scenario where Couchbase server support Xattrs and it not being used already
-	// but it's enabled.
-	context.Options.EnableXattr = true
-	bodyBytes := rawDocWithSyncMeta()
-	body := Body{}
-	err = body.Unmarshal(bodyBytes)
-	assert.NoError(t, err)
+	docId, body := "356779a9a1696714480f57fa3fb66d4c", Body{}
+	payload := `{"_sync":{"rev":"1-a","sequence":1,"recent_sequences":[1],
+		"history":{"revs":["1-a"],"parents":[-1],"channels":[null]},"cas":"","value_crc32c":"",
+		"time_saved":"2019-10-31T22:48:03.121078-07:00"},"city":"Los Angeles"}`
+	assert.NoError(t, body.Unmarshal([]byte(payload)), "Unmarshal body error")
 
 	syncMetaExpiry := time.Now().Add(time.Second * 30)
-	_, err = testBucket.Bucket.Add(docId, uint32(syncMetaExpiry.Unix()), bodyBytes)
-	assert.NoError(t, err)
+	added, err := testBucket.Bucket.Add(docId, uint32(syncMetaExpiry.Unix()), body)
+	assert.NoError(t, err, "Error writing doc with expiry")
+	assert.True(t, added, "Document with sync metadata should be added to bucket")
 
+	// Check scenario where xattrs is being used already; Enable Xattr on database context
+	// options to simulate the scenario where it's already being used by the system.
+	context.Options.EnableXattr = true
+	doc, buc := db.checkForUpgrade(docId, DocUnmarshalAll)
+	assert.Nil(t, doc, "doc should bel null and an upgrade isn't going to be in progress")
+	assert.Nil(t, buc, "bucket doc should bel null and an upgrade isn't going to be in progress")
+
+	// Simulate scenario where Couchbase server support Xattrs and it is not
+	// being used already but it's enabled.
+	context.Options.EnableXattr = false
 	doc, buc = db.checkForUpgrade(docId, DocUnmarshalAll)
-	assert.NotEmpty(t, doc)
-	assert.NotEmpty(t, doc)
+	assert.NotEmpty(t, doc, "doc shouldn't be nil and an upgrade isn't going to be in progress")
+	assert.NotEmpty(t, buc, "bucket doc shouldn't be nil and an upgrade isn't going to be in progress")
+	assert.Equal(t, "Los Angeles", doc._body["city"])
 }
