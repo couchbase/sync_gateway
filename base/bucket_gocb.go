@@ -2700,20 +2700,21 @@ func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
 
 func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 
-	switch typedBucket := bucket.(type) {
-	case *CouchbaseBucketGoCB:
-		return typedBucket, true
-	case *LoggingBucket:
-		gocbBucket, ok := typedBucket.GetUnderlyingBucket().(*CouchbaseBucketGoCB)
-		return gocbBucket, ok
-	case TestBucket:
-		gocbBucket, ok := typedBucket.Bucket.(*CouchbaseBucketGoCB)
-		return gocbBucket, ok
-	case *LeakyBucket:
-		return AsGoCBBucket(typedBucket.GetUnderlyingBucket())
-	default:
-		return nil, false
+	if gocbBucket, ok := bucket.(*CouchbaseBucketGoCB); ok {
+		return gocbBucket, true
 	}
+
+	var underlyingBucket Bucket
+	switch typedBucket := bucket.(type) {
+	case *LoggingBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *LeakyBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case TestBucket:
+		underlyingBucket = typedBucket.Bucket
+	}
+
+	return AsGoCBBucket(underlyingBucket)
 }
 
 // Get one of the management endpoints.  It will be a string such as http://couchbase
