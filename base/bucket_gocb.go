@@ -2698,14 +2698,13 @@ func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
 	<-bucket.viewOps
 }
 
+// AsGoCBBucket tries to return the given bucket as a GoCBBucket.
 func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
-
-	if gocbBucket, ok := bucket.(*CouchbaseBucketGoCB); ok {
-		return gocbBucket, true
-	}
 
 	var underlyingBucket Bucket
 	switch typedBucket := bucket.(type) {
+	case *CouchbaseBucketGoCB:
+		return typedBucket, true
 	case *LoggingBucket:
 		underlyingBucket = typedBucket.GetUnderlyingBucket()
 	case *LeakyBucket:
