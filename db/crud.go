@@ -632,10 +632,6 @@ func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (anc
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
 func (db *Database) backupAncestorRevs(doc *Document, newDoc *IncomingDocument) {
 	newBodyBytes := newDoc.BodyBytes
-	//if err != nil {
-	//	base.Warnf(base.KeyAll, "Error getting body bytes when backing up ancestor revs")
-	//	return
-	//}
 
 	// Find an ancestor that still has JSON in the document:
 	var json []byte
@@ -693,7 +689,7 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *Document, deleted 
 func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document, err error) {
 	newDoc, err := body.ToIncomingDocument()
 	if err != nil {
-		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "An error")
+		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "error occurred building IncomingDocument from body: %v", err)
 	}
 
 	newDoc.UpdateDocID(docid)

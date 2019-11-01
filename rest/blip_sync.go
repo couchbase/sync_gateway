@@ -923,7 +923,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 
 		// Unmarshal source revision for patching
-		deltaSrcBody, err := deltaSrcRev.MutableBody()
+		deltaSrcBody, err := deltaSrcRev.DeepMutableBody()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to marshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
@@ -954,11 +954,11 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	} else if hasAttachments || hasExpiry {
 		err = rq.ReadJSONBody(&body)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "An error")
+			return base.HTTPErrorf(http.StatusBadRequest, "error occurred reading JSON Body: %v", err)
 		}
 		newDoc, err = body.ToIncomingDocument()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "An error")
+			return base.HTTPErrorf(http.StatusBadRequest, "error occurred building IncomingDocument from body: %v", err)
 		}
 	}
 

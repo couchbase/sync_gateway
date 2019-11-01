@@ -109,7 +109,6 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 	var newRev string
 	var alreadyImportedDoc *Document
-
 	docOut, _, err = db.updateAndReturnDoc(docid, true, existingDoc.Expiry, existingDoc, func(doc *Document) (resultDocument *IncomingDocument, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.

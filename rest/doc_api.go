@@ -382,11 +382,11 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		// In handleRev the below is actually using ReadJSONBody
 		err := base.JSONUnmarshal(bodyBytes, &body)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "An error")
+			return base.HTTPErrorf(http.StatusBadRequest, "error occurred reading JSON Body: %v", err)
 		}
 		newDoc, err = body.ToIncomingDocument()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "An error")
+			return base.HTTPErrorf(http.StatusBadRequest, "error occurred building IncomingDocument from body: %v", err)
 		}
 	}
 
