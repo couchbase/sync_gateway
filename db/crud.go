@@ -1823,7 +1823,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 	// Convert possibleSet to an array (possible)
 	if len(possibleSet) > 0 {
 		possible = make([]string, 0, len(possibleSet))
-		for revid := range possibleSet {
+		for revid, _ := range possibleSet {
 			possible = append(possible, revid)
 		}
 	}
