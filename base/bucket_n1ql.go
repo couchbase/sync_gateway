@@ -260,7 +260,10 @@ func (bucket *CouchbaseBucketGoCB) waitForBucketExistence(indexName string, shou
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		// GetIndexMeta has its own error retry handling,
 		// but keep the retry logic up here for checking if the index exists.
-		exists, _, _ := bucket.GetIndexMeta(indexName)
+		exists, _, err := bucket.GetIndexMeta(indexName)
+		if err != nil {
+			return false, err, nil
+		}
 		// If it's in the desired state, we're done
 		if exists == shouldExist {
 			return false, nil, nil
@@ -298,13 +301,16 @@ func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, 
 	// Kick off retry loop
 	description := fmt.Sprintf("GetIndexMeta for index %s", indexName)
 	err, val := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	if err != nil {
+		return false, nil, err
+	}
 
 	valTyped, ok := val.(getIndexMetaRetryValues)
 	if !ok {
 		return false, nil, fmt.Errorf("Expected GetIndexMeta retry value to be getIndexMetaRetryValues but got %T", val)
 	}
 
-	return valTyped.exists, valTyped.meta, err
+	return valTyped.exists, valTyped.meta, nil
 }
 
 func (bucket *CouchbaseBucketGoCB) getIndexMetaWithoutRetry(indexName string) (exists bool, meta *gocb.IndexInfo, err error) {
