@@ -915,7 +915,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	assert.NoError(b, err)
 
-	getDelta := func(newDoc *Document) {
+	getDelta := func(body Body) {
 		deltaSrcRev, err := db.GetRev("doc1", "1-a", false, nil)
 		assert.NoError(b, err)
 
@@ -928,32 +928,26 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, newDoc.Body())
+		err = base.Patch(&deltaSrcMap, body)
 	}
 
 	b.Run("SmallDiff", func(b *testing.B) {
-		newDoc := &Document{
-			ID:    "doc1",
-			RevID: "1a",
-		}
-		newDoc.UpdateBodyBytes([]byte(`{"foo": "bart"}`))
+		body := Body{"_id": "docid", "_rev": "1a", "foo": "bart"}
 		for n := 0; n < b.N; n++ {
-			getDelta(newDoc)
+			getDelta(body)
 		}
 	})
 
 	b.Run("Huge Diff", func(b *testing.B) {
-		newDoc := &Document{
-			ID:    "doc1",
-			RevID: "1a",
-		}
 		largeDoc := make([]byte, 1000000)
 		longBody := Body{"val": string(largeDoc)}
 		bodyBytes, err := base.JSONMarshal(longBody)
 		assert.NoError(b, err)
-		newDoc.UpdateBodyBytes(bodyBytes)
+
+		body := Body{"_id": "doc1", "_rev": "1a", "val": string(bodyBytes)}
+
 		for n := 0; n < b.N; n++ {
-			getDelta(newDoc)
+			getDelta(body)
 		}
 	})
 }

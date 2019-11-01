@@ -358,11 +358,6 @@ type casOnlySyncData struct {
 	Cas string `json:"cas"`
 }
 
-func (doc *Document) UpdateBodyBytes(bodyBytes []byte) {
-	doc._rawBody = bodyBytes
-	doc._body = nil
-}
-
 func (doc *Document) UpdateBody(body Body) {
 	doc._body = body
 	doc._rawBody = nil
