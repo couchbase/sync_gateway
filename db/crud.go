@@ -421,7 +421,7 @@ func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevision
 	roleAccess = doc.RoleAccess
 	sequence = doc.Sequence
 	flags = doc.Flags
-	gotRevID = doc.RevID
+	//gotRevID = doc.RevID
 	return
 }
 

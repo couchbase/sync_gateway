@@ -343,10 +343,7 @@ type Document struct {
 	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas      uint64 // Document cas
 
-	Deleted        bool
-	DocExpiry      uint32
-	RevID          string
-	DocAttachments AttachmentsMeta
+	Deleted bool
 }
 
 type revOnlySyncData struct {
@@ -418,7 +415,7 @@ func (doc *Document) Body() Body {
 	}
 
 	if doc._body != nil {
-		base.Tracef(base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.Tracef(base.KeyAll, "Already had doc body %s from %s", base.UD(doc.ID), caller)
 		return doc._body
 	}
 
@@ -427,7 +424,7 @@ func (doc *Document) Body() Body {
 		return nil
 	}
 
-	base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+	base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s from %s", base.UD(doc.ID), caller)
 	err := doc._body.Unmarshal(doc._rawBody)
 	if err != nil {
 		base.Warnf("Unable to unmarshal document body from raw body : %s", err)
@@ -474,7 +471,7 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	}
 
 	if doc._rawBody != nil {
-		base.Tracef(base.KeyAll, "Already had doc rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.Tracef(base.KeyAll, "Already had doc rawBody %s from %s", base.UD(doc.ID), caller)
 		return doc._rawBody, nil
 	}
 
@@ -483,7 +480,7 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 		return nil, nil
 	}
 
-	base.Tracef(base.KeyAll, "        MARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+	base.Tracef(base.KeyAll, "        MARSHAL doc body %s from %s", base.UD(doc.ID), caller)
 	bodyBytes, err := base.JSONMarshal(doc._body)
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "Error marshalling document body")
