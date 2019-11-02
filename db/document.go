@@ -96,7 +96,7 @@ func (doc *IncomingDocument) GetMutableBody() Body {
 			return b
 		}
 		// Error unmarshalling raw body, try to use the existing _body
-		base.Warnf(base.KeyAll, "Unable to unmarshal document body from raw body : %s", err)
+		base.Warnf("Unable to unmarshal document body from raw body : %s", err)
 	}
 
 	// We didn't have raw bytes available, but if we do have a body to copy
@@ -420,7 +420,7 @@ func (doc *Document) Body() Body {
 	}
 
 	if doc._rawBody == nil {
-		base.Warnf("Empty doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.Warnf("Empty doc body/rawBody %s from %s", base.UD(doc.ID), caller)
 		return nil
 	}
 
@@ -476,7 +476,7 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	}
 
 	if doc._body == nil {
-		base.Warnf("Empty doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.Warnf("Empty doc body/rawBody %s from %s", base.UD(doc.ID), caller)
 		return nil, nil
 	}
 
