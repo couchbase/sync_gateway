@@ -342,8 +342,6 @@ type Document struct {
 	_rawBody []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
 	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas      uint64 // Document cas
-
-	Deleted bool
 }
 
 type revOnlySyncData struct {

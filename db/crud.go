@@ -570,7 +570,7 @@ func (db *Database) getAvailableRev(doc *Document, revid string) ([]byte, string
 }
 
 // Returns the 1x-style body of the asked-for revision or the most recent available ancestor.
-func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, error) {
+func (db *Database) getAvailable1xRev(doc *Document, revid string, newDoc *IncomingDocument) ([]byte, error) {
 	bodyBytes, ancestorRevID, err := db.getAvailableRev(doc, revid)
 	if err != nil {
 		return nil, err
@@ -581,7 +581,7 @@ func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, erro
 		{Key: BodyRev, Val: ancestorRevID},
 	}
 
-	if doc.Deleted {
+	if newDoc.Deleted {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
@@ -971,10 +971,10 @@ func (db *Database) runSyncFn(doc *Document, body Body, newRevId string) (*uint3
 	return syncExpiry, oldBody, channelSet, access, roles, nil
 }
 
-func (db *Database) recalculateSyncFnForActiveRev(doc *Document, newRevID string) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
+func (db *Database) recalculateSyncFnForActiveRev(doc *Document, newRevID string, newDoc *IncomingDocument) (channelSet base.Set, access, roles channels.AccessMap, syncExpiry *uint32, oldBodyJSON string, err error) {
 	// In some cases an older revision might become the current one. If so, get its
 	// channels & access, for purposes of updating the doc:
-	curBodyBytes, err := db.getAvailable1xRev(doc, doc.CurrentRev)
+	curBodyBytes, err := db.getAvailable1xRev(doc, doc.CurrentRev, newDoc)
 	if err != nil {
 		return
 	}
@@ -1204,7 +1204,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		// need to update the doc's top-level Channels and Access properties to correspond
 		// to the current rev's state.
 		if newRevID != doc.CurrentRev {
-			channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.recalculateSyncFnForActiveRev(doc, newRevID)
+			channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.recalculateSyncFnForActiveRev(doc, newRevID, newDoc)
 		}
 		_, err = doc.updateChannels(channelSet)
 		if err != nil {
