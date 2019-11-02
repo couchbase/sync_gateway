@@ -1150,7 +1150,8 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 	if len(data) == 0 && len(xdata) > 0 {
 		doc._body = Body{}
 		doc._rawBody = []byte(base.EmptyDocument)
-		doc.Deleted = true
+		//doc.Deleted = true
+		doc._body[BodyDeleted] = true
 	}
 	return nil
 }

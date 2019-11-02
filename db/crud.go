@@ -934,7 +934,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 			}
 		}
 
-		if doc.Deleted {
+		if newDoc.Deleted {
 			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 		}
 

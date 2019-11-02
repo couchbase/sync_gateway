@@ -939,7 +939,7 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 	changes := make([]ChangeRev, 1)
 	changes[0] = ChangeRev{"rev": populatedDoc.CurrentRev}
 	row.Changes = changes
-	row.Deleted = populatedDoc.Deleted
+	//row.Deleted = populatedDoc.Deleted
 	row.Seq = SequenceID{Seq: populatedDoc.Sequence}
 	row.SetBranched((populatedDoc.Flags & channels.Branched) != 0)
 
