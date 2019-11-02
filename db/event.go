@@ -90,7 +90,7 @@ type jsEventTask struct {
 func newJsEventTask(funcSource string) (sgbucket.JSServerTask, error) {
 	eventTask := &jsEventTask{}
 	err := eventTask.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript, "Webhook %s", base.UD(s)) },
+		func(s string) { base.Errorf("Webhook %s", base.UD(s)) },
 		func(s string) { base.Infof(base.KeyJavascript, "Webhook %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 	}
 
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error calling function - function processing aborted: %v", err)
+		base.Warnf("Error calling function - function processing aborted: %v", err)
 		return "", err
 	}
 
@@ -178,7 +178,7 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.Warnf(base.KeyAll, "Event validate function returned non-boolean result %v", result)
+		base.Warnf("Event validate function returned non-boolean result %v", result)
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 

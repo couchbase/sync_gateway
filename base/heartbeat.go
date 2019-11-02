@@ -150,7 +150,7 @@ func (h *couchbaseHeartBeater) Stop() {
 	for h.sendActive || h.checkActive {
 		waitTimeMs += 10
 		if waitTimeMs > maxWaitTimeMs {
-			Warnf(KeyImport, "couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
+			Warnf("couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -169,7 +169,7 @@ func (h *couchbaseHeartBeater) StopSendingHeartbeats() {
 func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error {
 
 	if err := h.checkStaleHeartbeats(staleThresholdMs, handler); err != nil {
-		Warnf(KeyImport, "Error checking for stale heartbeats: %v", err)
+		Warnf("Error checking for stale heartbeats: %v", err)
 	}
 
 	ticker := time.NewTicker(time.Duration(staleThresholdMs) * time.Millisecond)
@@ -185,7 +185,7 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 				return
 			case <-ticker.C:
 				if err := h.checkStaleHeartbeats(staleThresholdMs, handler); err != nil {
-					Warnf(KeyImport, "Error checking for stale heartbeats: %v", err)
+					Warnf("Error checking for stale heartbeats: %v", err)
 				}
 			}
 		}
@@ -558,7 +558,7 @@ func (ch *cbgtNodeListHandler) subscribeNodeChanges() error {
 			case <-cfgEvents:
 				err := ch.reloadNodes()
 				if err != nil {
-					Warnf(KeyAll, "Error while reloading heartbeat node definitions: %v", err)
+					Warnf("Error while reloading heartbeat node definitions: %v", err)
 				}
 			case <-ch.terminator:
 				return

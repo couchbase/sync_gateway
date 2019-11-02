@@ -89,7 +89,7 @@ func (ac *ActiveChannels) _incr(channelName string) {
 func (ac *ActiveChannels) _decr(channelName string) {
 	current, ok := ac.channelCounts[channelName]
 	if !ok {
-		base.Warnf(base.KeyCache, "Attempt made to decrement inactive channel %s - will be ignored", base.UD(channelName))
+		base.Warnf("Attempt made to decrement inactive channel %s - will be ignored", base.UD(channelName))
 		return
 	}
 	if current <= 1 {

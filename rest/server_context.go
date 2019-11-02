@@ -104,7 +104,7 @@ func (sc *ServerContext) startReplicators() {
 
 		params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
 		if err != nil {
-			base.Errorf(base.KeyAll, "Error validating replication parameters: %v", err)
+			base.Errorf("Error validating replication parameters: %v", err)
 			continue
 		}
 
@@ -114,7 +114,7 @@ func (sc *ServerContext) startReplicators() {
 
 		// Run single replication, cancel parameter will always be false
 		if _, err := sc.replicator.Replicate(params, false); err != nil {
-			base.Warnf(base.KeyAll, "Error starting replication %v: %v", base.UD(params.ReplicationId), err)
+			base.Warnf("Error starting replication %v: %v", base.UD(params.ReplicationId), err)
 		}
 
 	}
@@ -141,7 +141,7 @@ func (sc *ServerContext) Close() {
 	defer sc.lock.Unlock()
 
 	if err := sc.replicator.StopReplications(); err != nil {
-		base.Warnf(base.KeyAll, "Error stopping replications: %+v.  This could cause a resource leak.  Please restart Sync Gateway to cleanup leaked resources.", err)
+		base.Warnf("Error stopping replications: %+v.  This could cause a resource leak.  Please restart Sync Gateway to cleanup leaked resources.", err)
 	}
 
 	sc.stopStatsLogger()
@@ -362,7 +362,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// Check for deprecated cache options. If new are set they will take priority but will still log warnings
 	warnings := config.deprecatedConfigCacheFallback()
 	for _, warnLog := range warnings {
-		base.Warnf(base.KeyAll, warnLog)
+		base.Warnf(warnLog)
 	}
 
 	// Set cache properties, if present
@@ -421,7 +421,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	// If using a walrus bucket, force use of views
 	useViews := config.UseViews
 	if !useViews && spec.IsWalrusBucket() {
-		base.Warnf(base.KeyAll, "Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
+		base.Warnf("Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
 	}
 
@@ -558,7 +558,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			}
 
 			if dbcontext.RevsLimit < db.DefaultRevsLimitConflicts {
-				base.Warnf(base.KeyAll, "Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
+				base.Warnf("Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
 			}
 		} else {
 			if dbcontext.RevsLimit <= 0 {
@@ -622,7 +622,7 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 	if atomic.CompareAndSwapUint32(&database.State, db.DBOffline, db.DBStarting) {
 		reloadedDb, err := sc.ReloadDatabaseFromConfig(database.Name)
 		if err != nil {
-			base.Errorf(base.KeyAll, "Error reloading database from config: %v", err)
+			base.Errorf("Error reloading database from config: %v", err)
 			return
 		}
 
@@ -684,7 +684,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 			customWaitTime, err = strconv.ParseInt(eventHandlers.WaitForProcess, 10, 0)
 			if err != nil {
 				customWaitTime = -1
-				base.Warnf(base.KeyAll, "Error parsing wait_for_process from config, using default %s", err)
+				base.Warnf("Error parsing wait_for_process from config, using default %s", err)
 			}
 		}
 		dbcontext.EventMgr.Start(eventHandlers.MaxEventProc, int(customWaitTime))
@@ -706,7 +706,7 @@ func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eve
 		case "webhook":
 			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout)
 			if err != nil {
-				base.Warnf(base.KeyAll, "Error creating webhook %v", err)
+				base.Warnf("Error creating webhook %v", err)
 				return err
 			}
 			dbcontext.EventMgr.RegisterEventHandler(wh, eventType)
@@ -859,7 +859,7 @@ func (sc *ServerContext) startStatsLogger() {
 		for range sc.statsContext.statsLoggingTicker.C {
 			err := sc.logStats()
 			if err != nil {
-				base.Warnf(base.KeyAll, "Error logging stats: %v", err)
+				base.Warnf("Error logging stats: %v", err)
 			}
 		}
 	}()
@@ -880,7 +880,7 @@ func (sc *ServerContext) logStats() error {
 	sc.logNetworkInterfaceStats()
 
 	if err := sc.statsContext.addGoSigarStats(); err != nil {
-		base.Warnf(base.KeyAll, "Error getting sigar based system resource stats: %v", err)
+		base.Warnf("Error getting sigar based system resource stats: %v", err)
 	}
 
 	sc.updateCalculatedStats()
@@ -911,7 +911,7 @@ func (sc *ServerContext) logNetworkInterfaceStats() {
 		publicListenInterface = *sc.config.Interface
 	}
 	if err := sc.statsContext.addPublicNetworkInterfaceStatsForHostnamePort(publicListenInterface); err != nil {
-		base.Warnf(base.KeyAll, "Error getting public network interface resource stats: %v", err)
+		base.Warnf("Error getting public network interface resource stats: %v", err)
 	}
 
 	adminListenInterface := DefaultAdminInterface
@@ -919,7 +919,7 @@ func (sc *ServerContext) logNetworkInterfaceStats() {
 		adminListenInterface = *sc.config.AdminInterface
 	}
 	if err := sc.statsContext.addAdminNetworkInterfaceStatsForHostnamePort(adminListenInterface); err != nil {
-		base.Warnf(base.KeyAll, "Error getting admin network interface resource stats: %v", err)
+		base.Warnf("Error getting admin network interface resource stats: %v", err)
 	}
 
 }

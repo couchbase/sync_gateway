@@ -377,31 +377,31 @@ func init() {
 }
 
 // PanicfCtx logs the given formatted string and args to the error log level and given log key and then panics.
-func PanicfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
-	logTo(ctx, LevelError, logKey, format, args...)
+	logTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
 }
 
 // FatalfCtx logs the given formatted string and args to the error log level and given log key and then exits.
-func FatalfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
-	logTo(ctx, LevelError, logKey, format, args...)
+	logTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
 
 // ErrorfCtx logs the given formatted string and args to the error log level and given log key.
-func ErrorfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func ErrorfCtx(ctx context.Context, format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
-	logTo(ctx, LevelError, logKey, format, args...)
+	logTo(ctx, LevelError, KeyAll, format, args...)
 }
 
 // WarnfCtx logs the given formatted string and args to the warn log level and given log key.
-func WarnfCtx(ctx context.Context, logKey LogKey, format string, args ...interface{}) {
+func WarnfCtx(ctx context.Context, format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyWarnCount, 1)
-	logTo(ctx, LevelWarn, logKey, format, args...)
+	logTo(ctx, LevelWarn, KeyAll, format, args...)
 }
 
 // InfofCtx logs the given formatted string and args to the info log level and given log key.
@@ -420,31 +420,31 @@ func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interf
 }
 
 // Panicf logs the given formatted string and args to the error log level and given log key and then panics.
-func Panicf(logKey LogKey, format string, args ...interface{}) {
+func Panicf(format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
-	logTo(context.TODO(), LevelError, logKey, format, args...)
+	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
 }
 
 // Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
-func Fatalf(logKey LogKey, format string, args ...interface{}) {
+func Fatalf(format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
-	logTo(context.TODO(), LevelError, logKey, format, args...)
+	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
 
 // Errorf logs the given formatted string and args to the error log level and given log key.
-func Errorf(logKey LogKey, format string, args ...interface{}) {
+func Errorf(format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
-	logTo(context.TODO(), LevelError, logKey, format, args...)
+	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 }
 
 // Warnf logs the given formatted string and args to the warn log level and given log key.
-func Warnf(logKey LogKey, format string, args ...interface{}) {
+func Warnf(format string, args ...interface{}) {
 	StatsResourceUtilization().Add(StatKeyWarnCount, 1)
-	logTo(context.TODO(), LevelWarn, logKey, format, args...)
+	logTo(context.TODO(), LevelWarn, KeyAll, format, args...)
 }
 
 // Infof logs the given formatted string and args to the info log level and given log key.

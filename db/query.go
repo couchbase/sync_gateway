@@ -254,7 +254,7 @@ func (context *DatabaseContext) QueryAccess(username string) (sgbucket.QueryResu
 
 	// N1QL Query
 	if username == "" {
-		base.Warnf(base.KeyAll, "QueryAccess called with empty username - returning empty result iterator")
+		base.Warnf("QueryAccess called with empty username - returning empty result iterator")
 		return &EmptyResultIterator{}, nil
 	}
 	accessQueryStatement := context.buildAccessQuery(username)
@@ -285,7 +285,7 @@ func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.Query
 
 	// N1QL Query
 	if username == "" {
-		base.Warnf(base.KeyAll, "QueryRoleAccess called with empty username")
+		base.Warnf("QueryRoleAccess called with empty username")
 		return &EmptyResultIterator{}, nil
 	}
 

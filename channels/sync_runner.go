@@ -119,7 +119,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 	funcSource = wrappedFuncSource(funcSource)
 	runner := &SyncRunner{}
 	err := runner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript, "Sync %s", base.UD(s)) },
+		func(s string) { base.Errorf("Sync %s", base.UD(s)) },
 		func(s string) { base.Infof(base.KeyJavascript, "Sync %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 		if len(call.ArgumentList) > 0 {
 			rawExpiry, exportErr := call.Argument(0).Export()
 			if exportErr != nil {
-				base.Warnf(base.KeyAll, "SyncRunner: Unable to export expiry parameter: %v Error: %s", call.Argument(0), exportErr)
+				base.Warnf("SyncRunner: Unable to export expiry parameter: %v Error: %s", call.Argument(0), exportErr)
 				return otto.UndefinedValue()
 			}
 
@@ -175,7 +175,7 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 
 			expiry, reflectErr := base.ReflectExpiry(rawExpiry)
 			if reflectErr != nil {
-				base.Warnf(base.KeyAll, "SyncRunner: Invalid value passed to expiry().  Value:%+v ", call.Argument(0))
+				base.Warnf("SyncRunner: Invalid value passed to expiry().  Value:%+v ", call.Argument(0))
 				return otto.UndefinedValue()
 			}
 
@@ -263,7 +263,7 @@ func ottoValueToStringArray(value otto.Value) []string {
 	result := base.ValueToStringArray(nativeValue)
 
 	if result == nil && !value.IsNull() && !value.IsUndefined() {
-		base.Warnf(base.KeyAll, "SyncRunner: Non-string, non-array passed to JS callback: %s", base.UD(value))
+		base.Warnf("SyncRunner: Non-string, non-array passed to JS callback: %s", base.UD(value))
 	}
 
 	return result
