@@ -685,7 +685,8 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foodoc/_view/foobarview")
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(result.Rows))
+	assert.Equal(t, 3, len(result.Rows))
 	assert.Contains(t, "doc1", result.Rows[0].ID)
 	assert.Contains(t, "doc2", result.Rows[1].ID)
+	assert.Contains(t, "doc3", result.Rows[2].ID)
 }
