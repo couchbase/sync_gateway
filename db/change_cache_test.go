@@ -15,6 +15,7 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -1900,4 +1901,171 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 	// wait for InsertPendingEntries to fire, move 3 and 4 to skipped and get seqs 5 + 6
 	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 6, base.DefaultWaitForSequence))
 
+}
+
+// Generator
+//
+
+type testProcessEntryFeed struct {
+	nextSeq     uint64
+	channelMaps []channels.ChannelMap
+	sources     []uint64 // Used for non-sequential sequence delivery when numSources > 1
+	fixedTime   time.Time
+}
+
+func NewTestProcessEntryFeed(numChannels int, numSources int) *testProcessEntryFeed {
+
+	feed := &testProcessEntryFeed{
+		fixedTime: time.Now(),
+		sources:   make([]uint64, numSources),
+	}
+
+	feed.channelMaps = make([]channels.ChannelMap, numChannels)
+	for i := 0; i < numChannels; i++ {
+		channelName := fmt.Sprintf("channel_%d", i)
+		feed.channelMaps[i] = channels.ChannelMap{
+			channelName: nil,
+		}
+	}
+
+	feed.reset()
+	return feed
+}
+
+// Reset sets nextSeq to 1, and reseeds sources
+func (f *testProcessEntryFeed) reset() {
+	f.nextSeq = 1
+	// Seed sources with sequences 1..numSources
+	for i := 0; i < len(f.sources); i++ {
+		f.sources[i] = f.nextSeq
+		f.nextSeq++
+	}
+}
+
+func (f *testProcessEntryFeed) Next() *LogEntry {
+
+	// Select the next sequence from a source at random.  Simulates unordered global sequences arriving over DCP
+	sourceIndex := rand.Intn(len(f.sources))
+	entrySeq := f.sources[sourceIndex]
+	f.sources[sourceIndex] = f.nextSeq
+	f.nextSeq++
+
+	return &LogEntry{
+		Sequence:     entrySeq,
+		DocID:        fmt.Sprintf("doc_%d", entrySeq),
+		RevID:        "1-abcdefabcdefabcdef",
+		Channels:     f.channelMaps[rand.Intn(len(f.channelMaps))],
+		TimeReceived: f.fixedTime,
+		TimeSaved:    f.fixedTime,
+	}
+}
+
+/*
+type LogEntry struct {
+	Sequence     uint64              // Sequence number
+	DocID        string              // Document ID
+	RevID        string              // Revision ID
+	Flags        uint8               // Deleted/Removed/Hidden flags
+	VbNo         uint16              // vbucket number
+	TimeSaved    time.Time           // Time doc revision was saved (just used for perf metrics)
+	TimeReceived time.Time           // Time received from tap feed
+	Channels     channels.ChannelMap // Channels this entry is in or was removed from
+	Skipped      bool                // Late arriving entry
+	Type         LogEntryType        // Log entry type
+	Value        []byte              // Snapshot metadata (when Type=LogEntryCheckpoint)
+	PrevSequence uint64              // Sequence of previous active revision
+	IsPrincipal  bool                // Whether the log-entry is a tracking entry for a principal doc
+}
+
+*/
+
+// Cases for ProcessEntry benchmarking
+//   - single thread, ordered sequence arrival, non-initialized cache, 100 channels
+//   - single thread, ordered sequence arrival, initialized cache, 100 channels
+//   - single thread, unordered sequence arrival, non-initialized cache, 100 channels
+//   - single thread, unordered sequence arrival, initialized cache, 100 channels
+//   - multiple threads, unordered sequence arrival, initialized cache, 100 channels
+// other:
+//   - non-unique doc ids?
+
+func BenchmarkProcessEntry(b *testing.B) {
+
+	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache|base.KeyChanges)()
+	processEntryBenchmarks := []struct {
+		name           string
+		feed           *testProcessEntryFeed
+		warmCacheCount int
+	}{
+		{
+			"SingleThread_OrderedFeed_NoActiveChannels",
+			NewTestProcessEntryFeed(100, 1),
+			0,
+		},
+		{
+			"SingleThread_OrderedFeed_ActiveChannels",
+			NewTestProcessEntryFeed(100, 1),
+			100,
+		},
+		{
+			"SingleThread_OrderedFeed_ManyActiveChannels",
+			NewTestProcessEntryFeed(35000, 1),
+			35000,
+		},
+		{
+			"SingleThread_NonOrderedFeed_NoActiveChannels",
+			NewTestProcessEntryFeed(100, 10),
+			0,
+		},
+		{
+			"SingleThread_NonOrderedFeed_ActiveChannels",
+			NewTestProcessEntryFeed(100, 10),
+			100,
+		},
+		{
+			"SingleThread_NonOrderedFeed_ManyActiveChannels",
+			NewTestProcessEntryFeed(35000, 10),
+			35000,
+		},
+	}
+
+	for _, bm := range processEntryBenchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			b.StopTimer()
+			context := testBucketContext(b)
+			changeCache := &changeCache{}
+			if err := changeCache.Init(context, nil, nil); err != nil {
+				log.Printf("Init failed for changeCache: %v", err)
+				b.Fail()
+			}
+			if err := changeCache.Start(); err != nil {
+				log.Printf("Start error for changeCache: %v", err)
+				b.Fail()
+			}
+
+			if bm.warmCacheCount > 0 {
+				for i := 0; i < bm.warmCacheCount; i++ {
+					channelName := fmt.Sprintf("channel_%d", i)
+					_, err := changeCache.GetChanges(channelName, ChangesOptions{Since: SequenceID{Seq: 0}})
+					if err != nil {
+						log.Printf("GetChanges failed for changeCache: %v", err)
+						b.Fail()
+					}
+				}
+
+			}
+			bm.feed.reset()
+			b.StartTimer()
+
+			for i := 0; i < b.N; i++ {
+				entry := bm.feed.Next()
+				_ = changeCache.processEntry(entry)
+			}
+
+			log.Printf("maxNumPending: %v", changeCache.context.DbStats.StatsCblReplicationPull().Get(base.StatKeyMaxPending))
+			log.Printf("cachingCount: %v", changeCache.context.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount))
+
+			base.DecrNumOpenBuckets(context.Bucket.GetName())
+			context.Close()
+		})
+	}
 }
