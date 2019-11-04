@@ -189,7 +189,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 		shouldRetry = err != nil
 
 		if err == base.ErrFatalBucketConnection {
-			base.Warnf(base.KeyAll, "Fatal error connecting to bucket: %v.  Not retrying", err)
+			base.Warnf("Fatal error connecting to bucket: %v.  Not retrying", err)
 			shouldRetry = false
 		}
 
@@ -315,12 +315,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 		for name, provider := range options.OIDCOptions.Providers {
 			if provider.Issuer == "" || provider.ClientID == nil {
-				base.Warnf(base.KeyAll, "Issuer and ClientID required for OIDC Provider - skipping provider %q", base.UD(name))
+				base.Warnf("Issuer and ClientID required for OIDC Provider - skipping provider %q", base.UD(name))
 				continue
 			}
 
 			if provider.ValidationKey == nil {
-				base.Warnf(base.KeyAll, "Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
+				base.Warnf("Validation Key not defined in config for provider %q - auth code flow will not be supported for this provider", base.UD(name))
 			}
 
 			if strings.Contains(name, "_") {
@@ -362,7 +362,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if ok {
 			serverPurgeInterval, err := gocbBucket.GetMetadataPurgeInterval()
 			if err != nil {
-				base.Warnf(base.KeyAll, "Unable to retrieve server's metadata purge interval - will use default value. %s", err)
+				base.Warnf("Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
 				dbContext.PurgeInterval = serverPurgeInterval
 			}
@@ -375,12 +375,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
 					_, err := db.Compact()
 					if err != nil {
-						base.WarnfCtx(ctx, base.KeyAll, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
+						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
 					}
 					return nil
 				}, time.Duration(dbContext.Options.CompactInterval)*time.Second, dbContext.terminator)
 			} else {
-				base.Warnf(base.KeyAll, "Automatic compaction can only be enabled on nodes running an Import process")
+				base.Warnf("Automatic compaction can only be enabled on nodes running an Import process")
 			}
 		}
 
@@ -439,13 +439,13 @@ func (context *DatabaseContext) GetServerUUID() string {
 	if context.serverUUID == "" {
 		b, ok := base.AsGoCBBucket(context.Bucket)
 		if !ok {
-			base.Warnf(base.KeyAll, "Database %v: Unable to get server UUID. Bucket was type: %T, not GoCBBucket.", base.MD(context.Name), context.Bucket)
+			base.Warnf("Database %v: Unable to get server UUID. Bucket was type: %T, not GoCBBucket.", base.MD(context.Name), context.Bucket)
 			return ""
 		}
 
 		uuid, err := b.GetServerUUID()
 		if err != nil {
-			base.Warnf(base.KeyAll, "Database %v: Unable to get server UUID: %v", base.MD(context.Name), err)
+			base.Warnf("Database %v: Unable to get server UUID: %v", base.MD(context.Name), err)
 			return ""
 		}
 
@@ -511,7 +511,7 @@ func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removed
 
 	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
 	if !ok {
-		base.Warnf(base.KeyAll, "Cannot remove obsolete indexes for non-gocb bucket - skipping.")
+		base.Warnf("Cannot remove obsolete indexes for non-gocb bucket - skipping.")
 		return make([]string, 0), nil
 	}
 
@@ -764,7 +764,7 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 	for results.Next(&sessionsRow) {
 		base.Infof(base.KeyCRUD, "\tDeleting %q", sessionsRow.Id)
 		if err := db.Bucket.Delete(sessionsRow.Id); err != nil {
-			base.Warnf(base.KeyAll, "Error deleting %q: %v", sessionsRow.Id, err)
+			base.Warnf("Error deleting %q: %v", sessionsRow.Id, err)
 		}
 	}
 	return results.Close()
@@ -818,7 +818,7 @@ func (db *Database) Compact() (int, error) {
 				// If key no longer exists, need to add and remove to trigger removal from view
 				_, addErr := db.Bucket.Add(tombstonesRow.Id, 0, purgeBody)
 				if addErr != nil {
-					base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
+					base.WarnfCtx(ctx, "Error compacting key %s (add) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), addErr)
 					continue
 				}
 
@@ -827,10 +827,10 @@ func (db *Database) Compact() (int, error) {
 				purgedDocs = append(purgedDocs, tombstonesRow.Id)
 
 				if delErr := db.Bucket.Delete(tombstonesRow.Id); delErr != nil {
-					base.ErrorfCtx(ctx, base.KeyAll, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
+					base.ErrorfCtx(ctx, "Error compacting key %s (delete) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), delErr)
 				}
 			} else {
-				base.WarnfCtx(ctx, base.KeyAll, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
+				base.WarnfCtx(ctx, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
 			}
 		}
 
@@ -873,7 +873,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		context.ChannelMapper = channels.NewChannelMapper(syncFun)
 	}
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error setting sync function: %s", err)
+		base.Warnf("Error setting sync function: %s", err)
 		return
 	}
 
@@ -950,17 +950,17 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			doc.History.forEachLeaf(func(rev *RevInfo) {
 				bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
 				if err != nil {
-					base.Warnf(base.KeyAll, "Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+					base.Warnf("Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
 				}
 				var body Body
 				if err := body.Unmarshal(bodyBytes); err != nil {
-					base.Warnf(base.KeyAll, "Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
+					base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 					return
 				}
 				channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
 				if err != nil {
 					// Probably the validator rejected the doc
-					base.Warnf(base.KeyAll, "Error calling sync() on doc %q: %v", base.UD(docid), err)
+					base.Warnf("Error calling sync() on doc %q: %v", base.UD(docid), err)
 					access = nil
 					channels = nil
 				}
@@ -1043,7 +1043,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		if err == nil {
 			changeCount++
 		} else if err != base.ErrUpdateCancel {
-			base.Warnf(base.KeyAll, "Error updating doc %q: %v", base.UD(docid), err)
+			base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
 		}
 	}
 
@@ -1073,7 +1073,7 @@ func (db *Database) invalUserRoles(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
 		if err := authr.InvalidateRoles(user); err != nil {
-			base.Warnf(base.KeyAll, "Error invalidating roles for user %s: %v", base.UD(username), err)
+			base.Warnf("Error invalidating roles for user %s: %v", base.UD(username), err)
 		}
 	}
 }
@@ -1082,7 +1082,7 @@ func (db *Database) invalUserChannels(username string) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
 		if err := authr.InvalidateChannels(user); err != nil {
-			base.Warnf(base.KeyAll, "Error invalidating channels for user %s: %v", base.UD(username), err)
+			base.Warnf("Error invalidating channels for user %s: %v", base.UD(username), err)
 		}
 	}
 }
@@ -1091,7 +1091,7 @@ func (db *Database) invalRoleChannels(rolename string) {
 	authr := db.Authenticator()
 	if role, _ := authr.GetRole(rolename); role != nil {
 		if err := authr.InvalidateChannels(role); err != nil {
-			base.Warnf(base.KeyAll, "Error invalidating channels for role %s: %v", base.UD(rolename), err)
+			base.Warnf("Error invalidating channels for role %s: %v", base.UD(rolename), err)
 		}
 	}
 }

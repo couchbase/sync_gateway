@@ -352,7 +352,7 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 
 	str, ok := dbConfig.AutoImport.(string)
 	if ok && str == "continuous" {
-		base.Warnf(base.KeyAll, `Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
+		base.Warnf(`Using deprecated config value for "import_docs": "continuous". Use "import_docs": true instead.`)
 		return true, nil
 	}
 
@@ -376,15 +376,15 @@ func (dbConfig DbConfig) validate() []error {
 			// EE: channel cache
 			if !base.IsEnterpriseEdition() {
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber; val != nil {
-					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
+					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
 					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent; val != nil {
-					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
+					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.compact_high_watermark_pct", *val, db.DefaultCompactHighWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent = nil
 				}
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent; val != nil {
-					base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
+					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.compact_low_watermark_pct", *val, db.DefaultCompactLowWatermarkPercent)
 					dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent = nil
 				}
 			}
@@ -436,7 +436,7 @@ func (dbConfig DbConfig) validate() []error {
 			// EE: disable revcache
 			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
 			if !base.IsEnterpriseEdition() && revCacheSize != nil && *revCacheSize == 0 {
-				base.Warnf(base.KeyAll, eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
+				base.Warnf(eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
 				dbConfig.CacheConfig.RevCacheConfig.Size = nil
 			}
 
@@ -450,7 +450,7 @@ func (dbConfig DbConfig) validate() []error {
 
 	// EE: delta sync
 	if !base.IsEnterpriseEdition() && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
-		base.Warnf(base.KeyAll, eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
+		base.Warnf(eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
 		dbConfig.DeltaSync.Enabled = nil
 	}
 
@@ -729,7 +729,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 		// Fall back to the old logging.["default"].LogFilePath option
 		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
 			warnings = append(warnings, func() {
-				base.Warnf(base.KeyAll, warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
+				base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
 			})
 			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
 			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
@@ -738,7 +738,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 		// Fall back to the old logging.["default"].LogKeys option
 		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
 			warnings = append(warnings, func() {
-				base.Warnf(base.KeyAll, warningMsgFmt, `logging.["default"].LogKeys`, "logging.console.log_keys")
+				base.Warnf(warningMsgFmt, `logging.["default"].LogKeys`, "logging.console.log_keys")
 			})
 			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
 		}
@@ -746,7 +746,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 		// Fall back to the old logging.["default"].LogLevel option
 		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
 			warnings = append(warnings, func() {
-				base.Warnf(base.KeyAll, warningMsgFmt, `logging.["default"].LogLevel`, "logging.console.log_level")
+				base.Warnf(warningMsgFmt, `logging.["default"].LogLevel`, "logging.console.log_level")
 			})
 			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
 		}
@@ -755,7 +755,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 	// Fall back to the old LogFilePath option
 	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
 		warnings = append(warnings, func() {
-			base.Warnf(base.KeyAll, warningMsgFmt, "logFilePath", "logging.log_file_path")
+			base.Warnf(warningMsgFmt, "logFilePath", "logging.log_file_path")
 		})
 		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
 	}
@@ -763,7 +763,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 	// Fall back to the old Log option
 	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
 		warnings = append(warnings, func() {
-			base.Warnf(base.KeyAll, warningMsgFmt, "log", "logging.console.log_keys")
+			base.Warnf(warningMsgFmt, "log", "logging.console.log_keys")
 		})
 		config.Logging.Console.LogKeys = config.DeprecatedLog
 	}
@@ -952,7 +952,7 @@ func SetMaxFileDescriptors(maxP *uint64) {
 	}
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.Warnf("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 	}
 }
 
@@ -981,7 +981,7 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		tlsMinVersion,
 	)
 	if err != nil {
-		base.Fatalf(base.KeyAll, "Failed to start HTTP server on %s: %v", base.UD(addr), err)
+		base.Fatalf("Failed to start HTTP server on %s: %v", base.UD(addr), err)
 	}
 }
 
@@ -1012,14 +1012,14 @@ func RunServer(config *ServerConfig) {
 	// Set global bcrypt cost if configured
 	if config.BcryptCost > 0 {
 		if err := auth.SetBcryptCost(config.BcryptCost); err != nil {
-			base.Fatalf(base.KeyAll, "Configuration error: %v", err)
+			base.Fatalf("Configuration error: %v", err)
 		}
 	}
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf(base.KeyAll, "Error opening database %s: %+v", base.MD(dbConfig.Name), err)
+			base.Fatalf("Error opening database %s: %+v", base.MD(dbConfig.Name), err)
 		}
 	}
 
@@ -1043,7 +1043,7 @@ func RunServer(config *ServerConfig) {
 func HandleSighup() {
 	for logger, err := range base.RotateLogfiles() {
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error rotating %v: %v", logger, err)
+			base.Warnf("Error rotating %v: %v", logger, err)
 		}
 	}
 }
@@ -1075,7 +1075,7 @@ func PanicHandler() (panicHandler func()) {
 	return func() {
 		// Recover from any panics to allow for graceful shutdown.
 		if r := recover(); r != nil {
-			base.Fatalf(base.KeyAll, "Handling panic: %v\n%v", r, string(debug.Stack()))
+			base.Fatalf("Handling panic: %v\n%v", r, string(debug.Stack()))
 		}
 	}
 
@@ -1092,7 +1092,7 @@ func ServerMain() {
 	if errors.Cause(err) == ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {
-		base.Fatalf(base.KeyAll, err.Error())
+		base.Fatalf(err.Error())
 	}
 
 	// Logging config will now have been loaded from command line
@@ -1103,7 +1103,7 @@ func ServerMain() {
 		// If we didn't set up logging correctly, we *probably* can't log via normal means...
 		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
 		log.Printf("[ERR] Error setting up logging: %v", err)
-		base.Fatalf(base.KeyAll, "Error setting up logging: %v", err)
+		base.Fatalf("Error setting up logging: %v", err)
 	}
 
 	// This is the earliest opportunity to log a startup indicator
@@ -1113,7 +1113,7 @@ func ServerMain() {
 	// If we got an unknownFields error when reading the config
 	// log and exit now we've tried setting up the logging.
 	if unknownFieldsErr != nil {
-		base.Fatalf(base.KeyAll, unknownFieldsErr.Error())
+		base.Fatalf(unknownFieldsErr.Error())
 	}
 
 	// Execute any deferred warnings from setup.
@@ -1127,9 +1127,9 @@ func ServerMain() {
 	errorMsgs = append(errorMsgs, config.setupAndValidateDatabases()...)
 	if len(errorMsgs) > 0 {
 		for _, err := range errorMsgs {
-			base.Errorf(base.KeyAll, "Error during config validation: %v", err)
+			base.Errorf("Error during config validation: %v", err)
 		}
-		base.Fatalf(base.KeyAll, "Error(s) during config validation")
+		base.Fatalf("Error(s) during config validation")
 	}
 
 	RunServer(config)

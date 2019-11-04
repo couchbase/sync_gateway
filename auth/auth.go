@@ -114,7 +114,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if princ.Channels() == nil {
 			// Channel list has been invalidated by a doc update -- rebuild it:
 			if err := auth.rebuildChannels(princ); err != nil {
-				base.Warnf(base.KeyAll, "RebuildChannels returned error: %v", err)
+				base.Warnf("RebuildChannels returned error: %v", err)
 				return nil, nil, err
 			}
 			changed = true
@@ -122,7 +122,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		if user, ok := princ.(User); ok {
 			if user.RoleNames() == nil {
 				if err := auth.rebuildRoles(user); err != nil {
-					base.Warnf(base.KeyAll, "RebuildRoles returned error: %v", err)
+					base.Warnf("RebuildRoles returned error: %v", err)
 					return nil, nil, err
 				}
 				changed = true
@@ -171,7 +171,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	if auth.channelComputer != nil {
 		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
 		if err != nil {
-			base.Warnf(base.KeyAll, "channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
+			base.Warnf("channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
 			return err
 		}
 		if previousChannels != nil {
@@ -196,7 +196,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		var err error
 		roles, err = auth.channelComputer.ComputeRolesForUser(user)
 		if err != nil {
-			base.Warnf(base.KeyAll, "channelComputer.ComputeRolesForUser failed on user %s: %v", base.UD(user.Name()), err)
+			base.Warnf("channelComputer.ComputeRolesForUser failed on user %s: %v", base.UD(user.Name()), err)
 			return err
 		}
 	}
@@ -503,7 +503,7 @@ func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider)
 	if user != nil && identity.Email != "" {
 		err := auth.UpdateUserEmail(user, identity.Email)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Unable to set user email to %v for OIDC", base.UD(identity.Email))
+			base.Warnf("Unable to set user email to %v for OIDC", base.UD(identity.Email))
 		}
 	}
 
@@ -533,7 +533,7 @@ func (auth *Authenticator) RegisterNewUser(username, email string) (User, error)
 
 	if len(email) > 0 {
 		if err := user.SetEmail(email); err != nil {
-			base.Warnf(base.KeyAll, "Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(username), base.UD(email))
+			base.Warnf("Skipping SetEmail for user %q - Invalid email address provided: %q", base.UD(username), base.UD(email))
 		}
 	}
 

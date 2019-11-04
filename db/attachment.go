@@ -238,7 +238,7 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback Att
 func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof string) {
 	nonce = make([]byte, 20)
 	if n, err := rand.Read(nonce); n < len(nonce) {
-		base.Panicf(base.KeyAll, "Failed to generate random data: %s", err)
+		base.Panicf("Failed to generate random data: %s", err)
 	}
 	digester := sha1.New()
 	digester.Write([]byte{byte(len(nonce))})

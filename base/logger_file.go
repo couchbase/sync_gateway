@@ -157,7 +157,7 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 			case <-ticker.C:
 				err := runLogDeletion(logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
-					Errorf(KeyAll, "%s", err)
+					Errorf("%s", err)
 				}
 			}
 		}
