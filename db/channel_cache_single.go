@@ -360,7 +360,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	cacheValidFrom, resultFromCache := c.GetCachedChanges(options)
 	numFromCache := len(resultFromCache)
 	if numFromCache > 0 {
-		base.DebugfCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
+		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelName), options.Since.String(), numFromCache, cacheValidFrom)
 	} else {
 		base.DebugfCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
@@ -384,7 +384,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	// the cache, so repeat the above:
 	cacheValidFrom, resultFromCache = c.GetCachedChanges(options)
 	if len(resultFromCache) > numFromCache {
-		base.DebugfCtx(options.Ctx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
+		base.InfofCtx(options.Ctx, base.KeyCache, "2nd GetCachedChanges(%q, %s) got %d more, valid from #%d!",
 			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
