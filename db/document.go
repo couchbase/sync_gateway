@@ -16,6 +16,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -374,6 +375,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 	// If attr datatype flag is set, data includes both xattrs and document body.  Check for presence of sync xattr.
 	// Note that there could be a non-sync xattr present
 	if dataType&base.MemcachedDataTypeXattr != 0 {
+		log.Printf("Processing event with xattr")
 		var syncXattr []byte
 		body, syncXattr, err = parseXattrStreamData(base.SyncXattrName, data)
 		if err != nil {

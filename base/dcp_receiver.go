@@ -260,6 +260,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	dataSourceOptions := CopyDefaultBucketDatasourceOptions()
 	if spec.UseXattrs {
 		dataSourceOptions.IncludeXAttrs = true
+		dataSourceOptions.NoValue = true
 	}
 
 	dataSourceOptions.Logf = func(fmt string, v ...interface{}) {
