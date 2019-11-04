@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDesignDocs(t *testing.T) {
@@ -661,7 +662,13 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 		t.Skip("Test requires xattrs to be enabled")
 	}
 
-	rt := NewRestTester(t, nil)
+	rtConfig := &RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)
@@ -685,8 +692,7 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foodoc/_view/foobarview")
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(result.Rows))
+	require.Equal(t, 2, len(result.Rows))
 	assert.Contains(t, "doc1", result.Rows[0].ID)
 	assert.Contains(t, "doc2", result.Rows[1].ID)
-	assert.Contains(t, "doc3", result.Rows[2].ID)
 }
