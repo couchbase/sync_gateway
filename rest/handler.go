@@ -603,7 +603,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		return
 	}
 
-	jsonOut, err := base.JSONMarshal(value)
+	jsonOut, err := base.JSONMarshalCanonical(value)
 	if err != nil {
 		base.Warnf("Couldn't serialize JSON for %v : %s", base.UD(value), err)
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
@@ -753,7 +753,7 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
 	h.setStatus(status, message)
-	jsonOut, _ := base.JSONMarshal(db.Body{"error": errorStr, "reason": message})
+	jsonOut, _ := base.JSONMarshalCanonical(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }
 
