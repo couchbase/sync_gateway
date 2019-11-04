@@ -515,6 +515,7 @@ func TestImportFilterLogging(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			ImportFilter: &importFilter,
+			AutoImport:   false,
 		},
 	}
 	rt := NewRestTester(t, &rtConfig)
