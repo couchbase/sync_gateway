@@ -47,15 +47,19 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{SyncFn: `
-		function(doc, oldDoc) {
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
 			} 
 			if (doc._deleted) {
 				channel("docDeleted")
 			}
-		}`}
+		}`,
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+		},
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
