@@ -47,15 +47,19 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	rtConfig := RestTesterConfig{SyncFn: `
-		function(doc, oldDoc) {
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) {
 			if (oldDoc == null) {
 				channel("oldDocNil")
 			} 
 			if (doc._deleted) {
 				channel("docDeleted")
 			}
-		}`}
+		}`,
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+		},
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -511,6 +515,7 @@ func TestImportFilterLogging(t *testing.T) {
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
 			ImportFilter: &importFilter,
+			AutoImport:   false,
 		},
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -550,6 +555,9 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+		},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -604,6 +612,9 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+		},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1344,8 +1355,10 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 
 			rtConfig := RestTesterConfig{
-				SyncFn:         `function(doc, oldDoc) { channel(doc.channels) }`,
-				DatabaseConfig: &DbConfig{},
+				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+				DatabaseConfig: &DbConfig{
+					AutoImport: false,
+				},
 			}
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
@@ -1429,6 +1442,9 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 			rtConfig := RestTesterConfig{
 				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
+				DatabaseConfig: &DbConfig{
+					AutoImport: false,
+				},
 			}
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
