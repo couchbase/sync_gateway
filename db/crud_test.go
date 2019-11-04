@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"log"
 	"testing"
 
@@ -955,4 +956,210 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 			getDelta(newDoc)
 		}
 	})
+}
+
+func TestGetAvailableRevAttachments(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	// Create the very first revision of the document with attachment; let's call this as rev 1-a
+	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
+	doc, rev, err := db.PutExistingRevWithBody("camera", unjson(payload), []string{"1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+	ancestor := rev // Ancestor revision
+
+	// Create the second revision of the document with attachment reference;
+	payload = `{"sku":"6213101","_attachments":{"camera.txt":{"stub":true,"revpos":1}}}`
+	doc, rev, err = db.PutExistingRevWithBody("camera", unjson(payload), []string{"2-a", "1-a"}, false)
+	parent := rev // Immediate ancestor or parent revision
+	assert.NoError(t, err, "Couldn't create document")
+
+	payload = `{"sku":"6213102","_attachments":{"camera.txt":{"stub":true,"revpos":1}}}`
+	doc, rev, err = db.PutExistingRevWithBody("camera", unjson(payload), []string{"3-a", "2-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+
+	// Get available attachments by immediate ancestor revision or parent revision
+	meta, found := db.getAvailableRevAttachments(doc, parent)
+	attachment := meta["camera.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
+	assert.Equal(t, float64(20), attachment["length"])
+	assert.Equal(t, float64(1), attachment["revpos"])
+	assert.True(t, found, "Ancestor should exists")
+
+	// Get available attachments by immediate ancestor revision
+	meta, found = db.getAvailableRevAttachments(doc, ancestor)
+	attachment = meta["camera.txt"].(map[string]interface{})
+	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
+	assert.Equal(t, float64(20), attachment["length"])
+	assert.Equal(t, float64(1), attachment["revpos"])
+	assert.True(t, found, "Ancestor should exists")
+}
+
+func TestGet1xRevAndChannels(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	docId := "dd6d2dcc679d12b9430a9787bab45b33"
+	payload := `{"sku":"6213100","_attachments":{"camera.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
+	doc1, rev1, err := db.PutExistingRevWithBody(docId, unjson(payload), []string{"1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+
+	payload = `{"sku":"6213101","_attachments":{"lens.txt":{"data":"Q2Fub24gRU9TIDVEIE1hcmsgSVY="}}}`
+	doc2, rev2, err := db.PutExistingRevWithBody(docId, unjson(payload), []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+
+	// Get the 1x revision from document with list revision enabled
+	bodyBytes, removed, err := db.get1xRevFromDoc(doc2, rev2, true)
+	assert.False(t, removed)
+	assert.NoError(t, err, "It should not throw any error")
+	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
+
+	var response = Body{}
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+
+	// Get the 1x revision from document with list revision enabled. Also validate that the
+	// BodyRevisions property is present and correct since listRevisions=true.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc1, rev1, true)
+	assert.False(t, removed)
+	assert.NoError(t, err, "It should not throw any error")
+	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	assert.Equal(t, docId, response[BodyId])
+	assert.Equal(t, "1-a", response[BodyRev])
+	assert.Equal(t, "6213100", response["sku"])
+	revisions, ok := response[BodyRevisions].(map[string]interface{})
+	assert.True(t, ok, "revisions should be extracted from response body")
+	assert.Equal(t, json.Number("1"), revisions[RevisionsStart])
+	assert.Equal(t, []interface{}{"a"}, revisions[RevisionsIds])
+
+	// Delete the document, creating tombstone revision rev3
+	rev3, err := db.DeleteDoc(docId, rev2)
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc2, rev3, true)
+	assert.False(t, removed)
+	assert.Error(t, err, "It should throw 404 missing error")
+	assert.Nil(t, bodyBytes, "Document body bytes should be empty")
+
+	// get1xRevFromDoc for doc2 should be returning the current revision id (in this case, the tombstone revision rev3).
+	// Also validate that the BodyRevisions property is present and correct since listRevisions=true.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc2, "", true)
+	assert.False(t, removed)
+	assert.NoError(t, err, "It should not throw any error")
+	assert.NotNil(t, bodyBytes, "Document body bytes should be received")
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	assert.Equal(t, docId, response[BodyId])
+	assert.Equal(t, "2-a", response[BodyRev])
+	assert.Equal(t, "6213101", response["sku"])
+	revisions, ok = response[BodyRevisions].(map[string]interface{})
+	assert.True(t, ok, "revisions should be extracted from response body")
+	assert.Equal(t, json.Number("2"), revisions[RevisionsStart])
+	assert.Equal(t, []interface{}{"a", "a"}, revisions[RevisionsIds])
+}
+
+func TestGet1xRevFromDoc(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	// Create the first revision of the document
+	docId := "356779a9a1696714480f57fa3fb66d4c"
+	payload := `{"city":"Los Angeles"}`
+	doc, rev1, err := db.PutExistingRevWithBody(docId, unjson(payload), []string{"1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+	assert.NotEmpty(t, doc, "Document shouldn't be empty")
+	assert.Equal(t, "1-a", rev1, "Provided input revision ID should be returned")
+
+	// Get rev1 using get1xRevFromDoc. Also validate that the BodyRevisions property is present
+	// and correct since listRevisions=true.
+	bodyBytes, removed, err := db.get1xRevFromDoc(doc, rev1, true)
+	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
+	assert.False(t, removed, "This shouldn't be a removed document")
+	var response = Body{}
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	assert.Equal(t, docId, response[BodyId])
+	assert.Equal(t, "1-a", response[BodyRev])
+	assert.Equal(t, "Los Angeles", response["city"])
+	revisions, ok := response[BodyRevisions].(map[string]interface{})
+	assert.True(t, ok, "revisions should be extracted from response body")
+	assert.Equal(t, json.Number("1"), revisions[RevisionsStart])
+	assert.Equal(t, []interface{}{"a"}, revisions[RevisionsIds])
+
+	// Create the second revision of the document
+	payload = `{"city":"Hollywood"}`
+	doc, rev2, err := db.PutExistingRevWithBody(docId, unjson(payload), []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Couldn't create document")
+	assert.NotEmpty(t, doc, "Document shouldn't be empty")
+	assert.Equal(t, "2-a", rev2, "Provided input revision ID should be returned")
+
+	// Get rev2 using get1xRevFromDoc. Also validate that the BodyRevisions property is present
+	// and correct since listRevisions=true.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc, rev2, true)
+	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
+	assert.False(t, removed, "This shouldn't be a removed document")
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	assert.Equal(t, docId, response[BodyId])
+	assert.Equal(t, "2-a", response[BodyRev])
+	assert.Equal(t, "Hollywood", response["city"])
+	revisions, ok = response[BodyRevisions].(map[string]interface{})
+	assert.True(t, ok, "revisions should be extracted from response body")
+	assert.Equal(t, json.Number("2"), revisions[RevisionsStart])
+	assert.Equal(t, []interface{}{"a", "a"}, revisions[RevisionsIds])
+
+	// Get body bytes from doc with unknown revision id; it simulates the error scenario.
+	// A 404 missing error should be thrown when trying get the body bytes of the document
+	// which doesn't exists in the revision tree. The revision "3-a" doesn't exists in database.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc, "3-a", true)
+	assert.Error(t, err, "It should throw 404 missing error")
+	assert.Contains(t, err.Error(), "404 missing")
+	assert.Empty(t, bodyBytes, "Provided revision doesn't exists")
+	assert.False(t, removed, "This shouldn't be a removed revision")
+	assert.Error(t, response.Unmarshal(bodyBytes), "Unexpected empty JSON input to body.Unmarshal")
+
+	// Deletes the document, by adding a new revision whose _deleted property is true.
+	body := Body{BodyDeleted: true, BodyRev: rev2}
+	rev3, doc, err := db.Put(docId, body)
+	assert.NoError(t, err, "Document should be deleted")
+	assert.NotEmpty(t, rev3, "Document revision shouldn't be empty")
+
+	// Get the document body bytes with the tombstone revision rev3, with listRevisions=true
+	// Also validate that the BodyRevisions property is present and correct.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc, rev3, true)
+	assert.NotEmpty(t, bodyBytes, "Document body bytes should be returned")
+	assert.False(t, removed, "This shouldn't be a removed document")
+	assert.NoError(t, response.Unmarshal(bodyBytes))
+	assert.Equal(t, docId, response[BodyId])
+	assert.Equal(t, rev3, response[BodyRev])
+	assert.Equal(t, "Hollywood", response["city"])
+	revisions, ok = response[BodyRevisions].(map[string]interface{})
+	assert.True(t, ok, "revisions should be extracted from response body")
+	assert.Equal(t, json.Number("3"), revisions[RevisionsStart])
+	assert.Equal(t, []interface{}{"5464898886a6c57cd648c659f0993bb3", "a", "a"}, revisions[RevisionsIds])
+
+	// If the provided revision ID is blank and the current revision is already deleted
+	// when checking document revision history, it should throw 404 deleted error.
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc, "", true)
+	assert.Error(t, err, "404 deleted")
+	assert.Contains(t, err.Error(), "404 deleted")
+	assert.Empty(t, bodyBytes, "Document body bytes should be empty")
+	assert.False(t, removed, "This shouldn't be a removed document")
+	assert.Error(t, response.Unmarshal(bodyBytes), "Unexpected empty JSON input to body.Unmarshal")
 }
