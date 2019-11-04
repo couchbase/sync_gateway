@@ -221,3 +221,21 @@ func TestLoggingLevel(t *testing.T) {
 	assert.NoError(t, err, "No error while marshalling unknown logging level")
 	assert.Error(t, level.UnmarshalText([]byte(level.String())), level.String())
 }
+
+func TestColor(t *testing.T) {
+	consoleLogger.ColorEnabled = true
+	assert.Equal(t, "\x1b[0;36mFormat\x1b[0m", color("Format", LevelDebug))
+	assert.Equal(t, "\x1b[1;34mFormat\x1b[0m", color("Format", LevelInfo))
+	assert.Equal(t, "\x1b[1;33mFormat\x1b[0m", color("Format", LevelWarn))
+	assert.Equal(t, "\x1b[1;31mFormat\x1b[0m", color("Format", LevelError))
+	assert.Equal(t, "\x1b[0;37mFormat\x1b[0m", color("Format", LevelTrace))
+	assert.Equal(t, "\x1b[0mFormat\x1b[0m", color("Format", LevelNone))
+
+	consoleLogger.ColorEnabled = false
+	assert.Equal(t, "Format", color("Format", LevelDebug))
+	assert.Equal(t, "Format", color("Format", LevelInfo))
+	assert.Equal(t, "Format", color("Format", LevelWarn))
+	assert.Equal(t, "Format", color("Format", LevelError))
+	assert.Equal(t, "Format", color("Format", LevelTrace))
+	assert.Equal(t, "Format", color("Format", LevelNone))
+}
