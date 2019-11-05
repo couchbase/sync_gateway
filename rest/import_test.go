@@ -243,9 +243,6 @@ func TestXattrResurrectViaSG(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
-			AutoImport: false,
-		},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
