@@ -750,12 +750,26 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, se
 		return bh.sendNoRev(sender, docID, revID, err)
 	}
 
-	// Still need to stamp _attachments into BLIP messages
-	bodyBytes := rev.BodyBytes
-	if len(rev.Attachments) > 0 {
-		bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: db.BodyAttachments, Val: rev.Attachments})
+	// Still need to stamp _attachments into BLIP messages, so do that below
+	var bodyBytes []byte
+	if base.IsEnterpriseEdition() {
+		if len(rev.Attachments) > 0 {
+			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: db.BodyAttachments, Val: rev.Attachments})
+			if err != nil {
+				return err
+			}
+		} else {
+			bodyBytes = rev.BodyBytes
+		}
+	} else {
+		body, err := rev.MutableBody()
 		if err != nil {
-			return err
+			return bh.sendNoRev(sender, docID, revID, err)
+		}
+		body[db.BodyAttachments] = rev.Attachments
+		bodyBytes, err = base.JSONMarshalCanonical(body)
+		if err != nil {
+			return bh.sendNoRev(sender, docID, revID, err)
 		}
 	}
 
