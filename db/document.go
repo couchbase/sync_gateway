@@ -45,7 +45,7 @@ type IncomingDocument struct {
 	BodyBytes         []byte // BodyBytes contains the raw document only. Doesn't include any special properties
 	SpecialProperties        // Embedded SpecialProperties struct
 
-	_syncFnBody Body // Unmarshalled body which contains special properties
+	syncFnBody Body // Unmarshalled body which contains special properties
 }
 
 // Stores special properties which are a part of an incoming document
@@ -58,18 +58,16 @@ type SpecialProperties struct {
 	Revisions   Revisions
 }
 
-func NewIncomingDocument(docID string, body []byte) *IncomingDocument {
+func NewIncomingDocument(body []byte) *IncomingDocument {
 	return &IncomingDocument{
-		BodyBytes: body,
-		SpecialProperties: SpecialProperties{
-			DocID: docID,
-		},
+		BodyBytes:         body,
+		SpecialProperties: SpecialProperties{},
 	}
 }
 
 func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
-	if doc._syncFnBody != nil {
-		return doc._syncFnBody.Copy(BodyDeepCopy), nil
+	if doc.syncFnBody != nil {
+		return doc.syncFnBody.Copy(BodyDeepCopy), nil
 	}
 
 	var syncFnBody map[string]interface{}
@@ -83,29 +81,8 @@ func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
 
 	stampSpecialProperties(syncFnBody, doc.SpecialProperties)
 
-	doc._syncFnBody = syncFnBody
-	return doc._syncFnBody.Copy(BodyDeepCopy), nil
-}
-
-func (doc *IncomingDocument) GetMutableBody() Body {
-	// we can avoid a deep copy by just unmarshalling raw bytes, if available
-	if doc.BodyBytes != nil {
-		var b Body
-		err := b.Unmarshal(doc.BodyBytes)
-		if err == nil {
-			return b
-		}
-		// Error unmarshalling raw body, try to use the existing _body
-		base.Warnf("Unable to unmarshal document body from raw body : %s", err)
-	}
-
-	// We didn't have raw bytes available, but if we do have a body to copy
-	if doc._syncFnBody != nil {
-		// need to deep copy so callers can mutate
-		return doc._syncFnBody.Copy(BodyDeepCopy)
-	}
-
-	return nil
+	doc.syncFnBody = syncFnBody
+	return doc.syncFnBody.Copy(BodyDeepCopy), nil
 }
 
 func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (string, error) {
@@ -123,22 +100,22 @@ func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (st
 }
 
 func (doc *IncomingDocument) UpdateDocID(docid string) {
-	if doc._syncFnBody != nil {
-		doc._syncFnBody[BodyId] = docid
+	if doc.syncFnBody != nil {
+		doc.syncFnBody[BodyId] = docid
 	}
 	doc.DocID = docid
 }
 
 func (doc *IncomingDocument) UpdateRevID(revid string) {
-	if doc._syncFnBody != nil {
-		doc._syncFnBody[BodyRev] = revid
+	if doc.syncFnBody != nil {
+		doc.syncFnBody[BodyRev] = revid
 	}
 	doc.RevID = revid
 }
 
 func (doc *IncomingDocument) UpdateDeleted(deleted bool) {
-	if doc._syncFnBody != nil {
-		doc._syncFnBody[BodyDeleted] = deleted
+	if doc.syncFnBody != nil {
+		doc.syncFnBody[BodyDeleted] = deleted
 	}
 	doc.Deleted = deleted
 }
@@ -199,7 +176,7 @@ func (b Body) ToIncomingDocument() (*IncomingDocument, error) {
 	}
 
 	stampSpecialProperties(b, *specialProperties)
-	incomingDocument._syncFnBody = b
+	incomingDocument.syncFnBody = b
 
 	return &incomingDocument, nil
 }
@@ -812,7 +789,7 @@ func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
 // TODO: Need to look into this a bit more...
 func (doc *Document) setRevisionBody(revid string, newDoc *IncomingDocument, storeInline bool) {
 	if revid == doc.CurrentRev {
-		doc._body = newDoc._syncFnBody
+		doc._body = newDoc.syncFnBody
 		doc._rawBody = newDoc.BodyBytes
 	} else {
 		doc.setNonWinningRevisionBody(revid, newDoc.BodyBytes, storeInline)

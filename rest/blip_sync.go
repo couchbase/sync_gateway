@@ -900,7 +900,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 	var body db.Body
 
-	newDoc := db.NewIncomingDocument(docID, bodyBytes)
+	newDoc := db.NewIncomingDocument(bodyBytes)
 
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {

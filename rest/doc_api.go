@@ -376,7 +376,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 
 	var body db.Body
 	var newDoc *db.IncomingDocument
-	newDoc = db.NewIncomingDocument(docid, bodyBytes)
+	newDoc = db.NewIncomingDocument(bodyBytes)
 
 	if hasAttachments || hasExpiry {
 		// In handleRev the below is actually using ReadJSONBody
