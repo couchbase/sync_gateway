@@ -710,7 +710,9 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := c.channelCache.AddToCache(change)
-	base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+	if base.LogDebugEnabled(base.KeyDCP) {
+		base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+	}
 
 	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
 

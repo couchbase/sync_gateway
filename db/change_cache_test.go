@@ -2186,7 +2186,7 @@ func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 	}
 }
 
-// Cases for ProcessEntry benchmarking
+// Cases for DocChanged benchmarking
 //   - single thread, ordered sequence arrival, non-initialized cache, 100 channels
 //   - single thread, ordered sequence arrival, initialized cache, 100 channels
 //   - single thread, unordered sequence arrival, non-initialized cache, 100 channels
