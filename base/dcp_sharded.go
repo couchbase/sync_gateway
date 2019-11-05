@@ -180,7 +180,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 
 	cfgCB, err := NewCfgSG(gocbBucket.Bucket)
 	if err != nil {
-		Warnf(KeyAll, "Error initializing cfg for import sharding: %v", err)
+		Warnf("Error initializing cfg for import sharding: %v", err)
 		return nil, err
 	}
 
@@ -276,14 +276,14 @@ func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
 	if err := c.Manager.Start(registerType); err != nil {
-		Errorf(KeyDCP, "cbgt Manager start failed: %v", err)
+		Errorf("cbgt Manager start failed: %v", err)
 		return err
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
 	err = createCBGTIndex(c.Manager, dbName, bucket, spec, numPartitions)
 	if err != nil {
-		Errorf(KeyDCP, "cbgt index creation failed: %v", err)
+		Errorf("cbgt index creation failed: %v", err)
 		return err
 	}
 
@@ -368,6 +368,6 @@ func (h HeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUUID string) {
 	Debugf(KeyDCP, "StaleHeartBeatDetected for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(h.Cfg, h.Manager.Version(), []string{nodeUUID})
 	if err != nil {
-		Warnf(KeyAll, "base.Warning: attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
+		Warnf("base.Warning: attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
 	}
 }

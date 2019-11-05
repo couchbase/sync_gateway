@@ -426,15 +426,6 @@ func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevision
 }
 
 // Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
-func (db *Database) AuthorizeDocID(docid, revid string) error {
-	doc, err := db.GetDocument(docid, DocUnmarshalSync)
-	if doc == nil {
-		return err
-	}
-	return db.authorizeDoc(doc, revid)
-}
-
-// Returns an HTTP 403 error if the User is not allowed to access any of this revision's channels.
 func (db *Database) authorizeDoc(doc *Document, revid string) error {
 	user := db.user
 	if doc == nil || user == nil {
@@ -631,7 +622,7 @@ func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (anc
 		Attachments AttachmentsMeta `json:"_attachments"`
 	}
 	if err := base.JSONUnmarshal(bodyBytes, &parentAttachmentsStruct); err != nil {
-		base.Warnf(base.KeyAll, "Error unmarshaling attachments metadata: %s", err)
+		base.Warnf("Error unmarshaling attachments metadata: %s", err)
 		return nil, true
 	}
 
@@ -642,7 +633,7 @@ func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (anc
 func (db *Database) backupAncestorRevs(doc *Document, newDoc *Document) {
 	newBodyBytes, err := newDoc.BodyBytes()
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error getting body bytes when backing up ancestor revs")
+		base.Warnf("Error getting body bytes when backing up ancestor revs")
 		return
 	}
 
@@ -954,7 +945,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes()
 		if marshalErr != nil {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
+			base.WarnfCtx(db.Ctx, "Unable to marshal document body for storage in rev tree: %v", marshalErr)
 		}
 
 		var kvPairs []base.KVPair
@@ -989,7 +980,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 		// Stamp _attachments and _deleted into rev tree bodies
 		oldBodyJson, marshalErr = base.InjectJSONProperties(oldBodyJson, kvPairs...)
 		if marshalErr != nil {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
+			base.WarnfCtx(db.Ctx, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
 		}
 		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage())
 	}
@@ -1042,7 +1033,7 @@ func (db *Database) recalculateSyncFnForActiveRev(doc *Document, newRevID string
 		}
 	} else {
 		// Shouldn't be possible (CurrentRev is a leaf so won't have been compacted)
-		base.WarnfCtx(db.Ctx, base.KeyAll, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
+		base.WarnfCtx(db.Ctx, "updateDoc(%q): Rev %q missing, can't call getChannelsAndAccess "+
 			"on it (err=%v)", base.UD(doc.ID), doc.CurrentRev, err)
 		channelSet = nil
 		access = nil
@@ -1093,7 +1084,7 @@ func (db *Database) assignSequence(docSequence uint64, doc *Document, unusedSequ
 			} else {
 				releaseErr := db.sequences.releaseSequence(docSequence)
 				if releaseErr != nil {
-					base.Warnf(base.KeyCRUD, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
+					base.Warnf("Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, err)
 				}
 			}
 		}
@@ -1371,7 +1362,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				xattrBytes = len(rawXattr)
 				if uint32(xattrBytes) >= *xattrBytesThreshold {
 					db.DbStats.StatsDatabase().Add(base.StatKeyWarnXattrSizeCount, 1)
-					base.WarnfCtx(db.Ctx, base.KeyAll, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(doc.ID), xattrBytes, *xattrBytesThreshold)
+					base.WarnfCtx(db.Ctx, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(doc.ID), xattrBytes, *xattrBytesThreshold)
 				}
 			}
 
@@ -1393,13 +1384,13 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	if err != nil {
 		if docSequence > 0 {
 			if seqErr := db.sequences.releaseSequence(docSequence); seqErr != nil {
-				base.WarnfCtx(db.Ctx, base.KeyAll, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
+				base.WarnfCtx(db.Ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", docSequence, seqErr)
 			}
 
 		}
 		for _, sequence := range unusedSequences {
 			if seqErr := db.sequences.releaseSequence(sequence); seqErr != nil {
-				base.WarnfCtx(db.Ctx, base.KeyAll, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
+				base.WarnfCtx(db.Ctx, "Error returned when releasing sequence %d. Falling back to skipped sequence handling.  Error:%v", sequence, seqErr)
 			}
 		}
 	}
@@ -1449,7 +1440,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
 			webhookJSON, err := doc.BodyWithSpecialProperties()
 			if err != nil {
-				base.Warnf(base.KeyAll, "Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
+				base.Warnf("Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {
 				db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels)
 			}
@@ -1476,7 +1467,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 		channelCount := len(channels)
 		if uint32(channelCount) >= *channelCountThreshold {
 			db.DbStats.StatsDatabase().Add(base.StatKeyWarnChannelsPerDocCount, 1)
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
+			base.WarnfCtx(db.Ctx, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
 		}
 	}
 
@@ -1485,7 +1476,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 		grantCount := len(accessGrants) + len(roleGrants)
 		if uint32(grantCount) >= *grantThreshold {
 			db.DbStats.StatsDatabase().Add(base.StatKeyWarnGrantsPerDocCount, 1)
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
+			base.WarnfCtx(db.Ctx, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
 		}
 	}
 }
@@ -1538,7 +1529,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 	if reloadActiveUser {
 		user, err := db.Authenticator().GetUser(db.user.Name())
 		if err != nil {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Error reloading active db.user[%s], security information will not be recalculated until next authentication --> %+v", base.UD(db.user.Name()), err)
+			base.WarnfCtx(db.Ctx, "Error reloading active db.user[%s], security information will not be recalculated until next authentication --> %+v", base.UD(db.user.Name()), err)
 		} else {
 			db.user = user
 		}
@@ -1630,7 +1621,7 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 			}
 
 		} else {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Sync fn exception: %+v; doc = %s", err, base.UD(body))
+			base.WarnfCtx(db.Ctx, "Sync fn exception: %+v; doc = %s", err, base.UD(body))
 			err = base.HTTPErrorf(500, "Exception in JS sync function")
 		}
 
@@ -1662,7 +1653,7 @@ func validateAccessMap(access channels.AccessMap) bool {
 	for name := range access {
 		principalName, _ := channels.AccessNameToPrincipalName(name)
 		if !auth.IsValidPrincipalName(principalName) {
-			base.Warnf(base.KeyAll, "Invalid principal name %q in access() or role() call", base.UD(principalName))
+			base.Warnf("Invalid principal name %q in access() or role() call", base.UD(principalName))
 			return false
 		}
 	}
@@ -1676,7 +1667,7 @@ func validateRoleAccessMap(roleAccess channels.AccessMap) bool {
 	for _, roles := range roleAccess {
 		for rolename := range roles {
 			if !auth.IsValidPrincipalName(rolename) {
-				base.Warnf(base.KeyAll, "Invalid role name %q in role() call", base.UD(rolename))
+				base.Warnf("Invalid role name %q in role() call", base.UD(rolename))
 				return false
 			}
 		}
@@ -1705,7 +1696,7 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 
 	results, err := context.QueryAccess(key)
 	if err != nil {
-		base.Warnf(base.KeyAll, "QueryAccess returned error: %v", err)
+		base.Warnf("QueryAccess returned error: %v", err)
 		return nil, err
 	}
 
@@ -1720,32 +1711,6 @@ func (context *DatabaseContext) ComputeSequenceChannelsForPrincipal(princ auth.P
 		return nil, closeErr
 	}
 
-	return channelSet, nil
-}
-
-// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
-// This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeVbSequenceChannelsForPrincipal(princ auth.Principal) (channels.TimedSet, error) {
-	key := princ.Name()
-	if _, ok := princ.(auth.User); !ok {
-		key = channels.RoleAccessPrefix + key // Roles are identified in access view by a "role:" prefix
-	}
-
-	var vres struct {
-		Rows []struct {
-			Value channels.TimedSet
-		}
-	}
-
-	opts := map[string]interface{}{"stale": false, "key": key}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewAccessVbSeq, opts, &vres); verr != nil {
-		return nil, verr
-	}
-
-	channelSet := channels.TimedSet{}
-	for _, row := range vres.Rows {
-		channelSet.Add(row.Value)
-	}
 	return channelSet, nil
 }
 
@@ -1775,27 +1740,6 @@ func (context *DatabaseContext) ComputeSequenceRolesForUser(user auth.User) (cha
 	}
 
 	return roleChannelSet, nil
-}
-
-// Recomputes the set of channels a User/Role has been granted access to by sync() functions.
-// This is part of the ChannelComputer interface defined by the Authenticator.
-func (context *DatabaseContext) ComputeVbSequenceRolesForUser(user auth.User) (channels.TimedSet, error) {
-	var vres struct {
-		Rows []struct {
-			Value channels.TimedSet
-		}
-	}
-
-	opts := map[string]interface{}{"stale": false, "key": user.Name()}
-	if verr := context.Bucket.ViewCustom(DesignDocSyncGateway(), ViewRoleAccessVbSeq, opts, &vres); verr != nil {
-		return nil, verr
-	}
-
-	roleSet := channels.TimedSet{}
-	for _, row := range vres.Rows {
-		roleSet.Add(row.Value)
-	}
-	return roleSet, nil
 }
 
 // Checks whether a document has a mobile xattr.  Used when running in non-xattr mode to support no downtime upgrade.
@@ -1829,22 +1773,21 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 
 		if err != nil {
 			if !base.IsDocNotFoundError(err) {
-				base.WarnfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
+				base.WarnfCtx(db.Ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
 			}
 			missing = revids
 			return
 		}
 		doc, err := unmarshalDocumentWithXattr(docid, nil, xattrValue, cas, DocUnmarshalSync)
 		if err != nil {
-			base.ErrorfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) Doc Unmarshal Failed: %T %v", base.UD(docid), err,
-				err)
+			base.ErrorfCtx(db.Ctx, "RevDiff(%q) Doc Unmarshal Failed: %T %v", base.UD(docid), err, err)
 		}
 		history = doc.History
 	} else {
 		doc, err := db.GetDocument(docid, DocUnmarshalSync)
 		if err != nil {
 			if !base.IsDocNotFoundError(err) {
-				base.WarnfCtx(db.Ctx, base.KeyAll, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
+				base.WarnfCtx(db.Ctx, "RevDiff(%q) --> %T %v", base.UD(docid), err, err)
 				// If something goes wrong getting the doc, treat it as though it's nonexistent.
 			}
 			missing = revids
@@ -1902,7 +1845,7 @@ func (db *Database) CheckProposedRev(docid string, revid string, parentRevID str
 	doc, err := db.GetDocument(docid, DocUnmarshalAll)
 	if err != nil {
 		if !base.IsDocNotFoundError(err) {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
+			base.WarnfCtx(db.Ctx, "CheckProposedRev(%q) --> %T %v", base.UD(docid), err, err)
 			return ProposedRev_Error
 		}
 		// Doc doesn't exist locally; adding it is OK (even if it has a history)

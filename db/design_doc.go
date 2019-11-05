@@ -556,7 +556,7 @@ func installViews(bucket base.Bucket) error {
 		worker := func() (shouldRetry bool, err error, value interface{}) {
 			err = bucket.PutDDoc(designDocName, designDoc)
 			if err != nil {
-				base.Warnf(base.KeyAll, "Error installing Couchbase design doc: %v", err)
+				base.Warnf("Error installing Couchbase design doc: %v", err)
 			}
 			return err != nil, err, nil
 		}
@@ -630,7 +630,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 			if errRetryCount > maxRetry {
 				return err
 			}
-			base.Warnf(base.KeyAll, "Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
+			base.Warnf("Error waiting for view %q to be ready for bucket %q - retrying...(%d/%d)", viewName, bucket.GetName(), errRetryCount, maxRetry)
 			time.Sleep(time.Duration(retrySleep) * time.Millisecond)
 			retrySleep *= float64(1.5)
 		}
@@ -655,7 +655,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool) (removedDesi
 			if !previewOnly {
 				removeDDocErr := bucket.DeleteDDoc(ddocName)
 				if removeDDocErr != nil && !IsMissingDDocError(removeDDocErr) {
-					base.Warnf(base.KeyAll, "Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
+					base.Warnf("Unexpected error when removing design doc %q: %s", ddocName, removeDDocErr)
 				}
 				// Only include in list of removedDesignDocs if it was actually removed
 				if removeDDocErr == nil {
@@ -665,7 +665,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool) (removedDesi
 				var result interface{}
 				existsDDocErr := bucket.GetDDoc(ddocName, &result)
 				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
-					base.Warnf(base.KeyAll, "Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
+					base.Warnf("Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
 				}
 				// Only include in list of removedDesignDocs if it exists
 				if existsDDocErr == nil {

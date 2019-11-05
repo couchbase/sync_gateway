@@ -285,12 +285,12 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		digest, ok := msg.Properties[getAttachmentDigest]
 		if !ok {
-			base.Panicf(base.KeyAll, "couldn't find digest in getAttachment message properties")
+			base.Panicf("couldn't find digest in getAttachment message properties")
 		}
 
 		attachment, err := btc.getAttachment(digest)
 		if err != nil {
-			base.Panicf(base.KeyAll, "couldn't find attachment for digest: %v", digest)
+			base.Panicf("couldn't find attachment for digest: %v", digest)
 		}
 
 		response := msg.Response()
@@ -299,7 +299,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
-		base.Panicf(base.KeyAll, "Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
+		base.Panicf("Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)
 	}
 }
 

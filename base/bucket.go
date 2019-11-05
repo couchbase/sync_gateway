@@ -57,7 +57,7 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 		return GoCB
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
-		Warnf(KeyAll, "Unexpected bucket type: %v", bucketType)
+		Warnf("Unexpected bucket type: %v", bucketType)
 		return GoCB
 	}
 
@@ -184,7 +184,7 @@ func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 func (b BucketSpec) TLSConfig() *tls.Config {
 	tlsConfig, err := TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
 	if err != nil {
-		Errorf(KeyAll, "Error creating tlsConfig for DCP processing: %v", err)
+		Errorf("Error creating tlsConfig for DCP processing: %v", err)
 		return nil
 	}
 	return tlsConfig
@@ -368,7 +368,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 
 		if err != nil {
 			if pkgerrors.Cause(err) == gocb.ErrAuthError {
-				Warnf(KeyAll, "Unable to authenticate as user %q: %v", UD(username), err)
+				Warnf("Unable to authenticate as user %q: %v", UD(username), err)
 				return nil, ErrFatalBucketConnection
 			}
 			return nil, err
@@ -378,7 +378,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
 			if !bucket.IsSupported(sgbucket.BucketFeatureXattrs) {
-				Warnf(KeyAll, "If using XATTRS, Couchbase Server version must be >= 5.0.")
+				Warnf("If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
 		}
@@ -405,12 +405,12 @@ func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp 
 		var currentValue interface{}
 		cas, err := bucket.Get(key, &currentValue)
 		if err != nil {
-			Warnf(KeyAll, "WriteCasJSON got error when calling Get: %v", err)
+			Warnf("WriteCasJSON got error when calling Get: %v", err)
 			return 0, err
 		}
 		updatedValue, err := callback(currentValue)
 		if err != nil {
-			Warnf(KeyAll, "WriteCasJSON got error when calling callback: %v", err)
+			Warnf("WriteCasJSON got error when calling callback: %v", err)
 			return 0, err
 		}
 		if updatedValue == nil {
@@ -439,12 +439,12 @@ func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp uint32
 	for {
 		currentValue, cas, err := bucket.GetRaw(key)
 		if err != nil {
-			Warnf(KeyAll, "WriteCasRaw got error when calling GetRaw: %v", err)
+			Warnf("WriteCasRaw got error when calling GetRaw: %v", err)
 			return 0, err
 		}
 		currentValue, err = callback(currentValue)
 		if err != nil {
-			Warnf(KeyAll, "WriteCasRaw got error when calling callback: %v", err)
+			Warnf("WriteCasRaw got error when calling callback: %v", err)
 			return 0, err
 		}
 		if len(currentValue) == 0 {
