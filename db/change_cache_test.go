@@ -11,6 +11,7 @@ package db
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"expvar"
 	"fmt"
@@ -1903,9 +1904,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 
 }
 
-// Generator
-//
-
+// Generator for processEntry
 type testProcessEntryFeed struct {
 	nextSeq     uint64
 	channelMaps []channels.ChannelMap
@@ -1960,25 +1959,6 @@ func (f *testProcessEntryFeed) Next() *LogEntry {
 	}
 }
 
-/*
-type LogEntry struct {
-	Sequence     uint64              // Sequence number
-	DocID        string              // Document ID
-	RevID        string              // Revision ID
-	Flags        uint8               // Deleted/Removed/Hidden flags
-	VbNo         uint16              // vbucket number
-	TimeSaved    time.Time           // Time doc revision was saved (just used for perf metrics)
-	TimeReceived time.Time           // Time received from tap feed
-	Channels     channels.ChannelMap // Channels this entry is in or was removed from
-	Skipped      bool                // Late arriving entry
-	Type         LogEntryType        // Log entry type
-	Value        []byte              // Snapshot metadata (when Type=LogEntryCheckpoint)
-	PrevSequence uint64              // Sequence of previous active revision
-	IsPrincipal  bool                // Whether the log-entry is a tracking entry for a principal doc
-}
-
-*/
-
 // Cases for ProcessEntry benchmarking
 //   - single thread, ordered sequence arrival, non-initialized cache, 100 channels
 //   - single thread, ordered sequence arrival, initialized cache, 100 channels
@@ -1990,7 +1970,7 @@ type LogEntry struct {
 
 func BenchmarkProcessEntry(b *testing.B) {
 
-	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache|base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelError, base.KeyCache|base.KeyChanges)()
 	processEntryBenchmarks := []struct {
 		name           string
 		feed           *testProcessEntryFeed
@@ -2061,8 +2041,235 @@ func BenchmarkProcessEntry(b *testing.B) {
 				_ = changeCache.processEntry(entry)
 			}
 
-			log.Printf("maxNumPending: %v", changeCache.context.DbStats.StatsCblReplicationPull().Get(base.StatKeyMaxPending))
-			log.Printf("cachingCount: %v", changeCache.context.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount))
+			base.DecrNumOpenBuckets(context.Bucket.GetName())
+			context.Close()
+		})
+	}
+}
+
+type testDocChangedFeed struct {
+	nextSeq      uint64
+	channelNames []string
+	sources      []uint64 // Used for non-sequential sequence delivery when numSources > 1
+	fixedTime    time.Time
+}
+
+func NewTestDocChangedFeed(numChannels int, numSources int) *testDocChangedFeed {
+
+	feed := &testDocChangedFeed{
+		fixedTime: time.Now(),
+		sources:   make([]uint64, numSources),
+	}
+	feed.channelNames = make([]string, numChannels)
+	for i := 0; i < numChannels; i++ {
+		feed.channelNames[i] = fmt.Sprintf("channel_%d", i)
+	}
+	feed.reset()
+	return feed
+}
+
+// Reset sets nextSeq to 1, and reseeds sources
+func (f *testDocChangedFeed) reset() {
+	f.nextSeq = 1
+	// Seed sources with sequences 1..numSources
+	for i := 0; i < len(f.sources); i++ {
+		f.sources[i] = f.nextSeq
+		f.nextSeq++
+	}
+}
+
+// makeFeedBytes creates a DCP mutation message w/ xattr (reverse of parseXattrStreamData)
+func makeFeedBytes(xattrKey, xattrValue, docValue string) []byte {
+	xattrKeyBytes := []byte(xattrKey)
+	xattrValueBytes := []byte(xattrValue)
+	docValueBytes := []byte(docValue)
+	separator := []byte("\x00")
+
+	xattrBytes := xattrKeyBytes
+	xattrBytes = append(xattrBytes, separator...)
+	xattrBytes = append(xattrBytes, xattrValueBytes...)
+	xattrBytes = append(xattrBytes, separator...)
+	xattrLength := len(xattrBytes) + 4 // +4, to include storage for the length bytes
+
+	totalXattrLengthBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(totalXattrLengthBytes, uint32(xattrLength))
+	syncXattrLengthBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(syncXattrLengthBytes, uint32(xattrLength))
+
+	feedBytes := totalXattrLengthBytes
+	feedBytes = append(feedBytes, syncXattrLengthBytes...)
+	feedBytes = append(feedBytes, xattrBytes...)
+	feedBytes = append(feedBytes, docValueBytes...)
+	return feedBytes
+}
+
+func TestMakeFeedBytes(t *testing.T) {
+
+	rawBytes := makeFeedBytes("_sync", `{"rev":"foo"}`, `{"k":"val"}`)
+
+	body, xattr, err := parseXattrStreamData(base.SyncXattrName, rawBytes)
+	assert.NoError(t, err)
+	assert.Equal(t, 11, len(body))
+	assert.Equal(t, 13, len(xattr))
+
+}
+
+var feedDoc1kFormat = `{
+    "index": 0,
+    "guid": "bc22f4d5-e13f-4b64-9397-2afd5a843c4d",
+    "isActive": false,
+    "balance": "$1,168.62",
+    "picture": "http://placehold.it/32x32",
+    "age": 20,
+    "eyeColor": "green",
+    "name": "Miranda Kline",
+    "company": "COMTREK",
+    "email": "mirandakline@comtrek.com",
+    "phone": "+1 (831) 408-2162",
+    "address": "701 Devon Avenue, Ballico, Alabama, 9673",
+    "about": "Minim ea esse dolor ex laborum do velit cupidatat tempor do qui. Aliqua consequat consectetur esse officia ullamco velit labore irure ea non proident. Tempor elit nostrud deserunt in ullamco pariatur enim pariatur et. Veniam fugiat ad mollit ut mollit aute adipisicing aliquip veniam consectetur incididunt. Id cupidatat duis cupidatat quis amet elit sit sit esse velit pariatur do. Excepteur tempor labore esse adipisicing laborum sit enim incididunt quis sint fugiat commodo Lorem. Dolore laboris quis ex do.\r\n",
+    "registered": "2016-09-16T12:08:17 +07:00",
+    "latitude": -14.616751,
+    "longitude": 175.689016,
+    "channels": [
+      "%s"
+    ],
+    "friends": [
+      {
+        "id": 0,
+        "name": "Wise Hewitt"
+      },
+      {
+        "id": 1,
+        "name": "Winnie Schultz"
+      },
+      {
+        "id": 2,
+        "name": "Browning Carlson"
+      }
+    ],
+    "greeting": "Hello, Miranda Kline! You have 4 unread messages.",
+    "favoriteFruit": "strawberry"
+  }`
+
+func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
+
+	// Select the next sequence from a source at random.  Simulates unordered global sequences arriving over DCP
+	sourceIndex := rand.Intn(len(f.sources))
+	entrySeq := f.sources[sourceIndex]
+	f.sources[sourceIndex] = f.nextSeq
+	f.nextSeq++
+
+	channelName := f.channelNames[rand.Intn(len(f.channelNames))]
+	// build value, including xattr
+	xattrKey := `_sync`
+	xattrValue := fmt.Sprintf(`{"rev":"1-d938e0614de222fe04463b9654e93156","sequence":%d,"recent_sequences":[%d],"history":{"revs":["1-d938e0614de222fe04463b9654e93156"],"parents":[-1],"channels":[["%s"]]},"channels":{"%s":null},"cas":"0x0000aeed831bd415","value_crc32c":"0x8aa182c1","time_saved":"2019-11-04T16:07:03.300815-08:00"}`,
+		entrySeq,
+		entrySeq,
+		channelName,
+		channelName,
+	)
+	docBody := fmt.Sprintf(`{"channels":["%s"]}`, channelName)
+	//docBody := fmt.Sprintf(feedDoc1kFormat, channelName)
+	value := makeFeedBytes(xattrKey, xattrValue, docBody)
+
+	return sgbucket.FeedEvent{
+		Opcode:       sgbucket.FeedOpMutation,
+		Key:          []byte(fmt.Sprintf("doc_%d", entrySeq)),
+		Value:        value,
+		DataType:     base.MemcachedDataTypeXattr,
+		Cas:          192335130121237, // 0x0000aeed831bd415
+		Expiry:       0,
+		Synchronous:  true,
+		TimeReceived: time.Now(),
+		VbNo:         0,
+	}
+}
+
+// Cases for ProcessEntry benchmarking
+//   - single thread, ordered sequence arrival, non-initialized cache, 100 channels
+//   - single thread, ordered sequence arrival, initialized cache, 100 channels
+//   - single thread, unordered sequence arrival, non-initialized cache, 100 channels
+//   - single thread, unordered sequence arrival, initialized cache, 100 channels
+//   - multiple threads, unordered sequence arrival, initialized cache, 100 channels
+// other:
+//   - non-unique doc ids?
+
+func BenchmarkDocChanged(b *testing.B) {
+
+	defer base.SetUpTestLogging(base.LevelError, base.KeyCache|base.KeyChanges)()
+	processEntryBenchmarks := []struct {
+		name           string
+		feed           *testDocChangedFeed
+		warmCacheCount int
+	}{
+		{
+			"SingleThread_OrderedFeed_NoActiveChannels",
+			NewTestDocChangedFeed(100, 1),
+			0,
+		},
+		{
+			"SingleThread_OrderedFeed_ActiveChannels",
+			NewTestDocChangedFeed(100, 1),
+			100,
+		},
+		{
+			"SingleThread_OrderedFeed_ManyActiveChannels",
+			NewTestDocChangedFeed(35000, 1),
+			35000,
+		},
+		{
+			"SingleThread_NonOrderedFeed_NoActiveChannels",
+			NewTestDocChangedFeed(100, 10),
+			0,
+		},
+		{
+			"SingleThread_NonOrderedFeed_ActiveChannels",
+			NewTestDocChangedFeed(100, 10),
+			100,
+		},
+		{
+			"SingleThread_NonOrderedFeed_ManyActiveChannels",
+			NewTestDocChangedFeed(35000, 10),
+			35000,
+		},
+	}
+
+	for _, bm := range processEntryBenchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			b.StopTimer()
+			context := testBucketContext(b)
+			changeCache := &changeCache{}
+			if err := changeCache.Init(context, nil, nil); err != nil {
+				log.Printf("Init failed for changeCache: %v", err)
+				b.Fail()
+			}
+			if err := changeCache.Start(); err != nil {
+				log.Printf("Start error for changeCache: %v", err)
+				b.Fail()
+			}
+
+			if bm.warmCacheCount > 0 {
+				for i := 0; i < bm.warmCacheCount; i++ {
+					channelName := fmt.Sprintf("channel_%d", i)
+					_, err := changeCache.GetChanges(channelName, ChangesOptions{Since: SequenceID{Seq: 0}})
+					if err != nil {
+						log.Printf("GetChanges failed for changeCache: %v", err)
+						b.Fail()
+					}
+				}
+
+			}
+			bm.feed.reset()
+			b.StartTimer()
+
+			for i := 0; i < b.N; i++ {
+				feedEntry := bm.feed.Next()
+				changeCache.DocChanged(feedEntry)
+			}
+
+			//log.Printf("maxNumPending: %v", changeCache.context.DbStats.StatsCblReplicationPull().Get(base.StatKeyMaxPending))
+			//log.Printf("cachingCount: %v", changeCache.context.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount))
 
 			base.DecrNumOpenBuckets(context.Bucket.GetName())
 			context.Close()

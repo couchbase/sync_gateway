@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"log"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
@@ -76,6 +77,7 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 	if !dcpKeyFilter(key) {
 		return nil
 	}
+	log.Printf("DCPReceiver.makeFeedEventForMCRequest (%s): key:%s [%s]", r.feedID, req.Key, req.Body)
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpMutation)
 	r.dataUpdate(seq, event)
 	return nil
@@ -260,7 +262,6 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	dataSourceOptions := CopyDefaultBucketDatasourceOptions()
 	if spec.UseXattrs {
 		dataSourceOptions.IncludeXAttrs = true
-		dataSourceOptions.NoValue = true
 	}
 
 	dataSourceOptions.Logf = func(fmt string, v ...interface{}) {
