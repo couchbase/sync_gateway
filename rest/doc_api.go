@@ -170,6 +170,7 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 
 	h.setHeader("Content-Type", "application/json")
 	h.response.Write(bodyBytes)
+	h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 
 	return nil
 }
