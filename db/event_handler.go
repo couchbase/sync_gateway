@@ -79,7 +79,6 @@ func (wh *Webhook) HandleEvent(event Event) {
 
 		// If filter returns false, cancel webhook post
 		if !success {
-			base.Warnf(base.KeyAll, "Filter function evaluation is false; cancelling webhook post!")
 			return
 		}
 	}

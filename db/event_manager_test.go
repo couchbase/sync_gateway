@@ -832,125 +832,68 @@ func assertChannelLengthWithTimeout(t *testing.T, c chan interface{}, expectedLe
 	}
 }
 
-// Simulate a valid event posting scenario of both online and offline database change event. Start event manager with
-// 10 processes and wait time of 100 seconds. Create 10 database state change online events and 10 offline events. Add
-// filter function to logic to post the events if state is offline; It should ignore the online events and post all the
-// online events; total of 10 online events should be posted.
-func TestWebhookHandleEventDBStateChange(t *testing.T) {
-	ts, wr := InitWebhookTest()
-	defer ts.Close()
-	url := ts.URL
-	wr.Clear()
-	em := NewEventManager()
-	em.Start(5, 100)
-
-	source := `function(doc) { if (doc.state == "offline") { return true; } else { return false; } }`
-	timeout := uint64(30)
-	wh, _ := NewWebhook(fmt.Sprintf("%s/echo", url), source, &timeout)
-	em.RegisterEventHandler(wh, DBStateChange)
-
-	warnCountPrev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-
-	for i := 0; i < 20; i += 2 {
-		err := em.RaiseDBStateChangeEvent("db", "online", "Index service is listening", "127.0.0.1:4985")
-		assert.NoError(t, err, "Database state change event should be raised successfully")
-		err = em.RaiseDBStateChangeEvent("db", "offline", "Index service heartbeat lost!", "127.0.0.1:4985")
-		assert.NoError(t, err, "Database state change event should be raised successfully")
-	}
-	func() {
-		timeout := time.After(1000 * time.Millisecond)
-		tick := time.Tick(100 * time.Millisecond)
-		for {
-			select {
-			case <-timeout:
-				log.Fatalf("Retry timedout while reading request count and payload!")
-				return
-			case <-tick:
-				if wr.GetCount() == 10 && len(wr.GetPayloads()) == 10 {
-					for i, s := range wr.GetPayloads() {
-						fmt.Printf("Posted payload-%v:%v\n", i, string(s))
-						assert.NotEmpty(t, string(s), "Request body should not be empty")
-						assert.Contains(t, string(s), `"state":"offline"`)
-						assert.NotContains(t, string(s), `"state":"online"`)
-					}
-					return
-				}
-			}
-		}
-	}()
-	warnCountCurr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-	warnCount := warnCountCurr - warnCountPrev
-	assert.Equal(t, 10, warnCount, "10 online events should be skipped and 10 offline events should be posted")
+func mockDBStateChangeEvent(dbName string, state string, reason string, adminInterface string) *DBStateChangeEvent {
+	body := make(Body, 5)
+	body["dbname"] = dbName
+	body["admininterface"] = adminInterface
+	body["state"] = state
+	body["reason"] = reason
+	body["localtime"] = time.Now().Format(base.ISO8601Format)
+	event := &DBStateChangeEvent{Doc: body}
+	return event
 }
 
-// Simulate the scenario for filter function error. Create 10 database status change (online) events with bad
-// syntax in filter function. Filter function processing should be aborted and no events should be posted.
-func TestWebhookHandleEventDBStateChangeFilterFuncError(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyEvents)()
-	ts, wr := InitWebhookTest()
-	defer ts.Close()
-	url := ts.URL
-	wr.Clear()
-	em := NewEventManager()
-	em.Start(2, 100)
-
-	warnCountPrev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-
-	source := `func (doc) { if (doc.state == "offline") { return true; } else { return false; } }`
-	timeout := uint64(30)
-	wh, _ := NewWebhook(fmt.Sprintf("%s/echo", url), source, &timeout)
-	em.RegisterEventHandler(wh, DBStateChange)
-	err = em.RaiseDBStateChangeEvent("db", "offline", "Index service is listening", "127.0.0.1:4985")
-	assert.NoError(t, err, "Error calling filter function")
-
-	func(warnCountPrev int) {
-		timeout := time.After(1000 * time.Millisecond)
-		tick := time.Tick(100 * time.Millisecond)
-		for {
-			select {
-			case <-timeout:
-				log.Fatalf("Retry timedout while reading request count and payload!")
-				return
-			case <-tick:
-				warnCountCurr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-				assert.NoError(t, err, "No error while getting the count of warnings")
-				if warnCountCurr != warnCountPrev {
-					assert.Equal(t, 0, wr.GetCount(), "Request shouldn't be posted")
-					assert.Empty(t, wr.GetPayloads(), "Payload should be empty and request shouldn't be posted")
-					return
-				}
-			}
-		}
-	}(warnCountPrev)
+type UnsupportedEvent struct {
+	AsyncEvent
 }
 
-// Simulate the scenario for handling unsupported events. Register an unsupported event manager; let'say EventType 255
-// and try to post database state change events; None of those events should be posted.
+func (event *UnsupportedEvent) String() string {
+	return fmt.Sprintf("Couchbase Sync Gateway doesn't support this kind of events!")
+}
+
+func (event *UnsupportedEvent) EventType() EventType {
+	return EventType(255)
+}
+
+// Simulate the scenario for handling unsupported events.
 func TestWebhookHandleUnsupportedEvenType(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyEvents)()
-	ts, wr := InitWebhookTest()
-	defer ts.Close()
-	url := ts.URL
-	wr.Clear()
-	em := NewEventManager()
-	em.Start(1, 100)
-
-	warnCountPrev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
+	prev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
 	assert.NoError(t, err, "No error while getting the count of warnings")
-	source := `function(doc) { if (doc.state == "online") { return true; } else { return false; } }`
-	timeout := uint64(30)
-	wh, _ := NewWebhook(fmt.Sprintf("%s/echo", url), source, &timeout)
-	// Event type 255 is not supported at the time of writing this test.
-	UnsupportedEvent := EventType(255)
-	em.RegisterEventHandler(wh, UnsupportedEvent)
-	err = em.RaiseDBStateChangeEvent("db", "online", "Index service is listening", "127.0.0.1:4985")
-	assert.NoError(t, err, "Database state change event should be raised successfully")
-
-	warnCountCurr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
+	wh := &Webhook{url: "https://127.0.0.1:8086/webhook?"}
+	event := &UnsupportedEvent{}
+	wh.HandleEvent(event)
+	curr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
 	assert.NoError(t, err, "No error while getting the count of warnings")
-	warnCount := warnCountCurr - warnCountPrev
-	assert.Equal(t, 0x1, warnCount)
+	warns := curr - prev
+	assert.Equal(t, 1, warns)
+}
+
+// Simulate the filter function processing abort scenario.
+func TestWebhookHandleEventDBStateChangeFilterFuncError(t *testing.T) {
+	prev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
+	assert.NoError(t, err, "No error while getting the count of warnings")
+	wh := &Webhook{url: "https://127.0.0.1:8086/couchbaseWebhook?"}
+	event := mockDBStateChangeEvent("db", "online", "Index service is listening", "127.0.0.1:4985")
+	source := `function (doc) { invalidKeyword if (doc.state == "online") { return true; } else { return false; } }`
+	wh.filter = NewJSEventFunction(source)
+	wh.HandleEvent(event)
+	curr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
+	assert.NoError(t, err, "No error while getting the count of warnings")
+	warns := curr - prev
+	assert.Equal(t, 2, warns, "Filter function processing should be aborted and warnings should be logged")
+}
+
+// Simulate marshalling doc error for webhook post against DBStateChangeEvent
+func TestWebhookHandleEventDBStateChangeMarshallDocError(t *testing.T) {
+	prev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
+	assert.NoError(t, err, "No error while getting the count of warnings")
+	wh := &Webhook{url: "https://127.0.0.1:8086/couchbaseWebhook?"}
+	body := make(Body, 1)
+	body["key"] = make(chan int)
+	event := &DBStateChangeEvent{Doc: body}
+	wh.HandleEvent(event)
+	curr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
+	assert.NoError(t, err, "No error while getting the count of warnings")
+	warns := curr - prev
+	assert.Equal(t, 1, warns, "It should throw marshalling doc error and log warnings")
 }

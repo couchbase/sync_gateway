@@ -138,7 +138,6 @@ func (em *EventManager) RaiseDocumentChangeEvent(docBytes []byte, docID string, 
 func (em *EventManager) RaiseDBStateChangeEvent(dbName string, state string, reason string, adminInterface string) error {
 
 	if !em.activeEventTypes[DBStateChange] {
-		base.Warnf(base.KeyAll, "Active event type doesn't look like database state change!")
 		return nil
 	}
 
