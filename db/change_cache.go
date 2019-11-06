@@ -24,6 +24,7 @@ const (
 	DefaultCachePendingSeqMaxWait = 5 * time.Second  // Max time we'll wait for a pending sequence before sending to missed queue
 	DefaultSkippedSeqMaxWait      = 60 * time.Minute // Max time we'll wait for an entry in the missing before purging
 	QueryTombstoneBatch           = 250              // Max number of tombstones checked per query during Compact
+	MaxReceivedSeqLength          = 100000           // Max history of received sequences
 )
 
 var SkippedSeqCleanViewBatch = 50 // Max number of sequences checked per query during CleanSkippedSequence.  Var to support testing
@@ -663,13 +664,32 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		c.internalStats.highSeqFeed = change.Sequence
 	}
 
+	oldestPendingSequence := c.skippedSeqs.getOldest()
+	if oldestPendingSequence == 0 {
+		oldestPendingSequence = c.nextSequence
+	}
+
+	if sequence < oldestPendingSequence {
+		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
+		return nil
+	}
+
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
-	c.receivedSeqs[sequence] = struct{}{}
 
-	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
+	c.receivedSeqs[sequence] = struct{}{}
+	// Prune received sequences if needed
+	if len(c.receivedSeqs) > MaxReceivedSeqLength {
+		newReceivedSeqs := make(map[uint64]struct{})
+		for seq, _ := range c.receivedSeqs {
+			if seq > oldestPendingSequence {
+				newReceivedSeqs[seq] = struct{}{}
+			}
+		}
+		c.receivedSeqs = newReceivedSeqs
+	}
 
 	var changedChannels base.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
