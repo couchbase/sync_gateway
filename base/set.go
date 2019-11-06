@@ -102,6 +102,14 @@ func (set Set) Update(other Set) Set {
 	return set
 }
 
+// Updates the set based on the contents of a slice
+func (set Set) UpdateSlice(elements []string) Set {
+	for _, ch := range elements {
+		set[ch] = present{}
+	}
+	return set
+}
+
 // Adds a value to a set
 func (set Set) Add(value string) Set {
 	set[value] = present{}
