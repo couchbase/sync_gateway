@@ -173,6 +173,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyDcpReceivedTime, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyCachingDcpStats, new(expvar.Map).Init())
 		result.Set(base.StatKeyImportDcpStats, new(expvar.Map).Init())
+		result.Set(base.StatKeyHighSeqFeed, new(base.IntMax))
 		d.statsDatabaseMap = result
 	case base.StatsGroupKeyDeltaSync:
 		result.Set(base.StatKeyDeltasRequested, base.ExpvarIntVal(0))

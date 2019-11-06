@@ -363,7 +363,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> %d changes valid from #%d",
 			base.UD(c.channelName), options.Since.String(), numFromCache, cacheValidFrom)
 	} else {
-		base.InfofCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
+		base.DebugfCtx(options.Ctx, base.KeyCache, "GetCachedChanges(%q, %s) --> nothing cached",
 			base.UD(c.channelName), options.Since.String())
 	}
 	startSeq := options.Since.SafeSequence() + 1

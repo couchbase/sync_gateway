@@ -56,7 +56,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 }
 
 func (r *DCPReceiver) OnError(err error) {
-	WarnfCtx(r.loggingCtx, KeyAll, "Error processing DCP stream - will attempt to restart/reconnect if appropriate: %v.", err)
+	WarnfCtx(r.loggingCtx, "Error processing DCP stream - will attempt to restart/reconnect if appropriate: %v.", err)
 	// From cbdatasource:
 	//  Invoked in advisory fashion by the BucketDataSource when it
 	//  encounters an error.  The BucketDataSource will continue to try

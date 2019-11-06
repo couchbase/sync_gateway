@@ -403,7 +403,7 @@ func (tree RevTree) setRevisionBody(revid string, body []byte, bodyKey string) {
 func (tree RevTree) removeRevisionBody(revid string) (deletedBodyKey string) {
 	info, found := tree[revid]
 	if !found {
-		base.Errorf(base.KeyAll, "RemoveRevisionBody called for revid not in tree: %v", revid)
+		base.Errorf("RemoveRevisionBody called for revid not in tree: %v", revid)
 		return ""
 	}
 	deletedBodyKey = info.BodyKey
@@ -767,7 +767,7 @@ func encodeRevisions(revs []string) Revisions {
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.Warnf(base.KeyAll, "encodeRevisions found weird history %v", revs)
+			base.Warnf("encodeRevisions found weird history %v", revs)
 		}
 	}
 	return Revisions{RevisionsStart: start, RevisionsIds: ids}
