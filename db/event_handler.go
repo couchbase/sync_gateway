@@ -99,13 +99,13 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		//}
 		jsonOut, err := base.JSONMarshal(event.Doc)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error marshalling doc for webhook post")
+			base.Warnf("Error marshalling doc for webhook post")
 			return false
 		}
 		contentType = "application/json"
 		payload = bytes.NewBuffer(jsonOut)
 	default:
-		base.Warnf(base.KeyAll, "Webhook invoked for unsupported event type.")
+		base.Warnf("Webhook invoked for unsupported event type.")
 		return false
 	}
 	success := func() bool {
@@ -119,7 +119,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		}()
 
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
+			base.Warnf("Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
 			return false
 		}
 
