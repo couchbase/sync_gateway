@@ -6,108 +6,108 @@ import (
 	"testing"
 	"time"
 
-	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
 )
 
 // Tests the cascading behaviour of log levels.
 func TestLogLevel(t *testing.T) {
 	var logLevelPtr *LogLevel
-	goassert.False(t, logLevelPtr.Enabled(LevelError))
-	goassert.False(t, logLevelPtr.Enabled(LevelWarn))
-	goassert.False(t, logLevelPtr.Enabled(LevelInfo))
-	goassert.False(t, logLevelPtr.Enabled(LevelDebug))
-	goassert.False(t, logLevelPtr.Enabled(LevelTrace))
+	assert.False(t, logLevelPtr.Enabled(LevelError))
+	assert.False(t, logLevelPtr.Enabled(LevelWarn))
+	assert.False(t, logLevelPtr.Enabled(LevelInfo))
+	assert.False(t, logLevelPtr.Enabled(LevelDebug))
+	assert.False(t, logLevelPtr.Enabled(LevelTrace))
 
 	logLevel := LevelNone
-	goassert.False(t, logLevel.Enabled(LevelError))
-	goassert.False(t, logLevel.Enabled(LevelWarn))
-	goassert.False(t, logLevel.Enabled(LevelInfo))
-	goassert.False(t, logLevel.Enabled(LevelDebug))
-	goassert.False(t, logLevel.Enabled(LevelTrace))
+	assert.False(t, logLevel.Enabled(LevelError))
+	assert.False(t, logLevel.Enabled(LevelWarn))
+	assert.False(t, logLevel.Enabled(LevelInfo))
+	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelError)
-	goassert.True(t, logLevel.Enabled(LevelError))
-	goassert.False(t, logLevel.Enabled(LevelWarn))
-	goassert.False(t, logLevel.Enabled(LevelInfo))
-	goassert.False(t, logLevel.Enabled(LevelDebug))
-	goassert.False(t, logLevel.Enabled(LevelTrace))
+	assert.True(t, logLevel.Enabled(LevelError))
+	assert.False(t, logLevel.Enabled(LevelWarn))
+	assert.False(t, logLevel.Enabled(LevelInfo))
+	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelWarn)
-	goassert.True(t, logLevel.Enabled(LevelError))
-	goassert.True(t, logLevel.Enabled(LevelWarn))
-	goassert.False(t, logLevel.Enabled(LevelInfo))
-	goassert.False(t, logLevel.Enabled(LevelDebug))
-	goassert.False(t, logLevel.Enabled(LevelTrace))
+	assert.True(t, logLevel.Enabled(LevelError))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.False(t, logLevel.Enabled(LevelInfo))
+	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelInfo)
-	goassert.True(t, logLevel.Enabled(LevelError))
-	goassert.True(t, logLevel.Enabled(LevelWarn))
-	goassert.True(t, logLevel.Enabled(LevelInfo))
-	goassert.False(t, logLevel.Enabled(LevelDebug))
-	goassert.False(t, logLevel.Enabled(LevelTrace))
+	assert.True(t, logLevel.Enabled(LevelError))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.True(t, logLevel.Enabled(LevelInfo))
+	assert.False(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelDebug)
-	goassert.True(t, logLevel.Enabled(LevelError))
-	goassert.True(t, logLevel.Enabled(LevelWarn))
-	goassert.True(t, logLevel.Enabled(LevelInfo))
-	goassert.True(t, logLevel.Enabled(LevelDebug))
-	goassert.False(t, logLevel.Enabled(LevelTrace))
+	assert.True(t, logLevel.Enabled(LevelError))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.True(t, logLevel.Enabled(LevelInfo))
+	assert.True(t, logLevel.Enabled(LevelDebug))
+	assert.False(t, logLevel.Enabled(LevelTrace))
 
 	logLevel.Set(LevelTrace)
-	goassert.True(t, logLevel.Enabled(LevelError))
-	goassert.True(t, logLevel.Enabled(LevelWarn))
-	goassert.True(t, logLevel.Enabled(LevelInfo))
-	goassert.True(t, logLevel.Enabled(LevelDebug))
-	goassert.True(t, logLevel.Enabled(LevelTrace))
+	assert.True(t, logLevel.Enabled(LevelError))
+	assert.True(t, logLevel.Enabled(LevelWarn))
+	assert.True(t, logLevel.Enabled(LevelInfo))
+	assert.True(t, logLevel.Enabled(LevelDebug))
+	assert.True(t, logLevel.Enabled(LevelTrace))
 }
 
 func TestLogLevelNames(t *testing.T) {
 	// Ensure number of level constants, and names match.
-	goassert.Equals(t, len(logLevelNames), int(levelCount))
-	goassert.Equals(t, len(logLevelNamesPrint), int(levelCount))
+	assert.Equal(t, int(levelCount), len(logLevelNames))
+	assert.Equal(t, int(levelCount), len(logLevelNamesPrint))
 
-	goassert.Equals(t, LevelNone.String(), "none")
-	goassert.Equals(t, LevelError.String(), "error")
-	goassert.Equals(t, LevelInfo.String(), "info")
-	goassert.Equals(t, LevelWarn.String(), "warn")
-	goassert.Equals(t, LevelDebug.String(), "debug")
-	goassert.Equals(t, LevelTrace.String(), "trace")
+	assert.Equal(t, "none", LevelNone.String())
+	assert.Equal(t, "error", LevelError.String())
+	assert.Equal(t, "info", LevelInfo.String())
+	assert.Equal(t, "warn", LevelWarn.String())
+	assert.Equal(t, "debug", LevelDebug.String())
+	assert.Equal(t, "trace", LevelTrace.String())
 
 	// Test out of bounds log level
-	goassert.Equals(t, LogLevel(math.MaxUint32).String(), "LogLevel(4294967295)")
+	assert.Equal(t, "LogLevel(4294967295)", LogLevel(math.MaxUint32).String())
 }
 
 func TestLogLevelText(t *testing.T) {
 	for i := LogLevel(0); i < levelCount; i++ {
 		t.Run(fmt.Sprintf("LogLevel: %v", i), func(ts *testing.T) {
 			text, err := i.MarshalText()
-			goassert.Equals(ts, err, nil)
-			goassert.Equals(ts, string(text), i.String())
+			assert.NoError(ts, err)
+			assert.Equal(ts, i.String(), string(text))
 
 			var logLevel LogLevel
 			err = logLevel.UnmarshalText(text)
-			goassert.Equals(ts, err, nil)
-			goassert.Equals(ts, logLevel, i)
+			assert.NoError(ts, err)
+			assert.Equal(ts, i, logLevel)
 		})
 	}
 
 	// nil pointer recievers
 	var logLevelPtr *LogLevel
 	_, err := logLevelPtr.MarshalText()
-	goassert.StringContains(t, err.Error(), "unrecognized log level")
+	assert.Contains(t, err.Error(), "unrecognized log level")
 	err = logLevelPtr.UnmarshalText([]byte("none"))
-	goassert.Equals(t, err.Error(), "nil log level")
+	assert.Equal(t, err.Error(), "nil log level")
 
 	// Invalid values
 	var logLevel = LogLevel(math.MaxUint32)
 	text, err := logLevel.MarshalText()
-	goassert.NotEquals(t, err, nil)
-	goassert.Equals(t, string(text), "")
+	assert.Error(t, err, nil)
+	assert.Empty(t, string(text))
 
 	logLevel = LevelNone
 	err = logLevel.UnmarshalText([]byte(""))
-	goassert.NotEquals(t, err, nil)
-	goassert.Equals(t, logLevel, LevelNone)
+	assert.Error(t, err, nil)
+	assert.Equal(t, LevelNone, logLevel)
 }
 
 // This test has no assertions, but will flag any data races when run under `-race`.
