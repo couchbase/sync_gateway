@@ -483,7 +483,7 @@ func (h *handler) readDocument() (db.Body, error) {
 			body, err := ReadMultipartDocument(reader)
 			if err != nil {
 				ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
-				base.Warnf(base.KeyAll, "Error reading MIME data: copied to file GatewayPUT.mime")
+				base.Warnf("Error reading MIME data: copied to file GatewayPUT.mime")
 			}
 			return body, err
 		} else {
@@ -598,14 +598,14 @@ func (h *handler) writeJSON(value interface{}) {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
 	if !h.requestAccepts("application/json") {
-		base.Warnf(base.KeyAll, "Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
+		base.Warnf("Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
 
-	jsonOut, err := base.JSONMarshal(value)
+	jsonOut, err := base.JSONMarshalCanonical(value)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Couldn't serialize JSON for %v : %s", base.UD(value), err)
+		base.Warnf("Couldn't serialize JSON for %v : %s", base.UD(value), err)
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
@@ -627,7 +627,7 @@ func (h *handler) writeRawJSON(b []byte) {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeRawJSONStatus(status int, b []byte) {
 	if !h.requestAccepts("application/json") {
-		base.Warnf(base.KeyAll, "Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
+		base.Warnf("Client won't accept JSON, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only application/json available")
 		return
 	}
@@ -644,7 +644,7 @@ func (h *handler) writeText(value []byte) {
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeTextStatus(status int, value []byte) {
 	if !h.requestAccepts("text/plain") {
-		base.Warnf(base.KeyAll, "Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
+		base.Warnf("Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
 		h.writeStatus(http.StatusNotAcceptable, "only text/plain available")
 		return
 	}
@@ -667,7 +667,7 @@ func (h *handler) addJSON(value interface{}) error {
 			base.Debugf(base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
 			return err
 		} else {
-			base.Warnf(base.KeyAll, "Couldn't serialize JSON for %v : %s", base.UD(value), err)
+			base.Warnf("Couldn't serialize JSON for %v : %s", base.UD(value), err)
 			h.writeStatus(http.StatusInternalServerError, "Couldn't serialize document body")
 		}
 	}
@@ -720,9 +720,9 @@ func (h *handler) writeError(err error) {
 		if status >= 500 {
 			// Log additional context when the handler has a database reference
 			if h.db != nil {
-				base.ErrorfCtx(h.db.Ctx, base.KeyHTTP, "%s: %v", h.formatSerialNumber(), err)
+				base.ErrorfCtx(h.db.Ctx, "%s: %v", h.formatSerialNumber(), err)
 			} else {
-				base.Errorf(base.KeyHTTP, "%s: %v", h.formatSerialNumber(), err)
+				base.Errorf("%s: %v", h.formatSerialNumber(), err)
 			}
 		}
 	}
@@ -753,7 +753,7 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
 	h.setStatus(status, message)
-	jsonOut, _ := base.JSONMarshal(db.Body{"error": errorStr, "reason": message})
+	jsonOut, _ := base.JSONMarshalCanonical(db.Body{"error": errorStr, "reason": message})
 	h.response.Write(jsonOut)
 }
 

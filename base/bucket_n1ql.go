@@ -73,19 +73,19 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 		// Non-retry error - return
 		if !isIndexerError(queryErr) {
-			Warnf(KeyAll, "Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
+			Warnf("Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
 			return queryResults, pkgerrors.WithStack(queryErr)
 		}
 
 		// Indexer error - wait then retry
 		err = queryErr
-		Warnf(KeyAll, "Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
+		Warnf("Indexer error during query - retry %d/%d after %v.  Error: %v", i, MaxQueryRetries, waitTime, queryErr)
 		time.Sleep(waitTime)
 
 		waitTime = time.Duration(waitTime * 2)
 	}
 
-	Warnf(KeyAll, "Exceeded max retries for query when querying index using statement: [%s], err:%v", UD(bucketStatement), err)
+	Warnf("Exceeded max retries for query when querying index using statement: [%s], err:%v", UD(bucketStatement), err)
 	return nil, err
 }
 

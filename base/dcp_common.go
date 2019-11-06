@@ -128,7 +128,7 @@ func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte) error {
 
 		err := c.persistCheckpoint(vbucketId, value)
 		if err != nil {
-			WarnfCtx(c.loggingCtx, KeyAll, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
+			WarnfCtx(c.loggingCtx, "Unable to persist DCP metadata - will retry next snapshot. Error: %v", err)
 		}
 		c.updatesSinceCheckpoint[vbucketId] = 0
 		c.lastCheckpointTime[vbucketId] = time.Now()
@@ -157,7 +157,7 @@ func (c *DCPCommon) getMetaData(vbucketId uint16) (
 // RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
 // it's called, logs warning and does a hard reset on metadata for the vbucket
 func (c *DCPCommon) rollback(vbucketId uint16, rollbackSeq uint64) error {
-	WarnfCtx(c.loggingCtx, KeyAll, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
+	WarnfCtx(c.loggingCtx, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, 0, false)
 	c.setMetaData(vbucketId, nil)
@@ -167,7 +167,7 @@ func (c *DCPCommon) rollback(vbucketId uint16, rollbackSeq uint64) error {
 
 // RollbackEx includes the vbucketUUID needed to reset the metadata correctly
 func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64, rollbackMetaData []byte) error {
-	WarnfCtx(c.loggingCtx, KeyAll, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
+	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, rollbackSeq, false)
 	c.setMetaData(vbucketId, rollbackMetaData)
@@ -222,7 +222,7 @@ func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 	for i := uint16(0); i < maxVbNo; i++ {
 		metadata, snapStart, snapEnd, err := c.loadCheckpoint(i)
 		if err != nil {
-			WarnfCtx(c.loggingCtx, KeyAll, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", i, err)
+			WarnfCtx(c.loggingCtx, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", i, err)
 			c.meta[i] = []byte{}
 			c.seqs[i] = 0
 		} else {
@@ -269,7 +269,7 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 	previousSequence := c.seqs[vbucketId]
 
 	if seq < previousSequence && warnOnLowerSeqNo == true {
-		WarnfCtx(c.loggingCtx, KeyAll, "Setting to _lower_ sequence number than previous: %v -> %v", c.seqs[vbucketId], seq)
+		WarnfCtx(c.loggingCtx, "Setting to _lower_ sequence number than previous: %v -> %v", c.seqs[vbucketId], seq)
 	}
 
 	// Update c.seqs for use by GetMetaData()

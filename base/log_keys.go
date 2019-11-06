@@ -172,7 +172,7 @@ func ToLogKey(keysStr []string) (logKeys LogKey, warnings []DeferredLogFn) {
 			newLogKey := strings.TrimSuffix(key, "+")
 
 			warnings = append(warnings, func() {
-				Warnf(KeyAll, "Deprecated log key: %q found. Changing to: %q.", originalKey, newLogKey)
+				Warnf("Deprecated log key: %q found. Changing to: %q.", originalKey, newLogKey)
 			})
 
 			key = newLogKey
@@ -182,7 +182,7 @@ func ToLogKey(keysStr []string) (logKeys LogKey, warnings []DeferredLogFn) {
 			logKeys.Enable(logKey)
 		} else {
 			warnings = append(warnings, func() {
-				Warnf(KeyAll, "Invalid log key: %v", originalKey)
+				Warnf("Invalid log key: %v", originalKey)
 			})
 		}
 	}
