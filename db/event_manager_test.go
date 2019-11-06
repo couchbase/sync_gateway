@@ -26,7 +26,7 @@ type TestingHandler struct {
 	t             *testing.T //enclosing test instance
 }
 
-func (th *TestingHandler) HandleEvent(event Event) {
+func (th *TestingHandler) HandleEvent(event Event) bool {
 
 	if th.handleDelay > 0 {
 		time.Sleep(time.Duration(th.handleDelay) * time.Millisecond)
@@ -56,7 +56,7 @@ func (th *TestingHandler) HandleEvent(event Event) {
 
 		th.ResultChannel <- dsceEvent.Doc
 	}
-	return
+	return true
 }
 
 func (th *TestingHandler) SetChannel(channel chan interface{}) {
@@ -856,44 +856,35 @@ func (event *UnsupportedEvent) EventType() EventType {
 }
 
 // Simulate the scenario for handling unsupported events.
-func TestWebhookHandleUnsupportedEvenType(t *testing.T) {
-	prev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-	wh := &Webhook{url: "https://127.0.0.1:8086/webhook?"}
+func TestWebhookHandleUnsupportedEventType(t *testing.T) {
+	ts, _ := InitWebhookTest()
+	defer ts.Close()
+	wh := &Webhook{url: ts.URL}
 	event := &UnsupportedEvent{}
-	wh.HandleEvent(event)
-	curr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-	warns := curr - prev
-	assert.Equal(t, 1, warns)
+	success := wh.HandleEvent(event)
+	assert.False(t, success, "Event shouldn't get posted to webhook; event type is not supported")
 }
 
 // Simulate the filter function processing abort scenario.
 func TestWebhookHandleEventDBStateChangeFilterFuncError(t *testing.T) {
-	prev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-	wh := &Webhook{url: "https://127.0.0.1:8086/couchbaseWebhook?"}
+	ts, _ := InitWebhookTest()
+	defer ts.Close()
+	wh := &Webhook{url: ts.URL}
 	event := mockDBStateChangeEvent("db", "online", "Index service is listening", "127.0.0.1:4985")
 	source := `function (doc) { invalidKeyword if (doc.state == "online") { return true; } else { return false; } }`
 	wh.filter = NewJSEventFunction(source)
-	wh.HandleEvent(event)
-	curr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-	warns := curr - prev
-	assert.Equal(t, 2, warns, "Filter function processing should be aborted and warnings should be logged")
+	success := wh.HandleEvent(event)
+	assert.False(t, success, "Filter function processing should be aborted and warnings should be logged")
 }
 
 // Simulate marshalling doc error for webhook post against DBStateChangeEvent
-func TestWebhookHandleEventDBStateChangeMarshallDocError(t *testing.T) {
-	prev, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-	wh := &Webhook{url: "https://127.0.0.1:8086/couchbaseWebhook?"}
+func TestWebhookHandleEventDBStateChangeMarshalDocError(t *testing.T) {
+	ts, _ := InitWebhookTest()
+	defer ts.Close()
+	wh := &Webhook{url: ts.URL}
 	body := make(Body, 1)
 	body["key"] = make(chan int)
 	event := &DBStateChangeEvent{Doc: body}
-	wh.HandleEvent(event)
-	curr, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyWarnCount).String())
-	assert.NoError(t, err, "No error while getting the count of warnings")
-	warns := curr - prev
-	assert.Equal(t, 1, warns, "It should throw marshalling doc error and log warnings")
+	success := wh.HandleEvent(event)
+	assert.False(t, success, "It should throw marshalling doc error and log warnings")
 }
