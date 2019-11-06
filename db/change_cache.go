@@ -663,13 +663,11 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		c.internalStats.highSeqFeed = change.Sequence
 	}
 
-	/*
-		if _, found := c.receivedSeqs[sequence]; found {
-			base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
-			return nil
-		}
-		c.receivedSeqs[sequence] = struct{}{}
-	*/
+	if _, found := c.receivedSeqs[sequence]; found {
+		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
+		return nil
+	}
+	c.receivedSeqs[sequence] = struct{}{}
 
 	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
