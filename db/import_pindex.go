@@ -34,7 +34,7 @@ func (il *importListener) NewImportPIndexImpl(indexType, indexParams, path strin
 
 	importDest, err := il.NewImportDest()
 	if err != nil {
-		base.Errorf(base.KeyAll, "Error creating NewImportDest during NewImportPIndexImpl: %v", err)
+		base.Errorf("Error creating NewImportDest during NewImportPIndexImpl: %v", err)
 	}
 	return nil, importDest, err
 }
@@ -43,7 +43,7 @@ func (il *importListener) OpenImportPIndexImpl(indexType, path string, restart f
 
 	importDest, err := il.NewImportDest()
 	if err != nil {
-		base.Errorf(base.KeyAll, "Error creating NewImportDest during OpenImportPIndexImpl: %v", err)
+		base.Errorf("Error creating NewImportDest during OpenImportPIndexImpl: %v", err)
 	}
 	return nil, importDest, err
 }

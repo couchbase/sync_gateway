@@ -34,9 +34,9 @@ var _ gocb.Logger = GoCBLogger{}
 func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
-		Errorf(KeyGoCB, format, v...)
+		Errorf(format, v...)
 	case gocb.LogWarn:
-		Warnf(KeyGoCB, format, v...)
+		Warnf(format, v...)
 	case gocb.LogInfo:
 		Debugf(KeyGoCB, format, v...)
 	case gocb.LogDebug, gocb.LogTrace:
@@ -63,9 +63,9 @@ var _ gocbcore.Logger = GoCBCoreLogger{}
 func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocbcore.LogError:
-		Errorf(KeyGoCB, format, v...)
+		Errorf(format, v...)
 	case gocbcore.LogWarn:
-		Warnf(KeyGoCB, format, v...)
+		Warnf(format, v...)
 	case gocbcore.LogInfo:
 		Debugf(KeyGoCB, format, v...)
 	case gocbcore.LogDebug, gocbcore.LogTrace:
@@ -91,11 +91,11 @@ func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 	case clog.LevelNormal:
 		Infof(KeyReplicate, format, args...)
 	case clog.LevelWarning:
-		Warnf(KeyReplicate, format, args...)
+		Warnf(format, args...)
 	case clog.LevelError:
-		Errorf(KeyReplicate, format, args...)
+		Errorf(format, args...)
 	case clog.LevelPanic:
-		Errorf(KeyReplicate, format, args...)
+		Errorf(format, args...)
 	}
 }
 
@@ -108,7 +108,7 @@ func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 func ClogCallback(level, format string, v ...interface{}) string {
 	switch level {
 	case "ERRO", "FATA", "CRIT":
-		Errorf(KeyDCP, format, v...)
+		Errorf(format, v...)
 	case "WARN":
 		// TODO: cbgt currently logs a lot of what we'd consider info as WARN,
 		//    (i.e. diagnostic information that's not actionable by users), so
@@ -146,19 +146,19 @@ func (CBGoUtilsLogger) Level() logging.Level {
 }
 
 func (CBGoUtilsLogger) Fatalf(fmt string, args ...interface{}) {
-	Fatalf(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	Fatalf("CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Severef(fmt string, args ...interface{}) {
-	Errorf(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	Errorf("CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Errorf(fmt string, args ...interface{}) {
-	Errorf(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	Errorf("CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Warnf(fmt string, args ...interface{}) {
-	Warnf(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	Warnf("CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Infof(fmt string, args ...interface{}) {
@@ -183,73 +183,73 @@ func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...interface{}
 
 // go-couchbase/gomemcached don't use Pair/Map logs, so these are all stubs
 func (CBGoUtilsLogger) Fatalm(msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Fatalm not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Fatalm not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Fatalp(msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Fatalp not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Fatalp not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Severem(msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Severem not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Severem not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Severep(msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Severep not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Severep not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Errorm(msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Errorm not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Errorm not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Errorp(msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Errorp not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Errorp not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Warnm(msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Warnm not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Warnm not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Warnp(msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Warnp not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Warnp not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Infom(msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Infom not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Infom not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Infop(msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Infop not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Infop not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Requestm(rlevel logging.Level, msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Requestm not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Requestm not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Requestp(rlevel logging.Level, msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Requestp not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Requestp not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Tracem(msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Tracem not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Tracem not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Tracep(msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Tracep not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Tracep not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Debugm(msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Debugm not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Debugm not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Debugp(msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Debugp not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Debugp not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Logm(level logging.Level, msg string, kv logging.Map) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Logm not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Logm not implemented! " + msg)
 }
 
 func (CBGoUtilsLogger) Logp(level logging.Level, msg string, kv ...logging.Pair) {
-	Warnf(KeyAll, "CBGoUtilsLogger: Logp not implemented! "+msg)
+	Warnf("CBGoUtilsLogger: Logp not implemented! " + msg)
 }

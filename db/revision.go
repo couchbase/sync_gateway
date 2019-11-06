@@ -266,7 +266,7 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 				Val: newAtts,
 			})
 			if err != nil {
-				base.Warnf(base.KeyAll, "Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
+				base.Warnf("Unable to marshal new revision body during backupRevisionJSON: doc=%q rev=%q err=%v ", base.UD(docId), newRevId, err)
 				return
 			}
 		}
@@ -293,7 +293,7 @@ func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte, 
 	if err == nil {
 		base.Debugf(base.KeyCRUD, "Backed up revision body %q/%q (%d bytes, ttl:%d)", base.UD(docid), revid, len(body), expiry)
 	} else {
-		base.Warnf(base.KeyAll, "setOldRevisionJSON failed: doc=%q rev=%q err=%v", base.UD(docid), revid, err)
+		base.Warnf("setOldRevisionJSON failed: doc=%q rev=%q err=%v", base.UD(docid), revid, err)
 	}
 	return err
 }
@@ -353,7 +353,7 @@ func genOfRevID(revid string) int {
 	var generation int
 	n, _ := fmt.Sscanf(revid, "%d-", &generation)
 	if n < 1 || generation < 1 {
-		base.Warnf(base.KeyAll, "genOfRevID unsuccessful for %q", revid)
+		base.Warnf("genOfRevID unsuccessful for %q", revid)
 		return -1
 	}
 	return generation
@@ -368,7 +368,7 @@ func ParseRevID(revid string) (int, string) {
 	var id string
 	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
 	if n < 1 || generation < 1 {
-		base.Warnf(base.KeyAll, "parseRevID unsuccessful for %q", revid)
+		base.Warnf("parseRevID unsuccessful for %q", revid)
 		return -1, ""
 	}
 	return generation, id

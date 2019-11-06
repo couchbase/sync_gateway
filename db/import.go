@@ -375,7 +375,7 @@ type jsImportFilterRunner struct {
 func newImportFilterRunner(funcSource string) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}
 	err := importFilterRunner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf(base.KeyJavascript, "Import %s", base.UD(s)) },
+		func(s string) { base.Errorf("Import %s", base.UD(s)) },
 		func(s string) { base.Infof(base.KeyJavascript, "Import %s", base.UD(s)) })
 	if err != nil {
 		return nil, err
@@ -409,7 +409,7 @@ func (i *ImportFilterFunction) EvaluateFunction(doc Body) (bool, error) {
 
 	result, err := i.Call(doc)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
+		base.Warnf("Unexpected error invoking import filter for document %s - processing aborted, document will not be imported.  Error: %v", base.UD(doc), err)
 		return false, err
 	}
 	switch result := result.(type) {
@@ -422,7 +422,7 @@ func (i *ImportFilterFunction) EvaluateFunction(doc Body) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.Warnf(base.KeyAll, "Import filter function returned non-boolean result %v Type: %T", result, result)
+		base.Warnf("Import filter function returned non-boolean result %v Type: %T", result, result)
 		return false, errors.New("Import filter function returned non-boolean value.")
 	}
 }

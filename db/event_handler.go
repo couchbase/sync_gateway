@@ -74,7 +74,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		// If filter function is defined, use it to determine whether to post
 		success, err := wh.filter.CallValidateFunction(event)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error calling webhook filter function: %v", err)
+			base.Warnf("Error calling webhook filter function: %v", err)
 		}
 
 		// If filter returns false, cancel webhook post

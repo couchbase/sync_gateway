@@ -198,18 +198,18 @@ func (d *DCPDest) RollbackEx(partition string, vbucketUUID uint64, rollbackSeq u
 // TODO: Not implemented, review potential usage
 func (d *DCPDest) ConsistencyWait(partition, partitionUUID string,
 	consistencyLevel string, consistencySeq uint64, cancelCh <-chan bool) error {
-	WarnfCtx(d.loggingCtx, KeyAll, "Dest.ConsistencyWait being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.loggingCtx, "Dest.ConsistencyWait being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
 func (d *DCPDest) Count(pindex *cbgt.PIndex, cancelCh <-chan bool) (uint64, error) {
-	WarnfCtx(d.loggingCtx, KeyAll, "Dest.Count being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.loggingCtx, "Dest.Count being invoked by cbgt - not supported by Sync Gateway")
 	return 0, nil
 }
 
 func (d *DCPDest) Query(pindex *cbgt.PIndex, req []byte, w io.Writer,
 	cancelCh <-chan bool) error {
-	WarnfCtx(d.loggingCtx, KeyAll, "Dest.Query being invoked by cbgt - not supported by Sync Gateway")
+	WarnfCtx(d.loggingCtx, "Dest.Query being invoked by cbgt - not supported by Sync Gateway")
 	return nil
 }
 
@@ -221,7 +221,7 @@ func (d *DCPDest) Stats(io.Writer) error {
 func partitionToVbNo(partition string) uint16 {
 	vbNo, err := strconv.Atoi(partition)
 	if err != nil {
-		Errorf(KeyAll, "Unexpected non-numeric partition value %s, ignoring: %v", partition, err)
+		Errorf("Unexpected non-numeric partition value %s, ignoring: %v", partition, err)
 		return 0
 	}
 	return uint16(vbNo)

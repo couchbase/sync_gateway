@@ -104,7 +104,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		// Load doc body + metadata
 		doc, err := db.GetDocument(entry.ID, DocUnmarshalAll)
 		if err != nil {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Changes feed: error getting doc %q: %v", base.UD(entry.ID), err)
+			base.WarnfCtx(db.Ctx, "Changes feed: error getting doc %q: %v", base.UD(entry.ID), err)
 			return
 		}
 		db.AddDocInstanceToChangeEntry(entry, doc, options)
@@ -115,7 +115,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		var err error
 		doc.SyncData, err = db.GetDocSyncData(entry.ID)
 		if err != nil {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Changes feed: error getting doc sync data %q: %v", base.UD(entry.ID), err)
+			base.WarnfCtx(db.Ctx, "Changes feed: error getting doc sync data %q: %v", base.UD(entry.ID), err)
 			return
 		}
 		db.AddDocInstanceToChangeEntry(entry, doc, options)
@@ -125,7 +125,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 		revID := entry.Changes[0]["rev"]
 		err := db.AddDocToChangeEntryUsingRevCache(entry, revID)
 		if err != nil {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
+			base.WarnfCtx(db.Ctx, "Changes feed: error getting revision body for %q (%s): %v", base.UD(entry.ID), revID, err)
 		}
 	}
 
@@ -163,7 +163,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 		entry.Doc, _, err = db.get1xRevFromDoc(doc, revID, false)
 		db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		if err != nil {
-			base.WarnfCtx(db.Ctx, base.KeyAll, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
+			base.WarnfCtx(db.Ctx, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
 		}
 	}
 }
@@ -279,7 +279,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 	}
 
 	if (options.Continuous || options.Wait) && options.Terminator == nil {
-		base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed: Terminator missing for Continuous/Wait mode")
+		base.WarnfCtx(db.Ctx, "MultiChangesFeed: Terminator missing for Continuous/Wait mode")
 	}
 	base.DebugfCtx(db.Ctx, base.KeyChanges, "Int sequence multi changes feed...")
 	return db.SimpleMultiChangesFeed(chans, options)
@@ -329,7 +329,7 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 		if db.user != nil {
 			previousChannels = db.user.InheritedChannels()
 			if err := db.ReloadUser(); err != nil {
-				base.WarnfCtx(db.Ctx, base.KeyAll, "Error reloading user %q: %v", base.UD(db.user.Name()), err)
+				base.WarnfCtx(db.Ctx, "Error reloading user %q: %v", base.UD(db.user.Name()), err)
 				return false, 0, nil, err
 			}
 			// check whether channel set has changed
@@ -358,7 +358,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 		defer func() {
 			if panicked := recover(); panicked != nil {
-				base.WarnfCtx(db.Ctx, base.KeyChanges, "[%s] Unexpected panic sending changes - terminating changes: \n %s", panicked, debug.Stack())
+				base.WarnfCtx(db.Ctx, "[%s] Unexpected panic sending changes - terminating changes: \n %s", panicked, debug.Stack())
 			} else {
 				base.InfofCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
 			}
@@ -385,7 +385,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// included in the initial changes loop iteration, and (b) won't wake up the changeWaiter.
 			if db.user != nil {
 				if err := db.ReloadUser(); err != nil {
-					base.WarnfCtx(db.Ctx, base.KeyAll, "Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
+					base.WarnfCtx(db.Ctx, "Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
 					change := makeErrorEntry("User not found during reload - terminating changes feed")
 					output <- &change
 					return
@@ -474,7 +474,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					if lateSequenceFeedHandler != nil {
 						latefeed, err := db.getLateFeed(lateSequenceFeedHandler, singleChannelCache)
 						if err != nil {
-							base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(name), lastSentLowSeq)
+							base.WarnfCtx(db.Ctx, "MultiChangesFeed got error reading late sequence feed %q, rolling back channel changes feed to last sent low sequence #%d.", base.UD(name), lastSentLowSeq)
 							chanOpts.Since.LowSeq = lastSentLowSeq
 							if lateFeed := db.newLateSequenceFeed(singleChannelCache); lateFeed != nil {
 								lateSequenceFeeds[name] = lateFeed
@@ -536,7 +536,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				feed, err := db.changesFeed(singleChannelCache, chanOpts, currentCachedSequence, to)
 				if err != nil {
-					base.WarnfCtx(db.Ctx, base.KeyAll, "MultiChangesFeed got error reading changes feed %q: %v", base.UD(name), err)
+					base.WarnfCtx(db.Ctx, "MultiChangesFeed got error reading changes feed %q: %v", base.UD(name), err)
 					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
 					output <- &change
 					return

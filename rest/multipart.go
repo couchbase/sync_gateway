@@ -49,7 +49,7 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 	decoder := base.JSONDecoder(input)
 	decoder.UseNumber()
 	if err := decoder.Decode(into); err != nil {
-		base.Warnf(base.KeyAll, "Couldn't parse JSON in HTTP request: %v", err)
+		base.Warnf("Couldn't parse JSON in HTTP request: %v", err)
 		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
 	}
 	return nil
@@ -102,7 +102,7 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *expvar
 			info.contentType, _ = meta["content_type"].(string)
 			info.data, err = db.DecodeAttachment(meta["data"])
 			if info.data == nil {
-				base.WarnfCtx(ctx, base.KeyAll, "Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body[db.BodyId]), err)
+				base.WarnfCtx(ctx, "Couldn't decode attachment %q of doc %q: %v", base.UD(name), base.UD(body[db.BodyId]), err)
 				meta["stub"] = true
 				delete(meta, "data")
 			} else if len(info.data) > kMaxInlineAttachmentSize {

@@ -113,7 +113,7 @@ func (s *sequenceAllocator) releaseUnusedSequences() {
 	if s.last < s.max {
 		err := s.releaseSequenceRange(s.last+1, s.max)
 		if err != nil {
-			base.Warnf(base.KeyAll, "Error returned when releasing sequence range [%d-%d]. Falling back to skipped sequence handling.  Error:%v", s.last+1, s.max, err)
+			base.Warnf("Error returned when releasing sequence range [%d-%d]. Falling back to skipped sequence handling.  Error:%v", s.last+1, s.max, err)
 		}
 	}
 	// Reduce batch size for next incr by the unused amount
@@ -145,7 +145,7 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	s.dbStats.Add(base.StatKeySequenceGetCount, 1)
 	last, err := s.getSequence()
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error from Get in getSequence(): %v", err)
+		base.Warnf("Error from Get in getSequence(): %v", err)
 	}
 	return last, err
 }
@@ -185,7 +185,7 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 
 	max, err := s.incrementSequence(s.sequenceBatchSize)
 	if err != nil {
-		base.Warnf(base.KeyAll, "Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
+		base.Warnf("Error from incrementSequence in _reserveSequences(%d): %v", s.sequenceBatchSize, err)
 		return err
 	}
 
