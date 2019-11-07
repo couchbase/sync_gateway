@@ -962,9 +962,9 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 	}
 
-	newDoc.UpdateDocID(docID)
-	newDoc.UpdateRevID(revID)
-	newDoc.UpdateDeleted(revMessage.deleted())
+	newDoc.DocID = docID
+	newDoc.RevID = revID
+	newDoc.Deleted = revMessage.deleted()
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev

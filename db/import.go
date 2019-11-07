@@ -230,9 +230,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if err != nil {
 			return nil, nil, updatedExpiry, err
 		}
-		newDoc.UpdateDocID(docid)
-		newDoc.UpdateRevID(newRev)
-		newDoc.UpdateDeleted(isDelete)
+		newDoc.DocID = docid
+		newDoc.RevID = newRev
+		newDoc.Deleted = isDelete
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 		return newDoc, nil, updatedExpiry, nil

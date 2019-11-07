@@ -43,9 +43,8 @@ const (
 // Struct populated by an incoming document
 type IncomingDocument struct {
 	BodyBytes         []byte // BodyBytes contains the raw document only. Doesn't include any special properties
-	SpecialProperties        // Embedded SpecialProperties struct
-
-	syncFnBody Body // Unmarshalled body which contains special properties
+	Body              Body   // Body contains the marshalled document only. Doesn't include any special properties until syncFn is generated.
+	SpecialProperties        // Embedded SpecialProperties struct. Extracted either from body or can be manually entered
 }
 
 // Stores special properties which are a part of an incoming document
@@ -58,6 +57,8 @@ type SpecialProperties struct {
 	Revisions   Revisions
 }
 
+// Simply constructs IncomingDocument struct with provided body bytes. This is only used to enforce that body is not
+// directly modified.
 func NewIncomingDocument(body []byte) *IncomingDocument {
 	return &IncomingDocument{
 		BodyBytes:         body,
@@ -65,24 +66,25 @@ func NewIncomingDocument(body []byte) *IncomingDocument {
 	}
 }
 
+// Must ensure that the returned body here is never mutated. In the case where we just return body with stamped in
+// special properties we need to ensure nothing else mutates body after this point, otherwise bytes and body will
+// become disconnected and reflect different values.
 func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
-	if doc.syncFnBody != nil {
-		return doc.syncFnBody.Copy(BodyDeepCopy), nil
-	}
-
 	var syncFnBody map[string]interface{}
-	buf := bytes.NewBuffer(doc.BodyBytes)
-	d := json.NewDecoder(buf)
-	d.UseNumber()
-	err := d.Decode(&syncFnBody)
-	if err != nil {
-		return nil, err
+
+	if doc.Body == nil {
+		buf := bytes.NewBuffer(doc.BodyBytes)
+		d := json.NewDecoder(buf)
+		d.UseNumber()
+		err := d.Decode(&doc.Body)
+		if err != nil {
+			return nil, err
+		}
 	}
+	syncFnBody = doc.Body
+	stampSyncFnProperties(syncFnBody, doc.SpecialProperties)
 
-	stampSpecialProperties(syncFnBody, doc.SpecialProperties)
-
-	doc.syncFnBody = syncFnBody
-	return doc.syncFnBody.Copy(BodyDeepCopy), nil
+	return syncFnBody, nil
 }
 
 func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (string, error) {
@@ -97,27 +99,6 @@ func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (st
 	}
 
 	return CreateRevIDWithBytes(generation, parentRevID, revIDBody), nil
-}
-
-func (doc *IncomingDocument) UpdateDocID(docid string) {
-	if doc.syncFnBody != nil {
-		doc.syncFnBody[BodyId] = docid
-	}
-	doc.DocID = docid
-}
-
-func (doc *IncomingDocument) UpdateRevID(revid string) {
-	if doc.syncFnBody != nil {
-		doc.syncFnBody[BodyRev] = revid
-	}
-	doc.RevID = revid
-}
-
-func (doc *IncomingDocument) UpdateDeleted(deleted bool) {
-	if doc.syncFnBody != nil {
-		doc.syncFnBody[BodyDeleted] = deleted
-	}
-	doc.Deleted = deleted
 }
 
 func (b Body) ExtractSpecialProperties() (*SpecialProperties, error) {
@@ -171,17 +152,16 @@ func (b Body) ToIncomingDocument() (*IncomingDocument, error) {
 	}
 
 	incomingDocument := IncomingDocument{
+		Body:              b,
 		BodyBytes:         bodyBytes,
 		SpecialProperties: *specialProperties,
 	}
 
-	stampSpecialProperties(b, *specialProperties)
-	incomingDocument.syncFnBody = b
-
 	return &incomingDocument, nil
 }
 
-func stampSpecialProperties(docBody map[string]interface{}, p SpecialProperties) {
+// Stamp properties required by sync function into the provided body
+func stampSyncFnProperties(docBody map[string]interface{}, p SpecialProperties) {
 	if p.DocID != "" {
 		docBody[BodyId] = p.DocID
 	}
@@ -190,15 +170,6 @@ func stampSpecialProperties(docBody map[string]interface{}, p SpecialProperties)
 	}
 	if p.Deleted {
 		docBody[BodyDeleted] = p.Deleted
-	}
-	if p.Expiry != 0 {
-		docBody[BodyExpiry] = p.Expiry
-	}
-	if p.Attachments != nil {
-		docBody[BodyAttachments] = p.Attachments
-	}
-	if p.Revisions != nil {
-		docBody[BodyRevisions] = p.Revisions
 	}
 }
 
@@ -786,10 +757,8 @@ func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
 }
 
 // Adds a revision body (as Body) to a document.  Removes special properties first.
-// TODO: Need to look into this a bit more...
 func (doc *Document) setRevisionBody(revid string, newDoc *IncomingDocument, storeInline bool) {
 	if revid == doc.CurrentRev {
-		doc._body = newDoc.syncFnBody
 		doc._rawBody = newDoc.BodyBytes
 	} else {
 		doc.setNonWinningRevisionBody(revid, newDoc.BodyBytes, storeInline)

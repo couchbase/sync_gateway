@@ -400,10 +400,10 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	generation, _ := db.ParseRevID(parentRev)
 	generation++
 
-	newDoc.UpdateDocID(docid)
-	newDoc.UpdateRevID(db.CreateRevIDWithBytes(generation, parentRev, bodyBytes))
+	newDoc.DocID = docid
+	newDoc.RevID = db.CreateRevIDWithBytes(generation, parentRev, bodyBytes)
 	deleted, _ := h.getOptBoolQuery("deleted", false)
-	newDoc.UpdateDeleted(deleted)
+	newDoc.Deleted = deleted
 
 	history := []string{newDoc.RevID}
 
