@@ -121,8 +121,8 @@ const (
 	StatKeyProcessEntryCount            = "process_entry_count"
 	StatKeyProcessEntryMutexAcquireTime = "process_entry_mutex_acquire_time"
 	StatKeyProcessEntryTime             = "process_entry_time"
-	StatKeyAddToCacheCount              = "process_entry_count"
-	StatKeyAddToCacheTime               = "process_entry_time"
+	StatKeyAddToCacheCount              = "add_to_cache_count"
+	StatKeyAddToCacheTime               = "add_to_cache_time"
 	StatKeyCachingDcpStats              = "cache_feed"
 	StatKeyImportDcpStats               = "import_feed"
 
