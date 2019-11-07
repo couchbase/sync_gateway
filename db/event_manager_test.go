@@ -26,7 +26,7 @@ type TestingHandler struct {
 	t             *testing.T //enclosing test instance
 }
 
-func (th *TestingHandler) HandleEvent(event Event) {
+func (th *TestingHandler) HandleEvent(event Event) bool {
 
 	if th.handleDelay > 0 {
 		time.Sleep(time.Duration(th.handleDelay) * time.Millisecond)
@@ -56,7 +56,7 @@ func (th *TestingHandler) HandleEvent(event Event) {
 
 		th.ResultChannel <- dsceEvent.Doc
 	}
-	return
+	return true
 }
 
 func (th *TestingHandler) SetChannel(channel chan interface{}) {
@@ -830,4 +830,61 @@ func assertChannelLengthWithTimeout(t *testing.T, c chan interface{}, expectedLe
 			t.Fatalf("timed out waiting for items on channel... got: %d, expected: %d", count, expectedLength)
 		}
 	}
+}
+
+func mockDBStateChangeEvent(dbName string, state string, reason string, adminInterface string) *DBStateChangeEvent {
+	body := make(Body, 5)
+	body["dbname"] = dbName
+	body["admininterface"] = adminInterface
+	body["state"] = state
+	body["reason"] = reason
+	body["localtime"] = time.Now().Format(base.ISO8601Format)
+	event := &DBStateChangeEvent{Doc: body}
+	return event
+}
+
+type UnsupportedEvent struct {
+	AsyncEvent
+}
+
+func (event *UnsupportedEvent) String() string {
+	return fmt.Sprintf("Couchbase Sync Gateway doesn't support this kind of events!")
+}
+
+func (event *UnsupportedEvent) EventType() EventType {
+	return EventType(255)
+}
+
+// Simulate the scenario for handling unsupported events.
+func TestWebhookHandleUnsupportedEventType(t *testing.T) {
+	ts, _ := InitWebhookTest()
+	defer ts.Close()
+	wh := &Webhook{url: ts.URL}
+	event := &UnsupportedEvent{}
+	success := wh.HandleEvent(event)
+	assert.False(t, success, "Event shouldn't get posted to webhook; event type is not supported")
+}
+
+// Simulate the filter function processing abort scenario.
+func TestWebhookHandleEventDBStateChangeFilterFuncError(t *testing.T) {
+	ts, _ := InitWebhookTest()
+	defer ts.Close()
+	wh := &Webhook{url: ts.URL}
+	event := mockDBStateChangeEvent("db", "online", "Index service is listening", "127.0.0.1:4985")
+	source := `function (doc) { invalidKeyword if (doc.state == "online") { return true; } else { return false; } }`
+	wh.filter = NewJSEventFunction(source)
+	success := wh.HandleEvent(event)
+	assert.False(t, success, "Filter function processing should be aborted and warnings should be logged")
+}
+
+// Simulate marshalling doc error for webhook post against DBStateChangeEvent
+func TestWebhookHandleEventDBStateChangeMarshalDocError(t *testing.T) {
+	ts, _ := InitWebhookTest()
+	defer ts.Close()
+	wh := &Webhook{url: ts.URL}
+	body := make(Body, 1)
+	body["key"] = make(chan int)
+	event := &DBStateChangeEvent{Doc: body}
+	success := wh.HandleEvent(event)
+	assert.False(t, success, "It should throw marshalling doc error and log warnings")
 }

@@ -14,7 +14,7 @@ import (
 
 // EventHandler interface represents an instance of an event handler defined in the database config
 type EventHandler interface {
-	HandleEvent(event Event)
+	HandleEvent(event Event) bool
 	String() string
 }
 
@@ -66,7 +66,7 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 // Performs an HTTP POST to the url defined for the handler.  If a filter function is defined,
 // calls it to determine whether to POST.  The payload for the POST is depends
 // on the event type.
-func (wh *Webhook) HandleEvent(event Event) {
+func (wh *Webhook) HandleEvent(event Event) bool {
 
 	var payload *bytes.Buffer
 	var contentType string
@@ -79,7 +79,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 
 		// If filter returns false, cancel webhook post
 		if !success {
-			return
+			return false
 		}
 	}
 
@@ -100,15 +100,15 @@ func (wh *Webhook) HandleEvent(event Event) {
 		jsonOut, err := base.JSONMarshal(event.Doc)
 		if err != nil {
 			base.Warnf("Error marshalling doc for webhook post")
-			return
+			return false
 		}
 		contentType = "application/json"
 		payload = bytes.NewBuffer(jsonOut)
 	default:
 		base.Warnf("Webhook invoked for unsupported event type.")
-		return
+		return false
 	}
-	func() {
+	success := func() bool {
 		resp, err := wh.client.Post(wh.url, contentType, payload)
 		defer func() {
 			// Ensure we're closing the response, so it can be reused
@@ -120,7 +120,7 @@ func (wh *Webhook) HandleEvent(event Event) {
 
 		if err != nil {
 			base.Warnf("Error attempting to post %s to url %s: %s", base.UD(event.String()), base.UD(wh.SanitizedUrl()), err)
-			return
+			return false
 		}
 
 		// Check Log Level first, as SanitizedUrl is expensive to evaluate.
@@ -128,8 +128,9 @@ func (wh *Webhook) HandleEvent(event Event) {
 			base.Debugf(base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
 				base.UD(payload), base.UD(wh.SanitizedUrl()), resp.Status)
 		}
+		return true
 	}()
-
+	return success
 }
 
 func (wh *Webhook) String() string {
