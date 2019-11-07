@@ -18,8 +18,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/goutils/logging"
 	"github.com/natefinch/lumberjack"
+	"github.com/stretchr/testify/assert"
 )
 
 // asserts that the logs produced by function f contain string s.
@@ -33,7 +34,7 @@ func assertLogContains(t *testing.T, s string, f func()) {
 	defer func() { consoleLogger = originalLogger }()
 
 	f()
-	goassert.StringContains(t, b.String(), s)
+	assert.Contains(t, b.String(), s)
 }
 
 func TestRedactedLogFuncs(t *testing.T) {
@@ -94,11 +95,11 @@ func TestPrependContextID(t *testing.T) {
 
 	for _, testInputOutput := range testInputsOutputs {
 		newFormat, newParams := PrependContextID(contextID, testInputOutput.inputFormat, testInputOutput.inputParams...)
-		goassert.Equals(t, newFormat, testInputOutput.outputFormat)
+		assert.Equal(t, testInputOutput.outputFormat, newFormat)
 
-		goassert.Equals(t, len(newParams), len(testInputOutput.outputParams))
+		assert.Equal(t, len(testInputOutput.outputParams), len(newParams))
 		for i, newParam := range newParams {
-			goassert.Equals(t, newParam, testInputOutput.outputParams[i])
+			assert.Equal(t, testInputOutput.outputParams[i], newParam)
 		}
 	}
 
@@ -147,4 +148,97 @@ func BenchmarkLogRotation(b *testing.B) {
 		})
 	}
 
+}
+
+func TestLoggingLevel(t *testing.T) {
+	level := DebugLevel
+	assert.Equal(t, logging.Level(0x8), level.cgLevel())
+	assert.Equal(t, logging.DEBUG, level.cgLevel())
+	assert.Equal(t, "debug", level.String())
+	bytes, err := level.MarshalText()
+	assert.Equal(t, []byte(level.String()), bytes)
+	assert.NoError(t, err, "No error while marshalling debug logging level")
+	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
+	assert.Equal(t, level.String(), ToDeprecatedLogLevel(LevelDebug).String())
+	assert.Equal(t, level.String(), ToLogLevel(*(ToDeprecatedLogLevel(LevelDebug))).String())
+
+	level = InfoLevel
+	assert.Equal(t, logging.Level(0x5), level.cgLevel())
+	assert.Equal(t, logging.INFO, level.cgLevel())
+	assert.Equal(t, "info", level.String())
+	bytes, err = level.MarshalText()
+	assert.Equal(t, []byte(level.String()), bytes)
+	assert.NoError(t, err, "No error while marshalling info logging level")
+	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
+	assert.Equal(t, level.String(), ToDeprecatedLogLevel(LevelInfo).String())
+	assert.Equal(t, level.String(), ToLogLevel(*(ToDeprecatedLogLevel(LevelInfo))).String())
+
+	level = WarnLevel
+	assert.Equal(t, logging.Level(0x4), level.cgLevel())
+	assert.Equal(t, logging.WARN, level.cgLevel())
+	assert.Equal(t, "warn", level.String())
+	bytes, err = level.MarshalText()
+	assert.Equal(t, []byte(level.String()), bytes)
+	assert.NoError(t, err, "No error while marshalling warn logging level")
+	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
+	assert.Equal(t, level.String(), ToDeprecatedLogLevel(LevelWarn).String())
+	assert.Equal(t, level.String(), ToLogLevel(*(ToDeprecatedLogLevel(LevelWarn))).String())
+
+	level = ErrorLevel
+	assert.Equal(t, logging.Level(0x3), level.cgLevel())
+	assert.Equal(t, logging.ERROR, level.cgLevel())
+	assert.Equal(t, "error", level.String())
+	bytes, err = level.MarshalText()
+	assert.Equal(t, []byte(level.String()), bytes)
+	assert.NoError(t, err, "No error while marshalling error logging level")
+	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
+	assert.Equal(t, level.String(), ToDeprecatedLogLevel(LevelError).String())
+	assert.Equal(t, level.String(), ToLogLevel(*(ToDeprecatedLogLevel(LevelError))).String())
+
+	level = PanicLevel
+	assert.Equal(t, logging.Level(0x2), level.cgLevel())
+	assert.Equal(t, logging.SEVERE, level.cgLevel())
+	assert.Equal(t, "panic", level.String())
+	bytes, err = level.MarshalText()
+	assert.Equal(t, []byte(level.String()), bytes)
+	assert.NoError(t, err, "No error while marshalling panic logging level")
+	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
+
+	level = FatalLevel
+	assert.Equal(t, logging.Level(0x2), level.cgLevel())
+	assert.Equal(t, logging.SEVERE, level.cgLevel())
+	assert.Equal(t, "fatal", level.String())
+	bytes, err = level.MarshalText()
+	assert.Equal(t, []byte(level.String()), bytes)
+	assert.NoError(t, err, "No error while marshalling fatal logging level")
+	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
+
+	level = Level(0x5)
+	assert.Equal(t, logging.NONE, level.cgLevel())
+	assert.Equal(t, "Level(5)", level.String())
+	bytes, err = level.MarshalText()
+	assert.Equal(t, []byte(level.String()), bytes)
+	assert.NoError(t, err, "No error while marshalling unknown logging level")
+	assert.Error(t, level.UnmarshalText([]byte(level.String())), level.String())
+}
+
+func TestLogColor(t *testing.T) {
+	consoleLogger.ColorEnabled = true
+
+	if colorEnabled() {
+		assert.Equal(t, "\x1b[0;36mFormat\x1b[0m", color("Format", LevelDebug))
+		assert.Equal(t, "\x1b[1;34mFormat\x1b[0m", color("Format", LevelInfo))
+		assert.Equal(t, "\x1b[1;33mFormat\x1b[0m", color("Format", LevelWarn))
+		assert.Equal(t, "\x1b[1;31mFormat\x1b[0m", color("Format", LevelError))
+		assert.Equal(t, "\x1b[0;37mFormat\x1b[0m", color("Format", LevelTrace))
+		assert.Equal(t, "\x1b[0mFormat\x1b[0m", color("Format", LevelNone))
+	}
+
+	consoleLogger.ColorEnabled = false
+	assert.Equal(t, "Format", color("Format", LevelDebug))
+	assert.Equal(t, "Format", color("Format", LevelInfo))
+	assert.Equal(t, "Format", color("Format", LevelWarn))
+	assert.Equal(t, "Format", color("Format", LevelError))
+	assert.Equal(t, "Format", color("Format", LevelTrace))
+	assert.Equal(t, "Format", color("Format", LevelNone))
 }
