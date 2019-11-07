@@ -171,6 +171,11 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyDcpCachingTime, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDcpReceivedCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDcpReceivedTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyProcessEntryCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyProcessEntryMutexAcquireTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyProcessEntryTime, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAddToCacheCount, base.ExpvarIntVal(0))
+		result.Set(base.StatKeyAddToCacheTime, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyCachingDcpStats, new(expvar.Map).Init())
 		result.Set(base.StatKeyImportDcpStats, new(expvar.Map).Init())
 		d.statsDatabaseMap = result

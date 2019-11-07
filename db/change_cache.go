@@ -653,11 +653,20 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
+	enterTime := time.Now()
+
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.logsDisabled {
 		return nil
 	}
+
+	c.context.DbStats.StatsDatabase().Add(base.StatKeyProcessEntryCount, 1)
+	c.context.DbStats.StatsDatabase().Add(base.StatKeyProcessEntryMutexAcquireTime, time.Since(enterTime).Nanoseconds())
+	startTime := time.Now()
+	defer func() {
+		c.context.DbStats.StatsDatabase().Add(base.StatKeyProcessEntryTime, time.Since(startTime).Nanoseconds())
+	}()
 
 	sequence := change.Sequence
 	if change.Sequence > c.internalStats.highSeqFeed {
@@ -736,6 +745,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
 func (c *changeCache) _addToCache(change *LogEntry) base.Set {
+	cacheStartTime := time.Now()
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
@@ -764,6 +774,9 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
 	}
+
+	c.context.DbStats.StatsDatabase().Add(base.StatKeyAddToCacheCount, 1)
+	c.context.DbStats.StatsDatabase().Add(base.StatKeyAddToCacheTime, time.Since(cacheStartTime).Nanoseconds())
 
 	return updatedChannels
 }
