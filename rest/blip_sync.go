@@ -898,9 +898,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	hasAttachments := bytes.Contains(bodyBytes, []byte(db.BodyAttachments))
 	hasExpiry := bytes.Contains(bodyBytes, []byte(db.BodyExpiry))
 
-	var body db.Body
-
 	newDoc := db.NewIncomingDocument(bodyBytes)
+	newDoc.DocID = docID
+	newDoc.RevID = revID
+	newDoc.Deleted = revMessage.deleted()
 
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
@@ -933,6 +934,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
 		}
 
+		var body db.Body
+
 		// Unmarshal delta including properties for patching
 		err = rq.ReadJSONBody(&body)
 		if err != nil {
@@ -948,23 +951,19 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(patchedBody))
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 
-		body = patchedBody
-		newDoc, _ = db.Body(patchedBody).ToIncomingDocument()
-
-	} else if hasAttachments || hasExpiry {
-		err = rq.ReadJSONBody(&body)
+		err = newDoc.UpdateBody(patchedBody)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "error occurred reading JSON Body: %v", err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "error occurred building IncomingDocument from body: %v", err)
 		}
-		newDoc, err = body.ToIncomingDocument()
+	}
+
+	if hasAttachments || hasExpiry {
+		body, err := newDoc.GetBody()
+		newDoc, err = db.Body(body).ToIncomingDocument()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "error occurred building IncomingDocument from body: %v", err)
 		}
 	}
-
-	newDoc.DocID = docID
-	newDoc.RevID = revID
-	newDoc.Deleted = revMessage.deleted()
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev

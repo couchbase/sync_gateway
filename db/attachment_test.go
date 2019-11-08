@@ -454,7 +454,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	doc := `{"_attachments": "No Attachment"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
 	_, err = body.ToIncomingDocument()
-	assert.Error(t, err, "It should throw 400 Invalid _attachments")
+	assert.Error(t, err, "It should throw 400 Invalid attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	// Call ForEachStubAttachment with invalid attachment; simulates the error scenario.

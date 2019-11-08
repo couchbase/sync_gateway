@@ -374,22 +374,9 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	hasAttachments := bytes.Contains(bodyBytes, []byte(db.BodyAttachments))
 	hasExpiry := bytes.Contains(bodyBytes, []byte(db.BodyExpiry))
 
-	var body db.Body
-	var newDoc *db.IncomingDocument
-	newDoc = db.NewIncomingDocument(bodyBytes)
+	newDoc := db.NewIncomingDocument(bodyBytes)
 
-	if hasAttachments || hasExpiry {
-		// In handleRev the below is actually using ReadJSONBody
-		err := base.JSONUnmarshal(bodyBytes, &body)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "error occurred reading JSON Body: %v", err)
-		}
-		newDoc, err = body.ToIncomingDocument()
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "error occurred building IncomingDocument from body: %v", err)
-		}
-	}
-
+	// This section is slightly different to handleRev just because of how we have to get these properties
 	var parentRev string
 	if oldRev := h.getQuery("rev"); oldRev != "" {
 		parentRev = oldRev
@@ -405,14 +392,20 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	deleted, _ := h.getOptBoolQuery("deleted", false)
 	newDoc.Deleted = deleted
 
-	history := []string{newDoc.RevID}
+	if hasAttachments || hasExpiry {
+		body, err := newDoc.GetBody()
+		newDoc, err = db.Body(body).ToIncomingDocument()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "error occurred building IncomingDocument from body: %v", err)
+		}
+	}
 
+	history := []string{newDoc.RevID}
 	if parentRev != "" {
 		history = append(history, parentRev)
 	}
 
 	doc, rev, err := h.db.PutExistingRev(newDoc, history, true)
-
 	if err != nil {
 		return err
 	}

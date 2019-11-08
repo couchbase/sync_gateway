@@ -939,15 +939,10 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	})
 
 	b.Run("Huge Diff", func(b *testing.B) {
-		largeDoc := make([]byte, 1000000)
-		longBody := Body{"val": string(largeDoc)}
-		bodyBytes, err := base.JSONMarshal(longBody)
-		assert.NoError(b, err)
-
-		body := Body{"_id": "doc1", "_rev": "1a", "val": string(bodyBytes)}
-
+		largeValue := make([]byte, 1000000)
+		longBody := Body{"_id": "doc1", "_rev": "1a", "val": string(largeValue)}
 		for n := 0; n < b.N; n++ {
-			getDelta(body)
+			getDelta(longBody)
 		}
 	})
 }

@@ -421,8 +421,11 @@ func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevision
 	roleAccess = doc.RoleAccess
 	sequence = doc.Sequence
 	flags = doc.Flags
-	//TODO: Review this
-	//gotRevID = doc.RevID
+	if revid == "" {
+		gotRevID = revid
+	} else {
+		gotRevID = doc.CurrentRev
+	}
 	return
 }
 

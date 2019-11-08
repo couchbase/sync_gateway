@@ -43,7 +43,7 @@ const (
 // Struct populated by an incoming document
 type IncomingDocument struct {
 	BodyBytes         []byte // BodyBytes contains the raw document only. Doesn't include any special properties
-	Body              Body   // Body contains the marshalled document only. Doesn't include any special properties until syncFn is generated.
+	Body              Body   // Body may contain the marshalled document only. Doesn't include any special properties until syncFn is generated.
 	SpecialProperties        // Embedded SpecialProperties struct. Extracted either from body or can be manually entered
 }
 
@@ -57,8 +57,7 @@ type SpecialProperties struct {
 	Revisions   Revisions
 }
 
-// Simply constructs IncomingDocument struct with provided body bytes. This is only used to enforce that body is not
-// directly modified.
+// Simply constructs IncomingDocument struct with provided body bytes
 func NewIncomingDocument(body []byte) *IncomingDocument {
 	return &IncomingDocument{
 		BodyBytes:         body,
@@ -66,12 +65,8 @@ func NewIncomingDocument(body []byte) *IncomingDocument {
 	}
 }
 
-// Must ensure that the returned body here is never mutated. In the case where we just return body with stamped in
-// special properties we need to ensure nothing else mutates body after this point, otherwise bytes and body will
-// become disconnected and reflect different values.
-func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
-	var syncFnBody map[string]interface{}
-
+// This must never be ran before GetSyncFnBody
+func (doc *IncomingDocument) GetBody() (map[string]interface{}, error) {
 	if doc.Body == nil {
 		buf := bytes.NewBuffer(doc.BodyBytes)
 		d := json.NewDecoder(buf)
@@ -81,10 +76,20 @@ func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
 			return nil, err
 		}
 	}
-	syncFnBody = doc.Body
-	stampSyncFnProperties(syncFnBody, doc.SpecialProperties)
+	return doc.Body, nil
+}
 
-	return syncFnBody, nil
+// Must ensure that the returned body here is never mutated. In the case where we just return body with stamped in
+// special properties we need to ensure nothing else mutates body after this point, otherwise bytes and body will
+// become disconnected and reflect different values.
+func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
+	_, err := doc.GetBody()
+	if err != nil {
+		return nil, err
+	}
+	stampSyncFnProperties(doc.Body, doc.SpecialProperties)
+
+	return doc.Body, nil
 }
 
 func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (string, error) {
@@ -101,47 +106,59 @@ func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (st
 	return CreateRevIDWithBytes(generation, parentRevID, revIDBody), nil
 }
 
-func (b Body) ExtractSpecialProperties() (*SpecialProperties, error) {
-	bodyID, _ := b[BodyId].(string)
+// Extracts SpecialProperties from body and will put them into the provided SpecialProperties struct
+// If the provided an item in the SpecialProperties struct already has a value it will only overwrite if the item exists
+// in the body.
+func (b Body) ExtractSpecialProperties(specialProperties *SpecialProperties) error {
+	if bodyID, found := b[BodyId]; found {
+		bodyIDStr, _ := bodyID.(string)
+		specialProperties.DocID = bodyIDStr
+	}
+
 	delete(b, BodyId)
 
-	bodyRev, _ := b[BodyRev].(string)
+	if bodyRev, found := b[BodyRev]; found {
+		bodyRevStr, _ := bodyRev.(string)
+		specialProperties.RevID = bodyRevStr
+	}
 	delete(b, BodyRev)
 
-	bodyDeleted, _ := b[BodyDeleted].(bool)
+	if bodyDeleted, found := b[BodyDeleted]; found {
+		bodyDeletedBool, _ := bodyDeleted.(bool)
+		specialProperties.Deleted = bodyDeletedBool
+	}
 	delete(b, BodyDeleted)
 
-	var exp uint32
 	bodyExp, err := base.ReflectExpiry(b[BodyExpiry])
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if bodyExp != nil {
-		exp = *bodyExp
+		specialProperties.Expiry = *bodyExp
 	}
 	delete(b, BodyExpiry)
 
 	bodyAttachments := GetBodyAttachments(b)
 	if bodyAttachments == nil && b[BodyAttachments] != nil {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid attachments")
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachments")
+	}
+	if bodyAttachments != nil {
+		specialProperties.Attachments = bodyAttachments
 	}
 	delete(b, BodyAttachments)
 
-	bodyRevisions, _ := b[BodyRevisions].(map[string]interface{})
+	if bodyRevisions, found := b[BodyRevisions]; found {
+		bodyRevisionsMap, _ := bodyRevisions.(map[string]interface{})
+		specialProperties.Revisions = bodyRevisionsMap
+	}
 	delete(b, BodyRevisions)
 
-	return &SpecialProperties{
-		DocID:       bodyID,
-		RevID:       bodyRev,
-		Deleted:     bodyDeleted,
-		Expiry:      exp,
-		Attachments: bodyAttachments,
-		Revisions:   bodyRevisions,
-	}, nil
+	return nil
 }
 
 func (b Body) ToIncomingDocument() (*IncomingDocument, error) {
-	specialProperties, err := b.ExtractSpecialProperties()
+	specialProperties := &SpecialProperties{}
+	err := b.ExtractSpecialProperties(specialProperties)
 	if err != nil {
 		return nil, err
 	}
@@ -158,6 +175,23 @@ func (b Body) ToIncomingDocument() (*IncomingDocument, error) {
 	}
 
 	return &incomingDocument, nil
+}
+
+func (doc *IncomingDocument) UpdateBody(body Body) error {
+	err := body.ExtractSpecialProperties(&doc.SpecialProperties)
+	if err != nil {
+		return err
+	}
+
+	bodyBytes, err := base.JSONMarshalCanonical(body)
+	if err != nil {
+		return err
+	}
+
+	doc.Body = body
+	doc.BodyBytes = bodyBytes
+
+	return nil
 }
 
 // Stamp properties required by sync function into the provided body
