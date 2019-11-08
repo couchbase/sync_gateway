@@ -711,9 +711,10 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
 		c.internalStats.pendingSeqLen = numPending
-		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
-			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
-
+		if base.LogDebugEnabled(base.KeyCache) {
+			base.Debugf(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
+				sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
+		}
 		// Update max pending high watermark stat
 		if numPending > c.internalStats.maxPending {
 			c.internalStats.maxPending = numPending
