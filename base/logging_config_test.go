@@ -22,7 +22,6 @@ func TestHasLogFilePath(t *testing.T) {
 	defaultLogFilePath := "/var/log/sync_gateway/sglogfile.log"
 	emptyLogFilePath := ""
 	var logFilePath *string
-	logFilePath = nil
 	assert.True(t, hasLogFilePath(logFilePath, defaultLogFilePath))
 	assert.True(t, hasLogFilePath(&emptyLogFilePath, defaultLogFilePath))
 	assert.False(t, hasLogFilePath(logFilePath, emptyLogFilePath))
