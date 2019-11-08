@@ -279,6 +279,7 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 			assert.Contains(t, out, LongVersionString)
 		})
 	}
+	consoleLogger.LogLevel.Set(LevelInfo)
 }
 
 func CaptureOutput(f func()) string {
