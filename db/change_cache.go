@@ -669,27 +669,22 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		oldestPendingSequence = c.nextSequence
 	}
 
-	if sequence < oldestPendingSequence {
+	// Duplicate handling - there are a few cases where processEntry can be called multiple times for a sequence:
+	//   - recentSequences for rapidly updated documents
+	//   - principal mutations that don't increment sequence
+	// We can cancel processing early in these scenarios.
+	// Check if this is a duplicate of an already processed sequence
+	if sequence < c.nextSequence && !c.WasSkipped(sequence) {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 
+	// Check if this is a duplicate of a pending sequence
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
-
 	c.receivedSeqs[sequence] = struct{}{}
-	// Prune received sequences if needed
-	if len(c.receivedSeqs) > MaxReceivedSeqLength {
-		newReceivedSeqs := make(map[uint64]struct{})
-		for seq, _ := range c.receivedSeqs {
-			if seq > oldestPendingSequence {
-				newReceivedSeqs[seq] = struct{}{}
-			}
-		}
-		c.receivedSeqs = newReceivedSeqs
-	}
 
 	var changedChannels base.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
@@ -741,6 +736,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
+	delete(c.receivedSeqs, change.Sequence)
 
 	// If unused sequence or principal, we're done after updating sequence
 	if change.DocID == "" {
