@@ -242,3 +242,41 @@ func TestLogColor(t *testing.T) {
 	assert.Equal(t, "Format", color("Format", LevelTrace))
 	assert.Equal(t, "Format", color("Format", LevelNone))
 }
+
+func TestSGLevel(t *testing.T) {
+	assert.Equal(t, 1, DebugLevel.sgLevel())
+	assert.Equal(t, 1, InfoLevel.sgLevel())
+	assert.Equal(t, 2, WarnLevel.sgLevel())
+	assert.Equal(t, 2, ErrorLevel.sgLevel())
+	assert.Equal(t, 3, PanicLevel.sgLevel())
+	assert.Equal(t, 3, FatalLevel.sgLevel())
+	assert.Equal(t, 4, Level(5).sgLevel())
+}
+
+func TestMarshalTextError(t *testing.T) {
+	var level *Level
+	bytes, err := level.MarshalText()
+	assert.Nil(t, bytes, "bytes should be nil")
+	assert.Error(t, err, "Can't marshal a nil *Level to text")
+	assert.Equal(t, err.Error(), "can't marshal a nil *Level to text")
+}
+
+func TestGetCallersNameRecoverInfoImpossible(t *testing.T) {
+	callerName := GetCallersName(3, true)
+	assert.Equal(t, "???", callerName)
+	callerName = GetCallersName(3, false)
+	assert.Equal(t, "???", callerName)
+}
+
+func TestLastComponent(t *testing.T) {
+	path := lastComponent("/var/log/sync_gateway/sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+	path = lastComponent("\\var\\log\\sync_gateway\\sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+	path = lastComponent("sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+	path = lastComponent("/sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+	path = lastComponent("\\sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+}
