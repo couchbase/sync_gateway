@@ -40,7 +40,7 @@ const (
 	getCheckpointResponseRev = "rev"
 
 	// subChanges message properties
-	subChangesActiveOnly = "active_only"
+	subChangesActiveOnly = "activeOnly"
 	subChangesFilter     = "filter"
 	subChangesChannels   = "channels"
 	subChangesSince      = "since"
