@@ -16,7 +16,6 @@ func TestValidateLogFileOutput(t *testing.T) {
 	logFileOutput = os.TempDir() + "/sglogfile.log"
 	err = validateLogFileOutput(logFileOutput)
 	assert.NoError(t, err, "log file output path should be validated")
-
 }
 
 func TestHasLogFilePath(t *testing.T) {

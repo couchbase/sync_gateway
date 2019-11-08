@@ -12,10 +12,12 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/couchbase/goutils/logging"
@@ -279,4 +281,103 @@ func TestLastComponent(t *testing.T) {
 	assert.Equal(t, "sglogfile.log", path)
 	path = lastComponent("\\sglogfile.log")
 	assert.Equal(t, "sglogfile.log", path)
+}
+
+func TestLogSyncGatewayVersion(t *testing.T) {
+	out := CaptureOutput(t, LogSyncGatewayVersion)
+	assert.Contains(t, out, LongVersionString)
+	logger := &FileLogger{Enabled: true, logger: &log.Logger{}}
+
+	logger.level = LevelNone
+	assert.True(t, logger.shouldLog(LevelNone))
+	assert.False(t, logger.shouldLog(LevelWarn))
+	assert.False(t, logger.shouldLog(LevelError))
+	assert.False(t, logger.shouldLog(LevelInfo))
+	assert.False(t, logger.shouldLog(LevelDebug))
+	assert.False(t, logger.shouldLog(LevelTrace))
+	out = CaptureOutput(t, LogSyncGatewayVersion)
+	assert.Contains(t, out, LongVersionString)
+
+	logger.level = LevelWarn
+	assert.True(t, logger.shouldLog(LevelNone))
+	assert.True(t, logger.shouldLog(LevelWarn))
+	assert.True(t, logger.shouldLog(LevelError))
+	assert.False(t, logger.shouldLog(LevelInfo))
+	assert.False(t, logger.shouldLog(LevelDebug))
+	assert.False(t, logger.shouldLog(LevelTrace))
+	out = CaptureOutput(t, LogSyncGatewayVersion)
+	assert.Contains(t, out, LongVersionString)
+
+	logger.level = LevelError
+	assert.True(t, logger.shouldLog(LevelNone))
+	assert.False(t, logger.shouldLog(LevelWarn))
+	assert.True(t, logger.shouldLog(LevelError))
+	assert.False(t, logger.shouldLog(LevelInfo))
+	assert.False(t, logger.shouldLog(LevelDebug))
+	assert.False(t, logger.shouldLog(LevelTrace))
+	out = CaptureOutput(t, LogSyncGatewayVersion)
+	assert.Contains(t, out, LongVersionString)
+
+	logger.level = LevelInfo
+	assert.True(t, logger.shouldLog(LevelNone))
+	assert.True(t, logger.shouldLog(LevelWarn))
+	assert.True(t, logger.shouldLog(LevelError))
+	assert.True(t, logger.shouldLog(LevelInfo))
+	assert.False(t, logger.shouldLog(LevelDebug))
+	assert.False(t, logger.shouldLog(LevelTrace))
+	out = CaptureOutput(t, LogSyncGatewayVersion)
+	assert.Contains(t, out, LongVersionString)
+
+	logger.level = LevelDebug
+	assert.True(t, logger.shouldLog(LevelNone))
+	assert.True(t, logger.shouldLog(LevelWarn))
+	assert.True(t, logger.shouldLog(LevelError))
+	assert.True(t, logger.shouldLog(LevelInfo))
+	assert.True(t, logger.shouldLog(LevelDebug))
+	assert.False(t, logger.shouldLog(LevelTrace))
+	out = CaptureOutput(t, LogSyncGatewayVersion)
+	assert.Contains(t, out, LongVersionString)
+
+	logger.level = LevelTrace
+	assert.True(t, logger.shouldLog(LevelNone))
+	assert.True(t, logger.shouldLog(LevelWarn))
+	assert.True(t, logger.shouldLog(LevelError))
+	assert.True(t, logger.shouldLog(LevelInfo))
+	assert.True(t, logger.shouldLog(LevelDebug))
+	assert.True(t, logger.shouldLog(LevelTrace))
+	out = CaptureOutput(t, LogSyncGatewayVersion)
+	assert.Contains(t, out, LongVersionString)
+}
+
+func CaptureOutput(t *testing.T, f func()) string {
+	reader, writer, err := os.Pipe()
+	assert.NoError(t, err)
+	stdout := os.Stdout
+	stderr := os.Stderr
+
+	defer func() {
+		os.Stdout = stdout
+		os.Stderr = stderr
+		log.SetOutput(os.Stderr)
+	}()
+
+	os.Stdout = writer
+	os.Stderr = writer
+	log.SetOutput(writer)
+
+	out := make(chan string)
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+
+	go func() {
+		var buf bytes.Buffer
+		wg.Done()
+		io.Copy(&buf, reader)
+		out <- buf.String()
+	}()
+
+	wg.Wait()
+	f()
+	writer.Close()
+	return <-out
 }
