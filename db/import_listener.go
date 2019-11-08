@@ -56,8 +56,8 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
-	if !ok {
-		// Non-gocb bucket, start a non-sharded feed
+	if !ok || !base.IsEnterpriseEdition() {
+		// Non-gocb bucket or CE, start a non-sharded feed
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap)
 	} else {
 		il.cbgtContext, err = gocbBucket.StartShardedDCPFeed(dbContext.Name, il.database.Options.ImportOptions.ImportPartitions)

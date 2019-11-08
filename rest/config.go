@@ -359,7 +359,7 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 	return false, fmt.Errorf("Unrecognized value for import_docs: %#v. Valid values are true and false.", dbConfig.AutoImport)
 }
 
-func (dbConfig DbConfig) validate() []error {
+func (dbConfig *DbConfig) validate() []error {
 
 	errorMessages := make([]error, 0)
 
@@ -468,7 +468,10 @@ func (dbConfig DbConfig) validate() []error {
 	}
 
 	if dbConfig.ImportPartitions != nil {
-		if !dbConfig.UseXattrs() {
+		if !base.IsEnterpriseEdition() {
+			base.Warnf(eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
+			dbConfig.ImportPartitions = nil
+		} else if !dbConfig.UseXattrs() {
 			errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
 		} else if !autoImportEnabled {
 			errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but import_docs disabled"))

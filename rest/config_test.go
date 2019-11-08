@@ -142,6 +142,26 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 	}
 }
 
+func TestConfigValidationImportPartitions(t *testing.T) {
+	jsonConfig := `{"databases": {"db": {"enable_shared_bucket_access":true, "import_partitions": 32}}}`
+
+	buf := bytes.NewBufferString(jsonConfig)
+	config, err := readServerConfig(buf)
+	assert.NoError(t, err)
+
+	errorMessages := config.setupAndValidateDatabases()
+	assert.Nil(t, errorMessages)
+
+	require.NotNil(t, config.Databases["db"])
+	if base.IsEnterpriseEdition() {
+		require.NotNil(t, config.Databases["db"].ImportPartitions)
+		assert.Equal(t, uint16(32), *config.Databases["db"].ImportPartitions)
+	} else {
+		// CE disallowed - should be nil
+		assert.Nil(t, config.Databases["db"].ImportPartitions)
+	}
+}
+
 func TestConfigValidationCache(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
 
