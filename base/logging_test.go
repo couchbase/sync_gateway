@@ -12,12 +12,10 @@ package base
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 
 	"github.com/couchbase/goutils/logging"
@@ -245,16 +243,6 @@ func TestLogColor(t *testing.T) {
 	assert.Equal(t, "Format", color("Format", LevelNone))
 }
 
-func TestSGLevel(t *testing.T) {
-	assert.Equal(t, 1, DebugLevel.sgLevel())
-	assert.Equal(t, 1, InfoLevel.sgLevel())
-	assert.Equal(t, 2, WarnLevel.sgLevel())
-	assert.Equal(t, 2, ErrorLevel.sgLevel())
-	assert.Equal(t, 3, PanicLevel.sgLevel())
-	assert.Equal(t, 3, FatalLevel.sgLevel())
-	assert.Equal(t, 4, Level(5).sgLevel())
-}
-
 func TestMarshalTextError(t *testing.T) {
 	var level *Level
 	bytes, err := level.MarshalText()
@@ -284,100 +272,19 @@ func TestLastComponent(t *testing.T) {
 }
 
 func TestLogSyncGatewayVersion(t *testing.T) {
-	out := CaptureOutput(t, LogSyncGatewayVersion)
-	assert.Contains(t, out, LongVersionString)
-	logger := &FileLogger{Enabled: true, logger: &log.Logger{}}
-
-	logger.level = LevelNone
-	assert.True(t, logger.shouldLog(LevelNone))
-	assert.False(t, logger.shouldLog(LevelWarn))
-	assert.False(t, logger.shouldLog(LevelError))
-	assert.False(t, logger.shouldLog(LevelInfo))
-	assert.False(t, logger.shouldLog(LevelDebug))
-	assert.False(t, logger.shouldLog(LevelTrace))
-	out = CaptureOutput(t, LogSyncGatewayVersion)
-	assert.Contains(t, out, LongVersionString)
-
-	logger.level = LevelWarn
-	assert.True(t, logger.shouldLog(LevelNone))
-	assert.True(t, logger.shouldLog(LevelWarn))
-	assert.True(t, logger.shouldLog(LevelError))
-	assert.False(t, logger.shouldLog(LevelInfo))
-	assert.False(t, logger.shouldLog(LevelDebug))
-	assert.False(t, logger.shouldLog(LevelTrace))
-	out = CaptureOutput(t, LogSyncGatewayVersion)
-	assert.Contains(t, out, LongVersionString)
-
-	logger.level = LevelError
-	assert.True(t, logger.shouldLog(LevelNone))
-	assert.False(t, logger.shouldLog(LevelWarn))
-	assert.True(t, logger.shouldLog(LevelError))
-	assert.False(t, logger.shouldLog(LevelInfo))
-	assert.False(t, logger.shouldLog(LevelDebug))
-	assert.False(t, logger.shouldLog(LevelTrace))
-	out = CaptureOutput(t, LogSyncGatewayVersion)
-	assert.Contains(t, out, LongVersionString)
-
-	logger.level = LevelInfo
-	assert.True(t, logger.shouldLog(LevelNone))
-	assert.True(t, logger.shouldLog(LevelWarn))
-	assert.True(t, logger.shouldLog(LevelError))
-	assert.True(t, logger.shouldLog(LevelInfo))
-	assert.False(t, logger.shouldLog(LevelDebug))
-	assert.False(t, logger.shouldLog(LevelTrace))
-	out = CaptureOutput(t, LogSyncGatewayVersion)
-	assert.Contains(t, out, LongVersionString)
-
-	logger.level = LevelDebug
-	assert.True(t, logger.shouldLog(LevelNone))
-	assert.True(t, logger.shouldLog(LevelWarn))
-	assert.True(t, logger.shouldLog(LevelError))
-	assert.True(t, logger.shouldLog(LevelInfo))
-	assert.True(t, logger.shouldLog(LevelDebug))
-	assert.False(t, logger.shouldLog(LevelTrace))
-	out = CaptureOutput(t, LogSyncGatewayVersion)
-	assert.Contains(t, out, LongVersionString)
-
-	logger.level = LevelTrace
-	assert.True(t, logger.shouldLog(LevelNone))
-	assert.True(t, logger.shouldLog(LevelWarn))
-	assert.True(t, logger.shouldLog(LevelError))
-	assert.True(t, logger.shouldLog(LevelInfo))
-	assert.True(t, logger.shouldLog(LevelDebug))
-	assert.True(t, logger.shouldLog(LevelTrace))
-	out = CaptureOutput(t, LogSyncGatewayVersion)
-	assert.Contains(t, out, LongVersionString)
+	for i := LevelNone; i < levelCount; i++ {
+		t.Run(i.String(), func(t *testing.T) {
+			consoleLogger.LogLevel.Set(i)
+			out := CaptureOutput(LogSyncGatewayVersion)
+			assert.Contains(t, out, LongVersionString)
+		})
+	}
 }
 
-func CaptureOutput(t *testing.T, f func()) string {
-	reader, writer, err := os.Pipe()
-	assert.NoError(t, err)
-	stdout := os.Stdout
-	stderr := os.Stderr
-
-	defer func() {
-		os.Stdout = stdout
-		os.Stderr = stderr
-		log.SetOutput(os.Stderr)
-	}()
-
-	os.Stdout = writer
-	os.Stderr = writer
-	log.SetOutput(writer)
-
-	out := make(chan string)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-
-	go func() {
-		var buf bytes.Buffer
-		wg.Done()
-		io.Copy(&buf, reader)
-		out <- buf.String()
-	}()
-
-	wg.Wait()
+func CaptureOutput(f func()) string {
+	buf := bytes.Buffer{}
+	consoleOutput = &buf
 	f()
-	writer.Close()
-	return <-out
+	consoleOutput = os.Stderr
+	return buf.String()
 }
