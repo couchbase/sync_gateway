@@ -663,11 +663,6 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		c.internalStats.highSeqFeed = change.Sequence
 	}
 
-	oldestPendingSequence := c.skippedSeqs.getOldest()
-	if oldestPendingSequence == 0 {
-		oldestPendingSequence = c.nextSequence
-	}
-
 	// Duplicate handling - there are a few cases where processEntry can be called multiple times for a sequence:
 	//   - recentSequences for rapidly updated documents
 	//   - principal mutations that don't increment sequence
