@@ -147,6 +147,7 @@ func (listener changeListener) TapFeed() base.TapFeed {
 
 // Changes the counter, notifying waiting clients.
 func (listener *changeListener) Notify(keys base.Set) {
+
 	if len(keys) == 0 {
 		return
 	}
@@ -238,7 +239,7 @@ func (listener *changeListener) _currentCount(keys []string) uint64 {
 
 // Helper for waiting on a changeListener. Every call to wait() will wait for the
 // listener's counter to increment from the value at the last call.
-type changeWaiter struct {
+type ChangeWaiter struct {
 	listener                  *changeListener
 	keys                      []string
 	userKeys                  []string
@@ -247,9 +248,9 @@ type changeWaiter struct {
 	lastUserCount             uint64
 }
 
-// Creates a new changeWaiter that will wait for changes for the given document keys.
-func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
-	return &changeWaiter{
+// Creates a new ChangeWaiter that will wait for changes for the given document keys.
+func (listener *changeListener) NewWaiter(keys []string) *ChangeWaiter {
+	return &ChangeWaiter{
 		listener:                  listener,
 		keys:                      keys,
 		lastCounter:               listener.CurrentCount(keys),
@@ -257,7 +258,7 @@ func (listener *changeListener) NewWaiter(keys []string) *changeWaiter {
 	}
 }
 
-func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *changeWaiter {
+func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.User) *ChangeWaiter {
 	waitKeys := make([]string, 0, 5)
 	for channel := range chans {
 		waitKeys = append(waitKeys, channel)
@@ -279,7 +280,7 @@ func (listener *changeListener) NewWaiterWithChannels(chans base.Set, user auth.
 }
 
 // Waits for the changeListener's counter to change from the last time Wait() was called.
-func (waiter *changeWaiter) Wait() uint32 {
+func (waiter *ChangeWaiter) Wait() uint32 {
 
 	lastTerminateCheckCounter := waiter.lastTerminateCheckCounter
 	lastCounter := waiter.lastCounter
@@ -303,12 +304,19 @@ func (waiter *changeWaiter) Wait() uint32 {
 
 // Returns the current counter value for the waiter's user (and roles).
 // If this value changes, it means the user or roles have been updated.
-func (waiter *changeWaiter) CurrentUserCount() uint64 {
+func (waiter *ChangeWaiter) CurrentUserCount() uint64 {
 	return waiter.lastUserCount
 }
 
+// Refreshes the last user count from the listener (without Wait being triggered).  Returns true if the count has changed
+func (waiter *ChangeWaiter) RefreshUserCount() bool {
+	previousCount := waiter.lastUserCount
+	waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
+	return waiter.lastUserCount != previousCount
+}
+
 // Updates the set of channel keys in the ChangeWaiter (maintains the existing set of user keys)
-func (waiter *changeWaiter) UpdateChannels(chans channels.TimedSet) {
+func (waiter *ChangeWaiter) UpdateChannels(chans channels.TimedSet) {
 	initialCapacity := len(chans) + len(waiter.userKeys)
 	updatedKeys := make([]string, 0, initialCapacity)
 	for channel := range chans {
@@ -322,11 +330,35 @@ func (waiter *changeWaiter) UpdateChannels(chans channels.TimedSet) {
 }
 
 // Returns the set of user keys for this ChangeWaiter
-func (waiter *changeWaiter) GetUserKeys() (result []string) {
+func (waiter *ChangeWaiter) GetUserKeys() (result []string) {
 	if len(waiter.userKeys) == 0 {
 		return result
 	}
 	result = make([]string, len(waiter.userKeys))
 	copy(result, waiter.userKeys)
 	return result
+}
+
+// Refresh user keys refreshes the waiter's userKeys (users and roles).  Required
+// when the user associated with a waiter has roles, and the user doc is updated.
+// Does NOT add the keys to waiter.keys - UpdateChannels must be invoked if
+// that's required.
+func (waiter *ChangeWaiter) RefreshUserKeys(user auth.User) {
+	if user != nil {
+		// waiter.userKeys only need to be updated if roles have changed - skip if
+		// the previous user didn't have roles, and the new user doesn't have roles.
+		if len(waiter.userKeys) == 1 && len(user.RoleNames()) == 0 {
+			return
+		}
+		waiter.userKeys = []string{base.UserPrefix + user.Name()}
+		for role := range user.RoleNames() {
+			waiter.userKeys = append(waiter.userKeys, base.RolePrefix+role)
+		}
+		waiter.lastUserCount = waiter.listener.CurrentCount(waiter.userKeys)
+
+	}
+}
+
+func (db *Database) NewUserWaiter() *ChangeWaiter {
+	return db.mutationListener.NewWaiterWithChannels(base.Set{}, db.User())
 }

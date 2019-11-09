@@ -286,7 +286,7 @@ func (db *Database) MultiChangesFeed(chans base.Set, options ChangesOptions) (<-
 
 }
 
-func (db *Database) startChangeWaiter(chans base.Set) *changeWaiter {
+func (db *Database) startChangeWaiter(chans base.Set) *ChangeWaiter {
 	waitChans := chans
 	if db.user != nil {
 		waitChans = db.user.ExpandWildCardChannel(chans)
@@ -316,7 +316,7 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, 
 	return feeds, names
 }
 
-func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *changeWaiter, isContinuous bool) (isChanged bool, newCount uint64, changedChannels channels.ChangedKeys, err error) {
+func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ChangeWaiter, isContinuous bool) (isChanged bool, newCount uint64, changedChannels channels.ChangedKeys, err error) {
 
 	newCount = changeWaiter.CurrentUserCount()
 	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by changedChannels check, and
@@ -328,6 +328,7 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 
 		if db.user != nil {
 			previousChannels = db.user.InheritedChannels()
+			previousRoles := db.user.RoleNames()
 			if err := db.ReloadUser(); err != nil {
 				base.WarnfCtx(db.Ctx, "Error reloading user %q: %v", base.UD(db.user.Name()), err)
 				return false, 0, nil, err
@@ -336,6 +337,11 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ch
 			changedChannels = db.user.InheritedChannels().CompareKeys(previousChannels)
 			if len(changedChannels) > 0 {
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "Modified channel set after user reload: %v", base.UD(changedChannels))
+			}
+
+			changedRoles := db.user.RoleNames().CompareKeys(previousRoles)
+			if len(changedRoles) > 0 {
+				changeWaiter.RefreshUserKeys(db.User())
 			}
 		}
 		return true, newCount, changedChannels, nil
@@ -365,7 +371,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			close(output)
 		}()
 
-		var changeWaiter *changeWaiter
+		var changeWaiter *ChangeWaiter
 		var lowSequence uint64
 		var currentCachedSequence uint64
 		var lateSequenceFeeds map[string]*lateSequenceFeed
@@ -382,7 +388,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			userCounter = changeWaiter.CurrentUserCount()
 			// Reload user to pick up user changes that happened between auth and the change waiter
 			// initialization.  Without this, notification for user doc changes in that window (a) won't be
-			// included in the initial changes loop iteration, and (b) won't wake up the changeWaiter.
+			// included in the initial changes loop iteration, and (b) won't wake up the ChangeWaiter.
 			if db.user != nil {
 				if err := db.ReloadUser(); err != nil {
 					base.WarnfCtx(db.Ctx, "Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
@@ -424,7 +430,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 	outer:
 		for {
 
-			// Updates the changeWaiter to the current set of available channels
+			// Updates the ChangeWaiter to the current set of available channels
 			if changeWaiter != nil {
 				changeWaiter.UpdateChannels(channelsSince)
 			}
@@ -675,7 +681,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		waitForChanges:
 			for {
 				// If we're in a deferred Backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
-				// visible to the user), and so changeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
+				// visible to the user), and so ChangeWaiter.Wait() would block until the next user-visible doc arrives.  Use a hardcoded wait instead
 				// Similar handling for when we see sequences later than the stable sequence.
 				if deferredBackfill || postStableSeqsFound {
 					for retry := 0; retry <= 50; retry++ {

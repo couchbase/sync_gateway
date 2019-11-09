@@ -62,12 +62,13 @@ type blipSyncContext struct {
 	channels            base.Set
 	lock                sync.Mutex
 	allowedAttachments  map[string]int
-	handlerSerialNumber uint64    // Each handler within a context gets a unique serial number for logging
-	terminatorOnce      sync.Once // Used to ensure the terminator channel below is only ever closed once.
-	terminator          chan bool // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
-	activeSubChanges    uint32    // Flag for whether there is a subChanges subscription currently active.  Atomic access
-	useDeltas           bool      // Whether deltas can be used for this connection - This should be set via setUseDeltas()
-	sgCanUseDeltas      bool      // Whether deltas can be used by Sync Gateway for this connection
+	handlerSerialNumber uint64           // Each handler within a context gets a unique serial number for logging
+	terminatorOnce      sync.Once        // Used to ensure the terminator channel below is only ever closed once.
+	terminator          chan bool        // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
+	activeSubChanges    uint32           // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	useDeltas           bool             // Whether deltas can be used for this connection - This should be set via setUseDeltas()
+	sgCanUseDeltas      bool             // Whether deltas can be used by Sync Gateway for this connection
+	userChangeWaiter    *db.ChangeWaiter // Tracks whether the users/roles associated with the replication have changed
 }
 
 type blipHandler struct {
@@ -78,23 +79,31 @@ type blipHandler struct {
 
 type blipHandlerFunc func(*blipHandler, *blip.Message) error
 
-// userBlipHandler wraps another blip handler with code that reloads the user object to make sure that
-// it has the latest channel access grants.
+// userBlipHandler wraps another blip handler with code that reloads the user object when the user
+// or the user's roles have changed, to make sure that the replication has the latest channel access grants.
+// Uses a userChangeWaiter to detect changes to the user or roles.  Note that in the case of a pushed document
+// triggering a user access change, this happens at write time (via MarkPrincipalsChanged), and doesn't
+// depend on the userChangeWaiter.
 func userBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
-		// Create a user-scoped database on each blip request (otherwise runs into SG issue #2717)
-		if oldUser := bh.db.User(); oldUser != nil {
-			newUser, err := bh.db.Authenticator().GetUser(oldUser.Name())
-			if err != nil {
-				return err
-			}
 
-			newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
-			if err != nil {
-				return err
+		currentUser := bh.db.User()
+		if currentUser != nil {
+			userChanged := bh.userChangeWaiter.RefreshUserCount()
+			if userChanged {
+				newUser, err := bh.db.Authenticator().GetUser(currentUser.Name())
+				if err != nil {
+					return err
+				}
+				bh.userChangeWaiter.RefreshUserKeys(newUser)
+
+				newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
+				if err != nil {
+					return err
+				}
+				newDatabase.Ctx = bh.db.Ctx
+				bh.db = newDatabase
 			}
-			newDatabase.Ctx = bh.db.Ctx
-			bh.db = newDatabase
 		}
 
 		// Call down to the underlying handler and return it's value
@@ -137,9 +146,10 @@ func (h *handler) handleBLIPSync() error {
 
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
-		blipContext: blipContext,
-		db:          h.db,
-		terminator:  make(chan bool),
+		blipContext:      blipContext,
+		db:               h.db,
+		terminator:       make(chan bool),
+		userChangeWaiter: h.db.NewUserWaiter(),
 	}
 	defer ctx.close()
 
