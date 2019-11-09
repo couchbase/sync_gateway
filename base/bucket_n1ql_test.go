@@ -575,3 +575,37 @@ func tearDownTestIndex(bucket *CouchbaseBucketGoCB, indexName string) (err error
 	}
 
 }
+
+func TestWaitForBucketExistence(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	assert.True(t, ok, "Requires gocb bucket")
+
+	// Create index
+	indexName, expression, filterExpression := "index1", "_sync", ""
+	var options = &N1qlIndexOptions{NumReplica: 0}
+
+	go func() {
+		indexExists, _, err := bucket.getIndexMetaWithoutRetry(indexName)
+		assert.NoError(t, err, "No error while trying to fetch the index metadata")
+
+		if indexExists {
+			err := bucket.DropIndex(indexName)
+			assert.NoError(t, err, "Index should be removed from the bucket")
+		}
+
+		err = bucket.CreateIndex(indexName, expression, filterExpression, options)
+		assert.NoError(t, err, "Index should be created in the bucket")
+	}()
+
+	assert.NoError(t, bucket.waitForBucketExistence(indexName, true))
+
+	// Drop the index;
+	err := bucket.DropIndex(indexName)
+	assert.NoError(t, err, "Index should be removed from the bucket")
+}
