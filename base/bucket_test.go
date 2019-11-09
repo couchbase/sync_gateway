@@ -275,3 +275,19 @@ func TestGetPoolName(t *testing.T) {
 	fakeBucketSpec.PoolName = "Liverpool"
 	assert.Equal(t, "Liverpool", fakeBucketSpec.GetPoolName())
 }
+
+func TestGetViewQueryTimeoutMs(t *testing.T) {
+	fakeBucketSpec := &BucketSpec{}
+	assert.Equal(t, uint64(0x124f8), fakeBucketSpec.GetViewQueryTimeoutMs())
+	viewQueryTimeoutSecs := uint32(0)
+	fakeBucketSpec.ViewQueryTimeoutSecs = &viewQueryTimeoutSecs
+	assert.Equal(t, uint64(0x496cebb800), fakeBucketSpec.GetViewQueryTimeoutMs())
+}
+
+func TestGetGoCBConnStringError(t *testing.T) {
+	fakeBucketSpec := &BucketSpec{Server: "sftp://localhost"}
+	str, err := fakeBucketSpec.GetGoCBConnString()
+	assert.Error(t, err, "It should throw bad scheme")
+	assert.Contains(t, err.Error(), "bad scheme")
+	assert.Empty(t, str)
+}

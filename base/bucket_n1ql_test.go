@@ -1,6 +1,7 @@
 package base
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -611,4 +612,20 @@ func TestWaitForBucketExistence(t *testing.T) {
 	// Drop the index;
 	err := bucket.DropIndex(indexName)
 	assert.NoError(t, err, "Index should be removed from the bucket")
+}
+
+func TestIsIndexerRetryBuildError(t *testing.T) {
+	var err error
+	assert.False(t, IsIndexerRetryBuildError(err))
+	err = errors.New("will retry building in the background")
+	assert.True(t, IsIndexerRetryBuildError(err))
+}
+
+func TestIsIndexerError(t *testing.T) {
+	var err error
+	assert.False(t, isIndexerError(err))
+	err = errors.New("lost heartbeat")
+	assert.False(t, isIndexerError(err))
+	err = errors.New("Indexer rollback")
+	assert.True(t, isIndexerError(err))
 }
