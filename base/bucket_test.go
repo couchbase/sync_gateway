@@ -2,7 +2,6 @@ package base
 
 import (
 	"math"
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -231,8 +230,8 @@ func TestGetStatsVbSeqno(t *testing.T) {
 		t.Run(test.name, func(ts *testing.T) {
 			actualUUIDs, actualHighSeqnos, err := GetStatsVbSeqno(test.stats, maxVbno, false)
 			assert.NoError(ts, err)
-			assert.True(t, reflect.DeepEqual(actualUUIDs, test.expectedUUIDs))
-			assert.True(t, reflect.DeepEqual(actualHighSeqnos, test.expectedHighSeqnos))
+			assert.Equal(t, test.expectedUUIDs, actualUUIDs)
+			assert.Equal(t, test.expectedHighSeqnos, actualHighSeqnos)
 		})
 	}
 }

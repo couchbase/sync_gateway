@@ -582,11 +582,15 @@ func TestWaitForBucketExistence(t *testing.T) {
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
-	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
-	assert.True(t, ok, "Requires gocb bucket")
+	bucket, ok := AsGoCBBucket(testBucket)
+	require.True(t, ok, "Requires gocb bucket")
 
 	// Create index
-	indexName, expression, filterExpression := "index1", "_sync", ""
+	const (
+		indexName        = "index1"
+		expression       = "_sync"
+		filterExpression = ""
+	)
 	var options = &N1qlIndexOptions{NumReplica: 0}
 
 	go func() {
