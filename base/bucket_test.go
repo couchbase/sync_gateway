@@ -1,14 +1,14 @@
 package base
 
 import (
+	"math"
+	"reflect"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestBucketSpec(t *testing.T) {
-
 	queryTimeout := uint32(30)
 	bucketSpec := BucketSpec{
 		Server:               "http://localhost:8091",
@@ -20,20 +20,20 @@ func TestBucketSpec(t *testing.T) {
 
 	connStr, err := bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
-	goassert.Equals(t, connStr, "http://localhost:8091?cacertpath=.%2FmyCACertPath&certpath=%2FmyCertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&n1ql_timeout=30000")
+	assert.Equal(t, "http://localhost:8091?cacertpath=.%2FmyCACertPath&certpath=%2FmyCertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&n1ql_timeout=30000", connStr)
 
 	// CACertPath not required
 	bucketSpec.CACertPath = ""
 	connStr, err = bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
-	goassert.Equals(t, connStr, "http://localhost:8091?certpath=%2FmyCertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&n1ql_timeout=30000")
+	assert.Equal(t, "http://localhost:8091?certpath=%2FmyCertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&n1ql_timeout=30000", connStr)
 
 	// Certpath and keypath must both be defined - if either are missing, they shouldn't be included in connection string
 	bucketSpec.CACertPath = "./myCACertPath"
 	bucketSpec.Certpath = ""
 	connStr, err = bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
-	goassert.Equals(t, connStr, "http://localhost:8091?cacertpath=.%2FmyCACertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&n1ql_timeout=30000")
+	assert.Equal(t, "http://localhost:8091?cacertpath=.%2FmyCACertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&n1ql_timeout=30000", connStr)
 
 	// Standard no-cert
 	bucketSpec.CACertPath = ""
@@ -41,7 +41,6 @@ func TestBucketSpec(t *testing.T) {
 	bucketSpec.Keypath = ""
 	connStr, err = bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
-
 }
 
 func TestGetStatsVbSeqno(t *testing.T) {
@@ -231,9 +230,49 @@ func TestGetStatsVbSeqno(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(ts *testing.T) {
 			actualUUIDs, actualHighSeqnos, err := GetStatsVbSeqno(test.stats, maxVbno, false)
-			goassert.Equals(ts, err, nil)
-			goassert.DeepEquals(ts, actualUUIDs, test.expectedUUIDs)
-			goassert.DeepEquals(ts, actualHighSeqnos, test.expectedHighSeqnos)
+			assert.NoError(ts, err)
+			assert.True(t, reflect.DeepEqual(actualUUIDs, test.expectedUUIDs))
+			assert.True(t, reflect.DeepEqual(actualHighSeqnos, test.expectedHighSeqnos))
 		})
 	}
+}
+
+func TestChooseCouchbaseDriver(t *testing.T) {
+	assert.Equal(t, GoCBCustomSGTranscoder, ChooseCouchbaseDriver(DataBucket))
+	assert.Equal(t, GoCB, ChooseCouchbaseDriver(IndexBucket))
+	unknownCouchbaseBucketType := CouchbaseBucketType(math.MaxInt8)
+	assert.Equal(t, GoCB, ChooseCouchbaseDriver(unknownCouchbaseBucketType))
+}
+
+func TestCouchbaseDriverToString(t *testing.T) {
+	assert.Equal(t, "GoCB", GoCB.String())
+	assert.Equal(t, "GoCBCustomSGTranscoder", GoCBCustomSGTranscoder.String())
+	unknownCouchbaseDriver := CouchbaseDriver(math.MaxInt8)
+	assert.Equal(t, "UnknownCouchbaseDriver", unknownCouchbaseDriver.String())
+}
+
+func TestIsTLS(t *testing.T) {
+	fakeBucketSpec := &BucketSpec{}
+	fakeBucketSpec.Server = "http://localhost:8091"
+	assert.False(t, fakeBucketSpec.IsTLS())
+	fakeBucketSpec.Server = "https://localhost:443"
+	assert.True(t, fakeBucketSpec.IsTLS())
+	fakeBucketSpec.Server = "couchbases"
+	assert.True(t, fakeBucketSpec.IsTLS())
+}
+
+func TestUseClientCert(t *testing.T) {
+	fakeBucketSpec := &BucketSpec{}
+	assert.False(t, fakeBucketSpec.UseClientCert())
+	fakeBucketSpec.Certpath = "/var/lib/couchbase/inbox/ca.pem"
+	assert.False(t, fakeBucketSpec.UseClientCert())
+	fakeBucketSpec.Keypath = "/var/lib/couchbase/inbox/pkey.key"
+	assert.True(t, fakeBucketSpec.UseClientCert())
+}
+
+func TestGetPoolName(t *testing.T) {
+	fakeBucketSpec := &BucketSpec{}
+	assert.Equal(t, "default", fakeBucketSpec.GetPoolName())
+	fakeBucketSpec.PoolName = "Liverpool"
+	assert.Equal(t, "Liverpool", fakeBucketSpec.GetPoolName())
 }
