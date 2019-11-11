@@ -370,6 +370,9 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if err != nil {
 		return err
 	}
+	if bodyBytes == nil || len(bodyBytes) == 0 {
+		return base.ErrEmptyDocument
+	}
 
 	hasAttachments := bytes.Contains(bodyBytes, []byte(db.BodyAttachments))
 	hasExpiry := bytes.Contains(bodyBytes, []byte(db.BodyExpiry))
@@ -392,9 +395,14 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	deleted, _ := h.getOptBoolQuery("deleted", false)
 	newDoc.Deleted = deleted
 
+	var newBody db.Body
+
 	if hasAttachments || hasExpiry {
-		body, err := newDoc.GetBody()
-		newDoc, err = db.Body(body).ToIncomingDocument()
+		newBody, err = newDoc.GetBody()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "error getting IncomingDocument body: %v", err)
+		}
+		newDoc, err = newBody.ToIncomingDocument()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "error occurred building IncomingDocument from body: %v", err)
 		}

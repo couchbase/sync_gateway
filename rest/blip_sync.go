@@ -903,6 +903,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	newDoc.RevID = revID
 	newDoc.Deleted = revMessage.deleted()
 
+	var newBody db.Body
+
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
@@ -943,6 +945,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 
 		patchedBody := map[string]interface{}(deltaSrcBody)
+
 		err = base.Patch(&patchedBody, body)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
@@ -951,17 +954,25 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(patchedBody))
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 
-		err = newDoc.UpdateBody(patchedBody)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "error occurred building IncomingDocument from body: %v", err)
-		}
+		newBody = patchedBody
 	}
 
 	if hasAttachments || hasExpiry {
-		body, err := newDoc.GetBody()
-		newDoc, err = db.Body(body).ToIncomingDocument()
+		if newBody == nil {
+			newBody, err = newDoc.GetBody()
+			if err != nil {
+				return base.HTTPErrorf(http.StatusInternalServerError, "error getting IncomingDocument body: %v", err)
+			}
+		}
+
+		newDoc, err = newBody.ToIncomingDocument()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "error occurred building IncomingDocument from body: %v", err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "error occurred building IncomingDocument from body: %v", err)
+		}
+	} else if newBody != nil {
+		err := newDoc.UpdateBody(newBody)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "error occurred updating IncomingDocument body: %v", err)
 		}
 	}
 

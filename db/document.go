@@ -14,7 +14,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -69,7 +68,7 @@ func NewIncomingDocument(body []byte) *IncomingDocument {
 func (doc *IncomingDocument) GetBody() (map[string]interface{}, error) {
 	if doc.Body == nil {
 		buf := bytes.NewBuffer(doc.BodyBytes)
-		d := json.NewDecoder(buf)
+		d := base.JSONDecoder(buf)
 		d.UseNumber()
 		err := d.Decode(&doc.Body)
 		if err != nil {
@@ -1128,8 +1127,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 	if len(data) == 0 && len(xdata) > 0 {
 		doc._body = Body{}
 		doc._rawBody = []byte(base.EmptyDocument)
-		//doc.Deleted = true
-		doc._body[BodyDeleted] = true
+		doc.setFlag(channels.Deleted, true)
 	}
 	return nil
 }
