@@ -645,6 +645,8 @@ def make_os_tasks(processes):
         UnixTask("Processor status", "mpstat 1 10"),
         UnixTask("System log", "cat /var/adm/messages"),
         LinuxTask("Raw /proc/uptime", "cat /proc/uptime"),
+        LinuxTask("Systemd journal", "journalctl 2>&1 | gzip -c",
+                  log_file="systemd_journal.gz", no_header=True),
         LinuxTask("All logs", "tar cz /var/log/syslog* /var/log/dmesg /var/log/messages* /var/log/daemon* /var/log/debug* /var/log/kern.log* 2>/dev/null",
                   log_file="syslog.tar.gz", no_header=True),
         LinuxTask("Relevant proc data", "echo %(programs)s | "
