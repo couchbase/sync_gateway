@@ -1,7 +1,17 @@
 package base
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"fmt"
+	"log"
 	"math"
+	"math/big"
+	"os"
 	"testing"
 	"time"
 
@@ -285,4 +295,134 @@ func TestGetViewQueryTimeout(t *testing.T) {
 	fakeBucketSpec.ViewQueryTimeoutSecs = &viewQueryTimeoutSecs
 	expectedViewQueryTimeout = time.Duration(1000*60*60*24*365*10) * time.Millisecond
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
+}
+
+var (
+	rootKeyPath    = fmt.Sprintf("%vroot.key", os.TempDir())
+	rootCertPath   = fmt.Sprintf("%vroot.pem", os.TempDir())
+	clientKeyPath  = fmt.Sprintf("%vclient.key", os.TempDir())
+	clientCertPath = fmt.Sprintf("%vclient.pem", os.TempDir())
+)
+
+func mockCertificatesAndKeys(t *testing.T) {
+	notBefore := time.Now().Add(time.Duration(-2) * time.Hour)
+	notAfter := time.Now().Add(time.Duration(2) * time.Hour)
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	assert.NoError(t, err, "Serial number should be generated")
+
+	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assert.NoError(t, err, "Root key should be generated")
+	saveAsKeyFile(t, rootKeyPath, rootKey)
+
+	rootTemplate := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Couchbase, Inc."},
+			CommonName:   "Root CA",
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageCertSign,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+
+	certBytes, err := x509.CreateCertificate(rand.Reader, &rootTemplate, &rootTemplate, &rootKey.PublicKey, rootKey)
+	assert.NoError(t, err, "Root CA certificate should be generated")
+	saveAsCertFile(t, rootCertPath, certBytes)
+
+	clientTemplate := x509.Certificate{
+		SerialNumber: new(big.Int).SetInt64(4),
+		Subject: pkix.Name{
+			Organization: []string{"Couchbase, Inc."},
+			CommonName:   "client_auth_test_cert",
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+	}
+
+	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	saveAsKeyFile(t, clientKeyPath, clientKey)
+	certBytes, err = x509.CreateCertificate(rand.Reader, &clientTemplate, &rootTemplate, &clientKey.PublicKey, rootKey)
+	assert.NoError(t, err, "Client certificate should be generated")
+	saveAsCertFile(t, clientCertPath, certBytes)
+}
+
+func saveAsKeyFile(t *testing.T, filename string, key *ecdsa.PrivateKey) {
+	file, err := os.Create(filename)
+	assert.NoError(t, err)
+	defer file.Close()
+	b, err := x509.MarshalECPrivateKey(key)
+	assert.NoError(t, err)
+	err = pem.Encode(file, &pem.Block{Type: "EC PRIVATE KEY", Bytes: b})
+	assert.NoError(t, err)
+}
+
+func saveAsCertFile(t *testing.T, filename string, derBytes []byte) {
+	certOut, err := os.Create(filename)
+	assert.NoError(t, err, "No error while opening cert.pem for writing")
+	err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	assert.NoError(t, err, "No error while writing data to cert.pem")
+	err = certOut.Close()
+	assert.NoError(t, err, "No error while closing cert.pem")
+}
+
+func deletePaths(paths []string) {
+	for _, path := range paths {
+		os.Remove(path)
+		log.Printf("Deleted: %v", path)
+	}
+}
+
+func TestTLSConfig(t *testing.T) {
+	// Mock fake root CA and client certificates for verification
+	mockCertificatesAndKeys(t)
+
+	// Simulate error creating tlsConfig for DCP processing
+	spec := BucketSpec{
+		Server:     "http://localhost:8091",
+		Certpath:   "/var/lib/couchbase/unknown.client.cert",
+		Keypath:    "/var/lib/couchbase/unknown.client.key",
+		CACertPath: "/var/lib/couchbase/unknown.root.ca.pem",
+	}
+	conf := spec.TLSConfig()
+	assert.Nil(t, conf)
+
+	// Simulate valid configuration scenario with fake mocked certificates and keys;
+	spec = BucketSpec{Certpath: clientCertPath, Keypath: clientKeyPath, CACertPath: rootCertPath}
+	conf = spec.TLSConfig()
+	assert.NotEmpty(t, conf)
+	assert.NotNil(t, conf.RootCAs)
+	assert.Equal(t, 1, len(conf.Certificates))
+	assert.False(t, conf.InsecureSkipVerify)
+
+	// Check TLSConfig with no CA certificate; InsecureSkipVerify should be true
+	spec = BucketSpec{Certpath: clientCertPath, Keypath: clientKeyPath}
+	conf = spec.TLSConfig()
+	assert.NotEmpty(t, conf)
+	assert.True(t, conf.InsecureSkipVerify)
+	assert.Equal(t, 1, len(conf.Certificates))
+	assert.Nil(t, conf.RootCAs)
+
+	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path
+	// instead of root CA certificate. It should throw "can't append certs from PEM" error.
+	spec = BucketSpec{Certpath: clientCertPath, Keypath: clientKeyPath, CACertPath: rootKeyPath}
+	conf = spec.TLSConfig()
+	assert.Empty(t, conf)
+
+	// Provide invalid client certificate key along with valid certificate; It should fail while
+	// trying to add key and certificate to config as x509 key pair;
+	spec = BucketSpec{Certpath: clientCertPath, Keypath: rootKeyPath, CACertPath: rootCertPath}
+	conf = spec.TLSConfig()
+	assert.Empty(t, conf)
+
+	// Remove the keys and certificates after verification
+	deletePaths([]string{rootKeyPath, rootCertPath, clientKeyPath, clientCertPath})
 }
