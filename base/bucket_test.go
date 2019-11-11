@@ -289,11 +289,11 @@ func TestGetPoolName(t *testing.T) {
 
 func TestGetViewQueryTimeout(t *testing.T) {
 	fakeBucketSpec := &BucketSpec{}
-	expectedViewQueryTimeout := time.Duration(75*1000) * time.Millisecond
+	expectedViewQueryTimeout := time.Duration(75) * time.Second
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 	viewQueryTimeoutSecs := uint32(0)
 	fakeBucketSpec.ViewQueryTimeoutSecs = &viewQueryTimeoutSecs
-	expectedViewQueryTimeout = time.Duration(1000*60*60*24*365*10) * time.Millisecond
+	expectedViewQueryTimeout = time.Duration(60*60*24*365*10) * time.Second
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 }
 
