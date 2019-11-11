@@ -3,6 +3,7 @@ package base
 import (
 	"math"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -276,18 +277,12 @@ func TestGetPoolName(t *testing.T) {
 	assert.Equal(t, "Liverpool", fakeBucketSpec.GetPoolName())
 }
 
-func TestGetViewQueryTimeoutMs(t *testing.T) {
+func TestGetViewQueryTimeout(t *testing.T) {
 	fakeBucketSpec := &BucketSpec{}
-	assert.Equal(t, uint64(0x124f8), fakeBucketSpec.GetViewQueryTimeoutMs())
+	expectedViewQueryTimeout := time.Duration(75*1000) * time.Millisecond
+	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 	viewQueryTimeoutSecs := uint32(0)
 	fakeBucketSpec.ViewQueryTimeoutSecs = &viewQueryTimeoutSecs
-	assert.Equal(t, uint64(0x496cebb800), fakeBucketSpec.GetViewQueryTimeoutMs())
-}
-
-func TestGetGoCBConnStringError(t *testing.T) {
-	fakeBucketSpec := &BucketSpec{Server: "sftp://localhost"}
-	str, err := fakeBucketSpec.GetGoCBConnString()
-	assert.Error(t, err, "It should throw bad scheme")
-	assert.Contains(t, err.Error(), "bad scheme")
-	assert.Empty(t, str)
+	expectedViewQueryTimeout = time.Duration(1000*60*60*24*365*10) * time.Millisecond
+	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 }
