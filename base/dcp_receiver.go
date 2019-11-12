@@ -13,12 +13,17 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"fmt"
+	"strconv"
+	"sync"
+
+	"github.com/couchbase/gomemcached"
+	memcached "github.com/couchbase/gomemcached/client"
+	sgbucket "github.com/couchbase/sg-bucket"
+	pkgerrors "github.com/pkg/errors"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
-	"github.com/couchbase/gomemcached"
-	sgbucket "github.com/couchbase/sg-bucket"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // Memcached binary protocol datatype bit flags (https://github.com/couchbase/memcached/blob/master/docs/BinaryProtocol.md#data-types),
@@ -205,6 +210,26 @@ func (nph NoPasswordAuthHandler) GetCredentials() (username string, password str
 	return "", "", bucketname
 }
 
+type bucketWrapper struct {
+	b *couchbase.Bucket
+}
+
+func (bw *bucketWrapper) Close() {
+	bw.b.Close()
+}
+
+func (bw *bucketWrapper) GetUUID() string {
+	return bw.b.UUID
+}
+
+func (bw *bucketWrapper) VBServerMap() *couchbase.VBucketServerMap {
+	return bw.b.VBServerMap()
+}
+
+func (bw *bucketWrapper) GetPoolServices(name string) (*couchbase.PoolServices, error) {
+	return bw.b.GetPoolServices(name)
+}
+
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
 func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
@@ -284,9 +309,96 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		auth = NoPasswordAuthHandler{handler: spec.Auth}
 	}
 
-	// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
-	if spec.IsTLS() {
-		dataSourceOptions.Connect = spec.TLSConnect
+	// A lookup of host dest to external alternate address hostnames
+	externalAlternateAddresses := make(map[string]string)
+	externalAlternateAddressesLock := sync.RWMutex{}
+
+	dataSourceOptions.Connect = func(protocol, dest string) (client *memcached.Client, err error) {
+		fmt.Println("Connect callback:"+protocol, dest)
+
+		destHost, destPort, err := SplitHostPort(dest)
+		if err != nil {
+			return nil, err
+		}
+		// Map the given destination to an external alternate address hostname if available
+		externalAlternateAddressesLock.RLock()
+		if extHostname, ok := externalAlternateAddresses[destHost]; ok {
+			fmt.Printf("found alternate address for %s => %s\n", dest, extHostname)
+
+			_, port, _ := SplitHostPort(extHostname)
+			if port == "" {
+				port = destPort
+			}
+
+			dest = extHostname + ":" + port
+			fmt.Printf("using dest: %s\n", dest)
+		}
+		externalAlternateAddressesLock.RUnlock()
+
+		if spec.IsTLS() {
+			// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
+			return spec.TLSConnect(protocol, dest)
+		}
+
+		return memcached.Connect(protocol, dest)
+	}
+
+	// COPY OF cbdatasource.ConnectBucket
+	dataSourceOptions.ConnectBucket = func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error) {
+		fmt.Println("ConnectBucket callback:" + serverURL)
+
+		var bucket *couchbase.Bucket
+		var err error
+
+		if auth != nil {
+			// HACK: Custom ConnectWithAuthAndGetBucket to override pools for alternate address support
+			// bucket, err = couchbase.ConnectWithAuthAndGetBucket(serverURL, poolName, bucketName, auth)
+			client, err := couchbase.ConnectWithAuth(serverURL, auth)
+			if err != nil {
+				return nil, err
+			}
+
+			// FIXME: not returning any NodeAlternateNames due to no field in struct
+			pool, err := client.GetPool(poolName)
+			if err != nil {
+				return nil, err
+			}
+
+			// Build map of external alternate addresses if available
+			for _, node := range pool.Nodes {
+				if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
+					var port string
+					if extPort, ok := external.Ports["direct"]; ok {
+						// get port from alternateAddress
+						// TODO: Not tested alternate ports yet
+						port = ":" + strconv.Itoa(extPort)
+					}
+
+					nodeHostname, _, err := SplitHostPort(node.Hostname)
+					if err != nil {
+						return nil, err
+					}
+
+					fmt.Printf("storing %s => %s\n", nodeHostname, external.Hostname+port)
+					externalAlternateAddressesLock.Lock()
+					externalAlternateAddresses[nodeHostname] = external.Hostname + port
+					externalAlternateAddressesLock.Unlock()
+				}
+			}
+
+			bucket, err = pool.GetBucket(bucketName)
+		} else {
+			bucket, err = couchbase.GetBucket(serverURL, poolName, bucketName)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if bucket == nil {
+			return nil, fmt.Errorf("unknown bucket,"+
+				" serverURL: %s, bucketName: %s", serverURL, bucketName)
+		}
+
+		return &bucketWrapper{b: bucket}, nil
 	}
 
 	DebugfCtx(loggingCtx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
