@@ -7,11 +7,11 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"fmt"
 	"log"
 	"math"
 	"math/big"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -289,19 +289,19 @@ func TestGetPoolName(t *testing.T) {
 
 func TestGetViewQueryTimeout(t *testing.T) {
 	fakeBucketSpec := &BucketSpec{}
-	expectedViewQueryTimeout := time.Duration(75) * time.Second
+	expectedViewQueryTimeout := 75 * time.Second
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 	viewQueryTimeoutSecs := uint32(0)
 	fakeBucketSpec.ViewQueryTimeoutSecs = &viewQueryTimeoutSecs
-	expectedViewQueryTimeout = time.Duration(60*60*24*365*10) * time.Second
+	expectedViewQueryTimeout = 10 * 365 * 24 * time.Hour // 10 Years
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 }
 
 var (
-	rootKeyPath    = fmt.Sprintf("%vroot.key", os.TempDir())
-	rootCertPath   = fmt.Sprintf("%vroot.pem", os.TempDir())
-	clientKeyPath  = fmt.Sprintf("%vclient.key", os.TempDir())
-	clientCertPath = fmt.Sprintf("%vclient.pem", os.TempDir())
+	rootKeyPath    = filepath.Join(os.TempDir(), "root.key")
+	rootCertPath   = filepath.Join(os.TempDir(), "root.pem")
+	clientKeyPath  = filepath.Join(os.TempDir(), "client.key")
+	clientCertPath = filepath.Join(os.TempDir(), "client.pem")
 )
 
 func mockCertificatesAndKeys(t *testing.T) {
