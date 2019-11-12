@@ -236,7 +236,11 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 // Update database-specific stats that are more efficiently calculated at stats collection time
 func (db *DatabaseContext) UpdateCalculatedStats() {
 
-	// Max channel cache size
-	db.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(db.changeCache.channelCache.MaxCacheSize()))
+	if db.changeCache != nil {
+		db.changeCache.updateStats()
+		channelCache := db.changeCache.getChannelCache()
+		db.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(channelCache.MaxCacheSize()))
+		db.DbStats.StatsCache().Set(base.StatKeyHighSeqCached, base.ExpvarUInt64Val(channelCache.GetHighCacheSequence()))
+	}
 
 }
