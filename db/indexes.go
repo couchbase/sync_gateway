@@ -384,6 +384,7 @@ func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs b
 	for _, sgIndex := range sgIndexes {
 		// Current version, opposite xattr setting
 		removalCandidates = append(removalCandidates, sgIndex.fullIndexName(!useXattrs))
+		// If using views we can remove current version for xattr setting too
 		if useViews {
 			removalCandidates = append(removalCandidates, sgIndex.fullIndexName(useXattrs))
 		}

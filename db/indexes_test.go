@@ -157,8 +157,14 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
 	assert.True(t, ok)
 
+	expectedIndexes := int(indexTypeCount)
+
+	if !db.UseXattrs() {
+		expectedIndexes--
+	}
+
 	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), true)
-	assert.Equal(t, int(indexTypeCount), len(removedIndexes))
+	assert.Equal(t, expectedIndexes, len(removedIndexes))
 	assert.NoError(t, removeErr)
 
 	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false)
