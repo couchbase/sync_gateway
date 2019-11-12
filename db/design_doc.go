@@ -90,18 +90,18 @@ const (
 	function(doc, meta) {
 	
 		//Skip any internal sync documents
-		if (meta.id.substring(0, 6) == "%s") {
+		if (meta.id.substring(0, 6) == "%[1]s") {
 			return;
 		}
 		var sync;
 		var isXattr;
 	
 		//Get sync data from xattrs or from the doc body
-		if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {
-			sync = doc.%s;
+		if (meta.xattrs === undefined || meta.xattrs.%[2]s === undefined) {
+			sync = doc.%[3]s;
 			isXattr = false;
 		} else {
-			sync = meta.xattrs.%s;
+			sync = meta.xattrs.%[2]s;
 			isXattr = true;
 		}
 	
@@ -111,18 +111,18 @@ const (
 	
 		//If sync data is in body strip it from the view result
 		if (!isXattr) {
-			delete doc.%s;
+			delete doc.%[3]s;
 		}
 	
 		//Add rev to meta
 		meta.rev = sync.rev;
 	
 		//Run view
-		(%s)(doc, meta);
+		(%[4]s)(doc, meta);
 	
 		//Re-add sync data to body
 		if (!isXattr) {
-			doc.%s = sync;
+			doc.%[3]s = sync;
 		}
 	}`
 	syncViewUserWrapper = `
@@ -131,16 +131,16 @@ const (
 		var isXattr;
 	
 		//Skip any internal sync documents
-		if (meta.id.substring(0, 6) == "%s") {
+		if (meta.id.substring(0, 6) == "%[1]s") {
 			return;
 		}
 	
 		//Get sync data from xattrs or from the doc body
-		if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {
-			sync = doc.%s;
+		if (meta.xattrs === undefined || meta.xattrs.%[2]s === undefined) {
+			sync = doc.%[3]s;
 			isXattr = false;
 		} else {
-			sync = meta.xattrs.%s;
+			sync = meta.xattrs.%[2]s;
 			isXattr = true;
 		}
 	
@@ -150,7 +150,7 @@ const (
 	
 		//If sync data is in body strip it from the view result
 		if (!isXattr) {
-			delete doc.%s;
+			delete doc.%[3]s;
 		}
 	
 		//Update channels
@@ -174,12 +174,12 @@ const (
 			var emit = function(key, value) {
 				_emit(key, [channels, value]);
 			};
-			(%s)(doc, meta);
+			(%[4]s)(doc, meta);
 		}());
 	
 		//Re-add sync data to body
 		if (!isXattr) {
-			doc.%s = sync;
+			doc.%[3]s = sync;
 		}
 	}`
 )
@@ -189,9 +189,9 @@ func wrapViews(ddoc *sgbucket.DesignDoc, enableUserViews bool, useXattrs bool) {
 	// add channel filtering.
 	for name, view := range ddoc.Views {
 		if enableUserViews {
-			view.Map = fmt.Sprintf(syncViewUserWrapper, base.SyncPrefix, base.SyncXattrName, base.SyncPropertyName, base.SyncXattrName, base.SyncPropertyName, view.Map, base.SyncPropertyName)
+			view.Map = fmt.Sprintf(syncViewUserWrapper, base.SyncPrefix, base.SyncXattrName, base.SyncPropertyName, view.Map)
 		} else {
-			view.Map = fmt.Sprintf(syncViewAdminWrapper, base.SyncPrefix, base.SyncXattrName, base.SyncPropertyName, base.SyncXattrName, base.SyncPropertyName, view.Map, base.SyncPropertyName)
+			view.Map = fmt.Sprintf(syncViewAdminWrapper, base.SyncPrefix, base.SyncXattrName, base.SyncPropertyName, view.Map)
 		}
 		ddoc.Views[name] = view // view is not a pointer, so have to copy it back
 	}
@@ -343,12 +343,12 @@ func installViews(bucket base.Bucket) error {
 	// syncData specifies the path to Sync Gateway sync metadata used in the map function -
 	// in the document body when xattrs available, in the mobile xattr when xattrs enabled.
 	syncData := fmt.Sprintf(`var sync
-							if (meta.xattrs === undefined || meta.xattrs.%s === undefined) {
-		                        sync = doc._sync
+							if (meta.xattrs === undefined || meta.xattrs.%[1]s === undefined) {
+		                        sync = doc.%[2]s
 		                  	} else {
-		                       	sync = meta.xattrs.%s
+		                       	sync = meta.xattrs.%[1]s
 		                    }
-		                     `, base.SyncPropertyName, base.SyncXattrName)
+		                     `, base.SyncXattrName, base.SyncPropertyName)
 
 	// View for _all_docs
 	// Key is docid; value is [revid, sequence]
