@@ -62,6 +62,26 @@ type changeCache struct {
 	initTime           time.Time            // Cache init time - used for latency calculations
 	channelCache       ChannelCache         // Underlying channel cache
 	lastAddPendingTime int64                // The most recent time _addPendingLogs was run, as epoch time
+	internalStats      changeCacheStats     // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+}
+
+type changeCacheStats struct {
+	highSeqFeed   uint64
+	pendingSeqLen int
+	maxPending    int
+	highSeqStable uint64
+}
+
+func (c *changeCache) updateStats() {
+
+	c.lock.Lock()
+
+	base.SetIfMax(c.context.DbStats.StatsDatabase(), base.StatKeyHighSeqFeed, int64(c.internalStats.highSeqFeed))
+	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(c.internalStats.pendingSeqLen))
+	base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(c.internalStats.maxPending))
+	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c.internalStats.highSeqStable))
+
+	c.lock.Unlock()
 }
 
 type LogEntry channels.LogEntry
@@ -639,15 +659,26 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	}
 
 	sequence := change.Sequence
-	base.SetIfMax(c.context.DbStats.StatsDatabase(), base.StatKeyHighSeqFeed, int64(change.Sequence))
+	if change.Sequence > c.internalStats.highSeqFeed {
+		c.internalStats.highSeqFeed = change.Sequence
+	}
 
+	// Duplicate handling - there are a few cases where processEntry can be called multiple times for a sequence:
+	//   - recentSequences for rapidly updated documents
+	//   - principal mutations that don't increment sequence
+	// We can cancel processing early in these scenarios.
+	// Check if this is a duplicate of an already processed sequence
+	if sequence < c.nextSequence && !c.WasSkipped(sequence) {
+		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
+		return nil
+	}
+
+	// Check if this is a duplicate of a pending sequence
 	if _, found := c.receivedSeqs[sequence]; found {
 		base.Debugf(base.KeyCache, "  Ignoring duplicate of #%d", sequence)
 		return nil
 	}
 	c.receivedSeqs[sequence] = struct{}{}
-
-	// FIX: c.receivedSeqs grows monotonically. Need a way to remove old sequences.
 
 	var changedChannels base.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
@@ -659,12 +690,15 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		// There's a missing sequence (or several), so put this one on ice until it arrives:
 		heap.Push(&c.pendingLogs, change)
 		numPending := len(c.pendingLogs)
-		c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(numPending))
-		base.Infof(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
-			sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
-
+		c.internalStats.pendingSeqLen = numPending
+		if base.LogDebugEnabled(base.KeyCache) {
+			base.Debugf(base.KeyCache, "  Deferring #%d (%d now waiting for #%d...#%d) doc %q / %q",
+				sequence, numPending, c.nextSequence, c.pendingLogs[0].Sequence-1, base.UD(change.DocID), change.RevID)
+		}
 		// Update max pending high watermark stat
-		base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(numPending))
+		if numPending > c.internalStats.maxPending {
+			c.internalStats.maxPending = numPending
+		}
 
 		if numPending > c.options.CachePendingSeqMaxNum {
 			// Too many pending; add the oldest one:
@@ -696,6 +730,7 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
 	}
+	delete(c.receivedSeqs, change.Sequence)
 
 	// If unused sequence or principal, we're done after updating sequence
 	if change.DocID == "" {
@@ -710,9 +745,11 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
 	// the change's active channels, as well as any channel removals for the active revision.
 	updatedChannels := c.channelCache.AddToCache(change)
-	base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+	if base.LogDebugEnabled(base.KeyDCP) {
+		base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
+	}
 
-	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
+	c.internalStats.highSeqStable = c._getMaxStableCached()
 
 	if !change.TimeReceived.IsZero() {
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
