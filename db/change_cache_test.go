@@ -518,7 +518,7 @@ func WriteDirectWithKey(db *Database, key string, channelArray []string, sequenc
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
-	db.Bucket.Add(key, 0, Body{base.SyncXattrName: syncData, "key": key})
+	db.Bucket.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for
@@ -548,7 +548,7 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 		Channels:   chanMap,
 		Access:     accessMap,
 	}
-	db.Bucket.Add(docId, 0, Body{base.SyncXattrName: syncData, "key": docId})
+	db.Bucket.Add(docId, 0, Body{base.SyncPropertyName: syncData, "key": docId})
 }
 
 // Test notification when buffered entries are processed after a user doc arrives.

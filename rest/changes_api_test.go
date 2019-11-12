@@ -3296,5 +3296,5 @@ func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []s
 	syncData.TimeSaved = time.Now()
 	//syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
 
-	testDb.Bucket.Add(key, 0, db.Body{base.SyncXattrName: syncData, "key": key})
+	testDb.Bucket.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
 }
