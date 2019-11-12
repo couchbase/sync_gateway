@@ -87,22 +87,22 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	// We don't know the current state of the bucket (may already have xattrs enabled), so run
 	// an initial cleanup to remove existing obsolete indexes
-	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs())
+	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), db.UseViews())
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, !db.UseXattrs())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, !db.UseXattrs(), db.UseViews())
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs(), db.UseViews())
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs(), db.UseViews())
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
@@ -122,7 +122,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	assert.True(t, ok)
 
 	// Validate that removeObsoleteIndexes is a no-op for the default case
-	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, true, db.UseXattrs())
+	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, true, db.UseXattrs(), db.UseViews())
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
@@ -139,10 +139,31 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	sgIndexes[IndexAccess] = accessIndex
 
 	// Validate that removeObsoleteIndexes now triggers removal of one index
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, db.UseXattrs())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, db.UseXattrs(), db.UseViews())
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 1)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
+}
+
+func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Index tests require Couchbase Bucket")
+	}
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
+	assert.True(t, ok)
+
+	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), true)
+	assert.Equal(t, int(indexTypeCount), len(removedIndexes))
+	assert.NoError(t, removeErr)
+
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false)
+	assert.Equal(t, 0, len(removedIndexes))
+	assert.NoError(t, removeErr)
 }
 
 func TestRemoveObsoleteIndexOnFail(t *testing.T) {
@@ -184,7 +205,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	channelIndex.previousVersions = []int{1}
 	sgIndexes[IndexChannels] = channelIndex
 
-	removedIndex, removeErr := removeObsoleteIndexes(b, false, db.UseXattrs())
+	removedIndex, removeErr := removeObsoleteIndexes(b, false, db.UseXattrs(), db.UseViews())
 	assert.NoError(t, removeErr)
 
 	if base.TestUseXattrs() {
