@@ -210,26 +210,6 @@ func (nph NoPasswordAuthHandler) GetCredentials() (username string, password str
 	return "", "", bucketname
 }
 
-type bucketWrapper struct {
-	b *couchbase.Bucket
-}
-
-func (bw *bucketWrapper) Close() {
-	bw.b.Close()
-}
-
-func (bw *bucketWrapper) GetUUID() string {
-	return bw.b.UUID
-}
-
-func (bw *bucketWrapper) VBServerMap() *couchbase.VBucketServerMap {
-	return bw.b.VBServerMap()
-}
-
-func (bw *bucketWrapper) GetPoolServices(name string) (*couchbase.PoolServices, error) {
-	return bw.b.GetPoolServices(name)
-}
-
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
 func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
@@ -398,7 +378,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 				" serverURL: %s, bucketName: %s", serverURL, bucketName)
 		}
 
-		return &bucketWrapper{b: bucket}, nil
+		return bucket, nil
 	}
 
 	DebugfCtx(loggingCtx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))

@@ -214,7 +214,7 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 					" serverURL: %s, bucketName: %s", serverURL, bucketName)
 			}
 
-			return &bucketWrapper{b: bucket}, nil
+			return bucket, nil
 		}
 
 		return options
