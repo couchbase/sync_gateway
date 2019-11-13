@@ -374,16 +374,18 @@ func saveAsCertFile(t *testing.T, filename string, derBytes []byte) {
 	assert.NoError(t, err, "No error while closing cert.pem")
 }
 
-func deletePaths(paths []string) {
-	for _, path := range paths {
-		os.Remove(path)
-		log.Printf("Deleted: %v", path)
+func removeFiles(names []string) {
+	for _, name := range names {
+		os.Remove(name)
+		log.Printf("Deleted: %v", name)
 	}
 }
 
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
 	mockCertificatesAndKeys(t)
+	// Remove the keys and certificates after verification
+	defer removeFiles([]string{rootKeyPath, rootCertPath, clientKeyPath, clientCertPath})
 
 	// Simulate error creating tlsConfig for DCP processing
 	spec := BucketSpec{
@@ -422,7 +424,4 @@ func TestTLSConfig(t *testing.T) {
 	spec = BucketSpec{Certpath: clientCertPath, Keypath: rootKeyPath, CACertPath: rootCertPath}
 	conf = spec.TLSConfig()
 	assert.Empty(t, conf)
-
-	// Remove the keys and certificates after verification
-	deletePaths([]string{rootKeyPath, rootCertPath, clientKeyPath, clientCertPath})
 }
