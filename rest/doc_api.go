@@ -296,7 +296,7 @@ func (h *handler) handlePutAttachment() error {
 	}
 	h.setHeader("Etag", strconv.Quote(newRev))
 
-	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
+	h.writeBytesAsJSONResponse(http.StatusCreated, []byte(`{"ok":true,"id":"`+docid+`","rev":"`+newRev+`"}`))
 	return nil
 }
 
@@ -357,7 +357,7 @@ func (h *handler) handlePutDoc() error {
 		}
 	}
 
-	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": newRev})
+	h.writeBytesAsJSONResponse(http.StatusCreated, []byte(`{"ok": true, "id":"`+docid+`", "rev":"`+newRev+`"}`))
 	return nil
 }
 
@@ -431,7 +431,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		}
 	}
 
-	h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": docid, "rev": rev})
+	h.writeBytesAsJSONResponse(http.StatusCreated, []byte(`{"ok":true,"id":"`+docid+`","rev":"`+rev+`"}`))
 	return nil
 }
 
@@ -470,7 +470,7 @@ func (h *handler) handleDeleteDoc() error {
 	}
 	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
-		h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
+		h.writeBytesAsJSONResponse(http.StatusOK, []byte(`{"ok": true, "id":"`+docid+`", "rev":"`+newRev+`"}`))
 	}
 	return err
 }
@@ -500,7 +500,7 @@ func (h *handler) handlePutLocalDoc() error {
 		var revid string
 		revid, err = h.db.PutSpecial("local", docid, body)
 		if err == nil {
-			h.writeJSONStatus(http.StatusCreated, db.Body{"ok": true, "id": "_local/" + docid, "rev": revid})
+			h.writeBytesAsJSONResponse(http.StatusCreated, []byte(`{"ok":true,"id":"_local/`+docid+`","rev":"`+revid+`"}`))
 		}
 	}
 	return err
