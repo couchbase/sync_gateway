@@ -351,7 +351,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		to = fmt.Sprintf("  (to %s)", db.user.Name())
 	}
 
-	base.InfofCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed(channels: %s, options: %+v) ... %s", base.UD(chans), options, base.UD(to))
+	base.InfofCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed(channels: %s, options: %s) ... %s", base.UD(chans), options, base.UD(to))
 	output := make(chan *ChangeEntry, 50)
 
 	go func() {
@@ -978,4 +978,19 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 	}
 
 	return row
+}
+
+func (options ChangesOptions) String() string {
+	return fmt.Sprintf(
+		`{Since: %s, Limit: %d, Conflicts: %t, IncludeDocs: %t, Wait: %t, Continuous: %t, HeartbeatMs: %d, TimeoutMs: %d, ActiveOnly: %t}`,
+		options.Since,
+		options.Limit,
+		options.Conflicts,
+		options.IncludeDocs,
+		options.Wait,
+		options.Continuous,
+		options.HeartbeatMs,
+		options.TimeoutMs,
+		options.ActiveOnly,
+	)
 }

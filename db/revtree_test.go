@@ -717,7 +717,12 @@ func TestParseRevisions(t *testing.T) {
 
 func TestEncodeRevisions(t *testing.T) {
 	encoded := encodeRevisions([]string{"5-huey", "4-dewey", "3-louie"})
-	goassert.DeepEquals(t, encoded, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}})
+	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "dewey", "louie"}}, encoded)
+}
+
+func TestEncodeRevisionsGap(t *testing.T) {
+	encoded := encodeRevisions([]string{"5-huey", "3-louie"})
+	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "louie"}}, encoded)
 }
 
 func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
