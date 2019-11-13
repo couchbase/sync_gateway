@@ -24,37 +24,34 @@ import (
 )
 
 func TestDesignDocs(t *testing.T) {
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works under walrus -- see https://github.com/couchbase/sync_gateway/issues/2954")
-	}
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendRequest("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 403)
-	response = rt.SendRequest("PUT", "/db/_design/foo", `{"prop":true}`)
-	assertStatus(t, response, 403)
-	response = rt.SendRequest("DELETE", "/db/_design/foo", "")
-	assertStatus(t, response, 403)
+	response := rt.SendRequest(http.MethodGet, "/db/_design/foo", "")
+	assertStatus(t, response, http.StatusForbidden)
+	response = rt.SendRequest(http.MethodPut, "/db/_design/foo", `{"prop":true}`)
+	assertStatus(t, response, http.StatusForbidden)
+	response = rt.SendRequest(http.MethodDelete, "/db/_design/foo", "")
+	assertStatus(t, response, http.StatusForbidden)
 
-	response = rt.SendAdminRequest("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 404)
-	response = rt.SendAdminRequest("PUT", "/db/_design/foo", `{"prop":true}`)
-	assertStatus(t, response, 201)
-	response = rt.SendAdminRequest("GET", "/db/_design/foo", "")
-	assertStatus(t, response, 200)
-	response = rt.SendAdminRequest("GET", "/db/_design%2ffoo", "")
-	assertStatus(t, response, 200)
-	response = rt.SendAdminRequest("GET", "/db/_design%2Ffoo", "")
-	assertStatus(t, response, 200)
-	response = rt.SendAdminRequest("DELETE", "/db/_design/foo", "")
-	assertStatus(t, response, 200)
-	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "{}")
-	assertStatus(t, response, 403)
-	response = rt.SendAdminRequest("GET", fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "")
-	assertStatus(t, response, 200)
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo", "")
+	assertStatus(t, response, http.StatusNotFound)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"prop":true}`)
+	assertStatus(t, response, http.StatusCreated)
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo", "")
+
+	assertStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_design%2ffoo", "")
+	assertStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_design%2Ffoo", "")
+	assertStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_design/foo", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "{}")
+	assertStatus(t, response, http.StatusForbidden)
+	response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/db/_design/%s", db.DesignDocSyncGateway()), "")
+	assertStatus(t, response, http.StatusOK)
 }
 
 func TestViewQuery(t *testing.T) {
