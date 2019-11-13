@@ -7,7 +7,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"log"
 	"math"
 	"math/big"
 	"os"
@@ -374,18 +373,24 @@ func saveAsCertFile(t *testing.T, filename string, derBytes []byte) {
 	assert.NoError(t, err, "No error while closing cert.pem")
 }
 
-func removeFiles(names []string) {
+func removeFiles(names []string) error {
 	for _, name := range names {
-		os.Remove(name)
-		log.Printf("Deleted: %v", name)
+		if err := os.Remove(name); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
 	mockCertificatesAndKeys(t)
+
 	// Remove the keys and certificates after verification
-	defer removeFiles([]string{rootKeyPath, rootCertPath, clientKeyPath, clientCertPath})
+	defer func() {
+		err := removeFiles([]string{rootKeyPath, rootCertPath, clientKeyPath, clientCertPath})
+		assert.NoError(t, err, "No error while removing the files")
+	}()
 
 	// Simulate error creating tlsConfig for DCP processing
 	spec := BucketSpec{
