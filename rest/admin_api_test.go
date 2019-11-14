@@ -1787,3 +1787,107 @@ func respRevID(t *testing.T, response *TestResponse) (revID string) {
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
 	return *r.RevID
 }
+
+func TestHandleCreateDB(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	server := "walrus:"
+	pool := "liverpool"
+	bucket := "albums"
+	kvTLSPort := 11207
+	resource := fmt.Sprintf("/%s/", bucket)
+
+	bucketConfig := BucketConfig{Server: &server, Pool: &pool, Bucket: &bucket, KvTLSPort: kvTLSPort}
+	dbConfig := &DbConfig{BucketConfig: bucketConfig}
+	respBody := db.Body{}
+
+	reqBody, err := base.JSONMarshal(dbConfig)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+
+	resp := rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+
+	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.Equal(t, bucket, respBody["db_name"].(string))
+	assert.Equal(t, "Online", respBody["state"].(string))
+}
+
+func TestHandleDBConfig(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	server := "walrus:"
+	pool := "liverpool"
+	bucket := "albums"
+	kvTLSPort := 443
+	certPath := "/etc/ssl/certs/client.cert"
+	keyPath := "/etc/ssl/certs/client.pem"
+	caCertPath := "/etc/ssl/certs/ca.cert"
+	username := "Alice"
+	password := "QWxpY2U="
+	resource := fmt.Sprintf("/%s/", bucket)
+
+	bucketConfig := BucketConfig{
+		Server:     &server,
+		Pool:       &pool,
+		Bucket:     &bucket,
+		Username:   username,
+		Password:   password,
+		CertPath:   certPath,
+		KeyPath:    keyPath,
+		CACertPath: caCertPath,
+		KvTLSPort:  kvTLSPort}
+
+	dbConfig := &DbConfig{BucketConfig: bucketConfig}
+	respBody := db.Body{}
+	reqBody, err := base.JSONMarshal(dbConfig)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+
+	// Create a database
+	resp := rt.SendAdminRequest(http.MethodPut, resource, "{}")
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+
+	// Get database config before putting any config.
+	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.Nil(t, respBody["bucket"])
+
+	// Put database config
+	resource = fmt.Sprintf("/%v/_config", bucket)
+	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+	assert.Empty(t, respBody["name"])
+	assert.Empty(t, respBody["pool"])
+	assert.Empty(t, respBody["server"])
+	assert.Empty(t, respBody["username"])
+	assert.Empty(t, respBody["password"])
+	assert.Empty(t, respBody["certpath"])
+	assert.Empty(t, respBody["keypath"])
+	assert.Empty(t, respBody["cacertpath"])
+	assert.Empty(t, respBody["kv_tls_port"])
+	assert.Equal(t, bucket, respBody["db_name"].(string))
+	assert.Equal(t, "Online", respBody["state"].(string))
+
+	// Get database config after putting valid database config
+	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+
+	assert.Equal(t, bucket, respBody["bucket"].(string))
+	assert.Equal(t, bucket, respBody["name"].(string))
+	assert.Equal(t, pool, respBody["pool"].(string))
+	assert.Equal(t, server, respBody["server"].(string))
+	assert.Equal(t, username, respBody["username"].(string))
+	assert.Equal(t, password, respBody["password"].(string))
+	assert.Equal(t, certPath, respBody["certpath"].(string))
+	assert.Equal(t, keyPath, respBody["keypath"].(string))
+	assert.Equal(t, caCertPath, respBody["cacertpath"].(string))
+	assert.Equal(t, json.Number("443"), respBody["kv_tls_port"].(json.Number))
+}
