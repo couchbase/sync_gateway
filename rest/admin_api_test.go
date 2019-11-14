@@ -1814,6 +1814,17 @@ func TestHandleCreateDB(t *testing.T) {
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 	assert.Equal(t, bucket, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
+
+	// Try to create database with bad JSON request body and simulate JSON
+	// parsing error from the handler; handleCreateDB.
+	reqBodyJson := `"server":"walrus:","pool":"liverpool","bucket":"albums","kv_tls_port":11207`
+	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
+	assertStatus(t, resp, http.StatusBadRequest)
+
+	// Simulate connection refused error by providing unknown server URL.
+	reqBodyJson = `{"server":"http://unknown:8091","pool":"liverpool","bucket":"photos"}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
+	assertStatus(t, resp, http.StatusBadGateway)
 }
 
 func TestHandleDBConfig(t *testing.T) {
