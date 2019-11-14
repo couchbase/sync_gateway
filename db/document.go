@@ -64,7 +64,6 @@ func NewIncomingDocument(body []byte) *IncomingDocument {
 	}
 }
 
-// This must never be ran before GetSyncFnBody
 func (doc *IncomingDocument) GetBody() (map[string]interface{}, error) {
 	if doc.Body == nil {
 		buf := bytes.NewBuffer(doc.BodyBytes)
@@ -78,17 +77,21 @@ func (doc *IncomingDocument) GetBody() (map[string]interface{}, error) {
 	return doc.Body, nil
 }
 
-// Must ensure that the returned body here is never mutated. In the case where we just return body with stamped in
-// special properties we need to ensure nothing else mutates body after this point, otherwise bytes and body will
-// become disconnected and reflect different values.
+// This is used to get the body passed into the SyncFn. In order to ensure the body is not mutated we marshal the bytes
+// to a body type which essentially creates a copy which is disconnected from the IncomingDocument body and body bytes.
 func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
-	_, err := doc.GetBody()
+	var syncFnBody Body
+
+	buf := bytes.NewBuffer(doc.BodyBytes)
+	d := base.JSONDecoder(buf)
+	d.UseNumber()
+	err := d.Decode(&syncFnBody)
 	if err != nil {
 		return nil, err
 	}
-	stampSyncFnProperties(doc.Body, doc.SpecialProperties)
+	stampSyncFnProperties(syncFnBody, doc.SpecialProperties)
 
-	return doc.Body, nil
+	return syncFnBody, nil
 }
 
 func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (string, error) {

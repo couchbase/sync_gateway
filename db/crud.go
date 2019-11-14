@@ -422,9 +422,9 @@ func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevision
 	sequence = doc.Sequence
 	flags = doc.Flags
 	if revid == "" {
-		gotRevID = revid
-	} else {
 		gotRevID = doc.CurrentRev
+	} else {
+		gotRevID = revid
 	}
 	return
 }

@@ -936,17 +936,17 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
 		}
 
-		var body db.Body
+		var delta map[string]interface{}
 
 		// Unmarshal delta including properties for patching
-		err = rq.ReadJSONBody(&body)
+		err = rq.ReadJSONBody(&delta)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "error unmarshalling body: %v", err)
 		}
 
 		patchedBody := map[string]interface{}(deltaSrcBody)
 
-		err = base.Patch(&patchedBody, body)
+		err = base.Patch(&patchedBody, delta)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
@@ -955,9 +955,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 
 		newBody = patchedBody
+		_, hasAttachments = newBody[db.BodyAttachments]
+		_, hasExpiry = newBody[db.BodyExpiry]
 	}
 
+	// If the body has attachments or expiry we need to extract them and save them into special properties
 	if hasAttachments || hasExpiry {
+		// If newBody is nil then it has not been set, ie. a delta has not been patched, then we need to get it from the
+		// raw bytes and set it
 		if newBody == nil {
 			newBody, err = newDoc.GetBody()
 			if err != nil {
@@ -965,11 +970,18 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			}
 		}
 
+		// ToIncomingDocument will extract the special properties from the body, the important part here is that it will
+		// extract the attachments and expiry and set the appropriate special properties.
 		newDoc, err = newBody.ToIncomingDocument()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "error occurred building IncomingDocument from body: %v", err)
 		}
-	} else if newBody != nil {
+
+	} else
+	// If there are no attachments and no expiry set then we don't need to extract anything. However, if newBody has
+	// been set then we know that a patch has taken place and therefore we need to update newDoc with the new patched
+	// body.
+	if newBody != nil {
 		err := newDoc.UpdateBody(newBody)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "error occurred updating IncomingDocument body: %v", err)
