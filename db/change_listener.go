@@ -26,6 +26,7 @@ type changeListener struct {
 	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
 	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
 	terminator            chan bool              // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	cbgtContext           *base.CbgtContext      // Handle to cbgt manager,cfg
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -81,7 +82,29 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 		// DCP Feed
 		//    DCP receiver isn't go-channel based - DCPReceiver calls ProcessEvent directly.
 		base.Infof(base.KeyDCP, "Using DCP feed for bucket: %q (based on feed_type specified in config file)", base.UD(bucket.GetName()))
-		return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
+
+		listener.RegisterCachingPindexImpl()
+
+		gocbBucket, ok := base.AsGoCBBucket(bucket)
+		if !ok || !base.IsEnterpriseEdition() {
+			// Non-gocb bucket or CE, start a non-sharded feed
+			return bucket.StartDCPFeed(listener.FeedArgs, listener.ProcessFeedEvent, dbStats)
+		} else {
+			var feedErr error
+			listener.cbgtContext, feedErr = gocbBucket.StartShardedDCPFeed(listener.bucketName, 16, "caching")
+			if feedErr != nil {
+				base.Fatalf("Unable to start feed: %v", feedErr)
+			}
+			return feedErr
+		}
+
+	}
+}
+
+func (listener *changeListener) NotifyCfg(key string, cas uint64) {
+	if listener.cbgtContext != nil && listener.cbgtContext.Cfg != nil {
+		cfgKey := strings.TrimPrefix(key, base.SGCfgPrefix)
+		listener.cbgtContext.Cfg.FireEvent(cfgKey, cas, nil)
 	}
 }
 
@@ -137,6 +160,8 @@ func (listener *changeListener) Stop() {
 	if listener.tapFeed != nil {
 		listener.tapFeed.Close()
 	}
+
+	//TODO: Stop listener
 }
 
 func (listener changeListener) TapFeed() base.TapFeed {

@@ -10,6 +10,7 @@ import (
 )
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
+const CBGTIndexTypeSyncGatewayCaching = "syncGateway-caching-"
 const DefaultImportPartitions = 16
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
@@ -21,15 +22,15 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16, feedType string) (*CbgtContext, error) {
 
-	cbgtContext, err := initCBGTManager(dbName, bucket, spec)
+	cbgtContext, err := initCBGTManager(dbName, bucket, spec, feedType)
 	if err != nil {
 		return nil, err
 	}
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, bucket, spec, numPartitions)
+	err = cbgtContext.StartManager(dbName, bucket, spec, numPartitions, feedType)
 	if err != nil {
 		return nil, err
 	}
@@ -75,12 +76,12 @@ func cbgtFeedParams(spec BucketSpec) (string, error) {
 // TODO: If the index definition already exists in the cfg, it appears like this step can be bypassed,
 //       as we don't currently have a scenario where we want to update an existing index def.  Needs
 //       additional testing to validate.
-func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
+func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16, dcpFeedType string) error {
 
 	// sourceType is based on cbgt.source_gocouchbase non-public constant.
 	// TODO: Request that cbgt make this and source_gocb public.
 	sourceType := "gocb"
-	if feedType == cbgtFeedType_cbdatasource {
+	if shardedFeedType == cbgtFeedType_cbdatasource {
 		sourceType = "couchbase"
 	}
 
@@ -115,7 +116,7 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	//       how this can be optimized if we're not actually using it in the indexImpl
 	indexParams := `{"name": "` + dbName + `"}`
 
-	indexName := dbName + "_import"
+	indexName := dbName + "_" + dcpFeedType
 
 	// Register bucketDataSource callback for new index if we need to configure TLS
 	if spec.IsTLS() {
@@ -126,7 +127,14 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	}
 
 	_, previousIndexUUID, err := getCBGTIndexUUID(manager, indexName)
-	indexType := CBGTIndexTypeSyncGatewayImport + dbName
+
+	var indexType string
+	if dcpFeedType == "import" {
+		indexType = CBGTIndexTypeSyncGatewayImport + dbName
+	} else {
+		indexType = CBGTIndexTypeSyncGatewayCaching + bucket.GetName()
+	}
+
 	err = manager.CreateIndex(
 		sourceType,        // sourceType
 		bucket.GetName(),  // sourceName
@@ -164,7 +172,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContext, error) {
+func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec, dcpFeedType string) (*CbgtContext, error) {
 
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
@@ -178,7 +186,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 		return nil, errors.New("gocbBucket required to initCBGTManager")
 	}
 
-	cfgCB, err := NewCfgSG(gocbBucket.Bucket)
+	cfgCB, err := NewCfgSG(gocbBucket.Bucket, dcpFeedType)
 	if err != nil {
 		Warnf("Error initializing cfg for import sharding: %v", err)
 		return nil, err
@@ -219,7 +227,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 
 	// serverURL: Passing gocb connect string.
 	var serverURL string
-	if feedType == cbgtFeedType_cbdatasource {
+	if shardedFeedType == cbgtFeedType_cbdatasource {
 		// cbdatasource expects server URL in http format
 		serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server)
 		if errConvertServerSpec != nil {
@@ -271,7 +279,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 }
 
 // StartManager registers this node with cbgt, and the janitor will start feeds on this node.
-func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) (err error) {
+func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16, feedType string) (err error) {
 
 	// TODO: Clarify the functional difference between registering the manager as 'wanted' vs 'known'.
 	registerType := cbgt.NODE_DEFS_WANTED
@@ -281,7 +289,7 @@ func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(c.Manager, dbName, bucket, spec, numPartitions)
+	err = createCBGTIndex(c.Manager, dbName, bucket, spec, numPartitions, feedType)
 	if err != nil {
 		Errorf("cbgt index creation failed: %v", err)
 		return err

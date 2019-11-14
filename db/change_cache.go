@@ -399,6 +399,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		if c.context.ImportListener != nil {
 			c.context.ImportListener.NotifyCfg(docID, event.Cas)
 		}
+		// TODO: remove when mutationListener cfg is in-memory
+		c.context.mutationListener.NotifyCfg(docID, event.Cas)
 	}
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore

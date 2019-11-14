@@ -16,6 +16,7 @@ type CfgSG struct {
 	loggingCtx    context.Context
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions
+	keyPrefix     string                            // Supports multiple cfg sets per bucket
 }
 
 // NewCfgCB returns a Cfg implementation that reads/writes its entries
@@ -24,7 +25,7 @@ type CfgSG struct {
 //
 // urlStr: single URL or multiple URLs delimited by ';'
 // bucket: couchbase bucket name
-func NewCfgSG(bucket *gocb.Bucket) (*CfgSG, error) {
+func NewCfgSG(bucket *gocb.Bucket, keyPrefix string) (*CfgSG, error) {
 
 	cfgContextID := MD(bucket.Name()).Redact() + "-" + DCPImportFeedID
 	loggingCtx := context.WithValue(context.Background(), LogContextKey{},
@@ -35,19 +36,24 @@ func NewCfgSG(bucket *gocb.Bucket) (*CfgSG, error) {
 		bucket:        bucket,
 		loggingCtx:    loggingCtx,
 		subscriptions: make(map[string][]chan<- cbgt.CfgEvent),
+		keyPrefix:     keyPrefix,
 	}
 	return c, nil
 }
 
-func sgCfgBucketKey(cfgKey string) string {
-	return SGCfgPrefix + cfgKey
+func (c *CfgSG) sgCfgBucketKey(cfgKey string) string {
+	if c.keyPrefix != "" {
+		return SGCfgPrefix + c.keyPrefix + ":" + cfgKey
+	} else {
+		return SGCfgPrefix + cfgKey
+	}
 }
 
 func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	[]byte, uint64, error) {
 
 	InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
-	bucketKey := sgCfgBucketKey(cfgKey)
+	bucketKey := c.sgCfgBucketKey(cfgKey)
 	var value []byte
 	casOut, err := c.bucket.Get(bucketKey, &value)
 	if err != nil && err != gocb.ErrKeyNotFound {
@@ -68,7 +74,7 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 	InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Set, key: %s, cas: %d", cfgKey, cas)
 	var casOut gocb.Cas
 	var err error
-	bucketKey := sgCfgBucketKey(cfgKey)
+	bucketKey := c.sgCfgBucketKey(cfgKey)
 	if cas == 0 {
 		casOut, err = c.bucket.Insert(bucketKey, val, 0)
 	} else {
@@ -90,7 +96,7 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 
 	InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
-	bucketKey := sgCfgBucketKey(cfgKey)
+	bucketKey := c.sgCfgBucketKey(cfgKey)
 	casOut, err := c.bucket.Remove(bucketKey, gocb.Cas(cas))
 	if err != nil && err != gocb.ErrKeyNotFound {
 		return err

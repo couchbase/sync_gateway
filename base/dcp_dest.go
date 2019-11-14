@@ -36,13 +36,13 @@ const (
 	DestShardedFeed
 )
 
-var feedType cbgtFeedType
+var shardedFeedType cbgtFeedType
 
 func init() {
 	for i := 0; i < len(vbucketIdStrings); i++ {
 		vbucketIdStrings[i] = fmt.Sprintf("%d", i)
 	}
-	feedType = cbgtFeedType_cbdatasource
+	shardedFeedType = cbgtFeedType_cbdatasource
 	cbgt.DCPFeedPrefix = "sg:"
 }
 
@@ -235,7 +235,7 @@ func vbNoToPartition(vbNo uint16) string {
 // This starts a cbdatasource powered DCP Feed using an entirely separate connection to Couchbase Server than anything the existing
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
 func StartCbgtDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	if feedType == cbgtFeedType_gocb {
+	if shardedFeedType == cbgtFeedType_gocb {
 		return StartCbgtGocbFeed(bucket, spec, args, callback, dbStats)
 	} else {
 		return StartCbgtCbdatasourceFeed(bucket, spec, args, callback, dbStats)
