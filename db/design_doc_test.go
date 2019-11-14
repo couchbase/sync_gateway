@@ -104,13 +104,21 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
+	useViewsTrueRemovalPreview := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
 	removedDDocsPreview, _ := removeObsoleteDesignDocs(testBucket, true, true)
-	useViewsTrueRemoval := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
-	assert.Equal(t, useViewsTrueRemoval, removedDDocsPreview)
+	assert.Equal(t, useViewsTrueRemovalPreview, removedDDocsPreview)
 
+	useViewsFalseRemovalPreview := []string{"sync_gateway_2.0", "sync_housekeeping_2.0", "sync_gateway_2.1", "sync_housekeeping_2.1"}
 	removedDDocsPreview, _ = removeObsoleteDesignDocs(testBucket, true, false)
-	useViewsFalseRemoval := []string{"sync_gateway_2.0", "sync_housekeeping_2.0", "sync_gateway_2.1", "sync_housekeeping_2.1"}
-	assert.Equal(t, useViewsFalseRemoval, removedDDocsPreview)
+	assert.Equal(t, useViewsFalseRemovalPreview, removedDDocsPreview)
+
+	useViewsTrueRemoval := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
+	removedDDocs, _ := removeObsoleteDesignDocs(testBucket, false, true)
+	assert.Equal(t, useViewsTrueRemoval, removedDDocs)
+
+	useViewsTrueRemoval = []string{"sync_gateway_2.1", "sync_housekeeping_2.1"}
+	removedDDocs, _ = removeObsoleteDesignDocs(testBucket, false, false)
+	assert.Equal(t, useViewsTrueRemoval, removedDDocs)
 }
 
 //Test remove obsolete design docs returns the same in both preview and non-preview
