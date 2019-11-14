@@ -294,7 +294,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	externalAlternateAddressesLock := sync.RWMutex{}
 
 	dataSourceOptions.Connect = func(protocol, dest string) (client *memcached.Client, err error) {
-		fmt.Println("Connect callback:"+protocol, dest)
+		fmt.Println("DCP Recv Connect callback:"+protocol, dest)
 
 		destHost, destPort, err := SplitHostPort(dest)
 		if err != nil {
@@ -302,7 +302,9 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		}
 		// Map the given destination to an external alternate address hostname if available
 		externalAlternateAddressesLock.RLock()
-		if extHostname, ok := externalAlternateAddresses[destHost]; ok {
+		extHostname, foundAltAddress := externalAlternateAddresses[destHost]
+		externalAlternateAddressesLock.RUnlock()
+		if foundAltAddress {
 			fmt.Printf("found alternate address for %s => %s\n", dest, extHostname)
 
 			_, port, _ := SplitHostPort(extHostname)
@@ -313,7 +315,6 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 			dest = extHostname + ":" + port
 			fmt.Printf("using dest: %s\n", dest)
 		}
-		externalAlternateAddressesLock.RUnlock()
 
 		if spec.IsTLS() {
 			// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
@@ -325,7 +326,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 
 	// COPY OF cbdatasource.ConnectBucket
 	dataSourceOptions.ConnectBucket = func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error) {
-		fmt.Println("ConnectBucket callback:" + serverURL)
+		fmt.Println("DCP Recv ConnectBucket callback:" + serverURL)
 
 		var bucket *couchbase.Bucket
 		var err error
@@ -338,13 +339,14 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 				return nil, err
 			}
 
-			// FIXME: not returning any NodeAlternateNames due to no field in struct
 			pool, err := client.GetPool(poolName)
 			if err != nil {
 				return nil, err
 			}
 
 			// Build map of external alternate addresses if available
+			externalAlternateAddressesLock.Lock()
+			externalAlternateAddresses = make(map[string]string, len(pool.Nodes))
 			for _, node := range pool.Nodes {
 				if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
 					var port string
@@ -360,11 +362,10 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 					}
 
 					fmt.Printf("storing %s => %s\n", nodeHostname, external.Hostname+port)
-					externalAlternateAddressesLock.Lock()
 					externalAlternateAddresses[nodeHostname] = external.Hostname + port
-					externalAlternateAddressesLock.Unlock()
 				}
 			}
+			externalAlternateAddressesLock.Unlock()
 
 			bucket, err = pool.GetBucket(bucketName)
 		} else {
