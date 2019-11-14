@@ -416,7 +416,12 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		return nil
 	}
 
-	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
+	// Create a distinct database instance for changes, to support concurrent user reload by changes processing
+	// and userBlipHandler
+	changesDb, _ := db.GetDatabase(bh.db.DatabaseContext, bh.db.User())
+	changesDb.Ctx = bh.db.Ctx
+
+	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
 		bh.Logf(base.LevelDebug, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 
