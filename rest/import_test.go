@@ -825,7 +825,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	key := "TestMigrateLargeInlineRevisions"
 	bodyString := `
 {
-  "` + base.SyncPropertyName + `": {
+  "_sync": {
     "rev": "2-d",
     "flags": 24,
     "sequence": 8,
@@ -895,7 +895,7 @@ func TestMigrateTombstone(t *testing.T) {
 	bodyString := `
 {
     "_deleted": true, 
-    "` + base.SyncPropertyName + `": {
+    "_sync": {
         "flags": 1, 
         "history": {
             "channels": [
@@ -963,7 +963,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	key := "TestMigrateWithExternalRevisions"
 	bodyString := `
 {
-  "` + base.SyncPropertyName + `": {
+  "_sync": {
     "rev": "2-d",
     "flags": 24,
     "sequence": 8,
@@ -1902,7 +1902,7 @@ func rawDocWithSyncMeta() string {
 
 	return `
 {
-    "` + base.SyncPropertyName + `": {
+    "_sync": {
         "rev": "1-ca9ad22802b66f662ff171f226211d5c",
         "sequence": 1,
         "recent_sequences": [

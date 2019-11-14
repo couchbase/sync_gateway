@@ -28,7 +28,7 @@ const (
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
 var syncNoXattr = fmt.Sprintf("`%s`.%s", base.BucketQueryToken, base.SyncPropertyName)
 var syncXattr = "meta().xattrs." + base.SyncXattrName
-var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs."+base.SyncXattrName, base.BucketQueryToken) // Replacement for $sync token for xattr queries
+var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs.%s", base.BucketQueryToken, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
 type SGIndexType int
 

@@ -188,7 +188,7 @@ func rawDocWithSyncMeta() []byte {
 
 	return []byte(`
 {
-    "` + base.SyncPropertyName + `": {
+    "_sync": {
         "rev": "1-ca9ad22802b66f662ff171f226211d5c",
         "sequence": 1,
         "recent_sequences": [

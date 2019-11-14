@@ -442,7 +442,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	if !c.context.UseXattrs() && !syncData.HasValidSyncData() {
 		migratedDoc, _ := c.context.checkForUpgrade(docID, DocUnmarshalNoHistory)
 		if migratedDoc != nil && migratedDoc.Cas == event.Cas {
-			base.Infof(base.KeyCache, "Found mobile xattr on doc %q without "+base.SyncPropertyName+" property - caching, assuming upgrade in progress.", base.UD(docID))
+			base.Infof(base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
 			syncData = &migratedDoc.SyncData
 		} else {
 			base.Warnf("changeCache: Doc %q does not have valid sync data.", base.UD(docID))
@@ -472,7 +472,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
-		base.Infof(base.KeyCache, "Received unused #%d in "+base.SyncPropertyName+".unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+		base.Infof(base.KeyCache, "Received unused #%d in unused_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 		change := &LogEntry{
 			Sequence:     seq,
 			TimeReceived: event.TimeReceived,
@@ -495,7 +495,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 
 		for _, seq := range syncData.RecentSequences {
 			if seq >= c.getNextSequence() && seq < currentSequence {
-				base.Infof(base.KeyCache, "Received deduplicated #%d in "+base.SyncPropertyName+".recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
+				base.Infof(base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
 					TimeReceived: event.TimeReceived,

@@ -663,7 +663,7 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 	assertStatus(t, response, http.StatusCreated)
 
 	//Document with sync data in body
-	body := `{"` + base.SyncPropertyName + `": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
+	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
 	ok, err := rt.Bucket().Add("doc2", 0, []byte(body))
 	assert.True(t, ok)
 	assert.NoError(t, err)

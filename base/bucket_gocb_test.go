@@ -2221,9 +2221,9 @@ func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
 
 	// Create tombstone revision which deletes doc body but preserves XATTR
 	_, mutateErr := bucket.Bucket.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
-		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                                 // Update the xattr
-		UpsertEx(SyncPropertyName+".cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
-		RemoveEx("", gocb.SubdocFlagNone).                                                                   // Delete the document body
+		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                              // Update the xattr
+		UpsertEx(SyncXattrName+".cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+		RemoveEx("", gocb.SubdocFlagNone).                                                                // Delete the document body
 		Execute()
 
 	if mutateErr != nil {

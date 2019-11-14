@@ -1,7 +1,5 @@
 package db
 
-import "github.com/couchbase/sync_gateway/base"
-
 var testdocProblematicRevTrees = []string{
 	testdocProblematicRevTree1,
 	testdocProblematicRevTree2,
@@ -13,7 +11,7 @@ var testdocProblematicRevTrees = []string{
 }
 
 const testdocProblematicRevTree1 = `{
-     "` + base.SyncPropertyName + `": {
+     "_sync": {
           "rev": "275-6458b32429e335f981fc12b73765833d",
           "new_rev": "11-4679f6b05cad744b34eaabab605ccdb4",
           "flags": 20,
@@ -1398,7 +1396,7 @@ const testdocProblematicRevTree1 = `{
 const testdocProblematicRevTree2 = `
 {
      "_deleted": true,
-     "` + base.SyncPropertyName + `": {
+     "_sync": {
           "rev": "514-d40b2a0f1aa568f92556c782a00b42cd",
           "flags": 17,
           "sequence": 279643470,
@@ -1587,7 +1585,7 @@ const testdocProblematicRevTree3 = `
 
 {
      "_deleted": true,
-     "` + base.SyncPropertyName + `": {
+     "_sync": {
           "rev": "284-bac2c3c2a139be9293c06bbca010a4a2",
           "new_rev": "11-4679f6b05cad744b34eaabab605ccdb4",
           "flags": 21,
@@ -3030,7 +3028,7 @@ const testdocProblematicRevTree3 = `
 
 const testdocProblematicRevTree4 = `
 {
-    "` + base.SyncPropertyName + `": {
+    "_sync": {
         "channels": {
             "foo": null
         },
@@ -4283,7 +4281,7 @@ const testdocProblematicRevTree4 = `
 const testdocProblematicRevTree5 = `
 {
     "_deleted": true,
-    "` + base.SyncPropertyName + `": {
+    "_sync": {
         "channels": {
             "foo": {
                 "del": true,
@@ -5037,7 +5035,7 @@ const testdocProblematicRevTree5 = `
 `
 const testdocProblematicRevTree6 = `
 {
-    "` + base.SyncPropertyName + `": {
+    "_sync": {
         "channels": {
             "foo": null
         },
@@ -6216,7 +6214,7 @@ const testdocProblematicRevTree6 = `
 `
 const testdocProblematicRevTree7 = `
 {
-    "` + base.SyncPropertyName + `": {
+    "_sync": {
         "channels": {
             "foo": null
         },
