@@ -1891,3 +1891,23 @@ func TestHandleDBConfig(t *testing.T) {
 	assert.Equal(t, caCertPath, respBody["cacertpath"].(string))
 	assert.Equal(t, json.Number("443"), respBody["kv_tls_port"].(json.Number))
 }
+
+func TestHandleDeleteDB(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Try to delete the database which doesn't exists
+	resp := rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
+	assertStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "no such database")
+
+	// Create the database
+	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+
+	// Delete the database
+	resp = rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), "{}")
+}
