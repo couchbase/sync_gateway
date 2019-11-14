@@ -55,23 +55,24 @@ type SGDest interface {
 // cbgt-based DCP feed.  Embeds DCPCommon for underlying feed event processing
 type DCPDest struct {
 	*DCPCommon
-	feedType destFeedType
-	stats    *expvar.Map
+	feedType           destFeedType
+	stats              *expvar.Map // DCP feed stats (rollback, backfill)
+	partitionCountStat *expvar.Int // Stat for partition count.  Stored outside the DCP feed stats map
 }
 
-func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string, feedType destFeedType) (SGDest, context.Context) {
+func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *expvar.Int) (SGDest, context.Context) {
 
-	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID)
+	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dcpStats, feedID)
 
 	d := &DCPDest{
-		DCPCommon: dcpCommon,
-		feedType:  feedType,
-		stats:     dbStats,
+		DCPCommon:          dcpCommon,
+		stats:              dcpStats,
+		partitionCountStat: importPartitionStat,
 	}
 
-	if d.feedType == DestShardedFeed {
-		d.stats.Add(StatKeyImportPartitions, 1)
-		InfofCtx(d.loggingCtx, KeyDCP, "Starting sharded feed for %s.  Total partitions:%v", d.feedID, d.stats.Get(StatKeyImportPartitions).String())
+	if d.partitionCountStat != nil {
+		d.partitionCountStat.Add(1)
+		InfofCtx(d.loggingCtx, KeyDCP, "Starting sharded feed for %s.  Total partitions:%v", d.feedID, d.partitionCountStat.String())
 	}
 
 	if LogDebugEnabled(KeyDCP) {
@@ -84,9 +85,9 @@ func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo 
 }
 
 func (d *DCPDest) Close() error {
-	if d.feedType == DestShardedFeed {
-		d.stats.Add(StatKeyImportPartitions, -1)
-		InfofCtx(d.loggingCtx, KeyDCP, "Closing sharded feed for %s. Total partitions:%v", d.feedID, d.stats.Get(StatKeyImportPartitions).String())
+	if d.partitionCountStat != nil {
+		d.partitionCountStat.Add(-1)
+		InfofCtx(d.loggingCtx, KeyDCP, "Closing sharded feed for %s. Total partitions:%v", d.feedID, d.partitionCountStat.String())
 	}
 	DebugfCtx(d.loggingCtx, KeyDCP, "Closing DCPDest for %s", d.feedID)
 	return nil
@@ -286,7 +287,7 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 
 	// Initialize the feed Dest
 	//  - starting vbuckets, etc
-	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, DestFullFeed)
+	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, nil)
 
 	// Initialize the feed based on the backfill type
 	feedInitErr := cachingDest.initFeed(args.Backfill)
@@ -409,7 +410,7 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 	if err != nil {
 		return err
 	}
-	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, DestFullFeed)
+	cachingDest, loggingCtx := NewDCPDest(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID, nil)
 	// Initialize the feed based on the backfill type
 	feedInitErr := cachingDest.initFeed(args.Backfill)
 	if feedInitErr != nil {
