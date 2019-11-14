@@ -1455,7 +1455,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	rt.GetDatabase().FlushRevisionCacheForTest()
 
 	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
-	tempRevisionDocId := "_sync:rev:foo:5:3-cde"
+	tempRevisionDocId := base.SyncPrefix + "rev:foo:5:3-cde"
 	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocId)
 	assert.NoError(t, err, "Unexpected Error")
 

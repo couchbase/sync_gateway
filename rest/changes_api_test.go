@@ -1615,7 +1615,7 @@ func TestChangesIncludeDocs(t *testing.T) {
 	// Flush the rev cache, and issue changes again to ensure successful handling for rev cache misses
 	testDB.FlushRevisionCacheForTest()
 	// Also nuke temporary revision backup of doc_pruned.  Validates that the body for the pruned revision is generated correctly when no longer resident in the rev cache
-	assert.NoError(t, testDB.Bucket.Delete("_sync:rev:doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
+	assert.NoError(t, testDB.Bucket.Delete(base.RevPrefix+"doc_pruned:34:2-5afcb73bd3eb50615470e3ba54b80f00"))
 
 	postFlushChangesResponse := rt.Send(requestByUser("GET", "/db/_changes?include_docs=true", "", "user1"))
 
@@ -2968,7 +2968,7 @@ func TestChangesIncludeConflicts(t *testing.T) {
 func TestChangesLargeSequences(t *testing.T) {
 
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("TestChangesLargeSequences doesn't support walrus - needs to customize _sync:seq prior to db creation")
+		t.Skip("TestChangesLargeSequences doesn't support walrus - needs to customize " + base.SyncSeqKey + " prior to db creation")
 	}
 
 	initialSeq := uint64(9223372036854775807)

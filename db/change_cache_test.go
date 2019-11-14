@@ -2105,7 +2105,7 @@ func makeFeedBytes(xattrKey, xattrValue, docValue string) []byte {
 
 func TestMakeFeedBytes(t *testing.T) {
 
-	rawBytes := makeFeedBytes("_sync", `{"rev":"foo"}`, `{"k":"val"}`)
+	rawBytes := makeFeedBytes(base.SyncPropertyName, `{"rev":"foo"}`, `{"k":"val"}`)
 
 	body, xattr, err := parseXattrStreamData(base.SyncXattrName, rawBytes)
 	assert.NoError(t, err)
@@ -2162,7 +2162,6 @@ func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 
 	channelName := f.channelNames[rand.Intn(len(f.channelNames))]
 	// build value, including xattr
-	xattrKey := `_sync`
 	xattrValue := fmt.Sprintf(`{"rev":"1-d938e0614de222fe04463b9654e93156","sequence":%d,"recent_sequences":[%d],"history":{"revs":["1-d938e0614de222fe04463b9654e93156"],"parents":[-1],"channels":[["%s"]]},"channels":{"%s":null},"cas":"0x0000aeed831bd415","value_crc32c":"0x8aa182c1","time_saved":"2019-11-04T16:07:03.300815-08:00"}`,
 		entrySeq,
 		entrySeq,
@@ -2171,7 +2170,7 @@ func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 	)
 	docBody := fmt.Sprintf(`{"channels":["%s"]}`, channelName)
 	//docBody := fmt.Sprintf(feedDoc1kFormat, channelName)
-	value := makeFeedBytes(xattrKey, xattrValue, docBody)
+	value := makeFeedBytes(base.SyncXattrName, xattrValue, docBody)
 
 	return sgbucket.FeedEvent{
 		Opcode:       sgbucket.FeedOpMutation,

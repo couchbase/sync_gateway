@@ -317,7 +317,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 		t.Fatalf("Requires gocb bucket")
 	}
 
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -344,7 +344,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 		t.Fatalf("Requires gocb bucket")
 	}
 
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -375,7 +375,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 		t.Fatalf("Requires gocb bucket")
 	}
 
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex("testIndex-sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -411,7 +411,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 		DeferBuild: true,
 	}
 
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex(indexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -456,13 +456,13 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	}
 
 	// Create a deferred and a non-deferred index
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex(deferredIndexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
 
-	createExpression = "_sync.rev"
+	createExpression = SyncPropertyName + ".rev"
 	err = bucket.CreateIndex(nonDeferredIndexName, createExpression, "", &N1qlIndexOptions{NumReplica: 0})
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)

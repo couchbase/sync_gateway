@@ -188,7 +188,7 @@ func rawDocWithSyncMeta() []byte {
 
 	return []byte(`
 {
-    "_sync": {
+    "` + base.SyncPropertyName + `": {
         "rev": "1-ca9ad22802b66f662ff171f226211d5c",
         "sequence": 1,
         "recent_sequences": [
@@ -260,7 +260,7 @@ func TestImportNullDocRaw(t *testing.T) {
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := bucket.GetWithXattr(key, "_sync", nil, &xattr)
+	_, err := bucket.GetWithXattr(key, base.SyncXattrName, nil, &xattr)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	goassert.True(t, ok)

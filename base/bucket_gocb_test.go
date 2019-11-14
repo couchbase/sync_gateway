@@ -1336,9 +1336,9 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	}
 
 	_, mutateErr := bucket.Bucket.MutateInEx(key, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
-		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                     // Update the xattr
-		UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
-		RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
+		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                                 // Update the xattr
+		UpsertEx(SyncPropertyName+".cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+		RemoveEx("", gocb.SubdocFlagNone).                                                                   // Delete the document body
 		Execute()
 
 	log.Printf("MutateInEx error: %v", mutateErr)
@@ -1826,7 +1826,6 @@ func TestGetXattr(t *testing.T) {
 	key2 := "TombstonedDocXattrExists"
 	val2 := make(map[string]interface{})
 	val2["type"] = key2
-	xattrName2 := "_sync"
 	xattrVal2 := make(map[string]interface{})
 	xattrVal2["seq"] = float64(1)
 	xattrVal2["rev"] = "1-foo"
@@ -1869,9 +1868,9 @@ func TestGetXattr(t *testing.T) {
 	assert.Equal(t, gocbcore.ErrKeyNotFound, err)
 
 	//Get Xattr From Tombstoned Doc With Existing Xattr
-	cas, err = bucket.WriteCasWithXattr(key2, xattrName2, 0, cas, val2, xattrVal2)
+	cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, cas, val2, xattrVal2)
 	bucket.Remove(key2, cas)
-	_, err = testBucket.GetXattr(key2, xattrName2, &response)
+	_, err = testBucket.GetXattr(key2, SyncXattrName, &response)
 	assert.NoError(t, err)
 
 	//Get Xattr From Tombstoned Doc With Non-Existent Xattr
@@ -2222,9 +2221,9 @@ func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
 
 	// Create tombstone revision which deletes doc body but preserves XATTR
 	_, mutateErr := bucket.Bucket.MutateInEx(key, flags, gocb.Cas(cas), uint32(0)).
-		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                     // Update the xattr
-		UpsertEx("_sync.cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
-		RemoveEx("", gocb.SubdocFlagNone).                                                       // Delete the document body
+		UpsertEx(xattrName, xattrVal, gocb.SubdocFlagXattr).                                                 // Update the xattr
+		UpsertEx(SyncPropertyName+".cas", "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros). // Stamp the cas on the xattr
+		RemoveEx("", gocb.SubdocFlagNone).                                                                   // Delete the document body
 		Execute()
 
 	if mutateErr != nil {

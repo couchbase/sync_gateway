@@ -299,7 +299,7 @@ func channelsIntersect(visibleChannels ch.TimedSet, channels []interface{}) bool
 
 func stripSyncProperty(row *sgbucket.ViewRow) {
 	if doc := row.Doc; doc != nil {
-		delete((*doc).(map[string]interface{}), "_sync")
+		delete((*doc).(map[string]interface{}), base.SyncPropertyName)
 	}
 }
 
@@ -353,8 +353,8 @@ func installViews(bucket base.Bucket) error {
 	// View for _all_docs
 	// Key is docid; value is [revid, sequence]
 	alldocs_map := `function (doc, meta) {
-                     %s
-                     if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+                     %[1]s
+                     if (sync === undefined || meta.id.substring(0,6) == "%[2]s")
                        return;
                      if ((sync.flags & 1) || sync.deleted)
                        return;
@@ -365,16 +365,16 @@ func installViews(bucket base.Bucket) error {
                      		channelNames.push(ch);
                      }
                      emit(meta.id, {r:sync.rev, s:sync.sequence, c:channelNames}); }`
-	alldocs_map = fmt.Sprintf(alldocs_map, syncData)
+	alldocs_map = fmt.Sprintf(alldocs_map, syncData, base.SyncPrefix)
 
 	// View for importing unknown docs
 	// Key is [existing?, docid] where 'existing?' is false for unknown docs
 	import_map := `function (doc, meta) {
 					 %s
-                     if(meta.id.substring(0,6) != "_sync:") {
+                     if(meta.id.substring(0,6) != "%s") {
                        var exists = (sync !== undefined);
                        emit([exists, meta.id], null); } }`
-	import_map = fmt.Sprintf(import_map, syncData)
+	import_map = fmt.Sprintf(import_map, syncData, base.SyncPrefix)
 
 	// Sessions view - used for session delete
 	// Key is username; value is docid
@@ -407,7 +407,7 @@ func installViews(bucket base.Bucket) error {
 	// where flag is true for doc deletion, false for removed from channel, missing otherwise
 	channels_map := `function (doc, meta) {
 	                    %s
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                    if (sync === undefined || meta.id.substring(0,6) == "%s")
 	                        return;
 						var sequence = sync.sequence;
 	                    if (sequence === undefined)
@@ -434,14 +434,14 @@ func installViews(bucket base.Bucket) error {
 						}
 					}`
 
-	channels_map = fmt.Sprintf(channels_map, syncData, ch.Deleted, EnableStarChannelLog,
+	channels_map = fmt.Sprintf(channels_map, syncData, base.SyncPrefix, ch.Deleted, EnableStarChannelLog,
 		ch.Removed|ch.Deleted, ch.Removed)
 
 	// Channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 	access_map := `function (doc, meta) {
 	                    %s
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                    if (sync === undefined || meta.id.substring(0,6) == "%s")
 	                        return;
 	                    var access = sync.access;
 	                    if (access) {
@@ -450,14 +450,14 @@ func installViews(bucket base.Bucket) error {
 	                        }
 	                    }
 	               }`
-	access_map = fmt.Sprintf(access_map, syncData)
+	access_map = fmt.Sprintf(access_map, syncData, base.SyncPrefix)
 
 	// Vbucket sequence version of channel access view, used by ComputeChannelsForPrincipal()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 
 	access_vbSeq_map := `function (doc, meta) {
 		                    %s
-		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+		                    if (sync === undefined || meta.id.substring(0,6) == "%s")
 		                        return;
 		                    var access = sync.access;
 		                    if (access) {
@@ -475,13 +475,13 @@ func installViews(bucket base.Bucket) error {
 
 		                    }
 		               }`
-	access_vbSeq_map = fmt.Sprintf(access_vbSeq_map, syncData)
+	access_vbSeq_map = fmt.Sprintf(access_vbSeq_map, syncData, base.SyncPrefix)
 
 	// Role access view, used by ComputeRolesForUser()
 	// Key is username; value is array of role names
 	roleAccess_map := `function (doc, meta) {
 	                    %s
-	                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+	                    if (sync === undefined || meta.id.substring(0,6) == "%s")
 	                        return;
 	                    var access = sync.role_access;
 	                    if (access) {
@@ -490,14 +490,14 @@ func installViews(bucket base.Bucket) error {
 	                        }
 	                    }
 	               }`
-	roleAccess_map = fmt.Sprintf(roleAccess_map, syncData)
+	roleAccess_map = fmt.Sprintf(roleAccess_map, syncData, base.SyncPrefix)
 
 	// Vbucket sequence version of role access view, used by ComputeRolesForUser()
 	// Key is username; value is dictionary channelName->firstSequence (compatible with TimedSet)
 
 	roleAccess_vbSeq_map := `function (doc, meta) {
 		                    %s
-		                    if (sync === undefined || meta.id.substring(0,6) == "_sync:")
+		                    if (sync === undefined || meta.id.substring(0,6) == "%s")
 		                        return;
 		                    var access = sync.role_access;
 		                    if (access) {
@@ -515,7 +515,7 @@ func installViews(bucket base.Bucket) error {
 
 		                    }
 		               }`
-	roleAccess_vbSeq_map = fmt.Sprintf(roleAccess_vbSeq_map, syncData)
+	roleAccess_vbSeq_map = fmt.Sprintf(roleAccess_vbSeq_map, syncData, base.SyncPrefix)
 
 	designDocMap := map[string]sgbucket.DesignDoc{}
 	designDocMap[DesignDocSyncGateway()] = sgbucket.DesignDoc{

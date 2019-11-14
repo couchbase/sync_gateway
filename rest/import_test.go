@@ -825,7 +825,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	key := "TestMigrateLargeInlineRevisions"
 	bodyString := `
 {
-  "_sync": {
+  "` + base.SyncPropertyName + `": {
     "rev": "2-d",
     "flags": 24,
     "sequence": 8,
@@ -895,7 +895,7 @@ func TestMigrateTombstone(t *testing.T) {
 	bodyString := `
 {
     "_deleted": true, 
-    "_sync": {
+    "` + base.SyncPropertyName + `": {
         "flags": 1, 
         "history": {
             "channels": [
@@ -963,7 +963,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	key := "TestMigrateWithExternalRevisions"
 	bodyString := `
 {
-  "_sync": {
+  "` + base.SyncPropertyName + `": {
     "rev": "2-d",
     "flags": 24,
     "sequence": 8,
@@ -1070,7 +1070,7 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 }`
 
 	// Create via the SDK with sync metadata intact
-	_, err := bucket.WriteCasWithXattr(key, "_sync", 0, 0, []byte(bodyString), []byte(xattrString))
+	_, err := bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 
 	// Attempt to get the documents via Sync Gateway.  Should successfully retrieve doc by triggering
@@ -1149,7 +1149,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 }`
 
 	// Create via the SDK with sync metadata intact
-	_, err := bucket.WriteCasWithXattr(key, "_sync", 0, 0, []byte(bodyString), []byte(xattrString))
+	_, err := bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	rt.WaitForSequence(5)
 
@@ -1219,7 +1219,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 }`
 
 	// Create via the SDK with sync metadata intact
-	_, err := bucket.WriteCasWithXattr(key, "_sync", 0, 0, []byte(bodyString), []byte(xattrString))
+	_, err := bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
 	rt.WaitForSequence(1)
 
@@ -1902,7 +1902,7 @@ func rawDocWithSyncMeta() string {
 
 	return `
 {
-    "_sync": {
+    "` + base.SyncPropertyName + `": {
         "rev": "1-ca9ad22802b66f662ff171f226211d5c",
         "sequence": 1,
         "recent_sequences": [
@@ -1929,7 +1929,7 @@ func rawDocWithSyncMeta() string {
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := bucket.GetWithXattr(key, "_sync", nil, &xattr)
+	_, err := bucket.GetWithXattr(key, base.SyncXattrName, nil, &xattr)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	goassert.True(t, ok)
