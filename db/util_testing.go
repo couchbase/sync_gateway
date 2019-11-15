@@ -171,3 +171,15 @@ func AssertEqualBodies(t *testing.T, expected, actual Body) {
 	assert.NoError(t, err)
 	assert.Equal(t, string(expectedCanonical), string(actualCanonical))
 }
+
+func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
+	var isChanged bool
+	for i := 0; i < 100; i++ {
+		isChanged = userWaiter.RefreshUserCount()
+		if isChanged {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return isChanged
+}

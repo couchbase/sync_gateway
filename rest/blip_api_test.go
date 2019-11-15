@@ -681,6 +681,72 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 }
 
+// Connect to public port with authentication, and validate user update during a replication
+func TestPublicPortAuthenticationUserUpdate(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+
+	// Initialize restTester here, so that we can use custom sync function, and later modify user
+	syncFunction := `
+function(doc, oldDoc) {
+  requireAccess("ABC")
+}
+
+`
+	rtConfig := RestTesterConfig{SyncFn: syncFunction}
+	var rt = NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// Create bliptester that is connected as user1, with no access to channel ABC
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noAdminParty:       true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         rt,
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+
+	// Attempt to send a doc, should be rejected
+	_, _, _, sendErr := bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+	assert.Error(t, sendErr, "Expected error sending rev (403 sg missing channel access)")
+
+	// Set up a ChangeWaiter for this test, to block until the user change notification happens
+	dbc := rt.GetDatabase()
+	user1, err := dbc.Authenticator().GetUser("user1")
+	require.NoError(t, err)
+
+	userDb, err := db.GetDatabase(dbc, user1)
+	require.NoError(t, err)
+
+	userWaiter := userDb.NewUserWaiter()
+
+	// Update the user to grant them access to ABC
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"admin_channels":["ABC"]}`)
+	assertStatus(t, response, 200)
+
+	// Wait for notification
+	require.True(t, db.WaitForUserWaiterChange(userWaiter))
+
+	// Attempt to send the doc again, should succeed if the blip context also received notification
+	_, _, _, sendErr = bt.SendRev(
+		"foo",
+		"1-abc",
+		[]byte(`{"key": "val"}`),
+		blip.Properties{},
+	)
+	assert.NoError(t, sendErr)
+
+	// Validate that the doc was written (GET request doesn't get a 404)
+	getResponse := rt.SendAdminRequest("GET", "/db/foo", "")
+	assertStatus(t, getResponse, 200)
+
+}
+
 // Test send and retrieval of a doc.
 //   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetRev(t *testing.T) {

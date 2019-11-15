@@ -396,26 +396,6 @@ func isIndexerError(err error) bool {
 	return false
 }
 
-func QueryCloseErrors(closeError error) []error {
-
-	if closeError == nil {
-		return nil
-	}
-
-	closeErrors := make([]error, 0)
-	switch v := closeError.(type) {
-	case *gocb.MultiError:
-		for _, multiErr := range v.Errors {
-			closeErrors = append(closeErrors, multiErr)
-		}
-	default:
-		closeErrors = append(closeErrors, v)
-	}
-
-	return closeErrors
-
-}
-
 func SlowQueryLog(startTime time.Time, messageFormat string, args ...interface{}) {
 	if elapsed := time.Now().Sub(startTime); elapsed > SlowQueryWarningThreshold {
 		Infof(KeyQuery, messageFormat+" took "+elapsed.String(), args...)

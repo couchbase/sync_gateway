@@ -533,9 +533,7 @@ func (h *handler) handleSGCollectStatus() error {
 		status = "running"
 	}
 
-	h.writeJSONStatus(http.StatusOK, map[string]string{
-		"status": status,
-	})
+	h.writeBytesAsJSONResponse(http.StatusOK, []byte(`{"status":"`+status+`"}`))
 	return nil
 }
 
@@ -545,9 +543,7 @@ func (h *handler) handleSGCollectCancel() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Error stopping sgcollect_info: %v", err)
 	}
 
-	h.writeJSONStatus(http.StatusOK, map[string]string{
-		"status": "cancelled",
-	})
+	h.writeBytesAsJSONResponse(http.StatusOK, []byte(`{"status":"cancelled"}`))
 	return nil
 }
 
@@ -572,9 +568,8 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 
-	h.writeJSONStatus(http.StatusOK, map[string]string{
-		"status": "started",
-	})
+	h.writeBytesAsJSONResponse(http.StatusOK, []byte(`{"status":"started"}`))
+
 	return nil
 }
 
