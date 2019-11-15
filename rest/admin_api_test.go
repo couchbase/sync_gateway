@@ -1934,3 +1934,26 @@ func TestHandleGetConfig(t *testing.T) {
 	facebook := respBody["Facebook"].(map[string]interface{})
 	assert.False(t, facebook["Register"].(bool))
 }
+
+func TestHandleGetRevTree(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create three revisions of the user foo with different status and updated_at values;
+	reqBodyJson := `{"new_edits": false, "docs": [
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/db/_bulk_docs", reqBodyJson)
+	assertStatus(t, resp, http.StatusCreated)
+	respBodyExpected := `[{"id":"foo","rev":"1-123"},{"id":"foo","rev":"1-456"},{"id":"foo","rev":"1-789"}]`
+	assert.Equal(t, respBodyExpected, resp.Body.String())
+
+	// Get the revision tree  of the user foo
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_revtree/foo", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), "1-123")
+	assert.Contains(t, resp.Body.String(), "1-456")
+	assert.Contains(t, resp.Body.String(), "1-789")
+}
