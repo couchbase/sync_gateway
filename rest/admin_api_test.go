@@ -1922,3 +1922,16 @@ func TestHandleDeleteDB(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	assert.Contains(t, resp.Body.String(), "{}")
 }
+
+func TestHandleGetConfig(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	respBody := db.Body{}
+	resp := rt.SendAdminRequest(http.MethodGet, "/_config", "{}")
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	log.Printf("resp.Body.String(): %v", resp.Body.String())
+	assert.Equal(t, "127.0.0.1:4985", respBody["AdminInterface"].(string))
+	facebook := respBody["Facebook"].(map[string]interface{})
+	assert.False(t, facebook["Register"].(bool))
+}
