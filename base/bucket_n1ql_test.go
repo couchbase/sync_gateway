@@ -1,13 +1,13 @@
 package base
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"strings"
 	"testing"
 
 	"github.com/couchbase/gocb"
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -58,8 +58,8 @@ func TestN1qlQuery(t *testing.T) {
 	exists, state, stateErr := bucket.GetIndexMeta("testIndex_value")
 	assert.NoError(t, stateErr, "Error validating index state")
 	assert.True(t, state != nil, "No state returned for index")
-	goassert.Equals(t, state.State, "online")
-	goassert.Equals(t, exists, true)
+	assert.Equal(t, "online", state.State)
+	assert.True(t, exists)
 
 	// Defer index teardown
 	defer func() {
@@ -119,7 +119,7 @@ func TestN1qlQuery(t *testing.T) {
 	}
 
 	assert.NoError(t, queryCloseErr, "Unexpected error closing query results")
-	goassert.Equals(t, count, 0)
+	assert.Equal(t, 0, count)
 
 }
 
@@ -189,10 +189,10 @@ func TestN1qlFilterExpression(t *testing.T) {
 			break
 		}
 		assert.True(t, queryResult.Val < 3, "Query returned unexpected result")
-		goassert.Equals(t, queryResult.Id, "doc1")
+		assert.Equal(t, "doc1", queryResult.Id)
 		count++
 	}
-	goassert.Equals(t, count, 1)
+	assert.Equal(t, 1, count)
 
 }
 
@@ -211,7 +211,7 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state pre-creation
 	exists, meta, err := bucket.GetIndexMeta("testIndex_value")
-	goassert.Equals(t, exists, false)
+	assert.False(t, exists)
 	assert.NoError(t, err, "Error getting meta for non-existent index")
 
 	indexExpression := "val"
@@ -234,8 +234,8 @@ func TestIndexMeta(t *testing.T) {
 
 	// Check index state post-creation
 	exists, meta, err = bucket.GetIndexMeta("testIndex_value")
-	goassert.Equals(t, exists, true)
-	goassert.Equals(t, meta.State, "online")
+	assert.True(t, exists)
+	assert.Equal(t, "online", meta.State)
 	assert.NoError(t, err, "Error retrieving index state")
 }
 
@@ -317,7 +317,7 @@ func TestCreateAndDropIndex(t *testing.T) {
 		t.Fatalf("Requires gocb bucket")
 	}
 
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex("testIndex_sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -344,7 +344,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 		t.Fatalf("Requires gocb bucket")
 	}
 
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -355,7 +355,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 
 	// Attempt to create duplicate, validate duplicate error
 	duplicateErr := bucket.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
-	goassert.Equals(t, duplicateErr, ErrIndexAlreadyExists)
+	assert.Equal(t, ErrIndexAlreadyExists, duplicateErr)
 
 	// Drop the index
 	err = bucket.DropIndex("testIndexDuplicateSequence")
@@ -375,7 +375,7 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 		t.Fatalf("Requires gocb bucket")
 	}
 
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex("testIndex-sequence", createExpression, "", testN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -411,7 +411,7 @@ func TestDeferredCreateIndex(t *testing.T) {
 		DeferBuild: true,
 	}
 
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex(indexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -456,13 +456,13 @@ func TestBuildDeferredIndexes(t *testing.T) {
 	}
 
 	// Create a deferred and a non-deferred index
-	createExpression := "_sync.sequence"
+	createExpression := SyncPropertyName + ".sequence"
 	err := bucket.CreateIndex(deferredIndexName, createExpression, "", deferN1qlOptions)
 	if err != nil {
 		t.Errorf("Error creating index: %s", err)
 	}
 
-	createExpression = "_sync.rev"
+	createExpression = SyncPropertyName + ".rev"
 	err = bucket.CreateIndex(nonDeferredIndexName, createExpression, "", &N1qlIndexOptions{NumReplica: 0})
 	if err != nil {
 		t.Fatalf("Error creating index: %s", err)
@@ -574,4 +574,58 @@ func tearDownTestIndex(bucket *CouchbaseBucketGoCB, indexName string) (err error
 		return nil
 	}
 
+}
+
+func TestWaitForBucketExistence(t *testing.T) {
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
+	bucket, ok := AsGoCBBucket(testBucket)
+	require.True(t, ok, "Requires gocb bucket")
+
+	// Create index
+	const (
+		indexName        = "index1"
+		expression       = "_sync"
+		filterExpression = ""
+	)
+	var options = &N1qlIndexOptions{NumReplica: 0}
+
+	go func() {
+		indexExists, _, err := bucket.getIndexMetaWithoutRetry(indexName)
+		assert.NoError(t, err, "No error while trying to fetch the index metadata")
+
+		if indexExists {
+			err := bucket.DropIndex(indexName)
+			assert.NoError(t, err, "Index should be removed from the bucket")
+		}
+
+		err = bucket.CreateIndex(indexName, expression, filterExpression, options)
+		assert.NoError(t, err, "Index should be created in the bucket")
+	}()
+
+	assert.NoError(t, bucket.waitForBucketExistence(indexName, true))
+
+	// Drop the index;
+	err := bucket.DropIndex(indexName)
+	assert.NoError(t, err, "Index should be removed from the bucket")
+}
+
+func TestIsIndexerRetryBuildError(t *testing.T) {
+	var err error
+	assert.False(t, IsIndexerRetryBuildError(err))
+	err = errors.New("will retry building in the background")
+	assert.True(t, IsIndexerRetryBuildError(err))
+}
+
+func TestIsIndexerError(t *testing.T) {
+	var err error
+	assert.False(t, isIndexerError(err))
+	err = errors.New("lost heartbeat")
+	assert.False(t, isIndexerError(err))
+	err = errors.New("Indexer rollback")
+	assert.True(t, isIndexerError(err))
 }

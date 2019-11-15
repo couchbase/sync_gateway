@@ -260,7 +260,7 @@ func TestImportNullDocRaw(t *testing.T) {
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := bucket.GetWithXattr(key, "_sync", nil, &xattr)
+	_, err := bucket.GetWithXattr(key, base.SyncXattrName, nil, &xattr)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	goassert.True(t, ok)

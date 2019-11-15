@@ -3407,7 +3407,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	*/
 
 	// Modify the doc directly in the bucket to delete the digest field
-	s := couchbaseDoc[base.SyncXattrName].(map[string]interface{})
+	s := couchbaseDoc[base.SyncPropertyName].(map[string]interface{})
 	couchbaseDoc["_attachments"] = s["attachments"].(map[string]interface{})
 	attachments := couchbaseDoc["_attachments"].(map[string]interface{})
 

@@ -482,7 +482,7 @@ func (b *backfillStatus) purgeBackfillSequences(bucket Bucket) error {
 func dcpKeyFilter(key []byte) bool {
 
 	// If it's not a _sync doc, process
-	if !bytes.HasPrefix(key, []byte(SyncXattrName)) {
+	if !bytes.HasPrefix(key, []byte(SyncPrefix)) {
 		return true
 	}
 
