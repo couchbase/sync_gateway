@@ -106,7 +106,9 @@ const (
 	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
 	SyncDataKey       = SyncPrefix + "syncdata"
 	SyncSeqKey        = SyncPrefix + "seq"
-	SyncXattrName     = "_sync"
+
+	SyncPropertyName = "_sync"
+	SyncXattrName    = "_sync"
 )
 
 const (

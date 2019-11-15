@@ -397,7 +397,7 @@ func (h *handler) handleGetRawDoc() error {
 		syncData = doc.SyncData.HashRedact(salt)
 	}
 
-	rawBytes, err = base.InjectJSONProperties(rawBytes, base.KVPair{Key: "_sync", Val: syncData})
+	rawBytes, err = base.InjectJSONProperties(rawBytes, base.KVPair{Key: base.SyncPropertyName, Val: syncData})
 	if err != nil {
 
 		return err
