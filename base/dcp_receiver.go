@@ -11,14 +11,11 @@ package base
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"expvar"
-	"fmt"
-	"strconv"
-	"sync"
 
 	"github.com/couchbase/gomemcached"
-	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 
@@ -289,98 +286,13 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		auth = NoPasswordAuthHandler{handler: spec.Auth}
 	}
 
+	dataSourceOptions.TLSConfig = func() *tls.Config {
+		return spec.TLSConfig()
+	}
+
 	// A lookup of host dest to external alternate address hostnames
 	externalAlternateAddresses := make(map[string]string)
-	externalAlternateAddressesLock := sync.RWMutex{}
-
-	dataSourceOptions.Connect = func(protocol, dest string) (client *memcached.Client, err error) {
-		fmt.Println("DCP Recv Connect callback:"+protocol, dest)
-
-		destHost, destPort, err := SplitHostPort(dest)
-		if err != nil {
-			return nil, err
-		}
-		// Map the given destination to an external alternate address hostname if available
-		externalAlternateAddressesLock.RLock()
-		extHostname, foundAltAddress := externalAlternateAddresses[destHost]
-		externalAlternateAddressesLock.RUnlock()
-		if foundAltAddress {
-			fmt.Printf("found alternate address for %s => %s\n", dest, extHostname)
-
-			_, port, _ := SplitHostPort(extHostname)
-			if port == "" {
-				port = destPort
-			}
-
-			dest = extHostname + ":" + port
-			fmt.Printf("using dest: %s\n", dest)
-		}
-
-		if spec.IsTLS() {
-			// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
-			return spec.TLSConnect(protocol, dest)
-		}
-
-		return memcached.Connect(protocol, dest)
-	}
-
-	// COPY OF cbdatasource.ConnectBucket
-	dataSourceOptions.ConnectBucket = func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error) {
-		fmt.Println("DCP Recv ConnectBucket callback:" + serverURL)
-
-		var bucket *couchbase.Bucket
-		var err error
-
-		if auth != nil {
-			// HACK: Custom ConnectWithAuthAndGetBucket to override pools for alternate address support
-			// bucket, err = couchbase.ConnectWithAuthAndGetBucket(serverURL, poolName, bucketName, auth)
-			client, err := couchbase.ConnectWithAuth(serverURL, auth)
-			if err != nil {
-				return nil, err
-			}
-
-			pool, err := client.GetPool(poolName)
-			if err != nil {
-				return nil, err
-			}
-
-			// Build map of external alternate addresses if available
-			externalAlternateAddressesLock.Lock()
-			externalAlternateAddresses = make(map[string]string, len(pool.Nodes))
-			for _, node := range pool.Nodes {
-				if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
-					var port string
-					if extPort, ok := external.Ports["direct"]; ok {
-						// get port from alternateAddress
-						// TODO: Not tested alternate ports yet
-						port = ":" + strconv.Itoa(extPort)
-					}
-
-					nodeHostname, _, err := SplitHostPort(node.Hostname)
-					if err != nil {
-						return nil, err
-					}
-
-					fmt.Printf("storing %s => %s\n", nodeHostname, external.Hostname+port)
-					externalAlternateAddresses[nodeHostname] = external.Hostname + port
-				}
-			}
-			externalAlternateAddressesLock.Unlock()
-
-			bucket, err = pool.GetBucket(bucketName)
-		} else {
-			bucket, err = couchbase.GetBucket(serverURL, poolName, bucketName)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if bucket == nil {
-			return nil, fmt.Errorf("unknown bucket,"+
-				" serverURL: %s, bucketName: %s", serverURL, bucketName)
-		}
-
-		return bucket, nil
-	}
+	dataSourceOptions.ConnectBucket, dataSourceOptions.Connect, dataSourceOptions.ConnectTLS = alternateAddressShims(externalAlternateAddresses)
 
 	DebugfCtx(loggingCtx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
 
