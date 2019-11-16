@@ -391,75 +391,6 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	return
 }
 
-func WriteCasJSON(bucket Bucket, key string, value interface{}, cas uint64, exp uint32, callback func(v interface{}) (interface{}, error)) (casOut uint64, err error) {
-
-	// If there's an incoming value, attempt to write with that first
-	if value != nil {
-		casOut, err := bucket.WriteCas(key, 0, exp, cas, value, 0)
-		if err == nil {
-			return casOut, nil
-		}
-	}
-
-	for {
-		var currentValue interface{}
-		cas, err := bucket.Get(key, &currentValue)
-		if err != nil {
-			Warnf("WriteCasJSON got error when calling Get: %v", err)
-			return 0, err
-		}
-		updatedValue, err := callback(currentValue)
-		if err != nil {
-			Warnf("WriteCasJSON got error when calling callback: %v", err)
-			return 0, err
-		}
-		if updatedValue == nil {
-			// callback returned empty value - cancel write
-			return cas, nil
-		}
-		casOut, err := bucket.WriteCas(key, 0, exp, cas, updatedValue, 0)
-		if err != nil {
-			// CAS failure - reload block for another try
-		} else {
-			return casOut, nil
-		}
-	}
-}
-
-func WriteCasRaw(bucket Bucket, key string, value []byte, cas uint64, exp uint32, callback func([]byte) ([]byte, error)) (casOut uint64, err error) {
-
-	// If there's an incoming value, attempt to write with that first
-	if len(value) > 0 {
-		casOut, err := bucket.WriteCas(key, 0, exp, cas, value, sgbucket.Raw)
-		if err == nil {
-			return casOut, nil
-		}
-	}
-
-	for {
-		currentValue, cas, err := bucket.GetRaw(key)
-		if err != nil {
-			Warnf("WriteCasRaw got error when calling GetRaw: %v", err)
-			return 0, err
-		}
-		currentValue, err = callback(currentValue)
-		if err != nil {
-			Warnf("WriteCasRaw got error when calling callback: %v", err)
-			return 0, err
-		}
-		if len(currentValue) == 0 {
-			// callback returned empty value - cancel write
-			return cas, nil
-		}
-		casOut, err := bucket.WriteCas(key, 0, exp, cas, currentValue, sgbucket.Raw)
-		if err != nil {
-			// CAS failure - reload block for another try
-		} else {
-			return casOut, nil
-		}
-	}
-}
-
 // GetCounter returns a uint64 result for the given counter key.
 // If the given key is not found in the bucket, this function returns a result of zero.
 func GetCounter(bucket Bucket, k string) (result uint64, err error) {
@@ -523,8 +454,6 @@ func GetFeedType(bucket Bucket) (feedType string) {
 	case *LeakyBucket:
 		return GetFeedType(typedBucket.bucket)
 	case *LoggingBucket:
-		return GetFeedType(typedBucket.bucket)
-	case *StatsBucket:
 		return GetFeedType(typedBucket.bucket)
 	default:
 		return TapFeedType

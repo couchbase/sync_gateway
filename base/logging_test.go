@@ -242,3 +242,50 @@ func TestLogColor(t *testing.T) {
 	assert.Equal(t, "Format", color("Format", LevelTrace))
 	assert.Equal(t, "Format", color("Format", LevelNone))
 }
+
+func TestMarshalTextError(t *testing.T) {
+	var level *Level
+	bytes, err := level.MarshalText()
+	assert.Nil(t, bytes, "bytes should be nil")
+	assert.Error(t, err, "Can't marshal a nil *Level to text")
+	assert.Equal(t, err.Error(), "can't marshal a nil *Level to text")
+}
+
+func TestGetCallersNameRecoverInfoImpossible(t *testing.T) {
+	callerName := GetCallersName(3, true)
+	assert.Equal(t, "???", callerName)
+	callerName = GetCallersName(3, false)
+	assert.Equal(t, "???", callerName)
+}
+
+func TestLastComponent(t *testing.T) {
+	path := lastComponent("/var/log/sync_gateway/sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+	path = lastComponent("\\var\\log\\sync_gateway\\sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+	path = lastComponent("sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+	path = lastComponent("/sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+	path = lastComponent("\\sglogfile.log")
+	assert.Equal(t, "sglogfile.log", path)
+}
+
+func TestLogSyncGatewayVersion(t *testing.T) {
+	for i := LevelNone; i < levelCount; i++ {
+		t.Run(i.String(), func(t *testing.T) {
+			consoleLogger.LogLevel.Set(i)
+			out := CaptureOutput(LogSyncGatewayVersion)
+			assert.Contains(t, out, LongVersionString)
+		})
+	}
+	consoleLogger.LogLevel.Set(LevelInfo)
+}
+
+func CaptureOutput(f func()) string {
+	buf := bytes.Buffer{}
+	consoleOutput = &buf
+	f()
+	consoleOutput = os.Stderr
+	return buf.String()
+}
