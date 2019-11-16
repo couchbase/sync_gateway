@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -364,14 +366,17 @@ func ParseRevID(revid string) (int, string) {
 	if revid == "" {
 		return 0, ""
 	}
-	var generation int
-	var id string
-	n, _ := fmt.Sscanf(revid, "%d-%s", &generation, &id)
-	if n < 1 || generation < 1 {
-		base.Warnf("parseRevID unsuccessful for %q", revid)
+	idx := strings.Index(revid, "-")
+	if idx == -1 {
+		base.Warnf("parseRevID found no separator in rev %q", revid)
 		return -1, ""
 	}
-	return generation, id
+	gen, err := strconv.Atoi(revid[:idx])
+	if err != nil {
+		base.Warnf("parseRevID unexpected generation in rev %q: %s", revid, err)
+		return -1, ""
+	}
+	return gen, revid[idx+1:]
 }
 
 // compareRevIDs compares the two rev IDs and returns:
