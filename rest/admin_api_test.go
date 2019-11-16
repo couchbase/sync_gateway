@@ -1957,3 +1957,25 @@ func TestHandleGetRevTree(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "1-456")
 	assert.Contains(t, resp.Body.String(), "1-789")
 }
+
+func TestHandleSGCollect(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	reqBodyJson := ""
+	resource := "/_sgcollect_info"
+
+	// Check SGCollect status before triggering it; status should be stopped if no process is running.
+	resp := rt.SendAdminRequest(http.MethodGet, resource, reqBodyJson)
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, resp.Body.String(), `{"status":"stopped"}`)
+
+	// Try to cancel SGCollect before triggering it; Error stopping sgcollect_info: not running
+	resp = rt.SendAdminRequest(http.MethodDelete, resource, reqBodyJson)
+	assertStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), "Error stopping sgcollect_info: not running")
+
+	// Try to start SGCollect with empty request body; It should throw with unexpected end of JSON input error
+	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
+	assertStatus(t, resp, http.StatusBadRequest)
+	log.Printf("resp.Body.String(): %v", resp.Body.String())
+}
