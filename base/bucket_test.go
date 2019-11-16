@@ -27,28 +27,25 @@ func TestBucketSpec(t *testing.T) {
 		ViewQueryTimeoutSecs: &queryTimeout,
 	}
 
-	connStr, err := bucketSpec.GetGoCBConnString()
+	_, err := bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
-	assert.Equal(t, "http://localhost:8091?cacertpath=.%2FmyCACertPath&certpath=%2FmyCertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&n1ql_timeout=30000&operation_tracing=false", connStr)
 
 	// CACertPath not required
 	bucketSpec.CACertPath = ""
-	connStr, err = bucketSpec.GetGoCBConnString()
+	_, err = bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
-	assert.Equal(t, "http://localhost:8091?certpath=%2FmyCertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&n1ql_timeout=30000&operation_tracing=false", connStr)
 
 	// Certpath and keypath must both be defined - if either are missing, they shouldn't be included in connection string
 	bucketSpec.CACertPath = "./myCACertPath"
 	bucketSpec.Certpath = ""
-	connStr, err = bucketSpec.GetGoCBConnString()
+	_, err = bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
-	assert.Equal(t, "http://localhost:8091?cacertpath=.%2FmyCACertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&n1ql_timeout=30000&operation_tracing=false", connStr)
 
 	// Standard no-cert
 	bucketSpec.CACertPath = ""
 	bucketSpec.Certpath = ""
 	bucketSpec.Keypath = ""
-	connStr, err = bucketSpec.GetGoCBConnString()
+	_, err = bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
 }
 
