@@ -157,6 +157,11 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
 	assert.True(t, ok)
 
+	_, err := removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), db.UseViews())
+	assert.NoError(t, err)
+	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), !db.UseViews())
+	assert.NoError(t, err)
+
 	expectedIndexes := int(indexTypeCount)
 
 	if !db.UseXattrs() {
@@ -165,20 +170,22 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
 	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), true)
 	assert.Equal(t, expectedIndexes, len(removedIndexes))
+	fmt.Println(removedIndexes)
 	assert.NoError(t, removeErr)
 
 	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false)
 	assert.Equal(t, 0, len(removedIndexes))
+	fmt.Println(removedIndexes)
 	assert.NoError(t, removeErr)
 
 	// Cleanup design docs created during test
-	_, err := removeObsoleteDesignDocs(gocbBucket, db.UseXattrs(), true)
+	_, err = removeObsoleteDesignDocs(gocbBucket, db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(gocbBucket, db.UseXattrs(), false)
+	_, err = removeObsoleteDesignDocs(gocbBucket, db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), true)
+	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), false)
+	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 }
 
