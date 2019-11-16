@@ -149,6 +149,7 @@ func (spec BucketSpec) GetGoCBConnString() (string, error) {
 	asValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
 	asValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
 	asValues.Set("n1ql_timeout", fmt.Sprintf("%d", spec.GetViewQueryTimeoutMs()))
+	asValues.Set("operation_tracing", "false")
 
 	if spec.Certpath != "" && spec.Keypath != "" {
 		asValues.Set("certpath", spec.Certpath)
