@@ -366,16 +366,22 @@ func ParseRevID(revid string) (int, string) {
 	if revid == "" {
 		return 0, ""
 	}
+
 	idx := strings.Index(revid, "-")
 	if idx == -1 {
 		base.Warnf("parseRevID found no separator in rev %q", revid)
 		return -1, ""
 	}
+
 	gen, err := strconv.Atoi(revid[:idx])
 	if err != nil {
 		base.Warnf("parseRevID unexpected generation in rev %q: %s", revid, err)
 		return -1, ""
+	} else if gen < 1 {
+		base.Warnf("parseRevID unexpected generation in rev %q", revid)
+		return -1, ""
 	}
+
 	return gen, revid[idx+1:]
 }
 

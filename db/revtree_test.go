@@ -763,6 +763,11 @@ func TestEncodeRevisionsGap(t *testing.T) {
 	assert.Equal(t, Revisions{RevisionsStart: 5, RevisionsIds: []string{"huey", "louie"}}, encoded)
 }
 
+func TestEncodeRevisionsZero(t *testing.T) {
+	encoded := encodeRevisions([]string{"1-foo", "0-bar"})
+	assert.Equal(t, Revisions{RevisionsStart: 1, RevisionsIds: []string{"foo", ""}}, encoded)
+}
+
 func TestTrimEncodedRevisionsToAncestor(t *testing.T) {
 
 	encoded := encodeRevisions([]string{"5-huey", "4-dewey", "3-louie", "2-screwy"})
