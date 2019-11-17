@@ -160,6 +160,7 @@ func (h *handler) handleChanges() error {
 	// http://wiki.apache.org/couchdb/HTTP_database_API#Changes
 	// http://docs.couchdb.org/en/latest/api/database/changes.html
 
+	startHandleChanges := time.Now()
 	var feed string
 	var options db.ChangesOptions
 	var filter string
@@ -325,6 +326,7 @@ func (h *handler) handleChanges() error {
 		h.db.DatabaseContext.NotifyTerminatedChanges(h.user.Name())
 	}
 
+	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyChangesTime, time.Since(startHandleChanges).Nanoseconds())
 	return err
 }
 

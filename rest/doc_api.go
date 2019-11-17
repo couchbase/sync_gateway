@@ -437,6 +437,8 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 
 // HTTP handler for a POST to a database (creating a document)
 func (h *handler) handlePostDoc() error {
+	postDocStart := time.Now()
+
 	roundTrip := h.getBoolQuery("roundtrip")
 	body, err := h.readDocument()
 	if err != nil {
@@ -458,6 +460,8 @@ func (h *handler) handlePostDoc() error {
 	h.setHeader("Location", docid)
 	h.setHeader("Etag", strconv.Quote(newRev))
 	h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
+	h.db.DbStats.StatsDatabase().Add(base.StatKeyPostDocCount, 1)
+	h.db.DbStats.StatsDatabase().Add(base.StatKeyPostDocTime, time.Since(postDocStart).Nanoseconds())
 	return nil
 }
 

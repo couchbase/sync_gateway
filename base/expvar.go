@@ -121,6 +121,21 @@ const (
 	StatKeyCachingDcpStats         = "cache_feed"
 	StatKeyImportDcpStats          = "import_feed"
 
+	StatKeyPostDocTime              = "post_doc_time"
+	StatKeyPostDocCount             = "post_doc_count"
+	StatKeyInvokeSetupTime          = "invoke_setup_time"
+	StatKeyInvokeTime               = "invoke_time"
+	StatKeyInvokeCount              = "invoke_count"
+	StatKeyChangesTime              = "changes_time"      // count is numReplicationsTotal
+	StatKeyChangesFeedTime          = "changes_feed_time" // count is numReplicationsTotal
+	StatKeyChangesFeedWaitCount     = "changes_feed_wait_count"
+	StatKeyChangesFeedWaitStartTime = "changes_feed_wait_start_time"
+	StatKeyChangesFeedWaitDoneTime  = "changes_feed_wait_done_time"
+	StatKeyChangesFeedCount         = "changes_feed_count"       // count is numReplicationsTotal
+	StatKeyNotifyCount              = "notify_count"             // global
+	StatKeyNotifyTime               = "notify_time"              // global
+	StatKeyNotifyAcquireLockTime    = "notify_acquire_lock_time" // global
+
 	// StatsDeltaSync
 	StatKeyDeltasRequested           = "deltas_requested"
 	StatKeyDeltasSent                = "deltas_sent"

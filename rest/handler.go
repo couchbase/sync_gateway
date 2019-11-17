@@ -123,6 +123,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 // Top-level handler call. It's passed a pointer to the specific method to run.
 func (h *handler) invoke(method handlerMethod) error {
 
+	invokeStartTime := time.Now()
 	var err error
 	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
 		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
@@ -213,8 +214,19 @@ func (h *handler) invoke(method handlerMethod) error {
 			h.getQueryValues(),
 		)
 	}
+	if dbContext != nil {
+		dbContext.DbStats.StatsDatabase().Add(base.StatKeyInvokeSetupTime, time.Since(invokeStartTime).Nanoseconds())
+	}
 
-	return method(h) // Call the actual handler code
+	// Call the actual handler code
+	methodErr := method(h)
+
+	if dbContext != nil {
+		dbContext.DbStats.StatsDatabase().Add(base.StatKeyInvokeTime, time.Since(invokeStartTime).Nanoseconds())
+		dbContext.DbStats.StatsDatabase().Add(base.StatKeyInvokeCount, 1)
+	}
+
+	return methodErr
 }
 
 func (h *handler) logRequestLine() {

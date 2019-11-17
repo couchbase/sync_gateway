@@ -362,12 +362,15 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 	go func() {
 
+		startChangesFeedTime := time.Now()
 		defer func() {
 			if panicked := recover(); panicked != nil {
 				base.WarnfCtx(db.Ctx, "[%s] Unexpected panic sending changes - terminating changes: \n %s", panicked, debug.Stack())
 			} else {
 				base.InfofCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed done %s", base.UD(to))
 			}
+			db.DbStats.StatsDatabase().Add(base.StatKeyChangesFeedCount, 1)
+			db.DbStats.StatsDatabase().Add(base.StatKeyChangesFeedTime, time.Since(startChangesFeedTime).Nanoseconds())
 			close(output)
 		}()
 
@@ -694,8 +697,13 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				}
 
 				db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, 1)
+
+				db.DbStats.StatsDatabase().Add(base.StatKeyChangesFeedWaitStartTime, time.Since(startChangesFeedTime).Nanoseconds())
+				db.DbStats.StatsDatabase().Add(base.StatKeyChangesFeedWaitCount, 1)
 				waitResponse := changeWaiter.Wait()
 				db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, -1)
+
+				db.DbStats.StatsDatabase().Add(base.StatKeyChangesFeedWaitDoneTime, time.Since(startChangesFeedTime).Nanoseconds())
 
 				if waitResponse == WaiterClosed {
 					break outer

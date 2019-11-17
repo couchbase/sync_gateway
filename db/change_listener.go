@@ -151,7 +151,10 @@ func (listener *changeListener) Notify(keys base.Set) {
 	if len(keys) == 0 {
 		return
 	}
+
+	notifyStart := time.Now()
 	listener.tapNotifier.L.Lock()
+	base.GlobalStats.Add(base.StatKeyNotifyAcquireLockTime, time.Since(notifyStart).Nanoseconds())
 	listener.counter++
 	for key := range keys {
 		listener.keyCounts[key] = listener.counter
@@ -160,6 +163,9 @@ func (listener *changeListener) Notify(keys base.Set) {
 		base.MD(listener.bucketName), base.UD(keys), listener.counter)
 	listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
+	base.GlobalStats.Add(base.StatKeyNotifyCount, 1)
+	base.GlobalStats.Add(base.StatKeyNotifyTime, time.Since(notifyStart).Nanoseconds())
+
 }
 
 // Changes the counter, notifying waiting clients.
