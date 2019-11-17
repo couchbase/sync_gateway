@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -342,6 +343,7 @@ func (bucket *CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err 
 
 func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
 
+	getStartTime := time.Now()
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
@@ -371,6 +373,8 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 		err = pkgerrors.WithStack(err)
 	}
 
+	GlobalStats.Add(StatKeyGetCount, 1)
+	GlobalStats.Add(StatKeyGetTime, time.Since(getStartTime).Nanoseconds())
 	return cas, err
 
 }
@@ -1010,6 +1014,7 @@ func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) erro
 
 func (bucket *CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error {
 
+	setRawStart := time.Now()
 	bucket.singleOps <- struct{}{}
 	defer func() {
 		<-bucket.singleOps
@@ -1027,6 +1032,8 @@ func (bucket *CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error 
 	}
 	err, _ := RetryLoop("CouchbaseBucketGoCB SetRaw()", worker, bucket.spec.RetrySleeper())
 
+	GlobalStats.Add(StatKeySetRawCount, 1)
+	GlobalStats.Add(StatKeySetRawTime, time.Since(setRawStart).Nanoseconds())
 	return err
 }
 
@@ -1138,6 +1145,8 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 // CAS-safe write of a document and it's associated named xattr
 func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 
+	writeCasStartTime := time.Now()
+
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
@@ -1228,6 +1237,9 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 		return 0, RedactErrorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
 	}
 
+	GlobalStats.Add(StatKeyWriteCasWithXattrCount, 1)
+	GlobalStats.Add(StatKeyWriteCasWithXattrTime, time.Since(writeCasStartTime).Nanoseconds())
+
 	return cas, err
 }
 
@@ -1307,6 +1319,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 			gocbExpvars.Add("SingleOps", -1)
 		}()
 	*/
+	getWithXattrStart := time.Now()
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 
 		// First, attempt to get the document and xattr in one shot. We can't set SubdocDocFlagAccessDeleted when attempting
@@ -1365,6 +1378,8 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 		return 0, RedactErrorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", UD(result), result, UD(k))
 	}
 
+	GlobalStats.Add(StatKeyGetWithXattrCount, 1)
+	GlobalStats.Add(StatKeyGetWithXattrTime, time.Since(getWithXattrStart).Nanoseconds())
 	return cas, err
 
 }
@@ -1802,6 +1817,7 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	if amt == 0 {
 		return 0, errors.New("amt passed to Incr must be non-zero")
 	}
+	incrStartTime := time.Now()
 
 	// This is an actual incr, not just counter retrieval.
 	bucket.singleOps <- struct{}{}
@@ -1836,6 +1852,8 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 		err = pkgerrors.WithStack(err)
 	}
 
+	GlobalStats.Add(StatKeyIncrCount, 1)
+	GlobalStats.Add(StatKeyIncrTime, time.Since(incrStartTime).Nanoseconds())
 	return cas, err
 
 }

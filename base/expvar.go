@@ -131,10 +131,22 @@ const (
 	StatKeyChangesFeedWaitCount     = "changes_feed_wait_count"
 	StatKeyChangesFeedWaitStartTime = "changes_feed_wait_start_time"
 	StatKeyChangesFeedWaitDoneTime  = "changes_feed_wait_done_time"
-	StatKeyChangesFeedCount         = "changes_feed_count"       // count is numReplicationsTotal
-	StatKeyNotifyCount              = "notify_count"             // global
-	StatKeyNotifyTime               = "notify_time"              // global
-	StatKeyNotifyAcquireLockTime    = "notify_acquire_lock_time" // global
+	StatKeyChangesFeedCount         = "changes_feed_count" // count is numReplicationsTotal
+
+	StatKeyNotifyCount           = "notify_count"             // global
+	StatKeyNotifyTime            = "notify_time"              // global
+	StatKeyNotifyAcquireLockTime = "notify_acquire_lock_time" // global
+
+	StatKeyWriteCasWithXattrCount = "write_cas_with_xattr_count"
+	StatKeyWriteCasWithXattrTime  = "write_cas_with_xattr_time"
+	StatKeyGetWithXattrCount      = "get_with_xattr_count"
+	StatKeyGetWithXattrTime       = "get_with_xattr_time"
+	StatKeySetRawCount            = "set_raw_count"
+	StatKeySetRawTime             = "set_raw_time"
+	StatKeyGetCount               = "get_count"
+	StatKeyGetTime                = "get_time"
+	StatKeyIncrCount              = "incr_count"
+	StatKeyIncrTime               = "incr_time"
 
 	// StatsDeltaSync
 	StatKeyDeltasRequested           = "deltas_requested"
