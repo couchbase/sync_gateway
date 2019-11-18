@@ -949,9 +949,22 @@ func TestReloadUser(t *testing.T) {
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
+	// Set up a ChangeWaiter for this test, to block until the user change notification happens
+	dbc := rt.GetDatabase()
+	user1, err := dbc.Authenticator().GetUser("user1")
+	require.NoError(t, err)
+
+	userDb, err := db.GetDatabase(dbc, user1)
+	require.NoError(t, err)
+
+	userWaiter := userDb.NewUserWaiter()
+
 	// Put document that triggers access grant for user to channel PBS
 	response := rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"user1", "accessChannel":["PBS"]}`)
 	assertStatus(t, response, 201)
+
+	// Wait for notification
+	require.True(t, db.WaitForUserWaiterChange(userWaiter))
 
 	// Add a doc in the PBS channel
 	_, _, addRevResponse, err := bt.SendRev(
