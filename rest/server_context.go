@@ -60,16 +60,6 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		config.Databases = DbConfigMap{}
 	}
 
-	// Initialize the go-couchbase library's global configuration variables:
-	couchbase.PoolSize = DefaultMaxCouchbaseConnections
-	couchbase.PoolOverflow = DefaultMaxCouchbaseOverflowConnections
-	if config.MaxCouchbaseConnections != nil {
-		couchbase.PoolSize = *config.MaxCouchbaseConnections
-	}
-	if config.MaxCouchbaseOverflow != nil {
-		couchbase.PoolOverflow = *config.MaxCouchbaseOverflow
-	}
-
 	if config.CouchbaseKeepaliveInterval != nil {
 		couchbase.SetTcpKeepalive(true, *config.CouchbaseKeepaliveInterval)
 	}
