@@ -767,7 +767,7 @@ func encodeRevisions(revs []string) Revisions {
 		if i == 0 {
 			start = gen
 		} else if gen != start-i {
-			base.Warnf("encodeRevisions found weird history %v", revs)
+			base.Warnf("Found gap in revision list. Expecting gen %v but got %v in %v", start-i, gen, revs)
 		}
 	}
 	return Revisions{RevisionsStart: start, RevisionsIds: ids}

@@ -1715,7 +1715,7 @@ func TestRawRedaction(t *testing.T) {
 	var body map[string]interface{}
 	err := base.JSONUnmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
-	syncData := body["_sync"]
+	syncData := body[base.SyncPropertyName]
 	assert.Equal(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
 	assert.Equal(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])
 
@@ -1724,7 +1724,7 @@ func TestRawRedaction(t *testing.T) {
 	res = rt.SendAdminRequest("GET", "/db/_raw/testdoc?redact=true&include_doc=false", ``)
 	err = base.JSONUnmarshal(res.Body.Bytes(), &body)
 	assert.NoError(t, err)
-	syncData = body["_sync"]
+	syncData = body[base.SyncPropertyName]
 	require.NotNil(t, syncData)
 	assert.NotEqual(t, map[string]interface{}{"achannel": nil}, syncData.(map[string]interface{})["channels"])
 	assert.NotEqual(t, []interface{}([]interface{}{[]interface{}{"achannel"}}), syncData.(map[string]interface{})["history"].(map[string]interface{})["channels"])

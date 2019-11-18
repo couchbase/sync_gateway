@@ -753,8 +753,7 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
 	h.setStatus(status, message)
-	jsonOut, _ := base.JSONMarshalCanonical(db.Body{"error": errorStr, "reason": message})
-	h.response.Write(jsonOut)
+	h.response.Write([]byte(`{"error":"` + errorStr + `","reason":"` + message + `"}`))
 }
 
 var kRangeRegex = regexp.MustCompile("^bytes=(\\d+)?-(\\d+)?$")

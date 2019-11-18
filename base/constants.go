@@ -50,8 +50,6 @@ const (
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
-	DefaultAutoImport = true // Whether Sync Gateway should auto-import docs, if not specified in the config
-
 	DefaultUseXattrs      = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true  // Whether Sync Gateway allows revision conflicts, if not specified in the config
 
@@ -108,7 +106,9 @@ const (
 	DCPBackfillSeqKey = SyncPrefix + "dcp_backfill"
 	SyncDataKey       = SyncPrefix + "syncdata"
 	SyncSeqKey        = SyncPrefix + "seq"
-	SyncXattrName     = "_sync"
+
+	SyncPropertyName = "_sync"
+	SyncXattrName    = "_sync"
 )
 
 const (

@@ -26,9 +26,9 @@ const (
 // When running with xattrs, that gets replaced with META().xattrs._sync (or META(bucketname).xattrs._sync for query).
 // When running w/out xattrs, it's just replaced by the doc path `bucketname`._sync
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
-var syncNoXattr = fmt.Sprintf("`%s`._sync", base.BucketQueryToken)
-var syncXattr = "meta().xattrs._sync"
-var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs._sync", base.BucketQueryToken) // Replacement for $sync token for xattr queries
+var syncNoXattr = fmt.Sprintf("`%s`.%s", base.BucketQueryToken, base.SyncPropertyName)
+var syncXattr = "meta().xattrs." + base.SyncXattrName
+var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs.%s", base.BucketQueryToken, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
 type SGIndexType int
 

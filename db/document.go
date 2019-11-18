@@ -190,7 +190,7 @@ func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 		if err != nil {
 			return nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalBodyAndSync() doc with id: %s. Error %v", base.UD(doc.ID), err))
 		}
-		return base.InjectJSONProperties(bodyBytes, base.KVPair{Key: base.SyncXattrName, Val: doc.SyncData})
+		return base.InjectJSONProperties(bodyBytes, base.KVPair{Key: base.SyncPropertyName, Val: doc.SyncData})
 	} else {
 		return base.JSONMarshal(doc)
 	}
@@ -883,7 +883,7 @@ func (doc *Document) UnmarshalJSON(data []byte) error {
 		return pkgerrors.WithStack(base.RedactErrorf("Failed to UnmarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}
 	// Remove _sync from body
-	delete(doc._body, base.SyncXattrName)
+	delete(doc._body, base.SyncPropertyName)
 
 	return nil
 }
@@ -891,7 +891,7 @@ func (doc *Document) UnmarshalJSON(data []byte) error {
 func (doc *Document) MarshalJSON() (data []byte, err error) {
 	if doc._rawBody != nil {
 		data, err = base.InjectJSONProperties(doc._rawBody, base.KVPair{
-			Key: base.SyncXattrName,
+			Key: base.SyncPropertyName,
 			Val: doc.SyncData,
 		})
 	} else {
@@ -899,9 +899,9 @@ func (doc *Document) MarshalJSON() (data []byte, err error) {
 		if body == nil {
 			body = Body{}
 		}
-		body[base.SyncXattrName] = &doc.SyncData
+		body[base.SyncPropertyName] = &doc.SyncData
 		data, err = base.JSONMarshal(body)
-		delete(body, base.SyncXattrName)
+		delete(body, base.SyncPropertyName)
 		if err != nil {
 			err = pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalJSON() doc with id: %s.  Error: %v", base.UD(doc.ID), err))
 		}
