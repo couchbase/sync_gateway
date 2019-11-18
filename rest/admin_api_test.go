@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1800,7 +1801,7 @@ func TestHandleCreateDB(t *testing.T) {
 
 	bucketConfig := BucketConfig{Server: &server, Pool: &pool, Bucket: &bucket, KvTLSPort: kvTLSPort}
 	dbConfig := &DbConfig{BucketConfig: bucketConfig}
-	respBody := db.Body{}
+	var respBody db.Body
 
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -1854,7 +1855,7 @@ func TestHandleDBConfig(t *testing.T) {
 		KvTLSPort:  kvTLSPort}
 
 	dbConfig := &DbConfig{BucketConfig: bucketConfig}
-	respBody := db.Body{}
+	var respBody db.Body
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 
@@ -1874,15 +1875,6 @@ func TestHandleDBConfig(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
 	assertStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
-	assert.Empty(t, respBody["name"])
-	assert.Empty(t, respBody["pool"])
-	assert.Empty(t, respBody["server"])
-	assert.Empty(t, respBody["username"])
-	assert.Empty(t, respBody["password"])
-	assert.Empty(t, respBody["certpath"])
-	assert.Empty(t, respBody["keypath"])
-	assert.Empty(t, respBody["cacertpath"])
-	assert.Empty(t, respBody["kv_tls_port"])
 	assert.Equal(t, bucket, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
 
@@ -1924,15 +1916,20 @@ func TestHandleDeleteDB(t *testing.T) {
 }
 
 func TestHandleGetConfig(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	syncFunc := `function(doc) {throw({forbidden: "read only!"})}`
+	conf := RestTesterConfig{SyncFn: syncFunc}
+	rt := NewRestTester(t, &conf)
 	defer rt.Close()
-	respBody := db.Body{}
+
+	var respBody db.Body
 	resp := rt.SendAdminRequest(http.MethodGet, "/_config", "{}")
 	assertStatus(t, resp, http.StatusOK)
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+
 	assert.Equal(t, "127.0.0.1:4985", respBody["AdminInterface"].(string))
-	facebook := respBody["Facebook"].(map[string]interface{})
-	assert.False(t, facebook["Register"].(bool))
+	databases := respBody["Databases"].(map[string]interface{})
+	db := databases["db"].(map[string]interface{})
+	assert.Equal(t, syncFunc, db["sync"].(string))
 }
 
 func TestHandleGetRevTree(t *testing.T) {
@@ -1956,6 +1953,7 @@ func TestHandleGetRevTree(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "1-123")
 	assert.Contains(t, resp.Body.String(), "1-456")
 	assert.Contains(t, resp.Body.String(), "1-789")
+	assert.True(t, strings.HasPrefix(resp.Body.String(), "digraph"))
 }
 
 func TestHandleActiveTasks(t *testing.T) {
@@ -1963,7 +1961,7 @@ func TestHandleActiveTasks(t *testing.T) {
 	defer rt.Close()
 
 	mockClient := NewMockClient()
-	fakeConfigURL := "http://couchbase.xdcr.com:4985"
+	fakeConfigURL := "http://localhost:4985"
 	mockClient.RespondToGET(fakeConfigURL+"/source", MakeResponse(http.StatusOK, nil, ""))
 	mockClient.RespondToGET(fakeConfigURL+"/target", MakeResponse(http.StatusOK, nil, ""))
 
@@ -1971,7 +1969,7 @@ func TestHandleActiveTasks(t *testing.T) {
 	sc.HTTPClient = mockClient.Client
 
 	// Initiate synchronous one shot replication
-	reqBodyJson := `{"source":"http://couchbase.xdcr.com:4985/source","target":"http://couchbase.xdcr.com:4985/target"}`
+	reqBodyJson := `{"source":"http://localhost:4985/source","target":"http://localhost:4985/target"}`
 	assertStatus(t, rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson), http.StatusInternalServerError)
 
 	// Check the count of active tasks
@@ -1982,7 +1980,7 @@ func TestHandleActiveTasks(t *testing.T) {
 	assert.Equal(t, 0, len(tasks))
 
 	// Initiate asynchronous one shot replication
-	reqBodyJson = `{"source":"http://couchbase.xdcr.com:4985/source","target":"http://couchbase.xdcr.com:4985/target","async":true,"replication_id":"19969ccddec6a0beb6fbc7fde3203841"}`
+	reqBodyJson = `{"source":"http://localhost:4985/source","target":"http://localhost:4985/target","async":true,"replication_id":"19969ccddec6a0beb6fbc7fde3203841"}`
 	assertStatus(t, rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson), http.StatusOK)
 
 	// Check the count of active tasks
