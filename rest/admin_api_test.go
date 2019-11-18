@@ -1981,8 +1981,8 @@ func TestHandleActiveTasks(t *testing.T) {
 	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
 	assert.Equal(t, 0, len(tasks))
 
-	// Initiate asynchronous one shot replication
-	reqBodyJson = `{"source":"http://localhost:4985/source","target":"http://localhost:4985/target","async":true,"replication_id":"19969ccddec6a0beb6fbc7fde3203841"}`
+	// Initiate continuous one shot replication
+	reqBodyJson = `{"source":"http://localhost:4985/source","target":"http://localhost:4985/target","continuous":true,"replication_id":"19969ccddec6a0beb6fbc7fde3203841"}`
 	assertStatus(t, rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson), http.StatusOK)
 
 	// Check the count of active tasks
