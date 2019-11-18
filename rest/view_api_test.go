@@ -558,10 +558,14 @@ func TestPostInstallCleanup(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	// Cleanup existing design docs
+	_, err := rt.GetDatabase().RemoveObsoleteDesignDocs(false)
+	require.NoError(t, err)
+
 	bucket := rt.Bucket()
 	mapFunction := `function (doc, meta) { emit(); }`
 	// Create design docs in obsolete format
-	err := bucket.PutDDoc(db.DesignDocSyncGatewayPrefix, sgbucket.DesignDoc{
+	err = bucket.PutDDoc(db.DesignDocSyncGatewayPrefix, sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -581,7 +585,8 @@ func TestPostInstallCleanup(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.True(t, postUpgradeResponse.Preview)
-	assert.Equal(t, 4, len(postUpgradeResponse.Result["db"].RemovedDDocs))
+	assert.Equal(t, 2, len(postUpgradeResponse.Result["db"].RemovedDDocs))
+	fmt.Println(postUpgradeResponse)
 
 	// Run post-upgrade in non-preview mode
 	postUpgradeResponse = PostUpgradeResponse{}
@@ -589,7 +594,8 @@ func TestPostInstallCleanup(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.False(t, postUpgradeResponse.Preview)
-	assert.Equal(t, 4, len(postUpgradeResponse.Result["db"].RemovedDDocs))
+	assert.Equal(t, 2, len(postUpgradeResponse.Result["db"].RemovedDDocs))
+	fmt.Println(postUpgradeResponse)
 
 	// Run post-upgrade in preview mode again, expect no results for database
 	postUpgradeResponse = PostUpgradeResponse{}
