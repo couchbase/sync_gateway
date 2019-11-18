@@ -31,7 +31,7 @@ var (
 		status:        base.Uint32Ptr(sgStopped),
 		sgPath:        sgPath,
 		sgCollectPath: sgCollectPath,
-		err:           err}
+		pathError:     err}
 )
 
 const (
@@ -46,7 +46,7 @@ type sgCollect struct {
 	status        *uint32
 	sgPath        string
 	sgCollectPath string
-	err           error
+	pathError     error
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
@@ -56,7 +56,7 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	}
 
 	// Return error if there is any failure while obtaining sgCollectPaths.
-	if sg.err != nil {
+	if sg.pathError != nil {
 		return err
 	}
 

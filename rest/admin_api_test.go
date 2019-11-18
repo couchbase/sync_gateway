@@ -1667,6 +1667,7 @@ func TestDocumentChangeReplicate(t *testing.T) {
 	mockClient.RespondToGET(fakeConfigURL+"/mysourcedb", MakeResponse(200, nil, ``))
 	mockClient.RespondToGET(fakeConfigURL+"/mytargetdb", MakeResponse(200, nil, ``))
 	sc := rt.ServerContext()
+	defer sc.Close()
 	sc.HTTPClient = mockClient.Client
 
 	//Initiate synchronous one shot replication
@@ -1966,6 +1967,7 @@ func TestHandleActiveTasks(t *testing.T) {
 	mockClient.RespondToGET(fakeConfigURL+"/target", MakeResponse(http.StatusOK, nil, ""))
 
 	sc := rt.ServerContext()
+	defer sc.Close()
 	sc.HTTPClient = mockClient.Client
 
 	// Initiate synchronous one shot replication
