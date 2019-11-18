@@ -117,7 +117,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	// Retrieve the raw revision body backup of 2-a, and verify it's intact
 	log.Printf("Verify document storage of 2-a")
 	var revisionBody Body
-	rawRevision, _, err := db.Bucket.GetRaw("_sync:rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	rawRevision, _, err := db.Bucket.GetRaw(base.SyncPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
 	assert.NoError(t, base.JSONUnmarshal(rawRevision, &revisionBody))
 	goassert.Equals(t, revisionBody["version"], rev2a_body["version"])
@@ -157,7 +157,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
 	// Ensure previous revision body backup has been removed
-	_, _, err = db.Bucket.GetRaw("_sync:rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	_, _, err = db.Bucket.GetRaw(base.RevBodyPrefix + "4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.True(t, base.IsKeyNotFoundError(db.Bucket, err), "Revision should be not found")
 
 	// Validate the tombstone is stored inline (due to small size)
@@ -301,7 +301,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	// Retrieve the raw revision body backup of 2-a, and verify it's intact
 	log.Printf("Verify document storage of 2-a")
 	var revisionBody Body
-	rawRevision, _, err := db.Bucket.GetRaw("_sync:rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
+	rawRevision, _, err := db.Bucket.GetRaw(base.SyncPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
 	base.JSONUnmarshal(rawRevision, &revisionBody)
 	goassert.Equals(t, revisionBody["version"], rev2a_body["version"])
@@ -389,7 +389,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	// Ensure previous tombstone body backup has been removed
 	log.Printf("Verify revision body doc has been removed from bucket")
-	_, _, err = db.Bucket.GetRaw("_sync:rb:ULDLuEgDoKFJeET2hojeFANXM8SrHdVfAGONki+kPxM=")
+	_, _, err = db.Bucket.GetRaw(base.SyncPrefix + "rb:ULDLuEgDoKFJeET2hojeFANXM8SrHdVfAGONki+kPxM=")
 	assert.True(t, base.IsKeyNotFoundError(db.Bucket, err), "Revision should be not found")
 
 }
@@ -705,7 +705,7 @@ func TestLargeSequence(t *testing.T) {
 
 const rawDocMalformedRevisionStorage = `
 	{
-     "_sync":
+     "` + base.SyncPropertyName + `":
 		{"rev":"6-a",
          "new_rev":"3-b",
          "flags":28,
@@ -753,7 +753,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	assert.NoError(t, addErr, "Error writing raw document")
 
 	// Increment _sync:seq to match sequences allocated by raw doc
-	_, incrErr := db.Bucket.Incr("_sync:seq", 5, 0, 0)
+	_, incrErr := db.Bucket.Incr(base.SyncSeqKey, 5, 0, 0)
 	assert.NoError(t, incrErr, "Error incrementing sync:seq")
 
 	// Add child to non-winning revision w/ malformed inline body.

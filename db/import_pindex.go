@@ -1,11 +1,11 @@
 package db
 
 import (
+	"errors"
 	"expvar"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/pkg/errors"
 )
 
 // init registers the PIndex type definition.  This is invoked by cbgt when a Pindex (collection of
@@ -67,6 +67,11 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 		return nil, errors.New("Import feed stats map not initialized")
 	}
 
-	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap, base.DCPImportFeedID, base.DestShardedFeed)
+	importPartitionStat, ok := il.database.DbStats.SharedBucketImport().Get(base.StatKeyImportPartitions).(*expvar.Int)
+	if !ok {
+		return nil, errors.New("Import partitions stat not initialized")
+	}
+
+	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap, base.DCPImportFeedID, importPartitionStat)
 	return importDest, nil
 }

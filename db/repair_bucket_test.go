@@ -26,7 +26,7 @@ func testBucketWithViewsAndBrokenDoc(tester testing.TB) (tBucket base.TestBucket
 	// Add harmless docs
 	for i := 0; i < base.DefaultViewQueryPageSize+1; i++ {
 		testSyncData := SyncData{}
-		bucket.Add(fmt.Sprintf("foo-%d", i), 0, map[string]interface{}{"foo": "bar", "_sync": testSyncData})
+		bucket.Add(fmt.Sprintf("foo-%d", i), 0, map[string]interface{}{"foo": "bar", base.SyncPropertyName: testSyncData})
 		numDocsAdded++
 	}
 
