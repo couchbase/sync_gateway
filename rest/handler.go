@@ -569,9 +569,9 @@ func (h *handler) disableResponseCompression() {
 }
 
 // Do not call from HTTP handlers. Use h.writeRawJSON/h.writeRawJSONStatus instead.
-// writeBytesAsJSONResponse takes the given bytes and always writes the response as JSON,
+// writeRawJSONWithoutClientVerification takes the given bytes and always writes the response as JSON,
 // without checking that the client can accept it.
-func (h *handler) writeBytesAsJSONResponse(status int, b []byte) {
+func (h *handler) writeRawJSONWithoutClientVerification(status int, b []byte) {
 	h.setHeader("Content-Type", "application/json")
 	if h.rq.Method != "HEAD" {
 		if len(b) < minCompressibleJSONSize {
@@ -615,7 +615,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		jsonOut = append(buffer.Bytes(), '\n')
 	}
 
-	h.writeBytesAsJSONResponse(status, jsonOut)
+	h.writeRawJSONWithoutClientVerification(status, jsonOut)
 }
 
 // writeRawJSON writes the given bytes as a JSON response with a 200 OK status.
@@ -632,7 +632,7 @@ func (h *handler) writeRawJSONStatus(status int, b []byte) {
 		return
 	}
 
-	h.writeBytesAsJSONResponse(status, b)
+	h.writeRawJSONWithoutClientVerification(status, b)
 }
 
 // writeRawJSON writes the given bytes as a plaintext response with a 200 OK status.
