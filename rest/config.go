@@ -57,9 +57,6 @@ const (
 	minValueErrorMsg   = "minimum value for %s is: %v"
 	rangeValueErrorMsg = "valid range for %s is: %s"
 
-	DefaultMaxCouchbaseConnections         = 16
-	DefaultMaxCouchbaseOverflowConnections = 0
-
 	// Default value of ServerConfig.MaxIncomingConnections
 	DefaultMaxIncomingConnections = 0
 
@@ -91,8 +88,6 @@ type ServerConfig struct {
 	Pretty                     bool                     `json:",omitempty"`                       // Pretty-print JSON responses?
 	DeploymentID               *string                  `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
 	StatsReportInterval        *float64                 `json:",omitempty"`                       // Optional stats report interval (0 to disable)
-	MaxCouchbaseConnections    *int                     `json:",omitempty"`                       // Max # of sockets to open to a Couchbase Server node
-	MaxCouchbaseOverflow       *int                     `json:",omitempty"`                       // Max # of overflow sockets to open
 	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`                       // TCP keep-alive interval between SG and Couchbase server
 	SlowQueryWarningThreshold  *int                     `json:",omitempty"`                       // Log warnings if N1QL queries take this many ms
 	MaxIncomingConnections     *int                     `json:",omitempty"`                       // Max # of incoming HTTP connections to accept

@@ -5,11 +5,7 @@
 ############
 
 CB_CLI_PATH=""
-
-CB_SERVER_URL="http://localhost:8091"
-if [ "$SG_TEST_COUCHBASE_SERVER_URL" != "" ]; then
-    CB_SERVER_URL=$SG_TEST_COUCHBASE_SERVER_URL
-fi
+CB_SERVER_URL=${SG_TEST_COUCHBASE_SERVER_URL:-http://localhost:8091}
 
 CB_ADMIN_USERNAME="Administrator"
 CB_ADMIN_PASSWORD="password"

@@ -550,7 +550,7 @@ func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey L
 	if logKey > KeyNone && logKey != KeyAll {
 		logKeyName := logKey.String()
 		// Append "+" to logKeys at debug level (for backwards compatibility)
-		if logLevel == LevelDebug {
+		if logLevel >= LevelDebug {
 			logKeyName += "+"
 		}
 		logKeyPrefix = logKeyName + ": "
