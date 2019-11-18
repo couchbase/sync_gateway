@@ -1958,6 +1958,50 @@ func TestHandleGetRevTree(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "1-789")
 }
 
+func TestHandleActiveTasks(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	mockClient := NewMockClient()
+	fakeConfigURL := "http://couchbase.xdcr.com:4985"
+	mockClient.RespondToGET(fakeConfigURL+"/source", MakeResponse(http.StatusOK, nil, ""))
+	mockClient.RespondToGET(fakeConfigURL+"/target", MakeResponse(http.StatusOK, nil, ""))
+
+	sc := rt.ServerContext()
+	sc.HTTPClient = mockClient.Client
+
+	// Initiate synchronous one shot replication
+	reqBodyJson := `{"source":"http://couchbase.xdcr.com:4985/source","target":"http://couchbase.xdcr.com:4985/target"}`
+	assertStatus(t, rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson), http.StatusInternalServerError)
+
+	// Check the count of active tasks
+	var tasks []interface{}
+	resp := rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
+	assert.Equal(t, 0, len(tasks))
+
+	// Initiate asynchronous one shot replication
+	reqBodyJson = `{"source":"http://couchbase.xdcr.com:4985/source","target":"http://couchbase.xdcr.com:4985/target","async":true,"replication_id":"19969ccddec6a0beb6fbc7fde3203841"}`
+	assertStatus(t, rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson), http.StatusOK)
+
+	// Check the count of active tasks
+	resp = rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
+	assert.Equal(t, 1, len(tasks))
+
+	//Cancel active replication
+	reqBodyJson = `{"replication_id":"19969ccddec6a0beb6fbc7fde3203841","cancel":true}`
+	resp = rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson)
+
+	// Check the count of active tasks
+	resp = rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
+	assert.Equal(t, 0, len(tasks))
+}
+
 func TestHandleSGCollect(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -1977,5 +2021,4 @@ func TestHandleSGCollect(t *testing.T) {
 	// Try to start SGCollect with empty request body; It should throw with unexpected end of JSON input error
 	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
 	assertStatus(t, resp, http.StatusBadRequest)
-	log.Printf("resp.Body.String(): %v", resp.Body.String())
 }
