@@ -80,14 +80,7 @@ var (
 		IndexSyncDocs:   {},
 	}
 
-	// Expressions used to create index.indexVersions = map[SGIndexType]int{
-	// 		IndexAccess:     1,
-	// 		IndexRoleAccess: 1,
-	// 		IndexChannels:   1,
-	// 		IndexAllDocs:    1,
-	// 		IndexTombstones: 1,
-	// 		IndexSyncDocs:   1,
-	// 	}
+	// Expressions used to create index.
 	// See https://issues.couchbase.com/browse/MB-28728 for details on IFMISSING handling in IndexChannels
 	indexExpressions = map[SGIndexType]string{
 		IndexAccess:     "ALL (ARRAY (op.name) FOR op IN OBJECT_PAIRS($sync.access) END)",
