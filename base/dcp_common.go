@@ -564,11 +564,14 @@ func getExternalAlternateAddress(alternateAddressMap map[string]string, dest str
 }
 
 // alternateAddressShims returns the 3 functions that wrap around ConnectBucket/Connect/ConnectTLS to provide alternate address support.
-func alternateAddressShims(externalAlternateAddresses map[string]string) (
+func alternateAddressShims() (
 	connectBucketShim func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error),
 	connectShim func(protocol, dest string) (*memcached.Client, error),
 	connectTLSShim func(protocol, dest string, tlsConfig *tls.Config) (*memcached.Client, error),
 ) {
+
+	// A map of dest URL (which may be an internal-only address) to external alternate address.
+	var externalAlternateAddresses map[string]string
 
 	// Copy of cbdatasource's default ConnectBucket function, which maps internal addresses to alternate addresses
 	connectBucketShim = func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error) {
@@ -593,7 +596,7 @@ func alternateAddressShims(externalAlternateAddresses map[string]string) (
 			return nil, err
 		}
 
-		// Build map of external alternate addresses if available
+		// Recreate the map to forget about previous clustermap information.
 		externalAlternateAddresses = make(map[string]string, len(pool.Nodes))
 		for _, node := range pool.Nodes {
 			if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
@@ -632,6 +635,7 @@ func alternateAddressShims(externalAlternateAddresses map[string]string) (
 
 		return bucket, nil
 	}
+
 	// Copy of cbdatasource's default Connect function, which swaps the given destination, with external addresses we found in ConnectBucket.
 	connectShim = func(protocol, dest string) (client *memcached.Client, err error) {
 		Tracef(KeyDCP, "Connect callback: %s %s", protocol, MD(dest))
