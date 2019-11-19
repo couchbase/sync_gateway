@@ -155,7 +155,9 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 // and increments s.last.
 // If no previously reserved sequences are available, reserves new batch.
 func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
+	nextSequenceStart := time.Now()
 	s.mutex.Lock()
+	s.dbStats.Add(base.StatKeySequenceAssignedMutexTime, time.Since(nextSequenceStart).Nanoseconds())
 	if s.last >= s.max {
 		if err := s._reserveSequenceRange(); err != nil {
 			s.mutex.Unlock()
@@ -166,6 +168,7 @@ func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
 	sequence = s.last
 	s.mutex.Unlock()
 	s.dbStats.Add(base.StatKeySequenceAssignedCount, 1)
+	s.dbStats.Add(base.StatKeySequenceAssignedTime, time.Since(nextSequenceStart).Nanoseconds())
 	return sequence, nil
 }
 
