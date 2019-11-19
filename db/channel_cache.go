@@ -54,7 +54,7 @@ type ChannelCache interface {
 	// Returns the highest cached sequence, used for changes synchronization
 	GetHighCacheSequence() uint64
 
-	// Access to individual channel cache, intended for testing
+	// Access to individual channel cache
 	getSingleChannelCache(channelName string) SingleChannelCache
 }
 
@@ -79,7 +79,7 @@ type channelCacheImpl struct {
 	compactRunning       base.AtomicBool           // Whether compact is currently running
 	activeChannels       *channels.ActiveChannels  // Active channel handler
 	statsMap             *expvar.Map               // Map used for cache stats
-
+	validFromLock        sync.RWMutex              // Mutex used to avoid race between AddToCache and addChannelCache.  See CBG-520 for more details
 }
 
 func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) *channelCacheImpl {
@@ -123,7 +123,7 @@ func (c *channelCacheImpl) GetHighCacheSequence() uint64 {
 	return highSeq
 }
 
-// Returns high cache sequence.  Callers should hold read lock on cacheLock
+// Returns high cache sequence.  Callers should hold read lock on seqLock
 func (c *channelCacheImpl) _getHighCacheSequence() uint64 {
 	return c.highCacheSequence
 }
@@ -170,6 +170,10 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) base.Set {
 		defer c.lateSeqLock.Unlock()
 	}
 
+	// Need to acquire the validFromLock prior to checking for active channel caches, to ensure that
+	// any new caches that are added between the check for c.GetActiveChannelCache and the update of
+	// c.highCacheSequence are initialized with the correct validFrom.
+	c.validFromLock.Lock()
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
 			channelCache, ok := c.getActiveChannelCache(channelName)
@@ -195,6 +199,7 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) base.Set {
 	}
 
 	c.updateHighCacheSequence(change.Sequence)
+	c.validFromLock.Unlock()
 	return updatedChannels
 }
 
@@ -295,14 +300,15 @@ func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCa
 		return nil, false
 	}
 
-	c.seqLock.Lock()
+	c.validFromLock.Lock()
 
 	// Everything after the current high sequence will be added to the cache via the feed
-	validFrom := c._getHighCacheSequence() + 1
+	// TODO: Deadlock between validFromLock and seqLock?
+	validFrom := c.GetHighCacheSequence() + 1
 
 	singleChannelCache := newChannelCacheWithOptions(c.queryHandler, channelName, validFrom, c.options, c.statsMap)
 	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channelName, singleChannelCache)
-	c.seqLock.Unlock()
+	c.validFromLock.Unlock()
 
 	singleChannelCache = AsSingleChannelCache(cacheValue)
 
