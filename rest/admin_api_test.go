@@ -1957,45 +1957,11 @@ func TestHandleGetRevTree(t *testing.T) {
 }
 
 func TestHandleActiveTasks(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-
-	mockClient := NewMockClient()
-	fakeConfigURL := "http://localhost:4985"
-	mockClient.RespondToGET(fakeConfigURL+"/source", MakeResponse(http.StatusOK, nil, ""))
-	mockClient.RespondToGET(fakeConfigURL+"/target", MakeResponse(http.StatusOK, nil, ""))
-
-	sc := rt.ServerContext()
-	sc.HTTPClient = mockClient.Client
-
-	// Initiate synchronous one shot replication
-	reqBodyJson := `{"source":"http://localhost:4985/source","target":"http://localhost:4985/target"}`
-	assertStatus(t, rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson), http.StatusInternalServerError)
-
 	// Check the count of active tasks
 	var tasks []interface{}
 	resp := rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
-	assertStatus(t, resp, http.StatusOK)
-	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
-	assert.Equal(t, 0, len(tasks))
-
-	// Initiate continuous one shot replication
-	reqBodyJson = `{"source":"http://localhost:4985/source","target":"http://localhost:4985/target","continuous":true,"replication_id":"19969ccddec6a0beb6fbc7fde3203841"}`
-	assertStatus(t, rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson), http.StatusOK)
-
-	// Check the count of active tasks
-	resp = rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
-	assertStatus(t, resp, http.StatusOK)
-	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
-	assert.Equal(t, 1, len(tasks))
-
-	//Cancel active replication
-	reqBodyJson = `{"replication_id":"19969ccddec6a0beb6fbc7fde3203841","cancel":true}`
-	resp = rt.SendAdminRequest(http.MethodPost, "/_replicate", reqBodyJson)
-
-	// Check the count of active tasks
-	resp = rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
 	assertStatus(t, resp, http.StatusOK)
 	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
 	assert.Equal(t, 0, len(tasks))
