@@ -303,7 +303,6 @@ func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCa
 	c.validFromLock.Lock()
 
 	// Everything after the current high sequence will be added to the cache via the feed
-	// TODO: Deadlock between validFromLock and seqLock?
 	validFrom := c.GetHighCacheSequence() + 1
 
 	singleChannelCache := newChannelCacheWithOptions(c.queryHandler, channelName, validFrom, c.options, c.statsMap)
