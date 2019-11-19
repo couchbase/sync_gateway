@@ -184,3 +184,50 @@ func TestRemoveDatabase(t *testing.T) {
 	dbContext, err = serverContext.GetDatabase(databaseName)
 	assert.Nil(t, dbContext, "Database context should not be available!")
 }
+
+func TestAllDatabaseNames(t *testing.T) {
+	server := "walrus:"
+	bucketName := "imbucket"
+	var databaseNames []string
+
+	serverConfig := &ServerConfig{CORS: &CORSConfig{}, Facebook: &FacebookConfig{}, AdminInterface: &DefaultAdminInterface}
+	serverContext := NewServerContext(serverConfig)
+	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
+
+	for i := 0; i < 5; i++ {
+		databaseName := fmt.Sprintf("imdb%d", i)
+		databaseNames = append(databaseNames, databaseName)
+		dbConfig := &DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: true}
+		dbContext, err := serverContext.AddDatabaseFromConfig(dbConfig)
+
+		assert.NoError(t, err, "No error while adding database to server context")
+		assert.Equal(t, server, dbContext.BucketSpec.Server)
+		assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
+		assert.ElementsMatch(t, databaseNames, serverContext.AllDatabaseNames())
+	}
+
+	databaseNames = removeElementWithValue(databaseNames, "imdb2")
+	databaseNames = removeElementWithValue(databaseNames, "imdb3")
+	status := serverContext.RemoveDatabase("imdb2")
+	assert.True(t, status, "Database should be removed from server context")
+	status = serverContext.RemoveDatabase("imdb3")
+	assert.True(t, status, "Database should be removed from server context")
+	assert.ElementsMatch(t, databaseNames, serverContext.AllDatabaseNames())
+}
+
+func removeElementWithIndex(s []string, index int) []string {
+	return append(s[:index], s[index+1:]...)
+}
+
+func removeElementWithValue(s []string, e string) []string {
+	return removeElementWithIndex(s, indexOf(s, e))
+}
+
+func indexOf(elements []string, e string) int {
+	for k, v := range elements {
+		if e == v {
+			return k
+		}
+	}
+	return -1 // Not found.
+}
