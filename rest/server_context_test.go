@@ -163,3 +163,24 @@ func (client *MockClient) RespondToGET(url string, response *http.Response) {
 	tripper := client.Transport.(*mockTripper)
 	tripper.getURLs[url] = response
 }
+
+func TestRemoveDatabase(t *testing.T) {
+	server := "walrus:"
+	bucketName := "imbucket"
+	databaseName := "imdb"
+
+	serverConfig := &ServerConfig{CORS: &CORSConfig{}, Facebook: &FacebookConfig{}, AdminInterface: &DefaultAdminInterface}
+	serverContext := NewServerContext(serverConfig)
+	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
+	dbConfig := &DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: true}
+
+	dbContext, err := serverContext.AddDatabaseFromConfig(dbConfig)
+	assert.NoError(t, err, "No error while adding database to server context")
+	assert.Equal(t, server, dbContext.BucketSpec.Server)
+	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
+
+	status := serverContext.RemoveDatabase(databaseName)
+	assert.True(t, status, "Database should be removed from server context")
+	dbContext, err = serverContext.GetDatabase(databaseName)
+	assert.Nil(t, dbContext, "Database context should not be available!")
+}
