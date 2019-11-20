@@ -551,13 +551,13 @@ func getExternalAlternateAddress(alternateAddressMap map[string]string, dest str
 
 	// Map the given destination to an external alternate address hostname if available
 	if extHostname, foundAltAddress := alternateAddressMap[destHost]; foundAltAddress {
-		_, port, _ := SplitHostPort(extHostname)
+		host, port, _ := SplitHostPort(extHostname)
 		if port == "" {
 			port = destPort
 		}
 
-		Tracef(KeyDCP, "Found alternate address mapping %s => %s", MD(dest), MD(extHostname+":"+port))
-		dest = extHostname + ":" + port
+		Tracef(KeyDCP, "Found alternate address mapping %s => %s", MD(dest), MD(host+":"+port))
+		dest = host + ":" + port
 	}
 
 	return dest, nil
