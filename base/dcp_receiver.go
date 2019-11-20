@@ -286,8 +286,10 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		auth = NoPasswordAuthHandler{handler: spec.Auth}
 	}
 
-	dataSourceOptions.TLSConfig = func() *tls.Config {
-		return spec.TLSConfig()
+	if spec.IsTLS() {
+		dataSourceOptions.TLSConfig = func() *tls.Config {
+			return spec.TLSConfig()
+		}
 	}
 
 	// A lookup of host dest to external alternate address hostnames
