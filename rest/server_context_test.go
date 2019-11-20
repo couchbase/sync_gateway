@@ -13,11 +13,13 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -25,7 +27,7 @@ import (
 func TestConfigServer(t *testing.T) {
 	fakeConfigURL := "http://example.com/config"
 	mockClient := NewMockClient()
-	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil,
+	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(http.StatusOK, nil,
 		`{
 			"bucket": "fivez",
 			"server": "walrus:/fake"
@@ -41,12 +43,12 @@ func TestConfigServer(t *testing.T) {
 
 	dbc, err := sc.GetDatabase("db")
 	assert.NoError(t, err)
-	goassert.Equals(t, dbc.Name, "db")
+	assert.Equal(t, "db", dbc.Name)
 
 	dbc, err = sc.GetDatabase("db2")
 	assert.NoError(t, err)
-	goassert.Equals(t, dbc.Name, "db2")
-	goassert.Equals(t, dbc.Bucket.GetName(), "fivez")
+	assert.Equal(t, "db2", dbc.Name)
+	assert.Equal(t, "fivez", dbc.Bucket.GetName())
 
 	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
 }
@@ -93,12 +95,12 @@ func TestConfigServerWithSyncFunction(t *testing.T) {
 
 	dbc, err := sc.GetDatabase("db")
 	assert.NoError(t, err)
-	goassert.Equals(t, dbc.Name, "db")
+	assert.Equal(t, "db", dbc.Name)
 
 	dbc, err = sc.GetDatabase("db2")
 	assert.NoError(t, err)
-	goassert.Equals(t, dbc.Name, "db2")
-	goassert.Equals(t, dbc.Bucket.GetName(), "fivez")
+	assert.Equal(t, "db2", dbc.Name)
+	assert.Equal(t, "fivez", dbc.Bucket.GetName())
 
 	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
 
@@ -169,7 +171,7 @@ func TestRemoveDatabase(t *testing.T) {
 	bucketName := "imbucket"
 	databaseName := "imdb"
 
-	serverConfig := &ServerConfig{CORS: &CORSConfig{}, Facebook: &FacebookConfig{}, AdminInterface: &DefaultAdminInterface}
+	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface}
 	serverContext := NewServerContext(serverConfig)
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
 	dbConfig := &DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: true}
@@ -190,7 +192,7 @@ func TestAllDatabaseNames(t *testing.T) {
 	bucketName := "imbucket"
 	var databaseNames []string
 
-	serverConfig := &ServerConfig{CORS: &CORSConfig{}, Facebook: &FacebookConfig{}, AdminInterface: &DefaultAdminInterface}
+	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface}
 	serverContext := NewServerContext(serverConfig)
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
 
@@ -208,10 +210,12 @@ func TestAllDatabaseNames(t *testing.T) {
 
 	databaseNames = removeElementWithValue(databaseNames, "imdb2")
 	databaseNames = removeElementWithValue(databaseNames, "imdb3")
+
 	status := serverContext.RemoveDatabase("imdb2")
 	assert.True(t, status, "Database should be removed from server context")
 	status = serverContext.RemoveDatabase("imdb3")
 	assert.True(t, status, "Database should be removed from server context")
+
 	assert.ElementsMatch(t, databaseNames, serverContext.AllDatabaseNames())
 }
 
@@ -230,4 +234,71 @@ func indexOf(elements []string, e string) int {
 		}
 	}
 	return -1 // Not found.
+}
+
+func captureOutput(f func()) string {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer func() { log.SetOutput(os.Stderr) }()
+	f()
+	return buf.String()
+}
+
+func TestStartReplicators(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
+	var replications []*ReplicationConfig
+
+	// Should be skipped; create_target option is not currently supported.
+	replications = append(replications, &ReplicationConfig{
+		Source:       "http://127.0.0.1:4985/imdb_us",
+		Target:       "http://127.0.0.1:4985/imdb_uk",
+		Async:        true,
+		CreateTarget: true})
+
+	// Should be skipped; doc_ids option is not currently supported
+	replications = append(replications, &ReplicationConfig{
+		Source: "http://127.0.0.1:4985/imdb_us",
+		Target: "http://127.0.0.1:4985/imdb_uk",
+		Async:  true,
+		DocIds: []string{"doc1", "doc2", "doc3", "doc4"}})
+
+	// Should be skipped; proxy option is not currently supported.
+	replications = append(replications, &ReplicationConfig{
+		Source: "http://127.0.0.1:4985/imdb_us",
+		Target: "http://127.0.0.1:4985/imdb_uk",
+		Async:  true,
+		Proxy:  "http://127.0.0.1:443/proxy"})
+
+	// Start a one-shot replication.
+	replications = append(replications, &ReplicationConfig{
+		Source:        "http://127.0.0.1:4985/imdb_us",
+		Target:        "http://127.0.0.1:4985/imdb_uk",
+		Async:         true,
+		ReplicationId: "58a632bb8d7e110445d3d65a98365d62"})
+
+	serverConfig := &ServerConfig{AdminInterface: &DefaultAdminInterface, Replications: replications}
+	serverContext := NewServerContext(serverConfig)
+	out := captureOutput(serverContext.startReplicators)
+
+	assert.Contains(t, "/_replicate create_target option is not currently supported", out)
+	assert.Contains(t, "/_replicate doc_ids option is not currently supported", out)
+	assert.Contains(t, "/_replicate proxy option is not currently supported", out)
+	assert.Contains(t, "ReplicationId:58a632bb8d7e110445d3d65a98365d62", out)
+}
+
+func TestPostStartup(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
+	var replications []*ReplicationConfig
+
+	// Start a one-shot replication.
+	replications = append(replications, &ReplicationConfig{
+		Source:        "http://127.0.0.1:4985/imdb_us",
+		Target:        "http://127.0.0.1:4985/imdb_uk",
+		Async:         true,
+		ReplicationId: "58a632bb8d7e110445d3d65a98365d62"})
+
+	serverConfig := &ServerConfig{AdminInterface: &DefaultAdminInterface, Replications: replications}
+	serverContext := NewServerContext(serverConfig)
+	out := captureOutput(serverContext.startReplicators)
+	assert.Contains(t, "ReplicationId:58a632bb8d7e110445d3d65a98365d62", out)
 }
