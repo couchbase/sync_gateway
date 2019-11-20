@@ -1088,7 +1088,8 @@ func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]int
 		base.CreateDoublingSleeperFunc(10, 10),
 	)
 
-	return rawChanges.([][]interface{})
+	changes, _ = rawChanges.([][]interface{})
+	return changes
 
 }
 
