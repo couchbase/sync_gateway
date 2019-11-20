@@ -589,19 +589,6 @@ func (dbConfig *DbConfig) UseXattrs() bool {
 	return base.DefaultUseXattrs
 }
 
-// Create a deepcopy of this DbConfig, or panic.
-// This will only copy all of the _exported_ fields of the DbConfig.
-func (dbConfig *DbConfig) DeepCopy() (dbConfigCopy *DbConfig, err error) {
-
-	dbConfigDeepCopy := &DbConfig{}
-	err = base.DeepCopyInefficient(&dbConfigDeepCopy, dbConfig)
-	if err != nil {
-		return nil, err
-	}
-	return dbConfigDeepCopy, nil
-
-}
-
 // Implementation of AuthHandler interface for ClusterConfig
 func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
