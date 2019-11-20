@@ -72,8 +72,6 @@ pipeline {
                                     sh 'go get -v -u github.com/AlekSi/gocov-xml'
                                     // Jenkins test reporting tools
                                     sh 'go get -v -u github.com/tebeka/go2xunit'
-                                    // Converts benchmark output to junit format
-                                    sh 'go get -v -u github.com/jstemmer/go-junit-report'
                                 }
                             }
                         }
@@ -363,15 +361,12 @@ pipeline {
             steps{
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]){
                     sh 'mkdir -p reports'
-                    sh "go test -timeout=20m -count=1 -run='^\044' -bench=Benchmark -test.benchmem -v ${SGW_REPO}/... > benchmark.out || true"
-                    sh "cat benchmark.out | go-junit-report > reports/benchmark-report.xml"
+                    sh "go test -timeout=20m -count=1 -run='^\044' -bench=Benchmark -test.benchmem -v ${SGW_REPO}/... > reports/benchmark.out || true"
+                    sh "cat reports/benchmark.out"
                 }
             }
 
         }
-
-
-
     }
 
     post {
@@ -382,8 +377,7 @@ pipeline {
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
 
-            perfReport 'reports/benchmark-*.xml'
-//             junit allowEmptyResults: true, testResults: 'reports/benchmark-*.xml'
+            archiveArtifacts artifacts: 'reports/benchmark.out', fingerprint: true
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
