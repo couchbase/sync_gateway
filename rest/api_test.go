@@ -4388,6 +4388,8 @@ func TestWebhookSpecialProperties(t *testing.T) {
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
+	defer base.SetUpBenchmarkLogging(base.LevelInfo, base.KeyHTTP)()
+
 	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
@@ -4408,6 +4410,8 @@ var threekdoc = `{"cols":["Name","Address","Location","phone"],"data":[["Melyssa
 
 func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 
+	defer base.SetUpBenchmarkLogging(base.LevelInfo, base.KeyAll)()
+
 	prt := NewRestTester(b, nil)
 	defer prt.Close()
 
@@ -4422,6 +4426,8 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 }
 
 func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
+
+	defer base.SetUpBenchmarkLogging(base.LevelInfo, base.KeyHTTP)()
 
 	qrtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	qrt := NewRestTester(b, &qrtConfig)
@@ -4439,7 +4445,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 
 func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 
-	defer base.SetUpTestLogging(base.LevelWarn, base.KeyAll)()
+	defer base.SetUpBenchmarkLogging(base.LevelWarn, base.KeyAll)()
 	//Create test documents
 	rt := NewRestTester(b, nil)
 	defer rt.Close()

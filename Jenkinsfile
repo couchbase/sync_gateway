@@ -361,7 +361,7 @@ pipeline {
             steps{
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]){
                     sh 'mkdir -p reports'
-                    sh "go test -timeout=20m -count=1 -run='^\044' -bench=Benchmark -test.benchmem -v ${SGW_REPO}/... > reports/benchmark.out || true"
+                    sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -v ${SGW_REPO}/... > reports/benchmark.out || true"
                     sh "cat reports/benchmark.out"
                 }
             }
