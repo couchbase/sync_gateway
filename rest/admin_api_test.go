@@ -18,6 +18,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1786,4 +1787,203 @@ func respRevID(t *testing.T, response *TestResponse) (revID string) {
 	require.NotNil(t, r.RevID, "expecting non-nil rev ID from response: %s", string(response.BodyBytes()))
 	require.NotEqual(t, "", *r.RevID, "expecting non-empty rev ID from response: %s", string(response.BodyBytes()))
 	return *r.RevID
+}
+
+func TestHandleCreateDB(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	server := "walrus:"
+	pool := "liverpool"
+	bucket := "albums"
+	kvTLSPort := 11207
+	resource := fmt.Sprintf("/%s/", bucket)
+
+	bucketConfig := BucketConfig{Server: &server, Pool: &pool, Bucket: &bucket, KvTLSPort: kvTLSPort}
+	dbConfig := &DbConfig{BucketConfig: bucketConfig}
+	var respBody db.Body
+
+	reqBody, err := base.JSONMarshal(dbConfig)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+
+	resp := rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+
+	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.Equal(t, bucket, respBody["db_name"].(string))
+	assert.Equal(t, "Online", respBody["state"].(string))
+
+	// Try to create database with bad JSON request body and simulate JSON
+	// parsing error from the handler; handleCreateDB.
+	reqBodyJson := `"server":"walrus:","pool":"liverpool","bucket":"albums","kv_tls_port":11207`
+	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
+	assertStatus(t, resp, http.StatusBadRequest)
+
+	// Simulate connection refused error by providing unknown server URL.
+	reqBodyJson = `{"server":"http://unknown:8091","pool":"liverpool","bucket":"photos"}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
+	assertStatus(t, resp, http.StatusBadGateway)
+}
+
+func TestHandleDBConfig(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	server := "walrus:"
+	pool := "liverpool"
+	bucket := "albums"
+	kvTLSPort := 443
+	certPath := "/etc/ssl/certs/client.cert"
+	keyPath := "/etc/ssl/certs/client.pem"
+	caCertPath := "/etc/ssl/certs/ca.cert"
+	username := "Alice"
+	password := "QWxpY2U="
+	resource := fmt.Sprintf("/%s/", bucket)
+
+	bucketConfig := BucketConfig{
+		Server:     &server,
+		Pool:       &pool,
+		Bucket:     &bucket,
+		Username:   username,
+		Password:   password,
+		CertPath:   certPath,
+		KeyPath:    keyPath,
+		CACertPath: caCertPath,
+		KvTLSPort:  kvTLSPort}
+
+	dbConfig := &DbConfig{BucketConfig: bucketConfig}
+	var respBody db.Body
+	reqBody, err := base.JSONMarshal(dbConfig)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+
+	// Create a database
+	resp := rt.SendAdminRequest(http.MethodPut, resource, "{}")
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+
+	// Get database config before putting any config.
+	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.Nil(t, respBody["bucket"])
+
+	// Put database config
+	resource = fmt.Sprintf("/%v/_config", bucket)
+	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+	assert.Equal(t, bucket, respBody["db_name"].(string))
+	assert.Equal(t, "Online", respBody["state"].(string))
+
+	// Get database config after putting valid database config
+	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+
+	assert.Equal(t, bucket, respBody["bucket"].(string))
+	assert.Equal(t, bucket, respBody["name"].(string))
+	assert.Equal(t, pool, respBody["pool"].(string))
+	assert.Equal(t, server, respBody["server"].(string))
+	assert.Equal(t, username, respBody["username"].(string))
+	assert.Equal(t, password, respBody["password"].(string))
+	assert.Equal(t, certPath, respBody["certpath"].(string))
+	assert.Equal(t, keyPath, respBody["keypath"].(string))
+	assert.Equal(t, caCertPath, respBody["cacertpath"].(string))
+	assert.Equal(t, json.Number("443"), respBody["kv_tls_port"].(json.Number))
+}
+
+func TestHandleDeleteDB(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Try to delete the database which doesn't exists
+	resp := rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
+	assertStatus(t, resp, http.StatusNotFound)
+	assert.Contains(t, resp.Body.String(), "no such database")
+
+	// Create the database
+	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+
+	// Delete the database
+	resp = rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), "{}")
+}
+
+func TestHandleGetConfig(t *testing.T) {
+	syncFunc := `function(doc) {throw({forbidden: "read only!"})}`
+	conf := RestTesterConfig{SyncFn: syncFunc}
+	rt := NewRestTester(t, &conf)
+	defer rt.Close()
+
+	var respBody db.Body
+	resp := rt.SendAdminRequest(http.MethodGet, "/_config", "{}")
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+
+	assert.Equal(t, "127.0.0.1:4985", respBody["AdminInterface"].(string))
+	databases := respBody["Databases"].(map[string]interface{})
+	db := databases["db"].(map[string]interface{})
+	assert.Equal(t, syncFunc, db["sync"].(string))
+}
+
+func TestHandleGetRevTree(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create three revisions of the user foo with different status and updated_at values;
+	reqBodyJson := `{"new_edits": false, "docs": [
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-24T17:37:49.715Z", "status": "online", "_rev": "1-123"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-26T17:37:49.715Z", "status": "offline", "_rev": "1-456"}, 
+    	{"_id": "foo", "type": "user", "updated_at": "2016-06-25T17:37:49.715Z", "status": "offline", "_rev": "1-789"}]}`
+
+	resp := rt.SendAdminRequest(http.MethodPost, "/db/_bulk_docs", reqBodyJson)
+	assertStatus(t, resp, http.StatusCreated)
+	respBodyExpected := `[{"id":"foo","rev":"1-123"},{"id":"foo","rev":"1-456"},{"id":"foo","rev":"1-789"}]`
+	assert.Equal(t, respBodyExpected, resp.Body.String())
+
+	// Get the revision tree  of the user foo
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/_revtree/foo", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.Contains(t, resp.Body.String(), "1-123")
+	assert.Contains(t, resp.Body.String(), "1-456")
+	assert.Contains(t, resp.Body.String(), "1-789")
+	assert.True(t, strings.HasPrefix(resp.Body.String(), "digraph"))
+}
+
+func TestHandleActiveTasks(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	// Check the count of active tasks
+	var tasks []interface{}
+	resp := rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
+	assertStatus(t, resp, http.StatusOK)
+	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
+	assert.Equal(t, 0, len(tasks))
+}
+
+func TestHandleSGCollect(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	reqBodyJson := ""
+	resource := "/_sgcollect_info"
+
+	// Check SGCollect status before triggering it; status should be stopped if no process is running.
+	resp := rt.SendAdminRequest(http.MethodGet, resource, reqBodyJson)
+	assertStatus(t, resp, http.StatusOK)
+	assert.Equal(t, resp.Body.String(), `{"status":"stopped"}`)
+
+	// Try to cancel SGCollect before triggering it; Error stopping sgcollect_info: not running
+	resp = rt.SendAdminRequest(http.MethodDelete, resource, reqBodyJson)
+	assertStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), "Error stopping sgcollect_info: not running")
+
+	// Try to start SGCollect with empty request body; It should throw with unexpected end of JSON input error
+	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
+	assertStatus(t, resp, http.StatusBadRequest)
 }

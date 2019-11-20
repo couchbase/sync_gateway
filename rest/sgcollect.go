@@ -26,7 +26,12 @@ var (
 
 	validateTicketPattern = regexp.MustCompile(`\d{1,7}`)
 
-	sgcollectInstance = sgCollect{status: base.Uint32Ptr(sgStopped)}
+	sgPath, sgCollectPath, err = sgCollectPaths()
+	sgcollectInstance          = sgCollect{
+		status:        base.Uint32Ptr(sgStopped),
+		sgPath:        sgPath,
+		sgCollectPath: sgCollectPath,
+		pathError:     err}
 )
 
 const (
@@ -37,8 +42,11 @@ const (
 )
 
 type sgCollect struct {
-	cancel context.CancelFunc
-	status *uint32
+	cancel        context.CancelFunc
+	status        *uint32
+	sgPath        string
+	sgCollectPath string
+	pathError     error
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
@@ -47,8 +55,8 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 		return ErrSGCollectInfoAlreadyRunning
 	}
 
-	sgPath, sgCollectPath, err := sgCollectPaths()
-	if err != nil {
+	// Return error if there is any failure while obtaining sgCollectPaths.
+	if sg.pathError != nil {
 		return err
 	}
 
