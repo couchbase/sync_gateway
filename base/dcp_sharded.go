@@ -3,10 +3,10 @@ package base
 import (
 	"strings"
 
+	"github.com/pkg/errors"
+
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-couchbase/cbdatasource"
-	"github.com/pkg/errors"
-	pkgerrors "github.com/pkg/errors"
 )
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
@@ -96,7 +96,7 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 
 	vbNo, err := bucket.GetMaxVbno()
 	if err != nil {
-		return pkgerrors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(bucket.GetName()))
+		return errors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(bucket.GetName()))
 	}
 
 	// Calculate partitionsPerPIndex required to hit target DefaultImportPartitions
@@ -118,12 +118,10 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	indexName := dbName + "_import"
 
 	// Register bucketDataSource callback for new index if we need to configure TLS
-	if spec.IsTLS() {
-		cbgt.RegisterBucketDataSourceOptionsCallback(indexName, manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
-			options.TLSConfig = spec.TLSConfig
-			return options
-		})
-	}
+	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
+		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(spec.IsTLS())
+		return options
+	})
 
 	_, previousIndexUUID, err := getCBGTIndexUUID(manager, indexName)
 	indexType := CBGTIndexTypeSyncGatewayImport + dbName
@@ -334,7 +332,7 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 	// Create heartbeater
 	heartbeater, err := NewCouchbaseHeartbeater(bucket, SyncPrefix, cbgtContext.Manager.UUID(), nodeListHandler)
 	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()))
+		return nil, errors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()))
 	}
 
 	// TODO: Allow customization of heartbeat interval
@@ -349,7 +347,7 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 
 	staleThresholdMs := intervalSeconds * 10 * 1000
 	if err := heartbeater.StartCheckingHeartbeats(staleThresholdMs, deadNodeHandler); err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error calling StartCheckingHeartbeats() during startHeartbeater for bucket %s", MD(bucket.GetName))
+		return nil, errors.Wrapf(err, "Error calling StartCheckingHeartbeats() during startHeartbeater for bucket %s", MD(bucket.GetName))
 	}
 	Debugf(KeyDCP, "Checking CBGT node heartbeats with stale threshold: %v ms", staleThresholdMs)
 

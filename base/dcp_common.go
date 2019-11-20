@@ -3,12 +3,16 @@ package base
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"expvar"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
+	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
@@ -535,4 +539,135 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 		u.String(),
 	), nil
 
+}
+
+// getExternalAlternateAddress returns a external alternate address for a given dest
+func getExternalAlternateAddress(alternateAddressMap map[string]string, dest string) (string, error) {
+
+	destHost, destPort, err := SplitHostPort(dest)
+	if err != nil {
+		return "", err
+	}
+
+	// Map the given destination to an external alternate address hostname if available
+	if extHostname, foundAltAddress := alternateAddressMap[destHost]; foundAltAddress {
+		host, port, _ := SplitHostPort(extHostname)
+		if port == "" {
+			port = destPort
+		}
+		if host == "" {
+			host = extHostname
+		}
+
+		Tracef(KeyDCP, "Found alternate address mapping %s => %s", MD(dest), MD(host+":"+port))
+		dest = host + ":" + port
+	}
+
+	return dest, nil
+}
+
+// alternateAddressShims returns the 3 functions that wrap around ConnectBucket/Connect/ConnectTLS to provide alternate address support.
+func alternateAddressShims(bucketSpecTLS bool) (
+	connectBucketShim func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error),
+	connectShim func(protocol, dest string) (*memcached.Client, error),
+	connectTLSShim func(protocol, dest string, tlsConfig *tls.Config) (*memcached.Client, error),
+) {
+
+	// A map of dest URL (which may be an internal-only address) to external alternate address.
+	var externalAlternateAddresses map[string]string
+
+	// Copy of cbdatasource's default ConnectBucket function, which maps internal addresses to alternate addresses
+	connectBucketShim = func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error) {
+		Tracef(KeyDCP, "ConnectBucket callback: %s %s %s", MD(serverURL), poolName, MD(bucketName))
+
+		var (
+			err    error
+			client couchbase.Client
+		)
+
+		if auth != nil {
+			client, err = couchbase.ConnectWithAuth(serverURL, auth)
+		} else {
+			client, err = couchbase.Connect(serverURL)
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		pool, err := client.GetPool(poolName)
+		if err != nil {
+			return nil, err
+		}
+
+		// Recreate the map to forget about previous clustermap information.
+		externalAlternateAddresses = make(map[string]string, len(pool.Nodes))
+		for _, node := range pool.Nodes {
+			if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
+				nodeHostname, _, err := SplitHostPort(node.Hostname)
+				if err != nil {
+					return nil, err
+				}
+
+				var port string
+				if bucketSpecTLS {
+					if extPort, ok := external.Ports["kvSSL"]; ok {
+						port = ":" + strconv.Itoa(extPort)
+					}
+				} else {
+					if extPort, ok := external.Ports["kv"]; ok {
+						port = ":" + strconv.Itoa(extPort)
+					}
+				}
+
+				Tracef(KeyDCP, "Alternate address mapping %s => %s", MD(nodeHostname), MD(external.Hostname+port))
+				externalAlternateAddresses[nodeHostname] = external.Hostname + port
+			}
+		}
+
+		bucket, err := pool.GetBucket(bucketName)
+		if err != nil {
+			return nil, err
+		}
+
+		if bucket == nil {
+			return nil, fmt.Errorf("unknown bucket,"+
+				" serverURL: %s, bucketName: %s", serverURL, bucketName)
+		}
+
+		return bucket, nil
+	}
+
+	// Copy of cbdatasource's default Connect function, which swaps the given destination, with external addresses we found in ConnectBucket.
+	connectShim = func(protocol, dest string) (client *memcached.Client, err error) {
+		Tracef(KeyDCP, "Connect callback: %s %s", protocol, MD(dest))
+
+		dest, err = getExternalAlternateAddress(externalAlternateAddresses, dest)
+		if err != nil {
+			return nil, err
+		}
+
+		return memcached.Connect(protocol, dest)
+	}
+
+	// Copy of cbdatasource's default ConnectTLS function, which swaps the given destination, with external addresses we found in ConnectBucket.
+	connectTLSShim = func(protocol, dest string, tlsConfig *tls.Config) (client *memcached.Client, err error) {
+		Tracef(KeyDCP, "ConnectTLS callback: %s %s", protocol, MD(dest))
+
+		dest, err = getExternalAlternateAddress(externalAlternateAddresses, dest)
+		if err != nil {
+			return nil, err
+		}
+
+		// extract the host being connected to and insert into the tlsConfig
+		host, _, err := SplitHostPort(dest)
+		if err != nil {
+			return nil, err
+		}
+		tlsConfigCopy := tlsConfig.Clone()
+		tlsConfigCopy.ServerName = host
+
+		return memcached.ConnectTLS(protocol, dest, tlsConfigCopy)
+	}
+
+	return connectBucketShim, connectShim, connectTLSShim
 }
