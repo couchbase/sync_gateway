@@ -555,6 +555,9 @@ func getExternalAlternateAddress(alternateAddressMap map[string]string, dest str
 		if port == "" {
 			port = destPort
 		}
+		if host == "" {
+			host = extHostname
+		}
 
 		Tracef(KeyDCP, "Found alternate address mapping %s => %s", MD(dest), MD(host+":"+port))
 		dest = host + ":" + port
@@ -564,7 +567,7 @@ func getExternalAlternateAddress(alternateAddressMap map[string]string, dest str
 }
 
 // alternateAddressShims returns the 3 functions that wrap around ConnectBucket/Connect/ConnectTLS to provide alternate address support.
-func alternateAddressShims() (
+func alternateAddressShims(bucketSpecTLS bool) (
 	connectBucketShim func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error),
 	connectShim func(protocol, dest string) (*memcached.Client, error),
 	connectTLSShim func(protocol, dest string, tlsConfig *tls.Config) (*memcached.Client, error),
@@ -605,10 +608,8 @@ func alternateAddressShims() (
 					return nil, err
 				}
 
-				// TODO: check if host is tls
-
 				var port string
-				if true {
+				if bucketSpecTLS {
 					if extPort, ok := external.Ports["kvSSL"]; ok {
 						port = ":" + strconv.Itoa(extPort)
 					}
