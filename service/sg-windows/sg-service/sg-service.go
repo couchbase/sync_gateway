@@ -161,6 +161,6 @@ type systemLoggerError struct {
 }
 
 func (n systemLoggerError) Write(b []byte) (int, error) {
-	n.systemLogger.Error(string(b))
+	n.systemLogger.Info(string(b))
 	return len(b), nil
 }
