@@ -14,7 +14,6 @@ import (
 	"crypto/x509"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -24,7 +23,6 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
-	memcached "github.com/couchbase/gomemcached/client"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
@@ -188,57 +186,6 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 		return nil
 	}
 	return tlsConfig
-}
-
-// TLSConnect method is passed to cbdatasource, to be used when creating a TLS-enabled memcached connection.
-// Establishes a connection, then wraps w/ gomemcached Client for use by cbdatasource.
-// Will include client cert (x.509) authentication when specified in the BucketSpec.
-// Adheres to approach used by gocb - can be removed once SG switches to gocb's DCP client.
-func (b BucketSpec) TLSConnect(prot, dest string) (rv *memcached.Client, err error) {
-
-	d := net.Dialer{
-		Deadline: time.Now().Add(30 * time.Second),
-	}
-
-	host, port, err := SplitHostPort(dest)
-	if err != nil {
-		return nil, err
-	}
-
-	port = fmt.Sprintf("%d", b.KvTLSPort)
-	dest = host + ":" + port
-
-	Infof(KeyAll, "Establishing TLS connection for DCP to destination %s", dest)
-
-	conn, err := d.Dial("tcp", dest)
-	if err != nil {
-		return nil, err
-	}
-
-	tcpConn, isTcpConn := conn.(*net.TCPConn)
-	if !isTcpConn {
-		return nil, fmt.Errorf("Unable to convert connection to TCPConn during DCP TLS connection (Connection type:%T)", conn)
-	} else {
-		err = tcpConn.SetNoDelay(false)
-		if err != nil {
-			return nil, pkgerrors.Wrapf(err, "Error setting NoDelay on tcpConn during TLS Connect")
-		}
-
-		tlsConfig, configErr := TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
-		if configErr != nil {
-			return nil, pkgerrors.Wrapf(configErr, "Error creating TLSConfig for DCP TLS connection")
-		}
-
-		tlsConfig.ServerName = host
-
-		tlsConn := tls.Client(tcpConn, tlsConfig)
-		tlsErr := tlsConn.Handshake()
-		if tlsErr != nil {
-			return nil, pkgerrors.Wrapf(tlsErr, "TLS handshake failed while establishing DCP TLS connection")
-		}
-		return memcached.Wrap(tlsConn)
-	}
-
 }
 
 // Returns a TLSConfig based on the specified certificate paths.  If none are provided, returns tlsConfig with
