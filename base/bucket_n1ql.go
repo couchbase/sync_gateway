@@ -290,6 +290,7 @@ func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, 
 		exists, meta, err := bucket.getIndexMetaWithoutRetry(indexName)
 		if err != nil {
 			// retry
+			Warnf("GetIndexMeta error: %s", err)
 			return true, err, nil
 		}
 		return false, nil, getIndexMetaRetryValues{
