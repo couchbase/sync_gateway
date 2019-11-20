@@ -542,6 +542,24 @@ def make_event_log_task():
                        "/FORMAT:list" % locals())
 
 
+def make_event_log_task_sg_info():
+    from datetime import datetime, timedelta
+
+    # I found that wmic ntevent can be extremely slow; so limiting the output
+    # to approximately last month
+    limit = datetime.today() - timedelta(days=31)
+    limit = limit.strftime('%Y%m%d000000.000000-000')
+
+    return WindowsTask("SG Event log",
+                       "wmic ntevent where "
+                       "\""
+                       "SourceName='SyncGateway' and "
+                       "TimeGenerated>'%(limit)s'"
+                       "\" "
+                       "get TimeGenerated,LogFile,SourceName,EventType,Message "
+                       "/FORMAT:list" % locals())
+
+
 def make_os_tasks(processes):
     programs = " ".join(processes)
 
@@ -645,6 +663,8 @@ def make_os_tasks(processes):
         UnixTask("Processor status", "mpstat 1 10"),
         UnixTask("System log", "cat /var/adm/messages"),
         LinuxTask("Raw /proc/uptime", "cat /proc/uptime"),
+        LinuxTask("Systemd journal", "journalctl 2>&1 | gzip -c",
+                  log_file="systemd_journal.gz", no_header=True),
         LinuxTask("All logs", "tar cz /var/log/syslog* /var/log/dmesg /var/log/messages* /var/log/daemon* /var/log/debug* /var/log/kern.log* 2>/dev/null",
                   log_file="syslog.tar.gz", no_header=True),
         LinuxTask("Relevant proc data", "echo %(programs)s | "
@@ -663,6 +683,7 @@ def make_os_tasks(processes):
         LinuxTask("Full raw netstat", "cat /proc/net/netstat"),
         LinuxTask("CPU throttling info", "echo /sys/devices/system/cpu/cpu*/thermal_throttle/* | xargs -n1 -- sh -c 'echo $1; cat $1' --"),
         make_event_log_task(),
+        make_event_log_task_sg_info(),
         ]
 
     return _tasks
