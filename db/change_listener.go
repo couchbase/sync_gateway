@@ -62,7 +62,7 @@ func (listener *changeListener) BroadcastTicker(terminator chan bool) {
 		select {
 		case <-terminator:
 			return
-		case <-time.After(10 * time.Microsecond):
+		case <-time.After(100 * time.Microsecond):
 			listener.tapNotifier.L.Lock()
 			if listener.counter > tickerCount {
 				tickerCount = listener.counter
