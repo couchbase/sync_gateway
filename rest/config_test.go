@@ -440,3 +440,98 @@ func TestAutoImportEnabled(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeWith(t *testing.T) {
+	defaultInterface := "4984"
+	adminInterface := "127.0.0.1:4985"
+	profileInterface := "127.0.0.1:4985"
+	configServer := "remote.config.server:4985/db"
+	deploymentID := "DeploymentID1008"
+	facebookConfig := FacebookConfig{Register: true}
+
+	corsConfig := &CORSConfig{
+		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
+		LoginOrigin: []string{"http://example.com"},
+		Headers:     []string{},
+		MaxAge:      1728000,
+	}
+
+	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
+
+	databases := make(DbConfigMap, 2)
+	databases["db1"] = &DbConfig{Name: "db1"}
+	databases["db2"] = &DbConfig{Name: "db2"}
+	self := &ServerConfig{Databases: databases}
+
+	databases = make(DbConfigMap, 2)
+	databases["db3"] = &DbConfig{Name: "db3"}
+	databases["db4"] = &DbConfig{Name: "db4"}
+
+	other := &ServerConfig{
+		Interface:        &defaultInterface,
+		AdminInterface:   &adminInterface,
+		ProfileInterface: &profileInterface,
+		ConfigServer:     &configServer,
+		DeploymentID:     &deploymentID,
+		Facebook:         &facebookConfig,
+		CORS:             corsConfig,
+		DeprecatedLog:    deprecatedLog,
+		Pretty:           true,
+		Databases:        databases}
+
+	err := self.MergeWith(other)
+	assert.NoError(t, err, "No error while merging this server config with other")
+	assert.Equal(t, defaultInterface, *self.Interface)
+	assert.Equal(t, adminInterface, *self.AdminInterface)
+	assert.Equal(t, profileInterface, *self.ProfileInterface)
+	assert.Equal(t, configServer, *self.ConfigServer)
+	assert.Equal(t, deploymentID, *self.DeploymentID)
+	assert.Equal(t, facebookConfig.Register, self.Facebook.Register)
+
+	assert.Equal(t, corsConfig.Headers, self.CORS.Headers)
+	assert.Equal(t, corsConfig.Origin, self.CORS.Origin)
+	assert.Equal(t, corsConfig.LoginOrigin, self.CORS.LoginOrigin)
+	assert.Equal(t, corsConfig.MaxAge, self.CORS.MaxAge)
+	assert.Equal(t, deprecatedLog, self.DeprecatedLog)
+	assert.True(t, self.Pretty)
+
+	assert.Len(t, self.Databases, 4)
+	assert.Equal(t, "db1", self.Databases["db1"].Name)
+	assert.Equal(t, "db2", self.Databases["db2"].Name)
+	assert.Equal(t, "db3", self.Databases["db3"].Name)
+	assert.Equal(t, "db4", self.Databases["db4"].Name)
+
+	// Merge configuration with already specified database; it should throw
+	// database "db3" already specified earlier error
+	databases = make(DbConfigMap, 2)
+	databases["db3"] = &DbConfig{Name: "db3"}
+	databases["db5"] = &DbConfig{Name: "db5"}
+	err = self.MergeWith(other)
+	assert.Error(t, err, "Database 'db3' already specified earlier")
+}
+
+func TestDeprecatedConfigLoggingFallback(t *testing.T) {
+	logFilePath := "/var/log/sync_gateway"
+	dlfPath := "/tmp/log/sync_gateway"
+	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
+	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
+
+	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
+	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl}
+	sc := &ServerConfig{Logging: lc, DeprecatedLogFilePath: &dlfPath, DeprecatedLog: deprecatedLog}
+
+	warns := sc.deprecatedConfigLoggingFallback()
+	assert.Equal(t, filepath.Dir(*sc.Logging.DeprecatedDefaultLog.LogFilePath), sc.Logging.LogFilePath)
+	assert.Equal(t, sc.Logging.DeprecatedDefaultLog.LogKeys, sc.Logging.Console.LogKeys)
+	assert.Equal(t, base.ToLogLevel(sc.Logging.DeprecatedDefaultLog.LogLevel), sc.Logging.Console.LogLevel)
+	assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
+	assert.Len(t, warns, 3)
+
+	// Call deprecatedConfigLoggingFallback without DeprecatedDefaultLog
+	sc = &ServerConfig{Logging: &base.LoggingConfig{}, DeprecatedLogFilePath: &dlfPath, DeprecatedLog: deprecatedLog}
+	warns = sc.deprecatedConfigLoggingFallback()
+
+	assert.Equal(t, *sc.DeprecatedLogFilePath, sc.Logging.LogFilePath)
+	assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
+	assert.Len(t, warns, 2)
+}

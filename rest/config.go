@@ -788,6 +788,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 		if self.Databases[name] != nil {
 			return base.RedactErrorf("Database %q already specified earlier", base.UD(name))
 		}
+		if self.Databases == nil {
+			self.Databases = make(DbConfigMap)
+		}
 		self.Databases[name] = db
 	}
 	return nil
