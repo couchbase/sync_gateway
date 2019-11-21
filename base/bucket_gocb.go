@@ -1421,7 +1421,7 @@ func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interf
 		}
 
 	}
-	description := fmt.Sprintf("GetXattr %s", UD(k)().Redact())
+	description := fmt.Sprintf("GetXattr %s", UD(k).Redact())
 	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
 
 	if result == nil {

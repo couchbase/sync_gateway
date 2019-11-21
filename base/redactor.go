@@ -15,11 +15,10 @@ type Redactor interface {
 	// changed, hashed, or removed completely depending on desired behaviour.
 	Redact() string
 }
+type RedactorFunc func() Redactor
 
 type RedactorSlice []Redactor
 type RedactorFuncSlice []RedactorFunc
-
-type RedactorFunc func() Redactor
 
 // redact performs an *in-place* redaction on the input slice, and returns it.
 // This should only be consumed by logging funcs. E.g. fmt.Printf(fmt, redact(args))
@@ -27,8 +26,6 @@ func redact(args []interface{}) []interface{} {
 	for i, v := range args {
 		if r, ok := v.(Redactor); ok {
 			args[i] = r.Redact()
-		} else if r, ok := v.(RedactorFunc); ok {
-			args[i] = r().Redact()
 		} else if err, ok := v.(error); ok {
 			// it's an error, and may need to be unwrapped before it can be redacted
 			err = pkgerrors.Cause(err)
@@ -43,10 +40,14 @@ func redact(args []interface{}) []interface{} {
 func (redactorFuncSlice RedactorFuncSlice) Redact() string {
 	tmp := []byte{}
 	for _, item := range redactorFuncSlice {
-		tmp = append(tmp, []byte(item().Redact())...)
+		tmp = append(tmp, []byte(item.Redact())...)
 		tmp = append(tmp, ' ')
 	}
 	return "[ " + string(tmp) + "]"
+}
+
+func (redactorFunc RedactorFunc) Redact() string {
+	return redactorFunc().Redact()
 }
 
 func (redactorSlice RedactorSlice) Redact() string {

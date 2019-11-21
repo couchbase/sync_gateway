@@ -571,7 +571,7 @@ func tagPathVars(req *http.Request, urlString *string) {
 	for k, v := range pathVars {
 		switch redactedPathVars[k] {
 		case "UD":
-			str = strings.Replace(str, "/"+v, "/"+UD(v)().Redact(), 1)
+			str = strings.Replace(str, "/"+v, "/"+UD(v).Redact(), 1)
 		case "MD":
 			str = strings.Replace(str, "/"+v, "/"+MD(v).Redact(), 1)
 		case "SD":
@@ -608,7 +608,7 @@ func tagQueryParams(values url.Values, urlString *string) {
 		for _, v := range vals {
 			switch redactedQueryParams[k] {
 			case "UD":
-				str = strings.Replace(str, fmt.Sprintf("%s=%s", k, v), fmt.Sprintf("%s=%s", k, UD(v)().Redact()), 1)
+				str = strings.Replace(str, fmt.Sprintf("%s=%s", k, v), fmt.Sprintf("%s=%s", k, UD(v).Redact()), 1)
 			case "MD":
 				str = strings.Replace(str, fmt.Sprintf("%s=%s", k, v), fmt.Sprintf("%s=%s", k, MD(v).Redact()), 1)
 			case "SD":

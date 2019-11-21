@@ -3,6 +3,7 @@ package base
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	goassert "github.com/couchbaselabs/go.assert"
 )
@@ -31,19 +32,19 @@ func TestUD(t *testing.T) {
 
 	// Straight-forward string test.
 	ud := UD("hello world")
-	goassert.Equals(t, ud().Redact(), userDataPrefix+"hello world"+userDataSuffix)
+	goassert.Equals(t, ud.Redact(), userDataPrefix+"hello world"+userDataSuffix)
 
 	// big.Int fulfils the Stringer interface, so we should get sensible values.
 	ud = UD(big.NewInt(1234))
-	goassert.Equals(t, ud().Redact(), userDataPrefix+"1234"+userDataSuffix)
+	goassert.Equals(t, ud.Redact(), userDataPrefix+"1234"+userDataSuffix)
 
 	// Even plain structs could be redactable.
 	ud = UD(struct{}{})
-	goassert.Equals(t, ud().Redact(), userDataPrefix+"{}"+userDataSuffix)
+	goassert.Equals(t, ud.Redact(), userDataPrefix+"{}"+userDataSuffix)
 
 	// String slice test.
 	ud = UD([]string{"hello", "world", "o/"})
-	goassert.Equals(t, ud().Redact(), "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]")
+	goassert.Equals(t, ud.Redact(), "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]")
 }
 
 func BenchmarkUserDataRedact(b *testing.B) {
@@ -61,7 +62,7 @@ func BenchmarkUserDataRedact(b *testing.B) {
 	b.Run("EnabledSlice", func(bn *testing.B) {
 		RedactUserData = true
 		for i := 0; i < bn.N; i++ {
-			usernameSlice().Redact()
+			usernameSlice.Redact()
 		}
 	})
 
@@ -70,6 +71,87 @@ func BenchmarkUserDataRedact(b *testing.B) {
 		RedactUserData = false
 		for i := 0; i < bn.N; i++ {
 			username.Redact()
+		}
+	})
+}
+
+type FakeLogger struct {
+}
+
+func (fakeLogger FakeLogger) String() string {
+	time.Sleep(10 * time.Millisecond)
+	return "Fixed String"
+}
+
+func BenchmarkRedactOnLog(b *testing.B) {
+
+	defer SetUpBenchmarkLogging(LevelWarn, KeyAll)()
+
+	b.Run("WarnPlain", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", "Fixed String")
+		}
+	})
+
+	b.Run("WarnRedactTrueNotUD", func(b *testing.B) {
+		RedactUserData = true
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", FakeLogger{})
+		}
+	})
+
+	b.Run("WarnRedactTrueUD", func(b *testing.B) {
+		RedactUserData = true
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", UD(FakeLogger{}))
+		}
+	})
+
+	b.Run("WarnRedactFalseNotUD", func(b *testing.B) {
+		RedactUserData = false
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", FakeLogger{})
+		}
+	})
+
+	b.Run("WarnRedactFalseUD", func(b *testing.B) {
+		RedactUserData = false
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", UD(FakeLogger{}))
+		}
+	})
+
+	b.Run("DebugPlain", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", "Fixed String")
+		}
+	})
+
+	b.Run("DebugRedactTrueNotUD", func(b *testing.B) {
+		RedactUserData = true
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", FakeLogger{})
+		}
+	})
+
+	b.Run("DebugRedactTrueUD", func(b *testing.B) {
+		RedactUserData = true
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", UD(FakeLogger{}))
+		}
+	})
+
+	b.Run("DebugRedactFalseNotUD", func(b *testing.B) {
+		RedactUserData = false
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", FakeLogger{})
+		}
+	})
+
+	b.Run("DebugRedactFalseUD", func(b *testing.B) {
+		RedactUserData = false
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 }
