@@ -360,7 +360,6 @@ pipeline {
         stage('Benchmarks'){
             steps{
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]){
-                    sh 'mkdir -p reports'
                     warnError(message: "one or more benchmarks failed") {
                         sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -v ${SGW_REPO}/... | tee benchmark.out || true"
                     }
