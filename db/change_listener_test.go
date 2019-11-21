@@ -242,6 +242,7 @@ func BenchmarkNotifyWithUsers(b *testing.B) {
 
 		listener := &changeListener{}
 		listener.Init("mybucket")
+		go listener.BroadcastTicker(listener.terminator)
 
 		b.Run(bm.name, func(b *testing.B) {
 			b.StopTimer()
