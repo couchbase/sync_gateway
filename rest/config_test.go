@@ -535,3 +535,12 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
 	assert.Len(t, warns, 2)
 }
+
+func TestSetupAndValidateLogging(t *testing.T) {
+	sc := &ServerConfig{}
+	warns, err := sc.SetupAndValidateLogging()
+	assert.NoError(t, err, "Setup and validate logging should be successful")
+	assert.NotEmpty(t, sc.Logging)
+	assert.Empty(t, sc.Logging.DeprecatedDefaultLog)
+	assert.Len(t, warns, 2)
+}
