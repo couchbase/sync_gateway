@@ -559,7 +559,11 @@ func SetUpBenchmarkLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()
 	consoleLogger.logger.SetOutput(ioutil.Discard)
 	return func() {
 		// revert back to original output
-		consoleLogger.logger.SetOutput(consoleLogger.output)
+		if consoleLogger != nil && consoleLogger.output != nil {
+			consoleLogger.logger.SetOutput(consoleLogger.output)
+		} else {
+			consoleLogger.logger.SetOutput(os.Stderr)
+		}
 		teardownFnOrig()
 	}
 }

@@ -361,7 +361,7 @@ pipeline {
             steps{
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]){
                     warnError(message: "one or more benchmarks failed") {
-                        sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -v ${SGW_REPO}/... | tee benchmark.out || true"
+                        sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -v ${SGW_REPO}/... | tee benchmark.out"
                     }
                 }
             }
