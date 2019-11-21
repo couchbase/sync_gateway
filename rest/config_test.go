@@ -442,6 +442,7 @@ func TestAutoImportEnabled(t *testing.T) {
 }
 
 func TestMergeWith(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	defaultInterface := "4984"
 	adminInterface := "127.0.0.1:4985"
 	profileInterface := "127.0.0.1:4985"
@@ -511,6 +512,7 @@ func TestMergeWith(t *testing.T) {
 }
 
 func TestDeprecatedConfigLoggingFallback(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	logFilePath := "/var/log/sync_gateway"
 	dlfPath := "/tmp/log/sync_gateway"
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
@@ -537,6 +539,7 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 }
 
 func TestSetupAndValidateLogging(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	sc := &ServerConfig{}
 	warns, err := sc.SetupAndValidateLogging()
 	assert.NoError(t, err, "Setup and validate logging should be successful")
@@ -549,12 +552,14 @@ func TestSetupAndValidateLogging(t *testing.T) {
 	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
 	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl, RedactionLevel: base.RedactFull}
 	sc = &ServerConfig{Logging: lc}
-	assert.Len(t, warns, 2)
+	warns, err = sc.SetupAndValidateLogging()
+	assert.Len(t, warns, 5)
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
 	assert.Equal(t, ddl, sc.Logging.DeprecatedDefaultLog)
 }
 
 func TestServerConfigValidate(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	// unsupported.stats_log_freq_secs
 	statsLogFrequencySecs := uint(9)
 	unsupported := &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
