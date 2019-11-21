@@ -15,6 +15,7 @@ const installLocation = "C:\\Program Files\\Couchbase\\Sync Gateway\\"
 const defaultLogFilePath = installLocation + "var\\lib\\couchbase\\logs"
 
 var logger service.Logger
+var infoLogger systemLoggerError
 
 type program struct {
 	ExePath     string
@@ -40,7 +41,11 @@ func (p *program) startup() error {
 		p.SyncGateway = exec.Command(p.ExePath, "--defaultLogFilePath", defaultLogFilePath)
 	}
 
+	p.SyncGateway.Stdout = infoLogger
+	p.SyncGateway.Stderr = infoLogger
+
 	err := p.SyncGateway.Start()
+
 	if err != nil {
 		logger.Errorf("Failed to start Sync Gateway due to error %v", err)
 		return err
@@ -105,6 +110,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	systemLogger, err := s.SystemLogger(nil)
+	if err != nil {
+		log.Fatalf("Unable to setup system logger: %v", err)
+	}
+
+	infoLogger = systemLoggerError{
+		systemLogger: systemLogger,
+	}
+
 	switch {
 	case os.Args[1] == "install":
 		logger.Info("Installing Sync Gateway")
@@ -140,4 +154,13 @@ func main() {
 		logger.Error(err)
 	}
 	logger.Infof("Exiting Sync Gateway service.")
+}
+
+type systemLoggerError struct {
+	systemLogger service.Logger
+}
+
+func (n systemLoggerError) Write(b []byte) (int, error) {
+	n.systemLogger.Info(string(b))
+	return len(b), nil
 }
