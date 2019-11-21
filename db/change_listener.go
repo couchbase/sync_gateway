@@ -50,7 +50,27 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) e
 		Terminator: listener.terminator,
 	}
 
+	go listener.BroadcastTicker(listener.terminator)
 	return listener.StartMutationFeed(bucket, dbStats)
+}
+
+func (listener *changeListener) BroadcastTicker(terminator chan bool) {
+	listener.tapNotifier.L.Lock()
+	tickerCount := listener.counter
+	listener.tapNotifier.L.Unlock()
+	for {
+		select {
+		case <-terminator:
+			return
+		case <-time.After(10 * time.Microsecond):
+			listener.tapNotifier.L.Lock()
+			if listener.counter > tickerCount {
+				tickerCount = listener.counter
+				listener.tapNotifier.Broadcast()
+			}
+			listener.tapNotifier.L.Unlock()
+		}
+	}
 }
 
 func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *expvar.Map) error {
@@ -156,9 +176,11 @@ func (listener *changeListener) Notify(keys base.Set) {
 	for key := range keys {
 		listener.keyCounts[key] = listener.counter
 	}
-	base.Debugf(base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
-		base.MD(listener.bucketName), base.UD(keys), listener.counter)
-	listener.tapNotifier.Broadcast()
+	if base.LogDebugEnabled(base.KeyChanges) {
+		base.Debugf(base.KeyChanges, "Notifying that %q changed (keys=%q) count=%d",
+			base.MD(listener.bucketName), base.UD(keys), listener.counter)
+	}
+	//listener.tapNotifier.Broadcast()
 	listener.tapNotifier.L.Unlock()
 }
 
@@ -219,10 +241,11 @@ func (listener *changeListener) Wait(keys []string, counter uint64, terminateChe
 }
 
 // Returns the max value of the counter for all the given keys
-func (listener *changeListener) CurrentCount(keys []string) uint64 {
+func (listener *changeListener) CurrentCount(keys []string) (count uint64) {
 	listener.tapNotifier.L.Lock()
-	defer listener.tapNotifier.L.Unlock()
-	return listener._currentCount(keys)
+	count = listener._currentCount(keys)
+	listener.tapNotifier.L.Unlock()
+	return count
 }
 
 func (listener *changeListener) _currentCount(keys []string) uint64 {

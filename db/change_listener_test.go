@@ -248,6 +248,93 @@ func BenchmarkNotifyWithUsers(b *testing.B) {
 			terminator := make(chan struct{})
 			for i := 0; i < bm.numWaiters; i++ {
 				go func() {
+					notifyCount := 0
+					for {
+						select {
+						case <-terminator:
+							return
+						default:
+						}
+						// Start a new waiter for a random user
+						key := fmt.Sprintf("user/user%d", rand.Intn(bm.numUsers))
+						waiter := listener.NewWaiter([]string{key})
+						waiter.Wait()
+						notifyCount++
+					}
+				}()
+			}
+			b.StartTimer()
+			var keys base.Set
+			for i := 0; i < b.N; i++ {
+				userIndex := rand.Intn(bm.numUsers)
+				keys = base.SetFromArray([]string{fmt.Sprintf("user/user%d", userIndex)})
+				listener.Notify(keys)
+			}
+			close(terminator)
+			listener.Stop()
+		})
+	}
+}
+
+func BenchmarkNotifyWithUsersBatched(b *testing.B) {
+
+	notifyBenchmarks := []struct {
+		name       string
+		numWaiters int
+		numUsers   int
+	}{
+		{
+			"Notify_100t_10000u",
+			100,
+			10000,
+		},
+		{
+			"Notify_100t_35000u",
+			100,
+			35000,
+		},
+		{
+			"Notify_800t_100u",
+			800,
+			100,
+		},
+		{
+			"Notify_800t_1000u",
+			800,
+			1000,
+		},
+		{
+			"Notify_800t_10000u",
+			800,
+			10000,
+		},
+		{
+			"Notify_800t_35000u",
+			800,
+			35000,
+		},
+		{
+			"Notify_800t_100000u",
+			800,
+			100000,
+		},
+		{
+			"Notify_2000t_10000u",
+			2000,
+			10000,
+		},
+	}
+
+	for _, bm := range notifyBenchmarks {
+
+		listener := &changeListener{}
+		listener.Init("mybucket")
+
+		b.Run(bm.name, func(b *testing.B) {
+			b.StopTimer()
+			terminator := make(chan struct{})
+			for i := 0; i < bm.numWaiters; i++ {
+				go func() {
 					for {
 						select {
 						case <-terminator:
@@ -263,10 +350,15 @@ func BenchmarkNotifyWithUsers(b *testing.B) {
 			}
 			b.StartTimer()
 			var keys base.Set
+			var batchedKeys base.Set
 			for i := 0; i < b.N; i++ {
 				userIndex := rand.Intn(bm.numUsers)
 				keys = base.SetFromArray([]string{fmt.Sprintf("user/user%d", userIndex)})
-				listener.Notify(keys)
+				batchedKeys = batchedKeys.Union(keys)
+				if len(batchedKeys) > 100 {
+					listener.Notify(batchedKeys)
+					batchedKeys.Clear()
+				}
 			}
 			close(terminator)
 			listener.Stop()

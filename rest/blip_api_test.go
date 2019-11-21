@@ -941,6 +941,7 @@ func TestReloadUser(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
+
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
@@ -990,7 +991,7 @@ func TestReloadUser(t *testing.T) {
 // it shows up in the user's changes feed
 func TestAccessGrantViaSyncFunction(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyCache|base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
 
 	// Setup
 	rtConfig := RestTesterConfig{

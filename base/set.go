@@ -34,6 +34,12 @@ func SetOf(names ...string) Set {
 	return SetFromArray(names)
 }
 
+func (set Set) Clear() {
+	for k := range set {
+		delete(set, k)
+	}
+}
+
 // Converts a Set to an array of strings (ordering is undefined).
 func (set Set) ToArray() []string {
 	result := make([]string, 0, len(set))
