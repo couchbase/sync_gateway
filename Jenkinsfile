@@ -361,8 +361,9 @@ pipeline {
             steps{
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]){
                     sh 'mkdir -p reports'
-                    sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -v ${SGW_REPO}/... > reports/benchmark.out || true"
-                    sh "cat reports/benchmark.out"
+                    warnError(message: "one or more benchmarks failed") {
+                        sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -v ${SGW_REPO}/... | tee benchmark.out || true"
+                    }
                 }
             }
 
@@ -377,7 +378,7 @@ pipeline {
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
 
-            archiveArtifacts artifacts: 'reports/benchmark.out', fingerprint: true
+            archiveArtifacts artifacts: 'benchmark.out', fingerprint: true
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
