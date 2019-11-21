@@ -534,7 +534,7 @@ func (h *handler) taggedEffectiveUserName() string {
 
 	// Tag actual user names ahead of actual logging, as we lose the UD type information
 	if name := h.user.Name(); name != "" {
-		return base.UD(name).Redact()
+		return base.UD(name)().Redact()
 	}
 
 	return "GUEST"

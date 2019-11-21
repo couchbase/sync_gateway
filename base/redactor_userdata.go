@@ -33,18 +33,24 @@ func (ud UserData) Redact() string {
 var _ Redactor = UserData("")
 
 // UD returns a UserData type for any given value.
-func UD(i interface{}) Redactor {
+func UD(i interface{}) RedactorFunc {
 	switch v := i.(type) {
 	case string:
-		return UserData(v)
-	case fmt.Stringer:
-		return UserData(v.String())
-	default:
-		valueOf := reflect.ValueOf(i)
-		if valueOf.Kind() == reflect.Slice {
-			return buildRedactorSlice(valueOf, UD)
+		return func() Redactor {
+			return UserData(v)
 		}
-		// Fall back to a slower but safe way of getting a string from any type.
-		return UserData(fmt.Sprintf("%+v", v))
+	case fmt.Stringer:
+		return func() Redactor {
+			return UserData(v.String())
+		}
+	default:
+		return func() Redactor {
+			valueOf := reflect.ValueOf(i)
+			if valueOf.Kind() == reflect.Slice {
+				return buildRedactorFuncSlice(valueOf, UD)
+			}
+			// Fall back to a slower but safe way of getting a string from any type.
+			return UserData(fmt.Sprintf("%+v", v))
+		}
 	}
 }

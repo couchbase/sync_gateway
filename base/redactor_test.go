@@ -102,7 +102,7 @@ func TestMixedTypeSliceRedaction(t *testing.T) {
 		RedactUserData = false
 	}()
 
-	slice := RedactorSlice{MD("cluster name"), SD("server ip"), UD("username")}
+	slice := RedactorSlice{MD("cluster name"), SD("server ip"), UD("username")()}
 	assert.Equal(t, `[ `+metaDataPrefix+"cluster name"+metaDataSuffix+` `+systemDataPrefix+"server ip"+systemDataSuffix+" "+userDataPrefix+"username"+userDataSuffix+" ]", slice.Redact())
 }
 

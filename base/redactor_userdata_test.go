@@ -31,19 +31,19 @@ func TestUD(t *testing.T) {
 
 	// Straight-forward string test.
 	ud := UD("hello world")
-	goassert.Equals(t, ud.Redact(), userDataPrefix+"hello world"+userDataSuffix)
+	goassert.Equals(t, ud().Redact(), userDataPrefix+"hello world"+userDataSuffix)
 
 	// big.Int fulfils the Stringer interface, so we should get sensible values.
 	ud = UD(big.NewInt(1234))
-	goassert.Equals(t, ud.Redact(), userDataPrefix+"1234"+userDataSuffix)
+	goassert.Equals(t, ud().Redact(), userDataPrefix+"1234"+userDataSuffix)
 
 	// Even plain structs could be redactable.
 	ud = UD(struct{}{})
-	goassert.Equals(t, ud.Redact(), userDataPrefix+"{}"+userDataSuffix)
+	goassert.Equals(t, ud().Redact(), userDataPrefix+"{}"+userDataSuffix)
 
 	// String slice test.
 	ud = UD([]string{"hello", "world", "o/"})
-	goassert.Equals(t, ud.Redact(), "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]")
+	goassert.Equals(t, ud().Redact(), "[ "+userDataPrefix+"hello"+userDataSuffix+" "+userDataPrefix+"world"+userDataSuffix+" "+userDataPrefix+"o/"+userDataSuffix+" ]")
 }
 
 func BenchmarkUserDataRedact(b *testing.B) {
@@ -61,7 +61,7 @@ func BenchmarkUserDataRedact(b *testing.B) {
 	b.Run("EnabledSlice", func(bn *testing.B) {
 		RedactUserData = true
 		for i := 0; i < bn.N; i++ {
-			usernameSlice.Redact()
+			usernameSlice().Redact()
 		}
 	})
 
