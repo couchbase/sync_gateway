@@ -1,7 +1,9 @@
 package db
 
 import (
+	"fmt"
 	"log"
+	"math/rand"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -123,4 +125,151 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 
 	// Wait for user notification of updated role
 	require.True(t, WaitForUserWaiterChange(userWaiter))
+}
+
+func BenchmarkNotify(b *testing.B) {
+
+	notifyBenchmarks := []struct {
+		name       string
+		numWaiters int
+	}{
+		{
+			"Notify_10",
+			10,
+		},
+		{
+			"Notify_100",
+			100,
+		},
+		{
+			"Notify_1000",
+			1000,
+		},
+		{
+			"Notify_10000",
+			10000,
+		},
+		{
+			"Notify_35000",
+			35000,
+		},
+	}
+
+	for _, bm := range notifyBenchmarks {
+
+		listener := &changeListener{}
+		listener.Init("mybucket")
+
+		b.Run(bm.name, func(b *testing.B) {
+			b.StopTimer()
+			terminator := make(chan struct{})
+			for i := 0; i < bm.numWaiters; i++ {
+				waiter := listener.NewWaiter([]string{fmt.Sprintf("user/user%d", i)})
+				go func() {
+					for {
+						select {
+						case <-terminator:
+							return
+						default:
+						}
+						waiter.Wait()
+					}
+				}()
+			}
+			b.StartTimer()
+			var keys base.Set
+			for i := 0; i < b.N; i++ {
+				userIndex := rand.Intn(bm.numWaiters)
+				keys = base.SetFromArray([]string{fmt.Sprintf("user/user%d", userIndex)})
+				listener.Notify(keys)
+			}
+			close(terminator)
+			listener.Stop()
+		})
+	}
+}
+
+func BenchmarkNotifyWithUsers(b *testing.B) {
+
+	notifyBenchmarks := []struct {
+		name       string
+		numWaiters int
+		numUsers   int
+	}{
+		{
+			"Notify_100t_10000u",
+			100,
+			10000,
+		},
+		{
+			"Notify_100t_35000u",
+			100,
+			35000,
+		},
+		{
+			"Notify_800t_100u",
+			800,
+			100,
+		},
+		{
+			"Notify_800t_1000u",
+			800,
+			1000,
+		},
+		{
+			"Notify_800t_10000u",
+			800,
+			10000,
+		},
+		{
+			"Notify_800t_35000u",
+			800,
+			35000,
+		},
+		{
+			"Notify_800t_100000u",
+			800,
+			100000,
+		},
+		{
+			"Notify_2000t_10000u",
+			2000,
+			10000,
+		},
+	}
+
+	for _, bm := range notifyBenchmarks {
+
+		listener := &changeListener{}
+		listener.Init("mybucket")
+
+		b.Run(bm.name, func(b *testing.B) {
+			b.StopTimer()
+			terminator := make(chan struct{})
+			for i := 0; i < bm.numWaiters; i++ {
+				go func() {
+					for {
+						select {
+						case <-terminator:
+							return
+						default:
+						}
+						// Start a new waiter for a random user
+						key := fmt.Sprintf("user/user%d", rand.Intn(bm.numUsers))
+						waiter := listener.NewWaiter([]string{key})
+						waiter.Wait()
+					}
+				}()
+			}
+			b.StartTimer()
+			var keys base.Set
+			for i := 0; i < b.N; i++ {
+				userIndex := rand.Intn(bm.numUsers)
+				keys = base.SetFromArray([]string{fmt.Sprintf("user/user%d", userIndex)})
+				listener.Notify(keys)
+			}
+			close(terminator)
+			listener.Stop()
+		})
+	}
 }
