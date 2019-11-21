@@ -543,4 +543,33 @@ func TestSetupAndValidateLogging(t *testing.T) {
 	assert.NotEmpty(t, sc.Logging)
 	assert.Empty(t, sc.Logging.DeprecatedDefaultLog)
 	assert.Len(t, warns, 2)
+
+	logFilePath := "/var/log/sync_gateway"
+	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
+	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
+	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl, RedactionLevel: base.RedactFull}
+	sc = &ServerConfig{Logging: lc}
+	assert.Len(t, warns, 2)
+	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
+	assert.Equal(t, ddl, sc.Logging.DeprecatedDefaultLog)
+}
+
+func TestServerConfigValidate(t *testing.T) {
+	// unsupported.stats_log_freq_secs
+	statsLogFrequencySecs := uint(9)
+	unsupported := &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc := &ServerConfig{Unsupported: unsupported}
+	assert.Len(t, sc.validate(), 1)
+
+	// Valid configuration value for StatsLogFrequencySecs
+	statsLogFrequencySecs = uint(10)
+	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc = &ServerConfig{Unsupported: unsupported}
+	assert.Len(t, sc.validate(), 0)
+
+	// Explicitly disabled
+	statsLogFrequencySecs = uint(0)
+	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc = &ServerConfig{Unsupported: unsupported}
+	assert.Len(t, sc.validate(), 0)
 }
