@@ -578,3 +578,21 @@ func TestServerConfigValidate(t *testing.T) {
 	sc = &ServerConfig{Unsupported: unsupported}
 	assert.Len(t, sc.validate(), 0)
 }
+
+func TestSetupAndValidateDatabases(t *testing.T) {
+	// No error will be returned if the server config itself is nil
+	var sc *ServerConfig
+	errs := sc.setupAndValidateDatabases()
+	assert.Nil(t, errs)
+
+	// Simulate  invalid control character in URL while validating and setting up databases;
+	server := "walrus:\n\r"
+	bc := &BucketConfig{Server: &server}
+	databases := make(DbConfigMap, 2)
+	databases["db1"] = &DbConfig{Name: "db1", BucketConfig: *bc}
+
+	sc = &ServerConfig{Databases: databases}
+	errs = sc.setupAndValidateDatabases()
+	assert.Len(t, errs, 1)
+	assert.Contains(t, errs[0].Error(), "invalid control character in URL")
+}
