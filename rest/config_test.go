@@ -596,3 +596,46 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 	assert.Len(t, errs, 1)
 	assert.Contains(t, errs[0].Error(), "invalid control character in URL")
 }
+
+func TestParseCommandLine(t *testing.T) {
+	var (
+		adminInterface     = "127.0.0.1:4985"
+		bucket             = "sync_gateway"
+		cacertpath         = "/etc/ssl/certs/ca.cert"
+		certpath           = "/etc/ssl/certs/client.pem"
+		configServer       = "http://127.0.0.1:4981/conf"
+		dbname             = "beer_sample"
+		defaultLogFilePath = "/var/log/sync_gateway"
+		deploymentID       = "DEPID100"
+		interfaceAddress   = "4984"
+		keypath            = "/etc/ssl/certs/key.pem"
+		log                = "Admin,Access,Auth,Bucket"
+		logFilePath        = "/var/log/sync_gateway"
+		pool               = "liverpool"
+	)
+	os.Args = append(os.Args, "--adminInterface="+adminInterface)
+	os.Args = append(os.Args, "--bucket="+bucket)
+	os.Args = append(os.Args, "--cacertpath="+cacertpath)
+	os.Args = append(os.Args, "--certpath="+certpath)
+	os.Args = append(os.Args, "--configServer="+configServer)
+	os.Args = append(os.Args, "--dbname="+dbname)
+	os.Args = append(os.Args, "--defaultLogFilePath="+defaultLogFilePath)
+	os.Args = append(os.Args, "--deploymentID="+deploymentID)
+	os.Args = append(os.Args, "--interface="+interfaceAddress)
+	os.Args = append(os.Args, "--keypath="+keypath)
+	os.Args = append(os.Args, "--log="+log)
+	os.Args = append(os.Args, "--logFilePath="+logFilePath)
+	os.Args = append(os.Args, "--pool="+pool)
+	os.Args = append(os.Args, "--pretty")
+
+	err := ParseCommandLine()
+	config := GetConfig()
+	assert.Equal(t, adminInterface, *config.AdminInterface)
+	databases := config.Databases
+	assert.Len(t, databases, 1)
+	assert.Equal(t, dbname, databases[dbname].Name)
+	assert.Equal(t, cacertpath, databases[dbname].CACertPath)
+	assert.Equal(t, certpath, databases[dbname].CertPath)
+	assert.Equal(t, keypath, databases[dbname].KeyPath)
+	assert.NoError(t, err)
+}
