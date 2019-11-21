@@ -199,8 +199,8 @@ func TestConfigValidationImport(t *testing.T) {
 
 	errorMessages := config.setupAndValidateDatabases()
 	assert.Nil(t, errorMessages)
-
 	require.NotNil(t, config.Databases["db"])
+
 	if base.IsEnterpriseEdition() {
 		require.NotNil(t, config.Databases["db"].ImportPartitions)
 		assert.Equal(t, uint16(32), *config.Databases["db"].ImportPartitions)

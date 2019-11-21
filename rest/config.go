@@ -355,6 +355,10 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 }
 
 func (dbConfig *DbConfig) validate() []error {
+	return dbConfig.validateVersion(base.IsEnterpriseEdition())
+}
+
+func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 
 	errorMessages := make([]error, 0)
 
@@ -369,7 +373,7 @@ func (dbConfig *DbConfig) validate() []error {
 		if dbConfig.CacheConfig.ChannelCacheConfig != nil {
 
 			// EE: channel cache
-			if !base.IsEnterpriseEdition() {
+			if !isEnterpriseEdition {
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber; val != nil {
 					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
 					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = nil
@@ -430,7 +434,7 @@ func (dbConfig *DbConfig) validate() []error {
 		if dbConfig.CacheConfig.RevCacheConfig != nil {
 			// EE: disable revcache
 			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
-			if !base.IsEnterpriseEdition() && revCacheSize != nil && *revCacheSize == 0 {
+			if !isEnterpriseEdition && revCacheSize != nil && *revCacheSize == 0 {
 				base.Warnf(eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
 				dbConfig.CacheConfig.RevCacheConfig.Size = nil
 			}
@@ -444,7 +448,7 @@ func (dbConfig *DbConfig) validate() []error {
 	}
 
 	// EE: delta sync
-	if !base.IsEnterpriseEdition() && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
+	if !isEnterpriseEdition && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
 		base.Warnf(eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
 		dbConfig.DeltaSync.Enabled = nil
 	}
@@ -463,7 +467,7 @@ func (dbConfig *DbConfig) validate() []error {
 	}
 
 	if dbConfig.ImportPartitions != nil {
-		if !base.IsEnterpriseEdition() {
+		if !isEnterpriseEdition {
 			base.Warnf(eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
 			dbConfig.ImportPartitions = nil
 		} else if !dbConfig.UseXattrs() {
