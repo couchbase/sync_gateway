@@ -546,13 +546,16 @@ func TestSetupAndValidateLogging(t *testing.T) {
 	assert.NotEmpty(t, sc.Logging)
 	assert.Empty(t, sc.Logging.DeprecatedDefaultLog)
 	assert.Len(t, warns, 2)
+}
 
+func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	logFilePath := "/var/log/sync_gateway"
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
 	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl, RedactionLevel: base.RedactFull}
-	sc = &ServerConfig{Logging: lc}
-	warns, err = sc.SetupAndValidateLogging()
+	sc := &ServerConfig{Logging: lc}
+	warns, err := sc.SetupAndValidateLogging()
+	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.Len(t, warns, 5)
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
 	assert.Equal(t, ddl, sc.Logging.DeprecatedDefaultLog)
@@ -685,4 +688,13 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 	maxFDs = DefaultMaxFileDescriptors * 2
 	err = SetMaxFileDescriptors(&maxFDs)
 	assert.NoError(t, err, "Error setting MaxFileDescriptors")
+}
+
+func TestParseCommandLineWithMissingConfig(t *testing.T) {
+	// Parse command line options with unknown sync gateway configuration file
+	os.Args = append(os.Args, "missing-sync-gateway.conf")
+	err = ParseCommandLine()
+	config = GetConfig()
+	assert.Nil(t, config, "Configuration file doesn't exists")
+	assert.Error(t, err, "Error reading config file")
 }
