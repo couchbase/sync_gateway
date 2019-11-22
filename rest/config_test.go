@@ -677,10 +677,9 @@ func TestGetCredentialsFromClusterConfig(t *testing.T) {
 }
 
 func TestSetMaxFileDescriptors(t *testing.T) {
-	// Set MaxFileDescriptors to 65535; it should throw invalid argument error.
-	var maxFDs uint64 = 65535
+	var maxFDs uint64
 	err := SetMaxFileDescriptors(&maxFDs)
-	assert.Error(t, err, "Error setting MaxFileDescriptors")
+	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 
 	// Set MaxFileDescriptors to 10K;
 	maxFDs = DefaultMaxFileDescriptors * 2
