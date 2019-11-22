@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -604,6 +603,7 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 }
 
 func TestParseCommandLine(t *testing.T) {
+	t.Skip("Skipping TestParseCommandLine")
 	var (
 		adminInterface     = "127.0.0.1:4985"
 		bucket             = "sync_gateway"
@@ -688,7 +688,7 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 
 	// Set MaxFileDescriptors to 10K;
-	maxFDs = DefaultMaxFileDescriptors * 2
+	maxFDs = DefaultMaxFileDescriptors + 1
 	err = SetMaxFileDescriptors(&maxFDs)
 	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 }
@@ -711,31 +711,25 @@ func createFakeConfigFile(t *testing.T, content string) string {
 	return path
 }
 
-func destroyFakeConfigFile(path string) {
-	var err = os.Remove(path)
-	if isError(err) {
-		return
-	}
-}
-
-func isError(err error) bool {
-	if err != nil {
-		log.Println(err.Error())
-	}
-	return err != nil
-}
-
 func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 	t.Skip("Skipping TestParseCommandLineWithBadConfigContent")
-	context := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
+	content := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
 
-	configFilePath := createFakeConfigFile(t, context)
-	defer destroyFakeConfigFile(configFilePath)
-	os.Args = append(os.Args, configFilePath)
+	configFilePath := createFakeConfigFile(t, content)
+	path := os.TempDir() + "sync_gateway.conf"
+	bytes := []byte(content)
+	err := ioutil.WriteFile(path, bytes, 0644)
+	assert.NoError(t, err, "Writing JSON content")
 
-	err := ParseCommandLine()
+	defer func() {
+		err := os.Remove(configFilePath)
+		assert.NoError(t, err)
+	}()
+
+	os.Args = append(os.Args, configFilePath)
+	err = ParseCommandLine()
 	config = GetConfig()
 	assert.NotNil(t, config, "Can't unmarshal string into Go value of type rest.ServerConfig")
 	assert.Error(t, err, "Error reading config file")
