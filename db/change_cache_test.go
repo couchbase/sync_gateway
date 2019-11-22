@@ -1970,7 +1970,7 @@ func (f *testProcessEntryFeed) Next() *LogEntry {
 
 func BenchmarkProcessEntry(b *testing.B) {
 
-	defer base.SetUpTestLogging(base.LevelError, base.KeyCache|base.KeyChanges)()
+	defer base.SetUpBenchmarkLogging(base.LevelError, base.KeyCache|base.KeyChanges)()
 	processEntryBenchmarks := []struct {
 		name           string
 		feed           *testProcessEntryFeed
@@ -2196,7 +2196,7 @@ func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 
 func BenchmarkDocChanged(b *testing.B) {
 
-	defer base.SetUpTestLogging(base.LevelError, base.KeyCache|base.KeyChanges)()
+	defer base.SetUpBenchmarkLogging(base.LevelError, base.KeyCache|base.KeyChanges)()
 	processEntryBenchmarks := []struct {
 		name           string
 		feed           *testDocChangedFeed

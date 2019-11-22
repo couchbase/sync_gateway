@@ -357,7 +357,16 @@ pipeline {
                 }
             }
         }
+        stage('Benchmarks'){
+            steps{
+                withEnv(["PATH+=${GO}:${GOPATH}/bin"]){
+                    warnError(message: "one or more benchmarks failed") {
+                        sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -v ${SGW_REPO}/... | tee benchmark.out"
+                    }
+                }
+            }
 
+        }
     }
 
     post {
@@ -367,6 +376,8 @@ pipeline {
 
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
+
+            archiveArtifacts artifacts: 'benchmark.out', fingerprint: true
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
