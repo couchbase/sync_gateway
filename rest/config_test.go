@@ -3,6 +3,8 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -549,6 +551,7 @@ func TestSetupAndValidateLogging(t *testing.T) {
 }
 
 func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	logFilePath := "/var/log/sync_gateway"
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
@@ -691,10 +694,49 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 }
 
 func TestParseCommandLineWithMissingConfig(t *testing.T) {
+	t.Skip("Skipping TestParseCommandLineWithMissingConfig")
 	// Parse command line options with unknown sync gateway configuration file
 	os.Args = append(os.Args, "missing-sync-gateway.conf")
-	err = ParseCommandLine()
+	err := ParseCommandLine()
 	config = GetConfig()
 	assert.Nil(t, config, "Configuration file doesn't exists")
+	assert.Error(t, err, "Error reading config file")
+}
+
+func createFakeConfigFile(t *testing.T, content string) string {
+	path := os.TempDir() + "sync_gateway.conf"
+	bytes := []byte(content)
+	err := ioutil.WriteFile(path, bytes, 0644)
+	assert.NoError(t, err, "Writing JSON content")
+	return path
+}
+
+func destroyFakeConfigFile(path string) {
+	var err = os.Remove(path)
+	if isError(err) {
+		return
+	}
+}
+
+func isError(err error) bool {
+	if err != nil {
+		log.Println(err.Error())
+	}
+	return err != nil
+}
+
+func TestParseCommandLineWithBadConfigContent(t *testing.T) {
+	t.Skip("Skipping TestParseCommandLineWithBadConfigContent")
+	context := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
+    	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
+		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
+
+	configFilePath := createFakeConfigFile(t, context)
+	defer destroyFakeConfigFile(configFilePath)
+	os.Args = append(os.Args, configFilePath)
+
+	err := ParseCommandLine()
+	config = GetConfig()
+	assert.NotNil(t, config, "Can't unmarshal string into Go value of type rest.ServerConfig")
 	assert.Error(t, err, "Error reading config file")
 }
