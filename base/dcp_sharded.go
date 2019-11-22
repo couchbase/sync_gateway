@@ -1,12 +1,13 @@
 package base
 
 import (
+	"crypto/tls"
 	"strings"
 
-	"github.com/pkg/errors"
-
 	"github.com/couchbase/cbgt"
+	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
+	"github.com/pkg/errors"
 )
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
@@ -117,8 +118,21 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 
 	indexName := dbName + "_import"
 
+	// Required for initial pools request, before BucketDataSourceOptions kick in
+	if spec.Certpath != "" {
+		couchbase.SetCertFile(spec.Certpath)
+		couchbase.SetKeyFile(spec.Keypath)
+		couchbase.SetRootFile(spec.CACertPath)
+		couchbase.SetSkipVerify(false)
+	}
+
 	// Register bucketDataSource callback for new index if we need to configure TLS
 	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
+		if spec.IsTLS() {
+			options.TLSConfig = func() *tls.Config {
+				return spec.TLSConfig()
+			}
+		}
 		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(spec.IsTLS())
 		return options
 	})
