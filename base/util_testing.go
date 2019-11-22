@@ -3,6 +3,7 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
@@ -547,6 +548,24 @@ func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
 func DisableTestLogging() (teardownFn func()) {
 	caller := ""
 	return setTestLogging(LevelNone, KeyNone, caller)
+}
+
+// SetUpBenchmarkLogging will set the given log level and key, and do log processing for that configuration,
+// but discards the output, instead of writing it to console.
+func SetUpBenchmarkLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
+	teardownFnOrig := setTestLogging(logLevel, logKeys, "")
+
+	// discard all logging output for benchmarking (but still execute logging as normal)
+	consoleLogger.logger.SetOutput(ioutil.Discard)
+	return func() {
+		// revert back to original output
+		if consoleLogger != nil && consoleLogger.output != nil {
+			consoleLogger.logger.SetOutput(consoleLogger.output)
+		} else {
+			consoleLogger.logger.SetOutput(os.Stderr)
+		}
+		teardownFnOrig()
+	}
 }
 
 func setTestLogging(logLevel LogLevel, logKeys LogKey, caller string) (teardownFn func()) {

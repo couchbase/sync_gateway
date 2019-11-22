@@ -11,14 +11,16 @@ package base
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"expvar"
 
-	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
+
+	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/go-couchbase/cbdatasource"
 )
 
 // Memcached binary protocol datatype bit flags (https://github.com/couchbase/memcached/blob/master/docs/BinaryProtocol.md#data-types),
@@ -284,10 +286,14 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		auth = NoPasswordAuthHandler{handler: spec.Auth}
 	}
 
-	// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
 	if spec.IsTLS() {
-		dataSourceOptions.Connect = spec.TLSConnect
+		dataSourceOptions.TLSConfig = func() *tls.Config {
+			return spec.TLSConfig()
+		}
 	}
+
+	// A lookup of host dest to external alternate address hostnames
+	dataSourceOptions.ConnectBucket, dataSourceOptions.Connect, dataSourceOptions.ConnectTLS = alternateAddressShims(spec.IsTLS())
 
 	DebugfCtx(loggingCtx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
 

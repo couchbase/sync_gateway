@@ -705,7 +705,7 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
+	defer base.SetUpBenchmarkLogging(base.LevelInfo, base.KeyHTTP)()
 
 	context := testBucketContext(b)
 	defer context.Close()
