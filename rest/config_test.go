@@ -3,7 +3,6 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -681,7 +680,6 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 	// Set MaxFileDescriptors to 65535; it should throw invalid argument error.
 	var maxFDs uint64 = 65535
 	err := SetMaxFileDescriptors(&maxFDs)
-	log.Printf("err: %v", err.Error())
 	assert.Error(t, err, "Error setting MaxFileDescriptors")
 
 	// Set MaxFileDescriptors to 10K;
