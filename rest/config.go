@@ -937,7 +937,7 @@ func ParseCommandLine() (err error) {
 	return err
 }
 
-func SetMaxFileDescriptors(maxP *uint64) {
+func SetMaxFileDescriptors(maxP *uint64) error {
 	maxFDs := DefaultMaxFileDescriptors
 	if maxP != nil {
 		maxFDs = *maxP
@@ -945,7 +945,9 @@ func SetMaxFileDescriptors(maxP *uint64) {
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
 		base.Warnf("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		return err
 	}
+	return nil
 }
 
 func (config *ServerConfig) Serve(addr string, handler http.Handler) {

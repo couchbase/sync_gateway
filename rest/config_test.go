@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -674,4 +675,17 @@ func TestGetCredentialsFromClusterConfig(t *testing.T) {
 	assert.Equal(t, mockBucketConfig.Username, username)
 	assert.Equal(t, mockBucketConfig.Password, password)
 	assert.Equal(t, *mockBucketConfig.Bucket, bucket)
+}
+
+func TestSetMaxFileDescriptors(t *testing.T) {
+	// Set MaxFileDescriptors to 65535; it should throw invalid argument error.
+	var maxFDs uint64 = 65535
+	err := SetMaxFileDescriptors(&maxFDs)
+	log.Printf("err: %v", err.Error())
+	assert.Error(t, err, "Error setting MaxFileDescriptors")
+
+	// Set MaxFileDescriptors to 10K;
+	maxFDs = DefaultMaxFileDescriptors * 2
+	err = SetMaxFileDescriptors(&maxFDs)
+	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 }
