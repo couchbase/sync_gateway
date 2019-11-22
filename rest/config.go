@@ -801,7 +801,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine() (err error) {
+func ParseCommandLine(args []string) (err error) {
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
@@ -822,7 +822,7 @@ func ParseCommandLine() (err error) {
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
 	defaultLogFilePathFlag := flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
-	flag.Parse()
+	flag.CommandLine.Parse(args)
 
 	if flag.NArg() > 0 {
 		// Read the configuration file(s), if any:
@@ -1082,7 +1082,7 @@ func ServerMain() {
 	defer PanicHandler()()
 
 	var unknownFieldsErr error
-	err := ParseCommandLine()
+	err := ParseCommandLine(os.Args[1:])
 	if errors.Cause(err) == ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {

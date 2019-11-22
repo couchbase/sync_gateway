@@ -603,7 +603,6 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 }
 
 func TestParseCommandLine(t *testing.T) {
-	t.Skip("Skipping TestParseCommandLine")
 	var (
 		adminInterface     = "127.0.0.1:4985"
 		bucket             = "sync_gateway"
@@ -619,22 +618,23 @@ func TestParseCommandLine(t *testing.T) {
 		logFilePath        = "/var/log/sync_gateway"
 		pool               = "liverpool"
 	)
-	os.Args = append(os.Args, "--adminInterface="+adminInterface)
-	os.Args = append(os.Args, "--bucket="+bucket)
-	os.Args = append(os.Args, "--cacertpath="+cacertpath)
-	os.Args = append(os.Args, "--certpath="+certpath)
-	os.Args = append(os.Args, "--configServer="+configServer)
-	os.Args = append(os.Args, "--dbname="+dbname)
-	os.Args = append(os.Args, "--defaultLogFilePath="+defaultLogFilePath)
-	os.Args = append(os.Args, "--deploymentID="+deploymentID)
-	os.Args = append(os.Args, "--interface="+interfaceAddress)
-	os.Args = append(os.Args, "--keypath="+keypath)
-	os.Args = append(os.Args, "--log="+log)
-	os.Args = append(os.Args, "--logFilePath="+logFilePath)
-	os.Args = append(os.Args, "--pool="+pool)
-	os.Args = append(os.Args, "--pretty")
+	args := []string{
+		"--adminInterface", adminInterface,
+		"--bucket", bucket,
+		"--cacertpath", cacertpath,
+		"--certpath", certpath,
+		"--configServer", configServer,
+		"--dbname", dbname,
+		"--defaultLogFilePath", defaultLogFilePath,
+		"--deploymentID", deploymentID,
+		"--interface", interfaceAddress,
+		"--keypath", keypath,
+		"--log", log,
+		"--logFilePath", logFilePath,
+		"--pool", pool,
+		"--pretty"}
 
-	err := ParseCommandLine()
+	err := ParseCommandLine(args)
 	config := GetConfig()
 	assert.Equal(t, adminInterface, *config.AdminInterface)
 	databases := config.Databases
@@ -687,40 +687,30 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 	err := SetMaxFileDescriptors(&maxFDs)
 	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 
-	// Set MaxFileDescriptors to 10K;
+	// Set MaxFileDescriptors
 	maxFDs = DefaultMaxFileDescriptors + 1
 	err = SetMaxFileDescriptors(&maxFDs)
 	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 }
 
 func TestParseCommandLineWithMissingConfig(t *testing.T) {
-	t.Skip("Skipping TestParseCommandLineWithMissingConfig")
+	t.Skip("Skipping to get rid of flag redefinition")
 	// Parse command line options with unknown sync gateway configuration file
-	os.Args = append(os.Args, "missing-sync-gateway.conf")
-	err := ParseCommandLine()
+	err := ParseCommandLine([]string{"missing-sync-gateway.conf"})
 	config = GetConfig()
 	assert.Nil(t, config, "Configuration file doesn't exists")
 	assert.Error(t, err, "Error reading config file")
 }
 
-func createFakeConfigFile(t *testing.T, content string) string {
-	path := os.TempDir() + "sync_gateway.conf"
-	bytes := []byte(content)
-	err := ioutil.WriteFile(path, bytes, 0644)
-	assert.NoError(t, err, "Writing JSON content")
-	return path
-}
-
 func TestParseCommandLineWithBadConfigContent(t *testing.T) {
-	t.Skip("Skipping TestParseCommandLineWithBadConfigContent")
+	t.Skip("Skipping to get rid of flag redefinition")
 	content := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
 
-	configFilePath := createFakeConfigFile(t, content)
-	path := os.TempDir() + "sync_gateway.conf"
+	configFilePath := os.TempDir() + "sync_gateway.conf"
 	bytes := []byte(content)
-	err := ioutil.WriteFile(path, bytes, 0644)
+	err := ioutil.WriteFile(configFilePath, bytes, 0644)
 	assert.NoError(t, err, "Writing JSON content")
 
 	defer func() {
@@ -728,8 +718,7 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	os.Args = append(os.Args, configFilePath)
-	err = ParseCommandLine()
+	err = ParseCommandLine([]string{configFilePath})
 	config = GetConfig()
 	assert.NotNil(t, config, "Can't unmarshal string into Go value of type rest.ServerConfig")
 	assert.Error(t, err, "Error reading config file")
