@@ -639,3 +639,39 @@ func TestParseCommandLine(t *testing.T) {
 	assert.Equal(t, keypath, databases[dbname].KeyPath)
 	assert.NoError(t, err)
 }
+
+func mockBucketConfig() BucketConfig {
+	bucket := "albums"
+	username := "Alice"
+	password := "QWxpY2U="
+
+	bucketConfig := BucketConfig{
+		Bucket:   &bucket,
+		Username: username,
+		Password: password}
+
+	return bucketConfig
+}
+
+func TestGetCredentialsFromDbConfig(t *testing.T) {
+	mockBucketConfig := mockBucketConfig()
+	dbConfig := &DbConfig{BucketConfig: mockBucketConfig}
+	username, password, bucket := dbConfig.GetCredentials()
+	assert.Equal(t, mockBucketConfig.Username, username)
+	assert.Equal(t, mockBucketConfig.Password, password)
+	assert.Equal(t, *mockBucketConfig.Bucket, bucket)
+}
+
+func TestGetCredentialsFromClusterConfig(t *testing.T) {
+	mockBucketConfig := mockBucketConfig()
+	heartbeatIntervalSeconds := uint16(10)
+	clusterConfig := &ClusterConfig{
+		BucketConfig:             mockBucketConfig,
+		DataDir:                  "/var/lib/sync_gateway/data",
+		HeartbeatIntervalSeconds: &heartbeatIntervalSeconds,
+	}
+	username, password, bucket := clusterConfig.GetCredentials()
+	assert.Equal(t, mockBucketConfig.Username, username)
+	assert.Equal(t, mockBucketConfig.Password, password)
+	assert.Equal(t, *mockBucketConfig.Bucket, bucket)
+}
