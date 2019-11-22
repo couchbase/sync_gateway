@@ -321,7 +321,7 @@ func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *Ch
 	newCount = changeWaiter.CurrentUserCount()
 	// If not continuous, we force user reload as a workaround for https://github.com/couchbase/sync_gateway/issues/2068.  For continuous, #2068 is handled by changedChannels check, and
 	// we can reload only when there's been a user change notification
-	if newCount > userChangeCount || !isContinuous {
+	if newCount > userChangeCount {
 		var previousChannels channels.TimedSet
 		base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed reloading user %+v", base.UD(db.user))
 		userChangeCount = newCount
@@ -389,14 +389,17 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// Reload user to pick up user changes that happened between auth and the change waiter
 			// initialization.  Without this, notification for user doc changes in that window (a) won't be
 			// included in the initial changes loop iteration, and (b) won't wake up the ChangeWaiter.
-			if db.user != nil {
-				if err := db.ReloadUser(); err != nil {
-					base.WarnfCtx(db.Ctx, "Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
-					change := makeErrorEntry("User not found during reload - terminating changes feed")
-					output <- &change
-					return
+			/*
+				if db.user != nil {
+					if err := db.ReloadUser(); err != nil {
+						base.WarnfCtx(db.Ctx, "Error reloading user during changes initialization %q: %v", base.UD(db.user.Name()), err)
+						change := makeErrorEntry("User not found during reload - terminating changes feed")
+						output <- &change
+						return
+					}
 				}
-			}
+
+			*/
 
 		}
 

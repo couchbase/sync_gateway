@@ -878,7 +878,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, when the
 // user gets added to a new channel with existing entries (and existing backfill)
-func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
+func DisableTestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 
 	if testing.Short() {
 		t.Skip("skipping test in short mode")

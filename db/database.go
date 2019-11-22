@@ -595,11 +595,6 @@ func (db *Database) User() auth.User {
 // Reloads the database's User object, in case its persistent properties have been changed.
 func (db *Database) ReloadUser() error {
 
-	// Skip the reload for testing
-	if true {
-		return nil
-	}
-
 	if db.user == nil {
 		return nil
 	}

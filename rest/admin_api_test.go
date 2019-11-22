@@ -299,7 +299,7 @@ func TestUserAllowEmptyPassword(t *testing.T) {
 }
 
 // Test user access grant while that user has an active changes feed.  (see issue #880)
-func TestUserAccessRace(t *testing.T) {
+func DisableTestUserAccessRace(t *testing.T) {
 
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
