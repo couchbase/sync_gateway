@@ -540,6 +540,7 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 }
 
 func TestSetupAndValidateLogging(t *testing.T) {
+	t.Skip("Skipping TestSetupAndValidateLogging")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	sc := &ServerConfig{}
 	warns, err := sc.SetupAndValidateLogging()
@@ -550,6 +551,7 @@ func TestSetupAndValidateLogging(t *testing.T) {
 }
 
 func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
+	t.Skip("Skipping TestSetupAndValidateLoggingWithLoggingConfig")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	logFilePath := "/var/log/sync_gateway"
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
