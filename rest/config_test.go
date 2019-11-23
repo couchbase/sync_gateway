@@ -603,6 +603,7 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 }
 
 func TestParseCommandLine(t *testing.T) {
+	resetServerConfig()
 	var (
 		adminInterface     = "127.0.0.1:4985"
 		bucket             = "sync_gateway"
@@ -635,9 +636,9 @@ func TestParseCommandLine(t *testing.T) {
 		"--pretty"}
 
 	err := ParseCommandLine(args)
-	config := GetConfig()
-	assert.Equal(t, adminInterface, *config.AdminInterface)
-	databases := config.Databases
+	conf := GetConfig()
+	assert.Equal(t, adminInterface, *conf.AdminInterface)
+	databases := conf.Databases
 	assert.Len(t, databases, 1)
 	assert.Equal(t, dbname, databases[dbname].Name)
 	assert.Equal(t, cacertpath, databases[dbname].CACertPath)
@@ -694,16 +695,15 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 }
 
 func TestParseCommandLineWithMissingConfig(t *testing.T) {
-	t.Skip("Skipping to get rid of flag redefinition")
+	resetServerConfig()
 	// Parse command line options with unknown sync gateway configuration file
 	err := ParseCommandLine([]string{"missing-sync-gateway.conf"})
-	config = GetConfig()
-	assert.Nil(t, config, "Configuration file doesn't exists")
+	assert.Nil(t, GetConfig(), "Configuration file doesn't exists")
 	assert.Error(t, err, "Error reading config file")
 }
 
 func TestParseCommandLineWithBadConfigContent(t *testing.T) {
-	t.Skip("Skipping to get rid of flag redefinition")
+	resetServerConfig()
 	content := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
@@ -716,15 +716,14 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 		err := os.Remove(configFilePath)
 		assert.NoError(t, err)
 	}()
-
+	conf := GetConfig()
 	err = ParseCommandLine([]string{configFilePath})
-	config = GetConfig()
-	assert.NotNil(t, config, "Can't unmarshal string into Go value of type rest.ServerConfig")
+	assert.Nil(t, conf, "Can't unmarshal string into Go value of type rest.ServerConfig")
 	assert.Error(t, err, "Error reading config file")
 }
 
 func TestParseCommandLineWithConfigContent(t *testing.T) {
-	t.Skip("Skipping to get rid of flag redefinition")
+	resetServerConfig()
 	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
 		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
         "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{
@@ -732,7 +731,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
         "certpath":"/etc/ssl/certs/cert.pem","cacertpath":"/etc/ssl/certs/ca.cert","keypath":"/etc/ssl/certs/key.pem",
         "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
 
-	configFilePath := os.TempDir() + "sync_gateway.conf"
+	configFilePath := os.TempDir() + "sync_gateway1.conf"
 	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
 	assert.NoError(t, err, "Writing JSON content")
 
@@ -775,18 +774,19 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		configFilePath}
 
 	err = ParseCommandLine(args)
-	config := GetConfig()
-	assert.Equal(t, interfaceAddress, *config.Interface)
-	assert.Equal(t, adminInterface, *config.AdminInterface)
-	assert.Equal(t, profileInterface, *config.ProfileInterface)
-	assert.Equal(t, configServer, *config.ConfigServer)
-	assert.Equal(t, deploymentID, *config.DeploymentID)
-	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
-	assert.Equal(t, []string{"Admin", "Access", "Auth", "Bucket", "HTTP+"}, config.Logging.Console.LogKeys)
-	assert.True(t, config.Pretty)
-	assert.Len(t, config.Databases, 1)
+	assert.NoError(t, err, "while parsing commandline options")
+	conf := GetConfig()
+	assert.Equal(t, interfaceAddress, *conf.Interface)
+	assert.Equal(t, adminInterface, *conf.AdminInterface)
+	assert.Equal(t, profileInterface, *conf.ProfileInterface)
+	assert.Equal(t, configServer, *conf.ConfigServer)
+	assert.Equal(t, deploymentID, *conf.DeploymentID)
+	assert.Equal(t, logFilePath, conf.Logging.LogFilePath)
+	assert.Equal(t, []string{"Admin", "Access", "Auth", "Bucket", "HTTP+"}, conf.Logging.Console.LogKeys)
+	assert.True(t, conf.Pretty)
+	assert.Len(t, conf.Databases, 1)
 
-	db1 := config.Databases["db1"]
+	db1 := conf.Databases["db1"]
 	assert.Equal(t, "default", *db1.Bucket)
 	assert.Equal(t, "username", db1.BucketConfig.Username)
 	assert.Equal(t, "password", db1.BucketConfig.Password)
@@ -800,4 +800,8 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	guest := db1.Users["GUEST"]
 	assert.False(t, guest.Disabled)
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
+}
+
+func resetServerConfig() {
+	config = nil
 }

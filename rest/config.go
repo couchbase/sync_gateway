@@ -800,29 +800,48 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	return nil
 }
 
+var (
+	addr, authAddr, profAddr, configServer, deploymentID, couchbaseURL, poolName, bucketName, dbName,
+	logKeys, logFilePath, certpath, cacertpath, keypath, defaultLogFilePathFlag *string
+)
+
+var (
+	pretty, verbose *bool
+)
+
+func resetCommandLine() {
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	setupCommandLine()
+}
+
+func setupCommandLine() {
+	addr = flag.String("interface", DefaultInterface, "Address to bind to")
+	authAddr = flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
+	profAddr = flag.String("profileInterface", "", "Address to bind profile interface to")
+	configServer = flag.String("configServer", "", "URL of server that can return database configs")
+	deploymentID = flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
+	couchbaseURL = flag.String("url", DefaultServer, "Address of Couchbase server")
+	poolName = flag.String("pool", DefaultPool, "Name of pool")
+	bucketName = flag.String("bucket", "sync_gateway", "Name of bucket")
+	dbName = flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
+	pretty = flag.Bool("pretty", false, "Pretty-print JSON responses")
+	verbose = flag.Bool("verbose", false, "Log more info about requests")
+	logKeys = flag.String("log", "", "Log keys, comma separated")
+	logFilePath = flag.String("logFilePath", "", "Path to log files")
+	certpath = flag.String("certpath", "", "Client certificate path")
+	cacertpath = flag.String("cacertpath", "", "Root CA certificate path")
+	keypath = flag.String("keypath", "", "Client certificate key path")
+	// used by service scripts as a way to specify a per-distro defaultLogFilePath
+	defaultLogFilePathFlag = flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
+}
+
 // Reads the command line flags and the optional config file.
 func ParseCommandLine(args []string) (err error) {
-	addr := flag.String("interface", DefaultInterface, "Address to bind to")
-	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
-	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
-	configServer := flag.String("configServer", "", "URL of server that can return database configs")
-	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
-	poolName := flag.String("pool", DefaultPool, "Name of pool")
-	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
-	dbName := flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
-	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
-	verbose := flag.Bool("verbose", false, "Log more info about requests")
-	logKeys := flag.String("log", "", "Log keys, comma separated")
-	logFilePath := flag.String("logFilePath", "", "Path to log files")
-	certpath := flag.String("certpath", "", "Client certificate path")
-	cacertpath := flag.String("cacertpath", "", "Root CA certificate path")
-	keypath := flag.String("keypath", "", "Client certificate key path")
+	resetCommandLine()
 
-	// used by service scripts as a way to specify a per-distro defaultLogFilePath
-	defaultLogFilePathFlag := flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
-
-	flag.CommandLine.Parse(args)
+	if err := flag.CommandLine.Parse(args); err != nil {
+		return err
+	}
 
 	if flag.NArg() > 0 {
 		// Read the configuration file(s), if any:
@@ -830,6 +849,7 @@ func ParseCommandLine(args []string) (err error) {
 			filename := flag.Arg(i)
 
 			newConfig, newConfigErr := LoadServerConfig(filename)
+
 			if errors.Cause(newConfigErr) == ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
 				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
@@ -850,18 +870,23 @@ func ParseCommandLine(args []string) (err error) {
 		if *addr != DefaultInterface {
 			config.Interface = addr
 		}
+
 		if *authAddr != DefaultAdminInterface {
 			config.AdminInterface = authAddr
 		}
+
 		if *profAddr != "" {
 			config.ProfileInterface = profAddr
 		}
+
 		if *configServer != "" {
 			config.ConfigServer = configServer
 		}
+
 		if *deploymentID != "" {
 			config.DeploymentID = deploymentID
 		}
+
 		if *pretty {
 			config.Pretty = *pretty
 		}
@@ -871,6 +896,7 @@ func ParseCommandLine(args []string) (err error) {
 		if config.Interface == nil {
 			config.Interface = &DefaultInterface
 		}
+
 		if config.AdminInterface == nil {
 			config.AdminInterface = &DefaultAdminInterface
 		}
