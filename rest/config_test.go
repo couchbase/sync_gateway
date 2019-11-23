@@ -709,8 +709,7 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
 
 	configFilePath := os.TempDir() + "sync_gateway.conf"
-	bytes := []byte(content)
-	err := ioutil.WriteFile(configFilePath, bytes, 0644)
+	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
 	assert.NoError(t, err, "Writing JSON content")
 
 	defer func() {
@@ -722,4 +721,83 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 	config = GetConfig()
 	assert.NotNil(t, config, "Can't unmarshal string into Go value of type rest.ServerConfig")
 	assert.Error(t, err, "Error reading config file")
+}
+
+func TestParseCommandLineWithConfigContent(t *testing.T) {
+	t.Skip("Skipping to get rid of flag redefinition")
+	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
+		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
+        "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{
+        "server":"couchbase://localhost","username":"username","password":"password","bucket":"default","pool":"pool1",
+        "certpath":"/etc/ssl/certs/cert.pem","cacertpath":"/etc/ssl/certs/ca.cert","keypath":"/etc/ssl/certs/key.pem",
+        "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
+
+	configFilePath := os.TempDir() + "sync_gateway.conf"
+	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
+	assert.NoError(t, err, "Writing JSON content")
+
+	defer func() {
+		err := os.Remove(configFilePath)
+		assert.NoError(t, err)
+	}()
+
+	var (
+		adminInterface     = "127.10.0.1:4985"
+		profileInterface   = "127.10.0.1:8088"
+		bucket             = "sync_gateway"
+		cacertpath         = "/etc/ssl/certs/ca.cert"
+		certpath           = "/etc/ssl/certs/client.pem"
+		configServer       = "http://127.0.0.1:4981/conf"
+		defaultLogFilePath = "/var/log/sync_gateway"
+		deploymentID       = "DEPID100"
+		interfaceAddress   = "4443"
+		keypath            = "/etc/ssl/certs/key.pem"
+		logKeys            = "Admin,Access,Auth,Bucket"
+		logFilePath        = "/var/log/sync_gateway"
+		pool               = "liverpool"
+	)
+	args := []string{
+		"--adminInterface", adminInterface,
+		"--bucket", bucket,
+		"--cacertpath", cacertpath,
+		"--certpath", certpath,
+		"--configServer", configServer,
+		"--defaultLogFilePath", defaultLogFilePath,
+		"--deploymentID", deploymentID,
+		"--interface", interfaceAddress,
+		"--keypath", keypath,
+		"--log", logKeys,
+		"--logFilePath", logFilePath,
+		"--pool", pool,
+		"--pretty",
+		"--verbose",
+		"--profileInterface", profileInterface,
+		configFilePath}
+
+	err = ParseCommandLine(args)
+	config := GetConfig()
+	assert.Equal(t, interfaceAddress, *config.Interface)
+	assert.Equal(t, adminInterface, *config.AdminInterface)
+	assert.Equal(t, profileInterface, *config.ProfileInterface)
+	assert.Equal(t, configServer, *config.ConfigServer)
+	assert.Equal(t, deploymentID, *config.DeploymentID)
+	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
+	assert.Equal(t, []string{"Admin", "Access", "Auth", "Bucket", "HTTP+"}, config.Logging.Console.LogKeys)
+	assert.True(t, config.Pretty)
+	assert.Len(t, config.Databases, 1)
+
+	db1 := config.Databases["db1"]
+	assert.Equal(t, "default", *db1.Bucket)
+	assert.Equal(t, "username", db1.BucketConfig.Username)
+	assert.Equal(t, "password", db1.BucketConfig.Password)
+	assert.Equal(t, "default", *db1.BucketConfig.Bucket)
+	assert.Equal(t, "couchbase://localhost", *db1.BucketConfig.Server)
+	assert.Equal(t, "pool1", *db1.BucketConfig.Pool)
+	assert.Equal(t, "/etc/ssl/certs/cert.pem", db1.BucketConfig.CertPath)
+	assert.Equal(t, "/etc/ssl/certs/ca.cert", db1.BucketConfig.CACertPath)
+	assert.Equal(t, "/etc/ssl/certs/key.pem", db1.BucketConfig.KeyPath)
+
+	guest := db1.Users["GUEST"]
+	assert.False(t, guest.Disabled)
+	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
 }
