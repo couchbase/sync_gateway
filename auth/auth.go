@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
@@ -107,8 +108,8 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		}
 
 		princ = factory()
-		if err := base.JSONUnmarshal(currentValue, princ); err != nil {
-			return nil, nil, pkgerrors.WithStack(base.RedactErrorf("base.JSONUnmarshal() error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
+		if err := json.Unmarshal(currentValue, princ); err != nil {
+			return nil, nil, pkgerrors.WithStack(base.RedactErrorf("json.Unmarshal error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
 		}
 		changed := false
 		if princ.Channels() == nil {
@@ -131,9 +132,9 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 
 		if changed {
 			// Save the updated doc:
-			updatedBytes, marshalErr := base.JSONMarshal(princ)
+			updatedBytes, marshalErr := json.Marshal(princ)
 			if marshalErr != nil {
-				marshalErr = pkgerrors.WithStack(base.RedactErrorf("base.JSONUnmarshal() error for doc ID: %s in getPrincipal(). Error: %v", base.UD(docID), marshalErr))
+				marshalErr = pkgerrors.WithStack(base.RedactErrorf("json.Unmarshal error for doc ID: %s in getPrincipal(). Error: %v", base.UD(docID), marshalErr))
 			}
 			return updatedBytes, nil, marshalErr
 		} else {

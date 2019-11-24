@@ -11,6 +11,7 @@ package auth
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -310,11 +311,11 @@ func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
 
 func (user *userImpl) MarshalJSON() ([]byte, error) {
 	var err error
-	data, err := base.JSONMarshal(user.roleImpl)
+	data, err := json.Marshal(user.roleImpl)
 	if err != nil {
 		return nil, err
 	}
-	userData, err := base.JSONMarshal(user.userImplBody)
+	userData, err := json.Marshal(user.userImplBody)
 	if err != nil {
 		return nil, err
 	}
@@ -328,9 +329,9 @@ func (user *userImpl) MarshalJSON() ([]byte, error) {
 }
 
 func (user *userImpl) UnmarshalJSON(data []byte) error {
-	if err := base.JSONUnmarshal(data, &user.userImplBody); err != nil {
+	if err := json.Unmarshal(data, &user.userImplBody); err != nil {
 		return err
-	} else if err := base.JSONUnmarshal(data, &user.roleImpl); err != nil {
+	} else if err := json.Unmarshal(data, &user.roleImpl); err != nil {
 		return err
 	}
 
