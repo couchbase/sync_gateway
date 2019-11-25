@@ -79,7 +79,7 @@ type FakeLogger struct {
 }
 
 func (fakeLogger FakeLogger) String() string {
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(10 * time.Microsecond)
 	return "Fixed String"
 }
 

@@ -838,9 +838,9 @@ func ParseCommandLine() (err error) {
 			newConfig, newConfigErr := LoadServerConfig(filename)
 			if errors.Cause(newConfigErr) == ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
-				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename).Redact()))
+				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			} else if newConfigErr != nil {
-				return errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename).Redact()))
+				return errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			}
 
 			if config == nil {

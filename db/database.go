@@ -416,7 +416,7 @@ func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDC
 	if provider, ok := context.OIDCProviders[providerName]; ok {
 		return provider, nil
 	} else {
-		return nil, base.RedactErrorf("No provider found for provider name %q", base.UD(providerName).Redact())
+		return nil, base.RedactErrorf("No provider found for provider name %q", base.MD(providerName))
 	}
 }
 
