@@ -586,7 +586,6 @@ func TestPostInstallCleanup(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.True(t, postUpgradeResponse.Preview)
 	assert.Equal(t, 2, len(postUpgradeResponse.Result["db"].RemovedDDocs))
-	fmt.Println(postUpgradeResponse)
 
 	// Run post-upgrade in non-preview mode
 	postUpgradeResponse = PostUpgradeResponse{}
@@ -595,7 +594,6 @@ func TestPostInstallCleanup(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.False(t, postUpgradeResponse.Preview)
 	assert.Equal(t, 2, len(postUpgradeResponse.Result["db"].RemovedDDocs))
-	fmt.Println(postUpgradeResponse)
 
 	// Run post-upgrade in preview mode again, expect no results for database
 	postUpgradeResponse = PostUpgradeResponse{}

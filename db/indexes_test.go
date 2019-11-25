@@ -170,12 +170,10 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
 	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), true)
 	assert.Equal(t, expectedIndexes, len(removedIndexes))
-	fmt.Println(removedIndexes)
 	assert.NoError(t, removeErr)
 
 	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false)
 	assert.Equal(t, 0, len(removedIndexes))
-	fmt.Println(removedIndexes)
 	assert.NoError(t, removeErr)
 
 	// Cleanup design docs created during test
