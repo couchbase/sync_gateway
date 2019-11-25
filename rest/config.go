@@ -847,7 +847,7 @@ func ParseCommandLine() (err error) {
 				config = newConfig
 			} else {
 				if err := config.MergeWith(newConfig); err != nil {
-					return errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", base.UD(filename).Redact()))
+					return errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
 				}
 			}
 		}
