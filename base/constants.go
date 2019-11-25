@@ -66,6 +66,8 @@ const (
 	// to make it easier to identify root cause of test failures.
 	DefaultWaitForSequence = time.Second * 30
 
+	DefaultWaitForWebhook = time.Second * 5
+
 	// Default the max number of idle connections per host to a relatively high number to avoid
 	// excessive socket churn caused by opening short-lived connections and closing them after, which can cause
 	// a high number of connections to end up in the TIME_WAIT state and exhaust system resources.  Since
