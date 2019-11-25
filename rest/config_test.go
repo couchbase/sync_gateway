@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"flag"
 	"io/ioutil"
 	"log"
 	"os"
@@ -638,6 +639,7 @@ func TestParseCommandLine(t *testing.T) {
 		"--pool", pool,
 		"--pretty"}
 
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	err := ParseCommandLine(args)
 	conf := GetConfig()
 	assert.Equal(t, adminInterface, *conf.AdminInterface)
@@ -701,6 +703,7 @@ func TestParseCommandLineWithMissingConfig(t *testing.T) {
 	func() { config = nil }()
 	log.Printf("TestParseCommandLineWithMissingConfig:%v", GetConfig())
 	// Parse command line options with unknown sync gateway configuration file
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	err := ParseCommandLine([]string{"missing-sync-gateway.conf"})
 	assert.Nil(t, GetConfig(), "Configuration file doesn't exists")
 	assert.Error(t, err, "Error reading config file")
@@ -721,6 +724,7 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	err = ParseCommandLine([]string{configFilePath})
 	assert.NotNil(t, GetConfig())
 	assert.Error(t, err, "Error reading config file: unknown field")
@@ -777,6 +781,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		"--profileInterface", profileInterface,
 		configFilePath}
 
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	err = ParseCommandLine(args)
 	assert.NoError(t, err, "while parsing commandline options")
 	conf := GetConfig()

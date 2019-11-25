@@ -805,7 +805,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 
 // Reads the command line flags and the optional config file.
 func ParseCommandLine(args []string) (err error) {
-	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	addr := flag.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
