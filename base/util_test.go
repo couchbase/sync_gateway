@@ -11,12 +11,10 @@ package base
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math"
 	"net/http"
 	"net/url"
-	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -553,24 +551,6 @@ func TestSetUpTestLogging(t *testing.T) {
 		assert.True(t, recover() != nil, "Expected panic from multiple SetUpTestLogging calls")
 	}()
 	SetUpTestLogging(LevelError, KeyAuth|KeyCRUD)
-}
-
-// SetUpBenchmarkLogging will set the given log level and key, and do log processing for that configuration,
-// but discards the output, instead of writing it to console.
-func SetUpBenchmarkLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
-	teardownFnOrig := setTestLogging(logLevel, logKeys, "")
-
-	// discard all logging output for benchmarking (but still execute logging as normal)
-	consoleLogger.logger.SetOutput(ioutil.Discard)
-	return func() {
-		// revert back to original output
-		if consoleLogger != nil && consoleLogger.output != nil {
-			consoleLogger.logger.SetOutput(consoleLogger.output)
-		} else {
-			consoleLogger.logger.SetOutput(os.Stderr)
-		}
-		teardownFnOrig()
-	}
 }
 
 func TestEncodeDecodeCompatVersion(t *testing.T) {
