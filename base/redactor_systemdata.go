@@ -32,18 +32,24 @@ func (sd SystemData) Redact() string {
 var _ Redactor = SystemData("")
 
 // SD returns a SystemData type for any given value.
-func SD(i interface{}) Redactor {
+func SD(i interface{}) RedactorFunc {
 	switch v := i.(type) {
 	case string:
-		return SystemData(v)
-	case fmt.Stringer:
-		return SystemData(v.String())
-	default:
-		valueOf := reflect.ValueOf(i)
-		if valueOf.Kind() == reflect.Slice {
-			return buildRedactorSlice(valueOf, SD)
+		return func() Redactor {
+			return SystemData(v)
 		}
-		// Fall back to a slower but safe way of getting a string from any type.
-		return SystemData(fmt.Sprintf("%+v", v))
+	case fmt.Stringer:
+		return func() Redactor {
+			return SystemData(v.String())
+		}
+	default:
+		return func() Redactor {
+			valueOf := reflect.ValueOf(i)
+			if valueOf.Kind() == reflect.Slice {
+				return buildRedactorFuncSlice(valueOf, SD)
+			}
+			// Fall back to a slower but safe way of getting a string from any type.
+			return SystemData(fmt.Sprintf("%+v", v))
+		}
 	}
 }
