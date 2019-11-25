@@ -875,7 +875,6 @@ func ParseCommandLine(args []string) (err error) {
 		if config.Interface == nil {
 			config.Interface = &DefaultInterface
 		}
-
 		if config.AdminInterface == nil {
 			config.AdminInterface = &DefaultAdminInterface
 		}
