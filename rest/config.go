@@ -832,7 +832,6 @@ func ParseCommandLine(args []string) (err error) {
 		// Read the configuration file(s), if any:
 		for i := 0; i < flag.NArg(); i++ {
 			filename := flag.Arg(i)
-
 			newConfig, newConfigErr := LoadServerConfig(filename)
 
 			if errors.Cause(newConfigErr) == ErrUnknownField {
@@ -855,23 +854,18 @@ func ParseCommandLine(args []string) (err error) {
 		if *addr != DefaultInterface {
 			config.Interface = addr
 		}
-
 		if *authAddr != DefaultAdminInterface {
 			config.AdminInterface = authAddr
 		}
-
 		if *profAddr != "" {
 			config.ProfileInterface = profAddr
 		}
-
 		if *configServer != "" {
 			config.ConfigServer = configServer
 		}
-
 		if *deploymentID != "" {
 			config.DeploymentID = deploymentID
 		}
-
 		if *pretty {
 			config.Pretty = *pretty
 		}
