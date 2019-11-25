@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -461,11 +462,6 @@ func TestMergeWith(t *testing.T) {
 	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 
 	databases := make(DbConfigMap, 2)
-	databases["db1"] = &DbConfig{Name: "db1"}
-	databases["db2"] = &DbConfig{Name: "db2"}
-	self := &ServerConfig{Databases: databases}
-
-	databases = make(DbConfigMap, 2)
 	databases["db3"] = &DbConfig{Name: "db3"}
 	databases["db4"] = &DbConfig{Name: "db4"}
 
@@ -480,6 +476,11 @@ func TestMergeWith(t *testing.T) {
 		DeprecatedLog:    deprecatedLog,
 		Pretty:           true,
 		Databases:        databases}
+
+	databases = make(DbConfigMap, 2)
+	databases["db1"] = &DbConfig{Name: "db1"}
+	databases["db2"] = &DbConfig{Name: "db2"}
+	self := &ServerConfig{Databases: databases}
 
 	err := self.MergeWith(other)
 	assert.NoError(t, err, "No error while merging this server config with other")
@@ -605,7 +606,7 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 }
 
 func TestParseCommandLine(t *testing.T) {
-	resetServerConfig()
+	func() { config = nil }()
 	var (
 		adminInterface     = "127.0.0.1:4985"
 		bucket             = "sync_gateway"
@@ -697,7 +698,8 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 }
 
 func TestParseCommandLineWithMissingConfig(t *testing.T) {
-	resetServerConfig()
+	func() { config = nil }()
+	log.Printf("TestParseCommandLineWithMissingConfig:%v", GetConfig())
 	// Parse command line options with unknown sync gateway configuration file
 	err := ParseCommandLine([]string{"missing-sync-gateway.conf"})
 	assert.Nil(t, GetConfig(), "Configuration file doesn't exists")
@@ -705,7 +707,7 @@ func TestParseCommandLineWithMissingConfig(t *testing.T) {
 }
 
 func TestParseCommandLineWithBadConfigContent(t *testing.T) {
-	resetServerConfig()
+	func() { config = nil }()
 	content := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
@@ -718,14 +720,14 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 		err := os.Remove(configFilePath)
 		assert.NoError(t, err)
 	}()
-	conf := GetConfig()
+
 	err = ParseCommandLine([]string{configFilePath})
-	assert.Nil(t, conf, "Can't unmarshal string into Go value of type rest.ServerConfig")
-	assert.Error(t, err, "Error reading config file")
+	assert.NotNil(t, GetConfig())
+	assert.Error(t, err, "Error reading config file: unknown field")
 }
 
 func TestParseCommandLineWithConfigContent(t *testing.T) {
-	resetServerConfig()
+	func() { config = nil }()
 	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
 		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
         "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{
@@ -802,8 +804,4 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	guest := db1.Users["GUEST"]
 	assert.False(t, guest.Disabled)
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
-}
-
-func resetServerConfig() {
-	config = nil
 }
