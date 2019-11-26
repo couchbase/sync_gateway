@@ -20,8 +20,7 @@ func RedactErrorf(fmt string, args ...interface{}) *RedactableError {
 
 // Satisfy error interface
 func (re *RedactableError) Error() string {
-	redactedArgs := redact(re.args)
-	return fmt.Sprintf(re.fmt, redactedArgs...)
+	return fmt.Sprintf(re.fmt, re.args...)
 }
 
 // Satisfy redact interface

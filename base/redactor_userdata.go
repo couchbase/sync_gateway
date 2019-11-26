@@ -21,6 +21,10 @@ var RedactUserData = false
 //  - Document xattrs
 type UserData string
 
+func (ud UserData) String() string {
+	return string(ud)
+}
+
 // Redact tags the string with UserData tags for post-processing.
 func (ud UserData) Redact() string {
 	if !RedactUserData {

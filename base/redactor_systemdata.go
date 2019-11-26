@@ -20,6 +20,10 @@ var RedactSystemData = false
 // - DNS topology
 type SystemData string
 
+func (sd SystemData) String() string {
+	return string(sd)
+}
+
 // Redact tags the string with SystemData tags for post-processing.
 func (sd SystemData) Redact() string {
 	if !RedactSystemData {

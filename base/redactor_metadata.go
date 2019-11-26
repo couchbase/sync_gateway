@@ -23,6 +23,10 @@ var RedactMetadata = false
 // - And other couchbase resource specific meta data
 type Metadata string
 
+func (md Metadata) String() string {
+	return string(md)
+}
+
 // Redact tags the string with Metadata tags for post-processing.
 func (md Metadata) Redact() string {
 	if !RedactMetadata {
