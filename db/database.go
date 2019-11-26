@@ -503,7 +503,7 @@ func (context *DatabaseContext) FlushChannelCache() error {
 
 // Removes previous versions of Sync Gateway's design docs found on the server
 func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (removedDesignDocs []string, err error) {
-	return removeObsoleteDesignDocs(context.Bucket, previewOnly)
+	return removeObsoleteDesignDocs(context.Bucket, previewOnly, context.UseViews())
 }
 
 // Removes previous versions of Sync Gateway's design docs found on the server
@@ -515,7 +515,7 @@ func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removed
 		return make([]string, 0), nil
 	}
 
-	return removeObsoleteIndexes(gocbBucket, previewOnly, context.UseXattrs())
+	return removeObsoleteIndexes(gocbBucket, previewOnly, context.UseXattrs(), context.UseViews())
 }
 
 // Trigger terminate check handling for connected continuous replications.
@@ -1115,6 +1115,10 @@ func (context *DatabaseContext) GetUserViewsEnabled() bool {
 
 func (context *DatabaseContext) UseXattrs() bool {
 	return context.Options.EnableXattr
+}
+
+func (context *DatabaseContext) UseViews() bool {
+	return context.Options.UseViews
 }
 
 func (context *DatabaseContext) DeltaSyncEnabled() bool {

@@ -638,12 +638,18 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 
 }
 
-func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool) (removedDesignDocs []string, err error) {
+func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool, useViews bool) (removedDesignDocs []string, err error) {
 
 	removedDesignDocs = make([]string, 0)
 	designDocPrefixes := []string{DesignDocSyncGatewayPrefix, DesignDocSyncHousekeepingPrefix}
 
-	for _, previousVersion := range DesignDocPreviousVersions {
+	versionsToRemove := DesignDocPreviousVersions
+
+	if !useViews {
+		versionsToRemove = append(versionsToRemove, DesignDocVersion)
+	}
+
+	for _, previousVersion := range versionsToRemove {
 		for _, ddocPrefix := range designDocPrefixes {
 			var ddocName string
 			if previousVersion == "" {
