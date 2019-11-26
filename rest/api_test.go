@@ -4542,3 +4542,32 @@ func TestHandleProfiling(t *testing.T) {
 	assert.NoError(t, err, "fetching the file information")
 	assert.True(t, fi.Size() > 0)
 }
+
+func TestHandleHeapProfiling(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	dirPath := fmt.Sprintf("%v/heap-pprof", os.TempDir())
+	assert.NoError(t, os.MkdirAll(dirPath, 0755))
+	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
+
+	// Send a valid request for heap profiling
+	filePath := fmt.Sprintf("%v/heap.pprof", dirPath)
+	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+	response := rt.SendAdminRequest(http.MethodPost, "/_heap", reqBodyText)
+	assertStatus(t, response, http.StatusOK)
+	fi, err := os.Stat(filePath)
+	assert.NoError(t, err, "fetching heap profile file information")
+	assert.True(t, fi.Size() > 0)
+
+	// Send a profile request with invalid json body
+	response = rt.SendAdminRequest(http.MethodPost, "/_heap", "invalid json body")
+	assertStatus(t, response, http.StatusBadRequest)
+	assert.Contains(t, string(response.BodyBytes()), "invalid character")
+
+	// Send profile request with missing JSON 'file' parameter.
+	response = rt.SendAdminRequest(http.MethodPost, "/_heap", "{}")
+	assertStatus(t, response, http.StatusInternalServerError)
+	assert.Contains(t, string(response.BodyBytes()), "no such file or directory")
+}
