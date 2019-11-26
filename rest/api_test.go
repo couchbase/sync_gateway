@@ -4571,3 +4571,212 @@ func TestHandleHeapProfiling(t *testing.T) {
 	assertStatus(t, response, http.StatusInternalServerError)
 	assert.Contains(t, string(response.BodyBytes()), "no such file or directory")
 }
+
+func TestHandlePprofTrace(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	// Get and Post requests for pprof trace
+	assert.Panics(t, func() { rt.SendAdminRequest(http.MethodGet, "/_debug/pprof/trace", "") })
+	assert.Panics(t, func() { rt.SendAdminRequest(http.MethodPost, "/_debug/pprof/trace", "") })
+}
+
+func TestHandlePprofs(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	tests := []struct {
+		profileName                 string
+		shortDescription            string
+		inputMethod                 string
+		inputResource               string
+		inputReqBody                string
+		expectedContentDisposition  string
+		expectedContentType         string
+		expectedXContentTypeOptions string
+		expectedStatus              int
+	}{
+		{
+			profileName:                 "goroutine",
+			shortDescription:            "Get request for pprof goroutine",
+			inputMethod:                 http.MethodGet,
+			inputResource:               "/_debug/pprof/goroutine?debug=0&gc=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="goroutine"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "goroutine",
+			shortDescription:            "Post request for pprof goroutine",
+			inputMethod:                 http.MethodPost,
+			inputResource:               "/_debug/pprof/goroutine?debug=0&gc=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="goroutine"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "cmdline",
+			shortDescription:            "Get request for pprof cmdline",
+			inputMethod:                 http.MethodGet,
+			inputResource:               "/_debug/pprof/cmdline",
+			inputReqBody:                "",
+			expectedContentDisposition:  "",
+			expectedContentType:         "text/plain; charset=utf-8",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "cmdline",
+			shortDescription:            "Post request for pprof cmdline",
+			inputMethod:                 http.MethodPost,
+			inputResource:               "/_debug/pprof/cmdline",
+			inputReqBody:                "",
+			expectedContentDisposition:  "",
+			expectedContentType:         "text/plain; charset=utf-8",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "symbol",
+			shortDescription:            "Get request for pprof symbol",
+			inputMethod:                 http.MethodGet,
+			inputResource:               "/_debug/pprof/symbol",
+			inputReqBody:                "",
+			expectedContentDisposition:  "",
+			expectedContentType:         "text/plain; charset=utf-8",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "symbol",
+			shortDescription:            "Post request for pprof symbol",
+			inputMethod:                 http.MethodPost,
+			inputResource:               "/_debug/pprof/symbol",
+			inputReqBody:                "",
+			expectedContentDisposition:  "",
+			expectedContentType:         "text/plain; charset=utf-8",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "heap",
+			shortDescription:            "Get request for pprof heap",
+			inputMethod:                 http.MethodGet,
+			inputResource:               "/_debug/pprof/heap?seconds=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="heap"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "heap",
+			shortDescription:            "Post request for pprof heap",
+			inputMethod:                 http.MethodPost,
+			inputResource:               "/_debug/pprof/heap?seconds=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="heap"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "profile",
+			shortDescription:            "Get request for pprof profile",
+			inputMethod:                 http.MethodGet,
+			inputResource:               "/_debug/pprof/profile?seconds=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="profile"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "profile",
+			shortDescription:            "Post request for pprof profile",
+			inputMethod:                 http.MethodPost,
+			inputResource:               "/_debug/pprof/profile?seconds=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="profile"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "block",
+			shortDescription:            "Get request for pprof block",
+			inputMethod:                 http.MethodGet,
+			inputResource:               "/_debug/pprof/block?seconds=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="block"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "block",
+			shortDescription:            "Post request for pprof block",
+			inputMethod:                 http.MethodPost,
+			inputResource:               "/_debug/pprof/block?seconds=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="block"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "threadcreate",
+			shortDescription:            "Get request for pprof threadcreate",
+			inputMethod:                 http.MethodGet,
+			inputResource:               "/_debug/pprof/threadcreate",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="threadcreate"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "threadcreate",
+			shortDescription:            "Post request for pprof threadcreate",
+			inputMethod:                 http.MethodPost,
+			inputResource:               "/_debug/pprof/threadcreate",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="threadcreate"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+		{
+			profileName:                 "mutex",
+			shortDescription:            "Get request for pprof mutex",
+			inputMethod:                 http.MethodGet,
+			inputResource:               "/_debug/pprof/mutex?seconds=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="mutex"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+
+		{
+			profileName:                 "mutex",
+			shortDescription:            "Post request for pprof mutex",
+			inputMethod:                 http.MethodPost,
+			inputResource:               "/_debug/pprof/mutex?seconds=1",
+			inputReqBody:                "",
+			expectedContentDisposition:  `attachment; filename="mutex"`,
+			expectedContentType:         "application/octet-stream",
+			expectedXContentTypeOptions: "nosniff",
+			expectedStatus:              http.StatusOK},
+	}
+
+	for _, tc := range tests {
+		response := rt.SendAdminRequest(tc.inputMethod, tc.inputResource, tc.inputReqBody)
+		assert.Equal(t, tc.expectedContentDisposition, response.Header().Get("Content-Disposition"))
+		assert.Equal(t, tc.expectedContentType, response.Header().Get("Content-Type"))
+		assert.Equal(t, tc.expectedXContentTypeOptions, response.Header().Get("X-Content-Type-Options"))
+		assertStatus(t, response, tc.expectedStatus)
+	}
+}
+
+func TestHandleStats(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Get request for fetching runtime and other stats
+	response := rt.SendAdminRequest(http.MethodGet, "/_stats", "")
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+	assert.Contains(t, string(response.BodyBytes()), "MemStats")
+	assertStatus(t, response, http.StatusOK)
+}
