@@ -4507,7 +4507,7 @@ func TestHandleProfiling(t *testing.T) {
 		// Send a profile request with invalid json body
 		response = rt.SendAdminRequest(http.MethodPost, resource, "invalid json body")
 		assertStatus(t, response, http.StatusBadRequest)
-		assert.Contains(t, string(response.BodyBytes()), "invalid character")
+		assert.Contains(t, string(response.BodyBytes()), "Invalid JSON")
 
 		// Send a profile request with unknown file path; Internal Server Error
 		reqBodyText = `{"file":"sftp://unknown/path"}`
@@ -4564,7 +4564,7 @@ func TestHandleHeapProfiling(t *testing.T) {
 	// Send a profile request with invalid json body
 	response = rt.SendAdminRequest(http.MethodPost, "/_heap", "invalid json body")
 	assertStatus(t, response, http.StatusBadRequest)
-	assert.Contains(t, string(response.BodyBytes()), "invalid character")
+	assert.Contains(t, string(response.BodyBytes()), "Invalid JSON")
 
 	// Send profile request with missing JSON 'file' parameter.
 	response = rt.SendAdminRequest(http.MethodPost, "/_heap", "{}")
