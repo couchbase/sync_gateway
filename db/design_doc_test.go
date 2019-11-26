@@ -45,7 +45,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	assert.True(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc doesn't exist")
 
 	// Invoke removal in preview mode
-	removedDDocs, removeErr := removeObsoleteDesignDocs(bucket, true)
+	removedDDocs, removeErr := removeObsoleteDesignDocs(bucket, true, true)
 	assert.NoError(t, removeErr, "Error removing previous design docs")
 	goassert.Equals(t, len(removedDDocs), 2)
 	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
@@ -57,7 +57,7 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	assert.True(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc should exist")
 
 	// Invoke removal in non-preview mode
-	removedDDocs, removeErr = removeObsoleteDesignDocs(bucket, false)
+	removedDDocs, removeErr = removeObsoleteDesignDocs(bucket, false, true)
 	assert.NoError(t, removeErr, "Error removing previous design docs")
 	goassert.Equals(t, len(removedDDocs), 2)
 	assert.True(t, base.StringSliceContains(removedDDocs, DesignDocSyncGatewayPrefix), "Missing design doc from removed set")
@@ -67,7 +67,58 @@ func TestRemoveObsoleteDesignDocs(t *testing.T) {
 	assert.True(t, !designDocExists(bucket, DesignDocSyncGatewayPrefix), "Removed design doc still exists")
 	assert.True(t, !designDocExists(bucket, DesignDocSyncHousekeepingPrefix), "Removed design doc still exists")
 	assert.True(t, designDocExists(bucket, "sync_gateway_user_ddoc"), "Design doc should exist")
+}
 
+func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
+	const DesignDocVersion = "2.1"
+	DesignDocPreviousVersions = []string{"2.0"}
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	mapFunction := `function (doc, meta){ emit(); }`
+
+	err := testBucket.PutDDoc(DesignDocSyncGatewayPrefix+"_2.0", sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"channels": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
+	assert.NoError(t, err)
+	err = testBucket.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.0", sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"channels": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
+	assert.NoError(t, err)
+	err = testBucket.PutDDoc(DesignDocSyncGatewayPrefix+"_2.1", sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"channels": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
+	assert.NoError(t, err)
+	err = testBucket.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.1", sgbucket.DesignDoc{
+		Views: sgbucket.ViewMap{
+			"channels": sgbucket.ViewDef{Map: mapFunction},
+		},
+	})
+	assert.NoError(t, err)
+
+	useViewsTrueRemovalPreview := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
+	removedDDocsPreview, _ := removeObsoleteDesignDocs(testBucket, true, true)
+	assert.Equal(t, useViewsTrueRemovalPreview, removedDDocsPreview)
+
+	useViewsFalseRemovalPreview := []string{"sync_gateway_2.0", "sync_housekeeping_2.0", "sync_gateway_2.1", "sync_housekeeping_2.1"}
+	removedDDocsPreview, _ = removeObsoleteDesignDocs(testBucket, true, false)
+	assert.Equal(t, useViewsFalseRemovalPreview, removedDDocsPreview)
+
+	useViewsTrueRemoval := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
+	removedDDocs, _ := removeObsoleteDesignDocs(testBucket, false, true)
+	assert.Equal(t, useViewsTrueRemoval, removedDDocs)
+
+	useViewsTrueRemoval = []string{"sync_gateway_2.1", "sync_housekeeping_2.1"}
+	removedDDocs, _ = removeObsoleteDesignDocs(testBucket, false, false)
+	assert.Equal(t, useViewsTrueRemoval, removedDDocs)
 }
 
 //Test remove obsolete design docs returns the same in both preview and non-preview
@@ -97,8 +148,8 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 		},
 	})
 
-	removedDDocsPreview, _ := removeObsoleteDesignDocs(bucket, true)
-	removedDDocsNonPreview, _ := removeObsoleteDesignDocs(bucket, false)
+	removedDDocsPreview, _ := removeObsoleteDesignDocs(bucket, true, false)
+	removedDDocsNonPreview, _ := removeObsoleteDesignDocs(bucket, false, false)
 
 	assert.Equal(t, removedDDocsPreview, removedDDocsNonPreview)
 

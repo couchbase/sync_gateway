@@ -558,10 +558,14 @@ func TestPostInstallCleanup(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
+	// Cleanup existing design docs
+	_, err := rt.GetDatabase().RemoveObsoleteDesignDocs(false)
+	require.NoError(t, err)
+
 	bucket := rt.Bucket()
 	mapFunction := `function (doc, meta) { emit(); }`
 	// Create design docs in obsolete format
-	err := bucket.PutDDoc(db.DesignDocSyncGatewayPrefix, sgbucket.DesignDoc{
+	err = bucket.PutDDoc(db.DesignDocSyncGatewayPrefix, sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
