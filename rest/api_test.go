@@ -4489,12 +4489,56 @@ func TestHandleProfiling(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		// Send a valid profile request.
+		resource := fmt.Sprintf("/_profile/%v", tc.inputProfile)
 		filePath := fmt.Sprintf("%v/%v.pprof", dirPath, tc.inputProfile)
 		reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
-		response := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/_profile/%v", tc.inputProfile), reqBodyText)
-		assert.NotEmpty(t, response)
+		response := rt.SendAdminRequest(http.MethodPost, resource, reqBodyText)
+		assertStatus(t, response, http.StatusOK)
 		fi, err := os.Stat(filePath)
-		assert.NoError(t, err)
+		assert.NoError(t, err, "fetching the file information")
 		assert.True(t, fi.Size() > 0)
+
+		// Send profile request with missing JSON 'file' parameter.
+		response = rt.SendAdminRequest(http.MethodPost, resource, "{}")
+		assertStatus(t, response, http.StatusBadRequest)
+		assert.Contains(t, string(response.BodyBytes()), "Missing JSON 'file' parameter")
+
+		// Send a profile request with invalid json body
+		response = rt.SendAdminRequest(http.MethodPost, resource, "invalid json body")
+		assertStatus(t, response, http.StatusBadRequest)
+		assert.Contains(t, string(response.BodyBytes()), "invalid character")
+
+		// Send a profile request with unknown file path; Internal Server Error
+		reqBodyText = `{"file":"sftp://unknown/path"}`
+		response = rt.SendAdminRequest(http.MethodPost, resource, reqBodyText)
+		assertStatus(t, response, http.StatusInternalServerError)
+		assert.Contains(t, string(response.BodyBytes()), "Internal Server Error")
 	}
+
+	// Send profile request for a profile which doesn't exists; unknown
+	filePath := fmt.Sprintf("%v/unknown.pprof", dirPath)
+	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+	response := rt.SendAdminRequest(http.MethodPost, "/_profile/unknown", reqBodyText)
+	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
+	assertStatus(t, response, http.StatusNotFound)
+	assert.Contains(t, string(response.BodyBytes()), `{"error":"not_found","reason":"No such profile "unknown""}`)
+
+	// Send profile request with filename and empty profile name; it should end up creating cpu profile
+	filePath = fmt.Sprintf("%v/cpu.pprof", dirPath)
+	reqBodyText = fmt.Sprintf(`{"file":"%v"}`, filePath)
+	response = rt.SendAdminRequest(http.MethodPost, "/_profile", reqBodyText)
+	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
+	assertStatus(t, response, http.StatusOK)
+	fi, err := os.Stat(filePath)
+	assert.NoError(t, err, "fetching the file information")
+	assert.False(t, fi.Size() > 0)
+
+	// Send profile request with no filename and profile name; it should stop cpu profile
+	response = rt.SendAdminRequest(http.MethodPost, "/_profile", "")
+	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
+	assertStatus(t, response, http.StatusOK)
+	fi, err = os.Stat(filePath)
+	assert.NoError(t, err, "fetching the file information")
+	assert.True(t, fi.Size() > 0)
 }
