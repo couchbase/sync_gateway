@@ -77,6 +77,7 @@ type revCacheValue struct {
 	deleted     bool            // True if revision is a tombstone
 	err         error           // Error from loaderFunc if it failed
 	lock        sync.RWMutex    // Synchronizes access to this struct
+	body        Body            // unmarshalled body (if available)
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -232,7 +233,7 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore) (docRev
 		cacheHit = true
 	} else {
 		cacheHit = false
-		value.bodyBytes, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(backingStore, value.key)
+		value.bodyBytes, value.body, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(backingStore, value.key)
 	}
 
 	docRev, err = value._asDocumentRevision()
@@ -243,15 +244,16 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore) (docRev
 // _asDocumentRevision copies the rev cache value into a DocumentRevision.  Requires callers hold at least the read lock on value.lock
 func (value *revCacheValue) _asDocumentRevision() (DocumentRevision, error) {
 	return DocumentRevision{
-		DocID:       value.key.DocID,
-		RevID:       value.key.RevID,
-		BodyBytes:   value.bodyBytes,
-		History:     value.history,
-		Channels:    value.channels,
-		Expiry:      value.expiry,
-		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
-		Delta:       value.delta,
-		Deleted:     value.deleted,
+		DocID:            value.key.DocID,
+		RevID:            value.key.RevID,
+		BodyBytes:        value.bodyBytes,
+		History:          value.history,
+		Channels:         value.channels,
+		Expiry:           value.expiry,
+		Attachments:      value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
+		Delta:            value.delta,
+		Deleted:          value.deleted,
+		_shallowCopyBody: value.body,
 	}, value.err
 }
 
@@ -273,7 +275,7 @@ func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, d
 		cacheHit = true
 	} else {
 		cacheHit = false
-		value.bodyBytes, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(backingStore, doc, value.key.RevID)
+		value.bodyBytes, value.body, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(backingStore, doc, value.key.RevID)
 	}
 
 	docRev, err = value._asDocumentRevision()
