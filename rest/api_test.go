@@ -22,6 +22,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -3358,7 +3359,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	// Add a doc
 	resource := fmt.Sprintf("/db/%v", docIdDoc1)
-	response := rt.SendRequest("PUT", resource, `{"prop":true}`)
+	response := rt.SendRequest("PUT", `resource`, `{"prop":true}`)
 	assertStatus(t, response, 201)
 	base.JSONUnmarshal(response.Body.Bytes(), &body)
 	revidDoc1 := body["rev"].(string)
@@ -4465,4 +4466,35 @@ func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 			rt.SendRequest("GET", "/db/"+key+"?rev=1-45ca73d819d5b1c9b8eea95290e79004", "")
 		}
 	})
+}
+
+func TestHandleProfiling(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	dirPath := fmt.Sprintf("%vpprof", os.TempDir())
+	assert.NoError(t, os.MkdirAll(dirPath, 0755))
+	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
+
+	tests := []struct {
+		inputProfile string
+	}{
+		{inputProfile: "goroutine"},
+		{inputProfile: "threadcreate"},
+		{inputProfile: "heap"},
+		{inputProfile: "allocs"},
+		{inputProfile: "block"},
+		{inputProfile: "mutex"},
+	}
+
+	for _, tc := range tests {
+		filePath := fmt.Sprintf("%v/%v.pprof", dirPath, tc.inputProfile)
+		reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+		response := rt.SendAdminRequest(http.MethodPost, fmt.Sprintf("/_profile/%v", tc.inputProfile), reqBodyText)
+		assert.NotEmpty(t, response)
+		fi, err := os.Stat(filePath)
+		assert.NoError(t, err)
+		assert.True(t, fi.Size() > 0)
+	}
 }
