@@ -3359,7 +3359,7 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 
 	// Add a doc
 	resource := fmt.Sprintf("/db/%v", docIdDoc1)
-	response := rt.SendRequest("PUT", `resource`, `{"prop":true}`)
+	response := rt.SendRequest("PUT", resource, `{"prop":true}`)
 	assertStatus(t, response, 201)
 	base.JSONUnmarshal(response.Body.Bytes(), &body)
 	revidDoc1 := body["rev"].(string)
