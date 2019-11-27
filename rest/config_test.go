@@ -607,7 +607,6 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 }
 
 func TestParseCommandLine(t *testing.T) {
-	func() { config = nil }()
 	var (
 		adminInterface     = "127.0.0.1:4985"
 		bucket             = "sync_gateway"
@@ -640,78 +639,63 @@ func TestParseCommandLine(t *testing.T) {
 		"--pool", pool,
 		"--pretty"}
 
-	err := ParseCommandLine(args, flag.ContinueOnError)
-	require.NoError(t, err, "Error reading config file")
-	conf := GetConfig()
-	assert.Equal(t, adminInterface, *conf.AdminInterface)
-	databases := conf.Databases
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	require.NoError(t, err, "Parsing commandline arguments without any config file")
+	assert.Equal(t, adminInterface, *config.AdminInterface)
+	databases := config.Databases
 	assert.Len(t, databases, 1)
 	assert.Equal(t, dbname, databases[dbname].Name)
 	assert.Equal(t, cacertpath, databases[dbname].CACertPath)
 	assert.Equal(t, certpath, databases[dbname].CertPath)
 	assert.Equal(t, keypath, databases[dbname].KeyPath)
-
-}
-
-func mockBucketConfig() BucketConfig {
-	bucket := "albums"
-	username := "Alice"
-	password := "QWxpY2U="
-
-	bucketConfig := BucketConfig{
-		Bucket:   &bucket,
-		Username: username,
-		Password: password}
-
-	return bucketConfig
 }
 
 func TestGetCredentialsFromDbConfig(t *testing.T) {
-	mockBucketConfig := mockBucketConfig()
-	dbConfig := &DbConfig{BucketConfig: mockBucketConfig}
+	bucket := "albums"
+	config := BucketConfig{Bucket: &bucket, Username: "Alice", Password: "QWxpY2U="}
+	dbConfig := &DbConfig{BucketConfig: config}
 	username, password, bucket := dbConfig.GetCredentials()
-	assert.Equal(t, mockBucketConfig.Username, username)
-	assert.Equal(t, mockBucketConfig.Password, password)
-	assert.Equal(t, *mockBucketConfig.Bucket, bucket)
+	assert.Equal(t, config.Username, username)
+	assert.Equal(t, config.Password, password)
+	assert.Equal(t, *config.Bucket, bucket)
 }
 
 func TestGetCredentialsFromClusterConfig(t *testing.T) {
-	mockBucketConfig := mockBucketConfig()
+	bucket := "albums"
+	config := BucketConfig{Bucket: &bucket, Username: "Alice", Password: "QWxpY2U="}
 	heartbeatIntervalSeconds := uint16(10)
 	clusterConfig := &ClusterConfig{
-		BucketConfig:             mockBucketConfig,
+		BucketConfig:             config,
 		DataDir:                  "/var/lib/sync_gateway/data",
 		HeartbeatIntervalSeconds: &heartbeatIntervalSeconds,
 	}
 	username, password, bucket := clusterConfig.GetCredentials()
-	assert.Equal(t, mockBucketConfig.Username, username)
-	assert.Equal(t, mockBucketConfig.Password, password)
-	assert.Equal(t, *mockBucketConfig.Bucket, bucket)
+	assert.Equal(t, config.Username, username)
+	assert.Equal(t, config.Password, password)
+	assert.Equal(t, *config.Bucket, bucket)
 }
 
 func TestSetMaxFileDescriptors(t *testing.T) {
-	var maxFDs uint64
-	err := SetMaxFileDescriptors(&maxFDs)
-	assert.NoError(t, err, "Error setting MaxFileDescriptors")
+	var maxFDs *uint64
+	err := SetMaxFileDescriptors(maxFDs)
+	assert.NoError(t, err, "Sets file descriptor limit to default when requested soft limit is nil")
 
 	// Set MaxFileDescriptors
-	maxFDs = DefaultMaxFileDescriptors + 1
-	err = SetMaxFileDescriptors(&maxFDs)
+	maxFDsHigher := DefaultMaxFileDescriptors + 1
+	err = SetMaxFileDescriptors(&maxFDsHigher)
 	assert.NoError(t, err, "Error setting MaxFileDescriptors")
 }
 
 func TestParseCommandLineWithMissingConfig(t *testing.T) {
-	func() { config = nil }()
 	log.Printf("TestParseCommandLineWithMissingConfig:%v", GetConfig())
 	// Parse command line options with unknown sync gateway configuration file
 	args := []string{"sync_gateway", "missing-sync-gateway.conf"}
-	err := ParseCommandLine(args, flag.ContinueOnError)
-	require.Error(t, err, "open missing-sync-gateway.conf: no such file or directory")
-	assert.Nil(t, GetConfig())
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	require.Error(t, err, "Trying to read configuration file which doesn't exist")
+	assert.Nil(t, config)
 }
 
 func TestParseCommandLineWithBadConfigContent(t *testing.T) {
-	func() { config = nil }()
 	content := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
@@ -726,12 +710,12 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 	}()
 
 	args := []string{"sync_gateway", configFilePath}
-	err = ParseCommandLine(args, flag.ContinueOnError)
-	require.Error(t, err, "Error reading config file: unknown field")
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	require.Error(t, err, "Parsing configuration file with an unknown field")
+	assert.NotNil(t, config)
 }
 
 func TestParseCommandLineWithConfigContent(t *testing.T) {
-	func() { config = nil }()
 	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
 		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
         "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{
@@ -782,20 +766,19 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		"--profileInterface", profileInterface,
 		configFilePath}
 
-	err = ParseCommandLine(args, flag.ContinueOnError)
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
 	require.NoError(t, err, "while parsing commandline options")
-	conf := GetConfig()
-	assert.Equal(t, interfaceAddress, *conf.Interface)
-	assert.Equal(t, adminInterface, *conf.AdminInterface)
-	assert.Equal(t, profileInterface, *conf.ProfileInterface)
-	assert.Equal(t, configServer, *conf.ConfigServer)
-	assert.Equal(t, deploymentID, *conf.DeploymentID)
-	assert.Equal(t, logFilePath, conf.Logging.LogFilePath)
-	assert.Equal(t, []string{"Admin", "Access", "Auth", "Bucket", "HTTP+"}, conf.Logging.Console.LogKeys)
-	assert.True(t, conf.Pretty)
-	assert.Len(t, conf.Databases, 1)
+	assert.Equal(t, interfaceAddress, *config.Interface)
+	assert.Equal(t, adminInterface, *config.AdminInterface)
+	assert.Equal(t, profileInterface, *config.ProfileInterface)
+	assert.Equal(t, configServer, *config.ConfigServer)
+	assert.Equal(t, deploymentID, *config.DeploymentID)
+	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
+	assert.Equal(t, []string{"Admin", "Access", "Auth", "Bucket", "HTTP+"}, config.Logging.Console.LogKeys)
+	assert.True(t, config.Pretty)
+	assert.Len(t, config.Databases, 1)
 
-	db1 := conf.Databases["db1"]
+	db1 := config.Databases["db1"]
 	assert.Equal(t, "default", *db1.Bucket)
 	assert.Equal(t, "username", db1.BucketConfig.Username)
 	assert.Equal(t, "password", db1.BucketConfig.Password)
