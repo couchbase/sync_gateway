@@ -211,6 +211,20 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStar
 
 }
 
+func (c *DCPCommon) InitVbMeta(vbNo uint16) {
+	metadata, snapStart, _, err := c.loadCheckpoint(vbNo)
+	c.m.Lock()
+	if err != nil {
+		WarnfCtx(c.loggingCtx, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", vbNo, err)
+		c.meta[vbNo] = []byte{}
+		c.seqs[vbNo] = 0
+	} else {
+		c.meta[vbNo] = metadata
+		c.seqs[vbNo] = snapStart
+	}
+	c.m.Unlock()
+}
+
 func (c *DCPCommon) initMetadata(maxVbNo uint16) {
 	c.m.Lock()
 	defer c.m.Unlock()
