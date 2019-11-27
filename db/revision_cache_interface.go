@@ -18,11 +18,14 @@ const (
 
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
 type RevisionCache interface {
-	// Get returns the given revision, and stores if not already cached
-	Get(docID, revID string) (DocumentRevision, error)
+	// Get returns the given revision, and stores if not already cached.
+	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
+	// When includeDelta=true, the returned DocumentRevision will include delta - requires additional locking during retrieval.
+	Get(docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error)
 
-	// GetActive returns the current revision for the given doc ID, and stores if not already cached
-	GetActive(docID string) (docRev DocumentRevision, err error)
+	// GetActive returns the current revision for the given doc ID, and stores if not already cached.
+	// When includeBody=true, the returned DocumentRevision will include a mutable shallow copy of the marshaled body.
+	GetActive(docID string, includeBody bool) (docRev DocumentRevision, err error)
 
 	// Peek returns the given revision if present in the cache
 	Peek(docID, revID string) (docRev DocumentRevision, found bool)
@@ -33,6 +36,13 @@ type RevisionCache interface {
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(docID, revID string, toDelta RevisionDelta)
 }
+
+const (
+	RevCacheIncludeBody  = true
+	RevCacheOmitBody     = false
+	RevCacheIncludeDelta = true
+	RevCacheOmitDelta    = false
+)
 
 // Force compile-time check of all RevisionCache types for interface
 var _ RevisionCache = &LRURevisionCache{}
@@ -102,8 +112,6 @@ func (rev *DocumentRevision) DeepMutableBody() (b Body, err error) {
 		return nil, err
 	}
 
-	// We can't store b as _shallowCopyBody becase we know it'll be mutated more than just one-property deep.
-
 	return b, nil
 }
 
@@ -112,7 +120,7 @@ func (rev *DocumentRevision) DeepMutableBody() (b Body, err error) {
 func (rev *DocumentRevision) MutableBody() (b Body, err error) {
 	// if we already have an unmarshalled body, take a copy and return it
 	if rev._shallowCopyBody != nil {
-		return rev._shallowCopyBody.Copy(BodyShallowCopy), nil
+		return rev._shallowCopyBody, nil
 	}
 
 	if err := b.Unmarshal(rev.BodyBytes); err != nil {
@@ -120,8 +128,7 @@ func (rev *DocumentRevision) MutableBody() (b Body, err error) {
 	}
 
 	// store a copy of the unmarshalled body for next time we need it
-	// We need to copy it now, because the caller may modify the returned body between now and the next copy.
-	rev._shallowCopyBody = b.Copy(BodyShallowCopy)
+	rev._shallowCopyBody = b
 
 	return b, nil
 }
@@ -215,9 +222,13 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 
 // This is the RevisionCacheLoaderFunc callback for the context's RevisionCache.
 // Its job is to load a revision from the bucket when there's a cache miss.
-func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev) (bodyBytes []byte, body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
+func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev, unmarshalBody bool) (bodyBytes []byte, body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
 	var doc *Document
-	if doc, err = backingStore.GetDocument(id.DocID, DocUnmarshalAll); doc == nil {
+	unmarshalLevel := DocUnmarshalSync
+	if unmarshalBody {
+		unmarshalLevel = DocUnmarshalAll
+	}
+	if doc, err = backingStore.GetDocument(id.DocID, unmarshalLevel); doc == nil {
 		return bodyBytes, body, history, channels, attachments, deleted, expiry, err
 	}
 

@@ -252,8 +252,8 @@ func (h *handler) handlePutAttachment() error {
 		return err
 	}
 
-	var body db.Body
-	if rev, err := h.db.GetRev(docid, revid, false, nil); err != nil {
+	body, err := h.db.Get1xRevBody(docid, revid, false, nil)
+	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// couchdb creates empty body on attachment PUT
 			// for non-existant doc id
@@ -261,17 +261,11 @@ func (h *handler) handlePutAttachment() error {
 		} else if err != nil {
 			return err
 		}
-	} else if rev.BodyBytes != nil {
+	} else if body != nil {
 		if revid == "" {
 			// If a revid is not specified and an active revision was found,
 			// return a conflict now, rather than letting db.Put do it further down...
 			return base.HTTPErrorf(http.StatusConflict, "Cannot modify attachments without a specific rev ID")
-		}
-
-		// get the body of the requested revision to insert attachments into
-		body, err = rev.Mutable1xBody(h.db, nil, nil, false)
-		if err != nil {
-			return err
 		}
 	}
 
