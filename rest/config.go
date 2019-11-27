@@ -804,7 +804,7 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine(args []string, handling flag.ErrorHandling) (err error) {
+func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig, error) {
 	flagSet := flag.NewFlagSet(args[0], handling)
 	addr := flagSet.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
@@ -826,6 +826,8 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (err error) {
 	defaultLogFilePathFlag := flagSet.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
 	flagSet.Parse(args[1:])
+	var config *ServerConfig
+	var err error
 
 	if len(flagSet.Args()) > 0 {
 		// Read the configuration file(s), if any:
@@ -836,14 +838,14 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (err error) {
 				// Delay returning this error so we can continue with other setup
 				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
 			} else if newConfigErr != nil {
-				return errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
+				return config, errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
 			}
 
 			if config == nil {
 				config = newConfig
 			} else {
 				if err := config.MergeWith(newConfig); err != nil {
-					return errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
+					return config, errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
 				}
 			}
 		}
@@ -936,7 +938,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (err error) {
 		}
 	}
 
-	return err
+	return config, err
 }
 
 func SetMaxFileDescriptors(maxP *uint64) error {
@@ -946,7 +948,7 @@ func SetMaxFileDescriptors(maxP *uint64) error {
 	}
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
-		base.Warnf("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.Errorf("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
 		return err
 	}
 	return nil
@@ -1085,7 +1087,7 @@ func ServerMain() {
 
 	var unknownFieldsErr error
 
-	err := ParseCommandLine(os.Args, flag.ExitOnError)
+	config, err = ParseCommandLine(os.Args, flag.ExitOnError)
 	if errors.Cause(err) == ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {
