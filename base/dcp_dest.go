@@ -52,12 +52,14 @@ type SGDest interface {
 }
 
 // DCPDest implements SGDest (superset of cbgt.Dest) interface to manage updates coming from a
-// cbgt-based DCP feed.  Embeds DCPCommon for underlying feed event processing
+// cbgt-based DCP feed.  Embeds DCPCommon for underlying feed event processing.  Metadata initialization
+// is done on-demand per vbucket, as a given Dest isn't expected to manage the full set of vbuckets for a bucket.
 type DCPDest struct {
 	*DCPCommon
 	feedType           destFeedType
 	stats              *expvar.Map // DCP feed stats (rollback, backfill)
 	partitionCountStat *expvar.Int // Stat for partition count.  Stored outside the DCP feed stats map
+	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
 }
 
 func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *expvar.Int) (SGDest, context.Context) {
@@ -68,6 +70,7 @@ func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo 
 		DCPCommon:          dcpCommon,
 		stats:              dcpStats,
 		partitionCountStat: importPartitionStat,
+		metaInitComplete:   make([]bool, maxVbNo),
 	}
 
 	if d.partitionCountStat != nil {
@@ -175,7 +178,13 @@ func (d *DCPDest) SnapshotStart(partition string,
 }
 
 func (d *DCPDest) OpaqueGet(partition string) (value []byte, lastSeq uint64, err error) {
-	metadata, lastSeq, err := d.getMetaData(partitionToVbNo(partition))
+	vbNo := partitionToVbNo(partition)
+	if !d.metaInitComplete[vbNo] {
+		d.InitVbMeta(vbNo)
+		d.metaInitComplete[vbNo] = true
+	}
+
+	metadata, lastSeq, err := d.getMetaData(vbNo)
 	if len(metadata) == 0 {
 		return nil, lastSeq, err
 	}
@@ -183,8 +192,12 @@ func (d *DCPDest) OpaqueGet(partition string) (value []byte, lastSeq uint64, err
 }
 
 func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
-
-	return d.setMetaData(partitionToVbNo(partition), value)
+	vbNo := partitionToVbNo(partition)
+	if !d.metaInitComplete[vbNo] {
+		d.InitVbMeta(vbNo)
+		d.metaInitComplete[vbNo] = true
+	}
+	return d.setMetaData(vbNo, value)
 }
 
 func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
