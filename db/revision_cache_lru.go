@@ -34,8 +34,8 @@ func (sc *ShardedLRURevisionCache) getShard(docID string) *LRURevisionCache {
 	return sc.caches[sgbucket.VBHash(docID, sc.numShards)]
 }
 
-func (sc *ShardedLRURevisionCache) Get(docID, revID string) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).Get(docID, revID)
+func (sc *ShardedLRURevisionCache) Get(docID, revID string, includeBody bool, includeDelta bool) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).Get(docID, revID, includeBody, includeDelta)
 }
 
 func (sc *ShardedLRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
@@ -46,8 +46,8 @@ func (sc *ShardedLRURevisionCache) UpdateDelta(docID, revID string, toDelta Revi
 	sc.getShard(docID).UpdateDelta(docID, revID, toDelta)
 }
 
-func (sc *ShardedLRURevisionCache) GetActive(docID string) (docRev DocumentRevision, err error) {
-	return sc.getShard(docID).GetActive(docID)
+func (sc *ShardedLRURevisionCache) GetActive(docID string, includeBody bool) (docRev DocumentRevision, err error) {
+	return sc.getShard(docID).GetActive(docID, includeBody)
 }
 
 func (sc *ShardedLRURevisionCache) Put(docRev DocumentRevision) {
@@ -97,14 +97,14 @@ func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore
 // Returns the body of the revision, its history, and the set of channels it's in.
 // If the cache has a loaderFunction, it will be called if the revision isn't in the cache;
 // any error returned by the loaderFunction will be returned from Get.
-func (rc *LRURevisionCache) Get(docID, revID string) (DocumentRevision, error) {
-	return rc.getFromCache(docID, revID, true)
+func (rc *LRURevisionCache) Get(docID, revID string, includeBody bool, includeDelta bool) (DocumentRevision, error) {
+	return rc.getFromCache(docID, revID, true, includeBody, includeDelta)
 }
 
 // Looks up a revision from the cache only.  Will not fall back to loader function if not
 // present in the cache.
 func (rc *LRURevisionCache) Peek(docID, revID string) (docRev DocumentRevision, found bool) {
-	docRev, err := rc.getFromCache(docID, revID, false)
+	docRev, err := rc.getFromCache(docID, revID, false, RevCacheOmitBody, RevCacheOmitDelta)
 	if err != nil {
 		return DocumentRevision{}, false
 	}
@@ -120,12 +120,12 @@ func (rc *LRURevisionCache) UpdateDelta(docID, revID string, toDelta RevisionDel
 	}
 }
 
-func (rc *LRURevisionCache) getFromCache(docID, revID string, loadOnCacheMiss bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) getFromCache(docID, revID string, loadOnCacheMiss bool, includeBody bool, includeDelta bool) (DocumentRevision, error) {
 	value := rc.getValue(docID, revID, loadOnCacheMiss)
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
-	docRev, statEvent, err := value.load(rc.backingStore)
+	docRev, statEvent, err := value.load(rc.backingStore, includeBody, includeDelta)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
@@ -139,9 +139,10 @@ func (rc *LRURevisionCache) getFromCache(docID, revID string, loadOnCacheMiss bo
 // of the retrieved document to get the current rev from _sync metadata.  If active rev is already in the
 // rev cache, will use it.  Otherwise will add to the rev cache using the raw document obtained in the
 // initial retrieval.
-func (rc *LRURevisionCache) GetActive(docID string) (DocumentRevision, error) {
+func (rc *LRURevisionCache) GetActive(docID string, includeBody bool) (DocumentRevision, error) {
 
-	// Look up active rev for doc
+	// Look up active rev for doc.  Note - can't rely on DocUnmarshalAll here when includeBody=true, because for a
+	// cache hit we don't want to do that work (yet).
 	bucketDoc, getErr := rc.backingStore.GetDocument(docID, DocUnmarshalSync)
 	if getErr != nil {
 		return DocumentRevision{}, getErr
@@ -152,7 +153,7 @@ func (rc *LRURevisionCache) GetActive(docID string) (DocumentRevision, error) {
 
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
-	docRev, statEvent, err := value.loadForDoc(rc.backingStore, bucketDoc)
+	docRev, statEvent, err := value.loadForDoc(rc.backingStore, bucketDoc, includeBody)
 	rc.statsRecorderFunc(statEvent)
 
 	if err != nil {
@@ -216,13 +217,36 @@ func (rc *LRURevisionCache) purgeOldest_() {
 // Gets the body etc. out of a revCacheValue. If they aren't present already, the loader func
 // will be called. This is synchronized so that the loader will only be called once even if
 // multiple goroutines try to load at the same time.
-func (value *revCacheValue) load(backingStore RevisionCacheBackingStore) (docRev DocumentRevision, cacheHit bool, err error) {
+func (value *revCacheValue) load(backingStore RevisionCacheBackingStore, includeBody bool, includeDelta bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	// Attempt to read cached value
 	value.lock.RLock()
 	if value.bodyBytes != nil || value.err != nil {
-		docRev, err = value._asDocumentRevision()
-		value.lock.RUnlock()
+		if includeDelta {
+			docRev, err = value._asDocumentRevisionWithDelta(includeBody)
+			value.lock.RUnlock()
+		} else {
+			value.lock.RUnlock()
+			docRev, err = value.asDocumentRevision(includeBody)
+		}
+
+		// On cache hit, if body is requested and not already present in cache, generate from bytes and insert into cache
+		if includeBody && docRev._shallowCopyBody == nil {
+			var body Body
+			if err := body.Unmarshal(docRev.BodyBytes); err != nil {
+				// On unmarshal error, warn return docRev without body
+				base.Warnf("Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.key.DocID), value.key.RevID)
+				return docRev, true, err
+			}
+			// Stick the body in the cached value
+			value.lock.Lock()
+			if value.body == nil {
+				value.body = body
+			}
+			value.lock.Unlock()
+			docRev._shallowCopyBody = body.ShallowCopy()
+		}
+
 		return docRev, true, err
 	}
 	value.lock.RUnlock()
@@ -231,40 +255,77 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore) (docRev
 	// Check if the value was loaded while we waited for the lock - if so, return.
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
+		// On cache hit, if body is requested and not already present in cache, attempt to generate from bytes and insert into cache
+		if includeBody && value.body == nil {
+			if err := value.body.Unmarshal(docRev.BodyBytes); err != nil {
+				base.Warnf("Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.key.DocID), value.key.RevID)
+			}
+		}
 	} else {
 		cacheHit = false
-		value.bodyBytes, value.body, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(backingStore, value.key)
+		value.bodyBytes, value.body, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(backingStore, value.key, includeBody)
 	}
-
-	docRev, err = value._asDocumentRevision()
-	value.lock.Unlock()
+	// If delta was requested, populate docRev while holding the lock
+	if includeDelta {
+		docRev, err = value._asDocumentRevisionWithDelta(includeBody)
+		value.lock.Unlock()
+	} else {
+		value.lock.Unlock()
+		docRev, err = value.asDocumentRevision(includeBody)
+	}
 	return docRev, cacheHit, err
 }
 
-// _asDocumentRevision copies the rev cache value into a DocumentRevision.  Requires callers hold at least the read lock on value.lock
-func (value *revCacheValue) _asDocumentRevision() (DocumentRevision, error) {
-	return DocumentRevision{
-		DocID:            value.key.DocID,
-		RevID:            value.key.RevID,
-		BodyBytes:        value.bodyBytes,
-		History:          value.history,
-		Channels:         value.channels,
-		Expiry:           value.expiry,
-		Attachments:      value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
-		Delta:            value.delta,
-		Deleted:          value.deleted,
-		_shallowCopyBody: value.body,
-	}, value.err
+// asDocumentRevision copies the rev cache value into a DocumentRevision.  Should only be called for non-empty
+// revCacheValues - copies all immutable revCacheValue properties.
+func (value *revCacheValue) asDocumentRevision(includeBody bool) (DocumentRevision, error) {
+
+	docRev := DocumentRevision{
+		DocID:       value.key.DocID,
+		RevID:       value.key.RevID,
+		BodyBytes:   value.bodyBytes,
+		History:     value.history,
+		Channels:    value.channels,
+		Expiry:      value.expiry,
+		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
+		Deleted:     value.deleted,
+	}
+	if includeBody {
+		docRev._shallowCopyBody = value.body.ShallowCopy()
+	}
+
+	return docRev, value.err
+}
+
+// asDocumentRevision copies the rev cache value into a DocumentRevision, including delta.  revCacheValue lock must be held
+// when calling, because delta is mutable.
+func (value *revCacheValue) _asDocumentRevisionWithDelta(includeBody bool) (DocumentRevision, error) {
+
+	docRev, err := value.asDocumentRevision(includeBody)
+	docRev.Delta = value.delta
+
+	return docRev, err
 }
 
 // Retrieves the body etc. out of a revCacheValue.  If they aren't already present, loads into the cache value using
 // the provided document.
-func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, doc *Document) (docRev DocumentRevision, cacheHit bool, err error) {
+func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, doc *Document, includeBody bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
 	value.lock.RLock()
 	if value.bodyBytes != nil || value.err != nil {
-		docRev, err = value._asDocumentRevision()
 		value.lock.RUnlock()
+		docRev, err = value.asDocumentRevision(includeBody)
+		if includeBody && docRev._shallowCopyBody == nil {
+			body := doc.Body()
+			// Stick the body in the cached value
+			value.lock.Lock()
+			if value.body == nil {
+				value.body = body
+			}
+			value.lock.Unlock()
+			docRev._shallowCopyBody = body.ShallowCopy()
+		}
+
 		return docRev, true, err
 	}
 	value.lock.RUnlock()
@@ -273,13 +334,18 @@ func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, d
 	// Check if the value was loaded while we waited for the lock - if so, return.
 	if value.bodyBytes != nil || value.err != nil {
 		cacheHit = true
+		// On cache hit, if body is requested and not already present in cache, attempt to generate from bytes and insert into cache
+		if includeBody && value.body == nil {
+			if err := value.body.Unmarshal(docRev.BodyBytes); err != nil {
+				base.Warnf("Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.key.DocID), value.key.RevID)
+			}
+		}
 	} else {
 		cacheHit = false
 		value.bodyBytes, value.body, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(backingStore, doc, value.key.RevID)
 	}
-
-	docRev, err = value._asDocumentRevision()
 	value.lock.Unlock()
+	docRev, err = value.asDocumentRevision(includeBody)
 	return docRev, cacheHit, err
 }
 
@@ -295,6 +361,7 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 		value.attachments = docRev.Attachments.ShallowCopy() // Don't store attachments the caller might later mutate
 		value.deleted = docRev.Deleted
 		value.err = nil
+		value.body = docRev._shallowCopyBody.ShallowCopy()
 	}
 	value.lock.Unlock()
 }

@@ -49,6 +49,42 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 
 }
 
+// TestRevisionCacheLoad
+// Tests simple retrieval of rev not resident in the cache
+func TestRevisionCacheLoad(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	db, testBucket := setupTestDBWithViewsEnabled(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	base.TestExternalRevStorage = true
+
+	// Create rev 1-a
+	log.Printf("Create rev 1-a")
+	body := Body{"key1": "value1", "version": "1a"}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "add 1-a")
+
+	// Flush the cache
+	db.FlushRevisionCacheForTest()
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc 1-a...")
+	_, err = db.Get1xRevBody("doc1", "1-a", false, nil)
+	assert.NoError(t, err, "Couldn't get document")
+
+	docRev, err := db.GetRev("doc1", "1-a", false, nil)
+
+	bodyBytes, err := base.InjectJSONProperties(docRev.BodyBytes, base.KVPair{Key: "test", Val: "abc"})
+	log.Printf("First bytes: %s", bodyBytes)
+
+	docRevAgain, err := db.GetRev("doc1", "1-a", false, nil)
+	secondBytes, err := base.InjectJSONProperties(docRevAgain.BodyBytes, base.KVPair{Key: "test2", Val: "abc"})
+	log.Printf("Second bytes: %s", secondBytes)
+}
+
 // TestRevisionStorageConflictAndTombstones
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
