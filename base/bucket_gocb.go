@@ -360,6 +360,9 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 
 	// Kick off retry loop
 	err, cas = RetryLoopCas("Get", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "Error during Get %s", UD(k).Redact())
+	}
 
 	if err != nil {
 		err = pkgerrors.WithStack(err)
@@ -867,7 +870,7 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 	// Kick off retry loop
 	err, cas = RetryLoopCas("GetAndTouchRaw", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, fmt.Sprintf("Error during GetAndTouchRaw with key %v", k))
+		err = pkgerrors.Wrapf(err, fmt.Sprintf("Error during GetAndTouchRaw with key %v", UD(k).Redact()))
 	}
 
 	// If returnVal was never set to anything, return nil or else type assertion below will panic
@@ -896,7 +899,7 @@ func (bucket *CouchbaseBucketGoCB) Touch(k string, exp uint32) (cas uint64, err 
 	// Kick off retry loop
 	err, cas = RetryLoopCas("Touch", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "Error during Touch for key %v", k)
+		err = pkgerrors.Wrapf(err, "Error during Touch for key %v", UD(k).Redact())
 	}
 
 	return cas, err
@@ -1189,7 +1192,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	// Kick off retry loop
 	err, cas = RetryLoopCas("WriteCasWithXattr", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "WriteCasWithXattr with key %v", k)
+		err = pkgerrors.Wrapf(err, "WriteCasWithXattr with key %v", UD(k).Redact())
 	}
 
 	return cas, err
@@ -1244,7 +1247,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	// Kick off retry loop
 	err, cas = RetryLoopCas("UpdateXattr", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "Error during UpdateXattr with key %v", k)
+		err = pkgerrors.Wrapf(err, "Error during UpdateXattr with key %v", UD(k).Redact())
 	}
 
 	return cas, err
@@ -1309,7 +1312,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 	// Kick off retry loop
 	err, cas = RetryLoopCas("GetWithXattr", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "GetWithXattr %v", k)
+		err = pkgerrors.Wrapf(err, "GetWithXattr %v", UD(k).Redact())
 	}
 
 	return cas, err
@@ -1371,9 +1374,7 @@ func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interf
 
 	err, result := RetryLoop("GetXattr", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		if _, ok := err.(*RetryTimeoutError); ok {
-			err = pkgerrors.Wrapf(err, "GetXattr %s", UD(k).Redact())
-		}
+		err = pkgerrors.Wrapf(err, "GetXattr %s", UD(k).Redact())
 	}
 
 	if result == nil {
@@ -1772,7 +1773,7 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	// Kick off retry loop
 	err, cas := RetryLoopCas("Incr with key", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "Error during Incr with key: %v", k)
+		err = pkgerrors.Wrapf(err, "Error during Incr with key: %v", UD(k).Redact())
 	}
 
 	if err != nil {
@@ -2340,7 +2341,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 	// Kick off retry loop
 	err, _ = RetryLoop("Wait until bucket has 0 items after flush", worker, CreateMaxDoublingSleeperFunc(25, 100, 10000))
 	if err != nil {
-		return pkgerrors.Wrapf(err, "Error during Wait until bucket %s has 0 items after flush", bucket.spec.BucketName)
+		return pkgerrors.Wrapf(err, "Error during Wait until bucket %s has 0 items after flush", MD(bucket.spec.BucketName).Redact())
 	}
 
 	return nil
@@ -2423,7 +2424,7 @@ func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaEr
 	// Kick off retry loop
 	err, result := RetryLoop("GetExpiry", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "Error during GetExpiry for key: %v", k)
+		err = pkgerrors.Wrapf(err, "Error during GetExpiry for key: %v", UD(k).Redact())
 	}
 
 	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error

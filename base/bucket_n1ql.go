@@ -250,7 +250,7 @@ func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
 	// Kick off retry loop
 	err, _ := RetryLoop("WaitForIndexOnline", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
 	if err != nil {
-		err = pkgerrors.Wrapf(err, "WaitForIndexOnline for index %s", indexName)
+		return pkgerrors.Wrapf(err, "WaitForIndexOnline for index %s", MD(indexName).Redact())
 	}
 
 	return nil
