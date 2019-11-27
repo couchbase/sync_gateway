@@ -804,35 +804,32 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine(args []string) (err error) {
-	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-	addr := flag.String("interface", DefaultInterface, "Address to bind to")
-	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
-	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
-	configServer := flag.String("configServer", "", "URL of server that can return database configs")
-	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
-	poolName := flag.String("pool", DefaultPool, "Name of pool")
-	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
-	dbName := flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
-	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
-	verbose := flag.Bool("verbose", false, "Log more info about requests")
-	logKeys := flag.String("log", "", "Log keys, comma separated")
-	logFilePath := flag.String("logFilePath", "", "Path to log files")
-	certpath := flag.String("certpath", "", "Client certificate path")
-	cacertpath := flag.String("cacertpath", "", "Root CA certificate path")
-	keypath := flag.String("keypath", "", "Client certificate key path")
+func ParseCommandLine(args []string, handling flag.ErrorHandling) (err error) {
+	flagSet := flag.NewFlagSet(args[0], handling)
+	addr := flagSet.String("interface", DefaultInterface, "Address to bind to")
+	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
+	profAddr := flagSet.String("profileInterface", "", "Address to bind profile interface to")
+	configServer := flagSet.String("configServer", "", "URL of server that can return database configs")
+	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
+	couchbaseURL := flagSet.String("url", DefaultServer, "Address of Couchbase server")
+	poolName := flagSet.String("pool", DefaultPool, "Name of pool")
+	bucketName := flagSet.String("bucket", "sync_gateway", "Name of bucket")
+	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
+	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
+	verbose := flagSet.Bool("verbose", false, "Log more info about requests")
+	logKeys := flagSet.String("log", "", "Log keys, comma separated")
+	logFilePath := flagSet.String("logFilePath", "", "Path to log files")
+	certpath := flagSet.String("certpath", "", "Client certificate path")
+	cacertpath := flagSet.String("cacertpath", "", "Root CA certificate path")
+	keypath := flagSet.String("keypath", "", "Client certificate key path")
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
-	defaultLogFilePathFlag := flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
+	defaultLogFilePathFlag := flagSet.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
-	if err := flag.CommandLine.Parse(args); err != nil {
-		return err
-	}
+	flagSet.Parse(args[1:])
 
-	if flag.NArg() > 0 {
+	if len(flagSet.Args()) > 0 {
 		// Read the configuration file(s), if any:
-		for i := 0; i < flag.NArg(); i++ {
-			filename := flag.Arg(i)
+		for _, filename := range flagSet.Args() {
 			newConfig, newConfigErr := LoadServerConfig(filename)
 
 			if errors.Cause(newConfigErr) == ErrUnknownField {
@@ -1087,7 +1084,8 @@ func ServerMain() {
 	defer PanicHandler()()
 
 	var unknownFieldsErr error
-	err := ParseCommandLine(os.Args[1:])
+
+	err := ParseCommandLine(os.Args, flag.ExitOnError)
 	if errors.Cause(err) == ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {

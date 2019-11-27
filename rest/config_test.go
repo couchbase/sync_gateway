@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"flag"
 	"io/ioutil"
 	"log"
 	"os"
@@ -623,6 +624,7 @@ func TestParseCommandLine(t *testing.T) {
 		pool               = "liverpool"
 	)
 	args := []string{
+		"sync_gateway",
 		"--adminInterface", adminInterface,
 		"--bucket", bucket,
 		"--cacertpath", cacertpath,
@@ -638,7 +640,8 @@ func TestParseCommandLine(t *testing.T) {
 		"--pool", pool,
 		"--pretty"}
 
-	err := ParseCommandLine(args)
+	err := ParseCommandLine(args, flag.ContinueOnError)
+	require.NoError(t, err, "Error reading config file")
 	conf := GetConfig()
 	assert.Equal(t, adminInterface, *conf.AdminInterface)
 	databases := conf.Databases
@@ -647,7 +650,7 @@ func TestParseCommandLine(t *testing.T) {
 	assert.Equal(t, cacertpath, databases[dbname].CACertPath)
 	assert.Equal(t, certpath, databases[dbname].CertPath)
 	assert.Equal(t, keypath, databases[dbname].KeyPath)
-	assert.NoError(t, err)
+
 }
 
 func mockBucketConfig() BucketConfig {
@@ -701,9 +704,10 @@ func TestParseCommandLineWithMissingConfig(t *testing.T) {
 	func() { config = nil }()
 	log.Printf("TestParseCommandLineWithMissingConfig:%v", GetConfig())
 	// Parse command line options with unknown sync gateway configuration file
-	err := ParseCommandLine([]string{"missing-sync-gateway.conf"})
-	assert.Nil(t, GetConfig(), "Configuration file doesn't exists")
-	assert.Error(t, err, "Error reading config file")
+	args := []string{"sync_gateway", "missing-sync-gateway.conf"}
+	err := ParseCommandLine(args, flag.ContinueOnError)
+	require.Error(t, err, "open missing-sync-gateway.conf: no such file or directory")
+	assert.Nil(t, GetConfig())
 }
 
 func TestParseCommandLineWithBadConfigContent(t *testing.T) {
@@ -721,9 +725,9 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	err = ParseCommandLine([]string{configFilePath})
-	assert.NotNil(t, GetConfig())
-	assert.Error(t, err, "Error reading config file: unknown field")
+	args := []string{"sync_gateway", configFilePath}
+	err = ParseCommandLine(args, flag.ContinueOnError)
+	require.Error(t, err, "Error reading config file: unknown field")
 }
 
 func TestParseCommandLineWithConfigContent(t *testing.T) {
@@ -760,6 +764,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		pool               = "liverpool"
 	)
 	args := []string{
+		"sync_gateway",
 		"--adminInterface", adminInterface,
 		"--bucket", bucket,
 		"--cacertpath", cacertpath,
@@ -777,8 +782,8 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		"--profileInterface", profileInterface,
 		configFilePath}
 
-	err = ParseCommandLine(args)
-	assert.NoError(t, err, "while parsing commandline options")
+	err = ParseCommandLine(args, flag.ContinueOnError)
+	require.NoError(t, err, "while parsing commandline options")
 	conf := GetConfig()
 	assert.Equal(t, interfaceAddress, *conf.Interface)
 	assert.Equal(t, adminInterface, *conf.AdminInterface)
