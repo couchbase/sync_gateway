@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -645,10 +644,8 @@ func TestParseCommandLine(t *testing.T) {
 	assert.Equal(t, adminInterface, *config.AdminInterface)
 	assert.Empty(t, *config.ProfileInterface)
 	assert.True(t, config.Pretty)
-	log.Printf("config: %v", config)
 	databases := config.Databases
 	assert.Len(t, databases, 1)
-	log.Printf("databases[dbname]: %v", databases[dbname])
 	assert.Equal(t, dbname, databases[dbname].Name)
 	assert.Equal(t, bucket, *databases[dbname].Bucket)
 	assert.Equal(t, pool, *databases[dbname].Pool)
@@ -694,7 +691,6 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 }
 
 func TestParseCommandLineWithMissingConfig(t *testing.T) {
-	log.Printf("TestParseCommandLineWithMissingConfig:%v", GetConfig())
 	// Parse command line options with unknown sync gateway configuration file
 	args := []string{"sync_gateway", "missing-sync-gateway.conf"}
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
