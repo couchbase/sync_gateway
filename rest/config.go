@@ -833,7 +833,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		defaultLogFilePath = *defaultLogFilePathFlag
 	}
 
-	if flag.NArg() > 0 {
+	if flagSet.NArg() > 0 {
 		// Read the configuration file(s), if any:
 		for _, filename := range flagSet.Args() {
 			newConfig, newConfigErr := LoadServerConfig(filename)
@@ -842,14 +842,14 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 				// Delay returning this error so we can continue with other setup
 				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			} else if newConfigErr != nil {
-				return config, errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
+				return config, errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			}
 
 			if config == nil {
 				config = newConfig
 			} else {
 				if err := config.MergeWith(newConfig); err != nil {
-					return config, errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
+					return config, errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
 				}
 			}
 		}
