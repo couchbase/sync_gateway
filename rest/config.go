@@ -918,6 +918,7 @@ func ParseCommandLine() (err error) {
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
 			Pretty:           *pretty,
+			ConfigServer:     configServer,
 			Logging: &base.LoggingConfig{
 				Console: base.ConsoleLoggerConfig{
 					// Enable the logger only when log keys have explicitly been set on the command line
