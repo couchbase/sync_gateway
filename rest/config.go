@@ -830,6 +830,10 @@ func ParseCommandLine() (err error) {
 
 	flag.Parse()
 
+	if defaultLogFilePathFlag != nil {
+		defaultLogFilePath = *defaultLogFilePathFlag
+	}
+
 	if flag.NArg() > 0 {
 		// Read the configuration file(s), if any:
 		for i := 0; i < flag.NArg(); i++ {
@@ -887,10 +891,6 @@ func ParseCommandLine() (err error) {
 
 		if *logKeys != "" {
 			config.Logging.Console.LogKeys = strings.Split(*logKeys, ",")
-		}
-
-		if defaultLogFilePathFlag != nil {
-			defaultLogFilePath = *defaultLogFilePathFlag
 		}
 
 		// Log HTTP Responses if verbose is enabled.
