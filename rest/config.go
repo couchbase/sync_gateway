@@ -920,7 +920,9 @@ func ParseCommandLine() (err error) {
 			Pretty:           *pretty,
 			Logging: &base.LoggingConfig{
 				Console: base.ConsoleLoggerConfig{
-					LogKeys: strings.Split(*logKeys, ","),
+					// Enable the logger only when log keys have explicitly been set on the command line
+					FileLoggerConfig: base.FileLoggerConfig{Enabled: base.BoolPtr(*logKeys != "")},
+					LogKeys:          strings.Split(*logKeys, ","),
 				},
 				LogFilePath: *logFilePath,
 			},
