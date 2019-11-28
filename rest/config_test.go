@@ -618,7 +618,7 @@ func TestParseCommandLine(t *testing.T) {
 		deploymentID       = "DEPID100"
 		interfaceAddress   = "4984"
 		keypath            = "/etc/ssl/certs/key.pem"
-		log                = "Admin,Access,Auth,Bucket"
+		logKeys            = "Admin,Access,Auth,Bucket"
 		logFilePath        = "/var/log/sync_gateway"
 		pool               = "liverpool"
 	)
@@ -634,17 +634,24 @@ func TestParseCommandLine(t *testing.T) {
 		"--deploymentID", deploymentID,
 		"--interface", interfaceAddress,
 		"--keypath", keypath,
-		"--log", log,
+		"--log", logKeys,
 		"--logFilePath", logFilePath,
 		"--pool", pool,
 		"--pretty"}
 
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
 	require.NoError(t, err, "Parsing commandline arguments without any config file")
+	assert.Equal(t, interfaceAddress, *config.Interface)
 	assert.Equal(t, adminInterface, *config.AdminInterface)
+	assert.Empty(t, *config.ProfileInterface)
+	assert.True(t, config.Pretty)
+	log.Printf("config: %v", config)
 	databases := config.Databases
 	assert.Len(t, databases, 1)
+	log.Printf("databases[dbname]: %v", databases[dbname])
 	assert.Equal(t, dbname, databases[dbname].Name)
+	assert.Equal(t, bucket, *databases[dbname].Bucket)
+	assert.Equal(t, pool, *databases[dbname].Pool)
 	assert.Equal(t, cacertpath, databases[dbname].CACertPath)
 	assert.Equal(t, certpath, databases[dbname].CertPath)
 	assert.Equal(t, keypath, databases[dbname].KeyPath)
