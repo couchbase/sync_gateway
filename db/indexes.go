@@ -372,7 +372,7 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 // Iterates over the index set, removing obsolete indexes:
 //  - indexes based on the inverse value of xattrs being used by the database
 //  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
-func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool) (removedIndexes []string, err error) {
+func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool, useViews bool) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
 
 	if !bucket.IsSupported(sgbucket.BucketFeatureN1ql) {
@@ -384,6 +384,10 @@ func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs b
 	for _, sgIndex := range sgIndexes {
 		// Current version, opposite xattr setting
 		removalCandidates = append(removalCandidates, sgIndex.fullIndexName(!useXattrs))
+		// If using views we can remove current version for xattr setting too
+		if useViews {
+			removalCandidates = append(removalCandidates, sgIndex.fullIndexName(useXattrs))
+		}
 		// Older versions, both xattr and non-xattr
 		for _, prevVersion := range sgIndex.previousVersions {
 			removalCandidates = append(removalCandidates, sgIndex.indexNameForVersion(prevVersion, true))

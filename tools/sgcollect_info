@@ -108,6 +108,8 @@ def create_option_parser():
                       help="path to Sync Gateway executable.  By default will try to discover via expvars")
     parser.add_option("--upload-proxy", dest="upload_proxy", default="",
                       help="specifies proxy for upload")
+    parser.add_option("--tmp-dir", dest="tmp_dir", default=None,
+                      help="set the temp dir used while processing collected data. Overrides the TMPDIR env variable if set")
     return parser
 
 
@@ -651,7 +653,9 @@ def main():
 
     # Create a TaskRunner and run all of the OS tasks (collect top, netstat, etc)
     # The output of the tasks will go directly into couchbase.log
-    runner = TaskRunner(verbosity=options.verbosity, default_name="sync_gateway.log")
+    runner = TaskRunner(verbosity=options.verbosity,
+                        default_name="sync_gateway.log",
+                        tmp_dir=options.tmp_dir)
 
     if not options.product_only:
         for task in make_os_tasks(["sync_gateway"]):

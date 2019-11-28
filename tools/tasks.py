@@ -234,13 +234,30 @@ class PythonTask(object):
 
 class TaskRunner(object):
 
-    def __init__(self, verbosity=0, default_name="couchbase.log"):
+    def __init__(self, verbosity=0, default_name="couchbase.log",
+                 tmp_dir=None):
         self.files = {}
         self.tasks = {}
         self.verbosity = verbosity
         self.start_time = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
-        self.tmpdir = tempfile.mkdtemp()
         self.default_name = default_name
+
+        if not tmp_dir:
+            tmp_dir = None
+        else:
+            tmp_dir = os.path.abspath(os.path.expanduser(tmp_dir))
+
+        try:
+            self.tmpdir = tempfile.mkdtemp(dir=tmp_dir)
+        except OSError as e:
+            print "Could not use temporary dir {0}: {1}".format(tmp_dir, e)
+            sys.exit(1)
+
+        # If a dir wasn't passed by --tmp-dir, check if the env var was set and if we were able to use it
+        if not tmp_dir and os.getenv("TMPDIR") and os.path.split(self.tmpdir)[0] != os.getenv("TMPDIR"):
+            log("Could not use TMPDIR {0}".format(os.getenv("TMPDIR")))
+            log("Using temporary dir {0}".format(os.path.split(self.tmpdir)[0]))
+
         AltExit.register(self.finalize)
 
     def finalize(self):

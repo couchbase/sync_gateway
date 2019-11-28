@@ -23,6 +23,10 @@ var RedactMetadata = false
 // - And other couchbase resource specific meta data
 type Metadata string
 
+func (md Metadata) String() string {
+	return string(md)
+}
+
 // Redact tags the string with Metadata tags for post-processing.
 func (md Metadata) Redact() string {
 	if !RedactMetadata {
@@ -35,18 +39,25 @@ func (md Metadata) Redact() string {
 var _ Redactor = Metadata("")
 
 // MD returns a Metadata type for any given value.
-func MD(i interface{}) Redactor {
+func MD(i interface{}) RedactorFunc {
 	switch v := i.(type) {
 	case string:
-		return Metadata(v)
-	case fmt.Stringer:
-		return Metadata(v.String())
-	default:
-		typeOf := reflect.ValueOf(i)
-		if typeOf.Kind() == reflect.Slice {
-			return buildRedactorSlice(typeOf, MD)
+		return func() Redactor {
+			return Metadata(v)
 		}
-		// Fall back to a slower but safe way of getting a string from any type.
-		return Metadata(fmt.Sprintf("%+v", v))
+	case fmt.Stringer:
+		return func() Redactor {
+			return Metadata(v.String())
+
+		}
+	default:
+		return func() Redactor {
+			typeOf := reflect.ValueOf(i)
+			if typeOf.Kind() == reflect.Slice {
+				return buildRedactorFuncSlice(typeOf, MD)
+			}
+			// Fall back to a slower but safe way of getting a string from any type.
+			return Metadata(fmt.Sprintf("%+v", v))
+		}
 	}
 }

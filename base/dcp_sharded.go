@@ -97,7 +97,7 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 
 	vbNo, err := bucket.GetMaxVbno()
 	if err != nil {
-		return errors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(bucket.GetName()))
+		return errors.Wrapf(err, "Unable to retrieve maxVbNo for bucket %s", MD(bucket.GetName()).Redact())
 	}
 
 	// Calculate partitionsPerPIndex required to hit target DefaultImportPartitions
@@ -346,7 +346,7 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 	// Create heartbeater
 	heartbeater, err := NewCouchbaseHeartbeater(bucket, SyncPrefix, cbgtContext.Manager.UUID(), nodeListHandler)
 	if err != nil {
-		return nil, errors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()))
+		return nil, errors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()).Redact())
 	}
 
 	// TODO: Allow customization of heartbeat interval
@@ -361,7 +361,7 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 
 	staleThresholdMs := intervalSeconds * 10 * 1000
 	if err := heartbeater.StartCheckingHeartbeats(staleThresholdMs, deadNodeHandler); err != nil {
-		return nil, errors.Wrapf(err, "Error calling StartCheckingHeartbeats() during startHeartbeater for bucket %s", MD(bucket.GetName))
+		return nil, errors.Wrapf(err, "Error calling StartCheckingHeartbeats() during startHeartbeater for bucket %s", MD(bucket.GetName).Redact())
 	}
 	Debugf(KeyDCP, "Checking CBGT node heartbeats with stale threshold: %v ms", staleThresholdMs)
 
