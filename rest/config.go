@@ -918,6 +918,7 @@ func ParseCommandLine() (err error) {
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
 			Pretty:           *pretty,
+			Logging:          &base.LoggingConfig{LogFilePath: *logFilePath},
 			Databases: map[string]*DbConfig{
 				*dbName: {
 					Name: *dbName,
