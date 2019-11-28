@@ -829,14 +829,18 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 	var config *ServerConfig
 	var err error
 
-	if len(flagSet.Args()) > 0 {
+	if defaultLogFilePathFlag != nil {
+		defaultLogFilePath = *defaultLogFilePathFlag
+	}
+
+	if flag.NArg() > 0 {
 		// Read the configuration file(s), if any:
 		for _, filename := range flagSet.Args() {
 			newConfig, newConfigErr := LoadServerConfig(filename)
 
 			if errors.Cause(newConfigErr) == ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
-				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
+				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			} else if newConfigErr != nil {
 				return config, errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", base.UD(filename)))
 			}
@@ -887,10 +891,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 			config.Logging.Console.LogKeys = strings.Split(*logKeys, ",")
 		}
 
-		if defaultLogFilePathFlag != nil {
-			defaultLogFilePath = *defaultLogFilePathFlag
-		}
-
 		// Log HTTP Responses if verbose is enabled.
 		if verbose != nil && *verbose {
 			config.Logging.Console.LogKeys = append(config.Logging.Console.LogKeys, "HTTP+")
@@ -916,6 +916,15 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
 			Pretty:           *pretty,
+			ConfigServer:     configServer,
+			Logging: &base.LoggingConfig{
+				Console: base.ConsoleLoggerConfig{
+					// Enable the logger only when log keys have explicitly been set on the command line
+					FileLoggerConfig: base.FileLoggerConfig{Enabled: base.BoolPtr(*logKeys != "")},
+					LogKeys:          strings.Split(*logKeys, ","),
+				},
+				LogFilePath: *logFilePath,
+			},
 			Databases: map[string]*DbConfig{
 				*dbName: {
 					Name: *dbName,
