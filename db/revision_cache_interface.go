@@ -13,7 +13,7 @@ const (
 	DefaultRevisionCacheSize = 5000
 
 	// DefaultRevisionCacheShardCount is the default number of shards to use for the revision cache
-	DefaultRevisionCacheShardCount = 8
+	DefaultRevisionCacheShardCount = 16
 )
 
 // RevisionCache is an interface that can be used to fetch a DocumentRevision for a Doc ID and Rev ID pair.
