@@ -4469,7 +4469,6 @@ func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 }
 
 func TestHandleProfiling(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -4544,7 +4543,6 @@ func TestHandleProfiling(t *testing.T) {
 }
 
 func TestHandleHeapProfiling(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -4573,7 +4571,6 @@ func TestHandleHeapProfiling(t *testing.T) {
 }
 
 func TestHandlePprofTrace(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	// Get and Post requests for pprof trace
@@ -4582,7 +4579,6 @@ func TestHandlePprofTrace(t *testing.T) {
 }
 
 func TestHandlePprofsCmdlineAndSymbol(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -4612,7 +4608,9 @@ func TestHandlePprofsCmdlineAndSymbol(t *testing.T) {
 }
 
 func TestHandlePprofs(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -4659,7 +4657,6 @@ func TestHandlePprofs(t *testing.T) {
 }
 
 func TestHandleStats(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
