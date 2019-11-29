@@ -10,7 +10,7 @@ import (
 
 const (
 	// DefaultRevisionCacheSize is the number of recently-accessed doc revisions to cache in RAM
-	DefaultRevisionCacheSize = 5000
+	DefaultRevisionCacheSize = 7500
 
 	// DefaultRevisionCacheShardCount is the default number of shards to use for the revision cache
 	DefaultRevisionCacheShardCount = 16
