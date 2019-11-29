@@ -59,20 +59,21 @@ var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
-	server         *ServerContext
-	rq             *http.Request
-	response       http.ResponseWriter
-	status         int
-	statusMessage  string
-	requestBody    io.ReadCloser
-	db             *db.Database
-	user           auth.User
-	privs          handlerPrivs
-	startTime      time.Time
-	serialNumber   uint64
-	loggedDuration bool
-	runOffline     bool
-	queryValues    url.Values // Copy of results of rq.URL.Query()
+	server                *ServerContext
+	rq                    *http.Request
+	response              http.ResponseWriter
+	status                int
+	statusMessage         string
+	requestBody           io.ReadCloser
+	db                    *db.Database
+	user                  auth.User
+	privs                 handlerPrivs
+	startTime             time.Time
+	serialNumber          uint64
+	formattedSerialNumber string
+	loggedDuration        bool
+	runOffline            bool
+	queryValues           url.Values // Copy of results of rq.URL.Query()
 }
 
 type handlerPrivs int
@@ -208,7 +209,7 @@ func (h *handler) invoke(method handlerMethod) error {
 		h.response = NewLoggerTeeResponseWriter(
 			h.response,
 			base.KeyHTTP,
-			h.serialNumber,
+			h.formatSerialNumber(),
 			h.rq,
 			h.getQueryValues(),
 		)
@@ -244,7 +245,7 @@ func (h *handler) logRequestBody() {
 		h.requestBody,
 		base.NewLoggerWriter(
 			base.KeyHTTP,
-			h.serialNumber,
+			h.formatSerialNumber(),
 			h.rq,
 			h.getQueryValues(),
 		),
@@ -909,5 +910,8 @@ func getRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64,
 
 // formatSerialNumber returns the formatted serial number
 func (h *handler) formatSerialNumber() string {
-	return fmt.Sprintf("#%03d", h.serialNumber)
+	if h.formattedSerialNumber == "" {
+		h.formattedSerialNumber = fmt.Sprintf("#%03d", h.serialNumber)
+	}
+	return h.formattedSerialNumber
 }
