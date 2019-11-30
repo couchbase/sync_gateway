@@ -87,7 +87,7 @@ func NewDCPCommon(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbN
 		feedID:                 feedID,
 	}
 
-	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()), feedID)
+	dcpContextID := fmt.Sprintf("%s-%s", MD(bucket.GetName()).Redact(), feedID)
 	c.loggingCtx = context.WithValue(context.Background(), LogContextKey{},
 		LogContext{CorrelationID: dcpContextID},
 	)
@@ -209,6 +209,20 @@ func (c *DCPCommon) loadCheckpoint(vbNo uint16) (vbMetadata []byte, snapshotStar
 	}
 	return rawValue, snapshotMetadata.SnapStart, snapshotMetadata.SnapEnd, nil
 
+}
+
+func (c *DCPCommon) InitVbMeta(vbNo uint16) {
+	metadata, snapStart, _, err := c.loadCheckpoint(vbNo)
+	c.m.Lock()
+	if err != nil {
+		WarnfCtx(c.loggingCtx, "Unexpected error attempting to load DCP checkpoint for vbucket %d.  Will restart DCP for that vbucket from zero.  Error: %v", vbNo, err)
+		c.meta[vbNo] = []byte{}
+		c.seqs[vbNo] = 0
+	} else {
+		c.meta[vbNo] = metadata
+		c.seqs[vbNo] = snapStart
+	}
+	c.m.Unlock()
 }
 
 func (c *DCPCommon) initMetadata(maxVbNo uint16) {

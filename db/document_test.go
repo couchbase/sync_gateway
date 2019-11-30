@@ -124,14 +124,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				doc, err := unmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, 1, bm.unmarshalLevel)
-				b.StopTimer()
-				if err != nil {
-					log.Printf("Unexpected error during unmarshal: %s", err)
-				} else if doc == nil {
-					log.Printf("Post-unmarshal, document is nil.")
-				}
-				b.StartTimer()
+				_, _ = unmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, 1, bm.unmarshalLevel)
 			}
 		})
 	}

@@ -3,6 +3,7 @@ package base
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	goassert "github.com/couchbaselabs/go.assert"
 )
@@ -70,6 +71,87 @@ func BenchmarkUserDataRedact(b *testing.B) {
 		RedactUserData = false
 		for i := 0; i < bn.N; i++ {
 			username.Redact()
+		}
+	})
+}
+
+type FakeLogger struct {
+}
+
+func (fakeLogger FakeLogger) String() string {
+	time.Sleep(10 * time.Microsecond)
+	return "Fixed String"
+}
+
+func BenchmarkRedactOnLog(b *testing.B) {
+
+	defer SetUpBenchmarkLogging(LevelWarn, KeyAll)()
+
+	b.Run("WarnPlain", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", "Fixed String")
+		}
+	})
+
+	b.Run("WarnRedactTrueNotUD", func(b *testing.B) {
+		RedactUserData = true
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", FakeLogger{})
+		}
+	})
+
+	b.Run("WarnRedactTrueUD", func(b *testing.B) {
+		RedactUserData = true
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", UD(FakeLogger{}))
+		}
+	})
+
+	b.Run("WarnRedactFalseNotUD", func(b *testing.B) {
+		RedactUserData = false
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", FakeLogger{})
+		}
+	})
+
+	b.Run("WarnRedactFalseUD", func(b *testing.B) {
+		RedactUserData = false
+		for i := 0; i < b.N; i++ {
+			Warnf("Log: %s", UD(FakeLogger{}))
+		}
+	})
+
+	b.Run("DebugPlain", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", "Fixed String")
+		}
+	})
+
+	b.Run("DebugRedactTrueNotUD", func(b *testing.B) {
+		RedactUserData = true
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", FakeLogger{})
+		}
+	})
+
+	b.Run("DebugRedactTrueUD", func(b *testing.B) {
+		RedactUserData = true
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", UD(FakeLogger{}))
+		}
+	})
+
+	b.Run("DebugRedactFalseNotUD", func(b *testing.B) {
+		RedactUserData = false
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", FakeLogger{})
+		}
+	})
+
+	b.Run("DebugRedactFalseUD", func(b *testing.B) {
+		RedactUserData = false
+		for i := 0; i < b.N; i++ {
+			Debugf(KeyAll, "Log: %s", UD(FakeLogger{}))
 		}
 	})
 }

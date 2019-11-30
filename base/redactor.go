@@ -14,6 +14,16 @@ type Redactor interface {
 	// Redact returns the given string in a redacted form. This may be tagged,
 	// changed, hashed, or removed completely depending on desired behaviour.
 	Redact() string
+	// String returns the non-redacted form of the given string.
+	String() string
+}
+
+// This allows for lazy evaluation for a Redactor. Means that we don't have to process redaction unless we are
+// definitely performing a redaction
+type RedactorFunc func() Redactor
+
+func (redactorFunc RedactorFunc) String() string {
+	return redactorFunc().String()
 }
 
 type RedactorSlice []Redactor
@@ -35,6 +45,10 @@ func redact(args []interface{}) []interface{} {
 	return args
 }
 
+func (redactorFunc RedactorFunc) Redact() string {
+	return redactorFunc().Redact()
+}
+
 func (redactorSlice RedactorSlice) Redact() string {
 	tmp := []byte{}
 	for _, item := range redactorSlice {
@@ -44,7 +58,16 @@ func (redactorSlice RedactorSlice) Redact() string {
 	return "[ " + string(tmp) + "]"
 }
 
-func buildRedactorSlice(valueOf reflect.Value, function func(interface{}) Redactor) RedactorSlice {
+func (redactorSlice RedactorSlice) String() string {
+	tmp := []byte{}
+	for _, item := range redactorSlice {
+		tmp = append(tmp, []byte(item.String())...)
+		tmp = append(tmp, ' ')
+	}
+	return "[ " + string(tmp) + "]"
+}
+
+func buildRedactorFuncSlice(valueOf reflect.Value, function func(interface{}) RedactorFunc) RedactorSlice {
 	length := valueOf.Len()
 	retVal := make([]Redactor, 0, length)
 	for i := 0; i < length; i++ {
