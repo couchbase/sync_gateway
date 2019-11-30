@@ -346,26 +346,28 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 	defer func() {
 		<-bucket.singleOps
 	}()
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value uint64) {
 		casGoCB, err := bucket.Bucket.Get(k, rv)
 		shouldRetry = isRecoverableReadError(err)
 		return shouldRetry, err, uint64(casGoCB)
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("Get %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+	err, cas = RetryLoopCas("Get", worker, bucket.spec.RetrySleeper())
 
 	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
-		result = uint64(0)
-	}
+	/*
+		if result == nil {
+			result = uint64(0)
+		}
 
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		return 0, RedactErrorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, UD(k))
-	}
+		// Type assertion of result
+		cas, ok := result.(uint64)
+		if !ok {
+			return 0, RedactErrorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, UD(k))
+		}
+
+	*/
 
 	if err != nil {
 		err = pkgerrors.WithStack(err)
@@ -1307,7 +1309,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 			gocbExpvars.Add("SingleOps", -1)
 		}()
 	*/
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		// First, attempt to get the document and xattr in one shot. We can't set SubdocDocFlagAccessDeleted when attempting
 		// to retrieve the full doc body, so need to retry that scenario below.
@@ -1352,18 +1354,19 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("GetWithXattr %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+	err, cas = RetryLoopCas("GetWithXattr", worker, bucket.spec.RetrySleeper())
 
-	if result == nil {
-		return 0, err
-	}
+	/*
+		if result == nil {
+			return 0, err
+		}
 
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		return 0, RedactErrorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", UD(result), result, UD(k))
-	}
+		// Type assertion of result
+		cas, ok := result.(uint64)
+		if !ok {
+			return 0, RedactErrorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", UD(result), result, UD(k))
+		}
+	*/
 
 	return cas, err
 
