@@ -385,6 +385,8 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 	}
 }
 
+// A version of RetryLoop that returns a strongly typed cas as uint64, to avoid interface conversion overhead for
+// high throughput operations.
 func RetryLoopCas(description string, worker RetryCasWorker, sleeper RetrySleeper) (error, uint64) {
 
 	numAttempts := 1
@@ -402,10 +404,10 @@ func RetryLoopCas(description string, worker RetryCasWorker, sleeper RetrySleepe
 			if err == nil {
 				err = NewRetryTimeoutError(description, numAttempts)
 			}
-			Warnf("RetryLoop for %v giving up after %v attempts", description, numAttempts)
+			Warnf("RetryLoopCas for %v giving up after %v attempts", description, numAttempts)
 			return err, value
 		}
-		Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
+		Debugf(KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
 
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 

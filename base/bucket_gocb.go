@@ -355,20 +355,6 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 	// Kick off retry loop
 	err, cas = RetryLoopCas("Get", worker, bucket.spec.RetrySleeper())
 
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	/*
-		if result == nil {
-			result = uint64(0)
-		}
-
-		// Type assertion of result
-		cas, ok := result.(uint64)
-		if !ok {
-			return 0, RedactErrorf("Get: Error doing type assertion of %v into a uint64,  Key: %v", result, UD(k))
-		}
-
-	*/
-
 	if err != nil {
 		err = pkgerrors.WithStack(err)
 	}
@@ -859,7 +845,7 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 	}()
 
 	var returnVal []byte
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value uint64) {
 		casGoCB, err := bucket.Bucket.GetAndTouch(k, exp, &returnVal)
 		shouldRetry = isRecoverableReadError(err)
 		return shouldRetry, err, uint64(casGoCB)
@@ -868,18 +854,7 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 
 	// Kick off retry loop
 	description := fmt.Sprintf("GetAndTouchRaw with key %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
-
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
-		result = uint64(0)
-	}
-
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		return nil, 0, RedactErrorf("GetAndTouchRaw: Error doing type assertion of %v into a uint64", UD(result))
-	}
+	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
 
 	// If returnVal was never set to anything, return nil or else type assertion below will panic
 	if returnVal == nil {
@@ -897,7 +872,7 @@ func (bucket *CouchbaseBucketGoCB) Touch(k string, exp uint32) (cas uint64, err 
 		<-bucket.singleOps
 	}()
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value uint64) {
 		casGoCB, err := bucket.Bucket.Touch(k, 0, exp)
 		shouldRetry = isRecoverableWriteError(err)
 		return shouldRetry, err, uint64(casGoCB)
@@ -906,18 +881,7 @@ func (bucket *CouchbaseBucketGoCB) Touch(k string, exp uint32) (cas uint64, err 
 
 	// Kick off retry loop
 	description := fmt.Sprintf("Touch for key %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
-
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
-		result = uint64(0)
-	}
-
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		return 0, RedactErrorf("Touch: Error doing type assertion of %v into a uint64", UD(result))
-	}
+	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
 
 	return cas, err
 
@@ -1102,7 +1066,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 		Panicf("flags must be 0")
 	}
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		if cas == 0 {
 			// Try to insert the value into the bucket
@@ -1120,18 +1084,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 
 	// Kick off retry loop
 	description := fmt.Sprintf("WriteCas with key %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
-
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
-		result = uint64(0)
-	}
-
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		return 0, RedactErrorf("WriteCas: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
-	}
+	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
 
 	return cas, err
 
@@ -1155,7 +1108,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 		<-bucket.singleOps
 	}()
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		// cas=0 specifies an insert
 		if cas == 0 {
@@ -1217,18 +1170,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 
 	// Kick off retry loop
 	description := fmt.Sprintf("WriteCasWithXattr with key %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
-
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
-		result = uint64(0)
-	}
-
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		return 0, RedactErrorf("WriteCasWithXattr: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
-	}
+	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
 
 	return cas, err
 }
@@ -1245,7 +1187,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
 	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		var mutateFlag gocb.SubdocDocFlag
 		if deleteBody {
@@ -1281,18 +1223,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 
 	// Kick off retry loop
 	description := fmt.Sprintf("UpdateXattr with key %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
-
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
-		result = uint64(0)
-	}
-
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		return 0, RedactErrorf("UpdateXattr: Error doing type assertion of %v into a uint64,  Key: %v", UD(result), UD(k))
-	}
+	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
 
 	return cas, err
 }
@@ -1355,18 +1286,6 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 
 	// Kick off retry loop
 	err, cas = RetryLoopCas("GetWithXattr", worker, bucket.spec.RetrySleeper())
-
-	/*
-		if result == nil {
-			return 0, err
-		}
-
-		// Type assertion of result
-		cas, ok := result.(uint64)
-		if !ok {
-			return 0, RedactErrorf("GetWithXattr: Error doing type assertion of %v (%T) into a uint64,  Key: %v", UD(result), result, UD(k))
-		}
-	*/
 
 	return cas, err
 
@@ -1812,7 +1731,7 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 		<-bucket.singleOps
 	}()
 
-	worker := func() (shouldRetry bool, err error, value interface{}) {
+	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		result, _, err := bucket.Counter(k, int64(amt), int64(def), exp)
 		shouldRetry = isRecoverableWriteError(err)
@@ -1822,18 +1741,7 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 
 	// Kick off retry loop
 	description := fmt.Sprintf("Incr with key: %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
-
-	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
-	if result == nil {
-		result = uint64(0)
-	}
-
-	// Type assertion of result
-	cas, ok := result.(uint64)
-	if !ok {
-		return 0, RedactErrorf("Incr: Error doing type assertion of %v into a uint64,  Key: %v", result, UD(k))
-	}
+	err, cas := RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
 
 	if err != nil {
 		err = pkgerrors.WithStack(err)
