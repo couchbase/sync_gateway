@@ -187,14 +187,8 @@ func (db *Database) changesFeed(changesFeedOutput chan *ChangeEntry, singleChann
 
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
-		defer func() {
-			if panicked := recover(); panicked != nil {
-				base.WarnfCtx(db.Ctx, "[%s] Unexpected panic getting changes from channel %q - terminating changes feed: \n %s", panicked, base.UD(singleChannelCache.ChannelName()), debug.Stack())
-				close(changesFeedOutput)
-				return
-			}
-			close(feed)
-		}()
+		defer base.FatalPanicHandler()
+		defer close(feed)
 
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
