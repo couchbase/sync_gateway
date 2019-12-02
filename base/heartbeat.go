@@ -122,6 +122,7 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats(intervalSeconds int) error
 	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
 
 	go func() {
+		defer FatalPanicHandler()
 		defer func() { h.sendActive.Set(false) }()
 		h.sendActive.Set(true)
 		for {
@@ -175,6 +176,7 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 	ticker := time.NewTicker(time.Duration(staleThresholdMs) * time.Millisecond)
 
 	go func() {
+		defer FatalPanicHandler()
 		defer func() { h.checkActive.Set(false) }()
 		h.checkActive.Set(true)
 		for {
@@ -553,6 +555,7 @@ func (ch *cbgtNodeListHandler) subscribeNodeChanges() error {
 	cfgEvents := make(chan cbgt.CfgEvent)
 	ch.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
 	go func() {
+		defer FatalPanicHandler()
 		for {
 			select {
 			case <-cfgEvents:

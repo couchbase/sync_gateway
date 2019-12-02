@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -1201,4 +1202,11 @@ type JSONEncoderI interface {
 	Encode(v interface{}) error
 	SetIndent(prefix, indent string)
 	SetEscapeHTML(on bool)
+}
+
+func FatalPanicHandler() {
+	// Log any panics using the built-in loggers so that the stacktraces end up in SG log files before exiting.
+	if r := recover(); r != nil {
+		Fatalf("Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
+	}
 }
