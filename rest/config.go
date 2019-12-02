@@ -23,7 +23,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strings"
 	"syscall"
 
@@ -1078,21 +1077,11 @@ func RegisterSignalHandler() {
 	}()
 }
 
-func PanicHandler() (panicHandler func()) {
-	return func() {
-		// Recover from any panics to allow for graceful shutdown.
-		if r := recover(); r != nil {
-			base.Fatalf("Handling panic: %v\n%v", r, string(debug.Stack()))
-		}
-	}
-
-}
-
 // Main entry point for a simple server; you can have your main() function just call this.
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain() {
 	RegisterSignalHandler()
-	defer PanicHandler()()
+	defer base.FatalPanicHandler()()
 
 	var unknownFieldsErr error
 	err := ParseCommandLine()
