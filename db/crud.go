@@ -768,15 +768,27 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// Make up a new _rev, and add it to the history:
-		newRev, err := createRevID(generation, matchRev, body)
+		bodyWithoutSpecialProps, wasStripped := stripSpecialProperties(body)
+		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutSpecialProps)
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 
 		// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
-		delete(body, BodyDeleted)
+		_, isDeleted := body[BodyDeleted]
+		if isDeleted {
+			delete(body, BodyDeleted)
+		}
+
 		// and now we can finally update the newDoc body to be without any special properties
 		newDoc.UpdateBody(body)
+
+		// If no special properties were stripped and document wasn't deleted, the canonical bytes represent the current
+		// body.  In this scenario, store canonical bytes as newDoc._rawBody
+		if !wasStripped && !isDeleted {
+			newDoc._rawBody = canonicalBytesForRevID
+		}
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
