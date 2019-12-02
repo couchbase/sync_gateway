@@ -170,10 +170,10 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options ChangesOptions, currentCachedSequence uint64, to string) (<-chan *ChangeEntry, error) {
+func (db *Database) changesFeed(changesFeedOutput chan *ChangeEntry, singleChannelCache SingleChannelCache, options ChangesOptions, currentCachedSequence uint64, to string) (<-chan *ChangeEntry, error) {
 	// TODO: pass db.Ctx down to changeCache?
 	log, err := singleChannelCache.GetChanges(options)
-	base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %s", len(log), base.UD(singleChannelCache.ChannelName()))
+	base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(log), base.UD(singleChannelCache.ChannelName()))
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,15 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
-		defer close(feed)
+		defer func() {
+			if panicked := recover(); panicked != nil {
+				base.WarnfCtx(db.Ctx, "[%s] Unexpected panic getting changes from channel %q - terminating changes feed: \n %s", panicked, base.UD(singleChannelCache.ChannelName()), debug.Stack())
+				close(changesFeedOutput)
+				return
+			}
+			close(feed)
+		}()
+
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
 			if !options.Conflicts && (logEntry.Flags&channels.Hidden) != 0 {
@@ -540,7 +548,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy}
 				}
 
-				feed, err := db.changesFeed(singleChannelCache, chanOpts, currentCachedSequence, to)
+				feed, err := db.changesFeed(output, singleChannelCache, chanOpts, currentCachedSequence, to)
 				if err != nil {
 					base.WarnfCtx(db.Ctx, "MultiChangesFeed got error reading changes feed %q: %v", base.UD(name), err)
 					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
