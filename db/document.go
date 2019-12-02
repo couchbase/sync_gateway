@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -259,7 +260,7 @@ func (doc *Document) GetDeepMutableBody() Body {
 			return nil
 		}
 		var err error
-		doc._rawBody, err = base.JSONMarshal(doc._body)
+		doc._rawBody, err = json.Marshal(doc._body)
 		if err != nil {
 			base.Warnf("Unable to marshal document body into raw body : %s", err)
 			return nil
@@ -997,7 +998,7 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 		}
 	}
 
-	xdata, err = base.JSONMarshal(doc.SyncData)
+	xdata, err = json.Marshal(doc.SyncData)
 	if err != nil {
 		return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc SyncData with id: %s.  Error: %v", base.UD(doc.ID), err))
 	}

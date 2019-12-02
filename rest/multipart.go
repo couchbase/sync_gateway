@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"io"
@@ -46,7 +47,7 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
-	decoder := base.JSONDecoder(input)
+	decoder := json.NewDecoder(input)
 	decoder.UseNumber()
 	if err := decoder.Decode(into); err != nil {
 		base.Warnf("Couldn't parse JSON in HTTP request: %v", err)

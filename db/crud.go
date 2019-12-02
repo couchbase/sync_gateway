@@ -11,6 +11,7 @@ package db
 
 import (
 	"bytes"
+	"encoding/json"
 	"math"
 	"net/http"
 	"strings"
@@ -769,7 +770,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 		// Make up a new _rev, and add it to the history:
 		bodyWithoutSpecialProps, wasStripped := stripSpecialProperties(body)
-		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutSpecialProps)
+		canonicalBytesForRevID, err := json.Marshal(bodyWithoutSpecialProps)
 		if err != nil {
 			return nil, nil, nil, err
 		}

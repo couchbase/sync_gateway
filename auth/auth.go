@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
@@ -107,7 +108,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 		}
 
 		princ = factory()
-		if err := base.JSONUnmarshal(currentValue, princ); err != nil {
+		if err := json.Unmarshal(currentValue, princ); err != nil {
 			return nil, nil, pkgerrors.WithStack(base.RedactErrorf("base.JSONUnmarshal() error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
 		}
 		changed := false
