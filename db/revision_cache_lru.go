@@ -19,9 +19,10 @@ type ShardedLRURevisionCache struct {
 func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *expvar.Int) *ShardedLRURevisionCache {
 
 	caches := make([]*LRURevisionCache, shardCount)
-	perCacheCapacity := uint32(capacity/uint32(shardCount)) + 1
+	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
+	perCacheCapacity := 1.1 * float32(capacity) / float32(shardCount)
 	for i := 0; i < int(shardCount); i++ {
-		caches[i] = NewLRURevisionCache(perCacheCapacity, backingStore, cacheHitStat, cacheMissStat)
+		caches[i] = NewLRURevisionCache(uint32(perCacheCapacity+0.5), backingStore, cacheHitStat, cacheMissStat)
 	}
 
 	return &ShardedLRURevisionCache{
