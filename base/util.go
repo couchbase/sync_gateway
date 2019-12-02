@@ -1204,11 +1204,9 @@ type JSONEncoderI interface {
 	SetEscapeHTML(on bool)
 }
 
-func FatalPanicHandler() (panicHandler func()) {
-	return func() {
-		// Log any panics using the built-in loggers so that the stacktraces end up in SG log files before exiting.
-		if r := recover(); r != nil {
-			Fatalf("Handling panic: %v\n%v", r, string(debug.Stack()))
-		}
+func FatalPanicHandler() {
+	// Log any panics using the built-in loggers so that the stacktraces end up in SG log files before exiting.
+	if r := recover(); r != nil {
+		Fatalf("Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
 	}
 }

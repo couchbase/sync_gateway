@@ -70,7 +70,7 @@ func newSequenceAllocator(bucket base.Bucket, dbStatsMap *expvar.Map) (*sequence
 	// The reserveNotify channel manages communication between the releaseSequenceMonitor goroutine and _reserveSequenceRange invocations.
 	s.reserveNotify = make(chan struct{}, 1)
 	go func() {
-		defer base.FatalPanicHandler()()
+		defer base.FatalPanicHandler()
 		s.releaseSequenceMonitor()
 	}()
 	_, err := s.lastSequence() // just reads latest sequence from bucket

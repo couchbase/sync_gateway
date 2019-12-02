@@ -1081,7 +1081,7 @@ func RegisterSignalHandler() {
 // It parses command-line flags, reads the optional configuration file, then starts the server.
 func ServerMain() {
 	RegisterSignalHandler()
-	defer base.FatalPanicHandler()()
+	defer base.FatalPanicHandler()
 
 	var unknownFieldsErr error
 	err := ParseCommandLine()

@@ -14,7 +14,7 @@ type BackgroundTaskFunc func(ctx context.Context) error
 func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, interval time.Duration, c chan bool) {
 	base.Infof(base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
 	go func() {
-		defer base.FatalPanicHandler()()
+		defer base.FatalPanicHandler()
 		for {
 			select {
 			case <-time.After(interval):
