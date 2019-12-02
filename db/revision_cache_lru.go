@@ -223,6 +223,7 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore, include
 	// Reading the delta from the revCacheValue requires holding the read lock, so it's managed outside asDocumentRevision,
 	// to reduce locking when includeDelta=false
 	var delta *RevisionDelta
+	var docRevBody Body
 
 	// Attempt to read cached value.
 	value.lock.RLock()
@@ -230,10 +231,12 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore, include
 		if includeDelta {
 			delta = value.delta
 		}
+		if includeBody {
+			docRevBody = value.body
+		}
 		value.lock.RUnlock()
 
-		docRev, err = value.asDocumentRevision(includeBody, delta)
-		docRev.Delta = delta
+		docRev, err = value.asDocumentRevision(docRevBody, delta)
 
 		// On cache hit, if body is requested and not present in revCacheValue, generate from bytes and update revCacheValue
 		if includeBody && docRev._shallowCopyBody == nil && err == nil {
@@ -262,9 +265,12 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore, include
 	if includeDelta {
 		delta = value.delta
 	}
+	if includeBody {
+		docRevBody = value.body
+	}
 	value.lock.Unlock()
 
-	docRev, err = value.asDocumentRevision(includeBody, delta)
+	docRev, err = value.asDocumentRevision(docRevBody, delta)
 	return docRev, cacheHit, err
 }
 
@@ -286,8 +292,8 @@ func (value *revCacheValue) updateBody() (err error) {
 }
 
 // asDocumentRevision copies the rev cache value into a DocumentRevision.  Should only be called for non-empty
-// revCacheValues - copies all immutable revCacheValue properties.
-func (value *revCacheValue) asDocumentRevision(includeBody bool, delta *RevisionDelta) (DocumentRevision, error) {
+// revCacheValues - copies all immutable revCacheValue properties, and adds the provided body/delta.
+func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) (DocumentRevision, error) {
 
 	docRev := DocumentRevision{
 		DocID:       value.key.DocID,
@@ -299,7 +305,7 @@ func (value *revCacheValue) asDocumentRevision(includeBody bool, delta *Revision
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 	}
-	if includeBody {
+	if body != nil {
 		docRev._shallowCopyBody = value.body.ShallowCopy()
 	}
 	docRev.Delta = delta
@@ -311,10 +317,14 @@ func (value *revCacheValue) asDocumentRevision(includeBody bool, delta *Revision
 // the provided document.
 func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, doc *Document, includeBody bool) (docRev DocumentRevision, cacheHit bool, err error) {
 
+	var docRevBody Body
 	value.lock.RLock()
 	if value.bodyBytes != nil || value.err != nil {
+		if includeBody {
+			docRevBody = value.body
+		}
 		value.lock.RUnlock()
-		docRev, err = value.asDocumentRevision(includeBody, nil)
+		docRev, err = value.asDocumentRevision(docRevBody, nil)
 		// If the body is requested and not yet populated on revCacheValue, populate it from the doc
 		if includeBody && docRev._shallowCopyBody == nil {
 			body := doc.Body()
@@ -344,8 +354,11 @@ func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, d
 		cacheHit = false
 		value.bodyBytes, value.body, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(backingStore, doc, value.key.RevID)
 	}
+	if includeBody {
+		docRevBody = value.body
+	}
 	value.lock.Unlock()
-	docRev, err = value.asDocumentRevision(includeBody, nil)
+	docRev, err = value.asDocumentRevision(docRevBody, nil)
 	return docRev, cacheHit, err
 }
 
