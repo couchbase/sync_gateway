@@ -306,7 +306,7 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Deleted:     value.deleted,
 	}
 	if body != nil {
-		docRev._shallowCopyBody = value.body.ShallowCopy()
+		docRev._shallowCopyBody = body.ShallowCopy()
 	}
 	docRev.Delta = delta
 
