@@ -186,11 +186,7 @@ func (doc *Document) UpdateBody(body Body) {
 // and injecting it into the existing raw body.
 func (doc *Document) MarshalBodyAndSync() (retBytes []byte, err error) {
 	if doc._rawBody != nil {
-		bodyBytes, err := doc.BodyBytes()
-		if err != nil {
-			return nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalBodyAndSync() doc with id: %s. Error %v", base.UD(doc.ID), err))
-		}
-		return base.InjectJSONProperties(bodyBytes, base.KVPair{Key: base.SyncPropertyName, Val: doc.SyncData})
+		return base.InjectJSONProperties(doc._rawBody, base.KVPair{Key: base.SyncPropertyName, Val: doc.SyncData})
 	} else {
 		return base.JSONMarshal(doc)
 	}
@@ -254,25 +250,31 @@ func (doc *Document) Body() Body {
 	return doc._body
 }
 
+// Get a deep mutable copy of the body, using _rawBody.  Initializes _rawBody based on _body if not already present.
 func (doc *Document) GetDeepMutableBody() Body {
-	// we can avoid a deep copy by just unmarshalling raw bytes, if available
-	if doc._rawBody != nil {
-		var b Body
-		err := b.Unmarshal(doc._rawBody)
-		if err == nil {
-			return b
+
+	// If doc._rawBody isn't present, marshal from doc.Body
+	if doc._rawBody == nil {
+		if doc._body == nil {
+			return nil
 		}
-		// Error unmarshalling raw body, try to use the existing _body
+		var err error
+		doc._rawBody, err = base.JSONMarshal(doc._body)
+		if err != nil {
+			base.Warnf("Unable to marshal document body into raw body : %s", err)
+			return nil
+		}
+
+	}
+
+	var mutableBody Body
+	err := mutableBody.Unmarshal(doc._rawBody)
+	if err != nil {
 		base.Warnf("Unable to unmarshal document body from raw body : %s", err)
+		return nil
 	}
 
-	// We didn't have raw bytes available, but if we do have a body to copy
-	if doc._body != nil {
-		// need to deep copy so callers can mutate
-		return doc._body.Copy(BodyDeepCopy)
-	}
-
-	return nil
+	return mutableBody
 }
 
 func (doc *Document) RemoveBody() {
@@ -292,7 +294,6 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	}
 
 	if doc._rawBody != nil {
-		base.Tracef(base.KeyAll, "Already had doc rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return doc._rawBody, nil
 	}
 
@@ -301,7 +302,6 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 		return nil, nil
 	}
 
-	base.Tracef(base.KeyAll, "        MARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 	bodyBytes, err := base.JSONMarshal(doc._body)
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "Error marshalling document body")

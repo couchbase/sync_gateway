@@ -1869,3 +1869,30 @@ func TestGetOIDCProvider(t *testing.T) {
 	assert.Contains(t, err.Error(), `No provider found for provider name "Unknown"`)
 	testBucket.Close()
 }
+
+// TestSyncFnMutateBody ensures that any mutations made to the body by the sync function aren't persisted
+func TestSyncFnMutateBody(t *testing.T) {
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
+		doc.key1 = "mutatedValue"
+		doc.key2.subkey1 = "mutatedSubValue"
+		channel(doc.channels);
+	}`)
+
+	// Create first revision:
+	body := Body{"key1": "value1", "key2": Body{"subkey1": "subvalue1"}, "channels": []string{"public"}}
+	rev1id, _, err := db.Put("doc1", body)
+	assert.NoError(t, err, "Couldn't create document")
+
+	rev, err := db.GetRev("doc1", rev1id, false, nil)
+	revBody, err := rev.MutableBody()
+	require.NoError(t, err, "Couldn't get mutable body")
+	assert.Equal(t, "value1", revBody["key1"])
+	assert.Equal(t, map[string]interface{}{"subkey1": "subvalue1"}, revBody["key2"])
+	log.Printf("rev: %s", rev.BodyBytes)
+
+}
