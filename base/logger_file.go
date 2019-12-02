@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -152,12 +153,17 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 
 	ticker := time.NewTicker(time.Hour)
 	go func() {
+		defer func() {
+			if panicked := recover(); panicked != nil {
+				Warnf("Panic when deleting rotated log files: \n %s", panicked, debug.Stack())
+			}
+		}()
 		for {
 			select {
 			case <-ticker.C:
 				err := runLogDeletion(logFilePath, level.String(), int(float64(*lfc.Rotation.RotatedLogsSizeLimit)*rotatedLogsLowWatermarkMultiplier), *lfc.Rotation.RotatedLogsSizeLimit)
 				if err != nil {
-					Errorf("%s", err)
+					Warnf("%s", err)
 				}
 			}
 		}
