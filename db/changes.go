@@ -136,7 +136,7 @@ func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID s
 	if err != nil {
 		return err
 	}
-	entry.Doc, err = rev.As1xBytes(db, nil, nil, RevCacheOmitBody)
+	entry.Doc, err = rev.As1xBytes(db, nil, nil, false)
 	return err
 }
 
