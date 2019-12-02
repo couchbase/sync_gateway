@@ -76,13 +76,21 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.NoError(t, err, "Couldn't get document")
 
 	docRev, err := db.GetRev("doc1", "1-a", false, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, "1-a", docRev.RevID)
 
-	bodyBytes, err := base.InjectJSONProperties(docRev.BodyBytes, base.KVPair{Key: "test", Val: "abc"})
-	log.Printf("First bytes: %s", bodyBytes)
+	// Validate that mutations to the body don't affect the revcache value
+	_, err = base.InjectJSONProperties(docRev.BodyBytes, base.KVPair{Key: "modified", Val: "property"})
+	assert.NoError(t, err)
 
 	docRevAgain, err := db.GetRev("doc1", "1-a", false, nil)
-	secondBytes, err := base.InjectJSONProperties(docRevAgain.BodyBytes, base.KVPair{Key: "test2", Val: "abc"})
-	log.Printf("Second bytes: %s", secondBytes)
+	assert.NoError(t, err)
+	assert.Equal(t, "1-a", docRevAgain.RevID)
+
+	body, err = docRevAgain.MutableBody()
+	assert.NoError(t, err)
+	_, ok := body["modified"]
+	assert.False(t, ok)
 }
 
 // TestRevisionStorageConflictAndTombstones
