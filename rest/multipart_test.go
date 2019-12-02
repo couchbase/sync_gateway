@@ -3,13 +3,14 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
-	"github.com/couchbase/sync_gateway/db"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestWriteMultipartDocument(t *testing.T) {
