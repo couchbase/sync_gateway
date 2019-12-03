@@ -36,15 +36,21 @@ const (
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
-	response := map[string]interface{}{
-		"couchdb": "Welcome",
-		"version": base.LongVersionString,
-		"vendor":  db.Body{"name": base.ProductName, "version": base.VersionNumber},
-	}
+
+	admin := ""
 	if h.privs == adminPrivs {
-		response["ADMIN"] = true
+		admin = `"ADMIN":true`
 	}
-	h.writeJSON(response)
+
+	r := []byte(`{` +
+		admin +
+		`"couchdb":"Welcome",` +
+		`"vendor":{` +
+		`"name":"` + base.ProductName + `",` +
+		`"version":"` + base.VersionNumber +
+		`"},` +
+		`"version":"` + base.LongVersionString + `"}`)
+	h.writeRawJSON(r)
 	return nil
 }
 
@@ -58,7 +64,8 @@ func (h *handler) handleCompact() error {
 	if err != nil {
 		return err
 	}
-	h.writeJSON(db.Body{"revs": revsDeleted})
+
+	h.writeRawJSON([]byte(`{"revs":` + strconv.Itoa(revsDeleted) + `}`))
 	return nil
 }
 
@@ -67,7 +74,8 @@ func (h *handler) handleVacuum() error {
 	if err != nil {
 		return err
 	}
-	h.writeJSON(db.Body{"atts": attsDeleted})
+
+	h.writeRawJSON([]byte(`{"atts":` + strconv.Itoa(attsDeleted) + `}`))
 	return nil
 }
 
@@ -162,7 +170,8 @@ func (h *handler) handleResync() error {
 		if err != nil {
 			return err
 		}
-		h.writeJSON(db.Body{"changes": docsChanged})
+
+		h.writeRawJSON([]byte(`{"changes":` + strconv.Itoa(docsChanged) + `}`))
 	}
 	return nil
 }
@@ -249,10 +258,7 @@ func (h *handler) handleCreateTarget() error {
 
 func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 	// no-op. CouchDB's replicator sends this, so don't barf. Status must be 201.
-	h.writeJSONStatus(http.StatusCreated, db.Body{
-		"ok":                  true,
-		"instance_start_time": h.instanceStartTime(),
-	})
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"instance_start_time":`+strconv.FormatInt(h.instanceStartTime(), 10)+`,"ok":true}`))
 	return nil
 }
 
