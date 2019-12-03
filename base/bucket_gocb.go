@@ -364,10 +364,6 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 		err = pkgerrors.Wrapf(err, "Error during Get %s", UD(k).Redact())
 	}
 
-	if err != nil {
-		err = pkgerrors.WithStack(err)
-	}
-
 	return cas, err
 
 }
@@ -1774,10 +1770,6 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	err, cas := RetryLoopCas("Incr with key", worker, bucket.spec.RetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during Incr with key: %v", UD(k).Redact())
-	}
-
-	if err != nil {
-		err = pkgerrors.WithStack(err)
 	}
 
 	return cas, err
