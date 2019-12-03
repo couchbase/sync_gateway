@@ -3,7 +3,10 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"log"
+	"math/rand"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -125,6 +128,7 @@ Content-Disposition: attachment; filename=att.txt
 
 	response := rt.SendRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
+
 	response = rt.SendRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
 	assertStatus(t, response, http.StatusOK)
 
@@ -141,4 +145,29 @@ Content-Disposition: attachment; filename=att.txt
 	assert.Equal(t, float64(1), attachment["revpos"])
 	assert.True(t, attachment["stub"].(bool))
 	assert.Equal(t, "sha1-6RU4WkyC+YYARHkO052YJ/dw1Zk=", attachment["digest"])
+}
+
+func TestWriteJSONPart(t *testing.T) {
+	// Check JSON bodies more than than 300 bytes is getting GZip-encoded.
+	mockFakeBody := func() db.Body {
+		bytes := make([]byte, 139)
+		rand.Read(bytes)
+		value := fmt.Sprintf("%x", bytes)
+		return db.Body{"key": "foo", "value": value}
+	}
+
+	body := mockFakeBody()
+	log.Printf("body: %v", body)
+	buffer := &bytes.Buffer{}
+	writer := multipart.NewWriter(buffer)
+	bytes, _ := base.JSONMarshalCanonical(body)
+	log.Printf("len(bytes): %v", len(bytes))
+	assert.NoError(t, writeJSONPart(writer, "application/json", body, true))
+	assert.NoError(t, writeJSONPart(writer, "application/json", body, false))
+}
+
+func TestMd5DigestKey(t *testing.T) {
+	assert.Equal(t, "md5-rL0Y20zC+Fzt72VPzMSk2A==", md5DigestKey([]byte("foo")))
+	assert.Equal(t, "md5-N7UdGUp1E+RbVvZSTy1R8g==", md5DigestKey([]byte("bar")))
+	assert.Equal(t, "md5-xWvVSA9uVBPLYqCtlmZhOg==", md5DigestKey([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}))
 }
