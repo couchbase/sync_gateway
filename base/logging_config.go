@@ -19,10 +19,10 @@ const (
 	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
 	// buffer and collate, before flushing the buffer to the output.
 	defaultConsoleLoggerCollateBufferSize = 10
-	defaultFileLoggerCollateBufferSize    = 100
+	defaultFileLoggerCollateBufferSize    = 1000
 	// loggerCollateFlushTimeout is the amount of time to wait before
 	// we flush to the output if we don't fill the buffer.
-	loggerCollateFlushTimeout = 1 * time.Millisecond
+	loggerCollateFlushTimeout = 10 * time.Millisecond
 	// loggerCollateFlushDelay is the duration to wait to allow the log collation buffers to be flushed to outputs.
 	loggerCollateFlushDelay = 1 * time.Second
 )
