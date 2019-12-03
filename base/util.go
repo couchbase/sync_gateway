@@ -1209,7 +1209,7 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, kvPairs []KVPairBytes)
 
 // UseStdlibJSON if true, uses the stdlib JSON package.
 // This variable is not thread-safe, and should be set only once on startup.
-var UseStdlibJSON bool
+var UseStdlibJSON = true
 
 // JSONIterError is returned by the JSON wrapper functions, whenever jsoniter returns a non-nil error.
 type JSONIterError struct {
