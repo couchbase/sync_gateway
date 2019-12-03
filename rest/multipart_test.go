@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 )
@@ -101,4 +102,43 @@ func TestReadJSONFromMIME(t *testing.T) {
 	assert.NoError(t, err, "Should read JSON from MIME with gzip content encoding")
 	assert.Equal(t, "foo", body["key"])
 	assert.Equal(t, "bar", body["value"])
+}
+
+func TestReadMultipartDocument(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	reqHeaders := map[string]string{
+		"MIME-Version": "1.0",
+		"Content-Type": "multipart/related; boundary=123"}
+
+	bodyText := `--123
+Content-Type: application/json
+
+{"key":"foo","value":"bar","_attachments":{"att.txt": {"type": "text/plain", "length": 35, "follows": true, "digest":"sha1-6RU4WkyC+YYARHkO052YJ/dw1Zk="}}}
+--123  
+Content-Type: application/json
+Content-Disposition: attachment; filename=att.txt
+
+{"root":"Jacques' JSON attachment"}
+--123--`
+
+	response := rt.SendRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
+	assertStatus(t, response, http.StatusCreated)
+	response = rt.SendRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
+	assertStatus(t, response, http.StatusOK)
+
+	var body db.Body
+	assert.NoError(t, base.JSONUnmarshal(response.BodyBytes(), &body))
+	log.Printf("body: %v", body)
+	assert.Equal(t, "doc1", body["_id"])
+	assert.Equal(t, "foo", body["key"])
+	assert.Equal(t, "bar", body["value"])
+
+	attachments := body["_attachments"].(map[string]interface{})
+	attachment := attachments["att.txt"].(map[string]interface{})
+	assert.Equal(t, float64(35), attachment["length"])
+	assert.Equal(t, float64(1), attachment["revpos"])
+	assert.True(t, attachment["stub"].(bool))
+	assert.Equal(t, "sha1-6RU4WkyC+YYARHkO052YJ/dw1Zk=", attachment["digest"])
 }

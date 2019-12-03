@@ -202,7 +202,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 		}
 	}
 
-	// Subroutine to look up a following attachment given its digest. (I used to precompute a
+	// Subroutine to look up a following attachment given its digest. (I used to pre-compute a
 	// map from digest->name, which was faster, but that broke down if there were multiple
 	// attachments with the same contents! See #96)
 	findFollowingAttachment := func(withDigest string) (string, map[string]interface{}) {
