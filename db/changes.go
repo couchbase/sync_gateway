@@ -132,7 +132,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 }
 
 func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID string) (err error) {
-	rev, err := db.getRev(entry.ID, revID, 0, nil)
+	rev, err := db.getRev(entry.ID, revID, 0, nil, RevCacheIncludeBody)
 	if err != nil {
 		return err
 	}

@@ -555,6 +555,7 @@ func (doc *Document) newestRevID() string {
 // RevLoaderFunc and RevWriterFunc manage persistence of non-winning revision bodies that are stored outside the document.
 type RevLoaderFunc func(key string) ([]byte, error)
 
+// RevisionBodyLoader retrieves a non-winning revision body stored outside the document metadata
 func (db *DatabaseContext) RevisionBodyLoader(key string) ([]byte, error) {
 	body, _, err := db.Bucket.GetRaw(key)
 	return body, err

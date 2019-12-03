@@ -196,8 +196,7 @@ func (db *Database) GetRev(docID, revID string, history bool, attachmentsSince [
 	if history {
 		maxHistory = math.MaxInt32
 	}
-
-	return db.getRev(docID, revID, maxHistory, nil)
+	return db.getRev(docID, revID, maxHistory, nil, RevCacheOmitBody)
 }
 
 // Returns the body of the current revision of a document
@@ -217,7 +216,7 @@ func (db *Database) Get1xRevBody(docid, revid string, history bool, attachmentsS
 
 // Retrieves rev with request history specified as collection of revids (historyFrom)
 func (db *Database) Get1xRevBodyWithHistory(docid, revid string, maxHistory int, historyFrom []string, attachmentsSince []string, showExp bool) (Body, error) {
-	rev, err := db.getRev(docid, revid, maxHistory, historyFrom)
+	rev, err := db.getRev(docid, revid, maxHistory, historyFrom, RevCacheIncludeBody)
 	if err != nil {
 		return nil, err
 	}
@@ -244,14 +243,14 @@ func (db *Database) Get1xRevBodyWithHistory(docid, revid string, maxHistory int,
 // * attachmentsSince is nil to return no attachment bodies, otherwise a (possibly empty) list of
 //   revisions for which the client already has attachments and doesn't need bodies. Any attachment
 //   that hasn't changed since one of those revisions will be returned as a stub.
-func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string) (revision DocumentRevision, err error) {
+func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []string, includeBody bool) (revision DocumentRevision, err error) {
 	if revid != "" {
 		// Get a specific revision body and history from the revision cache
 		// (which will load them if necessary, by calling revCacheLoader, above)
-		revision, err = db.revisionCache.Get(docid, revid)
+		revision, err = db.revisionCache.Get(docid, revid, includeBody, RevCacheOmitDelta)
 	} else {
 		// No rev ID given, so load active revision
-		revision, err = db.revisionCache.GetActive(docid)
+		revision, err = db.revisionCache.GetActive(docid, includeBody)
 	}
 
 	if err != nil {
@@ -295,7 +294,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		return nil, nil, nil
 	}
 
-	fromRevision, err := db.revisionCache.Get(docID, fromRevID)
+	fromRevision, err := db.revisionCache.Get(docID, fromRevID, RevCacheOmitBody, RevCacheIncludeDelta)
 
 	// If both body and delta are not available for fromRevId, the delta can't be generated
 	if fromRevision.BodyBytes == nil && fromRevision.Delta == nil {
@@ -324,7 +323,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	if fromRevision.BodyBytes != nil {
 
 		db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
-		toRevision, err := db.revisionCache.Get(docID, toRevID)
+		toRevision, err := db.revisionCache.Get(docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1427,14 +1426,15 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 		revChannels := doc.History[newRevID].Channels
 		documentRevision := DocumentRevision{
-			DocID:       docid,
-			RevID:       newRevID,
-			BodyBytes:   storedDocBytes,
-			History:     encodeRevisions(history),
-			Channels:    revChannels,
-			Attachments: doc.Attachments,
-			Expiry:      doc.Expiry,
-			Deleted:     doc.History[newRevID].Deleted,
+			DocID:            docid,
+			RevID:            newRevID,
+			BodyBytes:        storedDocBytes,
+			History:          encodeRevisions(history),
+			Channels:         revChannels,
+			Attachments:      doc.Attachments,
+			Expiry:           doc.Expiry,
+			Deleted:          doc.History[newRevID].Deleted,
+			_shallowCopyBody: storedDoc.Body(),
 		}
 		db.revisionCache.Put(documentRevision)
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
