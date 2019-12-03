@@ -280,25 +280,25 @@ func lastComponent(path string) string {
 
 // This provides an io.Writer interface around the base.Infof API
 type LoggerWriter struct {
-	LogKey       LogKey        // The log key to log to, eg, KeyHTTP
-	SerialNumber uint64        // The request ID
-	Request      *http.Request // The request
-	QueryValues  url.Values    // A cached copy of the URL query values
+	LogKey                LogKey        // The log key to log to, eg, KeyHTTP
+	FormattedSerialNumber string        // The request ID
+	Request               *http.Request // The request
+	QueryValues           url.Values    // A cached copy of the URL query values
 }
 
 // Write() method to satisfy the io.Writer interface
 func (lw *LoggerWriter) Write(p []byte) (n int, err error) {
-	Infof(lw.LogKey, " #%03d: %s %s %s", lw.SerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request, &lw.QueryValues), string(p))
+	Infof(lw.LogKey, " %s: %s %s %s", lw.FormattedSerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request, &lw.QueryValues), string(p))
 	return len(p), nil
 }
 
 // Create a new LoggerWriter
-func NewLoggerWriter(logKey LogKey, serialNumber uint64, req *http.Request, queryValues url.Values) *LoggerWriter {
+func NewLoggerWriter(logKey LogKey, formattedSerialNumber string, req *http.Request, queryValues url.Values) *LoggerWriter {
 	return &LoggerWriter{
-		LogKey:       logKey,
-		SerialNumber: serialNumber,
-		Request:      req,
-		QueryValues:  queryValues,
+		LogKey:                logKey,
+		FormattedSerialNumber: formattedSerialNumber,
+		Request:               req,
+		QueryValues:           queryValues,
 	}
 }
 

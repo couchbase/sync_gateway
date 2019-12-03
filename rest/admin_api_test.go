@@ -1821,11 +1821,6 @@ func TestHandleCreateDB(t *testing.T) {
 	reqBodyJson := `"server":"walrus:","pool":"liverpool","bucket":"albums","kv_tls_port":11207`
 	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
 	assertStatus(t, resp, http.StatusBadRequest)
-
-	// Simulate connection refused error by providing unknown server URL.
-	reqBodyJson = `{"server":"http://unknown:8091","pool":"liverpool","bucket":"photos"}`
-	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
-	assertStatus(t, resp, http.StatusBadGateway)
 }
 
 func TestHandleDBConfig(t *testing.T) {

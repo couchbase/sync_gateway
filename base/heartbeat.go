@@ -74,8 +74,8 @@ type couchbaseHeartBeater struct {
 	heartbeatCheckCloser chan struct{} // break out of heartbeat checker goroutine
 	sendCount            int           // Monitoring stat - number of heartbeats sent
 	checkCount           int           // Monitoring stat - number of checks issued
-	sendActive           bool          // Monitoring state of send goroutine
-	checkActive          bool          // Monitoring state of check goroutine
+	sendActive           AtomicBool    // Monitoring state of send goroutine
+	checkActive          AtomicBool    // Monitoring state of check goroutine
 }
 
 // Create a new CouchbaseHeartbeater, passing in an authenticated bucket connection,
@@ -122,8 +122,9 @@ func (h *couchbaseHeartBeater) StartSendingHeartbeats(intervalSeconds int) error
 	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
 
 	go func() {
-		defer func() { h.sendActive = false }()
-		h.sendActive = true
+		defer FatalPanicHandler()
+		defer func() { h.sendActive.Set(false) }()
+		h.sendActive.Set(true)
 		for {
 			select {
 			case _ = <-h.heartbeatSendCloser:
@@ -147,7 +148,7 @@ func (h *couchbaseHeartBeater) Stop() {
 
 	maxWaitTimeMs := 1000
 	waitTimeMs := 0
-	for h.sendActive || h.checkActive {
+	for h.sendActive.IsTrue() || h.checkActive.IsTrue() {
 		waitTimeMs += 10
 		if waitTimeMs > maxWaitTimeMs {
 			Warnf("couchbaseHeartBeater didn't complete Stop() within expected elapsed time")
@@ -175,8 +176,9 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 	ticker := time.NewTicker(time.Duration(staleThresholdMs) * time.Millisecond)
 
 	go func() {
-		defer func() { h.checkActive = false }()
-		h.checkActive = true
+		defer FatalPanicHandler()
+		defer func() { h.checkActive.Set(false) }()
+		h.checkActive.Set(true)
 		for {
 			select {
 			case _ = <-h.heartbeatCheckCloser:
@@ -553,6 +555,7 @@ func (ch *cbgtNodeListHandler) subscribeNodeChanges() error {
 	cfgEvents := make(chan cbgt.CfgEvent)
 	ch.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
 	go func() {
+		defer FatalPanicHandler()
 		for {
 			select {
 			case <-cfgEvents:
