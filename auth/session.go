@@ -118,7 +118,10 @@ func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie 
 	if cookie == nil {
 		return nil
 	}
-	auth.bucket.Delete(DocIDForSession(cookie.Value))
+
+	if err := auth.bucket.Delete(DocIDForSession(cookie.Value)); err != nil {
+		base.Debugf(base.KeyAuth, "Error while deleting session for cookie %s", base.UD(cookie.Value))
+	}
 
 	newCookie := *cookie
 	newCookie.Value = ""

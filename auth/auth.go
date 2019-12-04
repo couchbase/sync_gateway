@@ -12,13 +12,12 @@ package auth
 import (
 	"fmt"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/crypto/bcrypt"
 )
 
 /** Manages user authentication for a database. */
@@ -395,7 +394,9 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 func (auth *Authenticator) Delete(p Principal) error {
 	if user, ok := p.(User); ok {
 		if user.Email() != "" {
-			auth.bucket.Delete(docIDForUserEmail(user.Email()))
+			if err := auth.bucket.Delete(docIDForUserEmail(user.Email())); err != nil {
+				return err
+			}
 		}
 	}
 	return auth.bucket.Delete(p.DocID())

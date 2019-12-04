@@ -485,7 +485,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 	email := "foo@bar.org"
 
 	// Modify the bcrypt cost to test rehashPassword properly below
-	SetBcryptCost(5)
+	_ = SetBcryptCost(5)
 
 	// Create user
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -502,7 +502,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 		t.Errorf("Error retrieving user: %v", getErr)
 	}
 
-	SetBcryptCost(bcryptDefaultCost)
+	_ = SetBcryptCost(bcryptDefaultCost)
 	// Reset bcryptCostChanged state after test runs
 	defer func() {
 		bcryptCostChanged = false
