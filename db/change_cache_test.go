@@ -88,46 +88,39 @@ func TestSkippedSequenceList(t *testing.T) {
 
 	skipList := NewSkippedSequenceList()
 	//Push values
-	skipList.Push(&SkippedSequence{4, time.Now()})
-	skipList.Push(&SkippedSequence{7, time.Now()})
-	skipList.Push(&SkippedSequence{8, time.Now()})
-	skipList.Push(&SkippedSequence{12, time.Now()})
-	skipList.Push(&SkippedSequence{18, time.Now()})
-	goassert.True(t, verifySkippedSequences(skipList, []uint64{4, 7, 8, 12, 18}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{4, time.Now()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{7, time.Now()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{8, time.Now()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{12, time.Now()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{18, time.Now()}))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{4, 7, 8, 12, 18}))
 
 	// Retrieval of low value
-	goassert.Equals(t, skipList.getOldest(), uint64(4))
+	assert.Equal(t, uint64(4), skipList.getOldest())
 
 	// Removal of first value
-	err := skipList.Remove(4)
-	goassert.True(t, err == nil)
-	goassert.True(t, verifySkippedSequences(skipList, []uint64{7, 8, 12, 18}))
+	assert.NoError(t, skipList.Remove(4))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 8, 12, 18}))
 
 	// Removal of middle values
-	err = skipList.Remove(8)
-	goassert.True(t, err == nil)
-	goassert.True(t, verifySkippedSequences(skipList, []uint64{7, 12, 18}))
+	assert.NoError(t, skipList.Remove(8))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 12, 18}))
 
-	err = skipList.Remove(12)
-	goassert.True(t, err == nil)
-	goassert.True(t, verifySkippedSequences(skipList, []uint64{7, 18}))
+	assert.NoError(t, skipList.Remove(12))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 18}))
 
 	// Removal of last value
-	err = skipList.Remove(18)
-	goassert.True(t, err == nil)
-	goassert.True(t, verifySkippedSequences(skipList, []uint64{7}))
+	assert.NoError(t, skipList.Remove(18))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7}))
 
 	// Removal of non-existent returns error
-	err = skipList.Remove(25)
-	goassert.True(t, err != nil)
-	goassert.True(t, verifySkippedSequences(skipList, []uint64{7}))
+	assert.Error(t, skipList.Remove(25))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7}))
 
 	// Add an out-of-sequence entry (make sure bad sequencing doesn't throw us into an infinite loop)
-	err = skipList.Push(&SkippedSequence{6, time.Now()})
-	goassert.True(t, err != nil)
-	skipList.Push(&SkippedSequence{9, time.Now()})
-	goassert.True(t, err != nil)
-	goassert.True(t, verifySkippedSequences(skipList, []uint64{7, 9}))
+	assert.Error(t, skipList.Push(&SkippedSequence{6, time.Now()}))
+	assert.NoError(t, skipList.Push(&SkippedSequence{9, time.Now()}))
+	assert.True(t, verifySkippedSequences(skipList, []uint64{7, 9}))
 }
 
 func TestLateSequenceHandling(t *testing.T) {
@@ -270,7 +263,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	require.NotNil(t, authenticator, "db.Authenticator() returned nil")
 	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new user")
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Start continuous changes feed
 	var options ChangesOptions
@@ -446,7 +439,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	}
 
 	// Wait for everyone to be caught up
-	db.WaitForCaughtUp(caughtUpStart + int64(100))
+	_ = db.WaitForCaughtUp(caughtUpStart + int64(100))
 	log.Printf("Everyone is caught up")
 
 	// Write sequence 1 to all channels, wait for it on feed
@@ -459,7 +452,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	log.Printf("Everyone's seq 1 arrived")
 
 	// Wait for everyone to be caught up again
-	db.WaitForCaughtUp(caughtUpStart + int64(100))
+	_ = db.WaitForCaughtUp(caughtUpStart + int64(100))
 
 	// Write sequence 3 to all channels, wait for it on feed
 	WriteDirect(db, channelSet, 3)
@@ -472,7 +465,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	log.Printf("Everyone's seq 2 arrived")
 
 	// Wait for everyone to be caught up again
-	db.WaitForCaughtUp(caughtUpStart + int64(100))
+	_ = db.WaitForCaughtUp(caughtUpStart + int64(100))
 
 	// Close the terminator
 	close(terminator)
@@ -518,7 +511,7 @@ func WriteDirectWithKey(db *Database, key string, channelArray []string, sequenc
 		Channels:   chanMap,
 		TimeSaved:  time.Now(),
 	}
-	db.Bucket.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
+	_, _ = db.Bucket.Add(key, 0, Body{base.SyncPropertyName: syncData, "key": key})
 }
 
 // Create a document directly to the bucket with specific _sync metadata - used for
@@ -548,7 +541,7 @@ func WriteDirectWithChannelGrant(db *Database, channelArray []string, sequence u
 		Channels:   chanMap,
 		Access:     accessMap,
 	}
-	db.Bucket.Add(docId, 0, Body{base.SyncPropertyName: syncData, "key": docId})
+	_, _ = db.Bucket.Add(docId, 0, Body{base.SyncPropertyName: syncData, "key": docId})
 }
 
 // Test notification when buffered entries are processed after a user doc arrives.
@@ -607,7 +600,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 being delayed - write 1,2,4,5
 	WriteDirect(db, []string{"ABC", "NBC"}, 1)
@@ -674,7 +667,7 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "CBS"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
 	WriteDirect(db, []string{"ABC", "NBC"}, 1)
@@ -700,14 +693,14 @@ func TestContinuousChangesBackfill(t *testing.T) {
 	// Write some more docs
 	WriteDirect(db, []string{"CBS"}, 3)
 	WriteDirect(db, []string{"PBS"}, 12)
-	db.changeCache.waitForSequence(context.TODO(), 12, base.DefaultWaitForSequence)
+	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 12, base.DefaultWaitForSequence))
 
 	// Test multiple backfill in single changes loop iteration
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 4)
 	WriteDirect(db, []string{"ABC", "NBC", "PBS", "CBS"}, 7)
 	WriteDirect(db, []string{"ABC", "PBS"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 13)
-	db.changeCache.waitForSequence(context.TODO(), 13, base.DefaultWaitForSequence)
+	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 13, base.DefaultWaitForSequence))
 	time.Sleep(50 * time.Millisecond)
 
 	// We can't guarantee how compound sequences will be generated in a multi-core test - will
@@ -777,7 +770,7 @@ func TestLowSequenceHandling(t *testing.T) {
 	assert.True(t, authenticator != nil, "db.Authenticator() returned nil")
 	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
 	WriteDirect(db, []string{"ABC", "NBC"}, 1)
@@ -842,7 +835,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 	authenticator := db.Authenticator()
 	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err, fmt.Sprintf("db.Authenticator() returned err: %v", err))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
 	WriteDirect(db, []string{"ABC"}, 1)
@@ -899,7 +892,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
 	WriteDirect(db, []string{"ABC"}, 1)
@@ -1014,7 +1007,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 4, base.DefaultWaitForSequence))
 
 	// Flush the cache, to ensure view query on subsequent changes requests
-	db.FlushChannelCache()
+	require.NoError(t, db.FlushChannelCache())
 
 	// Issue two one-shot since=0 changes request.  Both will attempt a view query.  The first will block based on queryWg,
 	// the second will block waiting for the view lock
@@ -1102,7 +1095,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	assert.True(t, authenticator != nil, "db.Authenticator() returned nil")
 	user, err := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
 	assert.NoError(t, err, fmt.Sprintf("Error creating new user: %v", err))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 and 4 being delayed - write 1,2,5,6
 	WriteDirect(db, []string{"ABC", "NBC"}, 1)
@@ -1152,7 +1145,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 	WriteDirect(db, []string{"ABC", "NBC"}, 8)
 	WriteDirect(db, []string{"ABC", "PBS"}, 9)
 	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 9, base.DefaultWaitForSequence))
-	appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequence)
+	require.NoError(t, appendFromFeed(&changes, feed, 5, base.DefaultWaitForSequence))
 	goassert.True(t, verifyChangesSequencesIgnoreOrder(changes, []uint64{1, 2, 5, 6, 3, 4, 7, 8, 9}))
 
 }
@@ -1193,7 +1186,7 @@ func TestChannelRace(t *testing.T) {
 	// Create a user with access to channels "Odd", "Even"
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Even", "Odd"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Write initial sequences
 	WriteDirect(db, []string{"Odd"}, 1)
@@ -1310,15 +1303,15 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 	// Artificially add skipped sequences to queue, and back date skipped entry by 2 hours to trigger attempted view retrieval during Clean call
 	// Sequences '3', '7', '10', '13' and '14' exist, should be found.
-	changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqs.Push(&SkippedSequence{6, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqs.Push(&SkippedSequence{7, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqs.Push(&SkippedSequence{10, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqs.Push(&SkippedSequence{11, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqs.Push(&SkippedSequence{12, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqs.Push(&SkippedSequence{13, time.Now().Add(time.Duration(time.Hour * -2))})
-	changeCache.skippedSeqs.Push(&SkippedSequence{14, time.Now().Add(time.Duration(time.Hour * -2))})
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{3, time.Now().Add(time.Duration(time.Hour * -2))}))
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{5, time.Now().Add(time.Duration(time.Hour * -2))}))
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{6, time.Now().Add(time.Duration(time.Hour * -2))}))
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{7, time.Now().Add(time.Duration(time.Hour * -2))}))
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{10, time.Now().Add(time.Duration(time.Hour * -2))}))
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{11, time.Now().Add(time.Duration(time.Hour * -2))}))
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{12, time.Now().Add(time.Duration(time.Hour * -2))}))
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{13, time.Now().Add(time.Duration(time.Hour * -2))}))
+	require.NoError(t, changeCache.skippedSeqs.Push(&SkippedSequence{14, time.Now().Add(time.Duration(time.Hour * -2))}))
 	cleanErr := changeCache.CleanSkippedSequenceQueue(db.Ctx)
 	assert.NoError(t, cleanErr, "CleanSkippedSequenceQueue returned error")
 
@@ -1403,7 +1396,7 @@ func TestChannelCacheSize(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Write 750 docs to channel ABC
 	for i := 1; i <= 750; i++ {
@@ -1891,7 +1884,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 	// Create a user with access to some channels
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC", "PBS", "NBC", "TBS"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	// Simulate seq 3 + 4 being delayed - write 1,2,5,6
 	WriteDirect(db, []string{"ABC", "NBC"}, 1)

@@ -240,7 +240,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 
 	docBody := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
 	var body Body
-	base.JSONUnmarshal([]byte(docBody), &body)
+	require.NoError(t, base.JSONUnmarshal([]byte(docBody), &body))
 	_, _, err = db.Put("doc1", unjson(docBody))
 	log.Printf("Got error on put doc:%v", err)
 	db.Bucket.Dump()

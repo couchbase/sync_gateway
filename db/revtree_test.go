@@ -157,7 +157,7 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 					Parent:  parentRevId,
 					Deleted: true,
 				}
-				revTree.addRevision("testdoc", revInfo)
+				_ = revTree.addRevision("testdoc", revInfo)
 
 			}
 
@@ -265,7 +265,7 @@ func TestRevTreeAddRevision(t *testing.T) {
 	tempmap := testmap.copy()
 	goassert.DeepEquals(t, tempmap, testmap)
 
-	tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	_ = tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	goassert.Equals(t, tempmap.getParent("4-four"), "3-three")
 }
 
@@ -315,12 +315,12 @@ func TestRevTreeWinningRev(t *testing.T) {
 	goassert.Equals(t, winner, "3-three")
 	goassert.True(t, branched)
 	goassert.True(t, conflict)
-	tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	_ = tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
 	winner, branched, conflict = tempmap.winningRevision()
 	goassert.Equals(t, winner, "4-four")
 	goassert.True(t, branched)
 	goassert.True(t, conflict)
-	tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
+	_ = tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
 	winner, branched, conflict = tempmap.winningRevision()
 	goassert.Equals(t, winner, "3-drei")
 	goassert.True(t, branched)
@@ -648,7 +648,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
 
 	if dumpRevTreeDotFiles {
-		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		_ = ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
 	maxDepth := uint32(7)
@@ -656,7 +656,7 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	revTree.pruneRevisions(maxDepth, "")
 
 	if dumpRevTreeDotFiles {
-		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		_ = ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
 	winningBranchStartRev := fmt.Sprintf("%d-%s", 16, "winning")
@@ -670,13 +670,13 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	)
 
 	if dumpRevTreeDotFiles {
-		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		_ = ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
 	revTree.pruneRevisions(maxDepth, "")
 
 	if dumpRevTreeDotFiles {
-		ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		_ = ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
 	}
 
 	// Make sure the winning branch is pruned down to maxDepth, even with the disconnected rev tree
@@ -935,7 +935,7 @@ func TestRevisionPruningLoop(t *testing.T) {
 func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
 
 	revBody := []byte(`{"foo":"bar"}`)
-	revTree.addRevision("foobar", RevInfo{
+	_ = revTree.addRevision("foobar", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
@@ -948,7 +948,7 @@ func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bo
 }
 
 func addPruneAndGet(revTree RevTree, revID string, parentRevID string, revBody []byte, revsLimit uint32, tombstone bool) (numPruned int, err error) {
-	revTree.addRevision("doc", RevInfo{
+	_ = revTree.addRevision("doc", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
@@ -1049,7 +1049,7 @@ func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest
 			Deleted:  false,
 			Channels: channels,
 		}
-		revTree.addRevision("testdoc", revInfo)
+		_ = revTree.addRevision("testdoc", revInfo)
 
 		generation += 1
 

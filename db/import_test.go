@@ -60,7 +60,7 @@ func TestMigrateMetadata(t *testing.T) {
 		exp := uint32(laterSyncMetaExpiry.Unix())
 		return bodyBytes, &exp, nil
 	}
-	testBucket.Bucket.Update(
+	_, _ = testBucket.Bucket.Update(
 		key,
 		uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 		updateCallbackFn,
@@ -156,7 +156,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 				exp := uint32(laterSyncMetaExpiry.Unix())
 				return bodyBytes, &exp, nil
 			}
-			testBucket.Bucket.Update(
+			_, _ = testBucket.Bucket.Update(
 				key,
 				uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 				updateCallbackFn,
