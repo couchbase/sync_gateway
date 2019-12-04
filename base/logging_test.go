@@ -129,8 +129,11 @@ func BenchmarkLogRotation(b *testing.B) {
 		b.Run(fmt.Sprintf("rotate:%t-compress:%t-bytes:%v", test.rotate, test.compress, test.numBytes), func(bm *testing.B) {
 			logPath := filepath.Join(os.TempDir(), "benchmark-logrotate")
 			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
-			defer logger.Close()
-			defer os.RemoveAll(logPath)
+
+			defer func() {
+				_ = logger.Close()
+				_ = os.RemoveAll(logPath)
+			}()
 
 			data := make([]byte, test.numBytes)
 			_, err := rand.Read(data)

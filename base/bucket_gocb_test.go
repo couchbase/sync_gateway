@@ -809,7 +809,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	// Simulate an SDK update
 	updatedVal := make(map[string]interface{})
 	updatedVal["sdk_field"] = "abc"
-	bucket.Set(key, 0, updatedVal)
+	require.NoError(t, bucket.Set(key, 0, updatedVal))
 
 	// Attempt to update with the previous CAS
 	val["sg_field"] = "sg_value_mod"
@@ -1197,7 +1197,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		bucket.Delete(key)
+		_ = bucket.Delete(key)
 	}
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
@@ -1252,7 +1252,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		bucket.Delete(key)
+		_ = bucket.Delete(key)
 	}
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
@@ -1325,7 +1325,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		bucket.DeleteWithXattr(key, xattrName)
+		_ = bucket.DeleteWithXattr(key, xattrName)
 	}
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
@@ -1651,7 +1651,7 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
 	}
 	// Delete the doc
-	bucket.Delete(key3)
+	_ = bucket.Delete(key3)
 
 	// 4. No xattr, no document
 
@@ -1869,7 +1869,7 @@ func TestGetXattr(t *testing.T) {
 
 	//Get Xattr From Tombstoned Doc With Existing Xattr
 	cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, cas, val2, xattrVal2)
-	bucket.Remove(key2, cas)
+	_, _ = bucket.Remove(key2, cas)
 	_, err = testBucket.GetXattr(key2, SyncXattrName, &response)
 	assert.NoError(t, err)
 
@@ -1880,7 +1880,7 @@ func TestGetXattr(t *testing.T) {
 
 	////Get Xattr From Deleted Doc With Deleted Xattr -> SubDocMultiPathFailureDeleted
 	cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
-	bucket.Remove(key3, cas)
+	_, _ = bucket.Remove(key3, cas)
 	_, err = testBucket.GetXattr(key3, xattrName3, &response)
 	assert.Error(t, err)
 	assert.Equal(t, gocbcore.ErrKeyNotFound, err)

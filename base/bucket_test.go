@@ -357,7 +357,7 @@ func mockCertificatesAndKeys(t *testing.T) {
 func saveAsKeyFile(t *testing.T, filename string, key *ecdsa.PrivateKey) {
 	file, err := os.Create(filename)
 	assert.NoError(t, err)
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	b, err := x509.MarshalECPrivateKey(key)
 	assert.NoError(t, err)
 	err = pem.Encode(file, &pem.Block{Type: "EC PRIVATE KEY", Bytes: b})

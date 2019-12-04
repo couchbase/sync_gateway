@@ -221,7 +221,12 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			Warnf("Error while closing response body from: %s error: %v", UD(uri), err)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusForbidden {
 		Warnf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
@@ -249,7 +254,12 @@ func (bucket *CouchbaseBucketGoCB) GetServerUUID() (uuid string, err error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			Warnf("Error while closing response body from: /pools error: %v", err)
+		}
+	}()
 
 	respBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -279,7 +289,12 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			Warnf("Error while closing response body from: %s error: %v", UD(uri), err)
+		}
+	}()
 
 	respBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -1319,7 +1334,10 @@ func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interf
 
 		switch lookupErr {
 		case nil:
-			res.Content(xattrKey, xv)
+			xattrContErr := res.Content(xattrKey, xv)
+			if xattrContErr != nil {
+				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContErr)
+			}
 			cas := uint64(res.Cas())
 			return false, err, cas
 		case gocbcore.ErrSubDocBadMulti:
@@ -2325,7 +2343,12 @@ func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) 
 	if err != nil {
 		return -1, err
 	}
-	defer resp.Body.Close()
+
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			Warnf("Error while closing response body from: %s error: %v", UD(uri), err)
+		}
+	}()
 
 	if resp.StatusCode != 200 {
 		_, err := ioutil.ReadAll(resp.Body)
@@ -2369,7 +2392,7 @@ func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint
 		expiry = exp
 	}
 
-	agent.GetMeta([]byte(k), getMetaCallback)
+	_, _ = agent.GetMeta([]byte(k), getMetaCallback)
 
 	wg.Wait()
 

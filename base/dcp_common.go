@@ -164,7 +164,7 @@ func (c *DCPCommon) rollback(vbucketId uint16, rollbackSeq uint64) error {
 	WarnfCtx(c.loggingCtx, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, 0, false)
-	c.setMetaData(vbucketId, nil)
+	_ = c.setMetaData(vbucketId, nil)
 
 	return nil
 }
@@ -174,7 +174,7 @@ func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq
 	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, rollbackSeq, false)
-	c.setMetaData(vbucketId, rollbackMetaData)
+	_ = c.setMetaData(vbucketId, rollbackMetaData)
 	return nil
 }
 
@@ -436,7 +436,7 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 	// Check if it's time to persist and log backfill progress
 	if time.Since(b.lastPersistTime) > kBackfillPersistInterval {
 		b.lastPersistTime = time.Now()
-		b.persistBackfillSequences(bucket, currentSequences)
+		_ = b.persistBackfillSequences(bucket, currentSequences)
 		b.logBackfillProgress()
 	}
 
@@ -444,7 +444,7 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 	if b.receivedSequences >= b.expectedSequences {
 		Infof(KeyDCP, "Backfill complete")
 		b.active = false
-		b.purgeBackfillSequences(bucket)
+		_ = b.purgeBackfillSequences(bucket)
 	}
 }
 

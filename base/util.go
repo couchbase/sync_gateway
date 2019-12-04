@@ -961,7 +961,7 @@ func FindPrimaryAddr() (net.IP, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP, nil
