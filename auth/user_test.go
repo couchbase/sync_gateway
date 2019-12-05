@@ -60,7 +60,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	bucket := gTestBucket.Bucket
 
 	// Reset bcrypt cost after test
-	defer SetBcryptCost(bcryptDefaultCost)
+	defer func() { _ = SetBcryptCost(bcryptDefaultCost) }()
 
 	// Create user
 	auth := NewAuthenticator(bucket, nil)

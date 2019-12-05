@@ -61,7 +61,7 @@ func verifyFacebook(fbUrl, accessToken string) (*FacebookResponse, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if res.StatusCode >= 300 {
 		return nil, base.HTTPErrorf(http.StatusUnauthorized,

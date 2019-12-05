@@ -1309,7 +1309,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 	// Create a role with no channels assigned to it
 	authenticator := rt.ServerContext().Database("db").Authenticator()
 	role, err := authenticator.NewRole("role1", nil)
-	authenticator.Save(role)
+	assert.NoError(t, authenticator.Save(role))
 
 	// Create a user with an explicit role grant for role1
 	user, err := authenticator.NewUser("user1", "letmein", nil)
@@ -1841,7 +1841,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 	// Create a user:
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "Cinemax"))
-	a.Save(alice)
+	assert.NoError(t, a.Save(alice))
 
 	// Get a single doc the user has access to:
 	request, _ := http.NewRequest("GET", "/db/doc3", nil)
@@ -2036,9 +2036,9 @@ func TestChannelAccessChanges(t *testing.T) {
 
 	// Create users:
 	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "zero"))
-	a.Save(alice)
+	assert.NoError(t, a.Save(alice))
 	zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf(t, "zero"))
-	a.Save(zegpold)
+	assert.NoError(t, a.Save(zegpold))
 
 	// Create some docs that give users access:
 	response := rt.Send(request("PUT", "/db/alpha", `{"owner":"alice"}`))
@@ -2394,10 +2394,9 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.Equal(t, nil, err)
+	assert.NoError(t, err)
 	guest.SetDisabled(false)
-	err = a.Save(guest)
-	assert.Equal(t, nil, err)
+	assert.NoError(t, a.Save(guest))
 
 	// Create user1
 	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"email":"user1@couchbase.com", "password":"letmein", "admin_channels":["alpha"]}`)
@@ -2553,12 +2552,12 @@ func TestRoleAccessChanges(t *testing.T) {
 	assertStatus(t, response, 201)
 	/*
 		alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "alpha"))
-		a.Save(alice)
+		assert.NoError(t, a.Save(alice))
 		zegpold, err := a.NewUser("zegpold", "letmein", channels.SetOf(t, "beta"))
-		a.Save(zegpold)
+		assert.NoError(t, a.Save(zegpold))
 
 		hipster, err := a.NewRole("hipster", channels.SetOf(t, "gamma"))
-		a.Save(hipster)
+		assert.NoError(t, a.Save(hipster))
 	*/
 
 	// Create some docs in the channels:
@@ -2922,7 +2921,7 @@ func TestOldDocHandling(t *testing.T) {
 
 	// Create user:
 	frank, err := a.NewUser("charles", "1234", nil)
-	a.Save(frank)
+	assert.NoError(t, a.Save(frank))
 
 	// Create a doc:
 	response := rt.Send(request("PUT", "/db/testOldDocId", `{"foo":"bar"}`))
@@ -2988,7 +2987,7 @@ func TestStarAccess(t *testing.T) {
 	// Part 1 - Tests for user with single channel access:
 	//
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "books"))
-	a.Save(bernard)
+	assert.NoError(t, a.Save(bernard))
 
 	// GET /db/docid - basic test for channel user has
 	response := rt.Send(requestByUser("GET", "/db/doc1", "", "bernard"))
@@ -3063,7 +3062,7 @@ func TestStarAccess(t *testing.T) {
 
 	// Create a user:
 	fran, err := a.NewUser("fran", "letmein", channels.SetOf(t, "*"))
-	a.Save(fran)
+	assert.NoError(t, a.Save(fran))
 
 	// GET /db/docid - basic test for doc that has channel
 	response = rt.Send(requestByUser("GET", "/db/doc1", "", "fran"))
@@ -3110,7 +3109,7 @@ func TestStarAccess(t *testing.T) {
 	//
 	// Create a user:
 	manny, err := a.NewUser("manny", "letmein", nil)
-	a.Save(manny)
+	assert.NoError(t, a.Save(manny))
 
 	// GET /db/docid - basic test for doc that has channel
 	response = rt.Send(requestByUser("GET", "/db/doc1", "", "manny"))
@@ -3722,7 +3721,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// Create user:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS"))
 	goassert.True(t, err == nil)
-	a.Save(bernard)
+	assert.NoError(t, a.Save(bernard))
 
 	// Issue is only reproducible when the wait counter is zero for all requested channels (including the user channel) - the count=0
 	// triggers early termination of the changes loop.  This can only be reproduced if the feed is restarted after the user is created -
@@ -3864,7 +3863,7 @@ func TestDocIDFilterResurrection(t *testing.T) {
 	a := rt.ServerContext().Database("db").Authenticator()
 	jacques, err := a.NewUser("jacques", "letmein", channels.SetOf(t, "A", "B"))
 	assert.NoError(t, err)
-	a.Save(jacques)
+	assert.NoError(t, a.Save(jacques))
 
 	//Create Doc
 	response := rt.SendRequest("PUT", "/db/doc1", `{"channels": ["A"]}`)
