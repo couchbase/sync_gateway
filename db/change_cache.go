@@ -450,7 +450,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		}
 	}
 
-	if syncData.Sequence <= c.getInitialSequence() {
+	if syncData.Sequence <= c.initialSequence {
 		return // DCP is sending us an old value from before I started up; ignore it
 	}
 
@@ -491,10 +491,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		currentSequence = syncData.UnusedSequences[0]
 	}
 
-	if len(syncData.RecentSequences) > 0 {
-
+	if len(syncData.RecentSequences) > 1 {
+		nextSeq := c.getNextSequence()
 		for _, seq := range syncData.RecentSequences {
-			if seq >= c.getNextSequence() && seq < currentSequence {
+			if seq >= nextSeq && seq < currentSequence {
 				base.Infof(base.KeyCache, "Received deduplicated #%d in recent_sequences property for (%q / %q)", seq, base.UD(docID), syncData.CurrentRev)
 				change := &LogEntry{
 					Sequence:     seq,
@@ -626,7 +626,7 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	}
 	sequence := princ.Sequence
 
-	if sequence <= c.getInitialSequence() {
+	if sequence <= c.initialSequence {
 		return // Tap is sending us an old value from before I started up; ignore it
 	}
 
@@ -832,14 +832,6 @@ func (c *changeCache) getNextSequence() (nextSequence uint64) {
 	nextSequence = c.nextSequence
 	c.lock.RUnlock()
 	return nextSequence
-}
-
-// Concurrent-safe get value of initialSequence
-func (c *changeCache) getInitialSequence() (initialSequence uint64) {
-	c.lock.RLock()
-	initialSequence = c.initialSequence
-	c.lock.RUnlock()
-	return initialSequence
 }
 
 //////// LOG PRIORITY QUEUE -- container/heap callbacks that should not be called directly.   Use heap.Init/Push/etc()
