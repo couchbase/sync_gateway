@@ -152,7 +152,7 @@ func TestXattrSGTombstone(t *testing.T) {
 	goassert.Equals(t, response.Code, 201)
 	log.Printf("insert response: %s", response.Body.Bytes())
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
@@ -160,7 +160,7 @@ func TestXattrSGTombstone(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
 	goassert.Equals(t, response.Code, 200)
 	log.Printf("delete response: %s", response.Body.Bytes())
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId = body["rev"].(string)
 
@@ -197,7 +197,7 @@ func TestXattrImportOnCasFailure(t *testing.T) {
 	goassert.Equals(t, response.Code, 201)
 	log.Printf("insert response: %s", response.Body.Bytes())
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["rev"], "1-111c27be37c17f18ae8fe9faa3bb4e0e")
 	revId := body["rev"].(string)
 
@@ -261,7 +261,7 @@ func TestXattrResurrectViaSG(t *testing.T) {
 	goassert.Equals(t, response.Code, 201)
 	log.Printf("insert response: %s", response.Body.Bytes())
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
@@ -269,14 +269,14 @@ func TestXattrResurrectViaSG(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
 	goassert.Equals(t, response.Code, 200)
 	log.Printf("delete response: %s", response.Body.Bytes())
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId = body["rev"].(string)
 
 	// 3. Recreate the doc through the SG (with different data)
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?rev=%s", key, revId), `{"channels":"ABC"}`)
 	goassert.Equals(t, response.Code, 201)
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	goassert.Equals(t, body["rev"], "3-70c113f08c6622cd87af68f4f60d12e3")
 
@@ -375,7 +375,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 	goassert.Equals(t, response.Code, 201)
 	log.Printf("insert response: %s", response.Body.Bytes())
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
@@ -391,7 +391,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
 	goassert.Equals(t, response.Code, 409)
 	log.Printf("delete response: %s", response.Body.Bytes())
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId = body["rev"].(string)
 
@@ -424,7 +424,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	goassert.Equals(t, response.Code, 201)
 	log.Printf("insert response: %s", response.Body.Bytes())
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId := body["rev"].(string)
 
@@ -436,7 +436,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", sdk_key), `{"channels":"ABC"}`)
 	goassert.Equals(t, response.Code, 201)
 	log.Printf("insert response: %s", response.Body.Bytes())
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 
 	// 2. Delete SDK_delete through the SDK
@@ -453,7 +453,7 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", key, revId), "")
 	goassert.Equals(t, response.Code, 200)
 	log.Printf("delete response: %s", response.Body.Bytes())
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	revId = body["rev"].(string)
 
@@ -592,7 +592,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	goassert.Equals(t, response.Code, 200)
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
 
@@ -613,7 +613,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
 	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
 	goassert.Equals(t, response.Code, 200)
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	newRevId := body[db.BodyRev].(string)
 	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
 	goassert.Equals(t, newRevId, revId)
@@ -649,7 +649,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	goassert.Equals(t, response.Code, 200)
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
 
@@ -671,7 +671,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// rev should have generation 2.
 	putResponse := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s?rev=%s", mobileKey, revId), `{"updated":true}`)
 	goassert.Equals(t, putResponse.Code, 201)
-	base.JSONUnmarshal(putResponse.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(putResponse.Body.Bytes(), &body))
 	log.Printf("Put response details: %s", putResponse.Body.Bytes())
 	newRevId, ok := body["rev"].(string)
 	assert.True(t, ok, "Unable to cast rev to string")
@@ -709,7 +709,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	goassert.Equals(t, response.Code, 200)
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
 
@@ -747,7 +747,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Get the doc again, validate rev hasn't changed
 	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
 	goassert.Equals(t, response.Code, 200)
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	newRevId := body[db.BodyRev].(string)
 	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
 	goassert.Equals(t, newRevId, revId)
@@ -867,7 +867,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
 	goassert.Equals(t, rawResponse.Code, 200)
 	var doc treeDoc
-	err = base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc)
+	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
 	goassert.Equals(t, len(doc.Meta.RevTree.BodyKeyMap), 3)
 	goassert.Equals(t, len(doc.Meta.RevTree.BodyMap), 0)
 
@@ -936,7 +936,7 @@ func TestMigrateTombstone(t *testing.T) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
 	goassert.Equals(t, rawResponse.Code, 200)
 	var doc treeDoc
-	err = base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc)
+	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
 	goassert.Equals(t, doc.Meta.CurrentRev, "2-6b1e1af9190829c1ceab6f1c8fb9fa3f")
 	goassert.Equals(t, doc.Meta.Sequence, uint64(5))
 
@@ -1007,7 +1007,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key+"?redact=false", "")
 	goassert.Equals(t, rawResponse.Code, 200)
 	var doc treeDoc
-	err = base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc)
+	assert.NoError(t, base.JSONUnmarshal(rawResponse.Body.Bytes(), &doc))
 	goassert.Equals(t, len(doc.Meta.RevTree.BodyKeyMap), 1)
 	goassert.Equals(t, len(doc.Meta.RevTree.BodyMap), 2)
 }
@@ -1151,7 +1151,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	_, err := bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
-	rt.WaitForSequence(5)
+	_ = rt.WaitForSequence(5)
 
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
 	response := rt.SendAdminRequest("PUT", "/db/"+key+"?rev=2-d", `{"updated":true}`)
@@ -1161,7 +1161,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
 	assert.Equal(t, 200, rawResponse.Code)
 	log.Printf("raw response:%s", rawResponse.Body.Bytes())
-	rt.WaitForSequence(6)
+	_ = rt.WaitForSequence(6)
 
 	// Validate non-xattr document doesn't get upgraded on attempted write
 	nonMobileKey := "TestUpgradeNoXattr"
@@ -1221,7 +1221,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	_, err := bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
-	rt.WaitForSequence(1)
+	_ = rt.WaitForSequence(1)
 
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
 	response := rt.SendAdminRequest("GET", "/db/_changes", "")
@@ -1858,7 +1858,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	goassert.Equals(t, response.Code, 200)
 	// Extract rev from response for comparison with second GET below
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	revId, ok := body[db.BodyRev].(string)
 	assert.True(t, ok, "No rev included in response")
 
@@ -1883,7 +1883,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
 	response = rt.SendAdminRequest("GET", "/db/"+mobileKey, "")
 	goassert.Equals(t, response.Code, 200)
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	newRevId := body[db.BodyRev].(string)
 	log.Printf("Retrieved via Sync Gateway after non-mobile update, revId:%v", newRevId)
 	goassert.Equals(t, newRevId, revId)

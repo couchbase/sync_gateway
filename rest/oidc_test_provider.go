@@ -120,7 +120,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	}
 
 	if bytes, err := base.JSONMarshal(config); err == nil {
-		h.response.Write(bytes)
+		_, _ = h.response.Write(bytes)
 	}
 
 	return nil
@@ -163,7 +163,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 	if t, err := t.Parse(login_html); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, err.Error())
 	} else {
-		t.Execute(h.response, p)
+		_ = t.Execute(h.response, p)
 	}
 
 	return nil
@@ -239,13 +239,13 @@ func (h *handler) handleOidcTestProviderCerts() error {
 
 	jwk := oidcPrivateKey.JWK()
 
-	h.response.Write([]byte("{\r\n\"keys\":[\r\n"))
+	_, _ = h.response.Write([]byte("{\r\n\"keys\":[\r\n"))
 
 	if bytes, err := jwk.MarshalJSON(); err == nil {
-		h.response.Write(bytes)
+		_, _ = h.response.Write(bytes)
 	}
 
-	h.response.Write([]byte("\r\n]\r\n}"))
+	_, _ = h.response.Write([]byte("\r\n]\r\n}"))
 
 	return nil
 }
