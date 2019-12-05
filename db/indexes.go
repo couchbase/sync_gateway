@@ -310,7 +310,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 
 	// Wait for newly built indexes to be online
 	for _, indexName := range deferredIndexes {
-		gocbBucket.WaitForIndexOnline(indexName)
+		_ = gocbBucket.WaitForIndexOnline(indexName)
 	}
 
 	// Wait for initial readiness queries to complete

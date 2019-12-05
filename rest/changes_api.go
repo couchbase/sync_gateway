@@ -395,7 +395,10 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					} else {
 						_, _ = h.response.Write([]byte(","))
 					}
-					encoder.Encode(entry)
+					err = encoder.Encode(entry)
+					if err != nil {
+						base.Debugf(base.KeyChanges, "Error encoding change feed ebtry: %v", err)
+					}
 					lastSeq = entry.Seq
 				}
 
@@ -451,7 +454,7 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
 	// is done by MultiChangesFeed prior to going into Wait mode)
 	if isOneShot {
-		send(nil)
+		_ = send(nil)
 	}
 	return err, forceClose
 }

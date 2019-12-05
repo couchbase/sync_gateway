@@ -219,7 +219,10 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
 		// body[BodyRev] = newRev
 		newDoc.RevID = newRev
-		doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+		err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+		if err != nil {
+			base.Infof(base.KeyImport, "Error adding new revision: %s, %v", newRev, err)
+		}
 
 		// If the previous revision body is available in the rev cache,
 		// make a temporary copy in the bucket for other nodes/clusters
@@ -289,7 +292,10 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	}
 
 	// Move any large revision bodies to external storage
-	doc.migrateRevisionBodies(db.Bucket)
+	err = doc.migrateRevisionBodies(db.Bucket)
+	if err != nil {
+		base.Infof(base.KeyMigrate, "Error migrating large revision bodies to external storage: %v", err)
+	}
 
 	// Persist the document in xattr format
 	value, xattrValue, marshalErr := doc.MarshalWithXattr()

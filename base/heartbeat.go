@@ -553,7 +553,10 @@ func NewCBGTNodeListHandler(cfg cbgt.Cfg) (*cbgtNodeListHandler, error) {
 func (ch *cbgtNodeListHandler) subscribeNodeChanges() error {
 
 	cfgEvents := make(chan cbgt.CfgEvent)
-	ch.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
+	err := ch.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
+	if err != nil {
+		Debugf(KeyDCP, "Error subscribing node changes: %v", err)
+	}
 	go func() {
 		defer FatalPanicHandler()
 		for {

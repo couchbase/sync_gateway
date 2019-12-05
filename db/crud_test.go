@@ -878,7 +878,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.Get1xRevBody("doc3", "1-a", false, nil)
+			_, _ = db.Get1xRevBody("doc3", "1-a", false, nil)
 		}
 	})
 }

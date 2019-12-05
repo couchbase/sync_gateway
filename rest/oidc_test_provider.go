@@ -464,7 +464,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl t
 	}
 
 	if bytes, err := base.JSONMarshal(tokenResponse); err == nil {
-		h.response.Write(bytes)
+		_, _ = h.response.Write(bytes)
 	}
 
 	return nil

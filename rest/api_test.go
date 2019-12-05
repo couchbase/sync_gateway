@@ -2044,7 +2044,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	response := rt.Send(request("PUT", "/db/alpha", `{"owner":"alice"}`))
 	assertStatus(t, response, 201)
 	var body db.Body
-	base.JSONUnmarshal(response.Body.Bytes(), &body)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.Equals(t, body["ok"], true)
 	alphaRevID := body["rev"].(string)
 
@@ -3017,7 +3017,7 @@ func TestStarAccess(t *testing.T) {
 
 	// Ensure docs have been processed before issuing changes requests
 	expectedSeq := uint64(6)
-	rt.WaitForSequence(expectedSeq)
+	_ = rt.WaitForSequence(expectedSeq)
 
 	// GET /db/_changes
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))

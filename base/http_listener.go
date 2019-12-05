@@ -35,7 +35,7 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 	if config != nil {
 		listener = tls.NewListener(listener, config)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	server := &http.Server{Addr: addr, Handler: handler}
 	if readTimeout != nil {
 		server.ReadTimeout = time.Duration(*readTimeout) * time.Second

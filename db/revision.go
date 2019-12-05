@@ -97,7 +97,7 @@ func (body Body) ShallowCopy() Body {
 
 func (body Body) DeepCopy() Body {
 	var copiedBody Body
-	base.DeepCopyInefficient(&copiedBody, body)
+	_ = base.DeepCopyInefficient(&copiedBody, body)
 	return copiedBody
 }
 
