@@ -1324,7 +1324,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 
 	// Validate expected entries
 	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 15, base.DefaultWaitForSequence))
-	entries, err := db.changeCache.GetChanges("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
+	entries, err := db.changeCache.GetChangesForTest("ABC", ChangesOptions{Since: SequenceID{Seq: 2}})
 	assert.NoError(t, err, "Get Changes returned error")
 	goassert.Equals(t, len(entries), 6)
 	log.Printf("entries: %v", entries)
@@ -2025,7 +2025,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channelName := fmt.Sprintf("channel_%d", i)
-					_, err := changeCache.GetChanges(channelName, ChangesOptions{Since: SequenceID{Seq: 0}})
+					_, err := changeCache.GetChangesForTest(channelName, ChangesOptions{Since: SequenceID{Seq: 0}})
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()
@@ -2251,7 +2251,7 @@ func BenchmarkDocChanged(b *testing.B) {
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
 					channelName := fmt.Sprintf("channel_%d", i)
-					_, err := changeCache.GetChanges(channelName, ChangesOptions{Since: SequenceID{Seq: 0}})
+					_, err := changeCache.GetChangesForTest(channelName, ChangesOptions{Since: SequenceID{Seq: 0}})
 					if err != nil {
 						log.Printf("GetChanges failed for changeCache: %v", err)
 						b.Fail()

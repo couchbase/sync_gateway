@@ -450,10 +450,6 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		}
 	}
 
-	if syncData.Sequence <= c.initialSequence {
-		return // DCP is sending us an old value from before I started up; ignore it
-	}
-
 	// Measure feed latency from timeSaved or the time we started working the feed, whichever is later
 	var feedLatency time.Duration
 	if !syncData.TimeSaved.IsZero() {
@@ -626,10 +622,6 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 	}
 	sequence := princ.Sequence
 
-	if sequence <= c.initialSequence {
-		return // Tap is sending us an old value from before I started up; ignore it
-	}
-
 	// Now add the (somewhat fictitious) entry:
 	change := &LogEntry{
 		Sequence:     sequence,
@@ -659,6 +651,11 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	}
 
 	sequence := change.Sequence
+
+	if sequence <= c.initialSequence {
+		return nil // DCP is sending us an old value from before I started up; ignore it
+	}
+
 	if change.Sequence > c.internalStats.highSeqFeed {
 		c.internalStats.highSeqFeed = change.Sequence
 	}
@@ -797,11 +794,7 @@ func (c *changeCache) getChannelCache() ChannelCache {
 
 //////// CHANGE ACCESS:
 
-func (c *changeCache) GetChanges(channelName string, options ChangesOptions) ([]*LogEntry, error) {
-
-	if c.IsStopped() {
-		return nil, base.HTTPErrorf(503, "Database closed")
-	}
+func (c *changeCache) GetChangesForTest(channelName string, options ChangesOptions) ([]*LogEntry, error) {
 	return c.channelCache.GetChanges(channelName, options)
 }
 
