@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -4472,7 +4473,7 @@ func TestHandleProfiling(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	dirPath := fmt.Sprintf("%vpprof", os.TempDir())
+	dirPath := filepath.Join(os.TempDir(), "pprof")
 	assert.NoError(t, os.MkdirAll(dirPath, 0755))
 	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
 
@@ -4490,7 +4491,7 @@ func TestHandleProfiling(t *testing.T) {
 	for _, tc := range tests {
 		// Send a valid profile request.
 		resource := fmt.Sprintf("/_profile/%v", tc.inputProfile)
-		filePath := fmt.Sprintf("%v/%v.pprof", dirPath, tc.inputProfile)
+		filePath := filepath.Join(dirPath, fmt.Sprintf("%s.pprof", tc.inputProfile))
 		reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
 		response := rt.SendAdminRequest(http.MethodPost, resource, reqBodyText)
 		assertStatus(t, response, http.StatusOK)
@@ -4516,7 +4517,7 @@ func TestHandleProfiling(t *testing.T) {
 	}
 
 	// Send profile request for a profile which doesn't exists; unknown
-	filePath := fmt.Sprintf("%v/unknown.pprof", dirPath)
+	filePath := filepath.Join(dirPath, "unknown.pprof")
 	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
 	response := rt.SendAdminRequest(http.MethodPost, "/_profile/unknown", reqBodyText)
 	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
@@ -4524,7 +4525,7 @@ func TestHandleProfiling(t *testing.T) {
 	assert.Contains(t, string(response.BodyBytes()), `{"error":"not_found","reason":"No such profile "unknown""}`)
 
 	// Send profile request with filename and empty profile name; it should end up creating cpu profile
-	filePath = fmt.Sprintf("%v/cpu.pprof", dirPath)
+	filePath = filepath.Join(dirPath, "cpu.pprof")
 	reqBodyText = fmt.Sprintf(`{"file":"%v"}`, filePath)
 	response = rt.SendAdminRequest(http.MethodPost, "/_profile", reqBodyText)
 	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
@@ -4546,12 +4547,12 @@ func TestHandleHeapProfiling(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	dirPath := fmt.Sprintf("%v/heap-pprof", os.TempDir())
+	dirPath := filepath.Join(os.TempDir(), "heap-pprof")
 	assert.NoError(t, os.MkdirAll(dirPath, 0755))
 	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
 
 	// Send a valid request for heap profiling
-	filePath := fmt.Sprintf("%v/heap.pprof", dirPath)
+	filePath := filepath.Join(dirPath, "heap.pprof")
 	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
 	response := rt.SendAdminRequest(http.MethodPost, "/_heap", reqBodyText)
 	assertStatus(t, response, http.StatusOK)
