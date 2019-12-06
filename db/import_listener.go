@@ -154,7 +154,7 @@ func (il *importListener) Stop() {
 			for _, pIndex := range pindexes {
 				err := il.cbgtContext.Manager.ClosePIndex(pIndex)
 				if err != nil {
-					base.Debugf(base.KeyImport, "Error closing primary index: %v", err)
+					base.Debugf(base.KeyImport, "Error closing pindex: %v", err)
 				}
 			}
 			// ClosePIndex calls are synchronous, so can stop manager once they've completed
