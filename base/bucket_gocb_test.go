@@ -2249,7 +2249,7 @@ func verifyDocAndXattrDeleted(bucket *CouchbaseBucketGoCB, key, xattrName string
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
-	if err != gocbcore.ErrKeyNotFound {
+	if pkgerrors.Cause(err) != gocbcore.ErrKeyNotFound {
 		return false
 	}
 	return true
