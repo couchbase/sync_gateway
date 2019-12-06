@@ -439,7 +439,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	}
 
 	// Wait for everyone to be caught up
-	_ = db.WaitForCaughtUp(caughtUpStart + int64(100))
+	require.NoError(t, db.WaitForCaughtUp(caughtUpStart+int64(100)))
 	log.Printf("Everyone is caught up")
 
 	// Write sequence 1 to all channels, wait for it on feed
@@ -452,7 +452,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	log.Printf("Everyone's seq 1 arrived")
 
 	// Wait for everyone to be caught up again
-	_ = db.WaitForCaughtUp(caughtUpStart + int64(100))
+	require.NoError(t, db.WaitForCaughtUp(caughtUpStart+int64(100)))
 
 	// Write sequence 3 to all channels, wait for it on feed
 	WriteDirect(db, channelSet, 3)
@@ -465,7 +465,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 	log.Printf("Everyone's seq 2 arrived")
 
 	// Wait for everyone to be caught up again
-	_ = db.WaitForCaughtUp(caughtUpStart + int64(100))
+	require.NoError(t, db.WaitForCaughtUp(caughtUpStart+int64(100)))
 
 	// Close the terminator
 	close(terminator)

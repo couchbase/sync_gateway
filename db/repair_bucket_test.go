@@ -28,7 +28,8 @@ func testBucketWithViewsAndBrokenDoc(tester testing.TB) (tBucket base.TestBucket
 	// Add harmless docs
 	for i := 0; i < base.DefaultViewQueryPageSize+1; i++ {
 		testSyncData := SyncData{}
-		_, _ = bucket.Add(fmt.Sprintf("foo-%d", i), 0, map[string]interface{}{"foo": "bar", base.SyncPropertyName: testSyncData})
+		_, err = bucket.Add(fmt.Sprintf("foo-%d", i), 0, map[string]interface{}{"foo": "bar", base.SyncPropertyName: testSyncData})
+		require.NoError(tester, err)
 		numDocsAdded++
 	}
 
@@ -37,7 +38,8 @@ func testBucketWithViewsAndBrokenDoc(tester testing.TB) (tBucket base.TestBucket
 	if err != nil {
 		panic(fmt.Sprintf("Error unmarshalling doc: %v", err))
 	}
-	_, _ = bucket.Add(docIdProblematicRevTree, 0, rawDoc)
+	_, err = bucket.Add(docIdProblematicRevTree, 0, rawDoc)
+	require.NoError(tester, err)
 	numDocsAdded++
 
 	// Add 2nd doc that should be repaired
@@ -45,7 +47,8 @@ func testBucketWithViewsAndBrokenDoc(tester testing.TB) (tBucket base.TestBucket
 	if err != nil {
 		panic(fmt.Sprintf("Error unmarshalling doc: %v", err))
 	}
-	_, _ = bucket.Add(docIdProblematicRevTree2, 0, rawDoc)
+	_, err = bucket.Add(docIdProblematicRevTree2, 0, rawDoc)
+	require.NoError(tester, err)
 	numDocsAdded++
 
 	return tBucket, numDocsAdded

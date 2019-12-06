@@ -395,7 +395,7 @@ func (auth *Authenticator) Delete(p Principal) error {
 	if user, ok := p.(User); ok {
 		if user.Email() != "" {
 			if err := auth.bucket.Delete(docIDForUserEmail(user.Email())); err != nil {
-				base.Debugf(base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", user.Email(), err)
+				base.Debugf(base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
 			}
 		}
 	}

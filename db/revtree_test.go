@@ -11,6 +11,7 @@ package db
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"log"
 	"sort"
@@ -268,7 +269,8 @@ func TestRevTreeAddRevision(t *testing.T) {
 	tempmap := testmap.copy()
 	goassert.DeepEquals(t, tempmap, testmap)
 
-	_ = tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	err := tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	require.NoError(t, err)
 	goassert.Equals(t, tempmap.getParent("4-four"), "3-three")
 }
 
@@ -318,12 +320,14 @@ func TestRevTreeWinningRev(t *testing.T) {
 	goassert.Equals(t, winner, "3-three")
 	goassert.True(t, branched)
 	goassert.True(t, conflict)
-	_ = tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	err := tempmap.addRevision("testdoc", RevInfo{ID: "4-four", Parent: "3-three"})
+	require.NoError(t, err)
 	winner, branched, conflict = tempmap.winningRevision()
 	goassert.Equals(t, winner, "4-four")
 	goassert.True(t, branched)
 	goassert.True(t, conflict)
-	_ = tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
+	err = tempmap.addRevision("testdoc", RevInfo{ID: "5-five", Parent: "4-four", Deleted: true})
+	require.NoError(t, err)
 	winner, branched, conflict = tempmap.winningRevision()
 	goassert.Equals(t, winner, "3-drei")
 	goassert.True(t, branched)
@@ -651,7 +655,8 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	revTree := getMultiBranchTestRevtree1(1, 15, branchSpecs)
 
 	if dumpRevTreeDotFiles {
-		_ = ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		err := ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_initial.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		require.NoError(t, err)
 	}
 
 	maxDepth := uint32(7)
@@ -659,7 +664,8 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	revTree.pruneRevisions(maxDepth, "")
 
 	if dumpRevTreeDotFiles {
-		_ = ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		err := ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned1.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		require.NoError(t, err)
 	}
 
 	winningBranchStartRev := fmt.Sprintf("%d-%s", 16, "winning")
@@ -673,13 +679,15 @@ func TestPruneDisconnectedRevTreeWithLongWinningBranch(t *testing.T) {
 	)
 
 	if dumpRevTreeDotFiles {
-		_ = ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		err := ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_add_winning_revs.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		require.NoError(t, err)
 	}
 
 	revTree.pruneRevisions(maxDepth, "")
 
 	if dumpRevTreeDotFiles {
-		_ = ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		err := ioutil.WriteFile("/tmp/TestPruneDisconnectedRevTreeWithLongWinningBranch_pruned_final.dot", []byte(revTree.RenderGraphvizDot()), 0666)
+		require.NoError(t, err)
 	}
 
 	// Make sure the winning branch is pruned down to maxDepth, even with the disconnected rev tree
@@ -875,21 +883,21 @@ func TestRevisionPruningLoop(t *testing.T) {
 
 	// create rev tree with a root entry
 	revTree := RevTree{}
-	err := addAndGet(revTree, "1-foo", "", nonTombstone)
+	err := addAndGet(t, revTree, "1-foo", "", nonTombstone)
 	assert.NoError(t, err, "Error adding revision 1-foo to tree")
 
 	// Add several entries (2-foo to 5-foo)
 	for generation := 2; generation <= 5; generation++ {
 		revID := fmt.Sprintf("%d-foo", generation)
 		parentRevID := fmt.Sprintf("%d-foo", generation-1)
-		err := addAndGet(revTree, revID, parentRevID, nonTombstone)
+		err := addAndGet(t, revTree, revID, parentRevID, nonTombstone)
 		assert.NoError(t, err, fmt.Sprintf("Error adding revision %s to tree", revID))
 	}
 
 	// Add tombstone children of 3-foo and 4-foo
 
-	err = addAndGet(revTree, "4-bar", "3-foo", nonTombstone)
-	err = addAndGet(revTree, "5-bar", "4-bar", tombstone)
+	err = addAndGet(t, revTree, "4-bar", "3-foo", nonTombstone)
+	err = addAndGet(t, revTree, "5-bar", "4-bar", tombstone)
 	assert.NoError(t, err, "Error adding tombstone 4-bar to tree")
 
 	/*
@@ -935,15 +943,16 @@ func TestRevisionPruningLoop(t *testing.T) {
 
 }
 
-func addAndGet(revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
+func addAndGet(t *testing.T, revTree RevTree, revID string, parentRevID string, isTombstone bool) error {
 
 	revBody := []byte(`{"foo":"bar"}`)
-	_ = revTree.addRevision("foobar", RevInfo{
+	err := revTree.addRevision("foobar", RevInfo{
 		ID:      revID,
 		Parent:  parentRevID,
 		Body:    revBody,
 		Deleted: isTombstone,
 	})
+	require.NoError(t, err)
 	history, err := revTree.getHistory(revID)
 	log.Printf("addAndGet.  Tree length: %d.  History for new rev: %v", len(revTree), history)
 	return err

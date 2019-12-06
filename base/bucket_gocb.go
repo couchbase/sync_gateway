@@ -222,11 +222,7 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 		return 0, err
 	}
 
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			Warnf("Error while closing response body from: %s error: %v", UD(uri), err)
-		}
-	}()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusForbidden {
 		Warnf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
@@ -255,11 +251,7 @@ func (bucket *CouchbaseBucketGoCB) GetServerUUID() (uuid string, err error) {
 		return "", err
 	}
 
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			Warnf("Error while closing response body from: /pools error: %v", err)
-		}
-	}()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -290,11 +282,7 @@ func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
 		return -1, err
 	}
 
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			Warnf("Error while closing response body from: %s error: %v", UD(uri), err)
-		}
-	}()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -2344,11 +2332,7 @@ func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) 
 		return -1, err
 	}
 
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			Warnf("Error while closing response body from: %s error: %v", UD(uri), err)
-		}
-	}()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		_, err := ioutil.ReadAll(resp.Body)

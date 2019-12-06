@@ -844,17 +844,20 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.Get1xRevBody("doc1", "", false, nil)
+			_, err := db.Get1xRevBody("doc1", "", false, nil)
+			require.NoError(b, err)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.Get1xRevBody("doc2", "", false, nil)
+			_, err := db.Get1xRevBody("doc2", "", false, nil)
+			require.NoError(b, err)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.Get1xRevBody("doc3", "", false, nil)
+			_, err := db.Get1xRevBody("doc3", "", false, nil)
+			require.NoError(b, err)
 		}
 	})
 
@@ -868,17 +871,20 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.Get1xRevBody("doc1", "1-a", false, nil)
+			_, err := db.Get1xRevBody("doc1", "1-a", false, nil)
+			require.NoError(b, err)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.Get1xRevBody("doc2", "1-a", false, nil)
+			_, err := db.Get1xRevBody("doc2", "1-a", false, nil)
+			require.NoError(b, err)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.Get1xRevBody("doc3", "1-a", false, nil)
+			_, err := db.Get1xRevBody("doc3", "1-a", false, nil)
+			require.NoError(b, err)
 		}
 	})
 }
@@ -908,17 +914,20 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.GetRev("doc1", "", false, nil)
+			_, err := db.GetRev("doc1", "", false, nil)
+			require.NoError(b, err)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.GetRev("doc2", "", false, nil)
+			_, err := db.GetRev("doc2", "", false, nil)
+			require.NoError(b, err)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.GetRev("doc3", "", false, nil)
+			_, err := db.GetRev("doc3", "", false, nil)
+			require.NoError(b, err)
 		}
 	})
 
@@ -932,17 +941,20 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.GetRev("doc1", "1-a", false, nil)
+			_, err := db.GetRev("doc1", "1-a", false, nil)
+			require.NoError(b, err)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.GetRev("doc2", "1-a", false, nil)
+			_, err := db.GetRev("doc2", "1-a", false, nil)
+			require.NoError(b, err)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			_, _ = db.GetRev("doc3", "1-a", false, nil)
+			_, err := db.GetRev("doc3", "1-a", false, nil)
+			require.NoError(b, err)
 		}
 	})
 }
