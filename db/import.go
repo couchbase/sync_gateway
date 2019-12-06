@@ -221,7 +221,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		newDoc.RevID = newRev
 		err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
 		if err != nil {
-			base.Infof(base.KeyImport, "Error adding new revision: %s, %v", newRev, err)
+			base.InfofCtx(db.Ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
 		}
 
 		// If the previous revision body is available in the rev cache,
@@ -294,7 +294,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	// Move any large revision bodies to external storage
 	err = doc.migrateRevisionBodies(db.Bucket)
 	if err != nil {
-		base.Infof(base.KeyMigrate, "Error migrating large revision bodies to external storage: %v", err)
+		base.Infof(base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
 	}
 
 	// Persist the document in xattr format

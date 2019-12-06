@@ -99,7 +99,8 @@ func TestDocumentChangeEvent(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		assert.NoError(t, err)
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
@@ -124,11 +125,13 @@ func TestDBStateChangeEvent(t *testing.T) {
 	em.RegisterEventHandler(testHandler, DBStateChange)
 	//Raise online events
 	for i := 0; i < 10; i++ {
-		_ = em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", "0.0.0.0:0000")
+		err := em.RaiseDBStateChangeEvent(ids[i], "online", "DB started from config", "0.0.0.0:0000")
+		assert.NoError(t, err)
 	}
 	//Raise offline events
 	for i := 10; i < 20; i++ {
-		_ = em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", "0.0.0.0:0000")
+		err := em.RaiseDBStateChangeEvent(ids[i], "offline", "Sync Gateway context closed", "0.0.0.0:0000")
+		assert.NoError(t, err)
 	}
 
 	for i := 0; i < 25; i++ {
@@ -177,7 +180,8 @@ func TestSlowExecutionProcessing(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		body, docid, channels := eventForTest(i % 10)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		assert.NoError(t, err)
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 20, 10*time.Second)
@@ -217,7 +221,8 @@ func TestCustomHandler(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		assert.NoError(t, err)
 	}
 
 	assertChannelLengthWithTimeout(t, resultChannel, 10, 10*time.Second)
@@ -259,7 +264,8 @@ func TestUnhandledEvent(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		assert.NoError(t, err)
 	}
 
 	// Validate that no events were handled
@@ -421,7 +427,8 @@ func TestWebhookBasic(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, docId, channels := eventForTest(i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		assert.NoError(t, err)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 10, wr.GetCount())
@@ -443,7 +450,8 @@ func TestWebhookBasic(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, docId, channels := eventForTest(i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		assert.NoError(t, err)
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -458,7 +466,8 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	body, docId, channels := eventForTest(0)
 	bodyBytes, _ := base.JSONMarshalCanonical(body)
-	_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+	err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+	assert.NoError(t, err)
 	time.Sleep(50 * time.Millisecond)
 	receivedPayload := string((wr.GetPayloads())[0])
 	fmt.Println("payload:", receivedPayload)
@@ -476,7 +485,8 @@ func TestWebhookBasic(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		body, docId, channels := eventForTest(i % 10)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		assert.NoError(t, err)
 	}
 	time.Sleep(500 * time.Millisecond)
 	assert.Equal(t, 100, wr.GetCount())
@@ -513,7 +523,8 @@ func TestWebhookBasic(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		body, docId, channels := eventForTest(i % 10)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		assert.NoError(t, err)
 	}
 	time.Sleep(5 * time.Second)
 	assert.Equal(t, 100, wr.GetCount())
@@ -564,7 +575,8 @@ func TestWebhookOldDoc(t *testing.T) {
 		oldBodyBytes, _ := base.JSONMarshal(oldBody)
 		body, docId, channels := eventForTest(strconv.Itoa(i), i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
+		assert.NoError(t, err)
 
 	}
 	time.Sleep(50 * time.Millisecond)
@@ -591,7 +603,8 @@ func TestWebhookOldDoc(t *testing.T) {
 		oldBodyBytes, _ := base.JSONMarshal(oldBody)
 		body, docId, channels := eventForTest(strconv.Itoa(i), i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
+		assert.NoError(t, err)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 4, wr.GetCount())
@@ -617,7 +630,8 @@ func TestWebhookOldDoc(t *testing.T) {
 		oldBodyBytes, _ := base.JSONMarshal(oldBody)
 		body, docId, channels := eventForTest(strconv.Itoa(i), i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
+		assert.NoError(t, err)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 4, wr.GetCount())
@@ -640,7 +654,8 @@ func TestWebhookOldDoc(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, docId, channels := eventForTest(strconv.Itoa(i), i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		assert.NoError(t, err)
 	}
 	for i := 10; i < 20; i++ {
 		oldBody, oldDocId, _ := eventForTest(strconv.Itoa(-i), i)
@@ -648,7 +663,8 @@ func TestWebhookOldDoc(t *testing.T) {
 		oldBodyBytes, _ := base.JSONMarshal(oldBody)
 		body, docId, channels := eventForTest(strconv.Itoa(i), i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
+		assert.NoError(t, err)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 10, wr.GetCount())
@@ -697,7 +713,8 @@ func TestWebhookTimeout(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, docid, channels := eventForTest(strconv.Itoa(i), i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
+		assert.NoError(t, err)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 10, wr.GetCount())
@@ -803,7 +820,8 @@ func TestUnavailableWebhook(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		body, docId, channels := eventForTest(strconv.Itoa(-i), i)
 		bodyBytes, _ := base.JSONMarshal(body)
-		_ = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+		assert.NoError(t, err)
 	}
 	time.Sleep(50 * time.Millisecond)
 	assert.Equal(t, 0, wr.GetCount())

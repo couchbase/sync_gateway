@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"log"
 	"testing"
 
@@ -21,7 +22,8 @@ func testBucketWithViewsAndBrokenDoc(tester testing.TB) (tBucket base.TestBucket
 	tBucket = testBucket(tester)
 	bucket := tBucket.Bucket
 
-	_ = installViews(bucket)
+	err := installViews(bucket)
+	require.NoError(tester, err)
 
 	// Add harmless docs
 	for i := 0; i < base.DefaultViewQueryPageSize+1; i++ {

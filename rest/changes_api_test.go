@@ -339,7 +339,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	}()
 
 	// Wait for changes feed to get into wait mode where it is blocked on the longpoll changes feed response
-	_ = it.GetDatabase().WaitForCaughtUp(caughtUpCount + 1)
+	require.NoError(t, it.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Put a doc in channel bernard, that also grants bernard access to channel PBS
 	response = it.SendAdminRequest("PUT", "/db/grant1", `{"value":1, "accessUser":"bernard", "accessChannel":"PBS"}`)
@@ -3097,7 +3097,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 		assert.Equal(t, 5, len(changes.Results))
 	}()
 
-	_ = rt.GetDatabase().WaitForCaughtUp(caughtUpCount + 1)
+	require.NoError(t, rt.GetDatabase().WaitForCaughtUp(caughtUpCount+1))
 
 	// Update the user doc to grant access to PBS
 	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"admin_channels":["ABC", "PBS"]}`)
@@ -3283,5 +3283,8 @@ func WriteDirectWithKey(testDb *db.DatabaseContext, key string, channelArray []s
 	syncData.TimeSaved = time.Now()
 	//syncData := fmt.Sprintf(`{"rev":"%s", "sequence":%d, "channels":%s, "TimeSaved":"%s"}`, rev, sequence, chanMap, time.Now())
 
-	_, _ = testDb.Bucket.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
+	_, err = testDb.Bucket.Add(key, 0, db.Body{base.SyncPropertyName: syncData, "key": key})
+	if err != nil {
+		base.Panicf("Error while add ket to bucket: %v", err)
+	}
 }

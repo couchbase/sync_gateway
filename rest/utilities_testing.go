@@ -517,10 +517,13 @@ func (rt *RestTester) WaitForDBOnline() (err error) {
 
 		response := rt.SendAdminRequest("GET", "/db/", "")
 		var body db.Body
-		_ = base.JSONUnmarshal(response.Body.Bytes(), &body)
+		err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+		if err != nil {
+			return err
+		}
 
 		if body["state"].(string) == "Online" {
-			return
+			return nil
 		}
 
 		// Otherwise, sleep and try again

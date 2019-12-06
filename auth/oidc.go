@@ -232,11 +232,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			base.Debugf(base.KeyAuth, "Error while closing response body from discovery URL %s: %v", base.UD(discoveryURL), err)
-		}
-	}()
+	defer func() { _ = resp.Body.Close() }()
 	if err := base.JSONDecoder(resp.Body).Decode(&customConfig); err != nil {
 		base.Debugf(base.KeyAuth, "Error parsing body %s: %v", base.UD(discoveryURL), err)
 		return nil, err

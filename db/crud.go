@@ -1444,7 +1444,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			} else {
 				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels)
 				if err != nil {
-					base.Warnf("Error raising document change event: %v", err)
+					base.Debugf(base.KeyCRUD, "Error raising document change event: %v", err)
 				}
 			}
 		}

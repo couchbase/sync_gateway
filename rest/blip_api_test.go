@@ -634,16 +634,17 @@ func TestPublicPortAuthentication(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
+	require.NoError(t, err, "Error creating BlipTester")
 	defer btUser1.Close()
 
 	// Send the user1 doc
-	_, _, _, _ = btUser1.SendRev(
+	_, _, _, err = btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
 		blip.Properties{},
 	)
+	require.NoError(t, err, "Error sending revision")
 
 	// Create bliptester that is connected as user2, with access to the * channel
 	btUser2, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -653,16 +654,17 @@ func TestPublicPortAuthentication(t *testing.T) {
 		connectingUserChannelGrants: []string{"*"},      // user2 has access to all channels
 		restTester:                  btUser1.restTester, // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
+	require.NoError(t, err, "Error creating BlipTester")
 	defer btUser2.Close()
 
 	// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access
-	_, _, _, _ = btUser2.SendRev(
+	_, _, _, err = btUser2.SendRev(
 		"foo2",
 		"1-abcd",
 		[]byte(`{"key": "val", "channels": ["NBC"]}`),
 		blip.Properties{},
 	)
+	require.NoError(t, err, "Error sending revision")
 
 	// Assert that user1 received a single expected change
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)

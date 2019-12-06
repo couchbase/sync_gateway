@@ -105,7 +105,8 @@ func (r *DCPReceiver) SnapshotStart(vbNo uint16,
 }
 
 func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
-	return r.setMetaData(vbucketId, value)
+	r.setMetaData(vbucketId, value)
+	return nil
 }
 
 func (r *DCPReceiver) GetMetaData(vbNo uint16) (
@@ -319,8 +320,8 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		go func() {
 			<-args.Terminator
 			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
-			if err = bds.Close(); err != nil {
-				Debugf(KeyDCP, "Error while closing DCP Feed: %v", err)
+			if err := bds.Close(); err != nil {
+				Debugf(KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(bucketName), feedID, err)
 			}
 		}()
 	}

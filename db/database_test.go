@@ -659,7 +659,8 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	_ = db.changeCache.waitForSequence(context.TODO(), 101, base.DefaultWaitForSequence)
+	err = db.changeCache.waitForSequence(context.TODO(), 101, base.DefaultWaitForSequence)
+	require.NoError(t, err)
 	changeLog := db.GetChangeLog("all", 0)
 	assert.Equal(t, 50, len(changeLog))
 	assert.Equal(t, 52, int(changeLog[0].Sequence))
@@ -1446,7 +1447,8 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	_ = db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence)
+	err = db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence)
+	require.NoError(t, err)
 
 	// Add another sequence to validate pruning when past max (20)
 	revid, doc, err = db.Put("doc1", body)
@@ -1471,7 +1473,8 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	_ = db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence) //
+	err = db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence) //
+	require.NoError(t, err)
 	revid, doc, err = db.Put("doc1", body)
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
@@ -1532,7 +1535,8 @@ func TestConcurrentImport(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
 	// Add doc to the underlying bucket:
-	_, _ = db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
+	_, err := db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
+	require.NoError(t, err)
 
 	// Attempt concurrent retrieval of the docs, and validate that they are only imported once (based on revid)
 	var wg sync.WaitGroup

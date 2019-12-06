@@ -115,7 +115,7 @@ func (c *DCPCommon) snapshotStart(vbNo uint16, snapStart, snapEnd uint64) {
 
 // setMetaData and getMetaData may used internally by dcp clients.  Expects send/recieve of opaque
 // []byte data.  May be invoked from multiple goroutines, so need to manage synchronization
-func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte) error {
+func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte) {
 
 	c.m.Lock()
 	defer c.m.Unlock()
@@ -127,7 +127,7 @@ func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte) error {
 
 		// Don't checkpoint more frequently than kCheckpointTimeThreshold
 		if time.Since(c.lastCheckpointTime[vbucketId]) < kCheckpointTimeThreshold {
-			return nil
+			return
 		}
 
 		err := c.persistCheckpoint(vbucketId, value)
@@ -137,7 +137,6 @@ func (c *DCPCommon) setMetaData(vbucketId uint16, value []byte) error {
 		c.updatesSinceCheckpoint[vbucketId] = 0
 		c.lastCheckpointTime[vbucketId] = time.Now()
 	}
-	return nil
 }
 
 func (c *DCPCommon) getMetaData(vbucketId uint16) (
@@ -164,7 +163,7 @@ func (c *DCPCommon) rollback(vbucketId uint16, rollbackSeq uint64) error {
 	WarnfCtx(c.loggingCtx, "DCP Rollback request.  Expected RollbackEx call - resetting vbucket %d to 0.", vbucketId)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, 0, false)
-	_ = c.setMetaData(vbucketId, nil)
+	c.setMetaData(vbucketId, nil)
 
 	return nil
 }
@@ -174,7 +173,7 @@ func (c *DCPCommon) rollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq
 	WarnfCtx(c.loggingCtx, "DCP RollbackEx request - rolling back DCP feed for: vbucketId: %d, rollbackSeq: %x.", vbucketId, rollbackSeq)
 	c.dbStatsExpvars.Add("dcp_rollback_count", 1)
 	c.updateSeq(vbucketId, rollbackSeq, false)
-	_ = c.setMetaData(vbucketId, rollbackMetaData)
+	c.setMetaData(vbucketId, rollbackMetaData)
 	return nil
 }
 
@@ -436,7 +435,10 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 	// Check if it's time to persist and log backfill progress
 	if time.Since(b.lastPersistTime) > kBackfillPersistInterval {
 		b.lastPersistTime = time.Now()
-		_ = b.persistBackfillSequences(bucket, currentSequences)
+		err := b.persistBackfillSequences(bucket, currentSequences)
+		if err != nil {
+			Warnf("Error persisting back-fill sequences: %v", err)
+		}
 		b.logBackfillProgress()
 	}
 
@@ -444,7 +446,10 @@ func (b *backfillStatus) updateStats(vbno uint16, previousVbSequence uint64, cur
 	if b.receivedSequences >= b.expectedSequences {
 		Infof(KeyDCP, "Backfill complete")
 		b.active = false
-		_ = b.purgeBackfillSequences(bucket)
+		err := b.purgeBackfillSequences(bucket)
+		if err != nil {
+			Warnf("Error purging back-fill sequences: %v", err)
+		}
 	}
 }
 

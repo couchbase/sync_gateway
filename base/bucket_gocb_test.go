@@ -1197,7 +1197,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		_ = bucket.Delete(key)
+		require.NoError(t, bucket.Delete(key))
 	}
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
@@ -1252,7 +1252,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
-		_ = bucket.Delete(key)
+		require.NoError(t, bucket.Delete(key))
 	}
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)

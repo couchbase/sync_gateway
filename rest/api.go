@@ -278,16 +278,25 @@ func (h *handler) handleProfiling() error {
 			return err
 		}
 		if profileName != "" {
-			defer func() { _ = f.Close() }()
 			if profile := pprof.Lookup(profileName); profile != nil {
-				_ = profile.WriteTo(f, 0)
+				err := profile.WriteTo(f, 0)
 				base.Infof(base.KeyAll, "Wrote %s profile to %s", profileName, base.UD(params.File))
+				if err != nil {
+					return err
+				}
 			} else {
 				return base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
 			}
+			err = f.Close()
+			if err != nil {
+				return err
+			}
 		} else {
 			base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
-			_ = pprof.StartCPUProfile(f)
+			err := pprof.StartCPUProfile(f)
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		if profileName != "" {
@@ -318,8 +327,14 @@ func (h *handler) handleHeapProfiling() error {
 	if err != nil {
 		return err
 	}
-	_ = pprof.WriteHeapProfile(f)
-	_ = f.Close()
+	err = pprof.WriteHeapProfile(f)
+	if err != nil {
+		return err
+	}
+	err = f.Close()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

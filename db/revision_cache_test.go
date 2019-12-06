@@ -183,7 +183,8 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
 	var bucketBody Body
-	_, _ = testBucket.Bucket.Get("doc1", &bucketBody)
+	_, err = testBucket.Bucket.Get("doc1", &bucketBody)
+	require.NoError(t, err)
 	_, ok := bucketBody[BodyRevisions]
 	if ok {
 		t.Error("_revisions property still present in document retrieved directly from bucket.")

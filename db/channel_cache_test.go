@@ -36,10 +36,14 @@ func TestChannelCacheMaxSize(t *testing.T) {
 	cache := context.changeCache.getChannelCache()
 
 	// Make channels active
-	_, _ = cache.GetChanges("TestA", ChangesOptions{})
-	_, _ = cache.GetChanges("TestB", ChangesOptions{})
-	_, _ = cache.GetChanges("TestC", ChangesOptions{})
-	_, _ = cache.GetChanges("TestD", ChangesOptions{})
+	_, err := cache.GetChanges("TestA", ChangesOptions{})
+	require.NoError(t, err)
+	_, err = cache.GetChanges("TestB", ChangesOptions{})
+	require.NoError(t, err)
+	_, err = cache.GetChanges("TestC", ChangesOptions{})
+	require.NoError(t, err)
+	_, err = cache.GetChanges("TestD", ChangesOptions{})
+	require.NoError(t, err)
 
 	// Add some entries to caches, leaving some empty caches
 	cache.AddToCache(logEntry(1, "doc1", "1-a", []string{"TestB", "TestC", "TestD"}))

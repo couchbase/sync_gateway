@@ -395,10 +395,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					} else {
 						_, _ = h.response.Write([]byte(","))
 					}
-					err = encoder.Encode(entry)
-					if err != nil {
-						base.Debugf(base.KeyChanges, "Error encoding change feed ebtry: %v", err)
-					}
+					_ = encoder.Encode(entry)
 					lastSeq = entry.Seq
 				}
 

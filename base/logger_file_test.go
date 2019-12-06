@@ -134,7 +134,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.Contains(t, fileNames, logFilePrefix+"info-2019-02-02T12-00-00.log.gz")
 	assert.Contains(t, fileNames, logFilePrefix+"info-2019-02-02T12-10-00.log.gz")
 
-	_ = os.RemoveAll(dir)
+	assert.NoError(t, os.RemoveAll(dir))
 
 	//Hit low watermark but not high watermark
 	dir, _ = ioutil.TempDir("", "tempdir2")
@@ -144,7 +144,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 	dirContents, err = ioutil.ReadDir(dir)
 	assert.Equal(t, 1, len(dirContents))
-	_ = os.RemoveAll(dir)
+	assert.NoError(t, os.RemoveAll(dir))
 
 	//Single file hitting low and high watermark
 	dir, _ = ioutil.TempDir("", "tempdir3")
@@ -154,7 +154,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 	dirContents, err = ioutil.ReadDir(dir)
 	assert.Empty(t, dirContents)
-	_ = os.RemoveAll(dir)
+	assert.NoError(t, os.RemoveAll(dir))
 
 	//Not hitting low or high therefore no deletion
 	dir, _ = ioutil.TempDir("", "tempdir4")
@@ -164,7 +164,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 	dirContents, err = ioutil.ReadDir(dir)
 	assert.Equal(t, 1, len(dirContents))
-	_ = os.RemoveAll(dir)
+	assert.NoError(t, os.RemoveAll(dir))
 
 	//Test deletion with files at the end of date boundaries
 	dir, _ = ioutil.TempDir("", "tempdir5")
@@ -190,7 +190,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.Contains(t, fileNames, logFilePrefix+"error-2019-01-01T12-00-00.log.gz")
 	assert.Contains(t, fileNames, logFilePrefix+"error-2019-01-31T23-59-59.log.gz")
 
-	_ = os.RemoveAll(dir)
+	assert.NoError(t, os.RemoveAll(dir))
 
 	//Test deletion with no .gz files to ensure nothing is deleted
 	dir, _ = ioutil.TempDir("", "tempdir6")
@@ -210,7 +210,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.Contains(t, fileNames, logFilePrefix+"error")
 	assert.Contains(t, fileNames, logFilePrefix+"info")
 
-	_ = os.RemoveAll(dir)
+	assert.NoError(t, os.RemoveAll(dir))
 }
 
 func makeTestFile(sizeMB int, name string, dir string) (err error) {
@@ -218,10 +218,10 @@ func makeTestFile(sizeMB int, name string, dir string) (err error) {
 	if err != nil {
 		return err
 	}
-
-	defer func() { _ = f.Close() }()
-
 	if err := f.Truncate(int64(sizeMB * 1024 * 1024)); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
 		return err
 	}
 	return nil

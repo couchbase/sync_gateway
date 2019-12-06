@@ -354,7 +354,7 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 	Debugf(KeyDCP, "Sending CBGT node heartbeats at interval: %vs", intervalSeconds)
 	err = heartbeater.StartSendingHeartbeats(intervalSeconds)
 	if err != nil {
-		Debugf(KeyDCP, "Error start sending heartbeats: %v", err)
+		return nil, err
 	}
 
 	deadNodeHandler := HeartbeatStoppedHandler{

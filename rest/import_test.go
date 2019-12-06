@@ -1151,7 +1151,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	_, err := bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
-	_ = rt.WaitForSequence(5)
+	require.NoError(t, rt.WaitForSequence(5))
 
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
 	response := rt.SendAdminRequest("PUT", "/db/"+key+"?rev=2-d", `{"updated":true}`)
@@ -1161,7 +1161,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	rawResponse := rt.SendAdminRequest("GET", "/db/_raw/"+key, "")
 	assert.Equal(t, 200, rawResponse.Code)
 	log.Printf("raw response:%s", rawResponse.Body.Bytes())
-	_ = rt.WaitForSequence(6)
+	require.NoError(t, rt.WaitForSequence(6))
 
 	// Validate non-xattr document doesn't get upgraded on attempted write
 	nonMobileKey := "TestUpgradeNoXattr"
@@ -1221,7 +1221,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	_, err := bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err, "Error writing doc w/ xattr")
-	_ = rt.WaitForSequence(1)
+	require.NoError(t, rt.WaitForSequence(1))
 
 	// Attempt to update the documents via Sync Gateway.  Should trigger checkForUpgrade handling to detect metadata in xattr, and update normally.
 	response := rt.SendAdminRequest("GET", "/db/_changes", "")

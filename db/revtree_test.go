@@ -157,7 +157,10 @@ func getMultiBranchTestRevtree1(unconflictedBranchNumRevs, winningBranchNumRevs 
 					Parent:  parentRevId,
 					Deleted: true,
 				}
-				_ = revTree.addRevision("testdoc", revInfo)
+				err := revTree.addRevision("testdoc", revInfo)
+				if err != nil {
+					panic(fmt.Sprintf("Error: %v", err))
+				}
 
 			}
 

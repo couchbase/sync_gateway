@@ -556,6 +556,7 @@ func (ch *cbgtNodeListHandler) subscribeNodeChanges() error {
 	err := ch.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
 	if err != nil {
 		Debugf(KeyDCP, "Error subscribing node changes: %v", err)
+		return err
 	}
 	go func() {
 		defer FatalPanicHandler()

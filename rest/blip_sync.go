@@ -463,7 +463,10 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) error {
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
-	_ = outrq.SetJSONBody(changeArray)
+	err := outrq.SetJSONBody(changeArray)
+	if err != nil {
+		bh.Logf(base.LevelInfo, base.KeyAll, "Error setting changes: %v", err)
+	}
 
 	if len(changeArray) > 0 {
 		sendTime := time.Now()
@@ -629,7 +632,10 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		} else if len(possible) == 0 {
 			output.Write([]byte("[]"))
 		} else {
-			_ = jsonOutput.Encode(possible)
+			err := jsonOutput.Encode(possible)
+			if err != nil {
+				bh.Logf(base.LevelInfo, base.KeyAll, "Error encoding json: %v", err)
+			}
 		}
 		nWritten++
 	}

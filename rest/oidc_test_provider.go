@@ -163,7 +163,10 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 	if t, err := t.Parse(login_html); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, err.Error())
 	} else {
-		_ = t.Execute(h.response, p)
+		err := t.Execute(h.response, p)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

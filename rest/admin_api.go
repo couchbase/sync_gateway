@@ -72,10 +72,7 @@ func (h *handler) handleDbOnline() error {
 
 	input.Delay = kDefaultDBOnlineDelay
 
-	err = base.JSONUnmarshal(body, &input)
-	if err != nil {
-		base.Infof(base.KeyCRUD, "Error marshalling JSON body: %v", err)
-	}
+	_ = base.JSONUnmarshal(body, &input)
 
 	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 

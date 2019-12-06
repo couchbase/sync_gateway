@@ -553,6 +553,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 			err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface)
 			if err != nil {
 				base.Debugf(base.KeyCRUD, "Error raising database state change event: %v", err)
+				return err
 			}
 		}
 

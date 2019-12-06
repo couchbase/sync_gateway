@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"log"
 	"math/rand"
 	"os"
@@ -131,8 +132,8 @@ func BenchmarkLogRotation(b *testing.B) {
 			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
 
 			defer func() {
-				_ = logger.Close()
-				_ = os.RemoveAll(logPath)
+				require.NoError(b, logger.Close())
+				require.NoError(b, os.RemoveAll(logPath))
 			}()
 
 			data := make([]byte, test.numBytes)
