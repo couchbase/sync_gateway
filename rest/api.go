@@ -39,7 +39,7 @@ func (h *handler) handleRoot() error {
 
 	admin := ""
 	if h.privs == adminPrivs {
-		admin = `"ADMIN":true`
+		admin = `"ADMIN":true,`
 	}
 
 	r := []byte(`{` +
