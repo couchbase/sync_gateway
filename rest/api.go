@@ -319,8 +319,7 @@ func (h *handler) handleHeapProfiling() error {
 		return err
 	}
 	pprof.WriteHeapProfile(f)
-	f.Close()
-	return nil
+	return f.Close()
 }
 
 func (h *handler) handlePprofGoroutine() error {
