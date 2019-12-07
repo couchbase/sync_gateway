@@ -66,21 +66,36 @@ type changeCache struct {
 }
 
 type changeCacheStats struct {
-	highSeqFeed   uint64
-	pendingSeqLen int
-	maxPending    int
-	highSeqStable uint64
+	highSeqFeed      uint64      // pushed to expvar on updateStats while holding lock
+	pendingSeqLen    int         // pushed to expvar on updateStats while holding lock
+	maxPending       int         // pushed to expvar on updateStats while holding lock
+	numSkippedSeqs   uint64      // pushed to expvar on updateStats while holding lock
+	dcpReceivedTime  *expvar.Int // avoid map lookup on Add
+	dcpReceivedCount *expvar.Int // avoid map lookup on Add
+	dcpCachingTime   *expvar.Int // avoid map lookup on Add
+	dcpCachingCount  *expvar.Int // avoid map lookup on Add
+	abandonedSeqs    *expvar.Int // avoid map lookup on Add
+}
+
+// Adds expvar.Int references to changeCacheStats to avoid stats map lookup on usage
+func (c *changeCache) initExpvarStats(dbStats *DatabaseStats) {
+	c.internalStats.dcpReceivedTime = dbStats.StatsDatabase().Get(base.StatKeyDcpReceivedTime).(*expvar.Int)
+	c.internalStats.dcpReceivedCount = dbStats.StatsDatabase().Get(base.StatKeyDcpReceivedCount).(*expvar.Int)
+	c.internalStats.dcpCachingTime = dbStats.StatsDatabase().Get(base.StatKeyDcpCachingTime).(*expvar.Int)
+	c.internalStats.dcpCachingCount = dbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount).(*expvar.Int)
+	c.internalStats.abandonedSeqs = dbStats.StatsDatabase().Get(base.StatKeyAbandonedSeqs).(*expvar.Int)
+
 }
 
 func (c *changeCache) updateStats() {
 
 	c.lock.Lock()
-
 	base.SetIfMax(c.context.DbStats.StatsDatabase(), base.StatKeyHighSeqFeed, int64(c.internalStats.highSeqFeed))
 	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(c.internalStats.pendingSeqLen))
 	base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(c.internalStats.maxPending))
-	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c.internalStats.highSeqStable))
-
+	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
+	c.context.DbStats.StatsCache().Set(base.StatKeyNumSkippedSeqs, base.ExpvarUInt64Val(c.internalStats.numSkippedSeqs))
+	c.context.DbStats.StatsCache().Set(base.StatKeySkippedSeqLen, base.ExpvarUInt64Val(uint64(c.skippedSeqs.skippedList.Len())))
 	c.lock.Unlock()
 }
 
@@ -160,6 +175,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	c.initTime = time.Now()
 	c.skippedSeqs = NewSkippedSequenceList()
 	c.lastAddPendingTime = time.Now().UnixNano()
+	c.initExpvarStats(dbcontext.DbStats)
 
 	// init cache options
 	if options != nil {
@@ -356,9 +372,7 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 
 	// Purge sequences not found from the skipped sequence queue
 	numRemoved := c.RemoveSkippedSequences(ctx, pendingRemovals)
-	c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, numRemoved)
-
-	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c.getMaxStableCached()))
+	c.internalStats.abandonedSeqs.Add(numRemoved)
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.context.Name))
 	return nil
@@ -461,10 +475,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		// Record latency when greater than zero
 		feedNano := feedLatency.Nanoseconds()
 		if feedNano > 0 {
-			c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpReceivedTime, feedNano)
+			c.internalStats.dcpReceivedTime.Add(feedNano)
 		}
 	}
-	c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpReceivedCount, 1)
+	c.internalStats.dcpReceivedCount.Add(1)
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
@@ -746,11 +760,9 @@ func (c *changeCache) _addToCache(change *LogEntry) base.Set {
 		base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}
 
-	c.internalStats.highSeqStable = c._getMaxStableCached()
-
 	if !change.TimeReceived.IsZero() {
-		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
-		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
+		c.internalStats.dcpCachingCount.Add(1)
+		c.internalStats.dcpCachingTime.Add(time.Since(change.TimeReceived).Nanoseconds())
 	}
 
 	return updatedChannels
@@ -769,7 +781,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 			heap.Pop(&c.pendingLogs)
 			changedChannels = changedChannels.Update(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
-			c.context.DbStats.StatsCache().Add(base.StatKeyNumSkippedSeqs, 1)
+			c.internalStats.numSkippedSeqs++
 			c.PushSkipped(c.nextSequence)
 			c.nextSequence++
 		} else {
@@ -777,7 +789,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		}
 	}
 
-	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(len(c.pendingLogs)))
+	c.internalStats.pendingSeqLen = len(c.pendingLogs)
 
 	atomic.StoreInt64(&c.lastAddPendingTime, time.Now().UnixNano())
 	return changedChannels
@@ -849,14 +861,12 @@ func (h *LogPriorityQueue) Pop() interface{} {
 
 func (c *changeCache) RemoveSkipped(x uint64) error {
 	err := c.skippedSeqs.Remove(x)
-	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
 	return err
 }
 
 // Removes a set of sequences.  Logs warning on removal error, returns count of successfully removed.
 func (c *changeCache) RemoveSkippedSequences(ctx context.Context, sequences []uint64) (removedCount int64) {
 	numRemoved := c.skippedSeqs.RemoveSequences(ctx, sequences)
-	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
 	return numRemoved
 }
 
@@ -866,7 +876,6 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 
 func (c *changeCache) PushSkipped(sequence uint64) {
 	c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
-	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
 }
 
 func (c *changeCache) GetSkippedSequencesOlderThanMaxWait() (oldSequences []uint64) {
