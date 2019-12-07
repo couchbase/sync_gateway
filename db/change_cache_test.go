@@ -13,7 +13,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"expvar"
 	"fmt"
 	"log"
 	"math/rand"
@@ -136,7 +135,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
 
-	cacheStats := &expvar.Map{}
+	cacheStats := initEmptyStatsMap(base.StatsGroupKeyCache, &DatabaseStats{})
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
 	goassert.True(t, cache != nil)
 
@@ -202,7 +201,9 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	context := testBucketContext(t)
 	defer context.Close()
 	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+
+	cacheStats := initEmptyStatsMap(base.StatsGroupKeyCache, &DatabaseStats{})
+	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
 	goassert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive

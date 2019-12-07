@@ -90,7 +90,7 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20
 
-	testStats := &expvar.Map{}
+	testStats := initEmptyStatsMap(base.StatsGroupKeyCache, &DatabaseStats{})
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &expvar.Int{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -127,7 +127,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 50
 
-	testStats := &expvar.Map{}
+	testStats := initEmptyStatsMap(base.StatsGroupKeyCache, &DatabaseStats{})
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &expvar.Int{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -183,7 +183,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := &expvar.Map{}
+	testStats := initEmptyStatsMap(base.StatsGroupKeyCache, &DatabaseStats{})
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &expvar.Int{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -277,7 +277,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := &expvar.Map{}
+	testStats := initEmptyStatsMap(base.StatsGroupKeyCache, &DatabaseStats{})
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &expvar.Int{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -348,7 +348,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := &expvar.Map{}
+	testStats := initEmptyStatsMap(base.StatsGroupKeyCache, &DatabaseStats{})
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &expvar.Int{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
@@ -414,7 +414,7 @@ func TestChannelCacheBypass(t *testing.T) {
 	options.CompactHighWatermarkPercent = 100
 	options.CompactLowWatermarkPercent = 50
 
-	testStats := &expvar.Map{}
+	testStats := initEmptyStatsMap(base.StatsGroupKeyCache, &DatabaseStats{})
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &expvar.Int{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)

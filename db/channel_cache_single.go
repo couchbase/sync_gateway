@@ -92,27 +92,43 @@ type SingleChannelCache interface {
 }
 
 type singleChannelCacheImpl struct {
-	channelName      string               // The channel name, duh
-	queryHandler     ChannelQueryHandler  // Database connection (used for view queries)
-	logs             LogEntries           // Log entries in sequence order
-	validFrom        uint64               // First sequence that logs is valid for, not necessarily the seq number of a change entry.
-	lock             sync.RWMutex         // Controls access to logs, validFrom
-	queryLock        sync.Mutex           // Ensures only one view query is made at a time
-	lateLogs         []*lateLogEntry      // Late arriving LogEntries, stored in the order they were received
-	lastLateSequence uint64               // Used for fast check of whether listener has the latest
-	lateLogLock      sync.RWMutex         // Controls access to lateLogs
-	lateSequenceUUID uuid.UUID            // UUID for late sequence consistency across cache compaction
-	options          *ChannelCacheOptions // Cache size/expiry settings
-	cachedDocIDs     map[string]struct{}  // Set of keys present in the cache.  Used for efficient check for previous revisions on append
-	recentlyUsed     base.AtomicBool      // Atomic recently used flag, used by cache compaction.
-	statsMap         *expvar.Map          // Map used for cache stats
+	channelName      string                  // The channel name, duh
+	queryHandler     ChannelQueryHandler     // Database connection (used for view queries)
+	logs             LogEntries              // Log entries in sequence order
+	validFrom        uint64                  // First sequence that logs is valid for, not necessarily the seq number of a change entry.
+	lock             sync.RWMutex            // Controls access to logs, validFrom
+	queryLock        sync.Mutex              // Ensures only one view query is made at a time
+	lateLogs         []*lateLogEntry         // Late arriving LogEntries, stored in the order they were received
+	lastLateSequence uint64                  // Used for fast check of whether listener has the latest
+	lateLogLock      sync.RWMutex            // Controls access to lateLogs
+	lateSequenceUUID uuid.UUID               // UUID for late sequence consistency across cache compaction
+	options          *ChannelCacheOptions    // Cache size/expiry settings
+	cachedDocIDs     map[string]struct{}     // Set of keys present in the cache.  Used for efficient check for previous revisions on append
+	recentlyUsed     base.AtomicBool         // Atomic recently used flag, used by cache compaction.
+	channelStats     singleChannelCacheStats // Set of expvar.Int from statsMap, used to avoid map lookups
+}
+
+type singleChannelCacheStats struct {
+	cacheHits             *expvar.Int // StatKeyChannelCacheHits
+	cacheMisses           *expvar.Int // StatKeyChannelCacheMisses
+	pendingQueries        *expvar.Int //StatKeyChannelCachePendingQueries
+	utilizationRemovals   *expvar.Int // StatKeyChannelCacheRevsRemoval
+	utilizationTombstones *expvar.Int // StatKeyChannelCacheRevsTombstone
+	utilizationActive     *expvar.Int // StatKeyChannelCacheRevsActive
 }
 
 func newSingleChannelCache(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, statsMap *expvar.Map) *singleChannelCacheImpl {
 	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelName: channelName, validFrom: validFrom}
 	cache.initializeLateLogs()
 	cache.cachedDocIDs = make(map[string]struct{})
-	cache.statsMap = statsMap
+	cache.channelStats = singleChannelCacheStats{
+		cacheHits:             statsMap.Get(base.StatKeyChannelCacheHits).(*expvar.Int),
+		cacheMisses:           statsMap.Get(base.StatKeyChannelCacheMisses).(*expvar.Int),
+		pendingQueries:        statsMap.Get(base.StatKeyChannelCachePendingQueries).(*expvar.Int),
+		utilizationRemovals:   statsMap.Get(base.StatKeyChannelCacheRevsRemoval).(*expvar.Int),
+		utilizationTombstones: statsMap.Get(base.StatKeyChannelCacheRevsTombstone).(*expvar.Int),
+		utilizationActive:     statsMap.Get(base.StatKeyChannelCacheRevsActive).(*expvar.Int),
+	}
 	cache.options = &ChannelCacheOptions{
 		ChannelCacheMinLength: DefaultChannelCacheMinLength,
 		ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
@@ -368,17 +384,17 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	}
 	startSeq := options.Since.SafeSequence() + 1
 	if cacheValidFrom <= startSeq {
-		c.statsMap.Add(base.StatKeyChannelCacheHits, 1)
+		c.channelStats.cacheHits.Add(1)
 		return resultFromCache, nil
 	}
 
 	// Nope, we're going to have to backfill from the view.
 	//** First acquire the _query_ lock (not the regular lock!)
 	// Track pending queries via StatKeyChannelCachePendingQueries expvar
-	c.statsMap.Add(base.StatKeyChannelCachePendingQueries, 1)
+	c.channelStats.pendingQueries.Add(1)
 	c.queryLock.Lock()
 	defer c.queryLock.Unlock()
-	c.statsMap.Add(base.StatKeyChannelCachePendingQueries, -1)
+	c.channelStats.pendingQueries.Add(-1)
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
@@ -388,7 +404,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
-		c.statsMap.Add(base.StatKeyChannelCacheHits, 1)
+		c.channelStats.cacheHits.Add(1)
 		return resultFromCache, nil
 	}
 
@@ -403,7 +419,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
-	c.statsMap.Add(base.StatKeyChannelCacheMisses, 1)
+	c.channelStats.cacheMisses.Add(1)
 	endSeq := cacheValidFrom
 	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
@@ -486,11 +502,11 @@ func (c *singleChannelCacheImpl) _appendChange(change *LogEntry) {
 // Updates cache utilization.  Note that cache entries that are both removals and tombstones are counted as removals
 func (c *singleChannelCacheImpl) UpdateCacheUtilization(entry *LogEntry, delta int64) {
 	if entry.IsRemoved() {
-		c.statsMap.Add(base.StatKeyChannelCacheRevsRemoval, delta)
+		c.channelStats.utilizationRemovals.Add(delta)
 	} else if entry.IsDeleted() {
-		c.statsMap.Add(base.StatKeyChannelCacheRevsTombstone, delta)
+		c.channelStats.utilizationTombstones.Add(delta)
 	} else {
-		c.statsMap.Add(base.StatKeyChannelCacheRevsActive, delta)
+		c.channelStats.utilizationActive.Add(delta)
 	}
 }
 
