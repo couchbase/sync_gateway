@@ -278,7 +278,6 @@ func (h *handler) handleProfiling() error {
 			return err
 		}
 		if profileName != "" {
-			defer f.Close()
 			if profile := pprof.Lookup(profileName); profile != nil {
 				profile.WriteTo(f, 0)
 				base.Infof(base.KeyAll, "Wrote %s profile to %s", profileName, base.UD(params.File))
@@ -288,6 +287,10 @@ func (h *handler) handleProfiling() error {
 		} else {
 			base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
 			pprof.StartCPUProfile(f)
+		}
+		err = f.Close()
+		if err != nil {
+			return err
 		}
 	} else {
 		if profileName != "" {
