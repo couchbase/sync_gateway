@@ -57,7 +57,7 @@ func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxV
 	for i := 0; i < UnmarshalWorkerCount; i++ {
 		workerChan := make(chan sgbucket.FeedEvent)
 		r.workerChans[i] = workerChan
-		go r.RunUnmarshalWorker(workerChan)
+		go r.RunUnmarshalWorker(i, r.workerChans[i])
 	}
 
 	if LogDebugEnabled(KeyDCP) {
@@ -372,20 +372,15 @@ func CopyDefaultBucketDatasourceOptions() *cbdatasource.BucketDataSourceOptions 
 	}
 }
 
-// DCP worker
-type DCPUnmarshalWorker struct {
-	callback       sgbucket.FeedEventCallbackFunc
-	incomingEvents chan sgbucket.FeedEvent
-	terminator     chan struct{}
-}
-
-func (r *DCPReceiver) RunUnmarshalWorker(incomingEvents chan sgbucket.FeedEvent) {
+func (r *DCPReceiver) RunUnmarshalWorker(partitionNo int, incomingEvents chan sgbucket.FeedEvent) {
 	for {
 		select {
 		case event := <-incomingEvents:
+			Infof(KeyDCP, "Processing event for partition %d, key %s", partitionNo, event.Key)
 			r.callback(event)
 			r.updateSeq(event.VbNo, event.VbSeq, true)
 		case <-r.terminator:
+			Warnf("Terminating unmarshalWorker for %d", partitionNo)
 			return
 		}
 	}
