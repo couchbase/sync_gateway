@@ -539,7 +539,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	millisecondLatency := int(feedLatency / time.Millisecond)
 
 	// If latency is larger than 1 minute or is negative there is likely an issue and this should be clear to the user
-	if millisecondLatency >= 60*1000 || millisecondLatency < 0 {
+	if millisecondLatency >= 60*1000 {
 		base.Infof(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
 	} else {
 		base.Debugf(base.KeyDCP, "Received #%d after %3dms (%q / %q)", change.Sequence, millisecondLatency, base.UD(change.DocID), change.RevID)
