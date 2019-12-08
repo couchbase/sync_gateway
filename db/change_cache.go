@@ -694,7 +694,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 	var changedChannels base.Set
 	if sequence == c.nextSequence || c.nextSequence == 0 {
 		// This is the expected next sequence so we can add it now:
-		changedChannels = c._addToCache(change)
+		changedChannels = base.SetFromArray(c._addToCache(change))
 		// Also add any pending sequences that are now contiguous:
 		changedChannels = changedChannels.Update(c._addPendingLogs())
 	} else if sequence > c.nextSequence {
@@ -726,7 +726,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 			change.Skipped = true
 		}
 
-		changedChannels = c._addToCache(change)
+		changedChannels = changedChannels.UpdateWithSlice(c._addToCache(change))
 		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
 		// in cache
 		c.RemoveSkipped(sequence)
@@ -736,7 +736,7 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *changeCache) _addToCache(change *LogEntry) base.Set {
+func (c *changeCache) _addToCache(change *LogEntry) []string {
 
 	if change.Sequence >= c.nextSequence {
 		c.nextSequence = change.Sequence + 1
@@ -779,7 +779,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		isNext := change.Sequence == c.nextSequence
 		if isNext {
 			heap.Pop(&c.pendingLogs)
-			changedChannels = changedChannels.Update(c._addToCache(change))
+			changedChannels = changedChannels.UpdateWithSlice(c._addToCache(change))
 		} else if len(c.pendingLogs) > c.options.CachePendingSeqMaxNum || time.Since(c.pendingLogs[0].TimeReceived) >= c.options.CachePendingSeqMaxWait {
 			c.internalStats.numSkippedSeqs++
 			c.PushSkipped(c.nextSequence)

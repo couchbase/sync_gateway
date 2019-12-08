@@ -30,7 +30,7 @@ type ChannelCache interface {
 	Init(initialSequence uint64)
 
 	// Adds an entry to the cache, returns set of channels it was added to
-	AddToCache(change *LogEntry) base.Set
+	AddToCache(change *LogEntry) []string
 
 	// Notifies the cache of a principal update.  Updates the cache's high sequence
 	AddPrincipal(change *LogEntry)
@@ -152,14 +152,14 @@ func (c *channelCacheImpl) AddPrincipal(change *LogEntry) {
 
 // Adds an entry to the appropriate channels' caches, returning the affected channels.  lateSequence
 // flag indicates whether it was a change arriving out of sequence
-func (c *channelCacheImpl) AddToCache(change *LogEntry) base.Set {
-
-	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
-	// the change's active channels, as well as any channel removals for the active revision.
-	updatedChannels := make(base.Set)
+func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []string) {
 
 	ch := change.Channels
 	change.Channels = nil // not needed anymore, so free some memory
+
+	// updatedChannels tracks the set of channels that should be notified of the change.  This includes
+	// the change's active channels, as well as any channel removals for the active revision.
+	updatedChannels = make([]string, 0, len(ch))
 
 	// If it's a late sequence, we want to add to all channel late queues within a single write lock,
 	// to avoid a changes feed seeing the same late sequence in different iteration loops (and sending
@@ -173,29 +173,35 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) base.Set {
 	// Need to acquire the validFromLock prior to checking for active channel caches, to ensure that
 	// any new caches that are added between the check for c.GetActiveChannelCache and the update of
 	// c.highCacheSequence are initialized with the correct validFrom.
+	var explicitStarChannel bool
 	c.validFromLock.Lock()
 	for channelName, removal := range ch {
 		if removal == nil || removal.Seq == change.Sequence {
+			// If the document has been explicitly added to the star channel by the sync function, don't need to recheck below
+			if channelName == channels.UserStarChannel {
+				explicitStarChannel = true
+			}
 			channelCache, ok := c.getActiveChannelCache(channelName)
 			if ok {
 				channelCache.addToCache(change, removal != nil)
 				if change.Skipped {
 					channelCache.AddLateSequence(change)
 				}
+				updatedChannels = append(updatedChannels, channelName)
 			}
-			updatedChannels = updatedChannels.Add(channelName)
+
 		}
 	}
 
-	if EnableStarChannelLog {
+	if EnableStarChannelLog && !explicitStarChannel {
 		channelCache, ok := c.getActiveChannelCache(channels.UserStarChannel)
 		if ok {
 			channelCache.addToCache(change, false)
 			if change.Skipped {
 				channelCache.AddLateSequence(change)
 			}
+			updatedChannels = append(updatedChannels, channels.UserStarChannel)
 		}
-		updatedChannels = updatedChannels.Add(channels.UserStarChannel)
 	}
 
 	c.updateHighCacheSequence(change.Sequence)
