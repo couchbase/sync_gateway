@@ -69,7 +69,7 @@ type SyncData struct {
 	Attachments     AttachmentsMeta     `json:"attachments,omitempty"`
 
 	// Only used for performance metrics:
-	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
+	TimeSaved time.Time `json:"ignore_time_saved,omitempty"` // Timestamp of save.
 
 	// Backward compatibility (the "deleted" field was, um, deleted in commit 4194f81, 2/17/14)
 	Deleted_OLD bool `json:"deleted,omitempty"`
