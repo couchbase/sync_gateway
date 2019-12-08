@@ -33,19 +33,31 @@ const (
 
 // Memcached datatype for raw (binary) document (non-flag)
 const MemcachedDataTypeRaw = 0
+const UnmarshalWorkerCount = 32
 
 // DCPReceiver implements cbdatasource.Receiver to manage updates coming from a
 // cbdatasource BucketDataSource.  See go-couchbase/cbdatasource for
 // additional details
 type DCPReceiver struct {
 	*DCPCommon
+	terminator  chan struct{}
+	workerChans []chan sgbucket.FeedEvent
 }
 
 func NewDCPReceiver(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dbStats *expvar.Map, feedID string) (cbdatasource.Receiver, context.Context) {
 
 	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dbStats, feedID)
+
 	r := &DCPReceiver{
-		DCPCommon: dcpCommon,
+		DCPCommon:  dcpCommon,
+		terminator: make(chan struct{}),
+	}
+
+	r.workerChans = make([]chan sgbucket.FeedEvent, UnmarshalWorkerCount)
+	for i := 0; i < UnmarshalWorkerCount; i++ {
+		workerChan := make(chan sgbucket.FeedEvent)
+		r.workerChans[i] = workerChan
+		go r.RunUnmarshalWorker(workerChan)
 	}
 
 	if LogDebugEnabled(KeyDCP) {
@@ -79,7 +91,12 @@ func (r *DCPReceiver) DataUpdate(vbucketId uint16, key []byte, seq uint64,
 		return nil
 	}
 	event := makeFeedEventForMCRequest(req, sgbucket.FeedOpMutation)
-	r.dataUpdate(seq, event)
+	event.VbSeq = seq
+
+	partition := req.VBucket % UnmarshalWorkerCount
+	r.workerChans[partition] <- event
+
+	//r.dataUpdate(seq, event)
 	return nil
 }
 
@@ -322,6 +339,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 			<-args.Terminator
 			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
 			bds.Close()
+			close(dcpReceiver.terminator)
 		}()
 	}
 
@@ -351,5 +369,24 @@ func CopyDefaultBucketDatasourceOptions() *cbdatasource.BucketDataSourceOptions 
 		PingTimeoutMS: cbdatasource.DefaultBucketDataSourceOptions.PingTimeoutMS,
 
 		IncludeXAttrs: cbdatasource.DefaultBucketDataSourceOptions.IncludeXAttrs,
+	}
+}
+
+// DCP worker
+type DCPUnmarshalWorker struct {
+	callback       sgbucket.FeedEventCallbackFunc
+	incomingEvents chan sgbucket.FeedEvent
+	terminator     chan struct{}
+}
+
+func (r *DCPReceiver) RunUnmarshalWorker(incomingEvents chan sgbucket.FeedEvent) {
+	for {
+		select {
+		case event := <-incomingEvents:
+			r.callback(event)
+			r.updateSeq(event.VbNo, event.VbSeq, true)
+		case <-r.terminator:
+			return
+		}
 	}
 }
