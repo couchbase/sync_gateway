@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"expvar"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -187,9 +188,11 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []strin
 				if change.Skipped {
 					channelCache.AddLateSequence(change)
 				}
-				updatedChannels = append(updatedChannels, channelName)
+			} else {
+				log.Printf("Channel %s isn't resident", channelName)
 			}
-
+			// Need to notify even if channel isn't active, for case where number of connected changes channels exceeds cache capacity
+			updatedChannels = append(updatedChannels, channelName)
 		}
 	}
 
@@ -200,8 +203,8 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []strin
 			if change.Skipped {
 				channelCache.AddLateSequence(change)
 			}
-			updatedChannels = append(updatedChannels, channels.UserStarChannel)
 		}
+		updatedChannels = append(updatedChannels, channels.UserStarChannel)
 	}
 
 	c.updateHighCacheSequence(change.Sequence)
