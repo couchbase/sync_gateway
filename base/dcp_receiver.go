@@ -373,10 +373,10 @@ func CopyDefaultBucketDatasourceOptions() *cbdatasource.BucketDataSourceOptions 
 }
 
 func (r *DCPReceiver) RunUnmarshalWorker(partitionNo int, incomingEvents chan sgbucket.FeedEvent) {
+
 	for {
 		select {
 		case event := <-incomingEvents:
-			Infof(KeyDCP, "Processing event for partition %d, key %s", partitionNo, event.Key)
 			r.callback(event)
 			r.updateSeq(event.VbNo, event.VbSeq, true)
 		case <-r.terminator:
@@ -384,4 +384,6 @@ func (r *DCPReceiver) RunUnmarshalWorker(partitionNo int, incomingEvents chan sg
 			return
 		}
 	}
+	Warnf("Escaped RunUnmarshalWorker loop for %d", partitionNo)
+
 }
