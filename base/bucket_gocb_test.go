@@ -815,7 +815,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	val["sg_field"] = "sg_value_mod"
 	xattrVal["rev"] = "2-1234"
 	_, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val, xattrVal)
-	goassert.Equals(t, err, gocb.ErrKeyExists)
+	goassert.Equals(t, pkgerrors.Cause(err), gocb.ErrKeyExists)
 
 	// Retrieve again, ensure we get the SDK value, SG xattr
 	retrievedVal = nil
@@ -1436,7 +1436,7 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 		log.Printf("Delete testing for key: %v", key)
 		// First attempt to update with a bad cas value, and ensure we're getting the expected error
 		_, errCasMismatch := bucket.UpdateXattr(key, xattrName, 0, uint64(1234), &updatedXattrVal, shouldDeleteBody[i])
-		assert.True(t, errCasMismatch == gocb.ErrKeyExists, fmt.Sprintf("Expected cas mismatch error, got: %v", err))
+		assert.Equal(t, gocb.ErrKeyExists, pkgerrors.Cause(errCasMismatch), fmt.Sprintf("Expected cas mismatch error, got: %v", err))
 
 		_, errDelete := bucket.UpdateXattr(key, xattrName, 0, uint64(casValues[i]), &updatedXattrVal, shouldDeleteBody[i])
 		log.Printf("Delete error: %v", errDelete)
@@ -1660,29 +1660,29 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 	var key1XattrResult map[string]interface{}
 	_, key1err := bucket.GetWithXattr(key1, xattrName, &key1DocResult, &key1XattrResult)
 	assert.NoError(t, key1err, "Unexpected error retrieving doc w/ xattr")
-	goassert.Equals(t, key1DocResult["type"], key1)
-	goassert.Equals(t, key1XattrResult["rev"], "1-1234")
+	assert.Equal(t, key1, key1DocResult["type"])
+	assert.Equal(t, "1-1234", key1XattrResult["rev"])
 
 	var key2DocResult map[string]interface{}
 	var key2XattrResult map[string]interface{}
 	_, key2err := bucket.GetWithXattr(key2, xattrName, &key2DocResult, &key2XattrResult)
 	assert.NoError(t, key2err, "Unexpected error retrieving doc w/out xattr")
-	goassert.Equals(t, key2DocResult["type"], key2)
-	goassert.True(t, key2XattrResult == nil)
+	assert.Equal(t, key2, key2DocResult["type"])
+	assert.Nil(t, key2XattrResult)
 
 	var key3DocResult map[string]interface{}
 	var key3XattrResult map[string]interface{}
 	_, key3err := bucket.GetWithXattr(key3, xattrName, &key3DocResult, &key3XattrResult)
 	assert.NoError(t, key3err, "Unexpected error retrieving doc w/out xattr")
-	goassert.True(t, key3DocResult == nil)
-	goassert.Equals(t, key3XattrResult["rev"], "1-1234")
+	assert.Nil(t, key3DocResult)
+	assert.Equal(t, "1-1234", key3XattrResult["rev"])
 
 	var key4DocResult map[string]interface{}
 	var key4XattrResult map[string]interface{}
 	_, key4err := bucket.GetWithXattr(key4, xattrName, &key4DocResult, &key4XattrResult)
-	goassert.Equals(t, key4err, gocb.ErrKeyNotFound)
-	goassert.True(t, key4DocResult == nil)
-	goassert.True(t, key4XattrResult == nil)
+	assert.Equal(t, gocb.ErrKeyNotFound, pkgerrors.Cause(key4err))
+	assert.Nil(t, key4DocResult)
+	assert.Nil(t, key4XattrResult)
 
 }
 
@@ -1860,12 +1860,12 @@ func TestGetXattr(t *testing.T) {
 	//Get Xattr From Existing Doc With Non-Existent Xattr -> ErrSubDocBadMulti
 	_, err = testBucket.GetXattr(key1, "non-exist", &response)
 	assert.Error(t, err)
-	assert.Equal(t, gocbcore.ErrSubDocBadMulti, err)
+	assert.Equal(t, gocbcore.ErrSubDocBadMulti, pkgerrors.Cause(err))
 
 	//Get Xattr From Non-Existent Doc With Non-Existent Xattr
 	_, err = testBucket.GetXattr("non-exist", "non-exist", &response)
 	assert.Error(t, err)
-	assert.Equal(t, gocbcore.ErrKeyNotFound, err)
+	assert.Equal(t, gocbcore.ErrKeyNotFound, pkgerrors.Cause(err))
 
 	//Get Xattr From Tombstoned Doc With Existing Xattr
 	cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, cas, val2, xattrVal2)
@@ -1876,14 +1876,14 @@ func TestGetXattr(t *testing.T) {
 	//Get Xattr From Tombstoned Doc With Non-Existent Xattr
 	_, err = testBucket.GetXattr(key2, "non-exist", &response)
 	assert.Error(t, err)
-	assert.Equal(t, gocbcore.ErrKeyNotFound, err)
+	assert.Equal(t, gocbcore.ErrKeyNotFound, pkgerrors.Cause(err))
 
 	////Get Xattr From Deleted Doc With Deleted Xattr -> SubDocMultiPathFailureDeleted
 	cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
 	bucket.Remove(key3, cas)
 	_, err = testBucket.GetXattr(key3, xattrName3, &response)
 	assert.Error(t, err)
-	assert.Equal(t, gocbcore.ErrKeyNotFound, err)
+	assert.Equal(t, gocbcore.ErrKeyNotFound, pkgerrors.Cause(err))
 }
 
 func TestApplyViewQueryOptions(t *testing.T) {
@@ -2249,7 +2249,7 @@ func verifyDocAndXattrDeleted(bucket *CouchbaseBucketGoCB, key, xattrName string
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
 	_, err := bucket.GetWithXattr(key, xattrName, &retrievedVal, &retrievedXattr)
-	if err != gocbcore.ErrKeyNotFound {
+	if pkgerrors.Cause(err) != gocbcore.ErrKeyNotFound {
 		return false
 	}
 	return true
