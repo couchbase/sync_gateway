@@ -3989,7 +3989,11 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 // Create doc with attachment at rev 1 using pre-2.5 metadata (outside of _sync)
 // Create rev 2 with stub using att revpos 1 and make sure we fetch the attachment correctly
 // Reproduces CBG-616
-func TestAttachmentRevpos1xUpgrade(t *testing.T) {
+func TestAttachmentRevposPre25Metadata(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("Skipping with xattrs due to use of AddRaw _sync data")
+	}
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -3998,7 +4002,7 @@ func TestAttachmentRevpos1xUpgrade(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 
-	response := rt.SendRequest("PUT", "/db/doc1?rev=1-6e5a9ed9e2e8637d495ac5dd2fa90479", `{"test":false,"_attachments":{"hello.txt":{"stub":true,"revpos":1}}}`)
+	response := rt.SendAdminRequest("PUT", "/db/doc1?rev=1-6e5a9ed9e2e8637d495ac5dd2fa90479", `{"test":false,"_attachments":{"hello.txt":{"stub":true,"revpos":1}}}`)
 	assertStatus(t, response, 201)
 	var putResp struct {
 		OK  bool   `json:"ok"`
@@ -4007,7 +4011,7 @@ func TestAttachmentRevpos1xUpgrade(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &putResp))
 	require.True(t, putResp.OK)
 
-	response = rt.SendRequest("GET", "/db/doc1", "")
+	response = rt.SendAdminRequest("GET", "/db/doc1", "")
 	assertStatus(t, response, 200)
 	var body struct {
 		Test        bool             `json:"test"`
