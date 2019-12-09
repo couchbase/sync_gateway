@@ -99,6 +99,7 @@ type BucketSpec struct {
 	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
 	ViewQueryTimeoutSecs                   *uint32        // the view query timeout in seconds (default: 75 seconds)
 	BucketOpTimeout                        *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	KvPoolSize                             int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnStringmk,......
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
@@ -131,7 +132,7 @@ func (spec BucketSpec) GetPoolName() string {
 // Builds a gocb connection string based on BucketSpec.Server.
 // Adds idle connection configuration, and X.509 auth settings when
 // certpath/keypath/cacertpath specified.
-func (spec BucketSpec) GetGoCBConnString() (string, error) {
+func (spec *BucketSpec) GetGoCBConnString() (string, error) {
 
 	connSpec, err := gocbconnstr.Parse(spec.Server)
 	if err != nil {
@@ -147,6 +148,14 @@ func (spec BucketSpec) GetGoCBConnString() (string, error) {
 	asValues.Set("http_max_idle_conns", DefaultHttpMaxIdleConns)
 	asValues.Set("http_idle_conn_timeout", DefaultHttpIdleConnTimeoutMilliseconds)
 	asValues.Set("n1ql_timeout", fmt.Sprintf("%d", spec.GetViewQueryTimeoutMs()))
+
+	poolSizeFromConnStr := asValues.Get("kv_pool_size")
+	if poolSizeFromConnStr == "" {
+		asValues.Set("kv_pool_size", DefaultGocbKvPoolSize)
+		spec.KvPoolSize, _ = strconv.Atoi(DefaultGocbKvPoolSize)
+	} else {
+		spec.KvPoolSize, _ = strconv.Atoi(poolSizeFromConnStr)
+	}
 	asValues.Set("operation_tracing", "false")
 
 	if spec.Certpath != "" && spec.Keypath != "" {
