@@ -99,7 +99,7 @@ type BucketSpec struct {
 	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
 	ViewQueryTimeoutSecs                   *uint32        // the view query timeout in seconds (default: 75 seconds)
 	BucketOpTimeout                        *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-	KvPoolSize                             int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnStringmk,......
+	KvPoolSize                             int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.

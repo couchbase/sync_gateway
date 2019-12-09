@@ -81,7 +81,7 @@ const (
 	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
 
 	// Number of kv connections (pipelines) per Couchbase Server node
-	DefaultGocbKvPoolSize = "4"
+	DefaultGocbKvPoolSize = "2"
 
 	// The limit in Couchbase Server for total system xattr size
 	couchbaseMaxSystemXattrSize = 1 * 1024 * 1024 // 1MB
