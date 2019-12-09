@@ -102,6 +102,18 @@ func (set Set) Update(other Set) Set {
 	return set
 }
 
+func (set Set) UpdateWithSlice(slice []string) Set {
+	if len(slice) == 0 {
+		return set
+	} else if len(set) == 0 {
+		set = make(Set, len(slice))
+	}
+	for _, ch := range slice {
+		set[ch] = present{}
+	}
+	return set
+}
+
 // Adds a value to a set
 func (set Set) Add(value string) Set {
 	set[value] = present{}
