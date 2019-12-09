@@ -180,11 +180,17 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 
 	// Define channels to limit the number of concurrent single and bulk operations,
 	// to avoid gocb queue overflow issues
+
+	numPools := 1
+	if spec.KvPoolSize > 0 {
+		numPools = spec.KvPoolSize
+	}
+
 	bucket = &CouchbaseBucketGoCB{
 		goCBBucket,
 		spec,
-		make(chan struct{}, MaxConcurrentSingleOps*nodeCount),
-		make(chan struct{}, MaxConcurrentBulkOps*nodeCount),
+		make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools),
+		make(chan struct{}, MaxConcurrentBulkOps*nodeCount*numPools),
 		make(chan struct{}, MaxConcurrentViewOps*nodeCount),
 	}
 

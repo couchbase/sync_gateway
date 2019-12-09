@@ -84,6 +84,8 @@ const (
 	// Keep idle connections around for a maximimum of 90 seconds.  This is the same value used by the Go DefaultTransport.
 	DefaultHttpIdleConnTimeoutMilliseconds = "90000"
 
+	// Number of kv connections (pipelines) per Couchbase Server node
+	DefaultGocbKvPoolSize = "2"
 )
 
 func UnitTestUrl() string {
