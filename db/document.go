@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -386,7 +387,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 			if needHistory {
 				result.History = make(RevTree)
 			}
-			err = base.JSONUnmarshal(syncXattr, result)
+			err = json.Unmarshal(syncXattr, result)
 			if err != nil {
 				return nil, nil, nil, err
 			}
