@@ -2007,6 +2007,16 @@ func BenchmarkProcessEntry(b *testing.B) {
 			NewTestProcessEntryFeed(35000, 10),
 			35000,
 		},
+		{
+			"SingleThread_NonOrderedFeed_ManyActiveChannels_MoreSources",
+			NewTestProcessEntryFeed(35000, 100),
+			35000,
+		},
+		{
+			"SingleThread_NonOrderedFeed_ManyActiveChannels_ManyMoreSources",
+			NewTestProcessEntryFeed(35000, 1000),
+			35000,
+		},
 	}
 
 	for _, bm := range processEntryBenchmarks {
@@ -2042,6 +2052,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 				_ = changeCache.processEntry(entry)
 			}
 
+			log.Printf("max pending: %v", changeCache.internalStats.maxPending)
 			base.DecrNumOpenBuckets(context.Bucket.GetName())
 			context.Close()
 		})

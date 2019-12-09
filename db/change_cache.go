@@ -66,15 +66,18 @@ type changeCache struct {
 }
 
 type changeCacheStats struct {
-	highSeqFeed      uint64      // pushed to expvar on updateStats while holding lock
-	pendingSeqLen    int         // pushed to expvar on updateStats while holding lock
-	maxPending       int         // pushed to expvar on updateStats while holding lock
-	numSkippedSeqs   uint64      // pushed to expvar on updateStats while holding lock
-	dcpReceivedTime  *expvar.Int // avoid map lookup on Add
-	dcpReceivedCount *expvar.Int // avoid map lookup on Add
-	dcpCachingTime   *expvar.Int // avoid map lookup on Add
-	dcpCachingCount  *expvar.Int // avoid map lookup on Add
-	abandonedSeqs    *expvar.Int // avoid map lookup on Add
+	highSeqFeed              uint64      // pushed to expvar on updateStats while holding lock
+	pendingSeqLen            int         // pushed to expvar on updateStats while holding lock
+	maxPending               int         // pushed to expvar on updateStats while holding lock
+	numSkippedSeqs           uint64      // pushed to expvar on updateStats while holding lock
+	dcpReceivedTime          *expvar.Int // avoid map lookup on Add
+	dcpReceivedCount         *expvar.Int // avoid map lookup on Add
+	dcpCachingTime           *expvar.Int // avoid map lookup on Add
+	dcpCachingCount          *expvar.Int // avoid map lookup on Add
+	abandonedSeqs            *expvar.Int // avoid map lookup on Add
+	processEntryCount        uint64
+	processEntryPreLockTime  int64
+	processEntryPostLockTime int64
 }
 
 // Adds expvar.Int references to changeCacheStats to avoid stats map lookup on usage
@@ -96,6 +99,11 @@ func (c *changeCache) updateStats() {
 	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
 	c.context.DbStats.StatsCache().Set(base.StatKeyNumSkippedSeqs, base.ExpvarUInt64Val(c.internalStats.numSkippedSeqs))
 	c.context.DbStats.StatsCache().Set(base.StatKeySkippedSeqLen, base.ExpvarUInt64Val(uint64(c.skippedSeqs.skippedList.Len())))
+
+	c.context.DbStats.StatsCache().Set("processEntryCount", base.ExpvarUInt64Val(c.internalStats.processEntryCount))
+	c.context.DbStats.StatsCache().Set("processEntryPreLockTime", base.ExpvarInt64Val(c.internalStats.processEntryPreLockTime))
+	c.context.DbStats.StatsCache().Set("processEntryPostLockTime", base.ExpvarInt64Val(c.internalStats.processEntryPostLockTime))
+
 	c.lock.Unlock()
 }
 
@@ -658,11 +666,20 @@ func (c *changeCache) processPrincipalDoc(docID string, docJSON []byte, isUser b
 
 // Handles a newly-arrived LogEntry.
 func (c *changeCache) processEntry(change *LogEntry) base.Set {
+	processEntryPreLockStart := time.Now().UnixNano()
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	if c.logsDisabled {
 		return nil
 	}
+	processEntryPostLockStart := time.Now().UnixNano()
+
+	defer func() {
+		endTimeNano := time.Now().UnixNano()
+		c.internalStats.processEntryCount++
+		c.internalStats.processEntryPreLockTime += endTimeNano - processEntryPreLockStart
+		c.internalStats.processEntryPostLockTime += endTimeNano - processEntryPostLockStart
+	}()
 
 	sequence := change.Sequence
 
