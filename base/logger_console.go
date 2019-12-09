@@ -60,7 +60,7 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize)
+		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
 	if *config.Enabled {

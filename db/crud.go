@@ -604,8 +604,8 @@ func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (anc
 		return nil, false
 	}
 
-	// If the ancestor rev is the current rev, we can pull attachments directly from the doc
-	if doc.CurrentRev == ancestorRevID {
+	// If the ancestor rev is the current rev (and has att meta in _sync (2.5+) we can pull attachments directly from the doc
+	if doc.CurrentRev == ancestorRevID && doc.Attachments != nil {
 		return doc.Attachments, true
 	}
 
