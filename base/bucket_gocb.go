@@ -360,9 +360,8 @@ func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, er
 
 	// Kick off retry loop
 	err, cas = RetryLoopCas("Get", worker, bucket.spec.RetrySleeper())
-
 	if err != nil {
-		err = pkgerrors.WithStack(err)
+		err = pkgerrors.Wrapf(err, "Error during Get %s", UD(k).Redact())
 	}
 
 	return cas, err
@@ -377,10 +376,12 @@ func (bucket *CouchbaseBucketGoCB) SetBulk(entries []*sgbucket.BulkSetEntry) (er
 	worker := bucket.newSetBulkRetryWorker(entries)
 
 	// Kick off retry loop
-	description := fmt.Sprintf("SetBulk with %v entries", len(entries))
-	err, _ = RetryLoop(description, worker, bucket.spec.RetrySleeper())
+	err, _ = RetryLoop("SetBulk", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		return pkgerrors.Wrapf(err, "Error performing SetBulk with %v entries", len(entries))
+	}
 
-	return err
+	return nil
 
 }
 
@@ -491,8 +492,10 @@ func (bucket *CouchbaseBucketGoCB) GetBulkRaw(keys []string) (map[string][]byte,
 	worker := bucket.newGetBulkRawRetryWorker(keys)
 
 	// Kick off retry loop
-	description := fmt.Sprintf("GetBulkRaw with %v keys", len(keys))
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+	err, result := RetryLoop("GetBulkRaw", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "Error during GetBulkRaw with %v keys", len(keys))
+	}
 
 	// If the RetryLoop returns a nil result, convert to an empty map.
 	if result == nil {
@@ -526,8 +529,10 @@ func (bucket *CouchbaseBucketGoCB) GetBulkCounters(keys []string) (map[string]ui
 	worker := bucket.newGetBulkCountersRetryWorker(keys)
 
 	// Kick off retry loop
-	description := fmt.Sprintf("GetBulkRaw with %v keys", len(keys))
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+	err, result := RetryLoop("GetBulkRaw", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "Error during GetBulkRaw with %v keys", len(keys))
+	}
 
 	// If the RetryLoop returns a nil result, convert to an empty map.
 	if result == nil {
@@ -859,8 +864,10 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("GetAndTouchRaw with key %v", k)
-	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
+	err, cas = RetryLoopCas("GetAndTouchRaw", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, fmt.Sprintf("Error during GetAndTouchRaw with key %v", UD(k).Redact()))
+	}
 
 	// If returnVal was never set to anything, return nil or else type assertion below will panic
 	if returnVal == nil {
@@ -886,8 +893,10 @@ func (bucket *CouchbaseBucketGoCB) Touch(k string, exp uint32) (cas uint64, err 
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("Touch for key %v", k)
-	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
+	err, cas = RetryLoopCas("Touch", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "Error during Touch for key %v", UD(k).Redact())
+	}
 
 	return cas, err
 
@@ -1089,8 +1098,10 @@ func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("WriteCas with key %v", k)
-	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
+	err, cas = RetryLoopCas("WriteCas", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "WriteCas with key %v", k)
+	}
 
 	return cas, err
 
@@ -1175,8 +1186,10 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("WriteCasWithXattr with key %v", k)
-	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
+	err, cas = RetryLoopCas("WriteCasWithXattr", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "WriteCasWithXattr with key %v", UD(k).Redact())
+	}
 
 	return cas, err
 }
@@ -1228,8 +1241,10 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("UpdateXattr with key %v", k)
-	err, cas = RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
+	err, cas = RetryLoopCas("UpdateXattr", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "Error during UpdateXattr with key %v", UD(k).Redact())
+	}
 
 	return cas, err
 }
@@ -1292,6 +1307,9 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 
 	// Kick off retry loop
 	err, cas = RetryLoopCas("GetWithXattr", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "GetWithXattr %v", UD(k).Redact())
+	}
 
 	return cas, err
 
@@ -1349,8 +1367,11 @@ func (bucket *CouchbaseBucketGoCB) GetXattr(k string, xattrKey string, xv interf
 		}
 
 	}
-	description := fmt.Sprintf("GetXattr %s", UD(k).Redact())
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+
+	err, result := RetryLoop("GetXattr", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "GetXattr %s", UD(k).Redact())
+	}
 
 	if result == nil {
 		return 0, err
@@ -1746,11 +1767,9 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("Incr with key: %v", k)
-	err, cas := RetryLoopCas(description, worker, bucket.spec.RetrySleeper())
-
+	err, cas := RetryLoopCas("Incr with key", worker, bucket.spec.RetrySleeper())
 	if err != nil {
-		err = pkgerrors.WithStack(err)
+		err = pkgerrors.Wrapf(err, "Error during Incr with key: %v", UD(k).Redact())
 	}
 
 	return cas, err
@@ -2312,10 +2331,9 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("Wait until bucket %s has 0 items after flush", bucket.spec.BucketName)
-	err, _ = RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 10000))
+	err, _ = RetryLoop("Wait until bucket has 0 items after flush", worker, CreateMaxDoublingSleeperFunc(25, 100, 10000))
 	if err != nil {
-		return err
+		return pkgerrors.Wrapf(err, "Error during Wait until bucket %s has 0 items after flush", MD(bucket.spec.BucketName).Redact())
 	}
 
 	return nil
@@ -2396,8 +2414,10 @@ func (bucket *CouchbaseBucketGoCB) GetExpiry(k string) (expiry uint32, getMetaEr
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("getExpiry for key: %v", k)
-	err, result := RetryLoop(description, worker, bucket.spec.RetrySleeper())
+	err, result := RetryLoop("GetExpiry", worker, bucket.spec.RetrySleeper())
+	if err != nil {
+		err = pkgerrors.Wrapf(err, "Error during GetExpiry for key: %v", UD(k).Redact())
+	}
 
 	// If the retry loop returned a nil result, set to 0 to prevent type assertion on nil error
 	if result == nil {
