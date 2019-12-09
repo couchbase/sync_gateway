@@ -248,10 +248,12 @@ func (bucket *CouchbaseBucketGoCB) WaitForIndexOnline(indexName string) error {
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("WaitForIndexOnline for index %s", indexName)
-	err, _ := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	err, _ := RetryLoop("WaitForIndexOnline", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	if err != nil {
+		return pkgerrors.Wrapf(err, "WaitForIndexOnline for index %s", MD(indexName).Redact())
+	}
 
-	return err
+	return nil
 }
 
 // Waits for bucket to exist/not exist.  Used in response to background create/drop processing by server.
@@ -273,10 +275,12 @@ func (bucket *CouchbaseBucketGoCB) waitForBucketExistence(indexName string, shou
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("waitForBucketExistence for index %s", indexName)
-	err, _ := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	err, _ := RetryLoop("waitForBucketExistence", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	if err != nil {
+		return pkgerrors.Wrapf(err, "Error during waitForBucketExistence for index %s", indexName)
+	}
 
-	return err
+	return nil
 }
 
 type getIndexMetaRetryValues struct {
@@ -300,10 +304,9 @@ func (bucket *CouchbaseBucketGoCB) GetIndexMeta(indexName string) (exists bool, 
 	}
 
 	// Kick off retry loop
-	description := fmt.Sprintf("GetIndexMeta for index %s", indexName)
-	err, val := RetryLoop(description, worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	err, val := RetryLoop("GetIndexMeta", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
 	if err != nil {
-		return false, nil, err
+		return false, nil, pkgerrors.Wrapf(err, "Error during GetIndexMeta for index %s", indexName)
 	}
 
 	valTyped, ok := val.(getIndexMetaRetryValues)
