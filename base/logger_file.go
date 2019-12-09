@@ -78,7 +78,7 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFile
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize)
+		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
 	return logger, nil
