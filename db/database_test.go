@@ -187,9 +187,9 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	}
 
 	// Force views if not testing against Couchbase Server
-	//if !base.TestUseCouchbaseServer() {
-	dbcOptions.UseViews = true
-	//}
+	if !base.TestUseCouchbaseServer() {
+		dbcOptions.UseViews = true
+	}
 }
 
 func tearDownTestDB(t testing.TB, db *Database) {

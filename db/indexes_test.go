@@ -91,6 +91,9 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
+	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	assert.NoError(t, err)
+
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
 	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, !db.UseXattrs(), db.UseViews())
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
