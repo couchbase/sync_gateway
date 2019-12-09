@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -244,7 +245,7 @@ func TestStartReplicators(t *testing.T) {
 }
 
 func TestPostStartup(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
 	var replications []*ReplicationConfig
 
 	// Start a continuous fake replication.
@@ -259,6 +260,7 @@ func TestPostStartup(t *testing.T) {
 	serverContext.startReplicators()
 
 	activeTasks := serverContext.replicator.ActiveTasks()
+	log.Printf("activeTasks: %v", activeTasks)
 	assert.Equal(t, 1, len(activeTasks))
 	activeTask := activeTasks[0]
 	assert.Equal(t, "58a632bb8d7e110445d3d65a98365d62", activeTask.ReplicationID)
