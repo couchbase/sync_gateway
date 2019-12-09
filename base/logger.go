@@ -11,15 +11,15 @@ func FlushLogBuffers() {
 	time.Sleep(loggerCollateFlushDelay)
 }
 
-func logCollationWorker(collateBuffer chan string, logger *log.Logger, bufferSize int) {
+func logCollationWorker(collateBuffer chan string, logger *log.Logger, maxBufferSize int) {
 	// This is the temporary buffer we'll store logs in.
-	logBuffer := []string{}
+	logBuffer := make([]string, 0, maxBufferSize)
 	for {
 		select {
 		// Add log to buffer and flush to output if it's full.
 		case l := <-collateBuffer:
 			logBuffer = append(logBuffer, l)
-			if len(logBuffer) >= bufferSize {
+			if len(logBuffer) >= maxBufferSize {
 				logger.Print(strings.Join(logBuffer, "\n"))
 				// Empty buffer
 				logBuffer = logBuffer[:0]
