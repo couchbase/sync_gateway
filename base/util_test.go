@@ -1128,3 +1128,34 @@ func BenchmarkInjectJSONProperties_Multiple(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkPanicRecover(b *testing.B) {
+	b.Run("recover panic", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			func() {
+				defer func() {
+					_ = recover()
+				}()
+				panic("test")
+			}()
+		}
+	})
+
+	b.Run("recover no panic", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			func() {
+				defer func() {
+					_ = recover()
+				}()
+			}()
+		}
+	})
+
+	b.Run("noop no panic", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			func() {
+				defer func() {}()
+			}()
+		}
+	})
+}

@@ -68,9 +68,8 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 			return err
 		}
 		go func() {
-			defer func() {
-				listener.notifyStopping()
-			}()
+			defer base.FatalPanicHandler()
+			defer listener.notifyStopping()
 			for event := range listener.tapFeed.Events() {
 				event.TimeReceived = time.Now()
 				listener.ProcessFeedEvent(event)

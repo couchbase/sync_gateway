@@ -58,15 +58,9 @@ func JSONMarshal(v interface{}) (b []byte, err error) {
 // JSONMarshalCanonical returns the canonical JSON encoding of v.
 // Mostly notably: Ordered properties, in order to generate deterministic Rev IDs.
 func JSONMarshalCanonical(v interface{}) (b []byte, err error) {
-	if !UseStdlibJSON {
-		b, err = jsoniter.ConfigCompatibleWithStandardLibrary.Marshal(v)
-		if err != nil {
-			err = &JSONIterError{E: err}
-		}
-	} else {
-		b, err = json.Marshal(v)
-	}
-	return b, err
+	// json.iterator shows performance degradation vs standard library for canonical marshalling,
+	// so force the use of the standard library here.
+	return json.Marshal(v)
 }
 
 // JSONDecoder returns a new JSON decoder implementing the JSONDecoderI interface

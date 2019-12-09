@@ -27,6 +27,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -337,6 +338,8 @@ type RetrySleeper func(retryCount int) (shouldContinue bool, timeTosleepMs int)
 // even if it returns shouldRetry = true.
 type RetryWorker func() (shouldRetry bool, err error, value interface{})
 
+type RetryCasWorker func() (shouldRetry bool, err error, value uint64)
+
 type RetryTimeoutError struct {
 	description string
 	attempts    int
@@ -374,6 +377,37 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 			return err, value
 		}
 		Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
+
+		<-time.After(time.Millisecond * time.Duration(sleepMs))
+
+		numAttempts += 1
+
+	}
+}
+
+// A version of RetryLoop that returns a strongly typed cas as uint64, to avoid interface conversion overhead for
+// high throughput operations.
+func RetryLoopCas(description string, worker RetryCasWorker, sleeper RetrySleeper) (error, uint64) {
+
+	numAttempts := 1
+
+	for {
+		shouldRetry, err, value := worker()
+		if !shouldRetry {
+			if err != nil {
+				return err, 0
+			}
+			return nil, value
+		}
+		shouldContinue, sleepMs := sleeper(numAttempts)
+		if !shouldContinue {
+			if err == nil {
+				err = NewRetryTimeoutError(description, numAttempts)
+			}
+			Warnf("RetryLoopCas for %v giving up after %v attempts", description, numAttempts)
+			return err, value
+		}
+		Debugf(KeyAll, "RetryLoopCas retrying %v after %v ms.", description, sleepMs)
 
 		<-time.After(time.Millisecond * time.Duration(sleepMs))
 
@@ -1201,4 +1235,11 @@ type JSONEncoderI interface {
 	Encode(v interface{}) error
 	SetIndent(prefix, indent string)
 	SetEscapeHTML(on bool)
+}
+
+func FatalPanicHandler() {
+	// Log any panics using the built-in loggers so that the stacktraces end up in SG log files before exiting.
+	if r := recover(); r != nil {
+		Fatalf("Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
+	}
 }
