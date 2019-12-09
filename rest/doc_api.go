@@ -451,7 +451,7 @@ func (h *handler) handlePostDoc() error {
 
 	h.setHeader("Location", docid)
 	h.setHeader("Etag", strconv.Quote(newRev))
-	h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
+	h.writeRawJSON([]byte(`{"id":"` + docid + `","ok":true,"rev":"` + newRev + `"}`))
 	return nil
 }
 

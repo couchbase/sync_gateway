@@ -3985,6 +3985,46 @@ func TestConflictWithInvalidAttachment(t *testing.T) {
 	assertStatus(t, response, http.StatusBadRequest)
 }
 
+// Create doc with attachment at rev 1 using pre-2.5 metadata (outside of _sync)
+// Create rev 2 with stub using att revpos 1 and make sure we fetch the attachment correctly
+// Reproduces CBG-616
+func TestAttachmentRevposPre25Metadata(t *testing.T) {
+
+	if base.TestUseXattrs() {
+		t.Skip("Skipping with xattrs due to use of AddRaw _sync data")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	ok, err := rt.GetDatabase().Bucket.AddRaw("doc1", 0, []byte(`{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"_sync":{"rev":"1-6e5a9ed9e2e8637d495ac5dd2fa90479","sequence":2,"recent_sequences":[2],"history":{"revs":["1-6e5a9ed9e2e8637d495ac5dd2fa90479"],"parents":[-1],"channels":[null]},"cas":"","time_saved":"2019-12-06T20:02:25.523013Z"},"test":true}`))
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	response := rt.SendAdminRequest("PUT", "/db/doc1?rev=1-6e5a9ed9e2e8637d495ac5dd2fa90479", `{"test":false,"_attachments":{"hello.txt":{"stub":true,"revpos":1}}}`)
+	assertStatus(t, response, 201)
+	var putResp struct {
+		OK  bool   `json:"ok"`
+		Rev string `json:"rev"`
+	}
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &putResp))
+	require.True(t, putResp.OK)
+
+	response = rt.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, response, 200)
+	var body struct {
+		Test        bool             `json:"test"`
+		Attachments db.AttachmentMap `json:"_attachments"`
+	}
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.False(t, body.Test)
+	att, ok := body.Attachments["hello.txt"]
+	require.True(t, ok)
+	assert.Equal(t, 1, att.Revpos)
+	assert.True(t, att.Stub)
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", att.Digest)
+}
+
 func TestConflictingBranchAttachments(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
