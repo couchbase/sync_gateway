@@ -4534,13 +4534,13 @@ func TestHandleProfiling(t *testing.T) {
 	assert.NoError(t, err, "fetching the file information")
 	assert.False(t, fi.Size() > 0)
 
-	// Send profile request with no filename and profile name; it should stop cpu profile
+	// Send profile request with no filename and profile name; it should end cpu profile
 	response = rt.SendAdminRequest(http.MethodPost, "/_profile", "")
 	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
 	assertStatus(t, response, http.StatusOK)
 	fi, err = os.Stat(filePath)
-	assert.NoError(t, err, "fetching the file information")
-	assert.True(t, fi.Size() > 0)
+	assert.NoError(t, err, "Profile request with no filename and profile name should be successful")
+	assert.Equal(t, int64(0), fi.Size())
 }
 
 func TestHandleHeapProfiling(t *testing.T) {
