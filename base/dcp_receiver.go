@@ -33,7 +33,7 @@ const (
 
 // Memcached datatype for raw (binary) document (non-flag)
 const MemcachedDataTypeRaw = 0
-const UnmarshalWorkerCount = 32
+const UnmarshalWorkerCount = 8
 
 // DCPReceiver implements cbdatasource.Receiver to manage updates coming from a
 // cbdatasource BucketDataSource.  See go-couchbase/cbdatasource for
