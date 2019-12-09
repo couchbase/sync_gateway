@@ -22,6 +22,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -4465,4 +4467,205 @@ func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 			rt.SendRequest("GET", "/db/"+key+"?rev=1-45ca73d819d5b1c9b8eea95290e79004", "")
 		}
 	})
+}
+
+func TestHandleProfiling(t *testing.T) {
+	t.Skip("test fails on windows due to file path handling")
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	dirPath := filepath.Join(os.TempDir(), "pprof")
+	assert.NoError(t, os.MkdirAll(dirPath, 0755))
+	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
+
+	tests := []struct {
+		inputProfile string
+	}{
+		{inputProfile: "goroutine"},
+		{inputProfile: "threadcreate"},
+		{inputProfile: "heap"},
+		{inputProfile: "allocs"},
+		{inputProfile: "block"},
+		{inputProfile: "mutex"},
+	}
+
+	for _, tc := range tests {
+		// Send a valid profile request.
+		resource := fmt.Sprintf("/_profile/%v", tc.inputProfile)
+		filePath := filepath.Join(dirPath, fmt.Sprintf("%s.pprof", tc.inputProfile))
+		reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+		response := rt.SendAdminRequest(http.MethodPost, resource, reqBodyText)
+		assertStatus(t, response, http.StatusOK)
+		fi, err := os.Stat(filePath)
+		assert.NoError(t, err, "fetching the file information")
+		assert.True(t, fi.Size() > 0)
+
+		// Send profile request with missing JSON 'file' parameter.
+		response = rt.SendAdminRequest(http.MethodPost, resource, "{}")
+		assertStatus(t, response, http.StatusBadRequest)
+		assert.Contains(t, string(response.BodyBytes()), "Missing JSON 'file' parameter")
+
+		// Send a profile request with invalid json body
+		response = rt.SendAdminRequest(http.MethodPost, resource, "invalid json body")
+		assertStatus(t, response, http.StatusBadRequest)
+		assert.Contains(t, string(response.BodyBytes()), "Invalid JSON")
+
+		// Send a profile request with unknown file path; Internal Server Error
+		reqBodyText = `{"file":"sftp://unknown/path"}`
+		response = rt.SendAdminRequest(http.MethodPost, resource, reqBodyText)
+		assertStatus(t, response, http.StatusInternalServerError)
+		assert.Contains(t, string(response.BodyBytes()), "Internal Server Error")
+	}
+
+	// Send profile request for a profile which doesn't exists; unknown
+	filePath := filepath.Join(dirPath, "unknown.pprof")
+	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+	response := rt.SendAdminRequest(http.MethodPost, "/_profile/unknown", reqBodyText)
+	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
+	assertStatus(t, response, http.StatusNotFound)
+	assert.Contains(t, string(response.BodyBytes()), `{"error":"not_found","reason":"No such profile "unknown""}`)
+
+	// Send profile request with filename and empty profile name; it should end up creating cpu profile
+	filePath = filepath.Join(dirPath, "cpu.pprof")
+	reqBodyText = fmt.Sprintf(`{"file":"%v"}`, filePath)
+	response = rt.SendAdminRequest(http.MethodPost, "/_profile", reqBodyText)
+	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
+	assertStatus(t, response, http.StatusOK)
+	fi, err := os.Stat(filePath)
+	assert.NoError(t, err, "fetching the file information")
+	assert.False(t, fi.Size() > 0)
+
+	// Send profile request with no filename and profile name; it should stop cpu profile
+	response = rt.SendAdminRequest(http.MethodPost, "/_profile", "")
+	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
+	assertStatus(t, response, http.StatusOK)
+	fi, err = os.Stat(filePath)
+	assert.NoError(t, err, "fetching the file information")
+	assert.True(t, fi.Size() > 0)
+}
+
+func TestHandleHeapProfiling(t *testing.T) {
+	t.Skip("test fails on windows due to file path handling")
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	dirPath := filepath.Join(os.TempDir(), "heap-pprof")
+	assert.NoError(t, os.MkdirAll(dirPath, 0755))
+	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
+
+	// Send a valid request for heap profiling
+	filePath := filepath.Join(dirPath, "heap.pprof")
+	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+	response := rt.SendAdminRequest(http.MethodPost, "/_heap", reqBodyText)
+	assertStatus(t, response, http.StatusOK)
+	fi, err := os.Stat(filePath)
+	assert.NoError(t, err, "fetching heap profile file information")
+	assert.True(t, fi.Size() > 0)
+
+	// Send a profile request with invalid json body
+	response = rt.SendAdminRequest(http.MethodPost, "/_heap", "invalid json body")
+	assertStatus(t, response, http.StatusBadRequest)
+	assert.Contains(t, string(response.BodyBytes()), "Invalid JSON")
+
+	// Send profile request with missing JSON 'file' parameter.
+	response = rt.SendAdminRequest(http.MethodPost, "/_heap", "{}")
+	assertStatus(t, response, http.StatusInternalServerError)
+	assert.Contains(t, string(response.BodyBytes()), "no such file or directory")
+}
+
+func TestHandlePprofTrace(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	// Get and Post requests for pprof trace
+	assert.Panics(t, func() { rt.SendAdminRequest(http.MethodGet, "/_debug/pprof/trace", "") })
+	assert.Panics(t, func() { rt.SendAdminRequest(http.MethodPost, "/_debug/pprof/trace", "") })
+}
+
+func TestHandlePprofsCmdlineAndSymbol(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	tests := []struct {
+		inputProfile string
+	}{
+		{inputProfile: "cmdline"},
+		{inputProfile: "symbol"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.inputProfile, func(t *testing.T) {
+			inputResource := fmt.Sprintf("/_debug/pprof/%v", tc.inputProfile)
+			response := rt.SendAdminRequest(http.MethodGet, inputResource, "")
+			assert.Equal(t, "", response.Header().Get("Content-Disposition"))
+			assert.Equal(t, "text/plain; charset=utf-8", response.Header().Get("Content-Type"))
+			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
+			assertStatus(t, response, http.StatusOK)
+
+			response = rt.SendAdminRequest(http.MethodPost, inputResource, "")
+			assert.Equal(t, "", response.Header().Get("Content-Disposition"))
+			assert.Equal(t, "text/plain; charset=utf-8", response.Header().Get("Content-Type"))
+			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
+			assertStatus(t, response, http.StatusOK)
+		})
+	}
+}
+
+func TestHandlePprofs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test in short mode.")
+	}
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	tests := []struct {
+		inputProfile  string
+		inputResource string
+	}{
+		{
+			inputProfile:  "heap",
+			inputResource: "/_debug/pprof/heap?seconds=1"},
+		{
+			inputProfile:  "profile",
+			inputResource: "/_debug/pprof/profile?seconds=1"},
+		{
+			inputProfile:  "block",
+			inputResource: "/_debug/pprof/block?seconds=1"},
+		{
+			inputProfile:  "threadcreate",
+			inputResource: "/_debug/pprof/threadcreate"},
+		{
+			inputProfile:  "mutex",
+			inputResource: "/_debug/pprof/mutex?seconds=1"},
+		{
+			inputProfile:  "goroutine",
+			inputResource: "/_debug/pprof/goroutine?debug=0&gc=1"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.inputProfile, func(t *testing.T) {
+			expectedContentDisposition := fmt.Sprintf(`attachment; filename="%v"`, tc.inputProfile)
+			response := rt.SendAdminRequest(http.MethodGet, tc.inputResource, "")
+			assert.Equal(t, expectedContentDisposition, response.Header().Get("Content-Disposition"))
+			assert.Equal(t, "application/octet-stream", response.Header().Get("Content-Type"))
+			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
+			assertStatus(t, response, http.StatusOK)
+
+			response = rt.SendAdminRequest(http.MethodPost, tc.inputResource, "")
+			assert.Equal(t, expectedContentDisposition, response.Header().Get("Content-Disposition"))
+			assert.Equal(t, "application/octet-stream", response.Header().Get("Content-Type"))
+			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
+			assertStatus(t, response, http.StatusOK)
+		})
+	}
+}
+
+func TestHandleStats(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Get request for fetching runtime and other stats
+	response := rt.SendAdminRequest(http.MethodGet, "/_stats", "")
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+	assert.Contains(t, string(response.BodyBytes()), "MemStats")
+	assertStatus(t, response, http.StatusOK)
 }

@@ -132,7 +132,7 @@ func (db *Database) addDocToChangeEntry(entry *ChangeEntry, options ChangesOptio
 }
 
 func (db *Database) AddDocToChangeEntryUsingRevCache(entry *ChangeEntry, revID string) (err error) {
-	rev, err := db.getRev(entry.ID, revID, 0, nil)
+	rev, err := db.getRev(entry.ID, revID, 0, nil, RevCacheIncludeBody)
 	if err != nil {
 		return err
 	}
@@ -173,7 +173,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options ChangesOptions, currentCachedSequence uint64, to string) (<-chan *ChangeEntry, error) {
 	// TODO: pass db.Ctx down to changeCache?
 	log, err := singleChannelCache.GetChanges(options)
-	base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %s", len(log), base.UD(singleChannelCache.ChannelName()))
+	base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(log), base.UD(singleChannelCache.ChannelName()))
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,9 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 
 	feed := make(chan *ChangeEntry, 1)
 	go func() {
+		defer base.FatalPanicHandler()
 		defer close(feed)
+
 		// Now write each log entry to the 'feed' channel in turn:
 		for _, logEntry := range log {
 			if !options.Conflicts && (logEntry.Flags&channels.Hidden) != 0 {

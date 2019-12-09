@@ -3,6 +3,7 @@ package base
 import (
 	"fmt"
 	"log"
+	"sync/atomic"
 	"testing"
 
 	"github.com/couchbase/cbgt"
@@ -13,12 +14,12 @@ import (
 
 type TestHeartbeatStoppedHandler struct {
 	handlerID        string
-	staleDetectCount int
+	staleDetectCount uint32
 }
 
 func (th *TestHeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUuid string) {
 	log.Printf("Handler %s detected stale heartbeat for %v, will be removed", th.handlerID, nodeUuid)
-	th.staleDetectCount++
+	atomic.AddUint32(&th.staleDetectCount, 1)
 }
 
 // TestNewCouchbaseHeartbeater simulates three nodes.  The minimum time window for failed node
@@ -99,13 +100,16 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 
 			// Wait for another node to detect node1 has stopped sending heartbeats
 			retryUntilFunc = func() bool {
-				return heartbeatStoppedHandler2.staleDetectCount >= 1 || heartbeatStoppedHandler3.staleDetectCount >= 1
+				return atomic.LoadUint32(&heartbeatStoppedHandler2.staleDetectCount) >= 1 ||
+					atomic.LoadUint32(&heartbeatStoppedHandler3.staleDetectCount) >= 1
 			}
 			testRetryUntilTrue(t, retryUntilFunc)
 
 			// Validate that at least one node detected the stopped node 1
-			assert.True(t, heartbeatStoppedHandler2.staleDetectCount >= 1 || heartbeatStoppedHandler3.staleDetectCount >= 1,
-				fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", heartbeatStoppedHandler2.staleDetectCount, heartbeatStoppedHandler3.staleDetectCount))
+			h2staleDetectCount := atomic.LoadUint32(&heartbeatStoppedHandler2.staleDetectCount)
+			h3staleDetectCount := atomic.LoadUint32(&heartbeatStoppedHandler3.staleDetectCount)
+			assert.True(t, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
+				fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
 
 			// Validate current node list
 			activeNodes, err := handler2.GetNodes()
@@ -190,13 +194,16 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 
 	// Wait for another node to detect node1 has stopped sending heartbeats
 	retryUntilFunc = func() bool {
-		return heartbeatStoppedHandler2.staleDetectCount >= 1 || heartbeatStoppedHandler3.staleDetectCount >= 1
+		return atomic.LoadUint32(&heartbeatStoppedHandler2.staleDetectCount) >= 1 ||
+			atomic.LoadUint32(&heartbeatStoppedHandler3.staleDetectCount) >= 1
 	}
 	testRetryUntilTrue(t, retryUntilFunc)
 
 	// Validate that at least one node detected the stopped node 1
-	assert.True(t, heartbeatStoppedHandler2.staleDetectCount >= 1 || heartbeatStoppedHandler3.staleDetectCount >= 1,
-		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", heartbeatStoppedHandler2.staleDetectCount, heartbeatStoppedHandler3.staleDetectCount))
+	h2staleDetectCount := atomic.LoadUint32(&heartbeatStoppedHandler2.staleDetectCount)
+	h3staleDetectCount := atomic.LoadUint32(&heartbeatStoppedHandler3.staleDetectCount)
+	assert.True(t, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
+		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
 
 	// Validate current node list
 	activeNodes, err := handler2.GetNodes()
@@ -214,7 +221,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 type TestCfgHeartbeatStoppedHandler struct {
 	handlerID        string
 	cfg              cbgt.Cfg
-	staleDetectCount int
+	staleDetectCount uint32
 }
 
 func (tch *TestCfgHeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUUID string) {
@@ -223,5 +230,5 @@ func (tch *TestCfgHeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUUID strin
 	if err != nil {
 		log.Printf("Error removing node %s from config: %v", nodeUUID, err)
 	}
-	tch.staleDetectCount++
+	atomic.AddUint32(&tch.staleDetectCount, 1)
 }

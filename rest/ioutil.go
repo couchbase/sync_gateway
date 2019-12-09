@@ -38,12 +38,12 @@ func (t *TeeReadCloser) Close() error {
 type LoggingTeeResponseWriter struct {
 	http.ResponseWriter
 	LogKey       base.LogKey   // The log key to use, eg base.KeyHTTP
-	SerialNumber uint64        // The request ID
+	SerialNumber string        // The request ID
 	Request      *http.Request // The request
 	QueryValues  url.Values    // A cached copy of the URL query values
 }
 
-func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKey base.LogKey, serialNum uint64, req *http.Request, queryValues url.Values) http.ResponseWriter {
+func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKey base.LogKey, serialNum string, req *http.Request, queryValues url.Values) http.ResponseWriter {
 	return &LoggingTeeResponseWriter{
 		ResponseWriter: wrappedResponseWriter,
 		LogKey:         logKey,
@@ -54,6 +54,6 @@ func NewLoggerTeeResponseWriter(wrappedResponseWriter http.ResponseWriter, logKe
 }
 
 func (l *LoggingTeeResponseWriter) Write(b []byte) (int, error) {
-	base.Infof(l.LogKey, " #%03d: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request, &l.QueryValues), base.UD(string(b)))
+	base.Infof(l.LogKey, " %s: %s %s %s", l.SerialNumber, l.Request.Method, base.SanitizeRequestURL(l.Request, &l.QueryValues), base.UD(string(b)))
 	return l.ResponseWriter.Write(b)
 }

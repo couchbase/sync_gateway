@@ -86,7 +86,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, base.TestBucket) {
 		UseViews: true,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := testBucket(t)
+	tBucket := testBucketUseViews(t)
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
@@ -114,6 +114,14 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 }
 
 func testBucket(tester testing.TB) base.TestBucket {
+	return testBucketInit(tester, true)
+}
+
+func testBucketUseViews(tester testing.TB) base.TestBucket {
+	return testBucketInit(tester, false)
+}
+
+func testBucketInit(tester testing.TB, useGSI bool) base.TestBucket {
 
 	// Retry loop in case the GSI indexes don't handle the flush and we need to drop them and retry
 	for i := 0; i < 2; i++ {
@@ -125,26 +133,28 @@ func testBucket(tester testing.TB) base.TestBucket {
 			// ^^ effectively panics
 		}
 
-		err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
-		if err != nil {
-			log.Fatalf("Unable to initialize GSI indexes for test: %v", err)
-			// ^^ effectively panics
-		}
-
-		// Since GetTestBucke() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
-		gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
-		if isGoCbBucket {
-			waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec.UseXattrs)
-			if waitForIndexRollbackErr != nil {
-				base.Infof(base.KeyAll, "Error WaitForIndexEmpty: %v.  Drop indexes and retry", waitForIndexRollbackErr)
-				if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
-					log.Fatalf("Unable to drop GSI indexes for test: %v", err)
-					// ^^ effectively panics
-				}
-				testBucket.Close() // Close the bucket, it will get re-opened on next loop iteration
-				continue           // Goes to top of outer for loop to retry
+		if useGSI {
+			err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
+			if err != nil {
+				log.Fatalf("Unable to initialize GSI indexes for test: %v", err)
+				// ^^ effectively panics
 			}
 
+			// Since GetTestBucket() always returns an _empty_ bucket, it's safe to wait for the indexes to be empty
+			gocbBucket, isGoCbBucket := base.AsGoCBBucket(testBucket.Bucket)
+			if isGoCbBucket {
+				waitForIndexRollbackErr := WaitForIndexEmpty(gocbBucket, testBucket.BucketSpec.UseXattrs)
+				if waitForIndexRollbackErr != nil {
+					base.Infof(base.KeyAll, "Error WaitForIndexEmpty: %v.  Drop indexes and retry", waitForIndexRollbackErr)
+					if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
+						log.Fatalf("Unable to drop GSI indexes for test: %v", err)
+						// ^^ effectively panics
+					}
+					testBucket.Close() // Close the bucket, it will get re-opened on next loop iteration
+					continue           // Goes to top of outer for loop to retry
+				}
+
+			}
 		}
 
 		return testBucket
