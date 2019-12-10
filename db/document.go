@@ -237,7 +237,7 @@ func (doc *Document) Body() Body {
 	}
 
 	if doc._rawBody == nil {
-		base.Warnf("Empty doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.Warnf("Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil
 	}
 
@@ -298,7 +298,7 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	}
 
 	if doc._body == nil {
-		base.Warnf("Empty doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
+		base.Warnf("Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil, nil
 	}
 
