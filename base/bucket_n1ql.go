@@ -397,6 +397,10 @@ func isIndexerError(err error) bool {
 		return true
 	}
 
+	if strings.Contains(err.Error(), "Build Already In Progress") {
+		return true
+	}
+
 	return false
 }
 
