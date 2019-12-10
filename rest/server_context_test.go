@@ -199,7 +199,7 @@ func TestAllDatabaseNames(t *testing.T) {
 }
 
 func TestStartReplicators(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
 	var replications []*ReplicationConfig
 
 	// Should be skipped; create_target option is not currently supported.
@@ -238,6 +238,7 @@ func TestStartReplicators(t *testing.T) {
 	serverContext.startReplicators()
 
 	activeTasks := serverContext.replicator.ActiveTasks()
+	log.Printf("activeTasks: %v", activeTasks)
 	assert.Equal(t, 1, len(activeTasks))
 	activeTask := activeTasks[0]
 	assert.Equal(t, "58a632bb8d7e110445d3d65a98365d64", activeTask.ReplicationID)
