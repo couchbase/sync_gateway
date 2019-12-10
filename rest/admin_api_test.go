@@ -1965,7 +1965,7 @@ func TestHandleActiveTasks(t *testing.T) {
 func TestHandleSGCollect(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	reqBodyJson := ""
+	reqBodyJson := "invalidjson"
 	resource := "/_sgcollect_info"
 
 	// Check SGCollect status before triggering it; status should be stopped if no process is running.
@@ -1978,7 +1978,7 @@ func TestHandleSGCollect(t *testing.T) {
 	assertStatus(t, resp, http.StatusBadRequest)
 	assert.Contains(t, resp.Body.String(), "Error stopping sgcollect_info: not running")
 
-	// Try to start SGCollect with empty request body; It should throw with unexpected end of JSON input error
+	// Try to start SGCollect with invalid body; It should throw with unexpected end of JSON input error
 	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
 	assertStatus(t, resp, http.StatusBadRequest)
 }
