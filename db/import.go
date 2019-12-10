@@ -212,7 +212,20 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		parentRev := doc.CurrentRev
 		generation, _ := ParseRevID(parentRev)
 		generation++
-		newRev, err = createRevID(generation, parentRev, body)
+		var rawBodyForRevID []byte
+		var wasStripped bool
+		if len(existingDoc.Body) > 0 {
+			rawBodyForRevID = existingDoc.Body
+		} else {
+			var bodyWithoutSpecialProps Body
+			bodyWithoutSpecialProps, wasStripped = stripSpecialProperties(body)
+			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutSpecialProps)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+		}
+
+		newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 		if err != nil {
 			return nil, nil, updatedExpiry, err
 		}
@@ -234,6 +247,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		doc.RemoveBody()
 
 		newDoc.UpdateBody(body)
+		if !wasStripped && !isDelete {
+			newDoc._rawBody = rawBodyForRevID
+		}
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 
