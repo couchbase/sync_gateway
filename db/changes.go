@@ -680,6 +680,12 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
 			output <- nil
 
+			// If this is an initial replication (from zero) with the activeOnly set, flip it now the client has caught up.
+			if !options.Since.IsNonZero() && options.ActiveOnly {
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed initial replication caught up - setting activeOnly to false... %s", base.UD(to))
+				options.ActiveOnly = false
+			}
+
 		waitForChanges:
 			for {
 				// If we're in a deferred Backfill, the user may not get notification when the cache catches up to the backfill (e.g. when the granting doc isn't
