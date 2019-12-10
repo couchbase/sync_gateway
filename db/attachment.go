@@ -39,6 +39,10 @@ type DocAttachment struct {
 // inline bodies, copies the bodies into the Couchbase db, and replaces the bodies with the 'digest' attributes which
 // are the keys to retrieving them.
 func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta AttachmentsMeta, generation int, parentRev string, docHistory []string) (AttachmentData, error) {
+	if len(newAttachmentsMeta) == 0 {
+		return nil, nil
+	}
+
 	var parentAttachments map[string]interface{}
 	newAttachmentData := make(AttachmentData, 0)
 	atts := newAttachmentsMeta
