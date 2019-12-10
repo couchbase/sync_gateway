@@ -813,7 +813,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	err = wr.waitForCount(context.TODO(), 10, base.DefaultWaitForWebhook)
+	err = wr.waitForCount(context.TODO(), 10, 20*time.Second)
 	assert.NoError(t, err)
 
 }
