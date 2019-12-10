@@ -382,6 +382,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		var userChanged bool                // Whether the user document has changed in a given iteration loop
 		var deferredBackfill bool           // Whether there's a backfill identified in the user doc that's deferred while the SG cache catches up
 
+		var fromZero = !options.Since.IsNonZero() // If this replication has started from seq zero
+
 		// Retrieve the current max cached sequence - ensures there isn't a race between the subsequent channel cache queries
 		currentCachedSequence = db.changeCache.getChannelCache().GetHighCacheSequence()
 		if options.Wait {
@@ -680,9 +682,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
 			output <- nil
 
-			// If this is an initial replication (from zero) with the activeOnly set, flip it now the client has caught up.
-			if !options.Since.IsNonZero() && options.ActiveOnly {
-				base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed initial replication caught up - setting activeOnly to false... %s", base.UD(to))
+			// If this is an initial replication (active only and from zero), flip activeOnly now the client has caught up.
+			if fromZero && options.ActiveOnly {
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "%v MultiChangesFeed initial replication caught up - setting ActiveOnly to false... %s", options.Since, base.UD(to))
 				options.ActiveOnly = false
 			}
 

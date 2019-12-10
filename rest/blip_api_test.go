@@ -2322,8 +2322,6 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	require.NoError(t, btc.StartPullSince("true", "0", "true"))
-
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"test":true}`)
 	assertStatus(t, resp, http.StatusCreated)
 	var docResp struct {
@@ -2331,10 +2329,14 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	}
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
 
+	// start an initial pull
+	require.NoError(t, btc.StartPullSince("true", "0", "true"))
+
 	rev, found := btc.WaitForRev("doc1", docResp.Rev)
 	assert.True(t, found)
 	assert.Equal(t, `{"test":true}`, string(rev))
 
+	// delete the doc and make sure the client still gets the tombstone replicated
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+docResp.Rev, ``)
 	assertStatus(t, resp, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
