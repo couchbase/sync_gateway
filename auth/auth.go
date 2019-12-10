@@ -11,13 +11,13 @@ package auth
 
 import (
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
-	"golang.org/x/crypto/bcrypt"
 )
 
 /** Manages user authentication for a database. */
