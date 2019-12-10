@@ -245,14 +245,14 @@ func TestStartReplicators(t *testing.T) {
 	serverContext.Close()
 }
 
-func TestPostStartup(t *testing.T) {
+func TestServerContextReplicators(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
 	var replications []*ReplicationConfig
 
 	// Start a continuous fake replication.
 	replications = append(replications, &ReplicationConfig{
-		Source:        "http://127.0.0.1:4985/imdb_us",
-		Target:        "http://127.0.0.1:4985/imdb_uk",
+		Source:        "http://127.0.0.1:4987/imdb_us",
+		Target:        "http://127.0.0.1:4987/imdb_uk",
 		Continuous:    true,
 		ReplicationId: "58a632bb8d7e110445d3d65a98365d62"})
 
