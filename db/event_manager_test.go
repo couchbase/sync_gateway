@@ -533,7 +533,7 @@ func TestWebhookBasic(t *testing.T) {
 	}
 	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
 	// for a goroutine.  The rest get discarded because the queue is full.
-	err = wr.waitForCount(context.TODO(), 21, base.DefaultWaitForWebhook)
+	err = wr.waitForCount(context.TODO(), 21, 10*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, 79, errCount)
 
@@ -550,7 +550,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	err = wr.waitForCount(context.TODO(), 100, base.DefaultWaitForWebhook)
+	err = wr.waitForCount(context.TODO(), 100, 10*time.Second)
 	assert.NoError(t, err)
 
 }
