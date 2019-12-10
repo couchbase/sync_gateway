@@ -628,6 +628,4 @@ func TestIsIndexerError(t *testing.T) {
 	assert.False(t, isIndexerError(err))
 	err = errors.New("Indexer rollback")
 	assert.True(t, isIndexerError(err))
-	err = errors.New("Build Already In Progress")
-	assert.True(t, isIndexerError(err))
 }

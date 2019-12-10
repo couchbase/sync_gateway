@@ -388,16 +388,11 @@ func IsIndexerRetryBuildError(err error) bool {
 
 // Check for transient indexer errors (can be retried)
 func isIndexerError(err error) bool {
-
 	if err == nil {
 		return false
-	}
-
-	if strings.Contains(err.Error(), "Indexer rollback") {
+	} else if strings.Contains(err.Error(), "Indexer rollback") {
 		return true
-	}
-
-	if strings.Contains(err.Error(), "Build Already In Progress") {
+	} else if IsIndexerRetryBuildError(err) {
 		return true
 	}
 
