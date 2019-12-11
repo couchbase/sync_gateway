@@ -30,7 +30,7 @@ func assertLogContains(t *testing.T, s string, f func()) {
 	// temporarily override logger output for the given function call
 	consoleLogger.logger.SetOutput(&b)
 	f()
-	consoleLogger.logger.SetOutput(consoleOutput)
+	consoleLogger.logger.SetOutput(os.Stderr)
 
 	assert.Contains(t, b.String(), s)
 }
@@ -282,8 +282,8 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 
 func CaptureConsolefLogOutput(f func()) string {
 	buf := bytes.Buffer{}
-	consoleOutput = &buf
+	consoleFOutput = &buf
 	f()
-	consoleOutput = os.Stderr
+	consoleFOutput = os.Stderr
 	return buf.String()
 }
