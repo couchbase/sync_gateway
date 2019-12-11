@@ -431,6 +431,7 @@ func TestConcurrentLoad(t *testing.T) {
 }
 
 func BenchmarkRevisionCacheRead(b *testing.B) {
+	defer base.SetUpBenchmarkLogging(base.LevelDebug, base.KeyAll)()
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
 	cache := NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)

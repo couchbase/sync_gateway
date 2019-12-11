@@ -4486,8 +4486,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 }
 
 func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
-
-	defer base.SetUpBenchmarkLogging(base.LevelWarn, base.KeyAll)()
+	defer base.SetUpBenchmarkLogging(base.LevelDebug, base.KeyHTTP)()
 	//Create test documents
 	rt := NewRestTester(b, nil)
 	defer rt.Close()
