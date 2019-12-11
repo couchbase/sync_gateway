@@ -12,12 +12,12 @@ package auth
 import (
 	"fmt"
 
-	"golang.org/x/crypto/bcrypt"
 	"github.com/coreos/go-oidc/jose"
 	"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/crypto/bcrypt"
 )
 
 /** Manages user authentication for a database. */
@@ -157,7 +157,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	channels := princ.ExplicitChannels().Copy()
 
 	// Changes for vbucket sequence management.  We can't determine relative ordering of sequences
-	// across vbuckets.  To avoid redundant channel backfills during changes processing, we maintain
+	// across vbuckets. To avoid redundant channel backfills during changes processing, we maintain
 	// the previous vb/seq for a channel in PreviousChannels.  If that channel is still present during
 	// this rebuild, we reuse the vb/seq from PreviousChannels (using UpdateIfPresent).  If PreviousChannels
 	// is nil, reverts to normal sequence handling.
