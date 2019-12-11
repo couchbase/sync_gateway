@@ -706,7 +706,7 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
 
-	configFilePath := filepath.Join(os.TempDir() + "sync_gateway.conf")
+	configFilePath := filepath.Join(os.TempDir(), "sync_gateway.conf")
 	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
 	assert.NoError(t, err, "Writing JSON content")
 
@@ -729,7 +729,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
         "certpath":"/etc/ssl/certs/cert.pem","cacertpath":"/etc/ssl/certs/ca.cert","keypath":"/etc/ssl/certs/key.pem",
         "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
 
-	configFilePath := filepath.Join(os.TempDir() + "sync_gateway1.conf")
+	configFilePath := filepath.Join(os.TempDir(), "sync_gateway1.conf")
 	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
 	assert.NoError(t, err, "Writing JSON content")
 
