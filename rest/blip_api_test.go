@@ -2309,3 +2309,39 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 
 	//assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
 }
+
+// Reproduces CBG-617 (a client using activeOnly for the initial replication, and then still expecting to get subsequent tombstones afterwards)
+func TestActiveOnlyContinuous(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"test":true}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var docResp struct {
+		Rev string `json:"rev"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
+
+	// start an initial pull
+	require.NoError(t, btc.StartPullSince("true", "0", "true"))
+
+	rev, found := btc.WaitForRev("doc1", docResp.Rev)
+	assert.True(t, found)
+	assert.Equal(t, `{"test":true}`, string(rev))
+
+	// delete the doc and make sure the client still gets the tombstone replicated
+	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+docResp.Rev, ``)
+	assertStatus(t, resp, http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
+
+	rev, found = btc.WaitForRev("doc1", docResp.Rev)
+	assert.True(t, found)
+	assert.Equal(t, `{}`, string(rev))
+}
