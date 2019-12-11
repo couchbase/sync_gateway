@@ -348,5 +348,4 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 	dbContext.Close()
-	serverContext.Close()
 }
