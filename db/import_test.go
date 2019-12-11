@@ -236,12 +236,6 @@ func TestImportNullDoc(t *testing.T) {
 	importedDoc, err := db.importDoc(key+"1", body, false, existingDoc, ImportOnDemand)
 	goassert.Equals(t, err, base.ErrEmptyDocument)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
-
-	// Do a valid on-demand import from a null document
-	body = Body{"new": true}
-	importedDoc, err = db.importDoc(key+"2", body, false, existingDoc, ImportOnDemand)
-	assert.NoError(t, err)
-	assert.False(t, importedDoc == nil, "Expected imported doc")
 }
 
 func TestImportNullDocRaw(t *testing.T) {
