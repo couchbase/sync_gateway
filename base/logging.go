@@ -499,7 +499,7 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	}
 }
 
-var consoleOutput io.Writer = os.Stderr
+var consoleFOutput io.Writer = os.Stderr
 
 // Consolef logs the given formatted string and args to the given log level and log key,
 // as well as making sure the message is *always* logged to stdout.
@@ -509,7 +509,7 @@ func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface
 	// If the above logTo didn't already log to stderr, do it directly here
 	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
 		format = addPrefixes(format, context.Background(), logLevel, logKey)
-		_, _ = fmt.Fprintf(consoleOutput, format+"\n", args...)
+		_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 	}
 }
 
