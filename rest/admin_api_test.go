@@ -1000,19 +1000,19 @@ func TestDBOfflineConcurrent(t *testing.T) {
 	var goroutineresponse1 *TestResponse
 	go func() {
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_offline", "")
-		assertStatus(t, goroutineresponse1, 200)
 		wg.Done()
 	}()
 
 	var goroutineresponse2 *TestResponse
 	go func() {
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_offline", "")
-		assertStatus(t, goroutineresponse2, 200)
 		wg.Done()
 	}()
 
 	err := WaitWithTimeout(&wg, time.Second*30)
 	assert.NoError(t, err, "Error waiting for waitgroup")
+	assertStatus(t, goroutineresponse1, http.StatusOK)
+	assertStatus(t, goroutineresponse2, http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
