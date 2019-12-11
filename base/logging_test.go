@@ -25,15 +25,13 @@ import (
 
 // asserts that the logs produced by function f contain string s.
 func assertLogContains(t *testing.T, s string, f func()) {
-	originalLogger := consoleLogger
 	b := bytes.Buffer{}
 
-	// temporarily override logger for the function call
-	level := LevelDebug
-	consoleLogger = &ConsoleLogger{LogLevel: &level, FileLogger: FileLogger{Enabled: true, logger: log.New(&b, "", 0)}}
-	defer func() { consoleLogger = originalLogger }()
-
+	// temporarily override logger output for the given function call
+	consoleLogger.logger.SetOutput(&b)
 	f()
+	consoleLogger.logger.SetOutput(consoleOutput)
+
 	assert.Contains(t, b.String(), s)
 }
 
