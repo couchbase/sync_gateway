@@ -25,17 +25,18 @@ import (
 
 // Options for changes-feeds
 type ChangesOptions struct {
-	Since       SequenceID      // sequence # to start _after_
-	Limit       int             // Max number of changes to return, if nonzero
-	Conflicts   bool            // Show all conflicting revision IDs, not just winning one?
-	IncludeDocs bool            // Include doc body of each change?
-	Wait        bool            // Wait for results, instead of immediately returning empty result?
-	Continuous  bool            // Run continuously until terminated?
-	Terminator  chan bool       // Caller can close this channel to terminate the feed
-	HeartbeatMs uint64          // How often to send a heartbeat to the client
-	TimeoutMs   uint64          // After this amount of time, close the longpoll connection
-	ActiveOnly  bool            // If true, only return information on non-deleted, non-removed revisions
-	Ctx         context.Context // Used for adding context to logs
+	Since        SequenceID      // sequence # to start _after_
+	Limit        int             // Max number of changes to return, if nonzero
+	Conflicts    bool            // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs  bool            // Include doc body of each change?
+	Wait         bool            // Wait for results, instead of immediately returning empty result?
+	Continuous   bool            // Run continuously until terminated?
+	Terminator   chan bool       // Caller can close this channel to terminate the feed
+	HeartbeatMs  uint64          // How often to send a heartbeat to the client
+	TimeoutMs    uint64          // After this amount of time, close the longpoll connection
+	ActiveOnly   bool            // If true, only return information on non-deleted, non-removed revisions
+	ClientIsCBL2 bool            // If the replication is being started from a CBL 2.x client
+	Ctx          context.Context // Used for adding context to logs
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
@@ -679,6 +680,12 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// First notify the reader that we're waiting by sending a nil.
 			base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
 			output <- nil
+
+			// If this is an initial replication using CBL 2.x (active only), flip activeOnly now the client has caught up.
+			if options.ClientIsCBL2 && options.ActiveOnly {
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "%v MultiChangesFeed initial replication caught up - setting ActiveOnly to false... %s", options.Since, base.UD(to))
+				options.ActiveOnly = false
+			}
 
 		waitForChanges:
 			for {
