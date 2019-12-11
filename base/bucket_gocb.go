@@ -899,8 +899,10 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 
 func (bucket *CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 	gocbExpvars.Add("Add", 1)
 
@@ -928,8 +930,10 @@ func (bucket *CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (add
 // pass v as []byte to the stanard bucket.Add
 func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 	gocbExpvars.Add("AddRaw", 1)
 
@@ -962,10 +966,11 @@ func (bucket *CouchbaseBucketGoCB) Append(k string, data []byte) error {
 }
 
 func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) error {
-
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 
 	gocbExpvars.Add("Set", 1)
@@ -989,10 +994,11 @@ func (bucket *CouchbaseBucketGoCB) Set(k string, exp uint32, v interface{}) erro
 }
 
 func (bucket *CouchbaseBucketGoCB) SetRaw(k string, exp uint32, v []byte) error {
-
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 	gocbExpvars.Add("SetRaw", 1)
 
@@ -1030,10 +1036,11 @@ func (bucket *CouchbaseBucketGoCB) Delete(k string) error {
 }
 
 func (bucket *CouchbaseBucketGoCB) Remove(k string, cas uint64) (casOut uint64, err error) {
-
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 	gocbExpvars.Add("Delete", 1)
 
@@ -1066,10 +1073,11 @@ func (bucket *CouchbaseBucketGoCB) Write(k string, flags int, exp uint32, v inte
 }
 
 func (bucket *CouchbaseBucketGoCB) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (casOut uint64, err error) {
-
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 
 	// we only support the sgbucket.Raw WriteOption at this point
@@ -1133,8 +1141,10 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	}
 
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
@@ -1384,10 +1394,11 @@ func (bucket *CouchbaseBucketGoCB) DeleteWithXattr(k string, xattrKey string) er
 type deleteWithXattrRaceInjection func(bucket CouchbaseBucketGoCB, k string, xattrKey string)
 
 func (bucket *CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey string, callback deleteWithXattrRaceInjection) error {
-
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 	gocbExpvars.Add("Delete", 1)
 
@@ -1746,8 +1757,10 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 
 	// This is an actual incr, not just counter retrieval.
 	bucket.singleOps <- struct{}{}
+	gocbExpvars.Add("SingleOps", 1)
 	defer func() {
 		<-bucket.singleOps
+		gocbExpvars.Add("SingleOps", -1)
 	}()
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
