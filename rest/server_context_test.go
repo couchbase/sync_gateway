@@ -13,11 +13,11 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -196,10 +196,11 @@ func TestAllDatabaseNames(t *testing.T) {
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 	assert.NotContains(t, serverContext.AllDatabaseNames(), "imdb2")
+	serverContext.Close()
 }
 
 func TestStartReplicators(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
 	var replications []*ReplicationConfig
 
 	// Should be skipped; create_target option is not currently supported.
@@ -237,22 +238,34 @@ func TestStartReplicators(t *testing.T) {
 	serverContext := NewServerContext(serverConfig)
 	serverContext.startReplicators()
 
-	activeTasks := serverContext.replicator.ActiveTasks()
-	log.Printf("activeTasks: %v", activeTasks)
-	assert.Equal(t, 1, len(activeTasks))
-	activeTask := activeTasks[0]
-	assert.Equal(t, "58a632bb8d7e110445d3d65a98365d64", activeTask.ReplicationID)
+	const maxRetries = 10
+	const activeTasksExpected = 1
+	retry := 0
+
+	for {
+		activeTasks := serverContext.replicator.ActiveTasks()
+		if len(activeTasks) == activeTasksExpected {
+			activeTask := activeTasks[0]
+			assert.Equal(t, "58a632bb8d7e110445d3d65a98365d64", activeTask.ReplicationID)
+			break
+		}
+		if retry == maxRetries && len(activeTasks) != activeTasksExpected {
+			t.Fatalf("Couldn't fetch active replicator tasks from server context after %v attempts", maxRetries)
+		}
+		time.Sleep(10 * time.Nanosecond)
+		retry++
+	}
 	serverContext.Close()
 }
 
 func TestServerContextReplicators(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
 	var replications []*ReplicationConfig
 
 	// Start a continuous fake replication.
 	replications = append(replications, &ReplicationConfig{
-		Source:        "http://127.0.0.1:4987/imdb_us",
-		Target:        "http://127.0.0.1:4987/imdb_uk",
+		Source:        "http://127.0.0.1:4985/imdb_us",
+		Target:        "http://127.0.0.1:4985/imdb_uk",
 		Continuous:    true,
 		ReplicationId: "58a632bb8d7e110445d3d65a98365d62"})
 
@@ -260,11 +273,23 @@ func TestServerContextReplicators(t *testing.T) {
 	serverContext := NewServerContext(serverConfig)
 	serverContext.startReplicators()
 
-	activeTasks := serverContext.replicator.ActiveTasks()
-	log.Printf("activeTasks: %v", activeTasks)
-	assert.Equal(t, 1, len(activeTasks))
-	activeTask := activeTasks[0]
-	assert.Equal(t, "58a632bb8d7e110445d3d65a98365d62", activeTask.ReplicationID)
+	const maxRetries = 10
+	const activeTasksExpected = 1
+	retry := 0
+
+	for {
+		activeTasks := serverContext.replicator.ActiveTasks()
+		if len(activeTasks) == activeTasksExpected {
+			activeTask := activeTasks[0]
+			assert.Equal(t, "58a632bb8d7e110445d3d65a98365d62", activeTask.ReplicationID)
+			break
+		}
+		if retry == maxRetries && len(activeTasks) != activeTasksExpected {
+			t.Fatalf("Couldn't fetch active replicator tasks from server context after %v attempts", maxRetries)
+		}
+		time.Sleep(10 * time.Nanosecond)
+		retry++
+	}
 	serverContext.Close()
 }
 
@@ -323,4 +348,5 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 	dbContext.Close()
+	serverContext.Close()
 }
