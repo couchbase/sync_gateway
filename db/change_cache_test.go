@@ -1963,6 +1963,7 @@ func (f *testProcessEntryFeed) Next() *LogEntry {
 //   - non-unique doc ids?
 
 func BenchmarkProcessEntry(b *testing.B) {
+	b.Skip("Long Running Benchmark")
 
 	defer base.SetUpBenchmarkLogging(base.LevelError, base.KeyCache|base.KeyChanges)()
 	processEntryBenchmarks := []struct {
@@ -2189,6 +2190,7 @@ func (f *testDocChangedFeed) Next() sgbucket.FeedEvent {
 //   - non-unique doc ids?
 
 func BenchmarkDocChanged(b *testing.B) {
+	b.Skip("Long Running Benchmark")
 
 	defer base.SetUpBenchmarkLogging(base.LevelError, base.KeyCache|base.KeyChanges)()
 	processEntryBenchmarks := []struct {
