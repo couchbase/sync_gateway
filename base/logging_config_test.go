@@ -2,6 +2,7 @@ package base
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,7 +14,7 @@ func TestValidateLogFileOutput(t *testing.T) {
 	assert.Error(t, err, "empty log file output")
 	assert.Equal(t, "empty log file output", err.Error())
 
-	logFileOutput = os.TempDir() + "/sglogfile.log"
+	logFileOutput = filepath.Join(os.TempDir(), "sglogfile.log")
 	err = validateLogFileOutput(logFileOutput)
 	assert.NoError(t, err, "log file output path should be validated")
 }
