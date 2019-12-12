@@ -92,6 +92,12 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)
 }
 
+// Import document
+//   docid  - document key
+//   body - marshalled body of document to be imported
+//   isDelete - whether the document to be imported is a delete
+//   existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
+//   mode - ImportMode - ImportFromFeed or ImportOnDemand
 func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.Debugf(base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
@@ -212,7 +218,20 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		parentRev := doc.CurrentRev
 		generation, _ := ParseRevID(parentRev)
 		generation++
-		newRev, err = createRevID(generation, parentRev, body)
+		var rawBodyForRevID []byte
+		var wasStripped bool
+		if len(existingDoc.Body) > 0 {
+			rawBodyForRevID = existingDoc.Body
+		} else {
+			var bodyWithoutSpecialProps Body
+			bodyWithoutSpecialProps, wasStripped = stripSpecialProperties(body)
+			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutSpecialProps)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+		}
+
+		newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 		if err != nil {
 			return nil, nil, updatedExpiry, err
 		}
@@ -237,6 +256,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		doc.RemoveBody()
 
 		newDoc.UpdateBody(body)
+		if !wasStripped && !isDelete {
+			newDoc._rawBody = rawBodyForRevID
+		}
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 

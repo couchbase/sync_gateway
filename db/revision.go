@@ -335,7 +335,8 @@ func (body Body) FixJSONNumbers() {
 
 func createRevID(generation int, parentRevID string, body Body) (string, error) {
 	// This should produce the same results as TouchDB.
-	encoding, err := base.JSONMarshalCanonical(stripSpecialProperties(body))
+	strippedBody, _ := stripSpecialProperties(body)
+	encoding, err := base.JSONMarshalCanonical(strippedBody)
 	if err != nil {
 		return "", err
 	}
@@ -409,17 +410,17 @@ func compareRevIDs(id1, id2 string) int {
 }
 
 // stripSpecialProperties returns a copy of the given body with all underscore-prefixed keys removed, except _attachments and _deleted.
-func stripSpecialProperties(b Body) Body {
+func stripSpecialProperties(b Body) (Body, bool) {
 	return stripSpecialPropertiesExcept(b, BodyAttachments, BodyDeleted)
 }
 
 // stripAllSpecialProperties returns a copy of the given body with all underscore-prefixed keys removed.
-func stripAllSpecialProperties(b Body) Body {
+func stripAllSpecialProperties(b Body) (Body, bool) {
 	return stripSpecialPropertiesExcept(b)
 }
 
 // stripSpecialPropertiesExcept returns a copy of the given body with all underscore-prefixed keys removed, except those given.
-func stripSpecialPropertiesExcept(b Body, exceptions ...string) Body {
+func stripSpecialPropertiesExcept(b Body, exceptions ...string) (sb Body, foundSpecialProps bool) {
 	// Assume no properties removed for the initial capacity to reduce allocs on large docs.
 	stripped := make(Body, len(b))
 	for k, v := range b {
@@ -427,9 +428,16 @@ func stripSpecialPropertiesExcept(b Body, exceptions ...string) Body {
 			base.StringSliceContains(exceptions, k) {
 			// property is allowed
 			stripped[k] = v
+		} else {
+			foundSpecialProps = true
 		}
 	}
-	return stripped
+	if foundSpecialProps {
+		return stripped, true
+	} else {
+		// Return original body if nothing was removed
+		return b, false
+	}
 }
 
 // containsUserSpecialProperties returns true if the given body contains a non-SG special property (underscore prefixed)
