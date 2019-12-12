@@ -111,21 +111,6 @@ func (sc *ServerContext) startReplicators() {
 
 }
 
-func (sc *ServerContext) FindDbByBucketName(bucketName string) string {
-
-	sc.lock.RLock()
-	defer sc.lock.RUnlock()
-	// Loop through all known database contexts and return the first one
-	// that has the bucketName specified above.
-	for dbName, dbContext := range sc.databases_ {
-		if dbContext.Bucket.GetName() == bucketName {
-			return dbName
-		}
-	}
-	return ""
-
-}
-
 func (sc *ServerContext) Close() {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
