@@ -295,13 +295,6 @@ func (h *handler) handleProfiling() error {
 		return err
 	}
 
-	defer func() {
-		fErr := f.Close()
-		if fErr != nil {
-			base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", err)
-		}
-	}()
-
 	if isCPUProfile {
 		base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
 		err = pprof.StartCPUProfile(f)
