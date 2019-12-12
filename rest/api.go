@@ -305,11 +305,16 @@ func (h *handler) handleProfiling() error {
 	if isCPUProfile {
 		base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
 		err = pprof.StartCPUProfile(f)
+		return err
 	} else if profile := pprof.Lookup(profileName); profile != nil {
 		base.Infof(base.KeyAll, "Writing %q profile to %s ...", profileName, base.UD(params.File))
 		err = profile.WriteTo(f, 0)
 	} else {
 		err = base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
+	}
+
+	if fileCloseError := f.Close(); fileCloseError != nil {
+		base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", err)
 	}
 
 	return err
@@ -335,16 +340,11 @@ func (h *handler) handleHeapProfiling() error {
 	}
 	err = pprof.WriteHeapProfile(f)
 
-	fileCloseError := f.Close()
-	if err != nil {
+	if fileCloseError := f.Close(); fileCloseError != nil {
 		base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", fileCloseError)
 	}
 
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (h *handler) handlePprofGoroutine() error {
