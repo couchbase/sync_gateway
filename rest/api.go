@@ -277,7 +277,7 @@ func (h *handler) handleProfiling() error {
 	// Handle no file
 	if params.File == "" {
 		if isCPUProfile {
-			base.Infof(base.KeyAll, "... ending CPU profile")
+			base.InfofCtx(h.db.Ctx, base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
 			return nil
 		}
@@ -292,6 +292,7 @@ func (h *handler) handleProfiling() error {
 	if isCPUProfile {
 		base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
 		err = pprof.StartCPUProfile(f)
+		return err
 	} else if profile := pprof.Lookup(profileName); profile != nil {
 		base.Infof(base.KeyAll, "Writing %q profile to %s ...", profileName, base.UD(params.File))
 		err = profile.WriteTo(f, 0)
@@ -299,8 +300,7 @@ func (h *handler) handleProfiling() error {
 		err = base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
 	}
 
-	fErr := f.Close()
-	if fErr != nil {
+	if fileCloseError := f.Close(); fileCloseError != nil {
 		base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", err)
 	}
 
@@ -325,8 +325,13 @@ func (h *handler) handleHeapProfiling() error {
 	if err != nil {
 		return err
 	}
-	pprof.WriteHeapProfile(f)
-	return f.Close()
+	err = pprof.WriteHeapProfile(f)
+
+	if fileCloseError := f.Close(); fileCloseError != nil {
+		base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", fileCloseError)
+	}
+
+	return err
 }
 
 func (h *handler) handlePprofGoroutine() error {
