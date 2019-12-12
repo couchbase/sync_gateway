@@ -93,7 +93,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 
 func (db *Database) PutSpecial(doctype string, docid string, body Body) (string, error) {
 	matchRev, _ := body[BodyRev].(string)
-	body = stripAllSpecialProperties(body)
+	body, _ = stripAllSpecialProperties(body)
 	return db.putSpecial(doctype, docid, matchRev, body)
 }
 

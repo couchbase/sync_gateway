@@ -416,15 +416,15 @@ func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClien
 
 // StartPull will begin a continuous pull replication since 0 between the client and server
 func (btc *BlipTesterClient) StartPull() (err error) {
-	return btc.StartPullSince("true", "0")
+	return btc.StartPullSince("true", "0", "false")
 }
 
 func (btc *BlipTesterClient) StartOneshotPull() (err error) {
-	return btc.StartPullSince("false", "0")
+	return btc.StartPullSince("false", "0", "false")
 }
 
 // StartPullSince will begin a pull replication between the client and server with the given params.
-func (btc *BlipTesterClient) StartPullSince(continuous, since string) (err error) {
+func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) (err error) {
 	getCheckpointRequest := blip.NewRequest()
 	getCheckpointRequest.SetProfile(messageGetCheckpoint)
 	getCheckpointRequest.Properties[blipClient] = btc.pullReplication.id
@@ -436,6 +436,7 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since string) (err error
 	subChangesRequest.SetProfile(messageSubChanges)
 	subChangesRequest.Properties[subChangesContinuous] = continuous
 	subChangesRequest.Properties[subChangesSince] = since
+	subChangesRequest.Properties[subChangesActiveOnly] = activeOnly
 	subChangesRequest.SetNoReply(true)
 	if err := btc.pullReplication.sendMsg(subChangesRequest); err != nil {
 		return err
