@@ -1000,19 +1000,19 @@ func TestDBOfflineConcurrent(t *testing.T) {
 	var goroutineresponse1 *TestResponse
 	go func() {
 		goroutineresponse1 = rt.SendAdminRequest("POST", "/db/_offline", "")
-		assertStatus(t, goroutineresponse1, 200)
 		wg.Done()
 	}()
 
 	var goroutineresponse2 *TestResponse
 	go func() {
 		goroutineresponse2 = rt.SendAdminRequest("POST", "/db/_offline", "")
-		assertStatus(t, goroutineresponse2, 200)
 		wg.Done()
 	}()
 
 	err := WaitWithTimeout(&wg, time.Second*30)
 	assert.NoError(t, err, "Error waiting for waitgroup")
+	assertStatus(t, goroutineresponse1, http.StatusOK)
+	assertStatus(t, goroutineresponse2, http.StatusOK)
 
 	response = rt.SendAdminRequest("GET", "/db/", "")
 	body = nil
@@ -1965,7 +1965,7 @@ func TestHandleActiveTasks(t *testing.T) {
 func TestHandleSGCollect(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	reqBodyJson := ""
+	reqBodyJson := "invalidjson"
 	resource := "/_sgcollect_info"
 
 	// Check SGCollect status before triggering it; status should be stopped if no process is running.
@@ -1978,7 +1978,7 @@ func TestHandleSGCollect(t *testing.T) {
 	assertStatus(t, resp, http.StatusBadRequest)
 	assert.Contains(t, resp.Body.String(), "Error stopping sgcollect_info: not running")
 
-	// Try to start SGCollect with empty request body; It should throw with unexpected end of JSON input error
+	// Try to start SGCollect with invalid body; It should throw with unexpected end of JSON input error
 	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
 	assertStatus(t, resp, http.StatusBadRequest)
 }

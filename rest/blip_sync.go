@@ -391,12 +391,13 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 	bh.Logf(base.LevelInfo, base.KeySync, "Sending changes since %v", params.since())
 
 	options := db.ChangesOptions{
-		Since:      params.since(),
-		Conflicts:  false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
-		Continuous: bh.continuous,
-		ActiveOnly: bh.activeOnly,
-		Terminator: bh.blipSyncContext.terminator,
-		Ctx:        bh.db.Ctx,
+		Since:        params.since(),
+		Conflicts:    false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
+		Continuous:   bh.continuous,
+		ActiveOnly:   bh.activeOnly,
+		Terminator:   bh.blipSyncContext.terminator,
+		Ctx:          bh.db.Ctx,
+		ClientIsCBL2: true,
 	}
 
 	channelSet := bh.channels
