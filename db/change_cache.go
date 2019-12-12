@@ -885,7 +885,7 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 func (c *changeCache) PushSkipped(sequence uint64) {
 	err := c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
 	if err != nil {
-		base.Infof(base.KeyCache, "Error pusing skipped sequence: %d, %v", sequence, err)
+		base.Infof(base.KeyCache, "Error pushing skipped sequence: %d, %v", sequence, err)
 		return
 	}
 	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
