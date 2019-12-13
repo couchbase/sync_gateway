@@ -180,7 +180,7 @@ func (h *handler) handleAllDocs() error {
 				row.Error = base.CouchHTTPErrorName(row.Status)
 			}
 			if totalRows > 0 {
-				h.response.Write([]byte(","))
+				_, _ = h.response.Write([]byte(","))
 			}
 			totalRows++
 			var err error
@@ -204,11 +204,11 @@ func (h *handler) handleAllDocs() error {
 	//response.Write below would set Status OK implicitly. We manually do it here to ensure that our handler knows
 	//that the header has been written to, meaning we can prevent it from attempting to set the header again later on.
 	h.writeStatus(http.StatusOK, http.StatusText(http.StatusOK))
-	h.response.Write([]byte(`{"rows":[` + "\n"))
+	_, _ = h.response.Write([]byte(`{"rows":[` + "\n"))
 	if explicitDocIDs != nil {
 		count := uint64(0)
 		for _, docID := range explicitDocIDs {
-			writeDoc(db.IDRevAndSequence{DocID: docID, RevID: "", Sequence: 0}, nil)
+			_, _ = writeDoc(db.IDRevAndSequence{DocID: docID, RevID: "", Sequence: 0}, nil)
 			count++
 			if options.Limit > 0 && count == options.Limit {
 				break
@@ -221,7 +221,7 @@ func (h *handler) handleAllDocs() error {
 		}
 	}
 
-	h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
+	_, _ = h.response.Write([]byte(fmt.Sprintf("],\n"+`"total_rows":%d,"update_seq":%d}`,
 		totalRows, lastSeq)))
 
 	return nil
@@ -238,21 +238,21 @@ func (h *handler) handleDump() error {
 	}
 	title := fmt.Sprintf("/%s: “%s” View", html.EscapeString(h.db.Name), html.EscapeString(viewName))
 	h.setHeader("Content-Type", `text/html; charset="UTF-8"`)
-	h.response.Write([]byte(fmt.Sprintf(
+	_, _ = h.response.Write([]byte(fmt.Sprintf(
 		`<!DOCTYPE html><html><head><title>%s</title></head><body>
 		<h1>%s</h1><code>
 		<table border=1>
 		`,
 		title, title)))
-	h.response.Write([]byte("\t<tr><th>Key</th><th>Value</th><th>ID</th></tr>\n"))
+	_, _ = h.response.Write([]byte("\t<tr><th>Key</th><th>Value</th><th>ID</th></tr>\n"))
 	for _, row := range result.Rows {
 		key, _ := base.JSONMarshal(row.Key)
 		value, _ := base.JSONMarshal(row.Value)
-		h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%s</td><td>%s</td><td><em>%s</em></td>",
+		_, _ = h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%s</td><td>%s</td><td><em>%s</em></td>",
 			html.EscapeString(string(key)), html.EscapeString(string(value)), html.EscapeString(row.ID))))
-		h.response.Write([]byte("</tr>\n"))
+		_, _ = h.response.Write([]byte("</tr>\n"))
 	}
-	h.response.Write([]byte("</table>\n</code></html></body>"))
+	_, _ = h.response.Write([]byte("</table>\n</code></html></body>"))
 	return nil
 }
 
@@ -267,7 +267,9 @@ func (h *handler) handleRepair() error {
 	base.Infof(base.KeyHTTP, "Repair bucket")
 
 	// Todo: is this actually needed or does something else in the handler do it?  I can't find that..
-	defer h.requestBody.Close()
+	defer func() {
+		_ = h.requestBody.Close()
+	}()
 
 	body, err := h.readBody()
 	if err != nil {
@@ -311,21 +313,21 @@ func (h *handler) handleDumpChannel() error {
 	}
 	title := fmt.Sprintf("/%s: “%s” Channel", html.EscapeString(h.db.Name), html.EscapeString(channelName))
 	h.setHeader("Content-Type", `text/html; charset="UTF-8"`)
-	h.response.Write([]byte(fmt.Sprintf(
+	_, _ = h.response.Write([]byte(fmt.Sprintf(
 		`<!DOCTYPE html><html><head><title>%s</title></head><body>
 		<h1>%s</h1><code>
 		<p>Since = %d</p>
 		<table border=1>
 		`,
 		title, title, chanLog[0].Sequence-1)))
-	h.response.Write([]byte("\t<tr><th>Seq</th><th>Doc</th><th>Rev</th><th>Flags</th></tr>\n"))
+	_, _ = h.response.Write([]byte("\t<tr><th>Seq</th><th>Doc</th><th>Rev</th><th>Flags</th></tr>\n"))
 	for _, entry := range chanLog {
-		h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%d</td><td>%s</td><td>%s</td><td>%08b</td>",
+		_, _ = h.response.Write([]byte(fmt.Sprintf("\t<tr><td>%d</td><td>%s</td><td>%s</td><td>%08b</td>",
 			entry.Sequence,
 			html.EscapeString(entry.DocID), html.EscapeString(entry.RevID), entry.Flags)))
-		h.response.Write([]byte("</tr>\n"))
+		_, _ = h.response.Write([]byte("</tr>\n"))
 	}
-	h.response.Write([]byte("</table>\n</code></html></body>"))
+	_, _ = h.response.Write([]byte("</table>\n</code></html></body>"))
 	return nil
 }
 
@@ -432,7 +434,7 @@ func (h *handler) handleBulkGet() error {
 				}
 			}
 
-			WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.StatsCblReplicationPull(), body, err != nil, canCompressParts, writer)
+			_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.StatsCblReplicationPull(), body, err != nil, canCompressParts, writer)
 
 			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		}

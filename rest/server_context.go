@@ -124,7 +124,7 @@ func (sc *ServerContext) Close() {
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
 		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
+			_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
 		}
 	}
 
@@ -574,12 +574,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	if config.StartOffline {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
+			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
 		}
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
 		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
+			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
 		}
 	}
 
@@ -794,7 +794,7 @@ func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error)
 	}
 
 	var config DbConfig
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if err := decodeAndSanitiseConfig(resp.Body, &config); err != nil {
 		return nil, base.HTTPErrorf(http.StatusBadGateway,

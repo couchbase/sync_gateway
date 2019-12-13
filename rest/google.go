@@ -52,7 +52,7 @@ func verifyGoogle(idToken string, allowedAppID []string) (*GoogleResponse, error
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	decoder := base.JSONDecoder(res.Body)
 

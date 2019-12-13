@@ -659,7 +659,8 @@ func TestAllDocsOnly(t *testing.T) {
 
 	// Inspect the channel log to confirm that it's only got the last 50 sequences.
 	// There are 101 sequences overall, so the 1st one it has should be #52.
-	db.changeCache.waitForSequence(context.TODO(), 101, base.DefaultWaitForSequence)
+	err = db.changeCache.waitForSequence(context.TODO(), 101, base.DefaultWaitForSequence)
+	require.NoError(t, err)
 	changeLog := db.GetChangeLog("all", 0)
 	assert.Equal(t, 50, len(changeLog))
 	assert.Equal(t, 52, int(changeLog[0].Sequence))
@@ -716,7 +717,7 @@ func TestUpdatePrincipal(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
-	authenticator.Save(user)
+	assert.NoError(t, authenticator.Save(user))
 
 	// Validate that a call to UpdatePrincipals with no changes to the user doesn't allocate a sequence
 	userInfo, err := db.GetPrincipal("naomi", true)
@@ -1248,7 +1249,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	// Create the role _after_ creating the documents, to make sure the previously-indexed access
 	// privileges are applied.
 	role, _ := authenticator.NewRole("animefan", nil)
-	authenticator.Save(role)
+	assert.NoError(t, authenticator.Save(role))
 
 	user, err = authenticator.GetUser("naomi")
 	assert.NoError(t, err, "GetUser")
@@ -1446,7 +1447,8 @@ func TestRecentSequenceHistory(t *testing.T) {
 	// Recent sequence pruning only prunes entries older than what's been seen over DCP
 	// (to ensure it's not pruning something that may still be coalesced).  Because of this, test waits
 	// for caching before attempting to trigger pruning.
-	db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence)
+	err = db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence)
+	require.NoError(t, err)
 
 	// Add another sequence to validate pruning when past max (20)
 	revid, doc, err = db.Put("doc1", body)
@@ -1471,7 +1473,8 @@ func TestRecentSequenceHistory(t *testing.T) {
 		seqTracker++
 	}
 
-	db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence) //
+	err = db.changeCache.waitForSequence(context.TODO(), seqTracker, base.DefaultWaitForSequence) //
+	require.NoError(t, err)
 	revid, doc, err = db.Put("doc1", body)
 	body[BodyId] = doc.ID
 	body[BodyRev] = revid
@@ -1532,7 +1535,8 @@ func TestConcurrentImport(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
 	// Add doc to the underlying bucket:
-	db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
+	_, err := db.Bucket.Add("directWrite", 0, Body{"value": "hi"})
+	require.NoError(t, err)
 
 	// Attempt concurrent retrieval of the docs, and validate that they are only imported once (based on revid)
 	var wg sync.WaitGroup
@@ -1613,7 +1617,7 @@ func BenchmarkDatabase(b *testing.B) {
 		db, _ := CreateDatabase(context)
 
 		body := Body{"key1": "value1", "key2": 1234}
-		db.Put(fmt.Sprintf("doc%d", i), body)
+		_, _, _ = db.Put(fmt.Sprintf("doc%d", i), body)
 
 		db.Close()
 	}
@@ -1636,7 +1640,7 @@ func BenchmarkPut(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		db.Put(fmt.Sprintf("doc%d", i), body)
+		_, _, _ = db.Put(fmt.Sprintf("doc%d", i), body)
 	}
 
 	db.Close()

@@ -718,7 +718,10 @@ func (c *changeCache) processEntry(change *LogEntry) base.Set {
 		changedChannels = changedChannels.UpdateWithSlice(c._addToCache(change))
 		// Add to cache before removing from skipped, to ensure lowSequence doesn't get incremented until results are available
 		// in cache
-		c.RemoveSkipped(sequence)
+		err := c.RemoveSkipped(sequence)
+		if err != nil {
+			base.Debugf(base.KeyCache, "Error removing skipped sequence: #%d from cache: %v", sequence, err)
+		}
 	}
 	return changedChannels
 }
@@ -880,7 +883,11 @@ func (c *changeCache) WasSkipped(x uint64) bool {
 }
 
 func (c *changeCache) PushSkipped(sequence uint64) {
-	c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
+	err := c.skippedSeqs.Push(&SkippedSequence{seq: sequence, timeAdded: time.Now()})
+	if err != nil {
+		base.Infof(base.KeyCache, "Error pushing skipped sequence: %d, %v", sequence, err)
+		return
+	}
 	c.context.DbStats.statsCacheMap.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(c.skippedSeqs.skippedList.Len()))
 }
 

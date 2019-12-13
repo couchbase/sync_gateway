@@ -134,7 +134,10 @@ func (listener *changeListener) Stop() {
 	}
 
 	if listener.tapFeed != nil {
-		listener.tapFeed.Close()
+		err := listener.tapFeed.Close()
+		if err != nil {
+			base.Debugf(base.KeyChanges, "Error closing listener tap feed: %v", err)
+		}
 	}
 }
 

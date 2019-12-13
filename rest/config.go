@@ -616,7 +616,7 @@ func LoadServerConfig(path string) (config *ServerConfig, err error) {
 		}
 	}
 
-	defer dataReadCloser.Close()
+	defer func() { _ = dataReadCloser.Close() }()
 	return readServerConfig(dataReadCloser)
 }
 
@@ -1033,7 +1033,7 @@ func RunServer(config *ServerConfig) {
 		//runtime.MemProfileRate = 10 * 1024
 		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
 		go func() {
-			http.ListenAndServe(*config.ProfileInterface, nil)
+			_ = http.ListenAndServe(*config.ProfileInterface, nil)
 		}()
 	}
 

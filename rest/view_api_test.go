@@ -68,7 +68,7 @@ func TestViewQuery(t *testing.T) {
 	// TODO: update the query to use stale=false and remove the wait
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assert.NoError(t, err, "Got unexpected error")
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 2, len(result.Rows))
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"}, result.Rows[1])
@@ -176,7 +176,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	a := rt.ServerContext().Database("db").Authenticator()
 	password := "123456"
 	testUser, _ := a.NewUser("testUser", password, channels.SetOf(t, "*"))
-	a.Save(testUser)
+	assert.NoError(t, a.Save(testUser))
 
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
 	assert.NoError(t, err, "Unexpected error in WaitForNUserViewResults")
@@ -212,21 +212,21 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_age", ``)
 	assertStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 2, len(result.Rows))
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)}, result.Rows[1])
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_fname", ``)
 	assertStatus(t, response, http.StatusOK)
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 2, len(result.Rows))
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)}, result.Rows[1])
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_lname", ``)
 	assertStatus(t, response, http.StatusOK)
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 2, len(result.Rows))
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)}, result.Rows[1])
@@ -253,7 +253,7 @@ func TestUserViewQuery(t *testing.T) {
 	// Create a user:
 	password := "123456"
 	quinn, _ := a.NewUser("quinn", password, channels.SetOf(t, "Q", "q"))
-	a.Save(quinn)
+	assert.NoError(t, a.Save(quinn))
 
 	// Have the user query the view:
 	result, err := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar?include_docs=true", quinn, password)
@@ -435,7 +435,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	assertStatus(t, response, http.StatusOK) // Query string was parsed properly
 
 	var result sgbucket.ViewResult
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 1, len(result.Rows))
 
 	// Ensure that query for non-existent keys returns no rows
@@ -443,7 +443,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
 	assertStatus(t, response, http.StatusOK) // Query string was parsed properly
 
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 0, len(result.Rows))
 }
 
@@ -472,7 +472,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
 	assertStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 1, len(result.Rows))
 
 	// Ensure that a query for non-existent key returns no rows
@@ -480,7 +480,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
 	assertStatus(t, response, http.StatusOK)
 
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 0, len(result.Rows))
 }
 
@@ -509,7 +509,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
 	assertStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 1, len(result.Rows))
 
 	// Ensure that a query for non-existent key returns no rows
@@ -518,7 +518,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, viewUrlPath, ``)
 	assertStatus(t, response, http.StatusOK)
 
-	base.JSONUnmarshal(response.Body.Bytes(), &result)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
 	assert.Equal(t, 0, len(result.Rows))
 }
 

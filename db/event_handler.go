@@ -113,8 +113,14 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		defer func() {
 			// Ensure we're closing the response, so it can be reused
 			if resp != nil && resp.Body != nil {
-				io.Copy(ioutil.Discard, resp.Body)
-				resp.Body.Close()
+				_, err := io.Copy(ioutil.Discard, resp.Body)
+				if err != nil {
+					base.Debugf(base.KeyEvents, "Error copying response body: %v", err)
+				}
+				err = resp.Body.Close()
+				if err != nil {
+					base.Debugf(base.KeyEvents, "Error closing response body: %v", err)
+				}
 			}
 		}()
 

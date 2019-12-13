@@ -76,7 +76,7 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 			// Updating:
 			var generation uint
 			if matchRev != "" {
-				fmt.Sscanf(matchRev, "0-%d", &generation)
+				_, _ = fmt.Sscanf(matchRev, "0-%d", &generation)
 			}
 			revid = fmt.Sprintf("0-%d", generation+1)
 			body[BodyRev] = revid

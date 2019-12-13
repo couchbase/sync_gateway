@@ -105,7 +105,8 @@ func (r *DCPReceiver) SnapshotStart(vbNo uint16,
 }
 
 func (r *DCPReceiver) SetMetaData(vbucketId uint16, value []byte) error {
-	return r.setMetaData(vbucketId, value)
+	r.setMetaData(vbucketId, value)
+	return nil
 }
 
 func (r *DCPReceiver) GetMetaData(vbNo uint16) (
@@ -117,14 +118,12 @@ func (r *DCPReceiver) GetMetaData(vbNo uint16) (
 // RollbackEx should be called by cbdatasource - Rollback required to maintain the interface.  In the event
 // it's called, logs warning and does a hard reset on metadata for the vbucket
 func (r *DCPReceiver) Rollback(vbucketId uint16, rollbackSeq uint64) error {
-	r.rollback(vbucketId, rollbackSeq)
-	return nil
+	return r.rollback(vbucketId, rollbackSeq)
 }
 
 // RollbackEx includes the vbucketUUID needed to reset the metadata correctly
 func (r *DCPReceiver) RollbackEx(vbucketId uint16, vbucketUUID uint64, rollbackSeq uint64) error {
-	r.rollbackEx(vbucketId, vbucketUUID, rollbackSeq, makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq))
-	return nil
+	return r.rollbackEx(vbucketId, vbucketUUID, rollbackSeq, makeVbucketMetadataForSequence(vbucketUUID, rollbackSeq))
 }
 
 // Generate cbdatasource's VBucketMetadata for a vbucket from underlying components
@@ -321,7 +320,9 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		go func() {
 			<-args.Terminator
 			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
-			bds.Close()
+			if err := bds.Close(); err != nil {
+				Debugf(KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(bucketName), feedID, err)
+			}
 		}()
 	}
 

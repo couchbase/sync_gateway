@@ -97,7 +97,10 @@ func (body Body) ShallowCopy() Body {
 
 func (body Body) DeepCopy() Body {
 	var copiedBody Body
-	base.DeepCopyInefficient(&copiedBody, body)
+	err := base.DeepCopyInefficient(&copiedBody, body)
+	if err != nil {
+		base.Infof(base.KeyCRUD, "Error copying body: %v", err)
+	}
 	return copiedBody
 }
 

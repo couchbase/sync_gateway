@@ -265,6 +265,8 @@ func (h *handler) handleEFC() error { // Handles _ensure_full_commit.
 // ADMIN API to turn Go CPU profiling on/off
 func (h *handler) handleProfiling() error {
 	profileName := h.PathVar("profilename")
+	isCPUProfile := profileName == ""
+
 	var params struct {
 		File string `json:"file"`
 	}
@@ -278,32 +280,37 @@ func (h *handler) handleProfiling() error {
 		}
 	}
 
-	if params.File != "" {
-		f, err := os.Create(params.File)
-		if err != nil {
-			return err
-		}
-		if profileName != "" {
-			defer f.Close()
-			if profile := pprof.Lookup(profileName); profile != nil {
-				profile.WriteTo(f, 0)
-				base.Infof(base.KeyAll, "Wrote %s profile to %s", profileName, base.UD(params.File))
-			} else {
-				return base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
-			}
-		} else {
-			base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
-			pprof.StartCPUProfile(f)
-		}
-	} else {
-		if profileName != "" {
-			return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")
-		} else {
-			base.Infof(base.KeyAll, "...ending CPU profile.")
+	// Handle no file
+	if params.File == "" {
+		if isCPUProfile {
+			base.InfofCtx(h.db.Ctx, base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
+			return nil
 		}
+		return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")
 	}
-	return nil
+
+	f, err := os.Create(params.File)
+	if err != nil {
+		return err
+	}
+
+	if isCPUProfile {
+		base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
+		err = pprof.StartCPUProfile(f)
+		return err
+	} else if profile := pprof.Lookup(profileName); profile != nil {
+		base.Infof(base.KeyAll, "Writing %q profile to %s ...", profileName, base.UD(params.File))
+		err = profile.WriteTo(f, 0)
+	} else {
+		err = base.HTTPErrorf(http.StatusNotFound, "No such profile %q", profileName)
+	}
+
+	if fileCloseError := f.Close(); fileCloseError != nil {
+		base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", fileCloseError)
+	}
+
+	return err
 }
 
 // ADMIN API to dump Go heap profile
@@ -324,9 +331,13 @@ func (h *handler) handleHeapProfiling() error {
 	if err != nil {
 		return err
 	}
-	pprof.WriteHeapProfile(f)
-	f.Close()
-	return nil
+	err = pprof.WriteHeapProfile(f)
+
+	if fileCloseError := f.Close(); fileCloseError != nil {
+		base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", fileCloseError)
+	}
+
+	return err
 }
 
 func (h *handler) handlePprofGoroutine() error {

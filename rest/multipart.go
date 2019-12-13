@@ -83,7 +83,7 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body db.Body, c
 	if compressed {
 		gz := gzip.NewWriter(part)
 		_, err = gz.Write(bytes)
-		gz.Close()
+		_ = gz.Close()
 	} else {
 		_, err = part.Write(bytes)
 	}
@@ -115,7 +115,7 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *expvar
 	}
 
 	// Write the main JSON body:
-	writeJSONPart(writer, "application/json", body, compress)
+	_ = writeJSONPart(writer, "application/json", body, compress)
 
 	// Write the following attachments
 	for _, info := range following {
@@ -129,7 +129,7 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *expvar
 			cblReplicationPullStats.Add(base.StatKeyAttachmentPullCount, 1)
 			cblReplicationPullStats.Add(base.StatKeyAttachmentPullBytes, int64(len(info.data)))
 		}
-		part.Write(info.data)
+		_, _ = part.Write(info.data)
 
 	}
 }
@@ -163,7 +163,7 @@ func WriteRevisionAsPart(ctx context.Context, cblReplicationPullStats *expvar.Ma
 			docWriter.Boundary())
 		partHeaders.Set("Content-Type", contentType)
 		WriteMultipartDocument(ctx, cblReplicationPullStats, revBody, docWriter, compressPart)
-		docWriter.Close()
+		_ = docWriter.Close()
 		content := bytes.TrimRight(buffer.Bytes(), "\r\n")
 
 		part, err := writer.CreatePart(partHeaders)
@@ -189,7 +189,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 	}
 	var body db.Body
 	err = ReadJSONFromMIME(http.Header(mainPart.Header), mainPart, &body)
-	mainPart.Close()
+	_ = mainPart.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +228,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 			return nil, err
 		}
 		data, err := ioutil.ReadAll(part)
-		part.Close()
+		_ = part.Close()
 		if err != nil {
 			return nil, err
 		}

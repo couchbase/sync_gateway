@@ -347,7 +347,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 	var revisionBody Body
 	rawRevision, _, err := db.Bucket.GetRaw(base.SyncPrefix + "rb:4GctXhLVg13d59D0PUTPRD0i58Hbe1d0djgo1qOEpfI=")
 	assert.NoError(t, err, "Couldn't get raw backup revision")
-	base.JSONUnmarshal(rawRevision, &revisionBody)
+	assert.NoError(t, base.JSONUnmarshal(rawRevision, &revisionBody))
 	goassert.Equals(t, revisionBody["version"], rev2a_body["version"])
 	goassert.Equals(t, revisionBody["value"], rev2a_body["value"])
 
@@ -844,17 +844,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.Get1xRevBody("doc1", "", false, nil)
+			_, _ = db.Get1xRevBody("doc1", "", false, nil)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.Get1xRevBody("doc2", "", false, nil)
+			_, _ = db.Get1xRevBody("doc2", "", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.Get1xRevBody("doc3", "", false, nil)
+			_, _ = db.Get1xRevBody("doc3", "", false, nil)
 		}
 	})
 
@@ -868,17 +868,17 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.Get1xRevBody("doc1", "1-a", false, nil)
+			_, _ = db.Get1xRevBody("doc1", "1-a", false, nil)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.Get1xRevBody("doc2", "1-a", false, nil)
+			_, _ = db.Get1xRevBody("doc2", "1-a", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.Get1xRevBody("doc3", "1-a", false, nil)
+			_, _ = db.Get1xRevBody("doc3", "1-a", false, nil)
 		}
 	})
 }
@@ -908,17 +908,17 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	b.Run("ShortLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.GetRev("doc1", "", false, nil)
+			_, _ = db.GetRev("doc1", "", false, nil)
 		}
 	})
 	b.Run("LongLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.GetRev("doc2", "", false, nil)
+			_, _ = db.GetRev("doc2", "", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsLatest", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.GetRev("doc3", "", false, nil)
+			_, _ = db.GetRev("doc3", "", false, nil)
 		}
 	})
 
@@ -932,17 +932,17 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	b.Run("ShortOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.GetRev("doc1", "1-a", false, nil)
+			_, _ = db.GetRev("doc1", "1-a", false, nil)
 		}
 	})
 	b.Run("LongOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.GetRev("doc2", "1-a", false, nil)
+			_, _ = db.GetRev("doc2", "1-a", false, nil)
 		}
 	})
 	b.Run("ShortWithAttachmentsOld", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			db.GetRev("doc3", "1-a", false, nil)
+			_, _ = db.GetRev("doc3", "1-a", false, nil)
 		}
 	})
 }

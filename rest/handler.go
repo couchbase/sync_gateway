@@ -483,7 +483,7 @@ func (h *handler) readDocument() (db.Body, error) {
 			reader := multipart.NewReader(bytes.NewReader(raw), attrs["boundary"])
 			body, err := ReadMultipartDocument(reader)
 			if err != nil {
-				ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
+				_ = ioutil.WriteFile("GatewayPUT.mime", raw, 0600)
 				base.Warnf("Error reading MIME data: copied to file GatewayPUT.mime")
 			}
 			return body, err
@@ -583,7 +583,7 @@ func (h *handler) writeRawJSONWithoutClientVerification(status int, b []byte) {
 			h.response.WriteHeader(status)
 			h.setStatus(status, "")
 		}
-		h.response.Write(b)
+		_, _ = h.response.Write(b)
 	} else if status > 0 {
 		h.response.WriteHeader(status)
 		h.setStatus(status, "")
@@ -612,7 +612,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 	}
 	if PrettyPrint {
 		var buffer bytes.Buffer
-		json.Indent(&buffer, jsonOut, "", "  ")
+		_ = json.Indent(&buffer, jsonOut, "", "  ")
 		jsonOut = append(buffer.Bytes(), '\n')
 	}
 
@@ -656,7 +656,7 @@ func (h *handler) writeTextStatus(status int, value []byte) {
 		h.response.WriteHeader(status)
 		h.setStatus(status, "")
 	}
-	h.response.Write(value)
+	_, _ = h.response.Write(value)
 }
 
 func (h *handler) addJSON(value interface{}) error {
@@ -695,7 +695,7 @@ func (h *handler) writeMultipart(subtype string, callback func(*multipart.Writer
 		fmt.Sprintf("multipart/%s; boundary=%q", subtype, writer.Boundary()))
 
 	err := callback(writer)
-	writer.Close()
+	_ = writer.Close()
 
 	if err == nil && output == &buffer {
 		// Trim trailing newline; CouchDB is allergic to it:
@@ -754,7 +754,7 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
 	h.setStatus(status, message)
-	h.response.Write([]byte(`{"error":"` + errorStr + `","reason":"` + message + `"}`))
+	_, _ = h.response.Write([]byte(`{"error":"` + errorStr + `","reason":"` + message + `"}`))
 }
 
 var kRangeRegex = regexp.MustCompile("^bytes=(\\d+)?-(\\d+)?$")

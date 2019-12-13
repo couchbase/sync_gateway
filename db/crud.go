@@ -1454,7 +1454,10 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if err != nil {
 				base.Warnf("Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {
-				db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels)
+				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels)
+				if err != nil {
+					base.Debugf(base.KeyCRUD, "Error raising document change event: %v", err)
+				}
 			}
 		}
 	} else {

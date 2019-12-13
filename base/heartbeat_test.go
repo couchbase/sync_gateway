@@ -153,7 +153,8 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	nodeDefs.NodeDefs["node1"] = &cbgt.NodeDef{UUID: "node1"}
 	nodeDefs.NodeDefs["node2"] = &cbgt.NodeDef{UUID: "node2"}
 	nodeDefs.NodeDefs["node3"] = &cbgt.NodeDef{UUID: "node3"}
-	cbgt.CfgSetNodeDefs(cfgCB, cbgt.NODE_DEFS_KNOWN, nodeDefs, 0)
+	_, err = cbgt.CfgSetNodeDefs(cfgCB, cbgt.NODE_DEFS_KNOWN, nodeDefs, 0)
+	require.NoError(t, err)
 
 	// Create three heartbeaters (representing three nodes)
 	handler1, err := NewCBGTNodeListHandler(cfgCB)

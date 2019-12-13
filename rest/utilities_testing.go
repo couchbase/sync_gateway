@@ -295,7 +295,7 @@ func (rt *RestTester) SetAdminParty(partyTime bool) {
 		chans = channels.AtSequence(base.SetOf("*"), 1)
 	}
 	guest.SetExplicitChannels(chans)
-	a.Save(guest)
+	_ = a.Save(guest)
 }
 
 func (rt *RestTester) DisableGuestUser() {
@@ -456,7 +456,7 @@ func (rt *RestTester) WaitForNViewResults(numResultsExpected int, viewUrlPath st
 			return false, fmt.Errorf("Got response code: %d from view call.  Expected 200.", response.Code), sgbucket.ViewResult{}
 		}
 		var result sgbucket.ViewResult
-		base.JSONUnmarshal(response.Body.Bytes(), &result)
+		_ = base.JSONUnmarshal(response.Body.Bytes(), &result)
 
 		if len(result.Rows) >= numResultsExpected {
 			// Got enough results, break out of retry loop
@@ -517,10 +517,13 @@ func (rt *RestTester) WaitForDBOnline() (err error) {
 
 		response := rt.SendAdminRequest("GET", "/db/", "")
 		var body db.Body
-		base.JSONUnmarshal(response.Body.Bytes(), &body)
+		err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+		if err != nil {
+			return err
+		}
 
 		if body["state"].(string) == "Online" {
-			return
+			return nil
 		}
 
 		// Otherwise, sleep and try again
@@ -564,7 +567,7 @@ func (rt *RestTester) GetDocumentSequence(key string) (sequence uint64) {
 	}
 
 	var rawResponse RawResponse
-	base.JSONUnmarshal(response.BodyBytes(), &rawResponse)
+	_ = base.JSONUnmarshal(response.BodyBytes(), &rawResponse)
 	return rawResponse.Sync.Sequence
 }
 
