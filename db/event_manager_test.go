@@ -404,12 +404,12 @@ func (wr *WebhookRequest) waitForCount(ctx context.Context, waitCount int, maxWa
 	return err
 }
 
-func (em *EventManager) waitForProcessed(ctx context.Context, waitCount int, maxWaitTime time.Duration) error {
+func (em *EventManager) waitForProcessedSuccess(ctx context.Context, waitCount int, maxWaitTime time.Duration) error {
 	startTime := time.Now()
 
 	worker := func() (bool, error, interface{}) {
-		if em.GetEventsProcessed() == int64(waitCount) {
-			base.Debugf(base.KeyAll, "waitForProcessed(%d) took %v", waitCount, time.Since(startTime))
+		if em.GetEventsProcessedSuccess() == int64(waitCount) {
+			base.Debugf(base.KeyAll, "waitForProcessedSuccess(%d) took %v", waitCount, time.Since(startTime))
 			return false, nil, nil
 		}
 
@@ -418,7 +418,46 @@ func (em *EventManager) waitForProcessed(ctx context.Context, waitCount int, max
 
 	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
 	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 1000), ctx)
-	err, _ := base.RetryLoop(fmt.Sprintf("waitForProcessed(%d)", waitCount), worker, sleeper)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForProcessedSuccess(%d)", waitCount), worker, sleeper)
+	cancel()
+	return err
+}
+
+func (em *EventManager) waitForProcessedFail(ctx context.Context, waitCount int, maxWaitTime time.Duration) error {
+	startTime := time.Now()
+
+	worker := func() (bool, error, interface{}) {
+		if em.GetEventsProcessedFail() == int64(waitCount) {
+			base.Debugf(base.KeyAll, "waitForProcessedFail(%d) took %v", waitCount, time.Since(startTime))
+			return false, nil, nil
+		}
+
+		return true, nil, nil
+	}
+
+	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 1000), ctx)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForProcessedFail(%d)", waitCount), worker, sleeper)
+	cancel()
+	return err
+}
+
+func (em *EventManager) waitForProcessedTotal(ctx context.Context, waitCount int, maxWaitTime time.Duration) error {
+	startTime := time.Now()
+
+	worker := func() (bool, error, interface{}) {
+		eventTotal := em.GetEventsProcessedSuccess() + em.GetEventsProcessedFail()
+		if eventTotal == int64(waitCount) {
+			base.Debugf(base.KeyAll, "waitForProcessedFail(%d) took %v", waitCount, time.Since(startTime))
+			return false, nil, nil
+		}
+
+		return true, nil, nil
+	}
+
+	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 1000), ctx)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForProcessedFail(%d)", waitCount), worker, sleeper)
 	cancel()
 	return err
 }
@@ -523,7 +562,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	err := em.waitForProcessed(context.TODO(), 10, DefaultWaitForWebhook)
+	err := em.waitForProcessedSuccess(context.TODO(), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 
 	// Test webhook filter function
@@ -547,7 +586,7 @@ func TestWebhookBasic(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = em.waitForProcessed(context.TODO(), 4, DefaultWaitForWebhook)
+	err = em.waitForProcessedSuccess(context.TODO(), 4, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 
 	// Validate payload
@@ -580,7 +619,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessed(context.TODO(), 100, DefaultWaitForWebhook)
+	err = em.waitForProcessedSuccess(context.TODO(), 100, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 
 	// Test queue full, slow webhook.  Drops events
@@ -601,7 +640,7 @@ func TestWebhookBasic(t *testing.T) {
 	}
 	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
 	// for a goroutine.  The rest get discarded because the queue is full.
-	err = em.waitForProcessed(context.TODO(), 21, 10*time.Second)
+	err = em.waitForProcessedSuccess(context.TODO(), 21, 10*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, 79, errCount)
 
@@ -618,7 +657,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	err = em.waitForProcessed(context.TODO(), 100, 10*time.Second)
+	err = em.waitForProcessedSuccess(context.TODO(), 100, 10*time.Second)
 	assert.NoError(t, err)
 
 }
@@ -814,7 +853,7 @@ func TestWebhookTimeout(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 		assert.NoError(t, err)
 	}
-	err := wr.waitForCount(context.TODO(), 10, DefaultWaitForWebhook)
+	err := em.waitForProcessedSuccess(context.TODO(), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 
 	// Test slow webhook, short timeout, numProcess=1, waitForProcess > timeout.  All events should get processed.
@@ -836,8 +875,9 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// Even though we timed out waiting for response on the SG side, POST still completed on target side.
-	err = wr.waitForCount(context.TODO(), 10, 20*time.Second)
+	err = em.waitForProcessedTotal(context.TODO(), 10, 30*time.Second)
 	assert.NoError(t, err)
+	assert.Equal(t, int64(0), em.GetEventsProcessedSuccess())
 
 	// Test slow webhook, short timeout, numProcess=1, waitForProcess << timeout.  Events that don't fit in queues
 	// should get dropped (1 immediately processed, 1 in normal queue, 3 in overflow queue, 5 dropped)
@@ -859,7 +899,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	err = wr.waitForCount(context.TODO(), 5, 30*time.Second)
+	err = em.waitForProcessedSuccess(context.TODO(), 5, 30*time.Second)
 	assert.NoError(t, err)
 
 	// Test slow webhook, no timeout, numProcess=1, waitForProcess=1s.  All events should complete.
@@ -881,7 +921,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	err = wr.waitForCount(context.TODO(), 10, 20*time.Second)
+	err = em.waitForProcessedSuccess(context.TODO(), 10, 20*time.Second)
 	assert.NoError(t, err)
 
 }

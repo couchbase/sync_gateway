@@ -13,24 +13,37 @@ import (
 // eventChannel to minimize time spent blocking whatever process is raising the event.
 // The event queue worker goroutine works the event channel and sends events to the appropriate handlers
 type EventManager struct {
-	activeEventTypes   map[EventType]bool
-	eventHandlers      map[EventType][]EventHandler
-	asyncEventChannel  chan Event
-	activeCountChannel chan bool
-	waitTime           int
-	eventsProcessed    int64
+	activeEventTypes       map[EventType]bool
+	eventHandlers          map[EventType][]EventHandler
+	asyncEventChannel      chan Event
+	activeCountChannel     chan bool
+	waitTime               int
+	eventsProcessedSuccess int64
+	eventsProcessedFail    int64
 }
 
-func (em *EventManager) GetEventsProcessed() int64 {
-	return atomic.LoadInt64(&em.eventsProcessed)
+func (em *EventManager) GetEventsProcessedSuccess() int64 {
+	return atomic.LoadInt64(&em.eventsProcessedSuccess)
 }
 
-func (em *EventManager) IncrementEventsProcessed() int64 {
-	return atomic.AddInt64(&em.eventsProcessed, 1)
+func (em *EventManager) IncrementEventsProcessedSuccess() int64 {
+	return atomic.AddInt64(&em.eventsProcessedSuccess, 1)
 }
 
-func (em *EventManager) DecrementEventsProcessed() int64 {
-	return atomic.AddInt64(&em.eventsProcessed, -1)
+func (em *EventManager) DecrementEventsProcessedSuccess() int64 {
+	return atomic.AddInt64(&em.eventsProcessedSuccess, -1)
+}
+
+func (em *EventManager) GetEventsProcessedFail() int64 {
+	return atomic.LoadInt64(&em.eventsProcessedFail)
+}
+
+func (em *EventManager) IncrementEventsProcessedFail() int64 {
+	return atomic.AddInt64(&em.eventsProcessedFail, 1)
+}
+
+func (em *EventManager) DecrementEventsProcessedFail() int64 {
+	return atomic.AddInt64(&em.eventsProcessedFail, -1)
 }
 
 const kMaxActiveEvents = 500 // number of events that are processed concurrently
@@ -94,7 +107,9 @@ func (em *EventManager) ProcessEvent(event Event) {
 			//TODO: Currently we're not tracking success/fail from event handlers.  When this
 			// is needed, could pass a channel to HandleEvent for tracking results
 			if handler.HandleEvent(event) {
-				em.IncrementEventsProcessed()
+				em.IncrementEventsProcessedSuccess()
+			} else {
+				em.IncrementEventsProcessedFail()
 			}
 		}(event, handler)
 	}
