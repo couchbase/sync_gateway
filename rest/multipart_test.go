@@ -148,7 +148,8 @@ Content-Disposition: attachment; filename=att.txt
 }
 
 func TestWriteJSONPart(t *testing.T) {
-	// Check JSON bodies more than than 300 bytes is getting GZip-encoded.
+	// writeJSONPart toggles compression to false if the incoming body is less than 300 bytes, so creating 
+	// a body larger than 300 bytes to test writeJSONPart with compression=true and compression=false
 	mockFakeBody := func() db.Body {
 		bytes := make([]byte, 139)
 		rand.Read(bytes)
