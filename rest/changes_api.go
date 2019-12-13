@@ -45,7 +45,7 @@ func (h *handler) handleRevsDiff() error {
 		return err
 	}
 
-	h.response.Write([]byte("{"))
+	_, _ = h.response.Write([]byte("{"))
 	first := true
 	for docid, revs := range input {
 		missing, possible := h.db.RevDiff(docid, revs)
@@ -55,14 +55,14 @@ func (h *handler) handleRevsDiff() error {
 				docOutput["possible_ancestors"] = possible
 			}
 			if !first {
-				h.response.Write([]byte(",\n"))
+				_, _ = h.response.Write([]byte(",\n"))
 			}
 			first = false
-			h.response.Write([]byte(fmt.Sprintf("%q:", docid)))
-			h.addJSON(docOutput)
+			_, _ = h.response.Write([]byte(fmt.Sprintf("%q:", docid)))
+			_ = h.addJSON(docOutput)
 		}
 	}
-	h.response.Write([]byte("}"))
+	_, _ = h.response.Write([]byte("}"))
 	return nil
 }
 
@@ -344,7 +344,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 
 	h.setHeader("Content-Type", "application/json")
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
-	h.response.Write([]byte("{\"results\":[\r\n"))
+	_, _ = h.response.Write([]byte("{\"results\":[\r\n"))
 
 	logStatus := h.logStatusWithDuration
 
@@ -393,9 +393,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 					if first {
 						first = false
 					} else {
-						h.response.Write([]byte(","))
+						_, _ = h.response.Write([]byte(","))
 					}
-					encoder.Encode(entry)
+					_ = encoder.Encode(entry)
 					lastSeq = entry.Seq
 				}
 
@@ -424,7 +424,7 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 	}
 
 	s := fmt.Sprintf("],\n\"last_seq\":%q}\n", lastSeq.String())
-	h.response.Write([]byte(s))
+	_, _ = h.response.Write([]byte(s))
 	logStatus(http.StatusOK, message)
 	return nil, forceClose
 }
@@ -451,7 +451,7 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
 	// is done by MultiChangesFeed prior to going into Wait mode)
 	if isOneShot {
-		send(nil)
+		_ = send(nil)
 	}
 	return err, forceClose
 }
@@ -699,8 +699,8 @@ func (h *handler) sendContinuousChangesByWebSocket(inChannels base.Set, options 
 			}
 			if compress && len(data) > 8 {
 				// Compress JSON, using same GZip context, and send as binary msg:
-				zipWriter.Write(data)
-				zipWriter.Flush()
+				_, _ = zipWriter.Write(data)
+				_ = zipWriter.Flush()
 				data = writer.Bytes()
 				writer.Reset()
 				conn.PayloadType = websocket.BinaryFrame

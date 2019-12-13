@@ -72,7 +72,7 @@ func (h *handler) handleDbOnline() error {
 
 	input.Delay = kDefaultDBOnlineDelay
 
-	base.JSONUnmarshal(body, &input)
+	_ = base.JSONUnmarshal(body, &input)
 
 	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
 
@@ -133,7 +133,7 @@ func (h *handler) handleDeleteDB() error {
 	if !h.server.RemoveDatabase(h.db.Name) {
 		return base.HTTPErrorf(http.StatusNotFound, "missing")
 	}
-	h.response.Write([]byte("{}"))
+	_, _ = h.response.Write([]byte("{}"))
 	return nil
 }
 
@@ -157,7 +157,7 @@ func (h *handler) handleReplicate() error {
 		if err != nil {
 			return err
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		if response.StatusCode >= 400 {
 			b, err := ioutil.ReadAll(response.Body)
 			if err != nil {
@@ -176,7 +176,7 @@ func (h *handler) handleReplicate() error {
 		if err != nil {
 			return err
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		if response.StatusCode >= 400 {
 			b, err := ioutil.ReadAll(response.Body)
 			if err != nil {
@@ -707,7 +707,7 @@ func (h *handler) getUserInfo() error {
 	}
 
 	bytes, err := marshalPrincipal(user)
-	h.response.Write(bytes)
+	_, _ = h.response.Write(bytes)
 	return err
 }
 
@@ -721,7 +721,7 @@ func (h *handler) getRoleInfo() error {
 		return err
 	}
 	bytes, err := marshalPrincipal(role)
-	h.response.Write(bytes)
+	_, _ = h.response.Write(bytes)
 	return err
 }
 
@@ -731,7 +731,7 @@ func (h *handler) getUsers() error {
 		return err
 	}
 	bytes, err := base.JSONMarshal(users)
-	h.response.Write(bytes)
+	_, _ = h.response.Write(bytes)
 	return err
 }
 
@@ -741,7 +741,7 @@ func (h *handler) getRoles() error {
 		return err
 	}
 	bytes, err := base.JSONMarshal(roles)
-	h.response.Write(bytes)
+	_, _ = h.response.Write(bytes)
 	return err
 }
 
@@ -762,7 +762,7 @@ func (h *handler) handlePurge() error {
 
 	h.setHeader("Content-Type", "application/json")
 	h.setHeader("Cache-Control", "private, max-age=0, no-cache, no-store")
-	h.response.Write([]byte("{\"purged\":{\r\n"))
+	_, _ = h.response.Write([]byte("{\"purged\":{\r\n"))
 	var first bool = true
 
 	for key, value := range input {
@@ -791,11 +791,11 @@ func (h *handler) handlePurge() error {
 				if first {
 					first = false
 				} else {
-					h.response.Write([]byte(","))
+					_, _ = h.response.Write([]byte(","))
 				}
 
 				s := fmt.Sprintf("\"%v\" : [\"*\"]\n", key)
-				h.response.Write([]byte(s))
+				_, _ = h.response.Write([]byte(s))
 
 			} else {
 				base.Infof(base.KeyCRUD, "Failed to purge document %v, err = %v", base.UD(key), err)
@@ -813,7 +813,7 @@ func (h *handler) handlePurge() error {
 		base.Debugf(base.KeyCache, "Purged %d items from caches", count)
 	}
 
-	h.response.Write([]byte("}\n}\n"))
+	_, _ = h.response.Write([]byte("}\n}\n"))
 	h.logStatusWithDuration(http.StatusOK, message)
 
 	return nil

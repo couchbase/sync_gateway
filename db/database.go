@@ -269,11 +269,14 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.activeChannels = channels.NewActiveChannels(dbStats.StatsCache().Get(base.StatKeyActiveChannels).(*expvar.Int))
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
-	dbContext.changeCache.Init(
+	err = dbContext.changeCache.Init(
 		dbContext,
 		notifyChange,
 		options.CacheOptions,
 	)
+	if err != nil {
+		base.Debugf(base.KeyDCP, "Error initializing the change cache", err)
+	}
 
 	// Set the DB Context notifyChange callback to call back the changecache DocChanged callback
 	dbContext.SetOnChangeCallback(dbContext.changeCache.DocChanged)
@@ -529,7 +532,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 	dbState := atomic.LoadUint32(&dc.State)
 
-	//If the DB is already trasitioning to: offline or is offline silently return
+	//If the DB is already transitioning to: offline or is offline silently return
 	if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 		return nil
 	}
@@ -547,7 +550,10 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		atomic.StoreUint32(&dc.State, DBOffline)
 
 		if dc.EventMgr.HasHandlerForEvent(DBStateChange) {
-			dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface)
+			err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface)
+			if err != nil {
+				base.Debugf(base.KeyCRUD, "Error raising database state change event: %v", err)
+			}
 		}
 
 		return nil

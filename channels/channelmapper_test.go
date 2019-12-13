@@ -25,7 +25,7 @@ func init() {
 
 func parse(jsonStr string) map[string]interface{} {
 	var parsed map[string]interface{}
-	base.JSONUnmarshal([]byte(jsonStr), &parsed)
+	_ = base.JSONUnmarshal([]byte(jsonStr), &parsed)
 	return parsed
 }
 

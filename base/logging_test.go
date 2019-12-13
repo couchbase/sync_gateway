@@ -12,6 +12,7 @@ package base
 import (
 	"bytes"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"log"
 	"math/rand"
 	"os"
@@ -25,15 +26,13 @@ import (
 
 // asserts that the logs produced by function f contain string s.
 func assertLogContains(t *testing.T, s string, f func()) {
-	originalLogger := consoleLogger
 	b := bytes.Buffer{}
 
-	// temporarily override logger for the function call
-	level := LevelDebug
-	consoleLogger = &ConsoleLogger{LogLevel: &level, FileLogger: FileLogger{Enabled: true, logger: log.New(&b, "", 0)}}
-	defer func() { consoleLogger = originalLogger }()
-
+	// temporarily override logger output for the given function call
+	consoleLogger.logger.SetOutput(&b)
 	f()
+	consoleLogger.logger.SetOutput(os.Stderr)
+
 	assert.Contains(t, b.String(), s)
 }
 
@@ -129,8 +128,11 @@ func BenchmarkLogRotation(b *testing.B) {
 		b.Run(fmt.Sprintf("rotate:%t-compress:%t-bytes:%v", test.rotate, test.compress, test.numBytes), func(bm *testing.B) {
 			logPath := filepath.Join(os.TempDir(), "benchmark-logrotate")
 			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
-			defer logger.Close()
-			defer os.RemoveAll(logPath)
+
+			defer func() {
+				require.NoError(b, logger.Close())
+				require.NoError(b, os.RemoveAll(logPath))
+			}()
 
 			data := make([]byte, test.numBytes)
 			_, err := rand.Read(data)
@@ -275,17 +277,17 @@ func TestLogSyncGatewayVersion(t *testing.T) {
 	for i := LevelNone; i < levelCount; i++ {
 		t.Run(i.String(), func(t *testing.T) {
 			consoleLogger.LogLevel.Set(i)
-			out := CaptureOutput(LogSyncGatewayVersion)
+			out := CaptureConsolefLogOutput(LogSyncGatewayVersion)
 			assert.Contains(t, out, LongVersionString)
 		})
 	}
 	consoleLogger.LogLevel.Set(LevelInfo)
 }
 
-func CaptureOutput(f func()) string {
+func CaptureConsolefLogOutput(f func()) string {
 	buf := bytes.Buffer{}
-	consoleOutput = &buf
+	consoleFOutput = &buf
 	f()
-	consoleOutput = os.Stderr
+	consoleFOutput = os.Stderr
 	return buf.String()
 }

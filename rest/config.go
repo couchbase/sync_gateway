@@ -354,6 +354,10 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 }
 
 func (dbConfig *DbConfig) validate() []error {
+	return dbConfig.validateVersion(base.IsEnterpriseEdition())
+}
+
+func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 
 	errorMessages := make([]error, 0)
 
@@ -368,7 +372,7 @@ func (dbConfig *DbConfig) validate() []error {
 		if dbConfig.CacheConfig.ChannelCacheConfig != nil {
 
 			// EE: channel cache
-			if !base.IsEnterpriseEdition() {
+			if !isEnterpriseEdition {
 				if val := dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber; val != nil {
 					base.Warnf(eeOnlyWarningMsg, "cache.channel_cache.max_number", *val, db.DefaultChannelCacheMaxNumber)
 					dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber = nil
@@ -429,7 +433,7 @@ func (dbConfig *DbConfig) validate() []error {
 		if dbConfig.CacheConfig.RevCacheConfig != nil {
 			// EE: disable revcache
 			revCacheSize := dbConfig.CacheConfig.RevCacheConfig.Size
-			if !base.IsEnterpriseEdition() && revCacheSize != nil && *revCacheSize == 0 {
+			if !isEnterpriseEdition && revCacheSize != nil && *revCacheSize == 0 {
 				base.Warnf(eeOnlyWarningMsg, "cache.rev_cache.size", *revCacheSize, db.DefaultRevisionCacheSize)
 				dbConfig.CacheConfig.RevCacheConfig.Size = nil
 			}
@@ -443,7 +447,7 @@ func (dbConfig *DbConfig) validate() []error {
 	}
 
 	// EE: delta sync
-	if !base.IsEnterpriseEdition() && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
+	if !isEnterpriseEdition && dbConfig.DeltaSync != nil && dbConfig.DeltaSync.Enabled != nil {
 		base.Warnf(eeOnlyWarningMsg, "delta_sync.enabled", *dbConfig.DeltaSync.Enabled, false)
 		dbConfig.DeltaSync.Enabled = nil
 	}
@@ -462,7 +466,7 @@ func (dbConfig *DbConfig) validate() []error {
 	}
 
 	if dbConfig.ImportPartitions != nil {
-		if !base.IsEnterpriseEdition() {
+		if !isEnterpriseEdition {
 			base.Warnf(eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
 			dbConfig.ImportPartitions = nil
 		} else if !dbConfig.UseXattrs() {
@@ -588,19 +592,6 @@ func (dbConfig *DbConfig) UseXattrs() bool {
 	return base.DefaultUseXattrs
 }
 
-// Create a deepcopy of this DbConfig, or panic.
-// This will only copy all of the _exported_ fields of the DbConfig.
-func (dbConfig *DbConfig) DeepCopy() (dbConfigCopy *DbConfig, err error) {
-
-	dbConfigDeepCopy := &DbConfig{}
-	err = base.DeepCopyInefficient(&dbConfigDeepCopy, dbConfig)
-	if err != nil {
-		return nil, err
-	}
-	return dbConfigDeepCopy, nil
-
-}
-
 // Implementation of AuthHandler interface for ClusterConfig
 func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
@@ -625,7 +616,7 @@ func LoadServerConfig(path string) (config *ServerConfig, err error) {
 		}
 	}
 
-	defer dataReadCloser.Close()
+	defer func() { _ = dataReadCloser.Close() }()
 	return readServerConfig(dataReadCloser)
 }
 
@@ -793,6 +784,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	for _, flag := range other.DeprecatedLog {
 		self.DeprecatedLog = append(self.DeprecatedLog, flag)
 	}
+	if self.Logging == nil {
+		self.Logging = other.Logging
+	}
 	if other.Pretty {
 		self.Pretty = true
 	}
@@ -800,57 +794,61 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 		if self.Databases[name] != nil {
 			return base.RedactErrorf("Database %q already specified earlier", base.UD(name))
 		}
+		if self.Databases == nil {
+			self.Databases = make(DbConfigMap)
+		}
 		self.Databases[name] = db
 	}
 	return nil
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine() (err error) {
-	addr := flag.String("interface", DefaultInterface, "Address to bind to")
-	authAddr := flag.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
-	profAddr := flag.String("profileInterface", "", "Address to bind profile interface to")
-	configServer := flag.String("configServer", "", "URL of server that can return database configs")
-	deploymentID := flag.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	couchbaseURL := flag.String("url", DefaultServer, "Address of Couchbase server")
-	poolName := flag.String("pool", DefaultPool, "Name of pool")
-	bucketName := flag.String("bucket", "sync_gateway", "Name of bucket")
-	dbName := flag.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
-	pretty := flag.Bool("pretty", false, "Pretty-print JSON responses")
-	verbose := flag.Bool("verbose", false, "Log more info about requests")
-	logKeys := flag.String("log", "", "Log keys, comma separated")
-	logFilePath := flag.String("logFilePath", "", "Path to log files")
-	certpath := flag.String("certpath", "", "Client certificate path")
-	cacertpath := flag.String("cacertpath", "", "Root CA certificate path")
-	keypath := flag.String("keypath", "", "Client certificate key path")
-
+func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig, error) {
+	flagSet := flag.NewFlagSet(args[0], handling)
+	addr := flagSet.String("interface", DefaultInterface, "Address to bind to")
+	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
+	profAddr := flagSet.String("profileInterface", "", "Address to bind profile interface to")
+	configServer := flagSet.String("configServer", "", "URL of server that can return database configs")
+	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
+	couchbaseURL := flagSet.String("url", DefaultServer, "Address of Couchbase server")
+	poolName := flagSet.String("pool", DefaultPool, "Name of pool")
+	bucketName := flagSet.String("bucket", "sync_gateway", "Name of bucket")
+	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
+	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
+	verbose := flagSet.Bool("verbose", false, "Log more info about requests")
+	logKeys := flagSet.String("log", "", "Log keys, comma separated")
+	logFilePath := flagSet.String("logFilePath", "", "Path to log files")
+	certpath := flagSet.String("certpath", "", "Client certificate path")
+	cacertpath := flagSet.String("cacertpath", "", "Root CA certificate path")
+	keypath := flagSet.String("keypath", "", "Client certificate key path")
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
-	defaultLogFilePathFlag := flag.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
+	defaultLogFilePathFlag := flagSet.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
-	flag.Parse()
+	flagSet.Parse(args[1:])
+	var config *ServerConfig
+	var err error
 
 	if defaultLogFilePathFlag != nil {
 		defaultLogFilePath = *defaultLogFilePathFlag
 	}
 
-	if flag.NArg() > 0 {
+	if flagSet.NArg() > 0 {
 		// Read the configuration file(s), if any:
-		for i := 0; i < flag.NArg(); i++ {
-			filename := flag.Arg(i)
-
+		for _, filename := range flagSet.Args() {
 			newConfig, newConfigErr := LoadServerConfig(filename)
+
 			if errors.Cause(newConfigErr) == ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
 				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			} else if newConfigErr != nil {
-				return errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
+				return config, errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			}
 
 			if config == nil {
 				config = newConfig
 			} else {
 				if err := config.MergeWith(newConfig); err != nil {
-					return errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
+					return config, errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
 				}
 			}
 		}
@@ -948,18 +946,20 @@ func ParseCommandLine() (err error) {
 		}
 	}
 
-	return err
+	return config, err
 }
 
-func SetMaxFileDescriptors(maxP *uint64) {
+func SetMaxFileDescriptors(maxP *uint64) error {
 	maxFDs := DefaultMaxFileDescriptors
 	if maxP != nil {
 		maxFDs = *maxP
 	}
 	_, err := base.SetMaxFileDescriptors(maxFDs)
 	if err != nil {
-		base.Warnf("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		base.Errorf("Error setting MaxFileDescriptors to %d: %v", maxFDs, err)
+		return err
 	}
+	return nil
 }
 
 func (config *ServerConfig) Serve(addr string, handler http.Handler) {
@@ -1033,7 +1033,7 @@ func RunServer(config *ServerConfig) {
 		//runtime.MemProfileRate = 10 * 1024
 		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
 		go func() {
-			http.ListenAndServe(*config.ProfileInterface, nil)
+			_ = http.ListenAndServe(*config.ProfileInterface, nil)
 		}()
 	}
 
@@ -1084,7 +1084,8 @@ func ServerMain() {
 	defer base.FatalPanicHandler()
 
 	var unknownFieldsErr error
-	err := ParseCommandLine()
+
+	config, err = ParseCommandLine(os.Args, flag.ExitOnError)
 	if errors.Cause(err) == ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {

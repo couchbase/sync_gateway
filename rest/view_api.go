@@ -22,7 +22,7 @@ func (h *handler) handleGetDesignDoc() error {
 		filter := "ok"
 		if h.db.DatabaseContext.ChannelMapper != nil {
 			hash := sha1.New()
-			io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
+			_, _ = io.WriteString(hash, h.db.DatabaseContext.ChannelMapper.Function())
 			filter = fmt.Sprint(hash.Sum(nil))
 		}
 		result = db.Body{"filters": db.Body{"bychannel": filter}}

@@ -54,6 +54,8 @@ func TestVerifyHTTPSSupport(t *testing.T) {
 	}
 
 	resp, err := http.Get("https://google.com")
+	defer func() { _ = resp.Body.Close() }()
+
 	if err != nil {
 		// Skip test if dial tcp fails with no such host.
 		// This is to allow tests to be run offline/without third-party dependencies.
@@ -62,5 +64,4 @@ func TestVerifyHTTPSSupport(t *testing.T) {
 		}
 		t.Errorf("Error making HTTPS connection: %v", err)
 	}
-	defer resp.Body.Close()
 }

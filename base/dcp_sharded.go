@@ -352,7 +352,10 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 	// TODO: Allow customization of heartbeat interval
 	intervalSeconds := 1
 	Debugf(KeyDCP, "Sending CBGT node heartbeats at interval: %vs", intervalSeconds)
-	heartbeater.StartSendingHeartbeats(intervalSeconds)
+	err = heartbeater.StartSendingHeartbeats(intervalSeconds)
+	if err != nil {
+		return nil, err
+	}
 
 	deadNodeHandler := HeartbeatStoppedHandler{
 		Cfg:     cbgtContext.Cfg,

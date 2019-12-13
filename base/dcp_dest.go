@@ -197,7 +197,8 @@ func (d *DCPDest) OpaqueSet(partition string, value []byte) error {
 		d.InitVbMeta(vbNo)
 		d.metaInitComplete[vbNo] = true
 	}
-	return d.setMetaData(vbNo, value)
+	d.setMetaData(vbNo, value)
+	return nil
 }
 
 func (d *DCPDest) Rollback(partition string, rollbackSeq uint64) error {
@@ -346,7 +347,9 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 		go func() {
 			<-args.Terminator
 			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(spec.BucketName), feedName)
-			feed.Close()
+			if err = feed.Close(); err != nil {
+				Debugf(KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(spec.BucketName), feedName, err)
+			}
 		}()
 	}
 
@@ -488,7 +491,9 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 		go func() {
 			<-args.Terminator
 			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(spec.BucketName), feedName)
-			feed.Close()
+			if err = feed.Close(); err != nil {
+				Debugf(KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(spec.BucketName), feedName, err)
+			}
 		}()
 	}
 

@@ -92,6 +92,12 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)
 }
 
+// Import document
+//   docid  - document key
+//   body - marshalled body of document to be imported
+//   isDelete - whether the document to be imported is a delete
+//   existingDoc - bytes/cas/expiry of the  document to be imported (including xattr when available)
+//   mode - ImportMode - ImportFromFeed or ImportOnDemand
 func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDoc *sgbucket.BucketDocument, mode ImportMode) (docOut *Document, err error) {
 
 	base.Debugf(base.KeyImport, "Attempting to import doc %q...", base.UD(docid))
@@ -212,14 +218,30 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		parentRev := doc.CurrentRev
 		generation, _ := ParseRevID(parentRev)
 		generation++
-		newRev, err = createRevID(generation, parentRev, body)
+		var rawBodyForRevID []byte
+		var wasStripped bool
+		if len(existingDoc.Body) > 0 {
+			rawBodyForRevID = existingDoc.Body
+		} else {
+			var bodyWithoutSpecialProps Body
+			bodyWithoutSpecialProps, wasStripped = stripSpecialProperties(body)
+			rawBodyForRevID, err = base.JSONMarshalCanonical(bodyWithoutSpecialProps)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+		}
+
+		newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 		if err != nil {
 			return nil, nil, updatedExpiry, err
 		}
 		base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
 		// body[BodyRev] = newRev
 		newDoc.RevID = newRev
-		doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+		err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+		if err != nil {
+			base.InfofCtx(db.Ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
+		}
 
 		// If the previous revision body is available in the rev cache,
 		// make a temporary copy in the bucket for other nodes/clusters
@@ -234,6 +256,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		doc.RemoveBody()
 
 		newDoc.UpdateBody(body)
+		if !wasStripped && !isDelete {
+			newDoc._rawBody = rawBodyForRevID
+		}
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 
@@ -289,7 +314,10 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	}
 
 	// Move any large revision bodies to external storage
-	doc.migrateRevisionBodies(db.Bucket)
+	err = doc.migrateRevisionBodies(db.Bucket)
+	if err != nil {
+		base.Infof(base.KeyMigrate, "Error migrating revision bodies to external storage, doc %q, (cas=%d), Error: %v", base.UD(docid), doc.Cas, err)
+	}
 
 	// Persist the document in xattr format
 	value, xattrValue, marshalErr := doc.MarshalWithXattr()

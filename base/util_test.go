@@ -523,34 +523,34 @@ func TestRedactBasicAuthURL(t *testing.T) {
 
 func TestSetUpTestLogging(t *testing.T) {
 	// Check default state of logging is as expected.
-	goassert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
-	goassert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
+	require.Equal(t, LevelInfo, *consoleLogger.LogLevel)
+	require.Equal(t, KeyHTTP, *consoleLogger.LogKey)
 
 	teardownFn := SetUpTestLogging(LevelDebug, KeyDCP|KeySync)
-	goassert.Equals(t, *consoleLogger.LogLevel, LevelDebug)
-	goassert.Equals(t, *consoleLogger.LogKey, KeyDCP|KeySync)
+	assert.Equal(t, LevelDebug, *consoleLogger.LogLevel)
+	assert.Equal(t, KeyDCP|KeySync, *consoleLogger.LogKey)
 
 	teardownFn()
-	goassert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
-	goassert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
+	assert.Equal(t, LevelInfo, *consoleLogger.LogLevel)
+	assert.Equal(t, KeyHTTP, *consoleLogger.LogKey)
 
 	teardownFn = DisableTestLogging()
-	goassert.Equals(t, *consoleLogger.LogLevel, LevelNone)
-	goassert.Equals(t, *consoleLogger.LogKey, KeyNone)
+	assert.Equal(t, LevelNone, *consoleLogger.LogLevel)
+	assert.Equal(t, KeyNone, *consoleLogger.LogKey)
 
 	teardownFn()
-	goassert.Equals(t, *consoleLogger.LogLevel, LevelInfo)
-	goassert.Equals(t, *consoleLogger.LogKey, KeyHTTP)
+	assert.Equal(t, LevelInfo, *consoleLogger.LogLevel)
+	assert.Equal(t, KeyHTTP, *consoleLogger.LogKey)
 
 	SetUpTestLogging(LevelDebug, KeyDCP|KeySync)
-	goassert.Equals(t, *consoleLogger.LogLevel, LevelDebug)
-	goassert.Equals(t, *consoleLogger.LogKey, KeyDCP|KeySync)
+	assert.Equal(t, LevelDebug, *consoleLogger.LogLevel)
+	assert.Equal(t, KeyDCP|KeySync, *consoleLogger.LogKey)
 
 	// Now we should panic because we forgot to call teardown!
-	defer func() {
-		assert.True(t, recover() != nil, "Expected panic from multiple SetUpTestLogging calls")
-	}()
-	SetUpTestLogging(LevelError, KeyAuth|KeyCRUD)
+	assert.Panics(t, func() {
+		SetUpTestLogging(LevelError, KeyAuth|KeyCRUD)
+	}, "Expected panic from multiple SetUpTestLogging calls")
+	teardownFn()
 }
 
 func TestEncodeDecodeCompatVersion(t *testing.T) {

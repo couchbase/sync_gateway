@@ -95,7 +95,7 @@ func (w *EncodedResponseWriter) sniff(bytes []byte) {
 // Flushes the GZip encoder buffer, and if possible flushes output to the network.
 func (w *EncodedResponseWriter) Flush() {
 	if w.gz != nil {
-		w.gz.Flush()
+		_ = w.gz.Flush()
 	}
 	switch r := w.ResponseWriter.(type) {
 	case http.Flusher:
@@ -136,6 +136,6 @@ func GetGZipWriter(writer io.Writer) *gzip.Writer {
 
 // Closes a gzip writer and returns it to the pool:
 func ReturnGZipWriter(gz *gzip.Writer) {
-	gz.Close()
+	_ = gz.Close()
 	zipperCache.Put(gz)
 }

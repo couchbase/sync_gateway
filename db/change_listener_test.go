@@ -68,7 +68,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 	require.NotNil(t, authenticator, "db.Authenticator() returned nil")
 	role, err := authenticator.NewRole(roleName, channels.SetOf(t, "ABC"))
 	require.NoError(t, err, "Error creating new role")
-	authenticator.Save(role)
+	require.NoError(t, authenticator.Save(role))
 
 	// Create user
 	username := "bob"

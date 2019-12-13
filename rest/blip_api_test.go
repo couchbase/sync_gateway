@@ -634,16 +634,17 @@ func TestPublicPortAuthentication(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
+	require.NoError(t, err, "Error creating BlipTester")
 	defer btUser1.Close()
 
 	// Send the user1 doc
-	btUser1.SendRev(
+	_, _, _, err = btUser1.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["user1"]}`),
 		blip.Properties{},
 	)
+	require.NoError(t, err, "Error sending revision")
 
 	// Create bliptester that is connected as user2, with access to the * channel
 	btUser2, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -653,16 +654,17 @@ func TestPublicPortAuthentication(t *testing.T) {
 		connectingUserChannelGrants: []string{"*"},      // user2 has access to all channels
 		restTester:                  btUser1.restTester, // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
 	})
-	assert.NoError(t, err, "Error creating BlipTester")
+	require.NoError(t, err, "Error creating BlipTester")
 	defer btUser2.Close()
 
 	// Send the user2 doc, which is in a "random" channel, but it should be accessible due to * channel access
-	btUser2.SendRev(
+	_, _, _, err = btUser2.SendRev(
 		"foo2",
 		"1-abcd",
 		[]byte(`{"key": "val", "channels": ["NBC"]}`),
 		blip.Properties{},
 	)
+	require.NoError(t, err, "Error sending revision")
 
 	// Assert that user1 received a single expected change
 	changesChannelUser1 := btUser1.WaitForNumChanges(1)
@@ -1008,7 +1010,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
-	bt.SendRev(
+	_, _, _, _ = bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
@@ -1020,7 +1022,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	// Add another doc in the PBS channel
-	bt.SendRev(
+	_, _, _, _ = bt.SendRev(
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
@@ -1050,7 +1052,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
-	bt.SendRev(
+	_, _, _, _ = bt.SendRev(
 		"foo",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
@@ -1062,7 +1064,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	// Add another doc in the PBS channel
-	bt.SendRev(
+	_, _, _, _ = bt.SendRev(
 		"foo2",
 		"1-abc",
 		[]byte(`{"key": "val", "channels": ["PBS"]}`),
@@ -1112,7 +1114,7 @@ func TestCheckpoint(t *testing.T) {
 	requestSetCheckpoint.SetProfile("setCheckpoint")
 	requestSetCheckpoint.Properties["client"] = client
 	checkpointBody := db.Body{"Key": "Value"}
-	requestSetCheckpoint.SetJSONBody(checkpointBody)
+	assert.NoError(t, requestSetCheckpoint.SetJSONBody(checkpointBody))
 	// requestSetCheckpoint.Properties["rev"] = "rev1"
 	sent = bt.sender.Send(requestSetCheckpoint)
 	if !sent {
@@ -2308,4 +2310,40 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.Equal(t, true, hello["stub"])
 
 	//assert.Equal(t, `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}},"_id":"doc1","_rev":"2-10000d5ec533b29b117e60274b1e3653","greetings":[{"hello":"world!"},{"hi":"alice"}]}`, resp.Body.String())
+}
+
+// Reproduces CBG-617 (a client using activeOnly for the initial replication, and then still expecting to get subsequent tombstones afterwards)
+func TestActiveOnlyContinuous(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"test":true}`)
+	assertStatus(t, resp, http.StatusCreated)
+	var docResp struct {
+		Rev string `json:"rev"`
+	}
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
+
+	// start an initial pull
+	require.NoError(t, btc.StartPullSince("true", "0", "true"))
+
+	rev, found := btc.WaitForRev("doc1", docResp.Rev)
+	assert.True(t, found)
+	assert.Equal(t, `{"test":true}`, string(rev))
+
+	// delete the doc and make sure the client still gets the tombstone replicated
+	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+docResp.Rev, ``)
+	assertStatus(t, resp, http.StatusOK)
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &docResp))
+
+	rev, found = btc.WaitForRev("doc1", docResp.Rev)
+	assert.True(t, found)
+	assert.Equal(t, `{}`, string(rev))
 }

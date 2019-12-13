@@ -40,8 +40,8 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	// Create user:
 	a := it.ServerContext().Database("db").Authenticator()
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
-	goassert.True(t, err == nil)
-	a.Save(bernard)
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents in channel PBS
 	response := it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)

@@ -3,6 +3,8 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"flag"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,8 +201,8 @@ func TestConfigValidationImport(t *testing.T) {
 
 	errorMessages := config.setupAndValidateDatabases()
 	assert.Nil(t, errorMessages)
-
 	require.NotNil(t, config.Databases["db"])
+
 	if base.IsEnterpriseEdition() {
 		require.NotNil(t, config.Databases["db"].ImportPartitions)
 		assert.Equal(t, uint16(32), *config.Databases["db"].ImportPartitions)
@@ -439,4 +441,361 @@ func TestAutoImportEnabled(t *testing.T) {
 			assert.Equal(t, test.expected, got, "unexpected value from AutoImportEnabled")
 		})
 	}
+}
+
+func TestMergeWith(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	defaultInterface := "4984"
+	adminInterface := "127.0.0.1:4985"
+	profileInterface := "127.0.0.1:4985"
+	configServer := "remote.config.server:4985/db"
+	deploymentID := "DeploymentID1008"
+	facebookConfig := FacebookConfig{Register: true}
+
+	corsConfig := &CORSConfig{
+		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
+		LoginOrigin: []string{"http://example.com"},
+		Headers:     []string{},
+		MaxAge:      1728000,
+	}
+
+	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
+
+	databases := make(DbConfigMap, 2)
+	databases["db3"] = &DbConfig{Name: "db3"}
+	databases["db4"] = &DbConfig{Name: "db4"}
+
+	other := &ServerConfig{
+		Interface:        &defaultInterface,
+		AdminInterface:   &adminInterface,
+		ProfileInterface: &profileInterface,
+		ConfigServer:     &configServer,
+		DeploymentID:     &deploymentID,
+		Facebook:         &facebookConfig,
+		CORS:             corsConfig,
+		DeprecatedLog:    deprecatedLog,
+		Pretty:           true,
+		Databases:        databases}
+
+	databases = make(DbConfigMap, 2)
+	databases["db1"] = &DbConfig{Name: "db1"}
+	databases["db2"] = &DbConfig{Name: "db2"}
+	self := &ServerConfig{Databases: databases}
+
+	err := self.MergeWith(other)
+	assert.NoError(t, err, "No error while merging this server config with other")
+	assert.Equal(t, defaultInterface, *self.Interface)
+	assert.Equal(t, adminInterface, *self.AdminInterface)
+	assert.Equal(t, profileInterface, *self.ProfileInterface)
+	assert.Equal(t, configServer, *self.ConfigServer)
+	assert.Equal(t, deploymentID, *self.DeploymentID)
+	assert.Equal(t, facebookConfig.Register, self.Facebook.Register)
+
+	assert.Equal(t, corsConfig.Headers, self.CORS.Headers)
+	assert.Equal(t, corsConfig.Origin, self.CORS.Origin)
+	assert.Equal(t, corsConfig.LoginOrigin, self.CORS.LoginOrigin)
+	assert.Equal(t, corsConfig.MaxAge, self.CORS.MaxAge)
+	assert.Equal(t, deprecatedLog, self.DeprecatedLog)
+	assert.True(t, self.Pretty)
+
+	assert.Len(t, self.Databases, 4)
+	assert.Equal(t, "db1", self.Databases["db1"].Name)
+	assert.Equal(t, "db2", self.Databases["db2"].Name)
+	assert.Equal(t, "db3", self.Databases["db3"].Name)
+	assert.Equal(t, "db4", self.Databases["db4"].Name)
+
+	// Merge configuration with already specified database; it should throw
+	// database "db3" already specified earlier error
+	databases = make(DbConfigMap, 2)
+	databases["db3"] = &DbConfig{Name: "db3"}
+	databases["db5"] = &DbConfig{Name: "db5"}
+	err = self.MergeWith(other)
+	assert.Error(t, err, "Database 'db3' already specified earlier")
+}
+
+func TestDeprecatedConfigLoggingFallback(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	logFilePath := "/var/log/sync_gateway"
+	dlfPath := "/tmp/log/sync_gateway"
+	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
+	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
+
+	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
+	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl}
+	sc := &ServerConfig{Logging: lc, DeprecatedLogFilePath: &dlfPath, DeprecatedLog: deprecatedLog}
+
+	warns := sc.deprecatedConfigLoggingFallback()
+	assert.Equal(t, filepath.Dir(*sc.Logging.DeprecatedDefaultLog.LogFilePath), sc.Logging.LogFilePath)
+	assert.Equal(t, sc.Logging.DeprecatedDefaultLog.LogKeys, sc.Logging.Console.LogKeys)
+	assert.Equal(t, base.ToLogLevel(sc.Logging.DeprecatedDefaultLog.LogLevel), sc.Logging.Console.LogLevel)
+	assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
+	assert.Len(t, warns, 3)
+
+	// Call deprecatedConfigLoggingFallback without DeprecatedDefaultLog
+	sc = &ServerConfig{Logging: &base.LoggingConfig{}, DeprecatedLogFilePath: &dlfPath, DeprecatedLog: deprecatedLog}
+	warns = sc.deprecatedConfigLoggingFallback()
+
+	assert.Equal(t, *sc.DeprecatedLogFilePath, sc.Logging.LogFilePath)
+	assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
+	assert.Len(t, warns, 2)
+}
+
+func TestSetupAndValidateLogging(t *testing.T) {
+	t.Skip("Skipping TestSetupAndValidateLogging")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	sc := &ServerConfig{}
+	warns, err := sc.SetupAndValidateLogging()
+	assert.NoError(t, err, "Setup and validate logging should be successful")
+	assert.NotEmpty(t, sc.Logging)
+	assert.Empty(t, sc.Logging.DeprecatedDefaultLog)
+	assert.Len(t, warns, 2)
+}
+
+func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
+	t.Skip("Skipping TestSetupAndValidateLoggingWithLoggingConfig")
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	logFilePath := "/var/log/sync_gateway"
+	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
+	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
+	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl, RedactionLevel: base.RedactFull}
+	sc := &ServerConfig{Logging: lc}
+	warns, err := sc.SetupAndValidateLogging()
+	assert.NoError(t, err, "Setup and validate logging should be successful")
+	assert.Len(t, warns, 5)
+	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
+	assert.Equal(t, ddl, sc.Logging.DeprecatedDefaultLog)
+}
+
+func TestServerConfigValidate(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	// unsupported.stats_log_freq_secs
+	statsLogFrequencySecs := uint(9)
+	unsupported := &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc := &ServerConfig{Unsupported: unsupported}
+	assert.Len(t, sc.validate(), 1)
+
+	// Valid configuration value for StatsLogFrequencySecs
+	statsLogFrequencySecs = uint(10)
+	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc = &ServerConfig{Unsupported: unsupported}
+	assert.Len(t, sc.validate(), 0)
+
+	// Explicitly disabled
+	statsLogFrequencySecs = uint(0)
+	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc = &ServerConfig{Unsupported: unsupported}
+	assert.Len(t, sc.validate(), 0)
+}
+
+func TestSetupAndValidateDatabases(t *testing.T) {
+	// No error will be returned if the server config itself is nil
+	var sc *ServerConfig
+	errs := sc.setupAndValidateDatabases()
+	assert.Nil(t, errs)
+
+	// Simulate  invalid control character in URL while validating and setting up databases;
+	server := "walrus:\n\r"
+	bc := &BucketConfig{Server: &server}
+	databases := make(DbConfigMap, 2)
+	databases["db1"] = &DbConfig{Name: "db1", BucketConfig: *bc}
+
+	sc = &ServerConfig{Databases: databases}
+	errs = sc.setupAndValidateDatabases()
+	assert.Len(t, errs, 1)
+	assert.Contains(t, errs[0].Error(), "invalid control character in URL")
+}
+
+func TestParseCommandLine(t *testing.T) {
+	var (
+		adminInterface     = "127.0.0.1:4985"
+		bucket             = "sync_gateway"
+		cacertpath         = "/etc/ssl/certs/ca.cert"
+		certpath           = "/etc/ssl/certs/client.pem"
+		configServer       = "http://127.0.0.1:4981/conf"
+		dbname             = "beer_sample"
+		defaultLogFilePath = "/var/log/sync_gateway"
+		deploymentID       = "DEPID100"
+		interfaceAddress   = "4984"
+		keypath            = "/etc/ssl/certs/key.pem"
+		logKeys            = "Admin,Access,Auth,Bucket"
+		logFilePath        = "/var/log/sync_gateway"
+		pool               = "liverpool"
+	)
+	args := []string{
+		"sync_gateway",
+		"--adminInterface", adminInterface,
+		"--bucket", bucket,
+		"--cacertpath", cacertpath,
+		"--certpath", certpath,
+		"--configServer", configServer,
+		"--dbname", dbname,
+		"--defaultLogFilePath", defaultLogFilePath,
+		"--deploymentID", deploymentID,
+		"--interface", interfaceAddress,
+		"--keypath", keypath,
+		"--log", logKeys,
+		"--logFilePath", logFilePath,
+		"--pool", pool,
+		"--pretty"}
+
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	require.NoError(t, err, "Parsing commandline arguments without any config file")
+	assert.Equal(t, interfaceAddress, *config.Interface)
+	assert.Equal(t, adminInterface, *config.AdminInterface)
+	assert.Equal(t, configServer, *config.ConfigServer)
+	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
+	assert.Equal(t, strings.Split(logKeys, ","), config.Logging.Console.LogKeys)
+	assert.Empty(t, *config.ProfileInterface)
+	assert.True(t, config.Pretty)
+	databases := config.Databases
+	assert.Len(t, databases, 1)
+	assert.Equal(t, dbname, databases[dbname].Name)
+	assert.Equal(t, bucket, *databases[dbname].Bucket)
+	assert.Equal(t, pool, *databases[dbname].Pool)
+	assert.Equal(t, cacertpath, databases[dbname].CACertPath)
+	assert.Equal(t, certpath, databases[dbname].CertPath)
+	assert.Equal(t, keypath, databases[dbname].KeyPath)
+}
+
+func TestGetCredentialsFromDbConfig(t *testing.T) {
+	bucket := "albums"
+	config := BucketConfig{Bucket: &bucket, Username: "Alice", Password: "QWxpY2U="}
+	dbConfig := &DbConfig{BucketConfig: config}
+	username, password, bucket := dbConfig.GetCredentials()
+	assert.Equal(t, config.Username, username)
+	assert.Equal(t, config.Password, password)
+	assert.Equal(t, *config.Bucket, bucket)
+}
+
+func TestGetCredentialsFromClusterConfig(t *testing.T) {
+	bucket := "albums"
+	config := BucketConfig{Bucket: &bucket, Username: "Alice", Password: "QWxpY2U="}
+	heartbeatIntervalSeconds := uint16(10)
+	clusterConfig := &ClusterConfig{
+		BucketConfig:             config,
+		DataDir:                  "/var/lib/sync_gateway/data",
+		HeartbeatIntervalSeconds: &heartbeatIntervalSeconds,
+	}
+	username, password, bucket := clusterConfig.GetCredentials()
+	assert.Equal(t, config.Username, username)
+	assert.Equal(t, config.Password, password)
+	assert.Equal(t, *config.Bucket, bucket)
+}
+
+func TestSetMaxFileDescriptors(t *testing.T) {
+	var maxFDs *uint64
+	err := SetMaxFileDescriptors(maxFDs)
+	assert.NoError(t, err, "Sets file descriptor limit to default when requested soft limit is nil")
+
+	// Set MaxFileDescriptors
+	maxFDsHigher := DefaultMaxFileDescriptors + 1
+	err = SetMaxFileDescriptors(&maxFDsHigher)
+	assert.NoError(t, err, "Error setting MaxFileDescriptors")
+}
+
+func TestParseCommandLineWithMissingConfig(t *testing.T) {
+	// Parse command line options with unknown sync gateway configuration file
+	args := []string{"sync_gateway", "missing-sync-gateway.conf"}
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	require.Error(t, err, "Trying to read configuration file which doesn't exist")
+	assert.Nil(t, config)
+}
+
+func TestParseCommandLineWithBadConfigContent(t *testing.T) {
+	content := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
+    	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
+		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
+
+	configFilePath := filepath.Join(os.TempDir(), "sync_gateway.conf")
+	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
+	assert.NoError(t, err, "Writing JSON content")
+
+	defer func() {
+		err := os.Remove(configFilePath)
+		assert.NoError(t, err)
+	}()
+
+	args := []string{"sync_gateway", configFilePath}
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	require.Error(t, err, "Parsing configuration file with an unknown field")
+	assert.NotNil(t, config)
+}
+
+func TestParseCommandLineWithConfigContent(t *testing.T) {
+	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
+		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
+        "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{
+        "server":"couchbase://localhost","username":"username","password":"password","bucket":"default","pool":"pool1",
+        "certpath":"/etc/ssl/certs/cert.pem","cacertpath":"/etc/ssl/certs/ca.cert","keypath":"/etc/ssl/certs/key.pem",
+        "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
+
+	configFilePath := filepath.Join(os.TempDir(), "sync_gateway1.conf")
+	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
+	assert.NoError(t, err, "Writing JSON content")
+
+	defer func() {
+		err := os.Remove(configFilePath)
+		assert.NoError(t, err)
+	}()
+
+	var (
+		adminInterface     = "127.10.0.1:4985"
+		profileInterface   = "127.10.0.1:8088"
+		bucket             = "sync_gateway"
+		cacertpath         = "/etc/ssl/certs/ca.cert"
+		certpath           = "/etc/ssl/certs/client.pem"
+		configServer       = "http://127.0.0.1:4981/conf"
+		defaultLogFilePath = "/var/log/sync_gateway"
+		deploymentID       = "DEPID100"
+		interfaceAddress   = "4443"
+		keypath            = "/etc/ssl/certs/key.pem"
+		logKeys            = "Admin,Access,Auth,Bucket"
+		logFilePath        = "/var/log/sync_gateway"
+		pool               = "liverpool"
+	)
+	args := []string{
+		"sync_gateway",
+		"--adminInterface", adminInterface,
+		"--bucket", bucket,
+		"--cacertpath", cacertpath,
+		"--certpath", certpath,
+		"--configServer", configServer,
+		"--defaultLogFilePath", defaultLogFilePath,
+		"--deploymentID", deploymentID,
+		"--interface", interfaceAddress,
+		"--keypath", keypath,
+		"--log", logKeys,
+		"--logFilePath", logFilePath,
+		"--pool", pool,
+		"--pretty",
+		"--verbose",
+		"--profileInterface", profileInterface,
+		configFilePath}
+
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	require.NoError(t, err, "while parsing commandline options")
+	assert.Equal(t, interfaceAddress, *config.Interface)
+	assert.Equal(t, adminInterface, *config.AdminInterface)
+	assert.Equal(t, profileInterface, *config.ProfileInterface)
+	assert.Equal(t, configServer, *config.ConfigServer)
+	assert.Equal(t, deploymentID, *config.DeploymentID)
+	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
+	assert.Equal(t, []string{"Admin", "Access", "Auth", "Bucket", "HTTP+"}, config.Logging.Console.LogKeys)
+	assert.True(t, config.Pretty)
+	assert.Len(t, config.Databases, 1)
+
+	db1 := config.Databases["db1"]
+	assert.Equal(t, "default", *db1.Bucket)
+	assert.Equal(t, "username", db1.BucketConfig.Username)
+	assert.Equal(t, "password", db1.BucketConfig.Password)
+	assert.Equal(t, "default", *db1.BucketConfig.Bucket)
+	assert.Equal(t, "couchbase://localhost", *db1.BucketConfig.Server)
+	assert.Equal(t, "pool1", *db1.BucketConfig.Pool)
+	assert.Equal(t, "/etc/ssl/certs/cert.pem", db1.BucketConfig.CertPath)
+	assert.Equal(t, "/etc/ssl/certs/ca.cert", db1.BucketConfig.CACertPath)
+	assert.Equal(t, "/etc/ssl/certs/key.pem", db1.BucketConfig.KeyPath)
+
+	guest := db1.Users["GUEST"]
+	assert.False(t, guest.Disabled)
+	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
 }

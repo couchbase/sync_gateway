@@ -40,7 +40,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	// Create a user with access to channel ABC
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "ABC"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
@@ -139,7 +139,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	// Create a user with access to channel A
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
@@ -165,8 +165,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	//Unmarshall into nested maps
 	var x map[string]interface{}
-	base.JSONUnmarshal(rv, &x)
-	goassert.True(t, err == nil)
+	assert.NoError(t, base.JSONUnmarshal(rv, &x))
 
 	sync := x[base.SyncXattrName].(map[string]interface{})
 	sync["sequence"] = 3
@@ -186,7 +185,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	db.Bucket.SetRaw("alpha", 0, b)
+	assert.NoError(t, db.Bucket.SetRaw("alpha", 0, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 and isn't stuck waiting for it.
@@ -225,7 +224,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	// Create a user with access to channel A
 	authenticator := db.Authenticator()
 	user, _ := authenticator.NewUser("alice", "letmein", channels.SetOf(t, "A"))
-	authenticator.Save(user)
+	require.NoError(t, authenticator.Save(user))
 
 	cacheWaiter := db.NewDCPCachingCountWaiter(t)
 
@@ -252,9 +251,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	//Unmarshall into nested maps
 	var x map[string]interface{}
-	base.JSONUnmarshal(rv, &x)
-
-	goassert.True(t, err == nil)
+	assert.NoError(t, base.JSONUnmarshal(rv, &x))
 
 	sync := x[base.SyncXattrName].(map[string]interface{})
 	sync["sequence"] = 3
@@ -270,7 +267,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	b, err := base.JSONMarshal(x)
 
 	// Update raw document in the bucket
-	db.Bucket.SetRaw("alpha", 0, b)
+	require.NoError(t, db.Bucket.SetRaw("alpha", 0, b))
 
 	// Check the _changes feed -- this is to make sure the changeCache properly received
 	// sequence 3 (the modified document) and isn't stuck waiting for it.

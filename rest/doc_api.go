@@ -120,7 +120,7 @@ func (h *handler) handleGetDoc() error {
 					if err != nil {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
-					WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.StatsCblReplicationPull(), revBody, err != nil, false, writer)
+					_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.StatsCblReplicationPull(), revBody, err != nil, false, writer)
 					h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 				}
 				return nil
@@ -129,7 +129,7 @@ func (h *handler) handleGetDoc() error {
 		} else {
 			base.Debugf(base.KeyHTTP, "Fallback to non-multipart for open_revs")
 			h.setHeader("Content-Type", "application/json")
-			h.response.Write([]byte(`[` + "\n"))
+			_, _ = h.response.Write([]byte(`[` + "\n"))
 			separator := []byte(``)
 			for _, revid := range revids {
 				revBody, err := h.db.Get1xRevBodyWithHistory(docid, revid, revsLimit, revsFrom, attachmentsSince, showExp)
@@ -138,11 +138,11 @@ func (h *handler) handleGetDoc() error {
 				} else {
 					revBody = db.Body{"ok": revBody}
 				}
-				h.response.Write(separator)
+				_, _ = h.response.Write(separator)
 				separator = []byte(",")
-				h.addJSON(revBody)
+				_ = h.addJSON(revBody)
 			}
-			h.response.Write([]byte(`]`))
+			_, _ = h.response.Write([]byte(`]`))
 			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 		}
 	}
@@ -169,7 +169,7 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 	}
 
 	h.setHeader("Content-Type", "application/json")
-	h.response.Write(bodyBytes)
+	_, _ = h.response.Write(bodyBytes)
 	h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
 
 	return nil
@@ -230,7 +230,7 @@ func (h *handler) handleGetAttachment() error {
 	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
 	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(data)))
 	h.response.WriteHeader(status)
-	h.response.Write(data)
+	_, _ = h.response.Write(data)
 	return nil
 
 }
@@ -451,7 +451,7 @@ func (h *handler) handlePostDoc() error {
 
 	h.setHeader("Location", docid)
 	h.setHeader("Etag", strconv.Quote(newRev))
-	h.writeJSON(db.Body{"ok": true, "id": docid, "rev": newRev})
+	h.writeRawJSON([]byte(`{"id":"` + docid + `","ok":true,"rev":"` + newRev + `"}`))
 	return nil
 }
 

@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"log"
 	"testing"
 	"time"
@@ -60,11 +61,12 @@ func TestMigrateMetadata(t *testing.T) {
 		exp := uint32(laterSyncMetaExpiry.Unix())
 		return bodyBytes, &exp, nil
 	}
-	testBucket.Bucket.Update(
+	_, err = testBucket.Bucket.Update(
 		key,
 		uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 		updateCallbackFn,
 	)
+	require.NoError(t, err)
 
 	// Call migrateMeta with stale args that have old stale expiry
 	_, _, err = db.migrateMetadata(
@@ -156,11 +158,12 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 				exp := uint32(laterSyncMetaExpiry.Unix())
 				return bodyBytes, &exp, nil
 			}
-			testBucket.Bucket.Update(
+			_, err = testBucket.Bucket.Update(
 				key,
 				uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 				updateCallbackFn,
 			)
+			require.NoError(t, err)
 
 			// Import the doc (will migrate as part of the import since the doc contains sync meta)
 			_, errImportDoc := db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
@@ -236,12 +239,6 @@ func TestImportNullDoc(t *testing.T) {
 	importedDoc, err := db.importDoc(key+"1", body, false, existingDoc, ImportOnDemand)
 	goassert.Equals(t, err, base.ErrEmptyDocument)
 	assert.True(t, importedDoc == nil, "Expected no imported doc")
-
-	// Do a valid on-demand import from a null document
-	body = Body{"new": true}
-	importedDoc, err = db.importDoc(key+"2", body, false, existingDoc, ImportOnDemand)
-	assert.NoError(t, err)
-	assert.False(t, importedDoc == nil, "Expected imported doc")
 }
 
 func TestImportNullDocRaw(t *testing.T) {
