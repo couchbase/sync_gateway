@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -17,6 +18,19 @@ type EventManager struct {
 	asyncEventChannel  chan Event
 	activeCountChannel chan bool
 	waitTime           int
+	eventsProcessed    int64
+}
+
+func (em *EventManager) GetEventsProcessed() int64 {
+	return atomic.LoadInt64(&em.eventsProcessed)
+}
+
+func (em *EventManager) IncrementEventsProcessed() int64 {
+	return atomic.AddInt64(&em.eventsProcessed, 1)
+}
+
+func (em *EventManager) DecrementEventsProcessed() int64 {
+	return atomic.AddInt64(&em.eventsProcessed, -1)
 }
 
 const kMaxActiveEvents = 500 // number of events that are processed concurrently
@@ -79,7 +93,9 @@ func (em *EventManager) ProcessEvent(event Event) {
 			defer wg.Done()
 			//TODO: Currently we're not tracking success/fail from event handlers.  When this
 			// is needed, could pass a channel to HandleEvent for tracking results
-			handler.HandleEvent(event)
+			if handler.HandleEvent(event) {
+				em.IncrementEventsProcessed()
+			}
 		}(event, handler)
 	}
 	wg.Wait()

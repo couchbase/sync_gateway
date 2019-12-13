@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const DefaultWaitForWebhook = time.Second * 5
+
 // Testing handler tracks received events in ResultChannel
 type TestingHandler struct {
 	receivedType  EventType
@@ -278,10 +280,58 @@ func TestUnhandledEvent(t *testing.T) {
 // Uses WebhookRequest for simplified tracking of POST requests received by HTTP.
 // A mutex has been embedded in WebhookRequest to avoid race conditions.
 type WebhookRequest struct {
-	mutex    sync.Mutex
-	count    int
-	sum      float64
-	payloads [][]byte
+	mutex     sync.Mutex
+	count     int
+	sum       float64
+	payloads  [][]byte
+	scheduled int
+	completed int
+}
+
+func (wr *WebhookRequest) GetCompleted() int {
+	wr.mutex.Lock()
+	completed := wr.completed
+	wr.mutex.Unlock()
+	return completed
+}
+
+func (wr *WebhookRequest) IncrementCompleted() int {
+	wr.mutex.Lock()
+	wr.completed = wr.completed + 1
+	completed := wr.completed
+	wr.mutex.Unlock()
+	return completed
+}
+
+func (wr *WebhookRequest) DecrementCompleted() int {
+	wr.mutex.Lock()
+	wr.completed = wr.completed - 1
+	completed := wr.completed
+	wr.mutex.Unlock()
+	return completed
+}
+
+func (wr *WebhookRequest) GetScheduled() int {
+	wr.mutex.Lock()
+	scheduled := wr.scheduled
+	wr.mutex.Unlock()
+	return scheduled
+}
+
+func (wr *WebhookRequest) IncrementScheduled() int {
+	wr.mutex.Lock()
+	wr.scheduled = wr.scheduled + 1
+	scheduled := wr.scheduled
+	wr.mutex.Unlock()
+	return scheduled
+}
+
+func (wr *WebhookRequest) DecrementScheduled() int {
+	wr.mutex.Lock()
+	wr.scheduled = wr.scheduled - 1
+	scheduled := wr.scheduled
+	wr.mutex.Unlock()
+	return scheduled
 }
 
 func (wr *WebhookRequest) GetCount() int {
@@ -352,7 +402,25 @@ func (wr *WebhookRequest) waitForCount(ctx context.Context, waitCount int, maxWa
 	err, _ := base.RetryLoop(fmt.Sprintf("waitForCount(%d)", waitCount), worker, sleeper)
 	cancel()
 	return err
+}
 
+func (em *EventManager) waitForProcessed(ctx context.Context, waitCount int, maxWaitTime time.Duration) error {
+	startTime := time.Now()
+
+	worker := func() (bool, error, interface{}) {
+		if em.GetEventsProcessed() == int64(waitCount) {
+			base.Debugf(base.KeyAll, "waitForProcessed(%d) took %v", waitCount, time.Since(startTime))
+			return false, nil, nil
+		}
+
+		return true, nil, nil
+	}
+
+	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 1000), ctx)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForProcessed(%d)", waitCount), worker, sleeper)
+	cancel()
+	return err
 }
 
 func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
@@ -455,7 +523,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	err := wr.waitForCount(context.TODO(), 10, base.DefaultWaitForWebhook)
+	err := em.waitForProcessed(context.TODO(), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 
 	// Test webhook filter function
@@ -479,7 +547,7 @@ func TestWebhookBasic(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = wr.waitForCount(context.TODO(), 4, base.DefaultWaitForWebhook)
+	err = em.waitForProcessed(context.TODO(), 4, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 
 	// Validate payload
@@ -512,7 +580,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	err = wr.waitForCount(context.TODO(), 100, base.DefaultWaitForWebhook)
+	err = em.waitForProcessed(context.TODO(), 100, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 
 	// Test queue full, slow webhook.  Drops events
@@ -533,7 +601,7 @@ func TestWebhookBasic(t *testing.T) {
 	}
 	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
 	// for a goroutine.  The rest get discarded because the queue is full.
-	err = wr.waitForCount(context.TODO(), 21, 10*time.Second)
+	err = em.waitForProcessed(context.TODO(), 21, 10*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, 79, errCount)
 
@@ -550,7 +618,7 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	err = wr.waitForCount(context.TODO(), 100, 10*time.Second)
+	err = em.waitForProcessed(context.TODO(), 100, 10*time.Second)
 	assert.NoError(t, err)
 
 }
@@ -606,7 +674,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		assert.NoError(t, err)
 
 	}
-	err := wr.waitForCount(context.TODO(), 10, base.DefaultWaitForWebhook)
+	err := wr.waitForCount(context.TODO(), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
@@ -633,7 +701,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 		assert.NoError(t, err)
 	}
-	err = wr.waitForCount(context.TODO(), 4, base.DefaultWaitForWebhook)
+	err = wr.waitForCount(context.TODO(), 4, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
@@ -660,7 +728,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 		assert.NoError(t, err)
 	}
-	err = wr.waitForCount(context.TODO(), 4, base.DefaultWaitForWebhook)
+	err = wr.waitForCount(context.TODO(), 4, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
@@ -693,7 +761,7 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 		assert.NoError(t, err)
 	}
-	err = wr.waitForCount(context.TODO(), 10, base.DefaultWaitForWebhook)
+	err = wr.waitForCount(context.TODO(), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
@@ -746,7 +814,7 @@ func TestWebhookTimeout(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 		assert.NoError(t, err)
 	}
-	err := wr.waitForCount(context.TODO(), 10, base.DefaultWaitForWebhook)
+	err := wr.waitForCount(context.TODO(), 10, DefaultWaitForWebhook)
 	assert.NoError(t, err)
 
 	// Test slow webhook, short timeout, numProcess=1, waitForProcess > timeout.  All events should get processed.
