@@ -4533,7 +4533,7 @@ func TestHandleProfiling(t *testing.T) {
 		// Send a valid profile request.
 		resource := fmt.Sprintf("/_profile/%v", tc.inputProfile)
 		filePath := filepath.Join(dirPath, fmt.Sprintf("%s.pprof", tc.inputProfile))
-		reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+		reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filepath.ToSlash(filePath))
 		response := rt.SendAdminRequest(http.MethodPost, resource, reqBodyText)
 		assertStatus(t, response, http.StatusOK)
 		fi, err := os.Stat(filePath)
@@ -4559,7 +4559,7 @@ func TestHandleProfiling(t *testing.T) {
 
 	// Send profile request for a profile which doesn't exists; unknown
 	filePath := filepath.Join(dirPath, "unknown.pprof")
-	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filepath.ToSlash(filePath))
 	response := rt.SendAdminRequest(http.MethodPost, "/_profile/unknown", reqBodyText)
 	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
 	assertStatus(t, response, http.StatusNotFound)
@@ -4567,7 +4567,7 @@ func TestHandleProfiling(t *testing.T) {
 
 	// Send profile request with filename and empty profile name; it should end up creating cpu profile
 	filePath = filepath.Join(dirPath, "cpu.pprof")
-	reqBodyText = fmt.Sprintf(`{"file":"%v"}`, filePath)
+	reqBodyText = fmt.Sprintf(`{"file":"%v"}`, filepath.ToSlash(filePath))
 	response = rt.SendAdminRequest(http.MethodPost, "/_profile", reqBodyText)
 	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
 	assertStatus(t, response, http.StatusOK)
@@ -4594,7 +4594,7 @@ func TestHandleHeapProfiling(t *testing.T) {
 
 	// Send a valid request for heap profiling
 	filePath := filepath.Join(dirPath, "heap.pprof")
-	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filePath)
+	reqBodyText := fmt.Sprintf(`{"file":"%v"}`, filepath.ToSlash(filePath))
 	response := rt.SendAdminRequest(http.MethodPost, "/_heap", reqBodyText)
 	assertStatus(t, response, http.StatusOK)
 	fi, err := os.Stat(filePath)
