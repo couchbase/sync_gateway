@@ -307,7 +307,7 @@ func (h *handler) handleProfiling() error {
 	}
 
 	if fileCloseError := f.Close(); fileCloseError != nil {
-		base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", err)
+		base.WarnfCtx(h.db.Ctx, "Error closing profile file: %v", fileCloseError)
 	}
 
 	return err
