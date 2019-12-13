@@ -532,7 +532,7 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 	dbState := atomic.LoadUint32(&dc.State)
 
-	//If the DB is already trasitioning to: offline or is offline silently return
+	//If the DB is already transitioning to: offline or is offline silently return
 	if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 		return nil
 	}
@@ -553,7 +553,6 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 			err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface)
 			if err != nil {
 				base.Debugf(base.KeyCRUD, "Error raising database state change event: %v", err)
-				return err
 			}
 		}
 
