@@ -87,28 +87,35 @@ type blipHandlerFunc func(*blipHandler, *blip.Message) error
 func userBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 
-		currentUser := bh.db.User()
-		if currentUser != nil {
-			userChanged := bh.userChangeWaiter.RefreshUserCount()
-			if userChanged {
-				newUser, err := bh.db.Authenticator().GetUser(currentUser.Name())
-				if err != nil {
-					return err
-				}
-				bh.userChangeWaiter.RefreshUserKeys(newUser)
-
-				newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
-				if err != nil {
-					return err
-				}
-				newDatabase.Ctx = bh.db.Ctx
-				bh.db = newDatabase
-			}
+		// Reload user if it has changed
+		if err := bh.refreshUser(); err != nil {
+			return err
 		}
-
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}
+}
+
+func (bh *blipHandler) refreshUser() error {
+	currentUser := bh.db.User()
+	if currentUser != nil {
+		userChanged := bh.userChangeWaiter.RefreshUserCount()
+		if userChanged {
+			newUser, err := bh.db.Authenticator().GetUser(currentUser.Name())
+			if err != nil {
+				return err
+			}
+			bh.userChangeWaiter.RefreshUserKeys(newUser)
+
+			newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
+			if err != nil {
+				return err
+			}
+			newDatabase.Ctx = bh.db.Ctx
+			bh.db = newDatabase
+		}
+	}
+	return nil
 }
 
 // kHandlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
@@ -417,12 +424,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		return nil
 	}
 
-	// Create a distinct database instance for changes, to support concurrent user reload by changes processing
-	// and userBlipHandler
-	changesDb, _ := db.GetDatabase(bh.db.DatabaseContext, bh.db.User())
-	changesDb.Ctx = bh.db.Ctx
-
-	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(bh.db, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
 		bh.Logf(base.LevelDebug, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 
@@ -1041,6 +1043,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	attachment, err := bh.db.GetAttachment(db.AttachmentKey(digest))
 	if err != nil {
 		return err
+
 	}
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending attachment with digest=%q (%dkb)", digest, len(attachment)/1024)
 	response := rq.Response()
