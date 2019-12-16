@@ -283,7 +283,7 @@ func (h *handler) handleProfiling() error {
 	// Handle no file
 	if params.File == "" {
 		if isCPUProfile {
-			base.InfofCtx(h.db.Ctx, base.KeyAll, "... ending CPU profile")
+			base.Infof(base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
 			return nil
 		}
