@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"log"
 	"math"
 	"math/big"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBucketSpec(t *testing.T) {
@@ -362,21 +364,21 @@ func mockCertificatesAndKeys(t *testing.T) {
 
 func saveAsKeyFile(t *testing.T, filename string, key *ecdsa.PrivateKey) {
 	file, err := os.Create(filename)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	b, err := x509.MarshalECPrivateKey(key)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = pem.Encode(file, &pem.Block{Type: "EC PRIVATE KEY", Bytes: b})
-	assert.NoError(t, err)
-	assert.NoError(t, file.Close())
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
 }
 
 func saveAsCertFile(t *testing.T, filename string, derBytes []byte) {
 	certOut, err := os.Create(filename)
-	assert.NoError(t, err, "No error while opening cert.pem for writing")
+	require.NoError(t, err, "No error while opening cert.pem for writing")
 	err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	assert.NoError(t, err, "No error while writing data to cert.pem")
+	require.NoError(t, err, "No error while writing data to cert.pem")
 	err = certOut.Close()
-	assert.NoError(t, err, "No error while closing cert.pem")
+	require.NoError(t, err, "No error while closing cert.pem")
 }
 
 func removeFiles(names []string) error {
@@ -388,9 +390,27 @@ func removeFiles(names []string) error {
 	return nil
 }
 
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
 	mockCertificatesAndKeys(t)
+
+	log.Printf("rootKeyPath: %s", rootKeyPath)
+	log.Printf("rootCertPath: %s", rootCertPath)
+	log.Printf("clientKeyPath: %s", clientKeyPath)
+	log.Printf("clientCertPath: %s", clientCertPath)
+
+	require.True(t, fileExists(rootKeyPath), "File %v should exists", rootKeyPath)
+	require.True(t, fileExists(rootCertPath), "File %v should exists", rootCertPath)
+	require.True(t, fileExists(clientKeyPath), "File %v should exists", clientKeyPath)
+	require.True(t, fileExists(clientCertPath), "File %v should exists", clientCertPath)
 
 	// Remove the keys and certificates after verification
 	defer func() {
