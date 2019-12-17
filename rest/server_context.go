@@ -41,13 +41,13 @@ const DefaultStatsLogFrequencySecs = 60
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config       *ServerConfig
-	databases_   map[string]*db.DatabaseContext
-	lock         sync.RWMutex
-	statsContext *statsContext
-	HTTPClient   *http.Client
-	replicator   *base.Replicator
-	file         *os.File
+	config           *ServerConfig
+	databases_       map[string]*db.DatabaseContext
+	lock             sync.RWMutex
+	statsContext     *statsContext
+	HTTPClient       *http.Client
+	replicator       *base.Replicator
+	pprofFileHandler *os.File
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
