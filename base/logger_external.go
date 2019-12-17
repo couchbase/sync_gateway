@@ -34,9 +34,9 @@ var _ gocb.Logger = GoCBLogger{}
 func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
-		Errorf(format, v...)
+		Errorf(KeyGoCB.String()+": "+format, v...)
 	case gocb.LogWarn:
-		Warnf(format, v...)
+		Warnf(KeyGoCB.String()+": "+format, v...)
 	case gocb.LogInfo:
 		Debugf(KeyGoCB, format, v...)
 	case gocb.LogDebug, gocb.LogTrace:
@@ -63,9 +63,9 @@ var _ gocbcore.Logger = GoCBCoreLogger{}
 func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
 	switch level {
 	case gocbcore.LogError:
-		Errorf(format, v...)
+		Errorf(KeyGoCB.String()+": "+format, v...)
 	case gocbcore.LogWarn:
-		Warnf(format, v...)
+		Warnf(KeyGoCB.String()+": "+format, v...)
 	case gocbcore.LogInfo:
 		Debugf(KeyGoCB, format, v...)
 	case gocbcore.LogDebug, gocbcore.LogTrace:
@@ -91,11 +91,11 @@ func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 	case clog.LevelNormal:
 		Infof(KeyReplicate, format, args...)
 	case clog.LevelWarning:
-		Warnf(format, args...)
+		Warnf(KeyReplicate.String()+": "+format, args...)
 	case clog.LevelError:
-		Errorf(format, args...)
+		Errorf(KeyReplicate.String()+": "+format, args...)
 	case clog.LevelPanic:
-		Errorf(format, args...)
+		Errorf(KeyReplicate.String()+": "+format, args...)
 	}
 }
 
@@ -108,7 +108,7 @@ func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 func ClogCallback(level, format string, v ...interface{}) string {
 	switch level {
 	case "ERRO", "FATA", "CRIT":
-		Errorf(format, v...)
+		Errorf(KeyDCP.String()+": "+format, v...)
 	case "WARN":
 		// TODO: cbgt currently logs a lot of what we'd consider info as WARN,
 		//    (i.e. diagnostic information that's not actionable by users), so
