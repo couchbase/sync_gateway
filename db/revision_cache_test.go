@@ -3,7 +3,6 @@ package db
 import (
 	"expvar"
 	"fmt"
-	"log"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -26,7 +25,6 @@ type testBackingStore struct {
 func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	t.getDocumentCounter.Add(1)
 
-	log.Printf("Get Document")
 	for _, d := range t.notFoundDocIDs {
 		if docid == d {
 			return nil, base.HTTPErrorf(404, "missing")
@@ -49,7 +47,6 @@ func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnma
 func (t *testBackingStore) getRevision(doc *Document, revid string) ([]byte, error) {
 	t.getRevisionCounter.Add(1)
 
-	log.Printf("Get Revision")
 	b := Body{
 		"testing":     true,
 		BodyId:        doc.ID,
