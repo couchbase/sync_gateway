@@ -4614,7 +4614,7 @@ func TestHandleHeapProfiling(t *testing.T) {
 	// Send profile request with missing JSON 'file' parameter.
 	response = rt.SendAdminRequest(http.MethodPost, "/_heap", "{}")
 	assertStatus(t, response, http.StatusInternalServerError)
-	assert.Contains(t, string(response.BodyBytes()), "no such file or directory")
+	assert.Contains(t, string(response.BodyBytes()), "Internal error: open")
 }
 
 func TestHandlePprofTrace(t *testing.T) {
