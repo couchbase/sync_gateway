@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -46,6 +47,7 @@ type ServerContext struct {
 	statsContext *statsContext
 	HTTPClient   *http.Client
 	replicator   *base.Replicator
+	file         *os.File
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {

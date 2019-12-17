@@ -285,6 +285,9 @@ func (h *handler) handleProfiling() error {
 		if isCPUProfile {
 			base.Infof(base.KeyAll, "... ending CPU profile")
 			pprof.StopCPUProfile()
+			if fileCloseError := h.server.file.Close(); fileCloseError != nil {
+				base.Warnf("Error closing profile file: %v", fileCloseError)
+			}
 			return nil
 		}
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing JSON 'file' parameter")
@@ -298,6 +301,7 @@ func (h *handler) handleProfiling() error {
 	if isCPUProfile {
 		base.Infof(base.KeyAll, "Starting CPU profile to %s ...", base.UD(params.File))
 		err = pprof.StartCPUProfile(f)
+		h.server.file = f
 		return err
 	} else if profile := pprof.Lookup(profileName); profile != nil {
 		base.Infof(base.KeyAll, "Writing %q profile to %s ...", profileName, base.UD(params.File))
