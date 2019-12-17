@@ -280,58 +280,10 @@ func TestUnhandledEvent(t *testing.T) {
 // Uses WebhookRequest for simplified tracking of POST requests received by HTTP.
 // A mutex has been embedded in WebhookRequest to avoid race conditions.
 type WebhookRequest struct {
-	mutex     sync.Mutex
-	count     int
-	sum       float64
-	payloads  [][]byte
-	scheduled int
-	completed int
-}
-
-func (wr *WebhookRequest) GetCompleted() int {
-	wr.mutex.Lock()
-	completed := wr.completed
-	wr.mutex.Unlock()
-	return completed
-}
-
-func (wr *WebhookRequest) IncrementCompleted() int {
-	wr.mutex.Lock()
-	wr.completed = wr.completed + 1
-	completed := wr.completed
-	wr.mutex.Unlock()
-	return completed
-}
-
-func (wr *WebhookRequest) DecrementCompleted() int {
-	wr.mutex.Lock()
-	wr.completed = wr.completed - 1
-	completed := wr.completed
-	wr.mutex.Unlock()
-	return completed
-}
-
-func (wr *WebhookRequest) GetScheduled() int {
-	wr.mutex.Lock()
-	scheduled := wr.scheduled
-	wr.mutex.Unlock()
-	return scheduled
-}
-
-func (wr *WebhookRequest) IncrementScheduled() int {
-	wr.mutex.Lock()
-	wr.scheduled = wr.scheduled + 1
-	scheduled := wr.scheduled
-	wr.mutex.Unlock()
-	return scheduled
-}
-
-func (wr *WebhookRequest) DecrementScheduled() int {
-	wr.mutex.Lock()
-	wr.scheduled = wr.scheduled - 1
-	scheduled := wr.scheduled
-	wr.mutex.Unlock()
-	return scheduled
+	mutex    sync.Mutex
+	count    int
+	sum      float64
+	payloads [][]byte
 }
 
 func (wr *WebhookRequest) GetCount() int {
