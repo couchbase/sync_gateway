@@ -524,6 +524,8 @@ func TestWebhookBasic(t *testing.T) {
 // function is expecting an old doc revision.
 func TestWebhookOldDoc(t *testing.T) {
 
+	t.Skip("Disabling on 2.7.0, pending CBG-562 on master")
+
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -657,6 +659,8 @@ func TestWebhookOldDoc(t *testing.T) {
 }
 
 func TestWebhookTimeout(t *testing.T) {
+
+	t.Skip("Disabling on 2.7.0, pending CBG-562 on master")
 
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
