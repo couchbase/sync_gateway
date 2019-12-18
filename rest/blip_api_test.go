@@ -205,6 +205,9 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
+			// TODO: Sleeping here to avoid race in CBG-462, which appears to be occurring when there's very low latency
+			// between the sendBatchOfChanges request and the response
+			time.Sleep(10 * time.Millisecond)
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
@@ -243,7 +246,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
@@ -1012,10 +1015,10 @@ function(doc, oldDoc) {
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
 
-	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*5)
+	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*30)
 	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
