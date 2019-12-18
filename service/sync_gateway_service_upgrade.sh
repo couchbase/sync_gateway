@@ -109,7 +109,7 @@ RedHat* | CentOS | OracleServer)
     initctl stop ${SERVICE_NAME}
     initctl start ${SERVICE_NAME}
     ;;
-  7)
+  7 | 8)
     systemctl stop ${SERVICE_NAME}
     systemctl start ${SERVICE_NAME}
     ;;
