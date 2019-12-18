@@ -1910,3 +1910,37 @@ func TestSyncFnMutateBody(t *testing.T) {
 	log.Printf("rev: %s", rev.BodyBytes)
 
 }
+
+// Multiple clients are attempting to push the same new revision concurrently:
+// * First writer should be successful
+// * Subsequent writers should fail on CAS, and then identify that revision already exists on retry
+func TestConcurrentPush(t *testing.T) {
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+	success := 0
+	failure := 0
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := Body{"name": "Bob", "age": 52}
+			revId, doc, err := db.Put("doc1", body)
+			if err != nil {
+				assert.Equal(t, "409 Document exists", err.Error())
+				failure++
+			} else {
+				success++
+				assert.NotEmpty(t, revId)
+				assert.Equal(t, "Bob", doc._body["name"])
+				assert.Equal(t, 52, doc._body["age"])
+			}
+
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, 1, success)
+	assert.Equal(t, 4, failure)
+}
