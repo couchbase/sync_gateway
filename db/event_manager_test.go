@@ -827,7 +827,7 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// Even though we timed out waiting for response on the SG side, POST still completed on target side.
-	err = em.waitForProcessedTotal(context.TODO(), 10, 30*time.Second)
+	err = em.waitForProcessedFail(context.TODO(), 10, 30*time.Second)
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), em.GetEventsProcessedSuccess())
 
