@@ -834,7 +834,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	var shortWithAttachmentsDataBody Body
 	shortWithAttachmentsData := `{"test": true, "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}, "rev":"1-a"}`
-	base.JSONUnmarshal([]byte(shortWithAttachmentsData), &shortWithAttachmentsDataBody)
+	_ = base.JSONUnmarshal([]byte(shortWithAttachmentsData), &shortWithAttachmentsDataBody)
 	_, _, _ = db.PutExistingRevWithBody("doc3", shortWithAttachmentsDataBody, []string{"1-a"}, false)
 
 	b.Run("ShortLatest", func(b *testing.B) {
