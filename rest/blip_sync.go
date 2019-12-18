@@ -505,12 +505,13 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		if err := bh.refreshUser(); err != nil {
 			return err
 		}
+		handleChangesResponseDb := bh.copyContextDatabase()
+
 		sendTime := time.Now()
 		if !sender.Send(outrq) {
 			return ErrClosedBLIPSender
 		}
 
-		handleChangesResponseDb := bh.copyContextDatabase()
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *db.Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {

@@ -953,7 +953,10 @@ function(doc, oldDoc) {
 		}
 
 		if !request.NoReply() {
-			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
+			// Send changes response
+			// TODO: Sleeping here to avoid race in CBG-462, which appears to be occurring when there's very low latency
+			// between the sendBatchOfChanges request and the response
+			time.Sleep(10 * time.Millisecond)
 			response := request.Response()
 			responseValBytes, err := base.JSONMarshal(responseVal)
 			assert.NoError(t, err, "Error marshalling response")
