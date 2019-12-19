@@ -258,7 +258,7 @@ RedHat* | CentOS | OracleServer)
       initctl start ${SERVICE_NAME}
     fi
     ;;
-  7)
+  7 | 8)
     if [ "$SERVICE_CMD_ONLY" = true ]; then
       echo "systemctl start ${SERVICE_NAME}"
     else

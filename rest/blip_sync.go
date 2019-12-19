@@ -55,6 +55,7 @@ var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 type blipSyncContext struct {
 	blipContext         *blip.Context
 	db                  *db.Database
+	dbUserLock          sync.RWMutex // Must be held when refreshing the db user
 	batchSize           int
 	gotSubChanges       bool
 	continuous          bool
@@ -62,13 +63,15 @@ type blipSyncContext struct {
 	channels            base.Set
 	lock                sync.Mutex
 	allowedAttachments  map[string]int
-	handlerSerialNumber uint64           // Each handler within a context gets a unique serial number for logging
-	terminatorOnce      sync.Once        // Used to ensure the terminator channel below is only ever closed once.
-	terminator          chan bool        // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
-	activeSubChanges    uint32           // Flag for whether there is a subChanges subscription currently active.  Atomic access
-	useDeltas           bool             // Whether deltas can be used for this connection - This should be set via setUseDeltas()
-	sgCanUseDeltas      bool             // Whether deltas can be used by Sync Gateway for this connection
-	userChangeWaiter    *db.ChangeWaiter // Tracks whether the users/roles associated with the replication have changed
+	handlerSerialNumber uint64            // Each handler within a context gets a unique serial number for logging
+	terminatorOnce      sync.Once         // Used to ensure the terminator channel below is only ever closed once.
+	terminator          chan bool         // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
+	activeSubChanges    uint32            // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	useDeltas           bool              // Whether deltas can be used for this connection - This should be set via setUseDeltas()
+	sgCanUseDeltas      bool              // Whether deltas can be used by Sync Gateway for this connection
+	userChangeWaiter    *db.ChangeWaiter  // Tracks whether the users/roles associated with the replication have changed
+	userName            string            // Avoid contention on db.user during userChangeWaiter user lookup
+	dbStats             *db.DatabaseStats // Direct stats access to support reloading db while stats are being updated
 }
 
 type blipHandler struct {
@@ -87,28 +90,41 @@ type blipHandlerFunc func(*blipHandler, *blip.Message) error
 func userBlipHandler(next blipHandlerFunc) blipHandlerFunc {
 	return func(bh *blipHandler, bm *blip.Message) error {
 
-		currentUser := bh.db.User()
-		if currentUser != nil {
-			userChanged := bh.userChangeWaiter.RefreshUserCount()
-			if userChanged {
-				newUser, err := bh.db.Authenticator().GetUser(currentUser.Name())
-				if err != nil {
-					return err
-				}
-				bh.userChangeWaiter.RefreshUserKeys(newUser)
-
-				newDatabase, err := db.GetDatabase(bh.db.DatabaseContext, newUser)
-				if err != nil {
-					return err
-				}
-				newDatabase.Ctx = bh.db.Ctx
-				bh.db = newDatabase
-			}
+		// Reload user if it has changed
+		if err := bh.refreshUser(); err != nil {
+			return err
 		}
-
 		// Call down to the underlying handler and return it's value
 		return next(bh, bm)
 	}
+}
+
+func (bh *blipHandler) refreshUser() error {
+
+	bc := bh.blipSyncContext
+	if bc.userName != "" {
+		// Check whether user needs to be refreshed
+		bc.dbUserLock.Lock()
+		userChanged := bc.userChangeWaiter.RefreshUserCount()
+
+		// If changed, refresh the user and db while holding the lock
+		if userChanged {
+			// Refresh the blipSyncContext database
+			newUser, err := bc.db.Authenticator().GetUser(bc.userName)
+			if err != nil {
+				bc.dbUserLock.Unlock()
+				return err
+			}
+			bc.userChangeWaiter.RefreshUserKeys(newUser)
+			bc.db.SetUser(newUser)
+
+			// refresh the handler's database with the new blipSyncContext database
+			bh.db = bh._copyContextDatabase()
+		}
+
+		bc.dbUserLock.Unlock()
+	}
+	return nil
 }
 
 // kHandlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
@@ -150,8 +166,13 @@ func (h *handler) handleBLIPSync() error {
 		db:               h.db,
 		terminator:       make(chan bool),
 		userChangeWaiter: h.db.NewUserWaiter(),
+		dbStats:          h.db.DatabaseContext.DbStats,
 	}
 	defer ctx.close()
+
+	if h.db.User() != nil {
+		ctx.userName = h.db.User().Name()
+	}
 
 	// determine if SG has delta sync enabled for the given database
 	ctx.sgCanUseDeltas = ctx.db.DeltaSyncEnabled()
@@ -191,7 +212,7 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 		startTime := time.Now()
 		handler := blipHandler{
 			blipSyncContext: ctx,
-			db:              ctx.db,
+			db:              ctx.copyContextDatabase(),
 			serialNumber:    ctx.incrementSerialNumber(),
 		}
 
@@ -220,7 +241,7 @@ func (ctx *blipSyncContext) close() {
 		if ctx.continuous {
 			stat = base.StatKeyPullReplicationsActiveContinuous
 		}
-		ctx.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(stat, -1)
+		ctx.dbStats.StatsCblReplicationPull().Add(stat, -1)
 	}
 
 	ctx.terminatorOnce.Do(func() {
@@ -361,11 +382,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	go func() {
 		// Pull replication stats by type - Active stats decremented in Close()
 		if bh.continuous {
-			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, 1)
-			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalContinuous, 1)
+			bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, 1)
+			bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalContinuous, 1)
 		} else {
-			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, 1)
-			bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalOneShot, 1)
+			bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, 1)
+			bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalOneShot, 1)
 		}
 
 		defer func() {
@@ -417,11 +438,9 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 		return nil
 	}
 
-	// Create a distinct database instance for changes, to support concurrent user reload by changes processing
-	// and userBlipHandler
-	changesDb, _ := db.GetDatabase(bh.db.DatabaseContext, bh.db.User())
-	changesDb.Ctx = bh.db.Ctx
-
+	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
+	// and blipSyncContext user access.
+	changesDb := bh.copyContextDatabase()
 	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
 		bh.Logf(base.LevelDebug, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
@@ -460,6 +479,18 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *subChangesParams
 	}
 
 }
+func (bc *blipSyncContext) copyContextDatabase() *db.Database {
+	bc.dbUserLock.RLock()
+	databaseCopy := bc._copyContextDatabase()
+	bc.dbUserLock.RUnlock()
+	return databaseCopy
+}
+
+func (bc *blipSyncContext) _copyContextDatabase() *db.Database {
+	databaseCopy, _ := db.GetDatabase(bc.db.DatabaseContext, bc.db.User())
+	databaseCopy.Ctx = bc.db.Ctx
+	return databaseCopy
+}
 
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) error {
 	outrq := blip.NewRequest()
@@ -470,16 +501,23 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	}
 
 	if len(changeArray) > 0 {
+		// Check for user updates before creating the db copy for handleChangesResponse
+		if err := bh.refreshUser(); err != nil {
+			return err
+		}
+		handleChangesResponseDb := bh.copyContextDatabase()
+
 		sendTime := time.Now()
 		if !sender.Send(outrq) {
 			return ErrClosedBLIPSender
 		}
+
 		// Spawn a goroutine to await the client's response:
-		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time) {
-			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime); err != nil {
+		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *db.Database) {
+			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				bh.Logf(base.LevelError, base.KeyAll, "Error from bh.handleChangesResponse: %v", err)
 			}
-		}(bh, sender, outrq.Response(), changeArray, sendTime)
+		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
 	} else {
 		outrq.SetNoReply(true)
 		if !sender.Send(outrq) {
@@ -498,29 +536,29 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time) error {
+func (bc *blipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *db.Database) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.Warnf("[%s] PANIC handling 'changes' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
+			base.Warnf("[%s] PANIC handling 'changes' response: %v\n%s", bc.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
 	if response.Type() == blip.ErrorType {
 		errorBody, _ := response.Body()
-		base.Infof(base.KeyAll, "[%s] Client returned error in changesResponse: %s", bh.blipContext.ID, errorBody)
+		base.Infof(base.KeyAll, "[%s] Client returned error in changesResponse: %s", bc.blipContext.ID, errorBody)
 		return nil
 	}
 
 	var answer []interface{}
 	if err := response.ReadJSONBody(&answer); err != nil {
 		body, _ := response.Body()
-		bh.Logf(base.LevelError, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
+		bc.Logf(base.LevelError, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
 		return nil
 	}
 	changesResponseReceived := time.Now()
 
-	bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRequestChangesCount, 1)
-	bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRequestChangesTime, time.Since(requestSent).Nanoseconds())
+	bc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRequestChangesCount, 1)
+	bc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRequestChangesTime, time.Since(requestSent).Nanoseconds())
 
 	maxHistory := 0
 	if max, err := strconv.ParseUint(response.Properties[changesResponseMaxHistory], 10, 64); err == nil {
@@ -529,9 +567,9 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 
 	// Set useDeltas if the client has delta support and has it enabled
 	if clientDeltasStr, ok := response.Properties[changesResponseDeltas]; ok {
-		bh.setUseDeltas(clientDeltasStr == "true")
+		bc.setUseDeltas(clientDeltasStr == "true")
 	} else {
-		bh.Logf(base.LevelTrace, base.KeySync, "Client didn't specify 'deltas' property in 'changes' response. useDeltas: %v", bh.useDeltas)
+		bc.Logf(base.LevelTrace, base.KeySync, "Client didn't specify 'deltas' property in 'changes' response. useDeltas: %v", bc.useDeltas)
 	}
 
 	// Maps docID --> a map containing true for revIDs known to the client
@@ -555,7 +593,7 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 			}
 
 			// The first element of the knownRevsArray returned from CBL is the parent revision to use as deltaSrc
-			if bh.useDeltas && len(knownRevsArray) > 0 {
+			if bc.useDeltas && len(knownRevsArray) > 0 {
 				if revID, ok := knownRevsArray[0].(string); ok {
 					deltaSrcRevID = revID
 				}
@@ -565,16 +603,16 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 				if revID, ok := rev.(string); ok {
 					knownRevs[revID] = true
 				} else {
-					bh.Logf(base.LevelError, base.KeyAll, "Invalid response to 'changes' message")
+					bc.Logf(base.LevelError, base.KeyAll, "Invalid response to 'changes' message")
 					return nil
 				}
 			}
 
 			var err error
 			if deltaSrcRevID != "" {
-				err = bh.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory)
+				err = bc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 			} else {
-				err = bh.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory)
+				err = bc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 			}
 			if err != nil {
 				return err
@@ -586,9 +624,9 @@ func (bh *blipHandler) handleChangesResponse(sender *blip.Sender, response *blip
 	}
 
 	if revSendCount > 0 {
-		bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendCount, revSendCount)
-		bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendLatency, revSendTimeLatency)
-		bh.db.DbStats.StatsCblReplicationPull().Add(base.StatKeyRevProcessingTime, time.Since(changesResponseReceived).Nanoseconds())
+		bc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendCount, revSendCount)
+		bc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendLatency, revSendTimeLatency)
+		bc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRevProcessingTime, time.Since(changesResponseReceived).Nanoseconds())
 	}
 
 	return nil
@@ -616,9 +654,9 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
 	startTime := time.Now()
-	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
 	defer func() {
-		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
+		bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
 	}()
 
 	for _, change := range changeList {
@@ -663,9 +701,9 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	// proposeChanges stats
 	startTime := time.Now()
-	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
 	defer func() {
-		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
+		bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
 	}()
 
 	for i, change := range changeList {
@@ -701,51 +739,51 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 //////// DOCUMENTS:
 
-func (bh *blipHandler) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int) error {
+func (bc *blipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *db.Database) error {
 
-	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
+	bc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
 
-	revDelta, redactedRev, err := bh.db.GetDelta(docID, deltaSrcRevID, revID)
+	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(docID, deltaSrcRevID, revID)
 	if err == db.ErrForbidden {
 		return err
 	} else if err != nil {
-		bh.Logf(base.LevelInfo, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bh.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory)
+		bc.Logf(base.LevelInfo, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+		return bc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	}
 
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
-		return bh.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, properties)
+		return bc.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, properties)
 	}
 
 	if revDelta == nil {
-		bh.Logf(base.LevelDebug, base.KeySync, "DELTA: unable to generate delta from %s to %s for key %s; falling back to full body replication.", deltaSrcRevID, revID, base.UD(docID))
-		return bh.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory)
+		bc.Logf(base.LevelDebug, base.KeySync, "DELTA: unable to generate delta from %s to %s for key %s; falling back to full body replication.", deltaSrcRevID, revID, base.UD(docID))
+		return bc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	}
 
-	bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
-	if err := bh.sendDelta(sender, docID, deltaSrcRevID, revDelta, seq); err != nil {
+	bc.Logf(base.LevelTrace, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
+	if err := bc.sendDelta(sender, docID, deltaSrcRevID, revDelta, seq); err != nil {
 		return err
 	}
 
-	bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
+	bc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
 
 	return nil
 }
 
-func (bh *blipHandler) sendDelta(sender *blip.Sender, docID, deltaSrcRevID string, revDelta *db.RevisionDelta, seq db.SequenceID) error {
+func (bc *blipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID string, revDelta *db.RevisionDelta, seq db.SequenceID) error {
 
 	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[revMessageDeltaSrc] = deltaSrcRevID
 
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bh.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentDigests, properties)
+	bc.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
+	return bc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentDigests, properties)
 }
 
-func (bh *blipHandler) sendNoRev(sender *blip.Sender, docID, revID string, err error) error {
+func (bc *blipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, err error) error {
 
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
+	bc.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
 
 	noRevRq := NewNoRevMessage()
 	noRevRq.setId(docID)
@@ -766,10 +804,10 @@ func (bh *blipHandler) sendNoRev(sender *blip.Sender, docID, revID string, err e
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int) error {
-	rev, err := bh.db.GetRev(docID, revID, true, nil)
+func (bc *blipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *db.Database) error {
+	rev, err := handleChangesResponseDb.GetRev(docID, revID, true, nil)
 	if err != nil {
-		return bh.sendNoRev(sender, docID, revID, err)
+		return bc.sendNoRev(sender, docID, revID, err)
 	}
 
 	var bodyBytes []byte
@@ -786,7 +824,7 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, se
 	} else {
 		body, err := rev.MutableBody()
 		if err != nil {
-			return bh.sendNoRev(sender, docID, revID, err)
+			return bc.sendNoRev(sender, docID, revID, err)
 		}
 
 		// Still need to stamp _attachments into BLIP messages
@@ -796,16 +834,16 @@ func (bh *blipHandler) sendRevision(sender *blip.Sender, docID, revID string, se
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
 		if err != nil {
-			return bh.sendNoRev(sender, docID, revID, err)
+			return bc.sendNoRev(sender, docID, revID, err)
 		}
 	}
 
-	bh.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known", base.UD(docID), revID, len(knownRevs))
+	bc.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known", base.UD(docID), revID, len(knownRevs))
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
 	attDigests := db.AttachmentDigests(rev.Attachments)
-	return bh.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties)
+	return bc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties)
 }
 
 func toHistory(revisions db.Revisions, knownRevs map[string]bool, maxHistory int) []string {
@@ -842,7 +880,7 @@ func blipRevMessageProperties(revisionHistory []string, deleted bool, seq db.Seq
 }
 
 // Pushes a revision body to the client
-func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, bodyBytes []byte, attDigests []string, properties blip.Properties) error {
+func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, bodyBytes []byte, attDigests []string, properties blip.Properties) error {
 
 	outrq := NewRevMessage()
 	outrq.setId(docID)
@@ -855,24 +893,24 @@ func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID str
 
 	// Update read stats
 	if messageBody, err := outrq.Body(); err == nil {
-		bh.db.DbStats.StatsDatabase().Add(base.StatKeyDocReadsBytesBlip, int64(len(messageBody)))
+		bc.dbStats.StatsDatabase().Add(base.StatKeyDocReadsBytesBlip, int64(len(messageBody)))
 	}
-	bh.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
+	bc.dbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
 
 	if len(attDigests) > 0 {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
-		bh.addAllowedAttachments(attDigests)
+		bc.addAllowedAttachments(attDigests)
 		if !sender.Send(outrq.Message) {
 			return ErrClosedBLIPSender
 		}
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
-					base.Warnf("[%s] PANIC handling 'sendRevision' response: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
-					bh.close()
+					base.Warnf("[%s] PANIC handling 'sendRevision' response: %v\n%s", bc.blipContext.ID, panicked, debug.Stack())
+					bc.close()
 				}
 			}()
-			defer bh.removeAllowedAttachments(attDigests)
+			defer bc.removeAllowedAttachments(attDigests)
 			outrq.Response() // blocks till reply is received
 		}()
 	} else {
@@ -885,7 +923,7 @@ func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID str
 	if response := outrq.Response(); response != nil {
 		if response.Type() == blip.ErrorType {
 			errorBody, _ := response.Body()
-			bh.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", docID, revID, errorBody)
+			bc.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", docID, revID, errorBody)
 		}
 	}
 
@@ -896,7 +934,7 @@ func (bh *blipHandler) sendRevisionWithProperties(sender *blip.Sender, docID str
 func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	startTime := time.Now()
 	defer func() {
-		bh.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+		bh.dbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
 	}()
 
 	//addRevisionParams := newAddRevisionParams(rq)
@@ -909,7 +947,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		return err
 	}
 
-	bh.db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
+	bh.dbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
 	docID, found := revMessage.id()
@@ -962,7 +1000,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 		newDoc.UpdateBody(deltaSrcMap)
 		bh.Logf(base.LevelTrace, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
-		bh.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
+		bh.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
 
 	// Handle and pull out expiry
@@ -1016,7 +1054,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Finally, save the revision (with the new attachments inline)
-	bh.db.DbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
+	bh.dbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
 
 	_, _, err = bh.db.PutExistingRev(newDoc, history, noConflicts)
 
@@ -1041,13 +1079,14 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	attachment, err := bh.db.GetAttachment(db.AttachmentKey(digest))
 	if err != nil {
 		return err
+
 	}
 	bh.Logf(base.LevelDebug, base.KeySync, "Sending attachment with digest=%q (%dkb)", digest, len(attachment)/1024)
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties[blipCompress] == "true")
-	bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
-	bh.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(attachment)))
+	bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
+	bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(attachment)))
 
 	return nil
 }
@@ -1160,7 +1199,7 @@ func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	if ctx.sgCanUseDeltas && clientCanUseDeltas {
 		if !ctx.useDeltas {
 			ctx.Logf(base.LevelDebug, base.KeySync, "Enabling deltas for this replication")
-			ctx.db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+			ctx.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
 			ctx.useDeltas = true
 		}
 		return

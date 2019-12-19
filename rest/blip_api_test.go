@@ -205,6 +205,9 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 		if !request.NoReply() {
 			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
+			// TODO: Sleeping here to avoid race in CBG-462, which appears to be occurring when there's very low latency
+			// between the sendBatchOfChanges request and the response
+			time.Sleep(10 * time.Millisecond)
 			response := request.Response()
 			emptyResponseVal := []interface{}{}
 			emptyResponseValBytes, err := base.JSONMarshal(emptyResponseVal)
@@ -243,7 +246,7 @@ func TestContinuousChangesSubscription(t *testing.T) {
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
 
 	// Since batch size was set to 10, and 15 docs were added, expect at _least_ 2 batches
@@ -746,6 +749,279 @@ function(doc, oldDoc) {
 	// Validate that the doc was written (GET request doesn't get a 404)
 	getResponse := rt.SendAdminRequest("GET", "/db/foo", "")
 	assertStatus(t, getResponse, 200)
+
+}
+
+// Start subChanges w/ continuous=true, batchsize=20
+// Write a doc that grants access to itself for the active replication's user
+func TestContinuousChangesDynamicGrant(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg|base.KeyChanges|base.KeyCache)()
+	// Initialize restTester here, so that we can use custom sync function, and later modify user
+	syncFunction := `
+function(doc, oldDoc) {
+  access(doc.accessUser, doc.accessChannel)
+  channel(doc.channels)
+}
+
+`
+
+	rtConfig := RestTesterConfig{SyncFn: syncFunction}
+	var rt = NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// Create bliptester that is connected as user1, with no access to channel ABC
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noAdminParty:       true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         rt,
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
+	receivedChangesWg := sync.WaitGroup{}
+	revsFinishedWg := sync.WaitGroup{}
+
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	lastReceivedSeq := float64(0)
+	var numbatchesReceived int32
+	nonIntegerSequenceReceived := false
+	changeCount := 0
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		body, err := request.Body()
+		responseVal := [][]interface{}{}
+		if string(body) != "null" {
+
+			atomic.AddInt32(&numbatchesReceived, 1)
+
+			// Expected changes body: [[1,"foo","1-abc"]]
+			changeListReceived := [][]interface{}{}
+			err = base.JSONUnmarshal(body, &changeListReceived)
+			assert.NoError(t, err, "Error unmarshalling changes received")
+
+			for _, change := range changeListReceived {
+
+				// The change should have three items in the array
+				// [1,"foo","1-abc"]
+				goassert.Equals(t, len(change), 3)
+
+				// Make sure sequence numbers are monotonically increasing
+				receivedSeq, ok := change[0].(float64)
+				if ok {
+					goassert.True(t, receivedSeq > lastReceivedSeq)
+					lastReceivedSeq = receivedSeq
+				} else {
+					nonIntegerSequenceReceived = true
+					log.Printf("Unexpected non-integer sequence received: %v", change[0])
+				}
+
+				revID := change[2].(string)
+				responseVal = append(responseVal, []interface{}{revID})
+				changeCount++
+				receivedChangesWg.Done()
+			}
+
+		}
+
+		if !request.NoReply() {
+			// Send an empty response to avoid the Sync: Invalid response to 'changes' message
+			response := request.Response()
+			responseValBytes, err := base.JSONMarshal(responseVal)
+			assert.NoError(t, err, "Error marshalling response")
+			response.SetBody(responseValBytes)
+		}
+
+	}
+
+	// -------- Rev handler callback --------
+	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
+		defer revsFinishedWg.Done()
+		body, err := request.Body()
+
+		var doc RestDocument
+		err = base.JSONUnmarshal(body, &doc)
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err: %v", err))
+		}
+		log.Printf("got rev message: %+v", doc)
+		_, isRemoved := doc[db.BodyRemoved]
+		assert.False(t, isRemoved)
+
+	}
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "true"
+	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	subChangesRequest.SetCompressed(false)
+	sent := bt.sender.Send(subChangesRequest)
+	goassert.True(t, sent)
+	subChangesResponse := subChangesRequest.Response()
+	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+
+	// Write a doc that grants user1 access to channel ABC, and doc is also in channel ABC
+	receivedChangesWg.Add(1)
+	revsFinishedWg.Add(1)
+	response := rt.SendAdminRequest("PUT", "/db/grantDoc", `{"accessUser":"user1", "accessChannel":"ABC", "channels":["ABC"]}`)
+	assertStatus(t, response, 201)
+
+	// Wait until all expected changes are received by change handler
+	// receivedChangesWg.Wait()
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*5)
+	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
+
+	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*5)
+	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
+
+	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
+
+}
+
+// Start subChanges w/ continuous=true, batchsize=20
+// Start goroutine sending rev messages for documents that grant access to themselves for the active replication's user
+
+func TestConcurrentRefreshUser(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg|base.KeyChanges|base.KeyCache)()
+	// Initialize restTester here, so that we can use custom sync function, and later modify user
+	syncFunction := `
+function(doc, oldDoc) {
+  access(doc.accessUser, doc.accessChannel)
+  channel(doc.channels)
+}
+
+`
+	rtConfig := RestTesterConfig{SyncFn: syncFunction}
+	var rt = NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// Create bliptester that is connected as user1, with no access to channel ABC
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		noAdminParty:       true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
+		restTester:         rt,
+	})
+	assert.NoError(t, err, "Error creating BlipTester")
+	defer bt.Close()
+
+	// Counter/Waitgroup to help ensure that all callbacks on continuous changes handler are received
+	receivedChangesWg := sync.WaitGroup{}
+	revsFinishedWg := sync.WaitGroup{}
+
+	// When this test sends subChanges, Sync Gateway will send a changes request that must be handled
+	lastReceivedSeq := float64(0)
+	var numbatchesReceived int32
+	nonIntegerSequenceReceived := false
+	changeCount := 0
+	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
+
+		body, err := request.Body()
+		responseVal := [][]interface{}{}
+		if string(body) != "null" {
+
+			atomic.AddInt32(&numbatchesReceived, 1)
+
+			// Expected changes body: [[1,"foo","1-abc"]]
+			changeListReceived := [][]interface{}{}
+			err = base.JSONUnmarshal(body, &changeListReceived)
+			assert.NoError(t, err, "Error unmarshalling changes received")
+
+			for _, change := range changeListReceived {
+
+				// The change should have three items in the array
+				// [1,"foo","1-abc"]
+				goassert.Equals(t, len(change), 3)
+
+				// Make sure sequence numbers are monotonically increasing
+				receivedSeq, ok := change[0].(float64)
+				if ok {
+					goassert.True(t, receivedSeq > lastReceivedSeq)
+					lastReceivedSeq = receivedSeq
+				} else {
+					nonIntegerSequenceReceived = true
+					log.Printf("Unexpected non-integer sequence received: %v", change[0])
+				}
+
+				revID := change[2].(string)
+				responseVal = append(responseVal, []interface{}{revID})
+				changeCount++
+				receivedChangesWg.Done()
+			}
+
+		}
+
+		if !request.NoReply() {
+			// Send changes response
+			// TODO: Sleeping here to avoid race in CBG-462, which appears to be occurring when there's very low latency
+			// between the sendBatchOfChanges request and the response
+			time.Sleep(10 * time.Millisecond)
+			response := request.Response()
+			responseValBytes, err := base.JSONMarshal(responseVal)
+			assert.NoError(t, err, "Error marshalling response")
+			response.SetBody(responseValBytes)
+		}
+
+	}
+
+	// -------- Rev handler callback --------
+	bt.blipContext.HandlerForProfile["rev"] = func(request *blip.Message) {
+		defer revsFinishedWg.Done()
+		body, err := request.Body()
+
+		var doc RestDocument
+		err = base.JSONUnmarshal(body, &doc)
+		if err != nil {
+			panic(fmt.Sprintf("Unexpected err: %v", err))
+		}
+		_, isRemoved := doc[db.BodyRemoved]
+		assert.False(t, isRemoved, fmt.Sprintf("Document %v shouldn't be removed", request.Properties[revMessageId]))
+
+	}
+
+	// Send subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	subChangesRequest := blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "true"
+	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 10 to make sure we get multiple batches
+	subChangesRequest.SetCompressed(false)
+	sent := bt.sender.Send(subChangesRequest)
+	goassert.True(t, sent)
+	subChangesResponse := subChangesRequest.Response()
+	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+
+	// Start goroutine to simulate sending docs from the client
+
+	receivedChangesWg.Add(100)
+	revsFinishedWg.Add(100)
+	go func() {
+		for i := 0; i < 100; i++ {
+			docID := fmt.Sprintf("foo_%d", i)
+			_, _, _, sendErr := bt.SendRev(
+				docID,
+				"1-abc",
+				[]byte(`{"accessUser": "user1",
+				"accessChannel":"`+docID+`",
+				"channels":["`+docID+`"]}`),
+				blip.Properties{},
+			)
+			assert.NoError(t, sendErr)
+		}
+	}()
+
+	// Wait until all expected changes are received by change handler
+	// receivedChangesWg.Wait()
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
+	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
+
+	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*30)
+	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
+
+	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
 
 }
 
