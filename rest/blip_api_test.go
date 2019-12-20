@@ -2172,7 +2172,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client1.Close()
 
 	client2, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
@@ -2180,11 +2180,11 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client2.Close()
 
 	err = client1.StartPull()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
