@@ -48,6 +48,7 @@ type BlipTesterReplicator struct {
 }
 
 func (btr *BlipTesterReplicator) Close() {
+	btr.bt.Close()
 	btr.messagesLock.Lock()
 	btr.messages = make(map[blip.MessageNumber]*blip.Message, 0)
 	btr.messagesLock.Unlock()
