@@ -431,14 +431,14 @@ func TestConcurrentLoad(t *testing.T) {
 }
 
 func BenchmarkRevisionCacheRead(b *testing.B) {
+	defer base.SetUpBenchmarkLogging(base.LevelDebug, base.KeyAll)()
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
 	cache := NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	// trigger load into cache
 	for i := 0; i < 5000; i++ {
-		_, err := cache.Get(fmt.Sprintf("doc%d", i), "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
-		assert.NoError(b, err, "Error initializing cache for BenchmarkRevisionCacheRead")
+		_, _ = cache.Get(fmt.Sprintf("doc%d", i), "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	}
 
 	b.ResetTimer()
@@ -446,10 +446,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 		//GET the document until test run has completed
 		for pb.Next() {
 			docId := fmt.Sprintf("doc%d", rand.Intn(5000))
-			docrev, err := cache.Get(docId, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
-			if err != nil {
-				assert.Fail(b, "Unexpected error for docrev:%+v", docrev)
-			}
+			_, _ = cache.Get(docId, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 		}
 	})
 }
