@@ -2155,7 +2155,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 // └──────────────┘           └───────────┘          └───────────┘
 func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP|base.KeyCache|base.KeySync|base.KeySyncMsg)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
