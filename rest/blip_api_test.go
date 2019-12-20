@@ -2213,10 +2213,11 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok := client1.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
+	assert.Equal(t, msg.Profile(), messageRev, "unexpected profile for message 5 in %v", client1.pullReplication.GetMessages())
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody))
-	assert.Equal(t, "1", msg.Properties[revMessageDeleted])
+	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message 5 in %v", client1.pullReplication.GetMessages())
+	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message 5 in %v", client1.pullReplication.GetMessages())
 
 	// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
 	err = client2.StartOneshotPull()
@@ -2228,10 +2229,11 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok = client2.pullReplication.WaitForMessage(6)
 	assert.True(t, ok)
+	assert.Equal(t, msg.Profile(), messageRev, "unexpected profile for message 6 in %v", client2.pullReplication.GetMessages())
 	msgBody, err = msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody))
-	assert.Equal(t, "1", msg.Properties[revMessageDeleted])
+	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message 6 in %v", client2.pullReplication.GetMessages())
+	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message 6 in %v", client2.pullReplication.GetMessages())
 
 	deltaCacheHitsEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
 	deltaCacheMissesEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
