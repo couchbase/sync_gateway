@@ -718,6 +718,7 @@ type BlipTester struct {
 
 // Close the bliptester
 func (bt BlipTester) Close() {
+	bt.sender.Close()
 	bt.restTester.Close()
 }
 

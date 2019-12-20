@@ -2155,7 +2155,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 // └──────────────┘           └───────────┘          └───────────┘
 func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP|base.KeyCache|base.KeySync|base.KeySyncMsg)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
@@ -2172,7 +2172,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client1.Close()
 
 	client2, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
@@ -2180,11 +2180,11 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		Channels:     []string{"*"},
 		ClientDeltas: true,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client2.Close()
 
 	err = client1.StartPull()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// create doc1 rev 1-e89945d756a1d444fa212bffbbb31941
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"channels": ["public"], "greetings": [{"hello": "world!"}]}`)
@@ -2213,10 +2213,11 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok := client1.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
+	assert.Equal(t, msg.Profile(), messageRev, "unexpected profile for message 5 in %v", client1.pullReplication.GetMessages())
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody))
-	assert.Equal(t, "1", msg.Properties[revMessageDeleted])
+	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message 5 in %v", client1.pullReplication.GetMessages())
+	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message 5 in %v", client1.pullReplication.GetMessages())
 
 	// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
 	err = client2.StartOneshotPull()
@@ -2228,10 +2229,11 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok = client2.pullReplication.WaitForMessage(6)
 	assert.True(t, ok)
+	assert.Equal(t, msg.Profile(), messageRev, "unexpected profile for message 6 in %v", client2.pullReplication.GetMessages())
 	msgBody, err = msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody))
-	assert.Equal(t, "1", msg.Properties[revMessageDeleted])
+	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message 6 in %v", client2.pullReplication.GetMessages())
+	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message 6 in %v", client2.pullReplication.GetMessages())
 
 	deltaCacheHitsEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
 	deltaCacheMissesEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
