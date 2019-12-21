@@ -41,13 +41,27 @@ const DefaultStatsLogFrequencySecs = 60
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config           *ServerConfig
-	databases_       map[string]*db.DatabaseContext
-	lock             sync.RWMutex
-	statsContext     *statsContext
-	HTTPClient       *http.Client
-	replicator       *base.Replicator
-	pprofFileHandler *os.File
+	config       *ServerConfig
+	databases_   map[string]*db.DatabaseContext
+	lock         sync.RWMutex
+	statsContext *statsContext
+	HTTPClient   *http.Client
+	replicator   *base.Replicator
+	sync.Mutex            // Concurrent Start and Stop CPU profiling requests could race updating cpuPprofFile.
+	cpuPprofFile *os.File // An open file descriptor holds the reference during CPU profiling
+}
+
+func (sc *ServerContext) GetCpuPprofFile() *os.File {
+	sc.Lock()
+	file := sc.cpuPprofFile
+	sc.Unlock()
+	return file
+}
+
+func (sc *ServerContext) SetCpuPprofFile(file *os.File) {
+	sc.Lock()
+	sc.cpuPprofFile = file
+	sc.Unlock()
 }
 
 func NewServerContext(config *ServerConfig) *ServerContext {
