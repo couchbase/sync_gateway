@@ -69,7 +69,6 @@ type changeCacheStats struct {
 	highSeqFeed   uint64
 	pendingSeqLen int
 	maxPending    int
-	highSeqStable uint64
 }
 
 func (c *changeCache) updateStats() {
