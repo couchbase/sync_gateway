@@ -2071,12 +2071,12 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
-		go func() {
+		go func(n int) {
 			defer wg.Done()
-			body := Body{"name": "Emily", "age": 20 + i}
+			body := Body{"name": "Emily", "age": 52 + n}
 			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"3-b", "2-b", "1-a"}, false)
 			assert.NoError(t, err, "Adding revision 3-b")
-		}()
+		}(i)
 	}
 	wg.Wait()
 
