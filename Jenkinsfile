@@ -190,13 +190,14 @@ pipeline {
                                     githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
                                     sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
                                     sh "test -z \"\$(cat errcheck.out)\""
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
                                 } catch (Exception e) {
                                     sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
                                     script {
                                         env.ERRCHECK_COUNT = readFile 'errcheck.count'
                                     }
-                                } finally {
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                    unstable("errcheck failed")
                                 }
                             }
                         }
