@@ -4508,15 +4508,11 @@ func Benchmark_RestApiGetDocPerformanceFullRevCache(b *testing.B) {
 }
 
 func TestHandleProfiling(t *testing.T) {
-
-	// FIXME:
-	t.Skip("Skipping flaky test until current WIP fixes are merged")
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	dirPath := filepath.Join(os.TempDir(), "pprof")
-	assert.NoError(t, os.MkdirAll(dirPath, 0755))
+	dirPath, err := ioutil.TempDir("", "pprof")
+	require.NoError(t, err, "Temp directory should be created")
 	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
 
 	tests := []struct {
@@ -4586,15 +4582,11 @@ func TestHandleProfiling(t *testing.T) {
 }
 
 func TestHandleHeapProfiling(t *testing.T) {
-
-	// FIXME:
-	t.Skip("Skipping flaky test until current WIP fixes are merged")
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	dirPath := filepath.Join(os.TempDir(), "heap-pprof")
-	assert.NoError(t, os.MkdirAll(dirPath, 0755))
+	dirPath, err := ioutil.TempDir("", "heap-pprof")
+	require.NoError(t, err, "Temp directory should be created")
 	defer func() { assert.NoError(t, os.RemoveAll(dirPath)) }()
 
 	// Send a valid request for heap profiling
@@ -4614,7 +4606,7 @@ func TestHandleHeapProfiling(t *testing.T) {
 	// Send profile request with missing JSON 'file' parameter.
 	response = rt.SendAdminRequest(http.MethodPost, "/_heap", "{}")
 	assertStatus(t, response, http.StatusInternalServerError)
-	assert.Contains(t, string(response.BodyBytes()), "no such file or directory")
+	assert.Contains(t, string(response.BodyBytes()), "Internal error: open")
 }
 
 func TestHandlePprofTrace(t *testing.T) {
