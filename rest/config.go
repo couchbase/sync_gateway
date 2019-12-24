@@ -99,6 +99,7 @@ type ServerConfig struct {
 	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`            // Config for unsupported features
 	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
 	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
+	Verbose                    bool                     `json:",omitempty"`                       // Verbose logging features to get more information about system and requests
 }
 
 // Bucket configuration elements - used by db, index
@@ -790,6 +791,9 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if other.Pretty {
 		self.Pretty = true
 	}
+	if other.Verbose {
+		self.Verbose = true
+	}
 	for name, db := range other.Databases {
 		if self.Databases[name] != nil {
 			return base.RedactErrorf("Database %q already specified earlier", base.UD(name))
@@ -872,6 +876,9 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		if *pretty {
 			config.Pretty = *pretty
 		}
+		if *verbose {
+			config.Verbose = *verbose
+		}
 
 		// If the interfaces were not specified in either the config file or
 		// on the command line, set them to the default values
@@ -915,6 +922,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
 			Pretty:           *pretty,
+			Verbose:          *verbose,
 			ConfigServer:     configServer,
 			Logging: &base.LoggingConfig{
 				Console: base.ConsoleLoggerConfig{

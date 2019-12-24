@@ -475,6 +475,7 @@ func TestMergeWith(t *testing.T) {
 		CORS:             corsConfig,
 		DeprecatedLog:    deprecatedLog,
 		Pretty:           true,
+		Verbose:          true,
 		Databases:        databases}
 
 	databases = make(DbConfigMap, 2)
@@ -497,6 +498,7 @@ func TestMergeWith(t *testing.T) {
 	assert.Equal(t, corsConfig.MaxAge, self.CORS.MaxAge)
 	assert.Equal(t, deprecatedLog, self.DeprecatedLog)
 	assert.True(t, self.Pretty)
+	assert.True(t, self.Verbose)
 
 	assert.Len(t, self.Databases, 4)
 	assert.Equal(t, "db1", self.Databases["db1"].Name)
@@ -636,7 +638,8 @@ func TestParseCommandLine(t *testing.T) {
 		"--log", logKeys,
 		"--logFilePath", logFilePath,
 		"--pool", pool,
-		"--pretty"}
+		"--pretty",
+		"--verbose"}
 
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
 	require.NoError(t, err, "Parsing commandline arguments without any config file")
@@ -647,6 +650,7 @@ func TestParseCommandLine(t *testing.T) {
 	assert.Equal(t, strings.Split(logKeys, ","), config.Logging.Console.LogKeys)
 	assert.Empty(t, *config.ProfileInterface)
 	assert.True(t, config.Pretty)
+	assert.True(t, config.Verbose)
 	databases := config.Databases
 	assert.Len(t, databases, 1)
 	assert.Equal(t, dbname, databases[dbname].Name)
@@ -782,6 +786,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
 	assert.Equal(t, []string{"Admin", "Access", "Auth", "Bucket", "HTTP+"}, config.Logging.Console.LogKeys)
 	assert.True(t, config.Pretty)
+	assert.True(t, config.Verbose)
 	assert.Len(t, config.Databases, 1)
 
 	db1 := config.Databases["db1"]
