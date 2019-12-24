@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1906,4 +1907,180 @@ func TestSyncFnMutateBody(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"subkey1": "subvalue1"}, revBody["key2"])
 	log.Printf("rev: %s", rev.BodyBytes)
 
+}
+
+// Multiple clients are attempting to push the same new revision concurrently; first writer should be successful,
+// subsequent writers should fail on CAS, and then identify that revision already exists on retry.
+func TestConcurrentPushSameNewRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	success, failure := int64(0), int64(0)
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := Body{"name": "Bob", "age": 52}
+			revId, doc, err := db.Put("doc1", body)
+			if err != nil {
+				assert.Equal(t, "409 Document exists", err.Error())
+				atomic.AddInt64(&failure, 1)
+			} else {
+				atomic.AddInt64(&success, 1)
+				assert.NotEmpty(t, revId)
+				assert.Equal(t, "Bob", doc._body["name"])
+				assert.Equal(t, 52, doc._body["age"])
+			}
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, int64(1), atomic.LoadInt64(&success))
+	assert.Equal(t, int64(4), atomic.LoadInt64(&failure))
+}
+
+// Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an
+// update to a non-winning branch that leaves the branch still non-winning (i.e. shorter) than the active branch
+func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	body := Body{"name": "Olivia", "age": 80}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "Adding revision 1-a")
+
+	body = Body{"name": "Harry", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-a")
+
+	body = Body{"name": "Amelia", "age": 20}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 3-a")
+
+	body = Body{"name": "Charlie", "age": 10}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 4-a")
+
+	body = Body{"name": "Noah", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-b")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := Body{"name": "Emily", "age": 20}
+			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+			assert.NoError(t, err, "Adding revision 3-b")
+		}()
+	}
+	wg.Wait()
+
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	assert.NoError(t, err, "Retrieve doc after adding 3-b")
+	assert.Equal(t, "4-a", doc.CurrentRev)
+}
+
+// Multiple clients are attempting to push the same tombstone of the winning revision for a branched document
+// * First writer should be successful, subsequent writers should fail on CAS, then identify rev already exists
+func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	body := Body{"name": "Olivia", "age": 80}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "Adding revision 1-a")
+
+	body = Body{"name": "Harry", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-a")
+
+	body = Body{"name": "Amelia", "age": 20}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 3-a")
+
+	body = Body{"name": "Noah", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-b")
+
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	assert.NoError(t, err, "Retrieve doc before tombstone")
+	assert.Equal(t, "3-a", doc.CurrentRev)
+
+	success, failure := int64(0), int64(0)
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := Body{"name": "Charlie", "age": 10, BodyDeleted: true}
+			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+			assert.NoError(t, err, "Adding revision 4-a (tombstone)")
+
+			if err != nil {
+				assert.Equal(t, "409 Document exists", err.Error())
+				atomic.AddInt64(&failure, 1)
+			} else {
+				atomic.AddInt64(&success, 1)
+			}
+		}()
+	}
+	wg.Wait()
+	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
+	assert.NoError(t, err, "Retrieve doc post-tombstone")
+	assert.Equal(t, "2-b", doc.CurrentRev)
+	assert.Equal(t, int64(5), atomic.LoadInt64(&success))
+	assert.Equal(t, int64(0), atomic.LoadInt64(&failure))
+}
+
+// Multiple clients are attempting to push conflicting non-winning revisions; multiple clients pushing different
+// updates to non-winning branches that leave the branch(es) non-winning.
+func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	body := Body{"name": "Olivia", "age": 80}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "Adding revision 1-a")
+
+	body = Body{"name": "Harry", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-a")
+
+	body = Body{"name": "Amelia", "age": 20}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 3-a")
+
+	body = Body{"name": "Charlie", "age": 10}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 4-a")
+
+	body = Body{"name": "Noah", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-b")
+
+	var wg sync.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			body := Body{"name": "Emily", "age": 20 + i}
+			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+			assert.NoError(t, err, "Adding revision 3-b")
+		}()
+	}
+	wg.Wait()
+
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	assert.NoError(t, err, "Retrieve doc after adding 3-b")
+	assert.Equal(t, "4-a", doc.CurrentRev)
 }
