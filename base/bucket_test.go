@@ -305,22 +305,15 @@ func TestGetViewQueryTimeout(t *testing.T) {
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 }
 
-func mockCertificatesAndKeys(t *testing.T) map[string]string {
+func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath string) {
+
 	certPath, err := ioutil.TempDir("", "certs")
 	require.NoError(t, err, "Temp directory should be created")
 
-	rootKeyPath := filepath.Join(certPath, "root.key")
-	rootCertPath := filepath.Join(certPath, "root.pem")
-	clientKeyPath := filepath.Join(certPath, "client.key")
-	clientCertPath := filepath.Join(certPath, "client.pem")
-
-	certPaths := map[string]string{
-		"rootKeyPath":    rootKeyPath,
-		"rootCertPath":   rootCertPath,
-		"clientKeyPath":  clientKeyPath,
-		"clientCertPath": clientCertPath,
-		"certPath":       certPath,
-	}
+	rootKeyPath = filepath.Join(certPath, "root.key")
+	rootCertPath = filepath.Join(certPath, "root.pem")
+	clientKeyPath = filepath.Join(certPath, "client.key")
+	clientCertPath = filepath.Join(certPath, "client.pem")
 
 	notBefore := time.Now().Add(time.Duration(-2) * time.Hour)
 	notAfter := time.Now().Add(time.Duration(2) * time.Hour)
@@ -330,7 +323,7 @@ func mockCertificatesAndKeys(t *testing.T) map[string]string {
 	assert.NoError(t, err, "Serial number should be generated")
 
 	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	assert.NoError(t, err, "Root key should be generated")
+	require.NoError(t, err, "Root key should be generated")
 	saveAsKeyFile(t, rootKeyPath, rootKey)
 
 	rootTemplate := x509.Certificate{
@@ -348,7 +341,7 @@ func mockCertificatesAndKeys(t *testing.T) map[string]string {
 	}
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, &rootTemplate, &rootTemplate, &rootKey.PublicKey, rootKey)
-	assert.NoError(t, err, "Root CA certificate should be generated")
+	require.NoError(t, err, "Root CA certificate should be generated")
 	saveAsCertFile(t, rootCertPath, certBytes)
 
 	clientTemplate := x509.Certificate{
@@ -368,10 +361,15 @@ func mockCertificatesAndKeys(t *testing.T) map[string]string {
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	saveAsKeyFile(t, clientKeyPath, clientKey)
 	certBytes, err = x509.CreateCertificate(rand.Reader, &clientTemplate, &rootTemplate, &clientKey.PublicKey, rootKey)
-	assert.NoError(t, err, "Client certificate should be generated")
+	require.NoError(t, err, "Client certificate should be generated")
 	saveAsCertFile(t, clientCertPath, certBytes)
 
-	return certPaths
+	require.True(t, fileExists(rootKeyPath), "File %v should exists", rootKeyPath)
+	require.True(t, fileExists(rootCertPath), "File %v should exists", rootCertPath)
+	require.True(t, fileExists(clientKeyPath), "File %v should exists", clientKeyPath)
+	require.True(t, fileExists(clientCertPath), "File %v should exists", clientCertPath)
+
+	return
 }
 
 func saveAsKeyFile(t *testing.T, filename string, key *ecdsa.PrivateKey) {
@@ -411,18 +409,9 @@ func dirExists(filename string) bool {
 
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
-	certPaths := mockCertificatesAndKeys(t)
-	certPath := certPaths["certPath"]
-	rootKeyPath := certPaths["rootKeyPath"]
-	rootCertPath := certPaths["rootCertPath"]
-	clientKeyPath := certPaths["clientKeyPath"]
-	clientCertPath := certPaths["clientCertPath"]
-	log.Printf("certPaths: %s", certPaths)
-
-	require.True(t, fileExists(rootKeyPath), "File %v should exists", rootKeyPath)
-	require.True(t, fileExists(rootCertPath), "File %v should exists", rootCertPath)
-	require.True(t, fileExists(clientKeyPath), "File %v should exists", clientKeyPath)
-	require.True(t, fileExists(clientCertPath), "File %v should exists", clientCertPath)
+	certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
+	log.Printf("certPath: %v\nclientCertPath: %v\nclientKeyPath: %v\nrootCertPath: %v\nrootKeyPath: %v", certPath,
+		clientCertPath, clientKeyPath, rootCertPath, rootKeyPath)
 
 	// Remove the keys and certificates after verification
 	defer func() {
