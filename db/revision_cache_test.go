@@ -3,7 +3,6 @@ package db
 import (
 	"expvar"
 	"fmt"
-	"log"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -26,7 +25,6 @@ type testBackingStore struct {
 func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 	t.getDocumentCounter.Add(1)
 
-	log.Printf("Get Document")
 	for _, d := range t.notFoundDocIDs {
 		if docid == d {
 			return nil, base.HTTPErrorf(404, "missing")
@@ -49,7 +47,6 @@ func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnma
 func (t *testBackingStore) getRevision(doc *Document, revid string) ([]byte, error) {
 	t.getRevisionCounter.Add(1)
 
-	log.Printf("Get Revision")
 	b := Body{
 		"testing":     true,
 		BodyId:        doc.ID,
@@ -434,14 +431,14 @@ func TestConcurrentLoad(t *testing.T) {
 }
 
 func BenchmarkRevisionCacheRead(b *testing.B) {
+	defer base.SetUpBenchmarkLogging(base.LevelDebug, base.KeyAll)()
 
 	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
 	cache := NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	// trigger load into cache
 	for i := 0; i < 5000; i++ {
-		_, err := cache.Get(fmt.Sprintf("doc%d", i), "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
-		assert.NoError(b, err, "Error initializing cache for BenchmarkRevisionCacheRead")
+		_, _ = cache.Get(fmt.Sprintf("doc%d", i), "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 	}
 
 	b.ResetTimer()
@@ -449,10 +446,7 @@ func BenchmarkRevisionCacheRead(b *testing.B) {
 		//GET the document until test run has completed
 		for pb.Next() {
 			docId := fmt.Sprintf("doc%d", rand.Intn(5000))
-			docrev, err := cache.Get(docId, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
-			if err != nil {
-				assert.Fail(b, "Unexpected error for docrev:%+v", docrev)
-			}
+			_, _ = cache.Get(docId, "1-abc", RevCacheOmitBody, RevCacheOmitDelta)
 		}
 	})
 }

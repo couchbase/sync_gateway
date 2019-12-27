@@ -69,7 +69,6 @@ type changeCacheStats struct {
 	highSeqFeed   uint64
 	pendingSeqLen int
 	maxPending    int
-	highSeqStable uint64
 }
 
 func (c *changeCache) updateStats() {
@@ -79,7 +78,7 @@ func (c *changeCache) updateStats() {
 	base.SetIfMax(c.context.DbStats.StatsDatabase(), base.StatKeyHighSeqFeed, int64(c.internalStats.highSeqFeed))
 	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(c.internalStats.pendingSeqLen))
 	base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(c.internalStats.maxPending))
-	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c.internalStats.highSeqStable))
+	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
 
 	c.lock.Unlock()
 }
@@ -357,8 +356,6 @@ func (c *changeCache) CleanSkippedSequenceQueue(ctx context.Context) error {
 	// Purge sequences not found from the skipped sequence queue
 	numRemoved := c.RemoveSkippedSequences(ctx, pendingRemovals)
 	c.context.DbStats.StatsCache().Add(base.StatKeyAbandonedSeqs, numRemoved)
-
-	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c.getMaxStableCached()))
 
 	base.InfofCtx(ctx, base.KeyCache, "CleanSkippedSequenceQueue complete.  Found:%d, Not Found:%d for database %s.", len(foundEntries), len(pendingRemovals), base.MD(c.context.Name))
 	return nil
@@ -752,8 +749,6 @@ func (c *changeCache) _addToCache(change *LogEntry) []string {
 		base.Debugf(base.KeyDCP, " #%d ==> channels %v", change.Sequence, base.UD(updatedChannels))
 	}
 
-	c.internalStats.highSeqStable = c._getMaxStableCached()
-
 	if !change.TimeReceived.IsZero() {
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
 		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
@@ -783,7 +778,7 @@ func (c *changeCache) _addPendingLogs() base.Set {
 		}
 	}
 
-	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(len(c.pendingLogs)))
+	c.internalStats.pendingSeqLen = len(c.pendingLogs)
 
 	atomic.StoreInt64(&c.lastAddPendingTime, time.Now().UnixNano())
 	return changedChannels

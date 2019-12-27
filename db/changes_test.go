@@ -288,6 +288,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 // Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
 func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
+	defer base.SetUpBenchmarkLogging(base.LevelWarn, base.KeyHTTP)()
 
 	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()

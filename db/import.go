@@ -403,7 +403,7 @@ type jsImportFilterRunner struct {
 func newImportFilterRunner(funcSource string) (sgbucket.JSServerTask, error) {
 	importFilterRunner := &jsEventTask{}
 	err := importFilterRunner.InitWithLogging(funcSource,
-		func(s string) { base.Errorf("Import %s", base.UD(s)) },
+		func(s string) { base.Errorf(base.KeyJavascript.String()+": Import %s", base.UD(s)) },
 		func(s string) { base.Infof(base.KeyJavascript, "Import %s", base.UD(s)) })
 	if err != nil {
 		return nil, err

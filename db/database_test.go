@@ -1626,15 +1626,12 @@ func BenchmarkDatabase(b *testing.B) {
 func BenchmarkPut(b *testing.B) {
 	defer base.DisableTestLogging()()
 
-	bucket, err := ConnectToBucket(base.BucketSpec{
+	bucket, _ := ConnectToBucket(base.BucketSpec{
 		Server:          base.UnitTestUrl(),
 		CouchbaseDriver: base.ChooseCouchbaseDriver(base.DataBucket),
 		BucketName:      "Bucket"})
-	assert.NoError(b, err)
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(b, err)
-	db, err := CreateDatabase(context)
-	assert.NoError(b, err)
+	context, _ := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	db, _ := CreateDatabase(context)
 
 	body := Body{"key1": "value1", "key2": 1234}
 	b.ResetTimer()

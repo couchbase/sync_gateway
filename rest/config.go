@@ -824,7 +824,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
 	defaultLogFilePathFlag := flagSet.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
-	flagSet.Parse(args[1:])
+	_ = flagSet.Parse(args[1:])
 	var config *ServerConfig
 	var err error
 
@@ -1007,7 +1007,7 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
-	SetMaxFileDescriptors(config.MaxFileDescriptors)
+	_ = SetMaxFileDescriptors(config.MaxFileDescriptors)
 
 	// Use the stdlib JSON package, if configured to do so
 	if config.Unsupported != nil && config.Unsupported.UseStdlibJSON != nil && *config.Unsupported.UseStdlibJSON {

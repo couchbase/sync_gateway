@@ -196,10 +196,8 @@ pipeline {
                                     script {
                                         env.ERRCHECK_COUNT = readFile 'errcheck.count'
                                     }
-                                    // TODO: Remove in CBG-492
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'SUCCESS')
-//                                     githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-//                                     unstable("errcheck failed")
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                    unstable("errcheck failed")
                                 }
                             }
                         }
@@ -362,7 +360,7 @@ pipeline {
             steps{
                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]){
                     warnError(message: "one or more benchmarks failed") {
-                        sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -v ${SGW_REPO}/... | tee benchmark.out"
+                        sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -benchtime 0.1s -v ${SGW_REPO}/... | tee benchmark.out"
                     }
                 }
             }

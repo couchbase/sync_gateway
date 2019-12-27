@@ -598,6 +598,10 @@ func (db *Database) User() auth.User {
 	return db.user
 }
 
+func (db *Database) SetUser(user auth.User) {
+	db.user = user
+}
+
 // Reloads the database's User object, in case its persistent properties have been changed.
 func (db *Database) ReloadUser() error {
 	if db.user == nil {

@@ -48,6 +48,7 @@ type BlipTesterReplicator struct {
 }
 
 func (btr *BlipTesterReplicator) Close() {
+	btr.bt.Close()
 	btr.messagesLock.Lock()
 	btr.messages = make(map[blip.MessageNumber]*blip.Message, 0)
 	btr.messagesLock.Unlock()
@@ -646,6 +647,19 @@ func (btr *BlipTesterReplicator) GetMessage(serialNumber blip.MessageNumber) (ms
 	}
 
 	return nil, false
+}
+
+// GetMessages returns a copy of all messages stored in the Client keyed by serial number
+func (btr *BlipTesterReplicator) GetMessages() map[blip.MessageNumber]blip.Message {
+	btr.messagesLock.RLock()
+	defer btr.messagesLock.RUnlock()
+
+	messages := make(map[blip.MessageNumber]blip.Message, len(btr.messages))
+	for k, v := range btr.messages {
+		messages[k] = *v
+	}
+
+	return messages
 }
 
 // WaitForMessage blocks until the given message serial number has been stored by the replicator, and returns the message when found.

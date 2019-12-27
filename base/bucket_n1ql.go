@@ -91,8 +91,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 func (bucket *CouchbaseBucketGoCB) ExplainQuery(statement string, params interface{}) (plan map[string]interface{}, err error) {
 	explainStatement := fmt.Sprintf("EXPLAIN %s", statement)
-
-	explainResults, explainErr := bucket.Query(explainStatement, params, gocb.RequestPlus, false)
+	explainResults, explainErr := bucket.Query(explainStatement, params, gocb.RequestPlus, true)
 
 	if explainErr != nil {
 		return nil, explainErr

@@ -108,7 +108,7 @@ func GetBucketCommon(bucketType CouchbaseBucketType, tester testing.TB) TestBuck
 		case true:
 			// Empty it
 			if err := tbm.RecreateOrEmptyBucket(); err != nil {
-				panic(fmt.Sprintf("Error trying to empty bucket.  Spec: %+v.  err: %v", spec, err))
+				tester.Fatalf("Error trying to empty bucket.  Spec: %+v.  err: %v", spec, err)
 
 			}
 		case false:

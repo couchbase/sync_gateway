@@ -9,6 +9,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Validate stats for view query
@@ -22,12 +23,18 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	_, _, err := db.Put("queryTestDoc1", Body{"channels": []string{"ABC"}})
-	assert.NoError(t, err, "Put queryDoc1")
-	_, _, err = db.Put("queryTestDoc2", Body{"channels": []string{"ABC"}})
-	assert.NoError(t, err, "Put queryDoc2")
-	_, _, err = db.Put("queryTestDoc3", Body{"channels": []string{"ABC"}})
-	assert.NoError(t, err, "Put queryDoc3")
+	// docID -> Sequence
+	docSeqMap := make(map[string]uint64, 3)
+
+	_, doc, err := db.Put("queryTestDoc1", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc1")
+	docSeqMap["queryTestDoc1"] = doc.Sequence
+	_, doc, err = db.Put("queryTestDoc2", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc2")
+	docSeqMap["queryTestDoc2"] = doc.Sequence
+	_, doc, err = db.Put("queryTestDoc3", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc3")
+	docSeqMap["queryTestDoc3"] = doc.Sequence
 
 	// Check expvar prior to test
 	queryCountExpvar := fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
@@ -39,7 +46,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels("ABC", 0, 10, 100)
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -68,12 +75,18 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	_, _, err := db.Put("queryTestDoc1", Body{"channels": []string{"ABC"}})
-	assert.NoError(t, err, "Put queryDoc1")
-	_, _, err = db.Put("queryTestDoc2", Body{"channels": []string{"ABC"}})
-	assert.NoError(t, err, "Put queryDoc2")
-	_, _, err = db.Put("queryTestDoc3", Body{"channels": []string{"ABC"}})
-	assert.NoError(t, err, "Put queryDoc3")
+	// docID -> Sequence
+	docSeqMap := make(map[string]uint64, 3)
+
+	_, doc, err := db.Put("queryTestDoc1", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc1")
+	docSeqMap["queryTestDoc1"] = doc.Sequence
+	_, doc, err = db.Put("queryTestDoc2", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc2")
+	docSeqMap["queryTestDoc2"] = doc.Sequence
+	_, doc, err = db.Put("queryTestDoc3", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc3")
+	docSeqMap["queryTestDoc3"] = doc.Sequence
 
 	// Check expvar prior to test
 	queryCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, QueryTypeChannels)
@@ -85,7 +98,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels("ABC", 0, 10, 100)
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -110,11 +123,15 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
+	// docID -> Sequence
+	docSeqMap := make(map[string]uint64, 20)
+
 	// Add docs without channel assignment (will only be assigned to the star channel)
 	for i := 1; i <= 10; i++ {
-		//_, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"channels": []string{"ABC"}})
-		_, _, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"nochannels": true})
+		docID := fmt.Sprintf("queryTestDoc%d", i)
+		_, doc, err := db.Put(docID, Body{"nochannels": true})
 		assert.NoError(t, err, "Put queryDoc")
+		docSeqMap[docID] = doc.Sequence
 	}
 
 	// Check expvar prior to test
@@ -125,21 +142,24 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
-	results, queryErr := db.QuerySequences([]uint64{3, 4, 6, 8})
+	results, queryErr := db.QuerySequences([]uint64{
+		docSeqMap["queryTestDoc3"], docSeqMap["queryTestDoc4"],
+		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
+	})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 4)
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
-	results, queryErr = db.QuerySequences([]uint64{2})
+	results, queryErr = db.QuerySequences([]uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 1)
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with key outside keyset range
-	results, queryErr = db.QuerySequences([]uint64{25})
+	results, queryErr = db.QuerySequences([]uint64{100})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 0)
 	closeErr = results.Close()
@@ -157,18 +177,24 @@ func TestQuerySequencesStatsView(t *testing.T) {
 
 	// Add some docs in different channels, to validate query handling when non-star channel docs are present
 	for i := 1; i <= 10; i++ {
-		_, _, err := db.Put(fmt.Sprintf("queryTestDocChanneled%d", i), Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
-		assert.NoError(t, err, "Put queryDoc")
+		docID := fmt.Sprintf("queryTestDocChanneled%d", i)
+		_, doc, err := db.Put(docID, Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
+		require.NoError(t, err, "Put queryDoc")
+		docSeqMap[docID] = doc.Sequence
 	}
 	// Issue channels query
-	results, queryErr = db.QuerySequences([]uint64{3, 4, 6, 8, 15})
+	results, queryErr = db.QuerySequences([]uint64{
+		docSeqMap["queryTestDoc3"], docSeqMap["queryTestDoc4"],
+		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
+		docSeqMap["queryTestDocChanneled5"],
+	})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 5)
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
-	results, queryErr = db.QuerySequences([]uint64{2})
+	results, queryErr = db.QuerySequences([]uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 1)
 	closeErr = results.Close()
@@ -176,7 +202,7 @@ func TestQuerySequencesStatsView(t *testing.T) {
 
 	// Issue query with key outside sequence range.  Note that this isn't outside the entire view key range, as
 	// [*, 25] is sorted before ["ABC1", 11]
-	results, queryErr = db.QuerySequences([]uint64{25})
+	results, queryErr = db.QuerySequences([]uint64{100})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 0)
 	closeErr = results.Close()
@@ -194,15 +220,18 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
+	// docID -> Sequence
+	docSeqMap := make(map[string]uint64, 20)
+
 	// Add docs without channel assignment (will only be assigned to the star channel)
 	for i := 1; i <= 10; i++ {
-		//_, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"channels": []string{"ABC"}})
-		_, _, err := db.Put(fmt.Sprintf("queryTestDoc%d", i), Body{"nochannels": true})
-		assert.NoError(t, err, "Put queryDoc")
+		docID := fmt.Sprintf("queryTestDoc%d", i)
+		_, doc, err := db.Put(docID, Body{"nochannels": true})
+		require.NoError(t, err, "Put queryDoc")
+		docSeqMap[docID] = doc.Sequence
 	}
 
 	// Check expvar prior to test
-
 	queryCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, QueryTypeSequences)
 	errorCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryErrorCountExpvarFormat, QueryTypeSequences)
 
@@ -210,21 +239,24 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
-	results, queryErr := db.QuerySequences([]uint64{3, 4, 6, 8})
+	results, queryErr := db.QuerySequences([]uint64{
+		docSeqMap["queryTestDoc3"], docSeqMap["queryTestDoc4"],
+		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
+	})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 4)
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
-	results, queryErr = db.QuerySequences([]uint64{2})
+	results, queryErr = db.QuerySequences([]uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 1)
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with key outside keyset range
-	results, queryErr = db.QuerySequences([]uint64{25})
+	results, queryErr = db.QuerySequences([]uint64{100})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 0)
 	closeErr = results.Close()
@@ -242,18 +274,25 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 	// Add some docs in different channels, to validate query handling when non-star channel docs are present
 	for i := 1; i <= 10; i++ {
-		_, _, err := db.Put(fmt.Sprintf("queryTestDocChanneled%d", i), Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
-		assert.NoError(t, err, "Put queryDoc")
+		docID := fmt.Sprintf("queryTestDocChanneled%d", i)
+		_, doc, err := db.Put(docID, Body{"channels": []string{fmt.Sprintf("ABC%d", i)}})
+		require.NoError(t, err, "Put queryDoc")
+		docSeqMap[docID] = doc.Sequence
 	}
+
 	// Issue channels query
-	results, queryErr = db.QuerySequences([]uint64{3, 4, 6, 8, 15})
+	results, queryErr = db.QuerySequences([]uint64{
+		docSeqMap["queryTestDoc3"], docSeqMap["queryTestDoc4"],
+		docSeqMap["queryTestDoc6"], docSeqMap["queryTestDoc8"],
+		docSeqMap["queryTestDocChanneled5"],
+	})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 5)
 	closeErr = results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
 	// Issue query with single key
-	results, queryErr = db.QuerySequences([]uint64{2})
+	results, queryErr = db.QuerySequences([]uint64{docSeqMap["queryTestDoc2"]})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 1)
 	closeErr = results.Close()
@@ -261,7 +300,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 	// Issue query with key outside sequence range.  Note that this isn't outside the entire view key range, as
 	// [*, 25] is sorted before ["ABC1", 11]
-	results, queryErr = db.QuerySequences([]uint64{25})
+	results, queryErr = db.QuerySequences([]uint64{100})
 	assert.NoError(t, queryErr, "Query error")
 	goassert.Equals(t, countQueryResults(results), 0)
 	closeErr = results.Close()

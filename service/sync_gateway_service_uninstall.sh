@@ -126,7 +126,7 @@ RedHat* | CentOS | OracleServer)
       rm /etc/init/${SERVICE_NAME}.conf
     fi
     ;;
-  7)
+  7 | 8)
     systemctl stop ${SERVICE_NAME}
     systemctl disable ${SERVICE_NAME}
 
