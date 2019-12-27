@@ -8,7 +8,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"io/ioutil"
-	"log"
 	"math"
 	"math/big"
 	"os"
@@ -306,7 +305,6 @@ func TestGetViewQueryTimeout(t *testing.T) {
 }
 
 func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath string) {
-
 	certPath, err := ioutil.TempDir("", "certs")
 	require.NoError(t, err, "Temp directory should be created")
 
@@ -369,7 +367,7 @@ func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyP
 	require.True(t, fileExists(clientKeyPath), "File %v should exists", clientKeyPath)
 	require.True(t, fileExists(clientCertPath), "File %v should exists", clientCertPath)
 
-	return
+	return certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath
 }
 
 func saveAsKeyFile(t *testing.T, filename string, key *ecdsa.PrivateKey) {
@@ -410,8 +408,6 @@ func dirExists(filename string) bool {
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
 	certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
-	log.Printf("certPath: %v\nclientCertPath: %v\nclientKeyPath: %v\nrootCertPath: %v\nrootKeyPath: %v", certPath,
-		clientCertPath, clientKeyPath, rootCertPath, rootKeyPath)
 
 	// Remove the keys and certificates after verification
 	defer func() {
