@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/couchbase/go-couchbase"
@@ -171,6 +172,9 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, limit)
 	}
 	changeCacheExpvars.Add("view_queries", 1)
+	if sorted := sort.SliceIsSorted(entries, func (i, j int) bool { return entries[i].Sequence < entries[j].Sequence}); !sorted {
+		base.Errorf(base.KeyCache, "Query result for channel %s is not sorted!", channelName)
+	}
 	return entries, nil
 }
 

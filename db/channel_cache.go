@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -141,7 +142,10 @@ type ChannelCacheOptions struct {
 // Low-level method to add a LogEntry to a single channel's cache.
 func (c *channelCache) addToCache(change *LogEntry, isRemoval bool) {
 	c.lock.Lock()
-	defer c.lock.Unlock()
+	defer func() {
+		c.assertChannelCacheSorted()
+		c.lock.Unlock()
+	}()
 
 	if c.wouldBeImmediatelyPruned(change) {
 		base.Infof(base.KeyCache, "Not adding change #%d ==> channel %q, since it will be immediately pruned", change.Sequence, base.UD(c.channelName))
@@ -181,7 +185,10 @@ func (c *channelCache) Remove(docIDs []string, startTime time.Time) (count int) 
 	}
 
 	c.lock.Lock()
-	defer c.lock.Unlock()
+	defer func() {
+		c.assertChannelCacheSorted()
+		c.lock.Unlock()
+	}()
 
 	// Build subset of docIDs that we know are present in the cache
 	foundDocs := make(map[string]struct{}, 0)
@@ -249,7 +256,10 @@ func (c *channelCache) _pruneCache() {
 func (c *channelCache) pruneCache() {
 	c.lock.Lock()
 	c._pruneCache()
-	c.lock.Unlock()
+	defer func() {
+		c.assertChannelCacheSorted()
+		c.lock.Unlock()
+	}()
 }
 
 // Returns all of the cached entries for sequences greater than 'since' in the given channel.
@@ -482,7 +492,10 @@ func (c *channelCache) insertChange(log *LogEntries, change *LogEntry) {
 // Returns the number of entries actually prepended.
 func (c *channelCache) prependChanges(changes LogEntries, changesValidFrom uint64, changesValidTo uint64) int {
 	c.lock.Lock()
-	defer c.lock.Unlock()
+	defer func() {
+		c.assertChannelCacheSorted()
+		c.lock.Unlock()
+	}()
 
 	// If set of changes to prepend is empty, check whether validFrom should be updated
 	if len(changes) == 0 {
@@ -647,6 +660,14 @@ func (c *channelCache) GetLateSequencesSince(sinceSequence uint64) (entries []*L
 
 	return entries, lastSequence, nil
 
+}
+
+func (c *channelCache) assertChannelCacheSorted() {
+	if len(c.logs) != 0 {
+		if sorted := sort.SliceIsSorted(c.logs, func(i, j int) bool { return c.logs[i].Sequence < c.logs[j].Sequence }); !sorted {
+			base.Errorf(base.KeyCache, "Channel %s is not sorted! -- at %s", c.channelName, base.GetCallersName(1))
+		}
+	}
 }
 
 // Called on first call to the channel during changes processing, to get starting point for
