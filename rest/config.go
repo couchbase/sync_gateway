@@ -1023,9 +1023,28 @@ func RunServer(config *ServerConfig) {
 	}
 
 	sc := NewServerContext(config)
-	for _, dbConfig := range config.Databases {
+	uuids := make(map[string][]string)
+
+	for dbName, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf("Error opening database %s: %+v", base.MD(dbConfig.Name), err)
+			base.Fatalf("Error opening database %s: %+v", base.MD(dbName), err)
+		}
+		dbContext, err := sc.GetDatabase(dbName)
+		if err != nil {
+			base.Warnf("Error getting database context %s: %+v", base.MD(dbName), err)
+		}
+		if !dbContext.BucketSpec.IsWalrusBucket() {
+			uuid, err := dbContext.Bucket.UUID()
+			if err != nil {
+				base.Warnf("Error getting Bucket UUID %s: %+v", base.MD(dbName), err)
+			}
+			if value := uuids[uuid]; value != nil {
+				base.Warnf("Caution: Duplicate buckets detected in configuration; database %v shares the same bucket("+
+					"uuid: %v) with %v", dbName, uuid, uuids[uuid])
+				uuids[uuid] = append(uuids[uuid], dbName)
+			} else {
+				uuids[uuid] = []string{dbName}
+			}
 		}
 	}
 
