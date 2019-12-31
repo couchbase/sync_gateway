@@ -1031,7 +1031,7 @@ func RunServer(config *ServerConfig) {
 		}
 		dbContext, err := sc.GetDatabase(dbName)
 		if err != nil {
-			base.Warnf("Error getting database context %s: %+v", base.MD(dbName), err)
+			base.Fatalf("Error getting database context %s: %+v", base.MD(dbName), err)
 		}
 		if !dbContext.BucketSpec.IsWalrusBucket() {
 			uuid, err := dbContext.Bucket.UUID()
