@@ -12,7 +12,7 @@ package base
 import (
 	"bytes"
 	"fmt"
-	"github.com/stretchr/testify/require"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
@@ -22,6 +22,7 @@ import (
 	"github.com/couchbase/goutils/logging"
 	"github.com/natefinch/lumberjack"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // asserts that the logs produced by function f contain string s.
@@ -126,19 +127,13 @@ func BenchmarkLogRotation(b *testing.B) {
 
 	for _, test := range tests {
 		b.Run(fmt.Sprintf("rotate:%t-compress:%t-bytes:%v", test.rotate, test.compress, test.numBytes), func(bm *testing.B) {
-			logPath := filepath.Join(os.TempDir(), "benchmark-logrotate")
-			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
-
-			defer func() {
-				require.NoError(b, logger.Close())
-				require.NoError(b, os.RemoveAll(logPath))
-			}()
-
 			data := make([]byte, test.numBytes)
 			_, err := rand.Read(data)
-			if err != nil {
-				bm.Error(err)
-			}
+			require.NoError(bm, err)
+
+			logPath, err := ioutil.TempDir("", "benchmark-logrotate")
+			require.NoError(bm, err)
+			logger := lumberjack.Logger{Filename: filepath.Join(logPath, "output.log"), Compress: test.compress}
 
 			bm.ResetTimer()
 			for i := 0; i < bm.N; i++ {
@@ -147,6 +142,19 @@ func BenchmarkLogRotation(b *testing.B) {
 					_ = logger.Rotate()
 				}
 			}
+			bm.StopTimer()
+
+			// Tidy up temp log files in a retry loop because
+			// we can't remove temp dir while the async compression is still writing log files
+			assert.NoError(bm, logger.Close())
+			err, _ = RetryLoop("benchmark-logrotate-teardown",
+				func() (shouldRetry bool, err error, value interface{}) {
+					err = os.RemoveAll(logPath)
+					return err != nil, err, nil
+				},
+				CreateDoublingSleeperFunc(3, 250),
+			)
+			assert.NoError(bm, err)
 		})
 	}
 
