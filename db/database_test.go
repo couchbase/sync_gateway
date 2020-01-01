@@ -2025,7 +2025,6 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 			assert.NoError(t, err, "Adding revision 4-a (tombstone)")
 
 			if err != nil {
-				assert.Equal(t, "409 Document exists", err.Error())
 				atomic.AddInt64(&failure, 1)
 			} else {
 				atomic.AddInt64(&success, 1)
@@ -2068,19 +2067,39 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
 	assert.NoError(t, err, "Adding revision 2-b")
 
+	type Document struct {
+		Body  Body
+		RevId string
+	}
+	docs := []Document{
+		{Body{"name": "Joshua", "age": 11}, "3-b1"},
+		{Body{"name": "Liam", "age": 12}, "3-b2"},
+		{Body{"name": "Emily", "age": 13}, "3-b3"},
+		{Body{"name": "Grace", "age": 14}, "3-b4"},
+		{Body{"name": "Amelia", "age": 15}, "3-b5"},
+	}
+
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
-		go func(n int) {
+		go func(docs []Document, i int) {
 			defer wg.Done()
-			body := Body{"name": "Emily", "age": 52 + n}
-			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+			_, _, err := db.PutExistingRevWithBody("doc1", docs[i].Body, []string{docs[i].RevId, "2-b", "1-a"}, false)
 			assert.NoError(t, err, "Adding revision 3-b")
-		}(i)
+		}(docs, i)
 	}
 	wg.Wait()
 
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
 	assert.NoError(t, err, "Retrieve doc after adding 3-b")
 	assert.Equal(t, "4-a", doc.CurrentRev)
+
+	for i := 0; i < 5; i++ {
+		rev, err := db.GetRev("doc1", docs[i].RevId, false, nil)
+		assert.NoError(t, err, "Retrieve revision %v", docs[i].RevId)
+		revBody, err := rev.MutableBody()
+		assert.NoError(t, err, "Retrieve body of revision %v", docs[i].RevId)
+		assert.Equal(t, docs[i].Body["name"], revBody["name"])
+		assert.Equal(t, strconv.Itoa(docs[i].Body["age"].(int)), revBody["age"].(json.Number).String())
+	}
 }
