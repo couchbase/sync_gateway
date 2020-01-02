@@ -17,6 +17,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/couchbase/goutils/logging"
@@ -251,6 +252,42 @@ func TestLogColor(t *testing.T) {
 	assert.Equal(t, "Format", color("Format", LevelError))
 	assert.Equal(t, "Format", color("Format", LevelTrace))
 	assert.Equal(t, "Format", color("Format", LevelNone))
+}
+
+func BenchmarkLogColorEnabled(b *testing.B) {
+	if runtime.GOOS == "windows" {
+		b.Skipf("color not supported in Windows")
+	}
+
+	b.Run("enabled", func(b *testing.B) {
+		consoleLogger.ColorEnabled = true
+		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = colorEnabled()
+		}
+	})
+
+	b.Run("disabled console color", func(b *testing.B) {
+		consoleLogger.ColorEnabled = false
+		require.NoError(b, os.Setenv("TERM", "xterm-256color"))
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = colorEnabled()
+		}
+	})
+
+	b.Run("disabled term color", func(b *testing.B) {
+		consoleLogger.ColorEnabled = true
+		require.NoError(b, os.Setenv("TERM", "dumb"))
+
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = colorEnabled()
+		}
+	})
 }
 
 func TestMarshalTextError(t *testing.T) {
