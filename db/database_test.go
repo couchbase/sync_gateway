@@ -1568,7 +1568,7 @@ func TestViewCustom(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	// add some docs
-	docId := base.CreateRandomHex()
+	docId := base.GenerateRandomID()
 	_, _, err := db.Put(docId, Body{"val": "one"})
 	if err != nil {
 		log.Printf("error putting doc: %v", err)

@@ -91,7 +91,7 @@ func (r *Replicator) StopReplications() error {
 func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParameters) (*Task, error) {
 	// Generate ID if blank for the new replication
 	if parameters.ReplicationId == "" {
-		parameters.ReplicationId = CreateRandomHex()
+		parameters.ReplicationId = GenerateRandomID()
 	}
 
 	parameters.LogFn = sgreplicateLogFn
