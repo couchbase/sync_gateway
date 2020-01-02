@@ -74,12 +74,17 @@ func GenerateRandomID() string {
 
 // randCryptoHex returns a cryptographically-secure random number of length sizeBits encoded as a hex string.
 func randCryptoHex(sizeBits int) (string, error) {
-	sizeBytes := sizeBits / 8
-	b := make([]byte, sizeBytes)
-	n, err := rand.Read(b)
-	if n < sizeBytes || err != nil {
+	if sizeBits%8 != 0 {
+		return "", fmt.Errorf("randCryptoHex sizeBits must be a multiple of 8: %d", sizeBits)
+	}
+
+	b := make([]byte, sizeBits/8)
+
+	_, err := rand.Read(b)
+	if err != nil {
 		return "", err
 	}
+
 	return fmt.Sprintf("%x", b), nil
 }
 
