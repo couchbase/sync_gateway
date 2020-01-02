@@ -4461,7 +4461,7 @@ func Benchmark_RestApiPutDocPerformanceDefaultSyncFunc(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		//PUT a new document until test run has completed
 		for pb.Next() {
-			prt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateUUID()), threekdoc)
+			prt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateRandomHex()), threekdoc)
 		}
 	})
 }
@@ -4479,7 +4479,7 @@ func Benchmark_RestApiPutDocPerformanceExplicitSyncFunc(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		//PUT a new document until test run has completed
 		for pb.Next() {
-			qrt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateUUID()), threekdoc)
+			qrt.SendRequest("PUT", fmt.Sprintf("/db/doc-%v", base.CreateRandomHex()), threekdoc)
 		}
 	})
 }

@@ -1561,7 +1561,7 @@ func (db *Database) Post(body Body) (string, string, *Document, error) {
 	// If there's an incoming _id property, use that as the doc ID.
 	docid, idFound := body[BodyId].(string)
 	if !idFound {
-		docid = base.CreateUUID()
+		docid = base.CreateRandomHex()
 	}
 
 	rev, doc, err := db.Put(docid, body)
