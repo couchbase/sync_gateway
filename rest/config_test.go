@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -798,4 +799,57 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	guest := db1.Users["GUEST"]
 	assert.False(t, guest.Disabled)
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
+}
+
+// This both test uses test_data_bucket, and test_indexbucket buckets; these buckets should be available
+// on Couchbase server instance before running this test.
+func TestValidateAndAddDBFromConfig(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("ValidateAndAddDBFromConfig test require Couchbase Bucket")
+	}
+	tmpDir, err := ioutil.TempDir("", "sync_gateway")
+	require.NoError(t, err, "Error whilst creating temporary directory")
+	configFile, err := ioutil.TempFile(tmpDir, "duplicate.bucket.conf")
+	require.NoError(t, err, "Error whilst creating temporary config file")
+
+	content := `{"logging":{"console":{"log_keys":["*"]}},"databases":{"db1":{"server":"couchbase://localhost",
+		"username":"Administrator","password":"password","bucket":"test_data_bucket","users":{"GUEST":{"disabled":false,
+		"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20,"num_index_replicas":0},"db2":{"server":
+		"couchbase://localhost","username":"Administrator","password":"password","bucket":"test_data_bucket","users":{
+		"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20,
+		"num_index_replicas":0},"db3":{"server":"couchbase://localhost","username":"Administrator","password":
+		"password","bucket":"test_indexbucket","users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},
+		"allow_conflicts":false,"revs_limit":20,"num_index_replicas":0}}}`
+
+	_, err = configFile.Write([]byte(content))
+	require.NoError(t, err, "Error whilst writing to temporary config file")
+	require.NoError(t, configFile.Close())
+
+	defer func() {
+		err := os.Remove(configFile.Name())
+		assert.NoError(t, err)
+	}()
+
+	args := []string{"sync_gateway", configFile.Name()}
+	config, err = ParseCommandLine(args, flag.ExitOnError)
+	require.NoError(t, err, "Error whilst parsing commandline options")
+
+	_, err = config.SetupAndValidateLogging()
+	require.NoError(t, err, "Error whilst setting up logging")
+
+	var errors = make([]error, 0)
+	errors = append(errors, config.validate()...)
+	errors = append(errors, config.setupAndValidateDatabases()...)
+	require.Equal(t, 0, len(errors), "Error whilst validating databases")
+
+	sc := NewServerContext(config)
+	warnings := validateAndAddDBFromConfig(sc, config.Databases)
+	warningFormat := "Database %q shares bucket %q with databases %s. " +
+		"This may result in unexpected behaviour if security is not defined consistently."
+	warningsExpected := []string{
+		fmt.Sprintf(warningFormat, "db1", "test_data_bucket", "[ db2 ]"),
+		fmt.Sprintf(warningFormat, "db2", "test_data_bucket", "[ db1 ]"),
+	}
+	assert.Equal(t, 1, len(warnings), "One and only one warning should be available for this config")
+	assert.Contains(t, warningsExpected, warnings[0])
 }
