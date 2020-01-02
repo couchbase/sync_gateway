@@ -2625,3 +2625,36 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, `{}`, string(rev))
 }
+
+// Test that exercises Sync Gateway's norev handler
+func TestBlipNorev(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	norevMsg := NewNoRevMessage()
+	norevMsg.setId("docid")
+	norevMsg.setRev("1-a")
+	norevMsg.setError("norev error")
+	norevMsg.setReason("norev reason")
+
+	// Couchbase Lite always sends noreply=true for norev messages
+	// but set to false so we can block waiting for a reply
+	norevMsg.SetNoReply(false)
+
+	// Request that the handler used to process the message is sent back in the response
+	norevMsg.Properties[sgShowHandler] = "true"
+
+	assert.NoError(t, btc.pushReplication.sendMsg(norevMsg.Message))
+
+	// Check that the response we got back was processed by the norev handler
+	resp := norevMsg.Response()
+	assert.NotNil(t, resp)
+	assert.Equal(t, "handleNoRev", resp.Properties[sgHandler])
+}
