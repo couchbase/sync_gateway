@@ -324,6 +324,10 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 var (
 	consoleLogger                                                 *ConsoleLogger
 	debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
+
+	// envColorCapable evaluated only once to prevent unnecessary
+	// overhead of checking os.Getenv on each colorEnabled() invocation
+	envColorCapable = runtime.GOOS != "windows" && os.Getenv("TERM") != "dumb"
 )
 
 // RotateLogfiles rotates all active log files.
@@ -508,7 +512,7 @@ func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface
 
 	// If the above logTo didn't already log to stderr, do it directly here
 	if !consoleLogger.isStderr || !consoleLogger.shouldLog(logLevel, logKey) {
-		format = addPrefixes(format, context.Background(), logLevel, logKey)
+		format = color(addPrefixes(format, context.Background(), logLevel, logKey), logLevel)
 		_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 	}
 }
@@ -592,10 +596,10 @@ func color(str string, logLevel LogLevel) string {
 	return color + str + "\033[0m"
 }
 
+// colorEnabled returns true if the console logger has color enabled,
+// and the environment supports ANSI color escape sequences.
 func colorEnabled() bool {
-	return consoleLogger.ColorEnabled &&
-		os.Getenv("TERM") != "dumb" &&
-		runtime.GOOS != "windows"
+	return consoleLogger.ColorEnabled && envColorCapable
 }
 
 // ConsoleLogLevel returns the console log level.
