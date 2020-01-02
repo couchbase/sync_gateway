@@ -1218,9 +1218,9 @@ func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 func DefaultBlipLogger(ctx context.Context) blip.LogFn {
 	return func(eventType blip.LogEventType, format string, params ...interface{}) {
 		switch eventType {
-		case blip.LogMessage:
-			base.DebugfCtx(ctx, base.KeyWebSocketFrame, format, params...)
 		case blip.LogFrame:
+			base.DebugfCtx(ctx, base.KeyWebSocketFrame, format, params...)
+		case blip.LogMessage:
 			base.DebugfCtx(ctx, base.KeyWebSocket, format, params...)
 		default:
 			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)
