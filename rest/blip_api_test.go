@@ -2641,8 +2641,8 @@ func TestBlipNorev(t *testing.T) {
 	norevMsg := NewNoRevMessage()
 	norevMsg.setId("docid")
 	norevMsg.setRev("1-a")
-	norevMsg.setError("norev error")
-	norevMsg.setReason("norev reason")
+	norevMsg.setError("404")
+	norevMsg.setReason("couldn't send xyz")
 
 	// Couchbase Lite always sends noreply=true for norev messages
 	// but set to false so we can block waiting for a reply

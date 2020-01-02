@@ -75,8 +75,8 @@ const (
 	proveAttachmentDigest = "digest"
 
 	// Sync Gateway specific properties (used for testing)
-	sgShowHandler = "sgShowHandler"
-	sgHandler     = "sgHandler"
+	sgShowHandler = "sgShowHandler" // Used to request a response with sgHandler
+	sgHandler     = "sgHandler"     // Used to show which handler processed the message
 )
 
 // Function signature for something that parses a sequence id from a string
