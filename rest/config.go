@@ -1023,24 +1023,7 @@ func RunServer(config *ServerConfig) {
 	}
 
 	sc := NewServerContext(config)
-	bucketUUIDToDbs := make(map[string][]string, len(config.Databases))
-
-	for dbName, dbConfig := range config.Databases {
-		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf("Error opening database %s: %+v", base.MD(dbName), err)
-		}
-		dbContext, err := sc.GetDatabase(dbName)
-		if err != nil {
-			base.Fatalf("Error getting database context %s: %+v", base.MD(dbName), err)
-		}
-		if uuid, err := dbContext.Bucket.UUID(); err == nil {
-			if value := bucketUUIDToDbs[uuid]; value != nil {
-				base.Warnf("Unsupported config: Database %q shares bucket %q with databases %s",
-					base.MD(dbName), base.MD(dbContext.Bucket.GetName()), base.MD(value))
-			}
-			bucketUUIDToDbs[uuid] = append(bucketUUIDToDbs[uuid], dbName)
-		}
-	}
+	_ = validateAndAddDBFromConfig(sc, config.Databases)
 
 	if config.ProfileInterface != nil {
 		//runtime.MemProfileRate = 10 * 1024
@@ -1057,6 +1040,26 @@ func RunServer(config *ServerConfig) {
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", *config.Interface)
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
+}
+
+func validateAndAddDBFromConfig(sc *ServerContext, databases DbConfigMap) (warnings []string) {
+	bucketUUIDToDbs := make(map[string][]string, len(databases))
+	for dbName, dbConfig := range databases {
+		dbContext, err := sc.AddDatabaseFromConfig(dbConfig)
+		if err != nil {
+			base.Fatalf("Error opening database %s: %+v", base.MD(dbName), err)
+		}
+		if uuid, err := dbContext.Bucket.UUID(); err == nil {
+			if value := bucketUUIDToDbs[uuid]; value != nil {
+				warningMessage := fmt.Sprintf("Database %q shares bucket %q with databases %s. This may result in unexpected behaviour if security is not defined consistently.",
+					base.MD(dbName), base.MD(dbContext.Bucket.GetName()), base.MD(value))
+				warnings = append(warnings, warningMessage)
+				base.Warnf(warningMessage)
+			}
+			bucketUUIDToDbs[uuid] = append(bucketUUIDToDbs[uuid], dbName)
+		}
+	}
+	return warnings
 }
 
 func HandleSighup() {
