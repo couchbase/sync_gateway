@@ -923,7 +923,7 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 	if response := outrq.Response(); response != nil {
 		if response.Type() == blip.ErrorType {
 			errorBody, _ := response.Body()
-			bc.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", docID, revID, errorBody)
+			bc.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", base.UD(docID), revID, errorBody)
 		}
 	}
 
@@ -932,7 +932,7 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 
 func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	bh.Logf(base.LevelInfo, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
-		rq.String(), rq.Properties[norevMessageId], rq.Properties[norevMessageRev], rq.Properties[norevMessageError], rq.Properties[norevMessageReason])
+		rq.String(), base.UD(rq.Properties[norevMessageId]), rq.Properties[norevMessageRev], rq.Properties[norevMessageError], rq.Properties[norevMessageReason])
 
 	// Couchbase Lite always sense noreply=true for norev profiles
 	// but for testing purposes, it's useful to know which handler processed the message
