@@ -13,6 +13,12 @@ type LogContext struct {
 	// CorrelationID is a pre-formatted identifier used to correlate logs.
 	// E.g: Either blip context ID or HTTP Serial number.
 	CorrelationID string
+
+	// TestName can be a unit test name (from t.Name())
+	TestName string
+
+	// TestBucketName is the name of a bucket used during a test
+	TestBucketName string
 }
 
 // addContext returns a string format with additional log context if present.
@@ -23,6 +29,14 @@ func (lc *LogContext) addContext(format string) string {
 
 	if lc.CorrelationID != "" {
 		format = "c:" + lc.CorrelationID + " " + format
+	}
+
+	if lc.TestBucketName != "" {
+		format = "b:" + lc.TestBucketName + " " + format
+	}
+
+	if lc.TestName != "" {
+		format = "t:" + lc.TestName + " " + format
 	}
 
 	return format

@@ -16,7 +16,7 @@ func TestUserWaiter(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Create user
 	username := "bob"
@@ -60,7 +60,7 @@ func TestUserWaiterForRoleChange(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Create role
 	roleName := "good_egg"

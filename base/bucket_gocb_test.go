@@ -165,6 +165,8 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 
 func TestBulkGetRaw(t *testing.T) {
 
+	defer SetUpTestLogging(LevelTrace, KeyHTTP, KeyBucket, KeyCRUD, KeyCache)()
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
@@ -626,6 +628,8 @@ func SkipXattrTestsIfNotEnabled(t *testing.T) {
 
 // TestXattrWriteCasSimple.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
 func TestXattrWriteCasSimple(t *testing.T) {
+
+	defer SetUpTestLogging(LevelInfo, KeyAll)()
 
 	SkipXattrTestsIfNotEnabled(t)
 
@@ -2101,10 +2105,20 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	// Bad auth creds cause a fatal error with logs indicating the reason why.
-	_, err := GetBucketWithInvalidUsernamePassword(DataBucket)
-	goassert.Equals(t, err, ErrFatalBucketConnection)
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
 
+	// Override test bucket spec with invalid creds
+	testBucket.BucketSpec.Auth = TestAuthenticator{
+		Username:   "invalid_username",
+		Password:   "invalid_password",
+		BucketName: testBucket.BucketSpec.BucketName,
+	}
+
+	// Attempt to open the bucket again using invalid creds. We should expect an error.
+	bucket, err := GetBucket(testBucket.BucketSpec)
+	assert.Equal(t, ErrFatalBucketConnection, err)
+	assert.Nil(t, bucket)
 }
 
 // TestCouchbaseServerIncorrectX509Login tries to open a bucket using an example X509 Cert/Key
@@ -2114,26 +2128,27 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	spec := GetTestBucketSpec(DataBucket)
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
 
 	// Remove existing password-based authentication
-	spec.Auth = nil
+	testBucket.BucketSpec.Auth = nil
 
 	// Force use of TLS so we are able to use X509
-	if strings.HasPrefix(spec.Server, "http://") {
-		spec.Server = "couchbases://" + spec.Server[7:]
-	} else if strings.HasPrefix(spec.Server, "couchbase://") {
-		spec.Server = "couchbases://" + spec.Server[12:]
+	if strings.HasPrefix(testBucket.BucketSpec.Server, "http://") {
+		testBucket.BucketSpec.Server = "couchbases://" + testBucket.BucketSpec.Server[7:]
+	} else if strings.HasPrefix(testBucket.BucketSpec.Server, "couchbase://") {
+		testBucket.BucketSpec.Server = "couchbases://" + testBucket.BucketSpec.Server[12:]
 	}
-	spec.Server = strings.TrimSuffix(spec.Server, ":8091")
+	testBucket.BucketSpec.Server = strings.TrimSuffix(testBucket.BucketSpec.Server, ":8091")
 
 	// Set CertPath/KeyPath for X509 auth
 	certPath, keyPath, x509CleanupFn := tempX509Certs(t)
-	spec.Certpath = certPath
-	spec.Keypath = keyPath
+	testBucket.BucketSpec.Certpath = certPath
+	testBucket.BucketSpec.Keypath = keyPath
 
 	// Attempt to open a test bucket with invalid certs
-	bucket, err := GetBucket(spec)
+	bucket, err := GetBucket(testBucket.BucketSpec)
 
 	// We no longer need the cert files, so go ahead and clean those up now before any assertions stop the test.
 	x509CleanupFn()

@@ -31,7 +31,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
 
@@ -132,7 +132,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -217,7 +217,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -292,7 +292,7 @@ func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 
 	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()
-	defer tearDownTestDB(b, db)
+	defer db.Close()
 
 	fieldVal := func(valSizeBytes int) string {
 		buffer := bytes.Buffer{}

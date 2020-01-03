@@ -432,7 +432,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			numReplicas = *config.NumIndexReplicas
 		}
 
-		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas)
+		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas, false)
 		if indexErr != nil {
 			return nil, indexErr
 		}

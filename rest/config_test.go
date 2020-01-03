@@ -811,40 +811,40 @@ func TestValidateServerContext(t *testing.T) {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
 
-	var (
-		couchbaseURL    = base.UnitTestUrl()
-		testDataBucket  = base.DefaultTestBucketname
-		testIndexBucket = base.DefaultTestIndexBucketname
-		username        = base.DefaultCouchbaseAdministrator
-		password        = base.DefaultCouchbasePassword
-	)
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
+
+	tb1User, tb1Password, _ := tb1.BucketSpec.Auth.GetCredentials()
+	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()
 
 	config = &ServerConfig{
 		Databases: map[string]*DbConfig{
 			"db1": {
 				BucketConfig: BucketConfig{
-					Server:   &couchbaseURL,
-					Bucket:   &testDataBucket,
-					Username: username,
-					Password: password,
+					Server:   &tb1.BucketSpec.Server,
+					Bucket:   &tb1.BucketSpec.BucketName,
+					Username: tb1User,
+					Password: tb1Password,
 				},
 				NumIndexReplicas: base.UintPtr(0),
 			},
 			"db2": {
 				BucketConfig: BucketConfig{
-					Server:   &couchbaseURL,
-					Bucket:   &testDataBucket,
-					Username: username,
-					Password: password,
+					Server:   &tb1.BucketSpec.Server,
+					Bucket:   &tb1.BucketSpec.BucketName,
+					Username: tb1User,
+					Password: tb1Password,
 				},
 				NumIndexReplicas: base.UintPtr(0),
 			},
 			"db3": {
 				BucketConfig: BucketConfig{
-					Server:   &couchbaseURL,
-					Bucket:   &testIndexBucket,
-					Username: username,
-					Password: password,
+					Server:   &tb2.BucketSpec.Server,
+					Bucket:   &tb2.BucketSpec.BucketName,
+					Username: tb2User,
+					Password: tb2Password,
 				},
 				NumIndexReplicas: base.UintPtr(0),
 			},
@@ -863,7 +863,7 @@ func TestValidateServerContext(t *testing.T) {
 	sharedBucketErrors := validateServerContext(sc)
 	SharedBucketError, ok := sharedBucketErrors[0].(*SharedBucketError)
 	require.True(t, ok)
-	assert.Equal(t, testDataBucket, SharedBucketError.GetSharedBucket().bucketName)
+	assert.Equal(t, tb1.BucketSpec.BucketName, SharedBucketError.GetSharedBucket().bucketName)
 	assert.Subset(t, []string{"db1", "db2"}, SharedBucketError.GetSharedBucket().dbNames)
 }
 

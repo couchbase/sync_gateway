@@ -270,7 +270,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) error {
+func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint, createPrimary bool) error {
 
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok {
@@ -298,6 +298,18 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 			deferredIndexes = append(deferredIndexes, fullIndexName)
 		}
 		allSGIndexes = append(allSGIndexes, fullIndexName)
+	}
+
+	if createPrimary {
+		err := gocbBucket.CreatePrimaryIndex(base.PrimaryIndexName, &base.N1qlIndexOptions{
+			NumReplica: 0,
+			DeferBuild: true,
+		})
+		if err == nil {
+			deferredIndexes = append(deferredIndexes, base.PrimaryIndexName)
+		} else if err != base.ErrIndexAlreadyExists {
+			return err
+		}
 	}
 
 	// Issue BUILD INDEX for any deferred indexes.
@@ -360,9 +372,10 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryStatement string) error {
 
 	for {
-		_, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
+		r, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
 		// Retry on timeout error, otherwise return
 		if err == nil {
+			_ = r.Close()
 			return nil
 		}
 		if err == base.ErrViewTimeoutError {

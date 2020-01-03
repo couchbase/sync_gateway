@@ -554,6 +554,8 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 }
 
 func TestPostInstallCleanup(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()

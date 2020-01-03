@@ -41,6 +41,7 @@ const (
 	KeySyncMsg
 	KeyWebSocket
 	KeyWebSocketFrame
+	KeySGTest
 
 	LogKeyCount // Count for logKeyNames init
 )
@@ -70,6 +71,7 @@ var (
 		KeySyncMsg:        "SyncMsg",
 		KeyWebSocket:      "WS",
 		KeyWebSocketFrame: "WSFrame",
+		KeySGTest:         "~~~~~ TEST",
 	}
 	logKeyNamesInverse = inverselogKeyNames(logKeyNames)
 )

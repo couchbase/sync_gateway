@@ -133,6 +133,11 @@ func (b *LoggingBucket) GetXattr(k string, xattr string, xv interface{}) (cas ui
 	defer func() { Tracef(KeyBucket, "GetXattr(%q, ...) [%v]", UD(k), time.Since(start)) }()
 	return b.bucket.GetXattr(k, xattr, xv)
 }
+func (b *LoggingBucket) GetDDocs(value interface{}) error {
+	start := time.Now()
+	defer func() { Tracef(KeyBucket, "GetDDoc(...) [%v]", time.Since(start)) }()
+	return b.bucket.GetDDocs(value)
+}
 func (b *LoggingBucket) GetDDoc(docname string, value interface{}) error {
 	start := time.Now()
 	defer func() { Tracef(KeyBucket, "GetDDoc(%q, ...) [%v]", UD(docname), time.Since(start)) }()

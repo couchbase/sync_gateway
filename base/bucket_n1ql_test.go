@@ -584,6 +584,9 @@ func tearDownTestIndex(bucket *CouchbaseBucketGoCB, indexName string) (err error
 }
 
 func TestWaitForBucketExistence(t *testing.T) {
+
+	defer SetUpTestLogging(LevelDebug, KeyAll)()
+
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
 	}

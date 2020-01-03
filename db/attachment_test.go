@@ -226,7 +226,7 @@ func TestAttachments(t *testing.T) {
 
 func TestAttachmentForRejectedDocument(t *testing.T) {
 
-	testBucket := testBucket(t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
@@ -341,8 +341,10 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer tearDownTestDB(t, db)
+	var testBucket base.TestBucket
+	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer testBucket.Close()
+	defer db.Close()
 
 	// Test creating & updating a document:
 
@@ -400,8 +402,10 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer tearDownTestDB(t, db)
+	var testBucket base.TestBucket
+	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer testBucket.Close()
+	defer db.Close()
 
 	// Test creating & updating a document:
 
