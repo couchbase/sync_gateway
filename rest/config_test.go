@@ -801,7 +801,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
 }
 
-// This both test uses test_data_bucket, and test_indexbucket buckets; these buckets should be available
+// This test uses both test_data_bucket and test_indexbucket buckets; these buckets should be available
 // on Couchbase server instance before running this test.
 func TestValidateAndAddDBFromConfig(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
