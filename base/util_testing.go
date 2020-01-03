@@ -83,7 +83,7 @@ func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
 
 	if spec.IsWalrusBucket() {
 		// Use a unique bucket name to reduce the chance of interference between temporary test walrus buckets
-		spec.BucketName = fmt.Sprintf("%s-%s", spec.BucketName, CreateUUID())
+		spec.BucketName = fmt.Sprintf("%s-%s", spec.BucketName, GenerateRandomID())
 	}
 
 	return spec

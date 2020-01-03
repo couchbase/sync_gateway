@@ -196,10 +196,8 @@ pipeline {
                                     script {
                                         env.ERRCHECK_COUNT = readFile 'errcheck.count'
                                     }
-                                    // TODO: Remove in CBG-492
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'SUCCESS')
-//                                     githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
-//                                     unstable("errcheck failed")
+                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                    unstable("errcheck failed")
                                 }
                             }
                         }
@@ -386,6 +384,18 @@ pipeline {
             withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
                 sh "go clean -cache"
             }
+        }
+        unstable {
+            when { branch 'master' }
+            mail to: 'mobile_dev_sg@couchbase.com',
+                 subject: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}",
+                 body: "At least one test failed: ${env.BUILD_URL}"
+        }
+        failure {
+            when { branch 'master' }
+            mail to: 'mobile_dev_sg@couchbase.com',
+                 subject: "Build failure in master SGW pipeline: ${currentBuild.fullDisplayName}",
+                 body: "Something went wrong building: ${env.BUILD_URL}"
         }
     }
 }

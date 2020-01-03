@@ -54,7 +54,7 @@ var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 // This connection remains open until the client closes it, and can receive any number of requests.
 type blipSyncContext struct {
 	blipContext         *blip.Context
-	db                  *db.Database
+	blipContextDb       *db.Database // 'master' database instance for the replication, used as source when creating handler-specific databases
 	dbUserLock          sync.RWMutex // Must be held when refreshing the db user
 	batchSize           int
 	gotSubChanges       bool
@@ -76,8 +76,8 @@ type blipSyncContext struct {
 
 type blipHandler struct {
 	*blipSyncContext
-	db           *db.Database
-	serialNumber uint64 // This blip handler's serial number to differentiate logs w/ other handlers
+	db           *db.Database // Handler-specific copy of the blipSyncContext's blipContextDb
+	serialNumber uint64       // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
 type blipHandlerFunc func(*blipHandler, *blip.Message) error
@@ -110,18 +110,17 @@ func (bh *blipHandler) refreshUser() error {
 		// If changed, refresh the user and db while holding the lock
 		if userChanged {
 			// Refresh the blipSyncContext database
-			newUser, err := bc.db.Authenticator().GetUser(bc.userName)
+			newUser, err := bc.blipContextDb.Authenticator().GetUser(bc.userName)
 			if err != nil {
 				bc.dbUserLock.Unlock()
 				return err
 			}
 			bc.userChangeWaiter.RefreshUserKeys(newUser)
-			bc.db.SetUser(newUser)
+			bc.blipContextDb.SetUser(newUser)
 
 			// refresh the handler's database with the new blipSyncContext database
 			bh.db = bh._copyContextDatabase()
 		}
-
 		bc.dbUserLock.Unlock()
 	}
 	return nil
@@ -134,6 +133,7 @@ var kHandlersByProfile = map[string]blipHandlerFunc{
 	messageSubChanges:     userBlipHandler((*blipHandler).handleSubChanges),
 	messageChanges:        userBlipHandler((*blipHandler).handleChanges),
 	messageRev:            userBlipHandler((*blipHandler).handleRev),
+	messageNoRev:          (*blipHandler).handleNoRev,
 	messageGetAttachment:  userBlipHandler((*blipHandler).handleGetAttachment),
 	messageProposeChanges: (*blipHandler).handleProposeChanges,
 }
@@ -163,7 +163,7 @@ func (h *handler) handleBLIPSync() error {
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
 		blipContext:      blipContext,
-		db:               h.db,
+		blipContextDb:    h.db,
 		terminator:       make(chan bool),
 		userChangeWaiter: h.db.NewUserWaiter(),
 		dbStats:          h.db.DatabaseContext.DbStats,
@@ -175,7 +175,7 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	// determine if SG has delta sync enabled for the given database
-	ctx.sgCanUseDeltas = ctx.db.DeltaSyncEnabled()
+	ctx.sgCanUseDeltas = h.db.DeltaSyncEnabled()
 
 	blipContext.DefaultHandler = ctx.notFound
 	for profile, handlerFn := range kHandlersByProfile {
@@ -259,15 +259,15 @@ func (ctx *blipSyncContext) notFound(rq *blip.Message) {
 func (ctx *blipSyncContext) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
 	switch logLevel {
 	case base.LevelError:
-		base.ErrorfCtx(ctx.db.Ctx, format, args...)
+		base.ErrorfCtx(ctx.blipContextDb.Ctx, format, args...)
 	case base.LevelWarn:
-		base.WarnfCtx(ctx.db.Ctx, format, args...)
+		base.WarnfCtx(ctx.blipContextDb.Ctx, format, args...)
 	case base.LevelInfo:
-		base.InfofCtx(ctx.db.Ctx, logKey, format, args...)
+		base.InfofCtx(ctx.blipContextDb.Ctx, logKey, format, args...)
 	case base.LevelDebug:
-		base.DebugfCtx(ctx.db.Ctx, logKey, format, args...)
+		base.DebugfCtx(ctx.blipContextDb.Ctx, logKey, format, args...)
 	case base.LevelTrace:
-		base.TracefCtx(ctx.db.Ctx, logKey, format, args...)
+		base.TracefCtx(ctx.blipContextDb.Ctx, logKey, format, args...)
 	}
 }
 
@@ -487,8 +487,8 @@ func (bc *blipSyncContext) copyContextDatabase() *db.Database {
 }
 
 func (bc *blipSyncContext) _copyContextDatabase() *db.Database {
-	databaseCopy, _ := db.GetDatabase(bc.db.DatabaseContext, bc.db.User())
-	databaseCopy.Ctx = bc.db.Ctx
+	databaseCopy, _ := db.GetDatabase(bc.blipContextDb.DatabaseContext, bc.blipContextDb.User())
+	databaseCopy.Ctx = bc.blipContextDb.Ctx
 	return databaseCopy
 }
 
@@ -923,8 +923,22 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 	if response := outrq.Response(); response != nil {
 		if response.Type() == blip.ErrorType {
 			errorBody, _ := response.Body()
-			bc.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", docID, revID, errorBody)
+			bc.Logf(base.LevelWarn, base.KeyAll, "Client returned error in rev response for doc %q / %q: %s", base.UD(docID), revID, errorBody)
 		}
+	}
+
+	return nil
+}
+
+func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
+	bh.Logf(base.LevelInfo, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
+		rq.String(), base.UD(rq.Properties[norevMessageId]), rq.Properties[norevMessageRev], rq.Properties[norevMessageError], rq.Properties[norevMessageReason])
+
+	// Couchbase Lite always sense noreply=true for norev profiles
+	// but for testing purposes, it's useful to know which handler processed the message
+	if !rq.NoReply() && rq.Properties[sgShowHandler] == "true" {
+		response := rq.Response()
+		response.Properties[sgHandler] = "handleNoRev"
 	}
 
 	return nil
@@ -1219,9 +1233,9 @@ func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
 func DefaultBlipLogger(ctx context.Context) blip.LogFn {
 	return func(eventType blip.LogEventType, format string, params ...interface{}) {
 		switch eventType {
-		case blip.LogMessage:
-			base.DebugfCtx(ctx, base.KeyWebSocketFrame, format, params...)
 		case blip.LogFrame:
+			base.DebugfCtx(ctx, base.KeyWebSocketFrame, format, params...)
+		case blip.LogMessage:
 			base.DebugfCtx(ctx, base.KeyWebSocket, format, params...)
 		default:
 			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)

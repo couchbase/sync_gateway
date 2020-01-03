@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"io/ioutil"
 	"math"
 	"math/big"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBucketSpec(t *testing.T) {
@@ -302,14 +304,15 @@ func TestGetViewQueryTimeout(t *testing.T) {
 	assert.Equal(t, expectedViewQueryTimeout, fakeBucketSpec.GetViewQueryTimeout())
 }
 
-var (
-	rootKeyPath    = filepath.Join(os.TempDir(), "root.key")
-	rootCertPath   = filepath.Join(os.TempDir(), "root.pem")
-	clientKeyPath  = filepath.Join(os.TempDir(), "client.key")
-	clientCertPath = filepath.Join(os.TempDir(), "client.pem")
-)
+func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath string) {
+	certPath, err := ioutil.TempDir("", "certs")
+	require.NoError(t, err, "Temp directory should be created")
 
-func mockCertificatesAndKeys(t *testing.T) {
+	rootKeyPath = filepath.Join(certPath, "root.key")
+	rootCertPath = filepath.Join(certPath, "root.pem")
+	clientKeyPath = filepath.Join(certPath, "client.key")
+	clientCertPath = filepath.Join(certPath, "client.pem")
+
 	notBefore := time.Now().Add(time.Duration(-2) * time.Hour)
 	notAfter := time.Now().Add(time.Duration(2) * time.Hour)
 
@@ -318,7 +321,7 @@ func mockCertificatesAndKeys(t *testing.T) {
 	assert.NoError(t, err, "Serial number should be generated")
 
 	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	assert.NoError(t, err, "Root key should be generated")
+	require.NoError(t, err, "Root key should be generated")
 	saveAsKeyFile(t, rootKeyPath, rootKey)
 
 	rootTemplate := x509.Certificate{
@@ -336,7 +339,7 @@ func mockCertificatesAndKeys(t *testing.T) {
 	}
 
 	certBytes, err := x509.CreateCertificate(rand.Reader, &rootTemplate, &rootTemplate, &rootKey.PublicKey, rootKey)
-	assert.NoError(t, err, "Root CA certificate should be generated")
+	require.NoError(t, err, "Root CA certificate should be generated")
 	saveAsCertFile(t, rootCertPath, certBytes)
 
 	clientTemplate := x509.Certificate{
@@ -356,46 +359,60 @@ func mockCertificatesAndKeys(t *testing.T) {
 	clientKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	saveAsKeyFile(t, clientKeyPath, clientKey)
 	certBytes, err = x509.CreateCertificate(rand.Reader, &clientTemplate, &rootTemplate, &clientKey.PublicKey, rootKey)
-	assert.NoError(t, err, "Client certificate should be generated")
+	require.NoError(t, err, "Client certificate should be generated")
 	saveAsCertFile(t, clientCertPath, certBytes)
+
+	require.True(t, fileExists(rootKeyPath), "File %v should exists", rootKeyPath)
+	require.True(t, fileExists(rootCertPath), "File %v should exists", rootCertPath)
+	require.True(t, fileExists(clientKeyPath), "File %v should exists", clientKeyPath)
+	require.True(t, fileExists(clientCertPath), "File %v should exists", clientCertPath)
+
+	return certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath
 }
 
 func saveAsKeyFile(t *testing.T, filename string, key *ecdsa.PrivateKey) {
 	file, err := os.Create(filename)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	b, err := x509.MarshalECPrivateKey(key)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = pem.Encode(file, &pem.Block{Type: "EC PRIVATE KEY", Bytes: b})
-	assert.NoError(t, err)
-	assert.NoError(t, file.Close())
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
 }
 
 func saveAsCertFile(t *testing.T, filename string, derBytes []byte) {
 	certOut, err := os.Create(filename)
-	assert.NoError(t, err, "No error while opening cert.pem for writing")
+	require.NoError(t, err, "No error while opening cert.pem for writing")
 	err = pem.Encode(certOut, &pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	assert.NoError(t, err, "No error while writing data to cert.pem")
+	require.NoError(t, err, "No error while writing data to cert.pem")
 	err = certOut.Close()
-	assert.NoError(t, err, "No error while closing cert.pem")
+	require.NoError(t, err, "No error while closing cert.pem")
 }
 
-func removeFiles(names []string) error {
-	for _, name := range names {
-		if err := os.Remove(name); err != nil {
-			return err
-		}
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
 	}
-	return nil
+	return !info.IsDir()
+}
+
+func dirExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return info.IsDir()
 }
 
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
-	mockCertificatesAndKeys(t)
+	certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
 
 	// Remove the keys and certificates after verification
 	defer func() {
-		err := removeFiles([]string{rootKeyPath, rootCertPath, clientKeyPath, clientCertPath})
-		assert.NoError(t, err, "No error while removing the files")
+		assert.NoError(t, os.RemoveAll(certPath))
+		assert.False(t, dirExists(certPath), "Directory: %v shouldn't exists", certPath)
 	}()
 
 	// Simulate error creating tlsConfig for DCP processing

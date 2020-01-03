@@ -54,23 +54,38 @@ func RedactBasicAuthURL(url string) string {
 	return basicAuthURLRegexp.ReplaceAllLiteralString(url, "://****:****@")
 }
 
+// GenerateRandomSecret returns a cryptographically-secure 160-bit random number encoded as a hex string.
 func GenerateRandomSecret() string {
-	randomBytes := make([]byte, 20)
-	n, err := io.ReadFull(rand.Reader, randomBytes)
-	if n < len(randomBytes) || err != nil {
+	val, err := randCryptoHex(160)
+	if err != nil {
 		panic("RNG failed, can't create password")
 	}
-	return fmt.Sprintf("%x", randomBytes)
+	return val
 }
 
-// Returns a cryptographically-random 160-bit number encoded as a hex string.
-func CreateUUID() string {
-	bytes := make([]byte, 16)
-	n, err := rand.Read(bytes)
-	if n < 16 {
+// GenerateRandomID returns a cryptographically-secure 128-bit random number encoded as a hex string.
+func GenerateRandomID() string {
+	val, err := randCryptoHex(128)
+	if err != nil {
 		Panicf("Failed to generate random ID: %s", err)
 	}
-	return fmt.Sprintf("%x", bytes)
+	return val
+}
+
+// randCryptoHex returns a cryptographically-secure random number of length sizeBits encoded as a hex string.
+func randCryptoHex(sizeBits int) (string, error) {
+	if sizeBits%8 != 0 {
+		return "", fmt.Errorf("randCryptoHex sizeBits must be a multiple of 8: %d", sizeBits)
+	}
+
+	b := make([]byte, sizeBits/8)
+
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", b), nil
 }
 
 // This is a workaround for an incompatibility between Go's JSON marshaler and CouchDB.
