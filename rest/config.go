@@ -1023,7 +1023,16 @@ func RunServer(config *ServerConfig) {
 	}
 
 	sc := NewServerContext(config)
-	_ = validateAndAddDBFromConfig(sc, config.Databases)
+	dbContextMap, err, dbName := addDatabaseFromConfig(sc, config.Databases)
+	if err != nil {
+		base.Fatalf("Error opening database %s: %+v", base.MD(dbName), err)
+	}
+	sharedBuckets := sharedBuckets(dbContextMap)
+	warningMessageFormat := "Bucket %q is shared among databases %s. " +
+		"This may result in unexpected behaviour if security is not defined consistently."
+	for _, sharedBucket := range sharedBuckets {
+		base.Warnf(warningMessageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
+	}
 
 	if config.ProfileInterface != nil {
 		//runtime.MemProfileRate = 10 * 1024
@@ -1042,24 +1051,38 @@ func RunServer(config *ServerConfig) {
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 
-func validateAndAddDBFromConfig(sc *ServerContext, databases DbConfigMap) (warnings []string) {
-	bucketUUIDToDbs := make(map[string][]string, len(databases))
-	for dbName, dbConfig := range databases {
+func addDatabaseFromConfig(sc *ServerContext, dbConfigMap DbConfigMap) (
+	map[string][]*db.DatabaseContext, error, string) {
+	dbContextMap := make(map[string][]*db.DatabaseContext)
+	for dbName, dbConfig := range dbConfigMap {
 		dbContext, err := sc.AddDatabaseFromConfig(dbConfig)
 		if err != nil {
-			base.Fatalf("Error opening database %s: %+v", base.MD(dbName), err)
+			return nil, err, dbName // Unreachable database
 		}
 		if uuid, err := dbContext.Bucket.UUID(); err == nil {
-			if value := bucketUUIDToDbs[uuid]; value != nil {
-				warningMessage := fmt.Sprintf("Database %q shares bucket %q with databases %s. This may result in unexpected behaviour if security is not defined consistently.",
-					base.MD(dbName), base.MD(dbContext.Bucket.GetName()), base.MD(value))
-				warnings = append(warnings, warningMessage)
-				base.Warnf(warningMessage)
-			}
-			bucketUUIDToDbs[uuid] = append(bucketUUIDToDbs[uuid], dbName)
+			dbContextMap[uuid] = append(dbContextMap[uuid], dbContext)
 		}
 	}
-	return warnings
+	return dbContextMap, nil, ""
+}
+
+type sharedBucket struct {
+	bucketName string
+	dbNames    []string
+}
+
+// Returns a list of buckets that are being shared by multiple databases.
+func sharedBuckets(dbContextMap map[string][]*db.DatabaseContext) (sharedBuckets []sharedBucket) {
+	for _, dbContexts := range dbContextMap {
+		if len(dbContexts) > 1 {
+			var dbNames []string
+			for _, dbContext := range dbContexts {
+				dbNames = append(dbNames, dbContext.Name)
+			}
+			sharedBuckets = append(sharedBuckets, sharedBucket{dbContexts[0].Bucket.GetName(), dbNames})
+		}
+	}
+	return sharedBuckets
 }
 
 func HandleSighup() {

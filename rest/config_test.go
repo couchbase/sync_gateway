@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -801,38 +801,52 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
 }
 
-// This test uses both test_data_bucket and test_indexbucket buckets; these buckets should be available
-// on Couchbase server instance before running this test.
-func TestValidateAndAddDBFromConfig(t *testing.T) {
+func TestAddDatabaseFromConfigWithSharedBuckets(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("ValidateAndAddDBFromConfig test require Couchbase Bucket")
+		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
-	tmpDir, err := ioutil.TempDir("", "sync_gateway")
-	require.NoError(t, err, "Error whilst creating temporary directory")
-	configFile, err := ioutil.TempFile(tmpDir, "duplicate.bucket.conf")
-	require.NoError(t, err, "Error whilst creating temporary config file")
+	couchbaseURL := base.UnitTestUrl()
+	bucketName := "test_data_bucket"
+	poolName := "default"
 
-	content := `{"logging":{"console":{"log_keys":["*"]}},"databases":{"db1":{"server":"couchbase://localhost",
-		"username":"Administrator","password":"password","bucket":"test_data_bucket","users":{"GUEST":{"disabled":false,
-		"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20,"num_index_replicas":0},"db2":{"server":
-		"couchbase://localhost","username":"Administrator","password":"password","bucket":"test_data_bucket","users":{
-		"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20,
-		"num_index_replicas":0},"db3":{"server":"couchbase://localhost","username":"Administrator","password":
-		"password","bucket":"test_indexbucket","users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},
-		"allow_conflicts":false,"revs_limit":20,"num_index_replicas":0}}}`
-
-	_, err = configFile.Write([]byte(content))
-	require.NoError(t, err, "Error whilst writing to temporary config file")
-	require.NoError(t, configFile.Close())
-
-	defer func() {
-		err := os.Remove(configFile.Name())
-		assert.NoError(t, err)
-	}()
-
-	args := []string{"sync_gateway", configFile.Name()}
-	config, err = ParseCommandLine(args, flag.ExitOnError)
-	require.NoError(t, err, "Error whilst parsing commandline options")
+	config = &ServerConfig{
+		Interface:      &DefaultInterface,
+		AdminInterface: &DefaultAdminInterface,
+		Databases: map[string]*DbConfig{
+			"db1": {
+				Name: "db1",
+				BucketConfig: BucketConfig{
+					Server:   &couchbaseURL,
+					Bucket:   &bucketName,
+					Pool:     &poolName,
+					Username: "Administrator",
+					Password: "password",
+				},
+				Users: map[string]*db.PrincipalConfig{
+					base.GuestUsername: {
+						Disabled:         false,
+						ExplicitChannels: base.SetFromArray([]string{"*"}),
+					},
+				},
+			},
+			"db2": {
+				Name: "db2",
+				BucketConfig: BucketConfig{
+					Server:   &couchbaseURL,
+					Bucket:   &bucketName,
+					Pool:     &poolName,
+					Username: "Administrator",
+					Password: "password",
+				},
+				Users: map[string]*db.PrincipalConfig{
+					base.GuestUsername: {
+						Disabled:         false,
+						ExplicitChannels: base.SetFromArray([]string{"*"}),
+					},
+				},
+			},
+		},
+	}
 
 	_, err = config.SetupAndValidateLogging()
 	require.NoError(t, err, "Error whilst setting up logging")
@@ -840,16 +854,92 @@ func TestValidateAndAddDBFromConfig(t *testing.T) {
 	var errors = make([]error, 0)
 	errors = append(errors, config.validate()...)
 	errors = append(errors, config.setupAndValidateDatabases()...)
-	require.Equal(t, 0, len(errors), "Error whilst validating databases")
+	require.Len(t, errors, 0, "Error whilst validating databases")
 
 	sc := NewServerContext(config)
-	warnings := validateAndAddDBFromConfig(sc, config.Databases)
-	warningFormat := "Database %q shares bucket %q with databases %s. " +
-		"This may result in unexpected behaviour if security is not defined consistently."
-	warningsExpected := []string{
-		fmt.Sprintf(warningFormat, "db1", "test_data_bucket", "[ db2 ]"),
-		fmt.Sprintf(warningFormat, "db2", "test_data_bucket", "[ db1 ]"),
+	dbContextMap, err, dbName := addDatabaseFromConfig(sc, config.Databases)
+	require.NoError(t, err, "Error whilst adding databases from config")
+	require.Empty(t, dbName, "No database should be unreachable")
+	require.Len(t, dbContextMap, 1, "Database contexts should be group by bucket UUID")
+
+	sharedBuckets := sharedBuckets(dbContextMap)
+	assert.Equal(t, bucketName, sharedBuckets[0].bucketName)
+	assert.Subset(t, []string{"db1", "db2"}, sharedBuckets[0].dbNames)
+}
+
+func TestAddDatabaseFromConfigWithSharedAndUnknownBuckets(t *testing.T) {
+	t.Skip("Skipping this test; it's quite expensive and requires Couchbase Bucket")
+	couchbaseURL := base.UnitTestUrl()
+	bucketName := "test_data_bucket"
+	poolName := "default"
+	unknownBucket := "unknown" // This bucket shouldn't exists on Couchbase server
+
+	config = &ServerConfig{
+		Interface:      &DefaultInterface,
+		AdminInterface: &DefaultAdminInterface,
+		Databases: map[string]*DbConfig{
+			"db1": {
+				Name: "db1",
+				BucketConfig: BucketConfig{
+					Server:   &couchbaseURL,
+					Bucket:   &bucketName,
+					Pool:     &poolName,
+					Username: "Administrator",
+					Password: "password",
+				},
+				Users: map[string]*db.PrincipalConfig{
+					base.GuestUsername: {
+						Disabled:         false,
+						ExplicitChannels: base.SetFromArray([]string{"*"}),
+					},
+				},
+			},
+			"db2": {
+				Name: "db2",
+				BucketConfig: BucketConfig{
+					Server:   &couchbaseURL,
+					Bucket:   &bucketName,
+					Pool:     &poolName,
+					Username: "Administrator",
+					Password: "password",
+				},
+				Users: map[string]*db.PrincipalConfig{
+					base.GuestUsername: {
+						Disabled:         false,
+						ExplicitChannels: base.SetFromArray([]string{"*"}),
+					},
+				},
+			},
+			"db3": {
+				Name: "db3",
+				BucketConfig: BucketConfig{
+					Server:   &couchbaseURL,
+					Bucket:   &unknownBucket,
+					Pool:     &poolName,
+					Username: "Administrator",
+					Password: "password",
+				},
+				Users: map[string]*db.PrincipalConfig{
+					base.GuestUsername: {
+						Disabled:         false,
+						ExplicitChannels: base.SetFromArray([]string{"*"}),
+					},
+				},
+			},
+		},
 	}
-	assert.Equal(t, 1, len(warnings), "One and only one warning should be available for this config")
-	assert.Contains(t, warningsExpected, warnings[0])
+
+	_, err = config.SetupAndValidateLogging()
+	require.NoError(t, err, "Error whilst setting up logging")
+
+	var errors = make([]error, 0)
+	errors = append(errors, config.validate()...)
+	errors = append(errors, config.setupAndValidateDatabases()...)
+	require.Len(t, errors, 0, "Error whilst validating databases")
+
+	sc := NewServerContext(config)
+	dbContextMap, err, dbName := addDatabaseFromConfig(sc, config.Databases)
+	require.Error(t, err, "Error whilst adding databases from config")
+	require.Equal(t, "db3", dbName, "Database should be unreachable")
+	require.Len(t, dbContextMap, 0, "No Database context should be group by bucket UUID")
 }
