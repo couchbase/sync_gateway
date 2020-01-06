@@ -154,7 +154,7 @@ func TestLogKeyConcurrency(t *testing.T) {
 	}()
 
 	time.Sleep(time.Millisecond * 100)
-	stop <- struct{}{}
+	close(stop)
 }
 
 func BenchmarkLogKeyEnabled(b *testing.B) {
