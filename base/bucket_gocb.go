@@ -1661,6 +1661,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 		}
 
 		retryAttempts++
+		Debugf(KeyCRUD, "CAS WriteUpdate RetryLoop retrying for doc %q, attempt %d", UD(k), retryAttempts)
 	}
 }
 
