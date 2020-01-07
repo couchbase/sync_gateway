@@ -891,6 +891,8 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 	}
 	bc.dbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
 
+	base.Infof(base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", docID, revID, string(bodyBytes), properties, attDigests)
+
 	if len(attDigests) > 0 {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bc.addAllowedAttachments(attDigests)
@@ -935,12 +937,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := revMessage{Message: rq}
 
-	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
-
 	bodyBytes, err := rq.Body()
 	if err != nil {
 		return err
 	}
+
+	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s  Properties:%v  Body:%s", bh.serialNumber, rq.Profile(), revMessage.String(), revMessage.Properties, string(bodyBytes))
 
 	bh.dbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
 
@@ -1039,7 +1041,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		body := newDoc.Body()
 
 		// Check for any attachments I don't have yet, and request them:
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos); err != nil {
+		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID); err != nil {
+			base.Errorf("Error during downloadOrVerifyAttachments: %v", err)
 			return err
 		}
 
@@ -1088,7 +1091,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.Body, minRevpos int) error {
+func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.Body, minRevpos int, docID string) error {
 	return bh.db.ForEachStubAttachment(body, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			if knownData != nil {
@@ -1096,7 +1099,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 				// security purposes I do need the client to _prove_ it has the data, otherwise if
 				// it knew the digest it could acquire the data by uploading a document with the
 				// claimed attachment, then downloading it.
-				bh.Logf(base.LevelDebug, base.KeySync, "    Verifying attachment %q (digest %s)", base.UD(name), digest)
+				bh.Logf(base.LevelDebug, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), docID, digest)
 				nonce, proof := db.GenerateProofOfAttachment(knownData)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{blipProfile: messageProveAttachment, proveAttachmentDigest: digest}
@@ -1105,15 +1108,18 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 					return nil, ErrClosedBLIPSender
 				}
 				if body, err := outrq.Response().Body(); err != nil {
+					bh.Logf(base.LevelWarn, base.KeySync, "Error returned for proveAttachment message for doc %s (digest %s).  Error: %v", docID, digest, err)
 					return nil, err
 				} else if string(body) != proof {
 					bh.Logf(base.LevelWarn, base.KeySync, "Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
 					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
+				} else {
+					bh.Logf(base.LevelInfo, base.KeySync, "proveAttachment successful for doc %s (digest %s)", docID, digest)
 				}
 				return nil, nil
 			} else {
 				// If I don't have the attachment, I will request it from the client:
-				bh.Logf(base.LevelDebug, base.KeySync, "    Asking for attachment %q (digest %s)", base.UD(name), digest)
+				bh.Logf(base.LevelDebug, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), docID, digest)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{blipProfile: messageGetAttachment, getAttachmentDigest: digest}
 				if isCompressible(name, meta) {
