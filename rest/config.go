@@ -1023,16 +1023,12 @@ func RunServer(config *ServerConfig) {
 	}
 
 	sc := NewServerContext(config)
-	dbContextMap, err, dbName := addDatabaseFromConfig(sc, config.Databases)
-	if err != nil {
-		base.Fatalf("Error opening database %s: %+v", base.MD(dbName), err)
+	for _, dbConfig := range config.Databases {
+		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
+			base.Fatalf("Error opening database %s: %+v", base.MD(dbConfig.Name), err)
+		}
 	}
-	sharedBuckets := sharedBuckets(dbContextMap)
-	warningMessageFormat := "Bucket %q is shared among databases %s. " +
-		"This may result in unexpected behaviour if security is not defined consistently."
-	for _, sharedBucket := range sharedBuckets {
-		base.Warnf(warningMessageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
-	}
+	_ = validateServerContext(sc)
 
 	if config.ProfileInterface != nil {
 		//runtime.MemProfileRate = 10 * 1024
@@ -1051,24 +1047,42 @@ func RunServer(config *ServerConfig) {
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 
-func addDatabaseFromConfig(sc *ServerContext, dbConfigMap DbConfigMap) (
-	map[string][]*db.DatabaseContext, error, string) {
-	dbContextMap := make(map[string][]*db.DatabaseContext)
-	for dbName, dbConfig := range dbConfigMap {
-		dbContext, err := sc.AddDatabaseFromConfig(dbConfig)
-		if err != nil {
-			return nil, err, dbName // Unreachable database
-		}
+func validateServerContext(sc *ServerContext) (errors []error) {
+	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc.databases_))
+	for _, dbContext := range sc.databases_ {
 		if uuid, err := dbContext.Bucket.UUID(); err == nil {
-			dbContextMap[uuid] = append(dbContextMap[uuid], dbContext)
+			bucketUUIDToDBContext[uuid] = append(bucketUUIDToDBContext[uuid], dbContext)
 		}
 	}
-	return dbContextMap, nil, ""
+	sharedBuckets := sharedBuckets(bucketUUIDToDBContext)
+	messageFormat := "Bucket %q is shared among databases %v. " +
+		"This may result in unexpected behaviour if security is not defined consistently."
+	for _, sharedBucket := range sharedBuckets {
+		sharedBucketError := &SharedBucketError{sharedBucket}
+		errors = append(errors, sharedBucketError)
+		base.Warnf(messageFormat, base.MD(sharedBucketError.GetSharedBucket().bucketName),
+			base.MD(sharedBucketError.GetSharedBucket().dbNames))
+	}
+	return errors
 }
 
 type sharedBucket struct {
 	bucketName string
 	dbNames    []string
+}
+
+type SharedBucketError struct {
+	sharedBucket sharedBucket
+}
+
+func (e *SharedBucketError) Error() string {
+	messageFormat := "Bucket %q is shared among databases %v. " +
+		"This may result in unexpected behaviour if security is not defined consistently."
+	return fmt.Sprintf(messageFormat, e.sharedBucket.bucketName, e.sharedBucket.dbNames)
+}
+
+func (e *SharedBucketError) GetSharedBucket() sharedBucket {
+	return e.sharedBucket
 }
 
 // Returns a list of buckets that are being shared by multiple databases.
