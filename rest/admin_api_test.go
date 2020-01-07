@@ -1897,7 +1897,9 @@ func TestHandleDeleteDB(t *testing.T) {
 	// Try to delete the database which doesn't exists
 	resp := rt.SendAdminRequest(http.MethodDelete, "/albums/", "{}")
 	assertStatus(t, resp, http.StatusNotFound)
-	assert.Contains(t, resp.Body.String(), "no such database")
+	assert.Contains(t, string(resp.BodyBytes()), "no such database")
+	var v map[string]interface{}
+	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", string(resp.BodyBytes()))
 
 	// Create the database
 	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", "{}")
