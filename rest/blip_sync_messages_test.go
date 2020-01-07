@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"testing"
 
 	"github.com/couchbase/go-blip"
@@ -72,12 +73,7 @@ func TestSubChangesSince(t *testing.T) {
 
 	zeroSinceVal := db.SequenceID{}
 
-	subChangesParams, err := newSubChangesParams(
-		rq,
-		TestLogger{},
-		zeroSinceVal,
-		testDb.ParseSequenceID,
-	)
+	subChangesParams, err := newSubChangesParams(context.TODO(), rq, zeroSinceVal, testDb.ParseSequenceID)
 	goassert.True(t, err == nil)
 
 	seqId := subChangesParams.since()

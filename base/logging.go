@@ -264,11 +264,6 @@ func GetCallersName(depth int, includeLine bool) string {
 	return fmt.Sprintf("%s() at %s:%d", fnname, lastComponent(file), line)
 }
 
-// Partial interface for the SGLogger
-type SGLogger interface {
-	Logf(logLevel LogLevel, logKey LogKey, format string, args ...interface{})
-}
-
 func lastComponent(path string) string {
 	if index := strings.LastIndex(path, "/"); index >= 0 {
 		path = path[index+1:]

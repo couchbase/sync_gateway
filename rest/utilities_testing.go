@@ -1520,15 +1520,3 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 	}
 
 }
-
-type TestLogger struct {
-	T *testing.T
-}
-
-func (l TestLogger) Logf(logLevel base.LogLevel, logKey base.LogKey, format string, args ...interface{}) {
-	l.T.Logf(
-		logLevel.String()+" "+
-			logKey.String()+": "+
-			format, args...,
-	)
-}
