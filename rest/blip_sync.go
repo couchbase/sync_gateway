@@ -804,6 +804,7 @@ func (bc *blipSyncContext) sendRevision(sender *blip.Sender, docID, revID string
 		return bc.sendNoRev(sender, docID, revID, err)
 	}
 
+	base.Infof(base.KeySync, "sendRevision, rev attachments for %s/%s are %v", docID, revID, rev.Attachments)
 	var bodyBytes []byte
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
@@ -832,11 +833,10 @@ func (bc *blipSyncContext) sendRevision(sender *blip.Sender, docID, revID string
 		}
 	}
 
-	bc.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known", base.UD(docID), revID, len(knownRevs))
-
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
 	attDigests := db.AttachmentDigests(rev.Attachments)
+	bc.Logf(base.LevelDebug, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), attDigests)
 	return bc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties)
 }
 
@@ -906,6 +906,7 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 			}()
 			defer bc.removeAllowedAttachments(attDigests)
 			outrq.Response() // blocks till reply is received
+			base.Infof(base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", docID, revID)
 		}()
 	} else {
 		outrq.SetNoReply(true)
@@ -1155,6 +1156,7 @@ func (ctx *blipSyncContext) addAllowedAttachments(attDigests []string) {
 	for _, digest := range attDigests {
 		ctx.allowedAttachments[digest] = ctx.allowedAttachments[digest] + 1
 	}
+	base.Infof(base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, ctx.allowedAttachments)
 }
 
 func (ctx *blipSyncContext) removeAllowedAttachments(attDigests []string) {
@@ -1167,6 +1169,8 @@ func (ctx *blipSyncContext) removeAllowedAttachments(attDigests []string) {
 			delete(ctx.allowedAttachments, digest)
 		}
 	}
+
+	base.Infof(base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attDigests, ctx.allowedAttachments)
 }
 
 func (ctx *blipSyncContext) isAttachmentAllowed(digest string) bool {
