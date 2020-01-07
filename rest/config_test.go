@@ -801,13 +801,19 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
 }
 
-func TestAddDatabaseFromConfigWithSharedBuckets(t *testing.T) {
+func TestValidateServerContext(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
-	couchbaseURL := base.UnitTestUrl()
-	bucketName := "test_data_bucket"
-	poolName := "default"
+
+	var (
+		couchbaseURL    = base.UnitTestUrl()
+		testDataBucket  = "test_data_bucket"
+		testIndexBucket = "test_indexbucket"
+		poolName        = "default"
+		username        = "Administrator"
+		password        = "password"
+	)
 
 	config = &ServerConfig{
 		Interface:      &DefaultInterface,
@@ -817,10 +823,10 @@ func TestAddDatabaseFromConfigWithSharedBuckets(t *testing.T) {
 				Name: "db1",
 				BucketConfig: BucketConfig{
 					Server:   &couchbaseURL,
-					Bucket:   &bucketName,
+					Bucket:   &testDataBucket,
 					Pool:     &poolName,
-					Username: "Administrator",
-					Password: "password",
+					Username: username,
+					Password: password,
 				},
 				Users: map[string]*db.PrincipalConfig{
 					base.GuestUsername: {
@@ -833,75 +839,10 @@ func TestAddDatabaseFromConfigWithSharedBuckets(t *testing.T) {
 				Name: "db2",
 				BucketConfig: BucketConfig{
 					Server:   &couchbaseURL,
-					Bucket:   &bucketName,
+					Bucket:   &testDataBucket,
 					Pool:     &poolName,
-					Username: "Administrator",
-					Password: "password",
-				},
-				Users: map[string]*db.PrincipalConfig{
-					base.GuestUsername: {
-						Disabled:         false,
-						ExplicitChannels: base.SetFromArray([]string{"*"}),
-					},
-				},
-			},
-		},
-	}
-
-	_, err = config.SetupAndValidateLogging()
-	require.NoError(t, err, "Error whilst setting up logging")
-
-	var errors = make([]error, 0)
-	errors = append(errors, config.validate()...)
-	errors = append(errors, config.setupAndValidateDatabases()...)
-	require.Len(t, errors, 0, "Error whilst validating databases")
-
-	sc := NewServerContext(config)
-	dbContextMap, err, dbName := addDatabaseFromConfig(sc, config.Databases)
-	require.NoError(t, err, "Error whilst adding databases from config")
-	require.Empty(t, dbName, "No database should be unreachable")
-	require.Len(t, dbContextMap, 1, "Database contexts should be group by bucket UUID")
-
-	sharedBuckets := sharedBuckets(dbContextMap)
-	assert.Equal(t, bucketName, sharedBuckets[0].bucketName)
-	assert.Subset(t, []string{"db1", "db2"}, sharedBuckets[0].dbNames)
-}
-
-func TestAddDatabaseFromConfigWithSharedAndUnknownBuckets(t *testing.T) {
-	t.Skip("Skipping this test; it's quite expensive and requires Couchbase Bucket")
-	couchbaseURL := base.UnitTestUrl()
-	bucketName := "test_data_bucket"
-	poolName := "default"
-	unknownBucket := "unknown" // This bucket shouldn't exists on Couchbase server
-
-	config = &ServerConfig{
-		Interface:      &DefaultInterface,
-		AdminInterface: &DefaultAdminInterface,
-		Databases: map[string]*DbConfig{
-			"db1": {
-				Name: "db1",
-				BucketConfig: BucketConfig{
-					Server:   &couchbaseURL,
-					Bucket:   &bucketName,
-					Pool:     &poolName,
-					Username: "Administrator",
-					Password: "password",
-				},
-				Users: map[string]*db.PrincipalConfig{
-					base.GuestUsername: {
-						Disabled:         false,
-						ExplicitChannels: base.SetFromArray([]string{"*"}),
-					},
-				},
-			},
-			"db2": {
-				Name: "db2",
-				BucketConfig: BucketConfig{
-					Server:   &couchbaseURL,
-					Bucket:   &bucketName,
-					Pool:     &poolName,
-					Username: "Administrator",
-					Password: "password",
+					Username: username,
+					Password: password,
 				},
 				Users: map[string]*db.PrincipalConfig{
 					base.GuestUsername: {
@@ -914,10 +855,10 @@ func TestAddDatabaseFromConfigWithSharedAndUnknownBuckets(t *testing.T) {
 				Name: "db3",
 				BucketConfig: BucketConfig{
 					Server:   &couchbaseURL,
-					Bucket:   &unknownBucket,
+					Bucket:   &testIndexBucket,
 					Pool:     &poolName,
-					Username: "Administrator",
-					Password: "password",
+					Username: username,
+					Password: password,
 				},
 				Users: map[string]*db.PrincipalConfig{
 					base.GuestUsername: {
@@ -938,8 +879,12 @@ func TestAddDatabaseFromConfigWithSharedAndUnknownBuckets(t *testing.T) {
 	require.Len(t, errors, 0, "Error whilst validating databases")
 
 	sc := NewServerContext(config)
-	dbContextMap, err, dbName := addDatabaseFromConfig(sc, config.Databases)
-	require.Error(t, err, "Error whilst adding databases from config")
-	require.Equal(t, "db3", dbName, "Database should be unreachable")
-	require.Len(t, dbContextMap, 0, "No Database context should be group by bucket UUID")
+	for _, dbConfig := range config.Databases {
+		_, err := sc.AddDatabaseFromConfig(dbConfig)
+		require.NoError(t, err, "Couldn't add database from config")
+	}
+	sharedBucketErrors := validateServerContext(sc)
+	SharedBucketError, _ := sharedBucketErrors[0].(*SharedBucketError)
+	assert.Equal(t, testDataBucket, SharedBucketError.GetSharedBucket().bucketName)
+	assert.Subset(t, []string{"db1", "db2"}, SharedBucketError.GetSharedBucket().dbNames)
 }
