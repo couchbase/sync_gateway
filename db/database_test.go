@@ -1907,3 +1907,220 @@ func TestSyncFnMutateBody(t *testing.T) {
 	log.Printf("rev: %s", rev.BodyBytes)
 
 }
+
+// Multiple clients are attempting to push the same new revision concurrently; first writer should be successful,
+// subsequent writers should fail on CAS, and then identify that revision already exists on retry.
+func TestConcurrentPushSameNewRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
+	var db *Database
+	var enableCallback bool
+	var revId string
+
+	writeUpdateCallback := func(key string) {
+		if enableCallback {
+			enableCallback = false
+			body := Body{"name": "Bob", "age": 52}
+			revId, _, err := db.Put("doc1", body)
+			assert.NoError(t, err, "Couldn't create document")
+			assert.NotEmpty(t, revId)
+		}
+	}
+
+	// Use leaky bucket to inject callback in query invocation
+	queryCallbackConfig := base.LeakyBucketConfig{
+		WriteUpdateCallback: writeUpdateCallback,
+	}
+
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer tearDownTestDB(t, db)
+	enableCallback = true
+
+	body := Body{"name": "Bob", "age": 52}
+	_, _, err := db.Put("doc1", body)
+	assert.Equal(t, "409 Document exists", err.Error())
+
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	assert.Equal(t, revId, doc.RevID)
+	assert.NoError(t, err, "Couldn't retrieve document")
+	assert.Equal(t, "Bob", doc.Body()["name"])
+	assert.Equal(t, json.Number("52"), doc.Body()["age"])
+}
+
+// Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an
+// update to a non-winning branch that leaves the branch still non-winning (i.e. shorter) than the active branch
+func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
+	var db *Database
+	var enableCallback bool
+
+	writeUpdateCallback := func(key string) {
+		if enableCallback {
+			enableCallback = false
+			body := Body{"name": "Emily", "age": 20}
+			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+			assert.NoError(t, err, "Adding revision 3-b")
+		}
+	}
+
+	// Use leaky bucket to inject callback in query invocation
+	queryCallbackConfig := base.LeakyBucketConfig{
+		WriteUpdateCallback: writeUpdateCallback,
+	}
+
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer tearDownTestDB(t, db)
+
+	body := Body{"name": "Olivia", "age": 80}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "Adding revision 1-a")
+
+	body = Body{"name": "Harry", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-a")
+
+	body = Body{"name": "Amelia", "age": 20}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 3-a")
+
+	body = Body{"name": "Charlie", "age": 10}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 4-a")
+
+	body = Body{"name": "Noah", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-b")
+
+	enableCallback = true
+
+	body = Body{"name": "Emily", "age": 20}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"3-b", "2-b", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 3-b")
+
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	assert.NoError(t, err, "Retrieve doc after adding 3-b")
+	assert.Equal(t, "4-a", doc.CurrentRev)
+}
+
+// Multiple clients are attempting to push the same tombstone of the winning revision for a branched document
+// First writer should be successful, subsequent writers should fail on CAS, then identify rev already exists
+func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
+	var db *Database
+	var enableCallback bool
+
+	writeUpdateCallback := func(key string) {
+		if enableCallback {
+			enableCallback = false
+			body := Body{"name": "Charlie", "age": 10, BodyDeleted: true}
+			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+			assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
+		}
+	}
+
+	// Use leaky bucket to inject callback in query invocation
+	queryCallbackConfig := base.LeakyBucketConfig{
+		WriteUpdateCallback: writeUpdateCallback,
+	}
+
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer tearDownTestDB(t, db)
+
+	body := Body{"name": "Olivia", "age": 80}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "Adding revision 1-a")
+
+	body = Body{"name": "Harry", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-a")
+
+	body = Body{"name": "Amelia", "age": 20}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 3-a")
+
+	body = Body{"name": "Noah", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-b")
+
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	assert.NoError(t, err, "Retrieve doc before tombstone")
+	assert.Equal(t, "3-a", doc.CurrentRev)
+
+	enableCallback = true
+
+	body = Body{"name": "Charlie", "age": 10, BodyDeleted: true}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Couldn't add revision 4-a (tombstone)")
+
+	doc, err = db.GetDocument("doc1", DocUnmarshalAll)
+	assert.NoError(t, err, "Retrieve doc post-tombstone")
+	assert.Equal(t, "2-b", doc.CurrentRev)
+}
+
+// Multiple clients are attempting to push conflicting non-winning revisions; multiple clients pushing different
+// updates to non-winning branches that leave the branch(es) non-winning.
+func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
+	var db *Database
+	var enableCallback bool
+
+	writeUpdateCallback := func(key string) {
+		if enableCallback {
+			enableCallback = false
+			body := Body{"name": "Joshua", "age": 11}
+			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"3-b1", "2-b", "1-a"}, false)
+			assert.NoError(t, err, "Couldn't add revision 3-b1")
+		}
+	}
+
+	// Use leaky bucket to inject callback in query invocation
+	queryCallbackConfig := base.LeakyBucketConfig{
+		WriteUpdateCallback: writeUpdateCallback,
+	}
+
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer tearDownTestDB(t, db)
+
+	body := Body{"name": "Olivia", "age": 80}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "Adding revision 1-a")
+
+	body = Body{"name": "Harry", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-a")
+
+	body = Body{"name": "Amelia", "age": 20}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 3-a")
+
+	body = Body{"name": "Charlie", "age": 10}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"4-a", "3-a", "2-a", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 4-a")
+
+	body = Body{"name": "Noah", "age": 40}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-b", "1-a"}, false)
+	assert.NoError(t, err, "Adding revision 2-b")
+
+	enableCallback = true
+
+	body = Body{"name": "Liam", "age": 12}
+	_, _, err = db.PutExistingRevWithBody("doc1", body, []string{"3-b2", "2-b", "1-a"}, false)
+	assert.NoError(t, err, "Couldn't add revision 3-b2")
+
+	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
+	assert.NoError(t, err, "Retrieve doc after adding 3-b")
+	assert.Equal(t, "4-a", doc.CurrentRev)
+
+	rev, err := db.GetRev("doc1", "3-b1", false, nil)
+	assert.NoError(t, err, "Retrieve revision 3-b1")
+	revBody, err := rev.MutableBody()
+	assert.NoError(t, err, "Retrieve body of revision 3-b1")
+	assert.Equal(t, "Joshua", revBody["name"])
+	assert.Equal(t, json.Number("11"), revBody["age"])
+
+	rev, err = db.GetRev("doc1", "3-b2", false, nil)
+	assert.NoError(t, err, "Retrieve revision 3-b2")
+	revBody, err = rev.MutableBody()
+	assert.NoError(t, err, "Retrieve body of revision 3-b2")
+	assert.Equal(t, "Liam", revBody["name"])
+	assert.Equal(t, json.Number("12"), revBody["age"])
+}
