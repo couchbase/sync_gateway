@@ -219,7 +219,7 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 		// Trace log the full message body and properties
 		if base.LogTraceEnabled(base.KeySyncMsg) {
 			rqBody, _ := rq.Body()
-			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "%s: Body: %q Properties: %v", rq, rqBody, rq.Properties)
+			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "Req %s: Body: '%s' Properties: %v", rq, base.UD(rqBody), base.UD(rq.Properties))
 		}
 
 		if err := handlerFn(&handler, rq); err != nil {
@@ -242,7 +242,7 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 				return
 			}
 			respBody, _ := resp.Body()
-			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "%s: Body: %q Properties: %v", resp, respBody, resp.Properties)
+			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "Resp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
 		}
 	}
 

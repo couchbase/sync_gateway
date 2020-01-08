@@ -50,6 +50,10 @@ func MD(i interface{}) RedactorFunc {
 			return Metadata(v.String())
 
 		}
+	case []byte:
+		return func() Redactor {
+			return Metadata(string(v))
+		}
 	default:
 		return func() Redactor {
 			typeOf := reflect.ValueOf(i)

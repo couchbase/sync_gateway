@@ -46,6 +46,10 @@ func SD(i interface{}) RedactorFunc {
 		return func() Redactor {
 			return SystemData(v.String())
 		}
+	case []byte:
+		return func() Redactor {
+			return SystemData(string(v))
+		}
 	default:
 		return func() Redactor {
 			valueOf := reflect.ValueOf(i)
