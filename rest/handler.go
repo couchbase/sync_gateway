@@ -754,7 +754,8 @@ func (h *handler) writeStatus(status int, message string) {
 	h.setHeader("Content-Type", "application/json")
 	h.response.WriteHeader(status)
 	h.setStatus(status, message)
-	h.response.Write([]byte(`{"error":"` + errorStr + `","reason":"` + message + `"}`))
+
+	_, _ = h.response.Write([]byte(`{"error":"` + errorStr + `","reason":` + strconv.Quote(message) + `}`))
 }
 
 var kRangeRegex = regexp.MustCompile("^bytes=(\\d+)?-(\\d+)?$")
