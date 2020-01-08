@@ -4560,7 +4560,7 @@ func TestHandleProfiling(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPost, "/_profile/unknown", reqBodyText)
 	log.Printf("string(response.BodyBytes()): %v", string(response.BodyBytes()))
 	assertStatus(t, response, http.StatusNotFound)
-	assert.Contains(t, string(response.BodyBytes()), `{"error":"not_found","reason":"No such profile "unknown""}`)
+	assert.Contains(t, string(response.BodyBytes()), `No such profile \"unknown\"`)
 
 	// Send profile request with filename and empty profile name; it should end up creating cpu profile
 	filePath = filepath.Join(dirPath, "cpu.pprof")
