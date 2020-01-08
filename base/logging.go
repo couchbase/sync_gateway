@@ -635,5 +635,5 @@ func LogDebugEnabled(logKey LogKey) bool {
 // LogTraceEnabled returns true if either the console should log at trace level,
 // or if the traceLogger is enabled.
 func LogTraceEnabled(logKey LogKey) bool {
-	return consoleLogger.shouldLog(LevelTrace, logKey) //|| traceLogger.shouldLog(LevelTrace)
+	return consoleLogger.shouldLog(LevelTrace, logKey) || traceLogger.shouldLog(LevelTrace)
 }
