@@ -1982,3 +1982,32 @@ func TestHandleSGCollect(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodPost, resource, reqBodyJson)
 	assertStatus(t, resp, http.StatusBadRequest)
 }
+
+func TestSessionExpirationDateTimeFormat(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	authenticator := auth.NewAuthenticator(rt.Bucket(), nil)
+	user, err := authenticator.NewUser("alice", "letMe!n", channels.SetOf(t, "*"))
+	assert.NoError(t, err, "Couldn't create new user")
+	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
+
+	var body db.Body
+	response := rt.SendAdminRequest(http.MethodPost, "/db/_session", `{"name":"alice"}`)
+	assertStatus(t, response, http.StatusOK)
+
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	expires, err := time.Parse(time.RFC3339, body["expires"].(string))
+	assert.NoError(t, err, "Couldn't parse session expiration datetime")
+	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
+
+	sessionId := body["session_id"].(string)
+	require.NotEmpty(t, sessionId, "Couldn't parse sessionID from response body")
+	response = rt.SendAdminRequest(http.MethodGet, fmt.Sprintf("/db/_session/%s", sessionId), "")
+	assertStatus(t, response, http.StatusOK)
+
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	expires, err = time.Parse(time.RFC3339, body["expires"].(string))
+	assert.NoError(t, err, "Couldn't parse session expiration datetime")
+	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
+}

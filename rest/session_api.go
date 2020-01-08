@@ -213,12 +213,12 @@ func (h *handler) createUserSession() error {
 		return err
 	}
 	var response struct {
-		SessionID  string    `json:"session_id"`
-		Expires    time.Time `json:"expires"`
-		CookieName string    `json:"cookie_name"`
+		SessionID  string `json:"session_id"`
+		Expires    string `json:"expires"`
+		CookieName string `json:"cookie_name"`
 	}
 	response.SessionID = session.ID
-	response.Expires = session.Expiration
+	response.Expires = session.Expiration.UTC().Format(time.RFC3339)
 	response.CookieName = authenticator.SessionCookieName()
 	h.writeJSON(response)
 	return nil
