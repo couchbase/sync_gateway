@@ -15,6 +15,7 @@ const (
 	infoMinAge  = 3
 	statsMinage = 3
 	debugMinAge = 1
+	traceMinAge = 1
 
 	// defaultConsoleLoggerCollateBufferSize is the number of console logs we'll
 	// buffer and collate, before flushing the buffer to the output.
@@ -39,6 +40,7 @@ type LoggingConfig struct {
 	Warn                 FileLoggerConfig    `json:"warn,omitempty"`            // Warn log file output
 	Info                 FileLoggerConfig    `json:"info,omitempty"`            // Info log file output
 	Debug                FileLoggerConfig    `json:"debug,omitempty"`           // Debug log file output
+	Trace                FileLoggerConfig    `json:"trace,omitempty"`           // Trace log file output
 	Stats                FileLoggerConfig    `json:"stats,omitempty"`           // Stats log file output
 	DeprecatedDefaultLog *LogAppenderConfig  `json:"default,omitempty"`         // Deprecated "default" logging option.
 }
@@ -89,6 +91,11 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 	}
 
 	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, LevelDebug.String(), c.LogFilePath, debugMinAge)
+	if err != nil {
+		return warnings, err
+	}
+
+	traceLogger, err = NewFileLogger(c.Trace, LevelTrace, LevelTrace.String(), c.LogFilePath, traceMinAge)
 	if err != nil {
 		return warnings, err
 	}
