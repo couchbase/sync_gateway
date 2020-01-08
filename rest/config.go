@@ -1055,13 +1055,12 @@ func validateServerContext(sc *ServerContext) (errors []error) {
 		}
 	}
 	sharedBuckets := sharedBuckets(bucketUUIDToDBContext)
-	messageFormat := "Bucket %q is shared among databases %s. " +
-		"This may result in unexpected behaviour if security is not defined consistently."
 	for _, sharedBucket := range sharedBuckets {
 		sharedBucketError := &SharedBucketError{sharedBucket}
 		errors = append(errors, sharedBucketError)
-		base.Warnf(messageFormat, base.MD(sharedBucketError.GetSharedBucket().bucketName),
-			base.MD(sharedBucketError.GetSharedBucket().dbNames))
+		messageFormat := "Bucket %q is shared among databases %s. " +
+			"This may result in unexpected behaviour if security is not defined consistently."
+		base.Warnf(messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
 	}
 	return errors
 }
