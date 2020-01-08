@@ -959,6 +959,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 	newDoc.UpdateBodyBytes(bodyBytes)
 
+	injectedAttachmentsForDelta := false
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
@@ -987,6 +988,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
 			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
+			injectedAttachmentsForDelta = true
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
@@ -1037,7 +1039,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Pull out attachments
-	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
+	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
 		body := newDoc.Body()
 
 		// Check for any attachments I don't have yet, and request them:
