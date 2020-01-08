@@ -804,7 +804,7 @@ func (bc *blipSyncContext) sendRevision(sender *blip.Sender, docID, revID string
 		return bc.sendNoRev(sender, docID, revID, err)
 	}
 
-	base.Infof(base.KeySync, "sendRevision, rev attachments for %s/%s are %v", docID, revID, rev.Attachments)
+	base.Tracef(base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
 	var bodyBytes []byte
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
@@ -891,7 +891,7 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 	}
 	bc.dbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
 
-	base.Infof(base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", docID, revID, string(bodyBytes), properties, attDigests)
+	base.Tracef(base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attDigests)
 
 	if len(attDigests) > 0 {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
@@ -908,7 +908,7 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 			}()
 			defer bc.removeAllowedAttachments(attDigests)
 			outrq.Response() // blocks till reply is received
-			base.Infof(base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", docID, revID)
+			base.Tracef(base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
 		}()
 	} else {
 		outrq.SetNoReply(true)
@@ -937,12 +937,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := revMessage{Message: rq}
 
+	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
+
 	bodyBytes, err := rq.Body()
 	if err != nil {
 		return err
 	}
 
-	bh.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s %s  Properties:%v  Body:%s", bh.serialNumber, rq.Profile(), revMessage.String(), revMessage.Properties, string(bodyBytes))
+	bh.Logf(base.LevelTrace, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
 
 	bh.dbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
 
@@ -1044,7 +1046,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 		// Check for any attachments I don't have yet, and request them:
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID); err != nil {
-			base.Errorf("Error during downloadOrVerifyAttachments: %v", err)
+			bh.Logf(base.LevelError, base.KeyAll, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
 			return err
 		}
 
@@ -1101,7 +1103,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 				// security purposes I do need the client to _prove_ it has the data, otherwise if
 				// it knew the digest it could acquire the data by uploading a document with the
 				// claimed attachment, then downloading it.
-				bh.Logf(base.LevelDebug, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), docID, digest)
+				bh.Logf(base.LevelDebug, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 				nonce, proof := db.GenerateProofOfAttachment(knownData)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{blipProfile: messageProveAttachment, proveAttachmentDigest: digest}
@@ -1110,18 +1112,18 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 					return nil, ErrClosedBLIPSender
 				}
 				if body, err := outrq.Response().Body(); err != nil {
-					bh.Logf(base.LevelWarn, base.KeySync, "Error returned for proveAttachment message for doc %s (digest %s).  Error: %v", docID, digest, err)
+					bh.Logf(base.LevelWarn, base.KeySync, "Error returned for proveAttachment message for doc %s (digest %s).  Error: %v", base.UD(docID), digest, err)
 					return nil, err
 				} else if string(body) != proof {
 					bh.Logf(base.LevelWarn, base.KeySync, "Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
 					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
 				} else {
-					bh.Logf(base.LevelInfo, base.KeySync, "proveAttachment successful for doc %s (digest %s)", docID, digest)
+					bh.Logf(base.LevelInfo, base.KeySync, "proveAttachment successful for doc %s (digest %s)", base.UD(docID), digest)
 				}
 				return nil, nil
 			} else {
 				// If I don't have the attachment, I will request it from the client:
-				bh.Logf(base.LevelDebug, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), docID, digest)
+				bh.Logf(base.LevelDebug, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{blipProfile: messageGetAttachment, getAttachmentDigest: digest}
 				if isCompressible(name, meta) {
@@ -1164,7 +1166,7 @@ func (ctx *blipSyncContext) addAllowedAttachments(attDigests []string) {
 	for _, digest := range attDigests {
 		ctx.allowedAttachments[digest] = ctx.allowedAttachments[digest] + 1
 	}
-	base.Infof(base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, ctx.allowedAttachments)
+	ctx.Logf(base.LevelTrace, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, ctx.allowedAttachments)
 }
 
 func (ctx *blipSyncContext) removeAllowedAttachments(attDigests []string) {
@@ -1178,7 +1180,7 @@ func (ctx *blipSyncContext) removeAllowedAttachments(attDigests []string) {
 		}
 	}
 
-	base.Infof(base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attDigests, ctx.allowedAttachments)
+	ctx.Logf(base.LevelTrace, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attDigests, ctx.allowedAttachments)
 }
 
 func (ctx *blipSyncContext) isAttachmentAllowed(digest string) bool {
