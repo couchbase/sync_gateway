@@ -47,18 +47,17 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
-	defer func() {
-		_ = input.Close()
-	}()
-
 	decoder := base.JSONDecoder(input)
 	decoder.UseNumber()
-	if err := decoder.Decode(into); err != nil {
+	err := decoder.Decode(into)
+	if err != nil {
 		base.Warnf("Couldn't parse JSON in HTTP request: %v", err)
-		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
+		err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
 	}
 
-	return nil
+	_ = input.Close()
+
+	return err
 }
 
 type attInfo struct {
