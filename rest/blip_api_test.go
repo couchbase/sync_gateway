@@ -2621,3 +2621,65 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, `{}`, string(rev))
 }
+
+// TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
+func TestBlipDeltaSyncPushAttachment(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta test requires EE")
+	}
+	sgUseDeltas := true
+	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// Create blip tester
+	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+		restTester:                  rt,
+		noAdminParty:                true,
+		connectingUsername:          "user1",
+		connectingPassword:          "1234",
+		connectingUserChannelGrants: []string{"*"}, // All channels
+	})
+	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	defer bt.Close()
+
+	// Send rev 1
+	sent, _, resp, err := bt.SendRev("pushAttachmentDoc", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
+	assert.True(t, sent)
+	assert.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	response := bt.restTester.SendAdminRequest("GET", "/db/_raw/pushAttachmentDoc", ``)
+	log.Printf("%s", response.Body.Bytes())
+
+	// Send rev 2, with attachment
+	attachmentBody := "attach"
+	digest := db.Sha1DigestKey([]byte(attachmentBody))
+	input := SendRevWithAttachmentInput{
+		docId:            "pushAttachmentDoc",
+		revId:            "2-abc",
+		attachmentName:   "myAttachment",
+		attachmentLength: len(attachmentBody),
+		attachmentBody:   attachmentBody,
+		attachmentDigest: digest,
+		history:          []string{"1-abc"},
+		body:             []byte(`{"key": "val"}`),
+	}
+	sent, _, _ = bt.SendRevWithAttachment(input)
+	assert.True(t, sent)
+
+	response = bt.restTester.SendAdminRequest("GET", "/db/_raw/pushAttachmentDoc", ``)
+	log.Printf("%s", response.Body.Bytes())
+
+	// Send rev 3, as delta
+	properties := blip.Properties{revMessageDeltaSrc: "2-abc"}
+	sent, _, _, err = bt.SendRevWithHistory("pushAttachmentDoc", "3-abc", []string{"2-abc"}, []byte(`{"key": "modval"}`), properties)
+	assert.True(t, sent)
+	assert.NoError(t, err)
+	assert.Equal(t, "", resp.Properties["Error-Code"])
+
+	response = bt.restTester.SendAdminRequest("GET", "/db/_raw/pushAttachmentDoc", ``)
+	log.Printf("%s", response.Body.Bytes())
+}
