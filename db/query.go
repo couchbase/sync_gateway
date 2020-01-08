@@ -73,7 +73,8 @@ var QueryChannels = SGQuery{
 			"META(`%s`).id AS id "+
 			"FROM `%s` "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
-			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]",
+			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
+			"ORDER BY seq",
 		base.BucketQueryToken, base.BucketQueryToken),
 	adhoc: false,
 }
