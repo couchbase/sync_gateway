@@ -47,6 +47,10 @@ func UD(i interface{}) RedactorFunc {
 		return func() Redactor {
 			return UserData(v.String())
 		}
+	case []byte:
+		return func() Redactor {
+			return UserData(string(v))
+		}
 	default:
 		return func() Redactor {
 			valueOf := reflect.ValueOf(i)
