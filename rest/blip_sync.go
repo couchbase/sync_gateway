@@ -216,6 +216,12 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 			serialNumber:    ctx.incrementSerialNumber(),
 		}
 
+		// Trace log the full message body and properties
+		if base.LogTraceEnabled(base.KeySyncMsg) {
+			rqBody, _ := rq.Body()
+			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "%s: Body: %q Properties: %v", rq, rqBody, rq.Properties)
+		}
+
 		if err := handlerFn(&handler, rq); err != nil {
 			status, msg := base.ErrorAsHTTPStatus(err)
 			if response := rq.Response(); response != nil {
@@ -223,11 +229,20 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 			}
 			ctx.Logf(base.LevelInfo, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v", handler.serialNumber, profile, status, msg, time.Since(startTime))
 		} else {
-
 			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
 			if profile != "subChanges" {
 				ctx.Logf(base.LevelDebug, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
 			}
+		}
+
+		// Trace log the full response body and properties
+		if base.LogTraceEnabled(base.KeySyncMsg) {
+			resp := rq.Response()
+			if resp == nil {
+				return
+			}
+			respBody, _ := resp.Body()
+			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "%s: Body: %q Properties: %v", resp, respBody, resp.Properties)
 		}
 	}
 
