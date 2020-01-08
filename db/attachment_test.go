@@ -15,6 +15,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -504,12 +505,20 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 }
 
 func TestGenerateProofOfAttachment(t *testing.T) {
-	doc := `{"_attachments": {"image.jpeg": {"data":"aGVsbG8gd29ybGQ="}}}`
-	nonce, proof := GenerateProofOfAttachment([]byte(doc))
-	assert.Equal(t, 20, len(nonce))
-	assert.NotEmpty(t, nonce, "nonce should not be empty")
-	assert.NotEmpty(t, proof, "SHA1 checksum should be generated")
-	assert.Contains(t, proof, "sha1-")
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	attData := []byte(`hello world`)
+
+	nonce, proof1 := GenerateProofOfAttachment(attData)
+	assert.True(t, len(nonce) >= 20, "nonce should be at least 20 bytes")
+	assert.NotEmpty(t, proof1)
+	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
+
+	proof2 := ProveAttachment(attData, nonce)
+	assert.NotEmpty(t, proof1, "")
+	assert.True(t, strings.HasPrefix(proof1, "sha1-"))
+
+	assert.Equal(t, proof1, proof2, "GenerateProofOfAttachment and ProveAttachment produced different proofs.")
 }
 
 func TestDecodeAttachmentError(t *testing.T) {
