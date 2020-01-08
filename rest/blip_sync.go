@@ -242,7 +242,7 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 				return
 			}
 			respBody, _ := resp.Body()
-			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "Recv Resp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
+			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "Recv Rsp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
 		}
 	}
 
