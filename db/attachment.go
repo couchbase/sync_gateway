@@ -239,17 +239,26 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback Att
 	return nil
 }
 
+// GenerateProofOfAttachment returns a nonce and proof for an attachment body.
 func GenerateProofOfAttachment(attachmentData []byte) (nonce []byte, proof string) {
 	nonce = make([]byte, 20)
-	if n, err := rand.Read(nonce); n < len(nonce) {
+	if _, err := rand.Read(nonce); err != nil {
 		base.Panicf("Failed to generate random data: %s", err)
 	}
-	digester := sha1.New()
-	digester.Write([]byte{byte(len(nonce))})
-	digester.Write(nonce)
-	digester.Write(attachmentData)
-	proof = "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
-	return
+	proof = ProveAttachment(attachmentData, nonce)
+	base.Tracef(base.KeyCRUD, "Generated nonce %v and proof %q for attachment: %v", nonce, proof, attachmentData)
+	return nonce, proof
+}
+
+// ProveAttachment returns the proof for an attachment body and nonce pair.
+func ProveAttachment(attachmentData, nonce []byte) (proof string) {
+	d := sha1.New()
+	d.Write([]byte{byte(len(nonce))})
+	d.Write(nonce)
+	d.Write(attachmentData)
+	proof = "sha1-" + base64.StdEncoding.EncodeToString(d.Sum(nil))
+	base.Tracef(base.KeyCRUD, "Generated proof %q using nonce %v for attachment: %v", proof, nonce, attachmentData)
+	return proof
 }
 
 //////// HELPERS:

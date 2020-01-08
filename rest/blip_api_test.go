@@ -2621,3 +2621,55 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, `{}`, string(rev))
 }
+
+// TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
+func TestBlipDeltaSyncPushAttachment(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Delta test requires EE")
+	}
+
+	const docID = "pushAttachmentDoc"
+
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: base.BoolPtr(true)}}})
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	// Push first rev
+	revID, err := btc.PushRev(docID, "", []byte(`{"key":"val"}`))
+	require.NoError(t, err)
+
+	// Push second rev with an attachment (no delta yet)
+	attData := base64.StdEncoding.EncodeToString([]byte("attach"))
+	revID, err = btc.PushRev(docID, revID, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
+	require.NoError(t, err)
+
+	syncData, err := rt.GetDatabase().GetDocSyncData(docID)
+	require.NoError(t, err)
+
+	assert.Len(t, syncData.Attachments, 1)
+	_, found := syncData.Attachments["myAttachment"]
+	assert.True(t, found)
+
+	// Turn deltas on
+	btc.ClientDeltas = true
+
+	// Get existing body with the stub attachment, insert a new property and push as delta.
+	body, found := btc.GetRev(docID, revID)
+	require.True(t, found)
+	newBody, err := base.InjectJSONPropertiesFromBytes(body, base.KVPairBytes{Key: "update", Val: []byte(`true`)})
+	require.NoError(t, err)
+	revID, err = btc.PushRev(docID, revID, newBody)
+	require.NoError(t, err)
+
+	syncData, err = rt.GetDatabase().GetDocSyncData(docID)
+	require.NoError(t, err)
+
+	assert.Len(t, syncData.Attachments, 1)
+	_, found = syncData.Attachments["myAttachment"]
+	assert.True(t, found)
+}
