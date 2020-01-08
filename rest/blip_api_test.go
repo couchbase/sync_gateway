@@ -2624,62 +2624,52 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
 func TestBlipDeltaSyncPushAttachment(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
-	sgUseDeltas := true
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
-	rt := NewRestTester(t, &rtConfig)
+
+	const docID = "pushAttachmentDoc"
+
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: base.BoolPtr(true)}}})
 	defer rt.Close()
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		restTester:                  rt,
-		noAdminParty:                true,
-		connectingUsername:          "user1",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // All channels
-	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
-	defer bt.Close()
+	btc, err := NewBlipTesterClient(t, rt)
+	require.NoError(t, err)
+	defer btc.Close()
 
-	// Send rev 1
-	sent, _, resp, err := bt.SendRev("pushAttachmentDoc", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
-	assert.True(t, sent)
-	assert.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	// Push first rev
+	revID, err := btc.PushRev(docID, "", []byte(`{"key":"val"}`))
+	require.NoError(t, err)
 
-	response := bt.restTester.SendAdminRequest("GET", "/db/_raw/pushAttachmentDoc", ``)
-	log.Printf("%s", response.Body.Bytes())
+	// Push second rev with an attachment (no delta yet)
+	attData := base64.StdEncoding.EncodeToString([]byte("attach"))
+	revID, err = btc.PushRev(docID, revID, []byte(`{"key":"val","_attachments":{"myAttachment":{"data":"`+attData+`"}}}`))
+	require.NoError(t, err)
 
-	// Send rev 2, with attachment
-	attachmentBody := "attach"
-	digest := db.Sha1DigestKey([]byte(attachmentBody))
-	input := SendRevWithAttachmentInput{
-		docId:            "pushAttachmentDoc",
-		revId:            "2-abc",
-		attachmentName:   "myAttachment",
-		attachmentLength: len(attachmentBody),
-		attachmentBody:   attachmentBody,
-		attachmentDigest: digest,
-		history:          []string{"1-abc"},
-		body:             []byte(`{"key": "val"}`),
-	}
-	sent, _, _ = bt.SendRevWithAttachment(input)
-	assert.True(t, sent)
+	syncData, err := rt.GetDatabase().GetDocSyncData(docID)
+	require.NoError(t, err)
 
-	response = bt.restTester.SendAdminRequest("GET", "/db/_raw/pushAttachmentDoc", ``)
-	log.Printf("%s", response.Body.Bytes())
+	assert.Len(t, syncData.Attachments, 1)
+	_, found := syncData.Attachments["myAttachment"]
+	assert.True(t, found)
 
-	// Send rev 3, as delta
-	properties := blip.Properties{revMessageDeltaSrc: "2-abc"}
-	sent, _, _, err = bt.SendRevWithHistory("pushAttachmentDoc", "3-abc", []string{"2-abc"}, []byte(`{"key": "modval"}`), properties)
-	assert.True(t, sent)
-	assert.NoError(t, err)
-	assert.Equal(t, "", resp.Properties["Error-Code"])
+	// Turn deltas on
+	btc.ClientDeltas = true
 
-	response = bt.restTester.SendAdminRequest("GET", "/db/_raw/pushAttachmentDoc", ``)
-	log.Printf("%s", response.Body.Bytes())
+	// Get existing body with the stub attachment, insert a new property and push as delta.
+	body, found := btc.GetRev(docID, revID)
+	require.True(t, found)
+	newBody, err := base.InjectJSONPropertiesFromBytes(body, base.KVPairBytes{Key: "update", Val: []byte(`true`)})
+	require.NoError(t, err)
+	revID, err = btc.PushRev(docID, revID, newBody)
+	require.NoError(t, err)
+
+	syncData, err = rt.GetDatabase().GetDocSyncData(docID)
+	require.NoError(t, err)
+
+	assert.Len(t, syncData.Attachments, 1)
+	_, found = syncData.Attachments["myAttachment"]
+	assert.True(t, found)
 }

@@ -54,6 +54,34 @@ func (btr *BlipTesterReplicator) Close() {
 }
 
 func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
+	btr.bt.blipContext.HandlerForProfile[messageProveAttachment] = func(msg *blip.Message) {
+		btr.storeMessage(msg)
+
+		nonce, err := msg.Body()
+		if err != nil {
+			panic(err)
+		}
+
+		if len(nonce) == 0 {
+			panic("no nonce sent with proveAttachment")
+		}
+
+		digest, ok := msg.Properties[proveAttachmentDigest]
+		if !ok {
+			panic("no digest sent with proveAttachment")
+		}
+
+		attData, err := btc.getAttachment(digest)
+		if err != nil {
+			panic(fmt.Sprintf("error getting client attachment: %v", err))
+		}
+
+		proof := db.ProveAttachment(attData, nonce)
+
+		resp := msg.Response()
+		resp.SetBody([]byte(proof))
+	}
+
 	btr.bt.blipContext.HandlerForProfile[messageChanges] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
@@ -490,21 +518,20 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 					inlineAttachmentMap := inlineAttachment.(map[string]interface{})
 					attachmentData, ok := inlineAttachmentMap["data"]
 					if !ok {
+						if isStub, _ := inlineAttachmentMap["stub"].(bool); isStub {
+							// push the stub as-is
+							continue
+						}
 						return "", fmt.Errorf("couldn't find data property for inline attachment")
 					}
-					attachmentContentType, ok := inlineAttachmentMap["content_type"]
-					if !ok {
-						return "", fmt.Errorf("couldn't find content_type property for inline attachment")
-					}
 
+					// Transform inline attachment data into metadata
 					data, ok := attachmentData.(string)
 					if !ok {
 						return "", fmt.Errorf("inline attachment data was not a string")
 					}
-					contentType, ok := attachmentContentType.(string)
-					if !ok {
-						return "", fmt.Errorf("inline attachment content_type was not a string")
-					}
+
+					contentType, _ := inlineAttachmentMap["content_type"].(string)
 
 					length, digest, err := btc.saveAttachment(contentType, data)
 					if err != nil {
