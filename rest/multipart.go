@@ -28,7 +28,8 @@ const kMaxInlineAttachmentSize = 200
 const kMinCompressedJSONSize = 300
 
 // Parses a JSON MIME body, unmarshaling it into "into".
-func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) error {
+// Closes the input io.ReadCloser once done.
+func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}) error {
 	contentType := headers.Get("Content-Type")
 	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
@@ -46,12 +47,17 @@ func ReadJSONFromMIME(headers http.Header, input io.Reader, into interface{}) er
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
+	defer func() {
+		_ = input.Close()
+	}()
+
 	decoder := base.JSONDecoder(input)
 	decoder.UseNumber()
 	if err := decoder.Decode(into); err != nil {
 		base.Warnf("Couldn't parse JSON in HTTP request: %v", err)
 		return base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
 	}
+
 	return nil
 }
 
@@ -189,7 +195,6 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 	}
 	var body db.Body
 	err = ReadJSONFromMIME(http.Header(mainPart.Header), mainPart, &body)
-	_ = mainPart.Close()
 	if err != nil {
 		return nil, err
 	}
