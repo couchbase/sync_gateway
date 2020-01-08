@@ -126,8 +126,8 @@ func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath strin
 	}
 
 	if lfc.Enabled == nil {
-		// enable for all levels except debug by default
-		lfc.Enabled = BoolPtr(level != LevelDebug)
+		// enable for all levels less verbose than debug by default
+		lfc.Enabled = BoolPtr(level < LevelDebug)
 	}
 
 	if err := lfc.initRotationConfig(name, defaultMaxSize, minAge); err != nil {

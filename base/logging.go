@@ -322,8 +322,8 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 // *************************************************************************
 
 var (
-	consoleLogger                                                 *ConsoleLogger
-	debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
+	consoleLogger                                                              *ConsoleLogger
+	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
 
 	// envColorCapable evaluated only once to prevent unnecessary
 	// overhead of checking os.Getenv on each colorEnabled() invocation
@@ -335,6 +335,7 @@ func RotateLogfiles() map[*FileLogger]error {
 	Infof(KeyAll, "Rotating log files...")
 
 	loggers := map[*FileLogger]error{
+		traceLogger: nil,
 		debugLogger: nil,
 		infoLogger:  nil,
 		warnLogger:  nil,
@@ -469,9 +470,10 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	shouldLogWarn := warnLogger.shouldLog(logLevel)
 	shouldLogInfo := infoLogger.shouldLog(logLevel)
 	shouldLogDebug := debugLogger.shouldLog(logLevel)
+	shouldLogTrace := traceLogger.shouldLog(logLevel)
 
 	// exit early if we aren't going to log anything anywhere.
-	if !(shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug) {
+	if !(shouldLogConsole || shouldLogError || shouldLogWarn || shouldLogInfo || shouldLogDebug || shouldLogTrace) {
 		return
 	}
 
@@ -500,6 +502,9 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	}
 	if shouldLogDebug {
 		debugLogger.logf(format, args...)
+	}
+	if shouldLogTrace {
+		traceLogger.logf(format, args...)
 	}
 }
 
@@ -537,6 +542,9 @@ func LogSyncGatewayVersion() {
 	}
 	if debugLogger.shouldLog(LevelNone) {
 		debugLogger.logger.Printf(msg)
+	}
+	if traceLogger.shouldLog(LevelNone) {
+		traceLogger.logger.Printf(msg)
 	}
 }
 
