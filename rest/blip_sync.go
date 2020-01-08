@@ -219,7 +219,7 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 		// Trace log the full message body and properties
 		if base.LogTraceEnabled(base.KeySyncMsg) {
 			rqBody, _ := rq.Body()
-			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "Req %s: Body: '%s' Properties: %v", rq, base.UD(rqBody), base.UD(rq.Properties))
+			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "Recv Req %s: Body: '%s' Properties: %v", rq, base.UD(rqBody), base.UD(rq.Properties))
 		}
 
 		if err := handlerFn(&handler, rq); err != nil {
@@ -242,7 +242,7 @@ func (ctx *blipSyncContext) register(profile string, handlerFn func(*blipHandler
 				return
 			}
 			respBody, _ := resp.Body()
-			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "Resp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
+			ctx.Logf(base.LevelTrace, base.KeySyncMsg, "Recv Resp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
 		}
 	}
 
@@ -523,7 +523,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		handleChangesResponseDb := bh.copyContextDatabase()
 
 		sendTime := time.Now()
-		if !sender.Send(outrq) {
+		if !bh.sendBLIPMessage(sender, outrq) {
 			return ErrClosedBLIPSender
 		}
 
@@ -535,7 +535,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
 	} else {
 		outrq.SetNoReply(true)
-		if !sender.Send(outrq) {
+		if !bh.sendBLIPMessage(sender, outrq) {
 			return ErrClosedBLIPSender
 		}
 	}
@@ -796,6 +796,15 @@ func (bc *blipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID s
 	return bc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentDigests, properties)
 }
 
+// sendBLIPMessage is a simple wrapper around all sent BLIP messages
+func (bc *blipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Message) bool {
+	if base.LogTraceEnabled(base.KeySyncMsg) {
+		rqBody, _ := msg.Body()
+		bc.Logf(base.LevelTrace, base.KeySyncMsg, "Send Req %s: Body: '%s' Properties: %v", msg, base.UD(rqBody), base.UD(msg.Properties))
+	}
+	return sender.Send(msg)
+}
+
 func (bc *blipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, err error) error {
 
 	bc.Logf(base.LevelDebug, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
@@ -811,7 +820,7 @@ func (bc *blipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, e
 	noRevRq.setReason(reason)
 
 	noRevRq.SetNoReply(true)
-	if !sender.Send(noRevRq.Message) {
+	if !bc.sendBLIPMessage(sender, noRevRq.Message) {
 		return ErrClosedBLIPSender
 	}
 
@@ -915,7 +924,7 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 	if len(attDigests) > 0 {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bc.addAllowedAttachments(attDigests)
-		if !sender.Send(outrq.Message) {
+		if !bc.sendBLIPMessage(sender, outrq.Message) {
 			return ErrClosedBLIPSender
 		}
 		go func() {
@@ -930,7 +939,7 @@ func (bc *blipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID
 		}()
 	} else {
 		outrq.SetNoReply(true)
-		if !sender.Send(outrq.Message) {
+		if !bc.sendBLIPMessage(sender, outrq.Message) {
 			return ErrClosedBLIPSender
 		}
 	}
@@ -1135,7 +1144,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{blipProfile: messageProveAttachment, proveAttachmentDigest: digest}
 				outrq.SetBody(nonce)
-				if !sender.Send(outrq) {
+				if !bh.sendBLIPMessage(sender, outrq) {
 					return nil, ErrClosedBLIPSender
 				}
 				if body, err := outrq.Response().Body(); err != nil {
@@ -1153,7 +1162,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 				if isCompressible(name, meta) {
 					outrq.Properties[blipCompress] = "true"
 				}
-				if !sender.Send(outrq) {
+				if !bh.sendBLIPMessage(sender, outrq) {
 					return nil, ErrClosedBLIPSender
 				}
 				attBody, err := outrq.Response().Body()
