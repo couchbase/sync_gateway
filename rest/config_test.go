@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -798,4 +799,92 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	guest := db1.Users["GUEST"]
 	assert.False(t, guest.Disabled)
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
+}
+
+func TestValidateServerContext(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Skipping this test; requires Couchbase Bucket")
+	}
+
+	var (
+		couchbaseURL    = base.UnitTestUrl()
+		testDataBucket  = "test_data_bucket"
+		testIndexBucket = "test_indexbucket"
+		poolName        = "default"
+		username        = "Administrator"
+		password        = "password"
+	)
+
+	config = &ServerConfig{
+		Interface:      &DefaultInterface,
+		AdminInterface: &DefaultAdminInterface,
+		Databases: map[string]*DbConfig{
+			"db1": {
+				Name: "db1",
+				BucketConfig: BucketConfig{
+					Server:   &couchbaseURL,
+					Bucket:   &testDataBucket,
+					Pool:     &poolName,
+					Username: username,
+					Password: password,
+				},
+				Users: map[string]*db.PrincipalConfig{
+					base.GuestUsername: {
+						Disabled:         false,
+						ExplicitChannels: base.SetFromArray([]string{"*"}),
+					},
+				},
+			},
+			"db2": {
+				Name: "db2",
+				BucketConfig: BucketConfig{
+					Server:   &couchbaseURL,
+					Bucket:   &testDataBucket,
+					Pool:     &poolName,
+					Username: username,
+					Password: password,
+				},
+				Users: map[string]*db.PrincipalConfig{
+					base.GuestUsername: {
+						Disabled:         false,
+						ExplicitChannels: base.SetFromArray([]string{"*"}),
+					},
+				},
+			},
+			"db3": {
+				Name: "db3",
+				BucketConfig: BucketConfig{
+					Server:   &couchbaseURL,
+					Bucket:   &testIndexBucket,
+					Pool:     &poolName,
+					Username: username,
+					Password: password,
+				},
+				Users: map[string]*db.PrincipalConfig{
+					base.GuestUsername: {
+						Disabled:         false,
+						ExplicitChannels: base.SetFromArray([]string{"*"}),
+					},
+				},
+			},
+		},
+	}
+
+	_, err = config.SetupAndValidateLogging()
+	require.NoError(t, err, "Error whilst setting up logging")
+
+	var errors = make([]error, 0)
+	errors = append(errors, config.validate()...)
+	errors = append(errors, config.setupAndValidateDatabases()...)
+	require.Len(t, errors, 0, "Error whilst validating databases")
+
+	sc := NewServerContext(config)
+	for _, dbConfig := range config.Databases {
+		_, err := sc.AddDatabaseFromConfig(dbConfig)
+		require.NoError(t, err, "Couldn't add database from config")
+	}
+	sharedBucketErrors := validateServerContext(sc)
+	SharedBucketError, _ := sharedBucketErrors[0].(*SharedBucketError)
+	assert.Equal(t, testDataBucket, SharedBucketError.GetSharedBucket().bucketName)
+	assert.Subset(t, []string{"db1", "db2"}, SharedBucketError.GetSharedBucket().dbNames)
 }

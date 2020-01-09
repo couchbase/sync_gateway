@@ -1028,6 +1028,7 @@ func RunServer(config *ServerConfig) {
 			base.Fatalf("Error opening database %s: %+v", base.MD(dbConfig.Name), err)
 		}
 	}
+	_ = validateServerContext(sc)
 
 	if config.ProfileInterface != nil {
 		//runtime.MemProfileRate = 10 * 1024
@@ -1044,6 +1045,57 @@ func RunServer(config *ServerConfig) {
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", *config.Interface)
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
+}
+
+func validateServerContext(sc *ServerContext) (errors []error) {
+	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc.databases_))
+	for _, dbContext := range sc.databases_ {
+		if uuid, err := dbContext.Bucket.UUID(); err == nil {
+			bucketUUIDToDBContext[uuid] = append(bucketUUIDToDBContext[uuid], dbContext)
+		}
+	}
+	sharedBuckets := sharedBuckets(bucketUUIDToDBContext)
+	for _, sharedBucket := range sharedBuckets {
+		sharedBucketError := &SharedBucketError{sharedBucket}
+		errors = append(errors, sharedBucketError)
+		messageFormat := "Bucket %q is shared among databases %s. " +
+			"This may result in unexpected behaviour if security is not defined consistently."
+		base.Warnf(messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
+	}
+	return errors
+}
+
+type sharedBucket struct {
+	bucketName string
+	dbNames    []string
+}
+
+type SharedBucketError struct {
+	sharedBucket sharedBucket
+}
+
+func (e *SharedBucketError) Error() string {
+	messageFormat := "Bucket %q is shared among databases %v. " +
+		"This may result in unexpected behaviour if security is not defined consistently."
+	return fmt.Sprintf(messageFormat, e.sharedBucket.bucketName, e.sharedBucket.dbNames)
+}
+
+func (e *SharedBucketError) GetSharedBucket() sharedBucket {
+	return e.sharedBucket
+}
+
+// Returns a list of buckets that are being shared by multiple databases.
+func sharedBuckets(dbContextMap map[string][]*db.DatabaseContext) (sharedBuckets []sharedBucket) {
+	for _, dbContexts := range dbContextMap {
+		if len(dbContexts) > 1 {
+			var dbNames []string
+			for _, dbContext := range dbContexts {
+				dbNames = append(dbNames, dbContext.Name)
+			}
+			sharedBuckets = append(sharedBuckets, sharedBucket{dbContexts[0].Bucket.GetName(), dbNames})
+		}
+	}
+	return sharedBuckets
 }
 
 func HandleSighup() {
