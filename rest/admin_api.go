@@ -666,7 +666,6 @@ func (h *handler) putRole() error {
 
 func (h *handler) deleteUser() error {
 	h.assertAdminOnly()
-	h.setHeader("Content-Type", "application/json")
 	username := mux.Vars(h.rq)["name"]
 
 	// Can't delete the guest user, only disable.
@@ -687,7 +686,6 @@ func (h *handler) deleteUser() error {
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
-	h.setHeader("Content-Type", "application/json")
 	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["name"])
 	if role == nil {
 		if err == nil {
@@ -709,8 +707,7 @@ func (h *handler) getUserInfo() error {
 	}
 
 	bytes, err := marshalPrincipal(user)
-	h.setHeader("Content-Type", "application/json")
-	_, _ = h.response.Write(bytes)
+	h.writeRawJSON(bytes)
 	return err
 }
 
@@ -734,8 +731,7 @@ func (h *handler) getUsers() error {
 		return err
 	}
 	bytes, err := base.JSONMarshal(users)
-	h.setHeader("Content-Type", "application/json")
-	_, _ = h.response.Write(bytes)
+	h.writeRawJSON(bytes)
 	return err
 }
 
@@ -745,8 +741,7 @@ func (h *handler) getRoles() error {
 		return err
 	}
 	bytes, err := base.JSONMarshal(roles)
-	h.setHeader("Content-Type", "application/json")
-	_, _ = h.response.Write(bytes)
+	h.writeRawJSON(bytes)
 	return err
 }
 

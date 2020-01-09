@@ -573,8 +573,8 @@ func (h *handler) disableResponseCompression() {
 // writeRawJSONWithoutClientVerification takes the given bytes and always writes the response as JSON,
 // without checking that the client can accept it.
 func (h *handler) writeRawJSONWithoutClientVerification(status int, b []byte) {
-	h.setHeader("Content-Type", "application/json")
 	if h.rq.Method != "HEAD" {
+		h.setHeader("Content-Type", "application/json")
 		if len(b) < minCompressibleJSONSize {
 			h.disableResponseCompression()
 		}
@@ -734,7 +734,6 @@ func (h *handler) writeStatus(status int, message string) {
 	if status < 300 {
 		h.response.WriteHeader(status)
 		h.setStatus(status, message)
-		h.setHeader("Content-Type", "application/json")
 		return
 	}
 	// Got an error:
