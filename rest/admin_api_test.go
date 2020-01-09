@@ -2013,3 +2013,120 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	assert.NoError(t, err, "Couldn't parse session expiration datetime")
 	assert.True(t, expires.Sub(time.Now()).Hours() <= 24, "Couldn't validate session expiration")
 }
+
+func TestUserAndRoleResponseContentType(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create a user 'alice' through PUT request.
+	body := `{"email":"alice@couchbase.com","password":"cGFzc3dvcmQ=","admin_channels":["foo", "bar"]}`
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/alice", body)
+	assert.Equal(t, http.StatusCreated, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Create another user 'bob' through POST request.
+	body = `{"name":"bob","email":"bob@couchbase.com","password":"cGFzc3dvcmQ=","admin_channels":["foo", "bar"]}`
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_user/", body)
+	assert.Equal(t, http.StatusCreated, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Get the user details of user 'alice' through GET request.
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_user/alice", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Get the user details of user 'bob' through HEAD request.
+	response = rt.SendAdminRequest(http.MethodHead, "/db/_user/bob", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Get the list of users through GET request.
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_user/", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Get the list of users through HEAD request.
+	response = rt.SendAdminRequest(http.MethodHead, "/db/_user/", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Delete user 'alice'
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_user/alice", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Delete GUEST user instead of disabling.
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_user/GUEST", "")
+	assert.Equal(t, http.StatusMethodNotAllowed, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Delete user 'eve' who doesn't exists at this point of time.
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_user/eve", "")
+	assert.Equal(t, http.StatusNotFound, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Create a new user and save to database to create user session.
+	authenticator := auth.NewAuthenticator(rt.Bucket(), nil)
+	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.SetOf(t, "*"))
+	assert.NoError(t, err, "Couldn't create new user")
+	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
+
+	var responseBody db.Body
+	// Create user session to check delete session request.
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_session", `{"name":"eve"}`)
+	assert.Equal(t, http.StatusOK, response.Code)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
+	sessionId := responseBody["session_id"].(string)
+	require.NotEmpty(t, sessionId, "Couldn't parse sessionID from response body")
+
+	// Delete user session using /db/_user/eve/_session/{sessionId}.
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_user/eve/_session/"+sessionId, "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Create user session to check delete session request.
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_session", `{"name":"eve"}`)
+	assert.Equal(t, http.StatusOK, response.Code)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
+
+	// Delete user session using /db/_user/eve/_session request.
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_user/eve/_session", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Create a role 'developer' through POST request
+	body = `{"name":"developer","admin_channels":["channel1", "channel2"]}`
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_role/", body)
+	assert.Equal(t, http.StatusCreated, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Create another role 'coder' through PUT request.
+	body = `{"admin_channels":["channel3", "channel4"]}`
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_role/coder", body)
+	assert.Equal(t, http.StatusCreated, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Get the created roles through GET request.
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_role/", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+	assert.Contains(t, response.Body.String(), "coder")
+	assert.Contains(t, response.Body.String(), "developer")
+
+	// Get the created roles through HEAD request.
+	response = rt.SendAdminRequest(http.MethodHead, "/db/_role/", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+	assert.Contains(t, response.Body.String(), "coder")
+	assert.Contains(t, response.Body.String(), "developer")
+
+	// Delete role 'coder' from database.
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_role/coder", "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+
+	// Delete role who doesn't exist.
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_role/programmer", "")
+	assert.Equal(t, http.StatusNotFound, response.Code)
+	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
+}

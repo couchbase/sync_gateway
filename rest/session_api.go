@@ -243,6 +243,7 @@ func (h *handler) getUserSession() error {
 // that the session being deleted is associated with the user.
 func (h *handler) deleteUserSession() error {
 	h.assertAdminOnly()
+	h.setHeader("Content-Type", "application/json")
 	userName := h.PathVar("name")
 	if userName != "" {
 		return h.deleteUserSessionWithValidation(h.PathVar("sessionid"), userName)
@@ -254,7 +255,7 @@ func (h *handler) deleteUserSession() error {
 // ADMIN API: Deletes all sessions for a user
 func (h *handler) deleteUserSessions() error {
 	h.assertAdminOnly()
-
+	h.setHeader("Content-Type", "application/json")
 	userName := h.PathVar("name")
 	return h.db.DeleteUserSessions(userName)
 }

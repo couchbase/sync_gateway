@@ -734,6 +734,7 @@ func (h *handler) writeStatus(status int, message string) {
 	if status < 300 {
 		h.response.WriteHeader(status)
 		h.setStatus(status, message)
+		h.setHeader("Content-Type", "application/json")
 		return
 	}
 	// Got an error:
