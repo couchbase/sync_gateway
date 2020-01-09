@@ -360,7 +360,6 @@ func init() {
 
 // PanicfCtx logs the given formatted string and args to the error log level and given log key and then panics.
 func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
@@ -368,7 +367,6 @@ func PanicfCtx(ctx context.Context, format string, args ...interface{}) {
 
 // FatalfCtx logs the given formatted string and args to the error log level and given log key and then exits.
 func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(ctx, LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
@@ -376,13 +374,11 @@ func FatalfCtx(ctx context.Context, format string, args ...interface{}) {
 
 // ErrorfCtx logs the given formatted string and args to the error log level and given log key.
 func ErrorfCtx(ctx context.Context, format string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(ctx, LevelError, KeyAll, format, args...)
 }
 
 // WarnfCtx logs the given formatted string and args to the warn log level and given log key.
 func WarnfCtx(ctx context.Context, format string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyWarnCount, 1)
 	logTo(ctx, LevelWarn, KeyAll, format, args...)
 }
 
@@ -403,7 +399,6 @@ func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interf
 
 // Panicf logs the given formatted string and args to the error log level and given log key and then panics.
 func Panicf(format string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
@@ -411,7 +406,6 @@ func Panicf(format string, args ...interface{}) {
 
 // Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
 func Fatalf(format string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
@@ -419,13 +413,11 @@ func Fatalf(format string, args ...interface{}) {
 
 // Errorf logs the given formatted string and args to the error log level and given log key.
 func Errorf(format string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 }
 
 // Warnf logs the given formatted string and args to the warn log level and given log key.
 func Warnf(format string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyWarnCount, 1)
 	logTo(context.TODO(), LevelWarn, KeyAll, format, args...)
 }
 
@@ -458,6 +450,12 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	// Defensive bounds-check for log level. All callers of this function should be within this range.
 	if logLevel < LevelNone || logLevel >= levelCount {
 		return
+	}
+
+	if logLevel == LevelError {
+		StatsResourceUtilization().Add(StatKeyErrorCount, 1)
+	} else if logLevel == LevelWarn {
+		StatsResourceUtilization().Add(StatKeyWarnCount, 1)
 	}
 
 	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)

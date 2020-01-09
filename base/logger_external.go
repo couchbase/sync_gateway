@@ -37,10 +37,8 @@ var _ gocb.Logger = GoCBLogger{}
 func (GoCBLogger) Log(level gocb.LogLevel, _ int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
-		StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocb.LogWarn:
-		StatsResourceUtilization().Add(StatKeyWarnCount, 1)
 		logTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocb.LogInfo:
 		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
@@ -68,10 +66,8 @@ var _ gocbcore.Logger = GoCBCoreLogger{}
 func (GoCBCoreLogger) Log(level gocbcore.LogLevel, _ int, format string, v ...interface{}) error {
 	switch level {
 	case gocbcore.LogError:
-		StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocbcore.LogWarn:
-		StatsResourceUtilization().Add(StatKeyWarnCount, 1)
 		logTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocbcore.LogInfo:
 		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
@@ -94,10 +90,8 @@ func (GoCBCoreLogger) Log(level gocbcore.LogLevel, _ int, format string, v ...in
 func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 	switch level {
 	case clog.LevelError, clog.LevelPanic:
-		StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 		logTo(context.TODO(), LevelError, KeyAll, KeyReplicate.String()+": "+format, args...)
 	case clog.LevelWarning:
-		StatsResourceUtilization().Add(StatKeyWarnCount, 1)
 		logTo(context.TODO(), LevelWarn, KeyAll, KeyReplicate.String()+": "+format, args...)
 	case clog.LevelNormal:
 		logTo(context.TODO(), LevelInfo, KeyReplicate, format, args...)
@@ -115,7 +109,6 @@ func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 func ClogCallback(level, format string, v ...interface{}) string {
 	switch level {
 	case "ERRO", "FATA", "CRIT":
-		StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 		logTo(context.TODO(), LevelError, KeyAll, KeyDCP.String()+": "+format, v...)
 	case "WARN":
 		// TODO: cbgt currently logs a lot of what we'd consider info as WARN,
@@ -154,24 +147,20 @@ func (CBGoUtilsLogger) Level() logging.Level {
 }
 
 func (CBGoUtilsLogger) Fatalf(fmt string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 	FlushLogBuffers()
 	os.Exit(1)
 }
 
 func (CBGoUtilsLogger) Severef(fmt string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Errorf(fmt string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyErrorCount, 1)
 	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Warnf(fmt string, args ...interface{}) {
-	StatsResourceUtilization().Add(StatKeyWarnCount, 1)
 	logTo(context.TODO(), LevelWarn, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
