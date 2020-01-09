@@ -129,14 +129,14 @@ func testBucketInit(tester testing.TB, useGSI bool) base.TestBucket {
 		testBucket := base.GetTestBucket(tester)
 		err := installViews(testBucket.Bucket)
 		if err != nil {
-			log.Fatalf("Couldn't connect to bucket: %v", err)
+			tester.Fatalf("Couldn't connect to bucket: %v", err)
 			// ^^ effectively panics
 		}
 
 		if useGSI {
 			err = InitializeIndexes(testBucket.Bucket, base.TestUseXattrs(), 0)
 			if err != nil {
-				log.Fatalf("Unable to initialize GSI indexes for test: %v", err)
+				tester.Fatalf("Unable to initialize GSI indexes for test: %v", err)
 				// ^^ effectively panics
 			}
 
@@ -147,7 +147,7 @@ func testBucketInit(tester testing.TB, useGSI bool) base.TestBucket {
 				if waitForIndexRollbackErr != nil {
 					base.Infof(base.KeyAll, "Error WaitForIndexEmpty: %v.  Drop indexes and retry", waitForIndexRollbackErr)
 					if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
-						log.Fatalf("Unable to drop GSI indexes for test: %v", err)
+						tester.Fatalf("Unable to drop GSI indexes for test: %v", err)
 						// ^^ effectively panics
 					}
 					testBucket.Close() // Close the bucket, it will get re-opened on next loop iteration
