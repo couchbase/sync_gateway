@@ -58,12 +58,13 @@ var recoverableGoCBErrors = map[string]struct{}{
 
 // Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
 type CouchbaseBucketGoCB struct {
-	*gocb.Bucket                       // the underlying gocb bucket
-	spec                 BucketSpec    // keep a copy of the BucketSpec for DCP usage
-	singleOps            chan struct{} // Manages max concurrent single ops (per kv node)
-	bulkOps              chan struct{} // Manages max concurrent bulk ops (per kv node)
-	viewOps              chan struct{} // Manages max concurrent view ops (per kv node)
-	clusterCompatVersion int
+	*gocb.Bucket               // the underlying gocb bucket
+	spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
+	singleOps    chan struct{} // Manages max concurrent single ops (per kv node)
+	bulkOps      chan struct{} // Manages max concurrent bulk ops (per kv node)
+	viewOps      chan struct{} // Manages max concurrent view ops (per kv node)
+
+	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
 
 // Creates a Bucket that talks to a real live Couchbase server.
@@ -153,9 +154,8 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		return nil, errors.New("Unable to get server cluster compatibility")
 	}
 
-	//Safe to just get first node as there will always be at least one node in the list and cluster compat is the
-	//same across all nodes.
-	clusterCompat := nodesMetadata[0].ClusterCompatibility
+	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
+	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
 
 	// Define channels to limit the number of concurrent single and bulk operations,
 	// to avoid gocb queue overflow issues
@@ -166,12 +166,13 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	}
 
 	bucket = &CouchbaseBucketGoCB{
-		goCBBucket,
-		spec,
-		make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools),
-		make(chan struct{}, MaxConcurrentBulkOps*nodeCount*numPools),
-		make(chan struct{}, MaxConcurrentViewOps*nodeCount),
-		clusterCompat,
+		Bucket:                    goCBBucket,
+		spec:                      spec,
+		singleOps:                 make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools),
+		bulkOps:                   make(chan struct{}, MaxConcurrentBulkOps*nodeCount*numPools),
+		viewOps:                   make(chan struct{}, MaxConcurrentViewOps*nodeCount),
+		clusterCompatMajorVersion: uint64(clusterCompatMajor),
+		clusterCompatMinorVersion: uint64(clusterCompatMinor),
 	}
 
 	bucket.Bucket.SetViewTimeout(bucket.spec.GetViewQueryTimeout())
@@ -2279,11 +2280,7 @@ func (bucket *CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 }
 
 func (bucket *CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
-	majorint, minorint := decodeClusterVersion(bucket.clusterCompatVersion)
-	major = uint64(majorint)
-	minor = uint64(minorint)
-
-	return major, minor, ""
+	return bucket.clusterCompatMajorVersion, bucket.clusterCompatMinorVersion, ""
 
 }
 
