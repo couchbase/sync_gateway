@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -802,89 +801,64 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 }
 
 func TestValidateServerContext(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
 
 	var (
 		couchbaseURL    = base.UnitTestUrl()
-		testDataBucket  = "test_data_bucket"
-		testIndexBucket = "test_indexbucket"
-		poolName        = "default"
-		username        = "Administrator"
-		password        = "password"
+		testDataBucket  = base.DefaultTestBucketname
+		testIndexBucket = base.DefaultTestIndexBucketname
+		username        = base.DefaultCouchbaseAdministrator
+		password        = base.DefaultCouchbasePassword
 	)
 
 	config = &ServerConfig{
-		Interface:      &DefaultInterface,
-		AdminInterface: &DefaultAdminInterface,
 		Databases: map[string]*DbConfig{
 			"db1": {
-				Name: "db1",
 				BucketConfig: BucketConfig{
 					Server:   &couchbaseURL,
 					Bucket:   &testDataBucket,
-					Pool:     &poolName,
 					Username: username,
 					Password: password,
 				},
-				Users: map[string]*db.PrincipalConfig{
-					base.GuestUsername: {
-						Disabled:         false,
-						ExplicitChannels: base.SetFromArray([]string{"*"}),
-					},
-				},
+				NumIndexReplicas: base.UintPtr(0),
 			},
 			"db2": {
-				Name: "db2",
 				BucketConfig: BucketConfig{
 					Server:   &couchbaseURL,
 					Bucket:   &testDataBucket,
-					Pool:     &poolName,
 					Username: username,
 					Password: password,
 				},
-				Users: map[string]*db.PrincipalConfig{
-					base.GuestUsername: {
-						Disabled:         false,
-						ExplicitChannels: base.SetFromArray([]string{"*"}),
-					},
-				},
+				NumIndexReplicas: base.UintPtr(0),
 			},
 			"db3": {
-				Name: "db3",
 				BucketConfig: BucketConfig{
 					Server:   &couchbaseURL,
 					Bucket:   &testIndexBucket,
-					Pool:     &poolName,
 					Username: username,
 					Password: password,
 				},
-				Users: map[string]*db.PrincipalConfig{
-					base.GuestUsername: {
-						Disabled:         false,
-						ExplicitChannels: base.SetFromArray([]string{"*"}),
-					},
-				},
+				NumIndexReplicas: base.UintPtr(0),
 			},
 		},
 	}
 
-	_, err = config.SetupAndValidateLogging()
-	require.NoError(t, err, "Error whilst setting up logging")
-
-	var errors = make([]error, 0)
-	errors = append(errors, config.validate()...)
-	errors = append(errors, config.setupAndValidateDatabases()...)
-	require.Len(t, errors, 0, "Error whilst validating databases")
+	require.Len(t, config.validate(), 0, "Unexpected error while validating ServerConfig")
+	require.Len(t, config.setupAndValidateDatabases(), 0, "Unexpected error while validating databases")
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		_, err := sc.AddDatabaseFromConfig(dbConfig)
 		require.NoError(t, err, "Couldn't add database from config")
 	}
+
 	sharedBucketErrors := validateServerContext(sc)
-	SharedBucketError, _ := sharedBucketErrors[0].(*SharedBucketError)
+	SharedBucketError, ok := sharedBucketErrors[0].(*SharedBucketError)
+	require.True(t, ok)
 	assert.Equal(t, testDataBucket, SharedBucketError.GetSharedBucket().bucketName)
 	assert.Subset(t, []string{"db1", "db2"}, SharedBucketError.GetSharedBucket().dbNames)
 }
