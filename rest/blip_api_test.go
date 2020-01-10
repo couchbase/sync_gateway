@@ -2457,17 +2457,24 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
+	deltaPushDocCountStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaPushDocCount))
+	revID, err := client.PushRev("doc1", "3-f3be6c85e0362153005dae6f08fc68bb", []byte(`{"undelete":true}`))
+
 	if base.IsEnterpriseEdition() {
-		// Now make the client push up a delta that has the parent of the tombstone. This is not a valid scenario, and is actively prevented on the CBL side.
-		deltaPushDocCountStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaPushDocCount))
-		revID, err := client.PushRev("doc1", "3-f3be6c85e0362153005dae6f08fc68bb", []byte(`{"undelete":true}`))
+		// Now make the client push up a delta that has the parent of the tombstone.
+		// This is not a valid scenario, and is actively prevented on the CBL side.
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "Found tombstone for deltaSrc")
 		assert.Equal(t, "", revID)
-
-		deltaPushDocCountEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaPushDocCount))
-		assert.Equal(t, deltaPushDocCountStart, deltaPushDocCountEnd)
+	} else {
+		// Pushing a full body revision on top of a tombstone is valid.
+		// CBL clients should fall back to this. The test client doesn't.
+		assert.NoError(t, err)
+		assert.Equal(t, "4-abcxyz", revID)
 	}
+
+	deltaPushDocCountEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaPushDocCount))
+	assert.Equal(t, deltaPushDocCountStart, deltaPushDocCountEnd)
 }
 
 // TestBlipNonDeltaSyncPush tests that a client that doesn't support deltas can push to a SG that supports deltas (either CE or EE)
