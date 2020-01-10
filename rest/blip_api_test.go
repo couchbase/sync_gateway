@@ -2448,6 +2448,26 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
 	assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[1])
 	assert.Equal(t, map[string]interface{}{"howdy": "bob"}, greetings[2])
+
+	// tombstone doc1 (gets rev 3-f3be6c85e0362153005dae6f08fc68bb)
+	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+newRev, "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+
+	data, ok = client.WaitForRev("doc1", "3-f3be6c85e0362153005dae6f08fc68bb")
+	assert.True(t, ok)
+	assert.Equal(t, `{}`, string(data))
+
+	if base.IsEnterpriseEdition() {
+		// Now make the client push up a delta that has the parent of the tombstone. This is not a valid scenario, and is actively prevented on the CBL side.
+		deltaPushDocCountStart := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaPushDocCount))
+		revID, err := client.PushRev("doc1", "3-f3be6c85e0362153005dae6f08fc68bb", []byte(`{"undelete":true}`))
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "Found tombstone for deltaSrc")
+		assert.Equal(t, "", revID)
+
+		deltaPushDocCountEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaPushDocCount))
+		assert.Equal(t, deltaPushDocCountStart, deltaPushDocCountEnd)
+	}
 }
 
 // TestBlipNonDeltaSyncPush tests that a client that doesn't support deltas can push to a SG that supports deltas (either CE or EE)
