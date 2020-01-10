@@ -717,6 +717,10 @@ func Uint32Ptr(u uint32) *uint32 {
 	return &u
 }
 
+func UintPtr(u uint) *uint {
+	return &u
+}
+
 func IntPtr(i int) *int {
 	return &i
 }
