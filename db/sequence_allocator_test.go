@@ -3,6 +3,7 @@ package db
 import (
 	"expvar"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -117,6 +118,62 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	assert.Equal(t, 1, releasedCount, "Expected 1 released sequence")
 	assertAllocatorStats(t, testStats, 2, 3, 2, 1)
 
+}
+
+// Reproduces deadlock from CBG-663.  Required adding a sleep inside the <-time.After case in
+// releaseSequenceMonitor to reliably queue up a large number of sequence allocation requests
+// between <-time.After fires and releaseUnusedSequences is called (where previously reserveNotify would block)
+func TestSequenceAllocatorDeadlock(t *testing.T) {
+
+	t.Skip("Requires additional sleep in production code to reliably hit race")
+
+	var a *sequenceAllocator
+	var err error
+
+	var wg sync.WaitGroup
+	callbackCount := 0
+	incrCallback := func() {
+		callbackCount++
+		if callbackCount == 2 {
+			// queue up a number of sequence requests
+			// Wait for 500ms for releaseSequenceMonitor time.After to trigger
+			time.Sleep(100 * time.Millisecond)
+
+			for i := 0; i < 500; i++ {
+				wg.Add(1)
+				go func(a *sequenceAllocator) {
+					_, err := a.nextSequence()
+					assert.NoError(t, err)
+					wg.Done()
+				}(a)
+			}
+		}
+	}
+
+	testBucket := testLeakyBucket(base.LeakyBucketConfig{IncrCallback: incrCallback}, t)
+	defer testBucket.Close()
+	testStats := new(expvar.Map).Init()
+
+	oldFrequency := MaxSequenceIncrFrequency
+	defer func() { MaxSequenceIncrFrequency = oldFrequency }()
+	MaxSequenceIncrFrequency = 1000 * time.Millisecond
+
+	a, err = newSequenceAllocator(testBucket, testStats)
+	// Reduce sequence wait for Stop testing
+	a.releaseSequenceWait = 10 * time.Millisecond
+	assert.NoError(t, err, "error creating allocator")
+
+	nextSequence, err := a.nextSequence()
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), nextSequence)
+
+	nextSequence, err = a.nextSequence()
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(2), nextSequence)
+
+	wg.Wait()
+
+	a.Stop()
 }
 
 func assertAllocatorStats(t *testing.T, stats *expvar.Map, incr, reserved, assigned, released int) {
