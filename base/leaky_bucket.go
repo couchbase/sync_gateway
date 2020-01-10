@@ -49,6 +49,9 @@ type LeakyBucketConfig struct {
 	// WriteUpdateCallback issues additional callback in WriteUpdate after standard callback completes, but prior to document write.  Allows
 	// tests to trigger CAS retry handling by modifying the underlying document in a WriteUpdateCallback implementation.
 	WriteUpdateCallback func(key string)
+
+	// IncrCallback issues a callback during incr.  Used for sequence allocation race tests
+	IncrCallback func()
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) Bucket {
@@ -142,7 +145,12 @@ func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error
 		b.incrCount = 0
 
 	}
-	return b.bucket.Incr(k, amt, def, exp)
+	val, err := b.bucket.Incr(k, amt, def, exp)
+
+	if b.config.IncrCallback != nil {
+		b.config.IncrCallback()
+	}
+	return val, err
 }
 
 func (b *LeakyBucket) GetDDoc(docname string, value interface{}) error {
