@@ -2,6 +2,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -94,7 +95,7 @@ type subChangesBody struct {
 }
 
 // Create a new subChanges helper
-func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) (*subChangesParams, error) {
+func newSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) (*subChangesParams, error) {
 
 	params := &subChangesParams{
 		rq: rq,
@@ -105,7 +106,7 @@ func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.Sequ
 	if sinceStr, found := rq.Properties[subChangesSince]; found {
 		var err error
 		if sinceSequenceId, err = sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
-			logger.Logf(base.LevelInfo, base.KeySync, "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
+			base.InfofCtx(logCtx, base.KeySync, "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
 			return params, err
 		}
 	}
@@ -114,7 +115,7 @@ func newSubChangesParams(rq *blip.Message, logger base.SGLogger, zeroSeq db.Sequ
 	// rq.BodyReader() returns an EOF for a non-existent body, so using rq.Body() here
 	docIDs, err := readDocIDsFromRequest(rq)
 	if err != nil {
-		logger.Logf(base.LevelInfo, base.KeySync, "%s: Error reading doc IDs on subChanges request: %s", rq, err)
+		base.InfofCtx(logCtx, base.KeySync, "%s: Error reading doc IDs on subChanges request: %s", rq, err)
 		return params, err
 	}
 	params._docIDs = docIDs
