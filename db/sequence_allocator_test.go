@@ -142,7 +142,8 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 			for i := 0; i < 500; i++ {
 				wg.Add(1)
 				go func(a *sequenceAllocator) {
-					a.nextSequence()
+					_, err := a.nextSequence()
+					assert.NoError(t, err)
 					wg.Done()
 				}(a)
 			}
