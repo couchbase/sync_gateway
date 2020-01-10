@@ -1,6 +1,9 @@
 package base
 
 import (
+	"context"
+	"os"
+
 	"github.com/couchbase/clog"
 	"github.com/couchbase/gocb"
 	"github.com/couchbase/goutils/logging"
@@ -31,16 +34,16 @@ var _ gocb.Logger = GoCBLogger{}
 //   Debug  -> SG Trace
 //   Trace  -> SG Trace
 //   Others -> no-op
-func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+func (GoCBLogger) Log(level gocb.LogLevel, _ int, format string, v ...interface{}) error {
 	switch level {
 	case gocb.LogError:
-		Errorf(KeyGoCB.String()+": "+format, v...)
+		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocb.LogWarn:
-		Warnf(KeyGoCB.String()+": "+format, v...)
+		logTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocb.LogInfo:
-		Debugf(KeyGoCB, format, v...)
+		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
 	case gocb.LogDebug, gocb.LogTrace:
-		Tracef(KeyGoCB, format, v...)
+		logTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
 	}
 	return nil
 }
@@ -60,16 +63,16 @@ var _ gocbcore.Logger = GoCBCoreLogger{}
 //   Debug  -> SG Trace
 //   Trace  -> SG Trace
 //   Others -> no-op
-func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v ...interface{}) error {
+func (GoCBCoreLogger) Log(level gocbcore.LogLevel, _ int, format string, v ...interface{}) error {
 	switch level {
 	case gocbcore.LogError:
-		Errorf(KeyGoCB.String()+": "+format, v...)
+		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocbcore.LogWarn:
-		Warnf(KeyGoCB.String()+": "+format, v...)
+		logTo(context.TODO(), LevelWarn, KeyAll, KeyGoCB.String()+": "+format, v...)
 	case gocbcore.LogInfo:
-		Debugf(KeyGoCB, format, v...)
+		logTo(context.TODO(), LevelDebug, KeyGoCB, format, v...)
 	case gocbcore.LogDebug, gocbcore.LogTrace:
-		Tracef(KeyGoCB, format, v...)
+		logTo(context.TODO(), LevelTrace, KeyGoCB, format, v...)
 	}
 	return nil
 }
@@ -86,16 +89,14 @@ func (GoCBCoreLogger) Log(level gocbcore.LogLevel, offset int, format string, v 
 
 func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 	switch level {
-	case clog.LevelDebug:
-		Debugf(KeyReplicate, format, args...)
-	case clog.LevelNormal:
-		Infof(KeyReplicate, format, args...)
+	case clog.LevelError, clog.LevelPanic:
+		logTo(context.TODO(), LevelError, KeyAll, KeyReplicate.String()+": "+format, args...)
 	case clog.LevelWarning:
-		Warnf(KeyReplicate.String()+": "+format, args...)
-	case clog.LevelError:
-		Errorf(KeyReplicate.String()+": "+format, args...)
-	case clog.LevelPanic:
-		Errorf(KeyReplicate.String()+": "+format, args...)
+		logTo(context.TODO(), LevelWarn, KeyAll, KeyReplicate.String()+": "+format, args...)
+	case clog.LevelNormal:
+		logTo(context.TODO(), LevelInfo, KeyReplicate, format, args...)
+	case clog.LevelDebug:
+		logTo(context.TODO(), LevelDebug, KeyReplicate, format, args...)
 	}
 }
 
@@ -108,21 +109,21 @@ func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
 func ClogCallback(level, format string, v ...interface{}) string {
 	switch level {
 	case "ERRO", "FATA", "CRIT":
-		Errorf(KeyDCP.String()+": "+format, v...)
+		logTo(context.TODO(), LevelError, KeyAll, KeyDCP.String()+": "+format, v...)
 	case "WARN":
 		// TODO: cbgt currently logs a lot of what we'd consider info as WARN,
 		//    (i.e. diagnostic information that's not actionable by users), so
 		//    routing to Info pending potential enhancements on cbgt side.
-		Infof(KeyDCP, format, v...)
+		logTo(context.TODO(), LevelInfo, KeyDCP, format, v...)
 	case "INFO":
 		// TODO: cbgt currently logs a lot of what we'd consider debug as INFO,
 		//    (i.e. diagnostic information that's not actionable by users), so
 		//    routing to Info pending potential enhancements on cbgt side.
-		Infof(KeyDCP, format, v...)
+		logTo(context.TODO(), LevelInfo, KeyDCP, format, v...)
 	case "DEBU":
-		Debugf(KeyDCP, format, v...)
+		logTo(context.TODO(), LevelDebug, KeyDCP, format, v...)
 	case "TRAC":
-		Tracef(KeyDCP, format, v...)
+		logTo(context.TODO(), LevelTrace, KeyDCP, format, v...)
 	}
 	return ""
 }
@@ -146,39 +147,41 @@ func (CBGoUtilsLogger) Level() logging.Level {
 }
 
 func (CBGoUtilsLogger) Fatalf(fmt string, args ...interface{}) {
-	Fatalf("CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	FlushLogBuffers()
+	os.Exit(1)
 }
 
 func (CBGoUtilsLogger) Severef(fmt string, args ...interface{}) {
-	Errorf("CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Errorf(fmt string, args ...interface{}) {
-	Errorf("CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelError, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Warnf(fmt string, args ...interface{}) {
-	Warnf("CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelWarn, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Infof(fmt string, args ...interface{}) {
-	Infof(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Requestf(rlevel logging.Level, fmt string, args ...interface{}) {
-	Tracef(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Tracef(fmt string, args ...interface{}) {
-	Tracef(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelTrace, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Debugf(fmt string, args ...interface{}) {
-	Debugf(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelDebug, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 func (CBGoUtilsLogger) Logf(level logging.Level, fmt string, args ...interface{}) {
-	Infof(KeyAll, "CBGoUtilsLogger: "+fmt, args...)
+	logTo(context.TODO(), LevelInfo, KeyAll, "CBGoUtilsLogger: "+fmt, args...)
 }
 
 // go-couchbase/gomemcached don't use Pair/Map logs, so these are all stubs
