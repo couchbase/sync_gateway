@@ -159,15 +159,24 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 // If no previously reserved sequences are available, reserves new batch.
 func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
 	s.mutex.Lock()
+	sequencesReserved := false
 	if s.last >= s.max {
 		if err := s._reserveSequenceRange(); err != nil {
 			s.mutex.Unlock()
 			return 0, err
 		}
+		sequencesReserved = true
 	}
 	s.last++
 	sequence = s.last
 	s.mutex.Unlock()
+
+	// If sequences were reserved, send notification to the release sequence monitor, to start the clock for releasing these sequences.
+	// Must be done after mutex is released.
+	if sequencesReserved {
+		s.reserveNotify <- struct{}{}
+	}
+
 	s.dbStats.Add(base.StatKeySequenceAssignedCount, 1)
 	return sequence, nil
 }
@@ -198,8 +207,6 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 	s.last = max - s.sequenceBatchSize
 	s.lastSequenceReserveTime = time.Now()
 
-	// Send notification to the release sequence monitor, starts the clock for releasing these sequences
-	s.reserveNotify <- struct{}{}
 	s.dbStats.Add(base.StatKeySequenceReservedCount, int64(s.sequenceBatchSize))
 	return nil
 }
