@@ -743,8 +743,12 @@ func (bc *blipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, del
 	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(docID, deltaSrcRevID, revID)
 	if err == db.ErrForbidden {
 		return err
+	} else if base.IsDeltaError(err) {
+		// Something went wrong in the diffing library. We want to know about this!
+		base.WarnfCtx(bc.blipContextDb.Ctx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+		return bc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	} else if err != nil {
-		base.InfofCtx(bc.blipContextDb.Ctx, base.KeySync, "DELTA: error generating delta from %s to %s for key %s; falling back to full body replication.  err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+		base.DebugfCtx(bc.blipContextDb.Ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		return bc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	}
 
@@ -755,7 +759,7 @@ func (bc *blipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, del
 	}
 
 	if revDelta == nil {
-		base.DebugfCtx(bc.blipContextDb.Ctx, base.KeySync, "DELTA: unable to generate delta from %s to %s for key %s; falling back to full body replication.", deltaSrcRevID, revID, base.UD(docID))
+		base.DebugfCtx(bc.blipContextDb.Ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
 		return bc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	}
 
@@ -1022,6 +1026,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
 		err = base.Patch(&deltaSrcMap, newDoc.Body())
 		if err != nil {
+			// Something went wrong in the diffing library. We want to know about this!
+			base.WarnfCtx(bh.blipContextDb.Ctx, "Error patching deltaSrc %s with %s for key %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
