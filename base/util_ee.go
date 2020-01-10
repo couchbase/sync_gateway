@@ -19,14 +19,31 @@ func init() {
 	fleecedelta.StringDiffTimeout = time.Millisecond // Aggressive string diff timeout
 }
 
+// DeltaError is a typed error wrapped around any error returned from go-fleecedelta.
+type DeltaError error
+
+// IsDeltaError returns true if the given delta originates from go-fleecedelta.
+func IsDeltaError(err error) bool {
+	_, isDeltaError := err.(DeltaError)
+	return isDeltaError
+}
+
 // Diff will return the fleece delta between old and new.
 func Diff(old, new map[string]interface{}) (delta []byte, err error) {
-	return fleecedelta.DiffJSON(old, new)
+	delta, err = fleecedelta.DiffJSON(old, new)
+	if err != nil {
+		return nil, DeltaError(err)
+	}
+	return delta, nil
 }
 
 // Patch attempts to patch old with the given delta passed as a map[string]interface{}
 func Patch(old *map[string]interface{}, delta map[string]interface{}) (err error) {
-	return fleecedelta.PatchJSONWithUnmarshalledDelta(old, delta)
+	err = fleecedelta.PatchJSONWithUnmarshalledDelta(old, delta)
+	if err != nil {
+		return DeltaError(err)
+	}
+	return nil
 }
 
 // JSONUnmarshal parses the JSON-encoded data and stores the result in the value pointed to by v.

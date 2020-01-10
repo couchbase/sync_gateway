@@ -11,6 +11,11 @@ import (
 // ErrDeltasNotSupported is returned when these functions are called in CE
 var ErrDeltasNotSupported = fmt.Errorf("Deltas not supported in CE")
 
+// IsDeltaError is only implemented in EE, the CE stub always returns false.
+func IsDeltaError(_ error) bool {
+	return false
+}
+
 // Diff is only implemented in EE, the CE stub always returns an error.
 func Diff(old, new map[string]interface{}) (delta []byte, err error) {
 	return nil, ErrDeltasNotSupported
