@@ -1012,9 +1012,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
 
+		// Receiving a delta to be applied on top of a tombstone is not valid.
+		if deltaSrcRev.Deleted {
+			return base.HTTPErrorf(http.StatusNotFound, "Can't use delta. Found tombstone for deltaSrc=%s", deltaSrcRevID)
+		}
+
 		deltaSrcBody, err := deltaSrcRev.DeepMutableBody()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to marshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to unmarshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
 
 		// Stamp attachments so we can patch them
