@@ -254,7 +254,6 @@ func (h *handler) deleteUserSession() error {
 // ADMIN API: Deletes all sessions for a user
 func (h *handler) deleteUserSessions() error {
 	h.assertAdminOnly()
-
 	userName := h.PathVar("name")
 	return h.db.DeleteUserSessions(userName)
 }

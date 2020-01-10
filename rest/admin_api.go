@@ -707,7 +707,7 @@ func (h *handler) getUserInfo() error {
 	}
 
 	bytes, err := marshalPrincipal(user)
-	_, _ = h.response.Write(bytes)
+	h.writeRawJSON(bytes)
 	return err
 }
 
@@ -731,7 +731,7 @@ func (h *handler) getUsers() error {
 		return err
 	}
 	bytes, err := base.JSONMarshal(users)
-	_, _ = h.response.Write(bytes)
+	h.writeRawJSON(bytes)
 	return err
 }
 
@@ -741,7 +741,7 @@ func (h *handler) getRoles() error {
 		return err
 	}
 	bytes, err := base.JSONMarshal(roles)
-	_, _ = h.response.Write(bytes)
+	h.writeRawJSON(bytes)
 	return err
 }
 
