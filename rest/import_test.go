@@ -65,7 +65,7 @@ func TestXattrImportOldDoc(t *testing.T) {
 
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Test oldDoc behaviour during SDK insert
 	key := "TestImportDelete"
@@ -140,7 +140,7 @@ func TestXattrSGTombstone(t *testing.T) {
 
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create doc through SG
 	key := "TestXattrSGTombstone"
@@ -249,7 +249,7 @@ func TestXattrResurrectViaSG(t *testing.T) {
 
 	rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create and import doc
 	key := "TestResurrectViaSG"
@@ -363,7 +363,7 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create and import doc
 	key := "TestDoubleDelete"
@@ -487,7 +487,7 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create two docs via the SDK, one matching filter
 	mobileKey := "TestImportFilterValid"
@@ -578,7 +578,7 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create doc via the SDK
 	mobileKey := "TestImportMultiActorUpdate"
@@ -635,7 +635,7 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create doc via the SDK
 	mobileKey := "TestImportMultiActorUpdate"
@@ -695,7 +695,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// Create doc via the SDK
 	mobileKey := "TestImportMultiActorFeed"
@@ -770,7 +770,7 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create doc via the SDK
 	mobileKey := "TestImportLargeNumbers"
@@ -819,7 +819,7 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// Write doc in SG format directly to the bucket
 	key := "TestMigrateLargeInlineRevisions"
@@ -888,7 +888,7 @@ func TestMigrateTombstone(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// Write doc in SG format directly to the bucket
 	key := "TestMigrateTombstone"
@@ -957,7 +957,7 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// Write doc in SG format directly to the bucket
 	key := "TestMigrateWithExternalRevisions"
@@ -1033,7 +1033,7 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// Write doc in SG format (doc + xattr) directly to the bucket
 	key := "TestCheckForUpgrade"
@@ -1112,7 +1112,7 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD|base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)()
 
 	// Write doc in SG format (doc + xattr) directly to the bucket
 	key := "TestCheckForUpgrade"
@@ -1194,7 +1194,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD|base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)()
 
 	// Write doc in SG format (doc + xattr) directly to the bucket
 	key := "TestCheckForUpgrade"
@@ -1254,7 +1254,7 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create docs via the SDK with expiry set
 	mobileKey := "TestXattrImportPreservesExpiry"
@@ -1312,7 +1312,7 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// Write doc in SG format directly to the bucket
 	key := "TestFeedBasedMigrateWithExpiry"
@@ -1362,7 +1362,7 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	key := "TestXattrOnDemandImportNullBody"
 
@@ -1434,7 +1434,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			defer rt.Close()
 			bucket := rt.Bucket()
 
-			defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 			key := fmt.Sprintf("TestXattrOnDemandImportPreservesExpiry-%d", i)
 
@@ -1520,7 +1520,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			defer rt.Close()
 			bucket := rt.Bucket()
 
-			defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 			// Create via the SDK with sync metadata intact
 			expirySeconds := time.Second * 30
@@ -1567,7 +1567,7 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create doc via SG
 	sgWriteKey := "TestImportFilterSGWrite"
@@ -1615,7 +1615,7 @@ func TestImportBinaryDoc(t *testing.T) {
 
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD|base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)()
 
 	// 1. Write a binary doc through the SDK
 	rawBytes := []byte("some bytes")
@@ -1881,7 +1881,7 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD)()
 
 	// 1. Create doc via the SDK
 	mobileKey := "TestTombstoneUpdate"

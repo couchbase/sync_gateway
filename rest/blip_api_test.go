@@ -35,7 +35,7 @@ import (
 // Replication Spec: https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#proposechanges
 func TestBlipPushRevisionInspectChanges(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	bt, err := NewBlipTester(t)
 	assert.NoError(t, err, "Error creating BlipTester")
@@ -150,7 +150,7 @@ func TestBlipPushRevisionInspectChanges(t *testing.T) {
 // Wait until we get the expected updates
 func TestContinuousChangesSubscription(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg|base.KeyChanges|base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)()
 
 	bt, err := NewBlipTester(t)
 	assert.NoError(t, err, "Error creating BlipTester")
@@ -266,7 +266,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	bt, err := NewBlipTester(t)
 	assert.NoError(t, err, "Error creating BlipTester")
@@ -422,7 +422,7 @@ func TestBlipOneShotChangesSubscription(t *testing.T) {
 // Test subChanges w/ docID filter
 func TestBlipSubChangesDocIDFilter(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	bt, err := NewBlipTester(t)
 	assert.NoError(t, err, "Error creating BlipTester")
@@ -590,7 +590,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 // 4. Make sure that the server responds to accept the changes (empty array)
 func TestProposedChangesNoConflictsMode(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
@@ -629,7 +629,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 // Connect to public port with authentication
 func TestPublicPortAuthentication(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
 	btUser1, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -689,7 +689,7 @@ func TestPublicPortAuthentication(t *testing.T) {
 // Connect to public port with authentication, and validate user update during a replication
 func TestPublicPortAuthenticationUserUpdate(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
 	syncFunction := `
@@ -756,7 +756,7 @@ function(doc, oldDoc) {
 // Write a doc that grants access to itself for the active replication's user
 func TestContinuousChangesDynamicGrant(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg|base.KeyChanges|base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)()
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
 	syncFunction := `
 function(doc, oldDoc) {
@@ -886,7 +886,7 @@ function(doc, oldDoc) {
 
 func TestConcurrentRefreshUser(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg|base.KeyChanges|base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)()
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
 	syncFunction := `
 function(doc, oldDoc) {
@@ -1029,7 +1029,7 @@ function(doc, oldDoc) {
 //   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetRev(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Setup
 	rtConfig := RestTesterConfig{
@@ -1081,7 +1081,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 //   Validate deleted handling (includes check for https://github.com/couchbase/sync_gateway/issues/3341)
 func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Setup
 	rtConfig := RestTesterConfig{
@@ -1142,7 +1142,7 @@ func TestMultiChannelContinousChangesSubscription(t *testing.T) {
 // Test setting and getting checkpoints
 func TestBlipSetCheckpoint(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Setup
 	rtConfig := RestTesterConfig{
@@ -1197,7 +1197,7 @@ func TestNoConflictsModeReplication(t *testing.T) {
 // Reproduces https://github.com/couchbase/sync_gateway/issues/2717
 func TestReloadUser(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	syncFn := `
 		function(doc) {
@@ -1268,7 +1268,7 @@ func TestReloadUser(t *testing.T) {
 // it shows up in the user's changes feed
 func TestAccessGrantViaSyncFunction(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Setup
 	rtConfig := RestTesterConfig{
@@ -1316,7 +1316,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 // it shows up in the user's changes feed
 func TestAccessGrantViaAdminApi(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -1355,7 +1355,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 
 func TestCheckpoint(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -1425,7 +1425,7 @@ func TestCheckpoint(t *testing.T) {
 // - Get attachment via REST and verifies it returns the correct content
 func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -1471,7 +1471,7 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -1555,7 +1555,7 @@ func TestPutInvalidAttachment(t *testing.T) {
 		},
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -1600,7 +1600,7 @@ func TestPutInvalidAttachment(t *testing.T) {
 // returns an error code
 func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	syncFn := `
 		function(doc) {
@@ -1651,7 +1651,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 
 func TestPutInvalidRevMalformedBody(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -1690,7 +1690,7 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 
 func TestPutRevNoConflictsMode(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -1718,7 +1718,7 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 
 func TestPutRevConflictsMode(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
@@ -1759,7 +1759,7 @@ func TestPutRevConflictsMode(t *testing.T) {
 //
 func TestGetRemovedDoc(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	// Setup
 	rtConfig := RestTesterConfig{
@@ -1849,7 +1849,7 @@ func TestGetRemovedDoc(t *testing.T) {
 // - Open a one-off subChanges request, assert no error
 func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	bt, err := NewBlipTester(t)
 	assert.NoError(t, err, "Error creating BlipTester")
@@ -2155,7 +2155,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 // └──────────────┘           └───────────┘          └───────────┘
 func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP|base.KeyCache|base.KeySync|base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP, base.KeyCache, base.KeySync, base.KeySyncMsg)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}

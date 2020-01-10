@@ -542,7 +542,7 @@ func LogSyncGatewayVersion() {
 }
 
 // addPrefixes will modify the format string to add timestamps, log level, and other common prefixes.
-// E.g: 2006-01-02T15:04:05.000Z07:00 [LVL] LogKey: format_str
+// E.g: 2006-01-02T15:04:05.000Z07:00 [LVL] LogKeyMask: format_str
 func addPrefixes(format string, ctx context.Context, logLevel LogLevel, logKey LogKey) string {
 	timestampPrefix := time.Now().Format(ISO8601Format) + " "
 
@@ -609,8 +609,8 @@ func ConsoleLogLevel() *LogLevel {
 }
 
 // ConsoleLogKey returns the console log key.
-func ConsoleLogKey() *LogKey {
-	return consoleLogger.LogKey
+func ConsoleLogKey() *LogKeyMask {
+	return consoleLogger.LogKeyMask
 }
 
 // LogInfoEnabled returns true if either the console should log at info level,

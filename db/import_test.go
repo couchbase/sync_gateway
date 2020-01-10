@@ -2,10 +2,11 @@ package db
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"log"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -28,7 +29,7 @@ func TestMigrateMetadata(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyMigrate|base.KeyImport)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyMigrate, base.KeyImport)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
@@ -99,7 +100,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyMigrate|base.KeyImport)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyMigrate, base.KeyImport)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()

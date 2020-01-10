@@ -2024,7 +2024,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 func TestChannelAccessChanges(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2203,7 +2203,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 func TestAccessOnTombstone(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges|base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
@@ -2389,7 +2389,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache|base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyAccess, base.KeyCRUD, base.KeyChanges)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2485,7 +2485,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2531,7 +2531,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 func TestRoleAccessChanges(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess|base.KeyCRUD|base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -3709,7 +3709,7 @@ func TestLongpollWithWildcard(t *testing.T) {
 	// TODO: Test disabled because it fails with -race
 	t.Skip("WARNING: TEST DISABLED")
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyHTTP)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
 
 	var changes struct {
 		Results  []db.ChangeEntry
@@ -3900,7 +3900,7 @@ func TestDocIDFilterResurrection(t *testing.T) {
 
 func TestSyncFunctionErrorLogging(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP|base.KeyJavascript)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyJavascript)()
 
 	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc) {

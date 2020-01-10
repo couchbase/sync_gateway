@@ -528,32 +528,32 @@ func NumOpenBuckets(bucketName string) int32 {
 //
 // This function will panic if called multiple times without running the teardownFn.
 //
-// To set multiple log keys, use the bitwise OR operator.
-// E.g. KeyCache|KeyDCP|KeySync
+// To set multiple log keys, append as variadic arguments
+// E.g. KeyCache,KeyDCP,KeySync
 //
 // Usage:
-//     teardownFn := SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)
+//     teardownFn := SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)
 //     defer teardownFn()
 //
 // Shorthand style:
-//     defer SetUpTestLogging(LevelDebug, KeyCache|KeyDCP|KeySync)()
-func SetUpTestLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
+//     defer SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)()
+func SetUpTestLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn func()) {
 	caller := GetCallersName(1, false)
 	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
-	return setTestLogging(logLevel, logKeys, caller)
+	return setTestLogging(logLevel, caller, logKeys...)
 }
 
 // DisableTestLogging is an alias for SetUpTestLogging(LevelNone, KeyNone)
 // This function will panic if called multiple times without running the teardownFn.
 func DisableTestLogging() (teardownFn func()) {
 	caller := ""
-	return setTestLogging(LevelNone, KeyNone, caller)
+	return setTestLogging(LevelNone, caller, KeyNone)
 }
 
 // SetUpBenchmarkLogging will set the given log level and key, and do log processing for that configuration,
 // but discards the output, instead of writing it to console.
-func SetUpBenchmarkLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()) {
-	teardownFnOrig := setTestLogging(logLevel, logKeys, "")
+func SetUpBenchmarkLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn func()) {
+	teardownFnOrig := setTestLogging(logLevel, "", logKeys...)
 
 	// discard all logging output for benchmarking (but still execute logging as normal)
 	consoleLogger.logger.SetOutput(ioutil.Discard)
@@ -568,23 +568,23 @@ func SetUpBenchmarkLogging(logLevel LogLevel, logKeys LogKey) (teardownFn func()
 	}
 }
 
-func setTestLogging(logLevel LogLevel, logKeys LogKey, caller string) (teardownFn func()) {
+func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardownFn func()) {
 	initialLogLevel := LevelInfo
-	initialLogKey := KeyHTTP
+	initialLogKey := logKeyMask(KeyHTTP)
 
 	// Check that a previous invocation has not forgotten to call teardownFn
 	if *consoleLogger.LogLevel != initialLogLevel ||
-		*consoleLogger.LogKey != initialLogKey {
+		*consoleLogger.LogKeyMask != *initialLogKey {
 		panic("Logging is in an unexpected state! Did a previous test forget to call the teardownFn of SetUpTestLogging?")
 	}
 
 	consoleLogger.LogLevel.Set(logLevel)
-	consoleLogger.LogKey.Set(logKeys)
+	consoleLogger.LogKeyMask = logKeyMask(logKeys...)
 
 	return func() {
 		// Return logging to a default state
 		consoleLogger.LogLevel.Set(initialLogLevel)
-		consoleLogger.LogKey.Set(initialLogKey)
+		consoleLogger.LogKeyMask = initialLogKey
 		if caller != "" {
 			Infof(KeyAll, "%v: Reset logging", caller)
 		}
