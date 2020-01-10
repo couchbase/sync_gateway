@@ -386,16 +386,22 @@ pipeline {
             }
         }
         unstable {
-            when { branch 'master' }
-            mail to: 'mobile_dev_sg@couchbase.com',
-                 subject: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}",
-                 body: "At least one test failed: ${env.BUILD_URL}"
+            script {
+                if (${env.BRANCH_NAME} == 'master') {
+                    mail to: 'mobile_dev_sg@couchbase.com',
+                        subject: "Failed tests in master SGW pipeline: ${currentBuild.fullDisplayName}",
+                        body: "At least one test failed: ${env.BUILD_URL}"
+                }
+            }
         }
         failure {
-            when { branch 'master' }
-            mail to: 'mobile_dev_sg@couchbase.com',
-                 subject: "Build failure in master SGW pipeline: ${currentBuild.fullDisplayName}",
-                 body: "Something went wrong building: ${env.BUILD_URL}"
+            script {
+                if (${env.BRANCH_NAME} == 'master') {
+                    mail to: 'mobile_dev_sg@couchbase.com',
+                        subject: "Build failure in master SGW pipeline: ${currentBuild.fullDisplayName}",
+                        body: "Something went wrong building: ${env.BUILD_URL}"
+                }
+            }
         }
     }
 }
