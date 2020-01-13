@@ -1245,6 +1245,11 @@ func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 		return
 	}
 
+	if !ctx.useDeltas && !ctx.sgCanUseDeltas && !clientCanUseDeltas {
+		// fast-path for deltas that are already disabled and still not wanted on both sides.
+		return
+	}
+
 	// Both sides want deltas, and we've not previously enabled them.
 	if ctx.sgCanUseDeltas && clientCanUseDeltas && !ctx.useDeltas {
 		base.DebugfCtx(ctx.blipContextDb.Ctx, base.KeySync, "Enabling deltas for this replication")
@@ -1253,16 +1258,18 @@ func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 		return
 	}
 
-	// We don't want deltas, but we'd previously enabled them.
-	if !ctx.sgCanUseDeltas && ctx.useDeltas {
-		base.DebugfCtx(ctx.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on server setting.")
+	// Below options shouldn't be hit. Delta sync is only turned on once per replication, and never off again.
+
+	// The client doesn't want deltas, but we'd previously enabled them.
+	if !clientCanUseDeltas && ctx.useDeltas {
+		base.InfofCtx(ctx.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on client setting.")
 		ctx.useDeltas = false
 		return
 	}
 
-	// The client doesn't want deltas, but we'd previously enabled them.
-	if !clientCanUseDeltas && ctx.useDeltas {
-		base.DebugfCtx(ctx.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on client setting.")
+	// We don't want deltas, but we'd previously enabled them.
+	if !ctx.sgCanUseDeltas && ctx.useDeltas {
+		base.InfofCtx(ctx.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on server setting.")
 		ctx.useDeltas = false
 		return
 	}
