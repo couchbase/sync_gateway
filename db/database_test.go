@@ -663,7 +663,7 @@ func TestAllDocsOnly(t *testing.T) {
 	require.NoError(t, err)
 	changeLog := db.GetChangeLog("all", 0)
 	assert.Equal(t, 50, len(changeLog))
-	assert.Equal(t, 52, int(changeLog[0].Sequence))
+	assert.Equal(t, "alldoc-51", changeLog[0].DocID)
 
 	// Now check the changes feed:
 	var options ChangesOptions
@@ -674,28 +674,28 @@ func TestAllDocsOnly(t *testing.T) {
 	assert.Equal(t, 100, len(changes))
 
 	for i, change := range changes {
-		seq := i + 1
+		seq := i
 		if i >= 23 {
 			seq++
 		}
-		assert.Equal(t, SequenceID{Seq: uint64(seq)}, change.Seq)
+		assert.Equal(t, i != 99, fmt.Sprintf("alldoc-%02d", seq) == change.ID)
 		assert.Equal(t, i == 99, change.Deleted)
 		var removed base.Set
 		if i == 99 {
 			removed = channels.SetOf(t, "all")
+			assert.Equal(t, "alldoc-23", change.ID)
 		}
-		goassert.DeepEquals(t, change.Removed, removed)
+		assert.Equal(t, removed, change.Removed)
 	}
 
 	options.IncludeDocs = true
 	changes, err = db.GetChanges(channels.SetOf(t, "KFJC"), options)
 	assert.NoError(t, err, "Couldn't GetChanges")
-	goassert.Equals(t, len(changes), 10)
+	assert.Len(t, changes, 10)
 	for i, change := range changes {
-		goassert.Equals(t, change.Seq, SequenceID{Seq: uint64(10*i + 1)})
-		goassert.Equals(t, change.ID, ids[10*i].DocID)
-		goassert.Equals(t, change.Deleted, false)
-		goassert.DeepEquals(t, change.Removed, base.Set(nil))
+		assert.Equal(t, ids[10*i].DocID, change.ID)
+		assert.False(t, change.Deleted)
+		assert.Equal(t, base.Set(nil), change.Removed)
 		var changeBody Body
 		require.NoError(t, changeBody.Unmarshal(change.Doc))
 		// unmarshalled as json.Number, so just compare the strings
