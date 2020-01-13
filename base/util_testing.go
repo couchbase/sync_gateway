@@ -579,7 +579,7 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 	}
 
 	consoleLogger.LogLevel.Set(logLevel)
-	consoleLogger.LogKeyMask = logKeyMask(logKeys...)
+	consoleLogger.LogKeyMask.Set(logKeyMask(logKeys...))
 
 	return func() {
 		// Return logging to a default state

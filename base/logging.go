@@ -229,7 +229,7 @@ func GetLogKeys() map[string]bool {
 // UpdateLogKeys updates the console's log keys from a map
 func UpdateLogKeys(keys map[string]bool, replace bool) {
 	if replace {
-		ConsoleLogKey().Set(KeyNone)
+		ConsoleLogKey().Set(logKeyMask(KeyNone))
 	}
 
 	for k, v := range keys {

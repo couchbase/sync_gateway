@@ -45,40 +45,34 @@ const (
 	LogKeyCount // Count for logKeyNames init
 )
 
-var logKeyNames []string
-var logKeyNamesInverse map[string]LogKey
-
-func init() {
-	logKeyNames = make([]string, LogKeyCount)
-	logKeyNames[KeyNone] = ""
-	logKeyNames[KeyAll] = "*"
-
-	logKeyNames[KeyAdmin] = "Admin"
-	logKeyNames[KeyAccess] = "Access"
-	logKeyNames[KeyAuth] = "Auth"
-	logKeyNames[KeyBucket] = "Bucket"
-	logKeyNames[KeyCache] = "Cache"
-	logKeyNames[KeyChanges] = "Changes"
-	logKeyNames[KeyCRUD] = "CRUD"
-	logKeyNames[KeyDCP] = "DCP"
-	logKeyNames[KeyEvents] = "Events"
-	logKeyNames[KeyGoCB] = "gocb"
-	logKeyNames[KeyHTTP] = "HTTP"
-	logKeyNames[KeyHTTPResp] = "HTTP+" // Infof printed as HTTP+
-	logKeyNames[KeyImport] = "Import"
-	logKeyNames[KeyJavascript] = "Javascript"
-	logKeyNames[KeyMigrate] = "Migrate"
-	logKeyNames[KeyQuery] = "Query"
-	logKeyNames[KeyReplicate] = "Replicate"
-	logKeyNames[KeySync] = "Sync"
-	logKeyNames[KeySyncMsg] = "SyncMsg"
-	logKeyNames[KeyWebSocket] = "WS"
-	logKeyNames[KeyWebSocketFrame] = "WSFrame"
-
-	// Inverse of the map above. Optimisation for string -> LogKeyMask lookups in ToLogKey
+var (
+	logKeyNames = [LogKeyCount]string{
+		KeyNone:           "",
+		KeyAll:            "*",
+		KeyAdmin:          "Admin",
+		KeyAccess:         "Access",
+		KeyAuth:           "Auth",
+		KeyBucket:         "Bucket",
+		KeyCache:          "Cache",
+		KeyChanges:        "Changes",
+		KeyCRUD:           "CRUD",
+		KeyDCP:            "DCP",
+		KeyEvents:         "Events",
+		KeyGoCB:           "gocb",
+		KeyHTTP:           "HTTP",
+		KeyHTTPResp:       "HTTP+", // Infof printed as HTTP+
+		KeyImport:         "Import",
+		KeyJavascript:     "Javascript",
+		KeyMigrate:        "Migrate",
+		KeyQuery:          "Query",
+		KeyReplicate:      "Replicate",
+		KeySync:           "Sync",
+		KeySyncMsg:        "SyncMsg",
+		KeyWebSocket:      "WS",
+		KeyWebSocketFrame: "WSFrame",
+	}
 	logKeyNamesInverse = inverselogKeyNames(logKeyNames)
-
-}
+)
 
 // KeyMaskValue converts a log key index to the bitfield position.
 // e.g. 0->0, 1->1, 2->2, 3->4, 4->8, 5->16...
@@ -101,9 +95,9 @@ func (keyMask *LogKeyMask) Disable(logKey LogKey) {
 	atomic.StoreUint64((*uint64)(keyMask), val & ^logKey.KeyMaskValue())
 }
 
-// Set will override the keyMask with the given logKey.
-func (keyMask *LogKeyMask) Set(logKey LogKey) {
-	atomic.StoreUint64((*uint64)(keyMask), logKey.KeyMaskValue())
+// Set will override the keyMask with the given logKeyMask.
+func (keyMask *LogKeyMask) Set(logKeyMask *LogKeyMask) {
+	atomic.StoreUint64((*uint64)(keyMask), uint64(*logKeyMask))
 }
 
 // Enabled returns true if the given logKey is enabled in keyMask.
@@ -216,9 +210,12 @@ func ToLogKey(keysStr []string) (logKeys LogKeyMask, warnings []DeferredLogFn) {
 	return logKeys, warnings
 }
 
-func inverselogKeyNames(in []string) map[string]LogKey {
+func inverselogKeyNames(in [LogKeyCount]string) map[string]LogKey {
 	var out = make(map[string]LogKey, len(in))
 	for i, v := range in {
+		if v == "" && i != int(KeyNone) {
+			panic(fmt.Sprintf("Empty value for logKeyNames[%d]", i))
+		}
 		out[v] = LogKey(i)
 	}
 	return out
