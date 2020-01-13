@@ -1012,9 +1012,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
 
+		// Receiving a delta to be applied on top of a tombstone is not valid.
+		if deltaSrcRev.Deleted {
+			return base.HTTPErrorf(http.StatusNotFound, "Can't use delta. Found tombstone for deltaSrc=%s", deltaSrcRevID)
+		}
+
 		deltaSrcBody, err := deltaSrcRev.DeepMutableBody()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to marshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to unmarshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
 
 		// Stamp attachments so we can patch them
@@ -1235,21 +1240,39 @@ func (ctx *blipSyncContext) setActiveSubChanges(changesActive bool) {
 
 // setUseDeltas will set useDeltas on the blipSyncContext as long as both sides of the connection have it enabled.
 func (ctx *blipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
-	// Both sides want deltas
-	if ctx.sgCanUseDeltas && clientCanUseDeltas {
-		if !ctx.useDeltas {
-			base.DebugfCtx(ctx.blipContextDb.Ctx, base.KeySync, "Enabling deltas for this replication")
-			ctx.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
-			ctx.useDeltas = true
-		}
+	if ctx.useDeltas && ctx.sgCanUseDeltas && clientCanUseDeltas {
+		// fast-path for deltas that are already enabled and still wanted on both sides.
 		return
 	}
 
-	// Log when the client doesn't want deltas, but we do
-	if ctx.sgCanUseDeltas && !clientCanUseDeltas {
-		base.InfofCtx(ctx.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on client setting.")
+	if !ctx.useDeltas && !ctx.sgCanUseDeltas && !clientCanUseDeltas {
+		// fast-path for deltas that are already disabled and still not wanted on both sides.
+		return
 	}
-	ctx.useDeltas = false
+
+	// Both sides want deltas, and we've not previously enabled them.
+	if ctx.sgCanUseDeltas && clientCanUseDeltas && !ctx.useDeltas {
+		base.DebugfCtx(ctx.blipContextDb.Ctx, base.KeySync, "Enabling deltas for this replication")
+		ctx.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+		ctx.useDeltas = true
+		return
+	}
+
+	// Below options shouldn't be hit. Delta sync is only turned on once per replication, and never off again.
+
+	// The client doesn't want deltas, but we'd previously enabled them.
+	if !clientCanUseDeltas && ctx.useDeltas {
+		base.InfofCtx(ctx.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on client setting.")
+		ctx.useDeltas = false
+		return
+	}
+
+	// We don't want deltas, but we'd previously enabled them.
+	if !ctx.sgCanUseDeltas && ctx.useDeltas {
+		base.InfofCtx(ctx.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on server setting.")
+		ctx.useDeltas = false
+		return
+	}
 }
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
