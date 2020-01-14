@@ -592,7 +592,7 @@ func TestGetStatus(t *testing.T) {
 // Test user delete while that user has an active changes feed (see issue 809)
 func TestUserDeleteDuringChangesWithAccess(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges|base.KeyCache|base.KeyHTTP)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache, base.KeyHTTP)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); if(doc.type == "setaccess") { access(doc.owner, doc.channel);}}`}
 	rt := NewRestTester(t, &rtConfig)

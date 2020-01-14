@@ -706,7 +706,7 @@ func TestAllDocsOnly(t *testing.T) {
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache|base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()

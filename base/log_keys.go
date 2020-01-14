@@ -6,16 +6,19 @@ import (
 	"sync/atomic"
 )
 
-// LogKey is a bitfield of log keys.
-type LogKey uint64
+// LogKeyMask is a bitfield of log keys.
+type LogKeyMask uint64
+
+// LogKeyMask is slice index for log keys.  Entries in LogKeySet are stored at 2^LogKeyMask
+type LogKey uint8
 
 // Values for log keys.
 const (
 	// KeyNone is shorthand for no log keys.
-	KeyNone LogKey = 0
+	KeyNone LogKey = iota
 
 	// KeyAll is a wildcard for all log keys.
-	KeyAll LogKey = 1 << iota
+	KeyAll
 
 	KeyAdmin
 	KeyAccess
@@ -38,10 +41,12 @@ const (
 	KeySyncMsg
 	KeyWebSocket
 	KeyWebSocketFrame
+
+	LogKeyCount // Count for logKeyNames init
 )
 
 var (
-	logKeyNames = map[LogKey]string{
+	logKeyNames = [LogKeyCount]string{
 		KeyNone:           "",
 		KeyAll:            "*",
 		KeyAdmin:          "Admin",
@@ -66,41 +71,48 @@ var (
 		KeyWebSocket:      "WS",
 		KeyWebSocketFrame: "WSFrame",
 	}
-
-	// Inverse of the map above. Optimisation for string -> LogKey lookups in ToLogKey
 	logKeyNamesInverse = inverselogKeyNames(logKeyNames)
 )
 
+// KeyMaskValue converts a log key index to the bitfield position.
+// e.g. 0->0, 1->1, 2->2, 3->4, 4->8, 5->16...
+func (i LogKey) KeyMaskValue() uint64 {
+	if i == 0 {
+		return 0
+	}
+	return 1 << (i - 1)
+}
+
 // Enable will enable the given logKey in keyMask.
-func (keyMask *LogKey) Enable(logKey LogKey) {
+func (keyMask *LogKeyMask) Enable(logKey LogKey) {
 	val := atomic.LoadUint64((*uint64)(keyMask))
-	atomic.StoreUint64((*uint64)(keyMask), val|uint64(logKey))
+	atomic.StoreUint64((*uint64)(keyMask), val|logKey.KeyMaskValue())
 }
 
 // Disable will disable the given logKey in keyMask.
-func (keyMask *LogKey) Disable(logKey LogKey) {
+func (keyMask *LogKeyMask) Disable(logKey LogKey) {
 	val := atomic.LoadUint64((*uint64)(keyMask))
-	atomic.StoreUint64((*uint64)(keyMask), val & ^uint64(logKey))
+	atomic.StoreUint64((*uint64)(keyMask), val & ^logKey.KeyMaskValue())
 }
 
-// Set will override the keyMask with the given logKey.
-func (keyMask *LogKey) Set(logKey LogKey) {
-	atomic.StoreUint64((*uint64)(keyMask), uint64(logKey))
+// Set will override the keyMask with the given logKeyMask.
+func (keyMask *LogKeyMask) Set(logKeyMask *LogKeyMask) {
+	atomic.StoreUint64((*uint64)(keyMask), uint64(*logKeyMask))
 }
 
 // Enabled returns true if the given logKey is enabled in keyMask.
 // Always returns true if KeyAll is enabled in keyMask.
-func (keyMask *LogKey) Enabled(logKey LogKey) bool {
+func (keyMask *LogKeyMask) Enabled(logKey LogKey) bool {
 	return keyMask.enabled(logKey, true)
 }
 
 // Enabled returns true if the given logKey is enabled in keyMask.
-func (keyMask *LogKey) EnabledExcludingWildcard(logKey LogKey) bool {
+func (keyMask *LogKeyMask) EnabledExcludingWildcard(logKey LogKey) bool {
 	return keyMask.enabled(logKey, false)
 }
 
 // enabled returns true if the given logKey is enabled in keyMask, with an optional wildcard check.
-func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
+func (keyMask *LogKeyMask) enabled(logKey LogKey, checkWildcards bool) bool {
 	if keyMask == nil {
 		return false
 	}
@@ -108,25 +120,21 @@ func (keyMask *LogKey) enabled(logKey LogKey, checkWildcards bool) bool {
 	flag := atomic.LoadUint64((*uint64)(keyMask))
 
 	// If KeyAll is set, return true for everything.
-	if checkWildcards && flag&uint64(KeyAll) != 0 {
+	if checkWildcards && flag&KeyAll.KeyMaskValue() != 0 {
 		return true
 	}
 
-	return flag&uint64(logKey) != 0
+	return flag&logKey.KeyMaskValue() != 0
 }
 
-// String returns the string representation of one or more log keys.
-func (logKey LogKey) String() string {
-	// No lock required to read concurrently, as long as nobody writes to logKeyNames.
-	if str, ok := logKeyNames[logKey]; ok {
-		return str
-	}
+// String returns the string representation of one or more log keys in a LogKeyMask
+func (logKeyMask LogKeyMask) String() string {
 
 	// Try to pretty-print a set of log keys.
 	names := []string{}
-	for k, v := range logKeyNames {
-		if logKey&k != 0 {
-			names = append(names, v)
+	for keyIndex, keyName := range logKeyNames {
+		if logKeyMask.Enabled(LogKey(keyIndex)) {
+			names = append(names, keyName)
 		}
 	}
 	if len(names) > 0 {
@@ -134,27 +142,37 @@ func (logKey LogKey) String() string {
 	}
 
 	// Fall back to a binary representation.
-	return fmt.Sprintf("LogKey(%b)", logKey)
+	return fmt.Sprintf("LogKeyMask(%b)", logKeyMask)
+}
+
+// String returns the string representation of one log key.
+func (logKey LogKey) String() string {
+	// No lock required to read concurrently, as long as nobody writes to logKeyNames.
+	if int(logKey) < len(logKeyNames) {
+		return logKeyNames[logKey]
+	}
+
+	// Fall back to a binary representation.
+	return fmt.Sprintf("LogKeyMask(%b)", logKey)
 }
 
 // EnabledLogKeys returns a slice of enabled log key names.
-func (keyMask *LogKey) EnabledLogKeys() []string {
+func (keyMask *LogKeyMask) EnabledLogKeys() []string {
 	if keyMask == nil {
 		return []string{}
 	}
 	var logKeys = make([]string, 0, len(logKeyNames))
 	for i := 0; i < len(logKeyNames); i++ {
-		logKey := LogKey(1) << uint64(i)
-		if keyMask.enabled(logKey, false) {
-			logKeys = append(logKeys, logKey.String())
+		if keyMask.enabled(LogKey(i), false) {
+			logKeys = append(logKeys, logKeyNames[i])
 		}
 	}
 	return logKeys
 }
 
-// ToLogKey takes a slice of case-sensitive log key names and will return a LogKey bitfield
+// ToLogKey takes a slice of case-sensitive log key names and will return a LogKeyMask bitfield
 // and a slice of deferred log functions for any warnings that may occurr.
-func ToLogKey(keysStr []string) (logKeys LogKey, warnings []DeferredLogFn) {
+func ToLogKey(keysStr []string) (logKeys LogKeyMask, warnings []DeferredLogFn) {
 
 	for _, key := range keysStr {
 		// Take a copy of key, so we can use it in a closure outside the scope
@@ -162,8 +180,10 @@ func ToLogKey(keysStr []string) (logKeys LogKey, warnings []DeferredLogFn) {
 		originalKey := key
 
 		// Some old log keys (like HTTP+), we want to handle slightly (map to a different key)
-		if newLogKey, ok := convertSpecialLogKey(key); ok {
-			logKeys.Enable(*newLogKey)
+		if newLogKeys, ok := convertSpecialLogKey(key); ok {
+			for _, newLogKey := range newLogKeys {
+				logKeys.Enable(newLogKey)
+			}
 			continue
 		}
 
@@ -190,28 +210,35 @@ func ToLogKey(keysStr []string) (logKeys LogKey, warnings []DeferredLogFn) {
 	return logKeys, warnings
 }
 
-func inverselogKeyNames(in map[LogKey]string) map[string]LogKey {
+func inverselogKeyNames(in [LogKeyCount]string) map[string]LogKey {
 	var out = make(map[string]LogKey, len(in))
-	for k, v := range in {
-		out[v] = k
+	for i, v := range in {
+		if v == "" && i != int(KeyNone) {
+			panic(fmt.Sprintf("Empty value for logKeyNames[%d]", i))
+		}
+		out[v] = LogKey(i)
 	}
 	return out
 }
 
-// convertSpecialLogKey handles the conversion of some legacy log keys we want to map to a different value.
-func convertSpecialLogKey(oldLogKey string) (*LogKey, bool) {
-	var logKey *LogKey
+// convertSpecialLogKey handles the conversion of some legacy log keys we want to map to one or more different value.
+func convertSpecialLogKey(oldLogKey string) ([]LogKey, bool) {
 
+	var logKeys []LogKey
 	switch oldLogKey {
 	case "HTTP+":
 		// HTTP+ Should enable both KeyHTTP and KeyHTTPResp
-		logKey = logKeyPtr(KeyHTTP | KeyHTTPResp)
+		logKeys = []LogKey{KeyHTTP, KeyHTTPResp}
 	}
 
-	return logKey, logKey != nil
+	return logKeys, logKeys != nil
 }
 
-// logKeyPtr is a convenience function that returns a pointer to the given logKey
-func logKeyPtr(logKey LogKey) *LogKey {
-	return &logKey
+// logKeyPtr is a convenience function that returns a LogKeyMask for the given logKeys
+func logKeyMask(logKeys ...LogKey) *LogKeyMask {
+	var mask LogKeyMask
+	for _, logKey := range logKeys {
+		mask.Enable(logKey)
+	}
+	return &mask
 }

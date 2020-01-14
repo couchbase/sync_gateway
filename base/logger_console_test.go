@@ -137,7 +137,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: false},
 				LogLevel:   logLevelPtr(LevelNone),
-				LogKey:     logKeyPtr(KeyHTTP),
+				LogKeyMask: logKeyMask(KeyHTTP),
 				isStderr:   false,
 			},
 		},
@@ -147,7 +147,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: true},
 				LogLevel:   logLevelPtr(LevelInfo),
-				LogKey:     logKeyPtr(KeyHTTP | KeyCRUD),
+				LogKeyMask: logKeyMask(KeyHTTP, KeyCRUD),
 				isStderr:   true,
 			},
 		},
@@ -157,7 +157,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: true},
 				LogLevel:   logLevelPtr(LevelWarn),
-				LogKey:     logKeyPtr(KeyHTTP),
+				LogKeyMask: logKeyMask(KeyHTTP),
 				isStderr:   true,
 			},
 		},
@@ -167,7 +167,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 			expected: ConsoleLogger{
 				FileLogger: FileLogger{Enabled: true},
 				LogLevel:   logLevelPtr(LevelWarn),
-				LogKey:     logKeyPtr(KeyHTTP | KeyCRUD),
+				LogKeyMask: logKeyMask(KeyHTTP, KeyCRUD),
 				isStderr:   true,
 			},
 		},
@@ -179,7 +179,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 			assert.NoError(tt, err)
 			assert.Equal(tt, test.expected.Enabled, logger.Enabled)
 			assert.Equal(tt, *test.expected.LogLevel, *logger.LogLevel)
-			assert.Equal(tt, *test.expected.LogKey, *logger.LogKey)
+			assert.Equal(tt, *test.expected.LogKeyMask, *logger.LogKeyMask)
 			assert.Equal(tt, test.expected.isStderr, logger.isStderr)
 		})
 	}

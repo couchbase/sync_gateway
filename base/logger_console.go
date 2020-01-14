@@ -16,7 +16,7 @@ type ConsoleLogger struct {
 	FileLogger
 
 	LogLevel     *LogLevel
-	LogKey       *LogKey
+	LogKeyMask   *LogKeyMask
 	ColorEnabled bool
 
 	// isStderr is true when the console logger is configured with no FileOutput
@@ -46,7 +46,7 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 
 	logger := &ConsoleLogger{
 		LogLevel:     config.LogLevel,
-		LogKey:       &logKey,
+		LogKeyMask:   &logKey,
 		ColorEnabled: *config.ColorEnabled && isStderr,
 		FileLogger: FileLogger{
 			Enabled: *config.Enabled,
@@ -101,12 +101,12 @@ func (l *ConsoleLogger) shouldLog(logLevel LogLevel, logKey LogKey) bool {
 	}
 
 	// Log key All should always log at this point, unless KeyNone is set
-	if logKey == KeyAll && !l.LogKey.Enabled(KeyNone) {
+	if logKey == KeyAll && !l.LogKeyMask.Enabled(KeyNone) {
 		return true
 	}
 
 	// Finally, check the specific log key is enabled
-	return l.LogKey.Enabled(logKey)
+	return l.LogKeyMask.Enabled(logKey)
 }
 
 // init validates and sets any defaults for the given ConsoleLoggerConfig
