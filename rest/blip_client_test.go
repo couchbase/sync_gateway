@@ -595,6 +595,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	revRequest.SetProfile(messageRev)
 	revRequest.Properties[revMessageId] = docID
 	revRequest.Properties[revMessageRev] = newRevID
+	revRequest.Properties[revMessageHistory] = parentRev
 
 	if btc.ClientDeltas && proposeChangesResponse.Properties[proposeChangesResponseDeltas] == "true" {
 		base.Debugf(base.KeySync, "TEST: sending deltas from test client")
@@ -627,10 +628,14 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	revResponse := revRequest.Response()
 	rspBody, err = revResponse.Body()
 	if err != nil {
-		return "", fmt.Errorf("error from revResponse: %v", err)
+		return "", fmt.Errorf("error getting body of revResponse: %v", err)
 	}
-	btc.updateLastReplicatedRev(docID, newRevID)
 
+	if revResponse.Type() == blip.ErrorType {
+		return "", fmt.Errorf("error %s %s from revResponse: %s", revResponse.Properties["Error-Domain"], revResponse.Properties["Error-Code"], rspBody)
+	}
+
+	btc.updateLastReplicatedRev(docID, newRevID)
 	return newRevID, nil
 }
 
