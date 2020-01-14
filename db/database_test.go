@@ -15,6 +15,7 @@ import (
 	"expvar"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -674,19 +675,27 @@ func TestAllDocsOnly(t *testing.T) {
 	assert.Equal(t, 100, len(changes))
 
 	for i, change := range changes {
-		seq := i
+		docIndex := i
 		if i >= 23 {
-			seq++
+			docIndex++
 		}
-		assert.Equal(t, i != 99, fmt.Sprintf("alldoc-%02d", seq) == change.ID)
-		assert.Equal(t, i == 99, change.Deleted)
-		var removed base.Set
-		if i == 99 {
-			removed = channels.SetOf(t, "all")
+		if i == len(changes)-1 {
+			// The last entry in the changes response should be the deleted document
+			assert.True(t, change.Deleted)
 			assert.Equal(t, "alldoc-23", change.ID)
+			assert.Equal(t, channels.SetOf(t, "all"), change.Removed)
+		} else {
+			// Verify correct ordering for all other documents
+			assert.Equal(t, fmt.Sprintf("alldoc-%02d", docIndex), change.ID)
 		}
-		assert.Equal(t, removed, change.Removed)
 	}
+	// Check whether sequences are ascending for all entries in the changes response
+	sortedSeqAsc := func(changes []*ChangeEntry) bool {
+		return sort.SliceIsSorted(changes, func(i, j int) bool {
+			return changes[i].Seq.Seq < changes[j].Seq.Seq
+		})
+	}
+	assert.True(t, sortedSeqAsc(changes), "Sequences should be ascending for all entries in the changes response")
 
 	options.IncludeDocs = true
 	changes, err = db.GetChanges(channels.SetOf(t, "KFJC"), options)
@@ -701,6 +710,7 @@ func TestAllDocsOnly(t *testing.T) {
 		// unmarshalled as json.Number, so just compare the strings
 		assert.Equal(t, strconv.FormatInt(int64(10*i), 10), changeBody["serialnumber"].(json.Number).String())
 	}
+	assert.True(t, sortedSeqAsc(changes), "Sequences should be ascending for all entries in the changes response")
 }
 
 // Unit test for bug #673
