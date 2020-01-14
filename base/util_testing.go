@@ -584,7 +584,7 @@ func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardo
 	return func() {
 		// Return logging to a default state
 		consoleLogger.LogLevel.Set(initialLogLevel)
-		consoleLogger.LogKeyMask = initialLogKey
+		consoleLogger.LogKeyMask.Set(initialLogKey)
 		if caller != "" {
 			Infof(KeyAll, "%v: Reset logging", caller)
 		}
