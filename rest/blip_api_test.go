@@ -2213,11 +2213,14 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok := client1.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
-	assert.Equal(t, msg.Profile(), messageRev, "unexpected profile for message 5 in %v", client1.pullReplication.GetMessages())
+	assert.Equal(t, messageRev, msg.Profile(), "unexpected profile for message %v in %v",
+		msg.SerialNumber(), client1.pullReplication.GetMessages())
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message 5 in %v", client1.pullReplication.GetMessages())
-	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message 5 in %v", client1.pullReplication.GetMessages())
+	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v", msg.SerialNumber(),
+		client1.pullReplication.GetMessages())
+	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message %v in %v",
+		msg.SerialNumber(), client1.pullReplication.GetMessages())
 
 	// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
 	err = client2.StartOneshotPull()
@@ -2227,18 +2230,22 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
-	msg, ok = client2.pullReplication.WaitForMessage(6)
+	msg, ok = client2.WaitForMessage(messageRev)
 	assert.True(t, ok)
-	assert.Equal(t, msg.Profile(), messageRev, "unexpected profile for message 6 in %v", client2.pullReplication.GetMessages())
+	assert.Equal(t, messageRev, msg.Profile(), "unexpected profile for message %v in %v", msg.SerialNumber(),
+		client2.pullReplication.GetMessages())
 	msgBody, err = msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message 6 in %v", client2.pullReplication.GetMessages())
-	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message 6 in %v", client2.pullReplication.GetMessages())
+	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v", msg.SerialNumber(),
+		client2.pullReplication.GetMessages())
+	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message %v in %v",
+		msg.SerialNumber(), client2.pullReplication.GetMessages())
 
 	deltaCacheHitsEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
 	deltaCacheMissesEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
 	deltasRequestedEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasRequested))
 	deltasSentEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
+
 	if sgUseDeltas {
 		assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
 		assert.Equal(t, deltaCacheMissesStart+1, deltaCacheMissesEnd)

@@ -716,3 +716,34 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	defer btr.messagesLock.Unlock()
 	btr.messages[msg.SerialNumber()] = msg
 }
+
+// Returns the BLIP message by profile.
+func (btc *BlipTesterClient) GetMessage(profile string) (msg *blip.Message, found bool) {
+	btc.pullReplication.messagesLock.RLock()
+	defer btc.pullReplication.messagesLock.RUnlock()
+	for _, msg := range btc.pullReplication.messages {
+		if msg.Profile() == profile {
+			return msg, true
+		}
+	}
+	return nil, false
+}
+
+// Causes the current thread to wait, if necessary, until the desired message has been received or
+// the specified waiting time (10 * time.Second) elapses. If the message has not yet received, the
+// calling thread will be blocked until the has been stored and retrieved by the replicator.
+func (btc *BlipTesterClient) WaitForMessage(profile string) (msg *blip.Message, found bool) {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for BLIP message: %v", profile)
+			return nil, false
+		case <-ticker.C:
+			if data, found := btc.GetMessage(profile); found {
+				return data, found
+			}
+		}
+	}
+}
