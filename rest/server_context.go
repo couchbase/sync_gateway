@@ -13,8 +13,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -666,7 +668,17 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	syncFn := ""
 	if config.Sync != nil {
-		syncFn = *config.Sync
+		if _, err := os.Stat(*config.Sync); !os.IsNotExist(err) {
+			base.Infof(base.KeyAll, "Loading Sync Function file at %q for database %s", *config.Sync, config.Name)
+			if buf, err := ioutil.ReadFile(*config.Sync); err == nil {
+				syncFn = string(buf)
+			}else {
+				base.Fatalf(base.KeyAll, "Error reading Sync Function file at %q for database %s", *config.Sync, config.Name, err)
+			}
+		} else {
+			base.Infof(base.KeyAll, "Loading inline Sync Function for database %s", config.Name)
+			syncFn = *config.Sync
+		}
 	}
 	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
 		return nil, err
