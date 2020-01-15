@@ -4609,14 +4609,6 @@ func TestHandleHeapProfiling(t *testing.T) {
 	assert.Contains(t, string(response.BodyBytes()), "Internal error: open")
 }
 
-func TestHandlePprofTrace(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-	// Get and Post requests for pprof trace
-	assert.Panics(t, func() { rt.SendAdminRequest(http.MethodGet, "/_debug/pprof/trace", "") })
-	assert.Panics(t, func() { rt.SendAdminRequest(http.MethodPost, "/_debug/pprof/trace", "") })
-}
-
 func TestHandlePprofsCmdlineAndSymbol(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -4659,22 +4651,32 @@ func TestHandlePprofs(t *testing.T) {
 	}{
 		{
 			inputProfile:  "heap",
-			inputResource: "/_debug/pprof/heap?seconds=1"},
+			inputResource: "/_debug/pprof/heap?seconds=1",
+		},
 		{
 			inputProfile:  "profile",
-			inputResource: "/_debug/pprof/profile?seconds=1"},
+			inputResource: "/_debug/pprof/profile?seconds=1",
+		},
 		{
 			inputProfile:  "block",
-			inputResource: "/_debug/pprof/block?seconds=1"},
+			inputResource: "/_debug/pprof/block?seconds=1",
+		},
 		{
 			inputProfile:  "threadcreate",
-			inputResource: "/_debug/pprof/threadcreate"},
+			inputResource: "/_debug/pprof/threadcreate",
+		},
 		{
 			inputProfile:  "mutex",
-			inputResource: "/_debug/pprof/mutex?seconds=1"},
+			inputResource: "/_debug/pprof/mutex?seconds=1",
+		},
 		{
 			inputProfile:  "goroutine",
-			inputResource: "/_debug/pprof/goroutine?debug=0&gc=1"},
+			inputResource: "/_debug/pprof/goroutine?debug=0&gc=1",
+		},
+		{
+			inputProfile:  "trace",
+			inputResource: "/_debug/pprof/trace?seconds=1",
+		},
 	}
 
 	for _, tc := range tests {
