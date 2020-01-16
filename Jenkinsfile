@@ -246,6 +246,8 @@ pipeline {
                                             githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
                                             githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
                                             unstable("At least one CE unit test failed")
                                         }
                                     }
@@ -292,6 +294,8 @@ pipeline {
                                             githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
                                             githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
                                             unstable("At least one EE unit test failed")
                                         }
                                     }
