@@ -374,13 +374,14 @@ pipeline {
 
     post {
         always {
+            // archive all other build outputs now
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false
+
             // Publish the cobertura formatted test coverage reports into Jenkins
             cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
-
-            archiveArtifacts artifacts: 'benchmark.out', fingerprint: true
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
