@@ -192,6 +192,7 @@ type DbConfig struct {
 	EnableXattrs              *bool                          `json:"enable_shared_bucket_access,omitempty"`  // Whether to use extended attributes to store _sync metadata
 	SecureCookieOverride      *bool                          `json:"session_cookie_secure,omitempty"`        // Override cookie secure flag
 	SessionCookieName         string                         `json:"session_cookie_name"`                    // Custom per-database session cookie name
+	SessionCookieHTTPOnly     bool                           `json:"session_cookie_http_only"`               // HTTP only cookies
 	AllowConflicts            *bool                          `json:"allow_conflicts,omitempty"`              // False forbids creating conflicts
 	NumIndexReplicas          *uint                          `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
 	UseViews                  bool                           `json:"use_views"`                              // Force use of views instead of GSI
