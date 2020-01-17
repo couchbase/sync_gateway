@@ -729,7 +729,7 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messages[msg.SerialNumber()] = msg
 }
 
-func (btc *BlipTesterClient) WaitForBlipMessage(docId, revId string) (msg *blip.Message, found bool) {
+func (btc *BlipTesterClient) WaitForBlipRevMessage(docId, revId string) (msg *blip.Message, found bool) {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	timeout := time.After(10 * time.Second)
 	for {
@@ -738,19 +738,20 @@ func (btc *BlipTesterClient) WaitForBlipMessage(docId, revId string) (msg *blip.
 			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for BLIP message docId: %v, revId: %v", docId, revId)
 			return nil, false
 		case <-ticker.C:
-			if data, found := btc.GetBlipMessage(docId, revId); found {
+			if data, found := btc.GetBlipRevMessage(docId, revId); found {
 				return data, found
 			}
 		}
 	}
 }
 
-func (btc *BlipTesterClient) GetBlipMessage(docId, revId string) (msg *blip.Message, found bool) {
+func (btc *BlipTesterClient) GetBlipRevMessage(docId, revId string) (msg *blip.Message, found bool) {
 	btc.docsLock.RLock()
 	defer btc.docsLock.RUnlock()
 
 	if rev, ok := btc.docs[docId]; ok {
 		if pair, found := rev[revId]; found {
+			found = pair.message != nil
 			return pair.message, found
 		}
 	}

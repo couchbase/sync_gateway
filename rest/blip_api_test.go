@@ -2211,7 +2211,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
-	msg, ok := client1.WaitForBlipMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac") // docid, revid to get the message
+	msg, ok := client1.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac") // docid, revid to get the message
 	assert.True(t, ok)
 	assert.Equal(t, messageRev, msg.Profile(), "unexpected profile for message %v in %v",
 		msg.SerialNumber(), client1.pullReplication.GetMessages())
@@ -2230,7 +2230,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
-	msg, ok = client2.WaitForBlipMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
+	msg, ok = client2.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
 	assert.Equal(t, messageRev, msg.Profile(), "unexpected profile for message %v in %v",
 		msg.SerialNumber(), client2.pullReplication.GetMessages())
