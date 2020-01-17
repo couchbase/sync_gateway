@@ -11,7 +11,6 @@ package rest
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	httpprof "net/http/pprof"
 	"os"
@@ -354,8 +353,7 @@ func (h *handler) handlePprofGoroutine() error {
 
 // Go execution tracer
 func (h *handler) handlePprofTrace() error {
-	log.Panicf("Disabled until we require Go1.5 as minimal version to build with")
-	// httpprof.Trace(h.response, h.rq)
+	httpprof.Trace(h.response, h.rq)
 	return nil
 }
 
