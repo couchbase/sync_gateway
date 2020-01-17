@@ -424,7 +424,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		gsiSupported := bucket.IsSupported(sgbucket.BucketFeatureN1ql)
 
 		if !gsiSupported {
-			return nil, errors.New("Couchbase Server version must be 5.5 or higher for Sync Gateway to use GSI.  Upgrade the server, or set 'use_views':true in Sync Gateway's database config.")
+			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}
 
 		numReplicas := DefaultNumIndexReplicas
