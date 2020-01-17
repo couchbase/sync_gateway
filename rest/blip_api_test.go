@@ -2211,14 +2211,14 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
-	msg, ok := client1.pullReplication.WaitForMessage(5)
+	msg, ok := client1.WaitForBlipMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac") // docid, revid to get the message
 	assert.True(t, ok)
 	assert.Equal(t, messageRev, msg.Profile(), "unexpected profile for message %v in %v",
 		msg.SerialNumber(), client1.pullReplication.GetMessages())
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v", msg.SerialNumber(),
-		client1.pullReplication.GetMessages())
+	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v",
+		msg.SerialNumber(), client1.pullReplication.GetMessages())
 	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message %v in %v",
 		msg.SerialNumber(), client1.pullReplication.GetMessages())
 
@@ -2230,14 +2230,14 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
-	msg, ok = client2.WaitForMessage(messageRev)
+	msg, ok = client2.WaitForBlipMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
-	assert.Equal(t, messageRev, msg.Profile(), "unexpected profile for message %v in %v", msg.SerialNumber(),
-		client2.pullReplication.GetMessages())
+	assert.Equal(t, messageRev, msg.Profile(), "unexpected profile for message %v in %v",
+		msg.SerialNumber(), client2.pullReplication.GetMessages())
 	msgBody, err = msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v", msg.SerialNumber(),
-		client2.pullReplication.GetMessages())
+	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v",
+		msg.SerialNumber(), client2.pullReplication.GetMessages())
 	assert.Equal(t, "1", msg.Properties[revMessageDeleted], "unexpected deleted property for message %v in %v",
 		msg.SerialNumber(), client2.pullReplication.GetMessages())
 
