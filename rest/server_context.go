@@ -41,6 +41,7 @@ const DefaultStatsLogFrequencySecs = 60
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
+	usingTLS          bool
 	config            *ServerConfig
 	databases_        map[string]*db.DatabaseContext
 	lock              sync.RWMutex

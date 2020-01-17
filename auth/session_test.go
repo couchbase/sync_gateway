@@ -97,15 +97,37 @@ func TestMakeSessionCookie(t *testing.T) {
 		Ttl:        24 * time.Hour,
 	}
 
-	cookie := auth.MakeSessionCookie(mockSession)
+	cookie := auth.MakeSessionCookie(mockSession, false)
 	assert.Equal(t, DefaultCookieName, cookie.Name)
 	assert.Equal(t, sessionID, cookie.Value)
 	assert.NotEmpty(t, cookie.Expires)
 
 	// Cookies should not be created with uninitialized session
 	mockSession = nil
-	cookie = auth.MakeSessionCookie(mockSession)
+	cookie = auth.MakeSessionCookie(mockSession, false)
 	assert.Empty(t, cookie)
+}
+
+func TestMakeSessionSecureCookie(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	bucket := testBucket.Bucket
+	auth := NewAuthenticator(bucket, nil)
+
+	sessionID := base.GenerateRandomSecret()
+	mockSession := &LoginSession{
+		ID:         sessionID,
+		Username:   "jrascagneres",
+		Expiration: time.Now().Add(2 * time.Hour),
+		Ttl:        24 * time.Hour,
+	}
+
+	unsecuredCookie := auth.MakeSessionCookie(mockSession, false)
+	assert.False(t, unsecuredCookie.Secure)
+
+	securedCookie := auth.MakeSessionCookie(mockSession, true)
+	assert.True(t, securedCookie.Secure)
 }
 
 // Coverage for DeleteSessionForCookie. Mock a fake cookie with default cookie name,

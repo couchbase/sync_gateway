@@ -68,37 +68,38 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	TLSMinVersion              *string                  `json:"tls_minimum_version,omitempty"`    // Set TLS Version
-	Interface                  *string                  `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
-	SSLCert                    *string                  `json:",omitempty"`                       // Path to SSL cert file, or nil
-	SSLKey                     *string                  `json:",omitempty"`                       // Path to SSL private key file, or nil
-	ServerReadTimeout          *int                     `json:",omitempty"`                       // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout         *int                     `json:",omitempty"`                       // maximum duration.Second before timing out write of the HTTP(S) response
-	AdminInterface             *string                  `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
-	AdminUI                    *string                  `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface           *string                  `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
-	ConfigServer               *string                  `json:",omitempty"`                       // URL of config server (for dynamic db discovery)
-	Facebook                   *FacebookConfig          `json:",omitempty"`                       // Configuration for Facebook validation
-	Google                     *GoogleConfig            `json:",omitempty"`                       // Configuration for Google validation
-	CORS                       *CORSConfig              `json:",omitempty"`                       // Configuration for allowing CORS
-	DeprecatedLog              []string                 `json:"log,omitempty"`                    // Log keywords to enable
-	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"`            // Path to log file, if missing write to stderr
-	Logging                    *base.LoggingConfig      `json:",omitempty"`                       // Configuration for logging with optional log file rotation
-	Pretty                     bool                     `json:",omitempty"`                       // Pretty-print JSON responses?
-	DeploymentID               *string                  `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
-	StatsReportInterval        *float64                 `json:",omitempty"`                       // Optional stats report interval (0 to disable)
-	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`                       // TCP keep-alive interval between SG and Couchbase server
-	SlowQueryWarningThreshold  *int                     `json:",omitempty"`                       // Log warnings if N1QL queries take this many ms
-	MaxIncomingConnections     *int                     `json:",omitempty"`                       // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors         *uint64                  `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses          *bool                    `json:",omitempty"`                       // If false, disables compression of HTTP responses
-	Databases                  DbConfigMap              `json:",omitempty"`                       // Pre-configured databases, mapped by name
-	Replications               []*ReplicationConfig     `json:",omitempty"`                       // sg-replicate replication definitions
-	MaxHeartbeat               uint64                   `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
-	ClusterConfig              *ClusterConfig           `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
-	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`            // Config for unsupported features
-	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
-	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
+	TLSSecureCookieOverride    *bool                    `json:"tls_secure_cookie_override,omitempty"` // Override cookie secure flag
+	TLSMinVersion              *string                  `json:"tls_minimum_version,omitempty"`        // Set TLS Version
+	Interface                  *string                  `json:",omitempty"`                           // Interface to bind REST API to, default ":4984"
+	SSLCert                    *string                  `json:",omitempty"`                           // Path to SSL cert file, or nil
+	SSLKey                     *string                  `json:",omitempty"`                           // Path to SSL private key file, or nil
+	ServerReadTimeout          *int                     `json:",omitempty"`                           // maximum duration.Second before timing out read of the HTTP(S) request
+	ServerWriteTimeout         *int                     `json:",omitempty"`                           // maximum duration.Second before timing out write of the HTTP(S) response
+	AdminInterface             *string                  `json:",omitempty"`                           // Interface to bind admin API to, default "localhost:4985"
+	AdminUI                    *string                  `json:",omitempty"`                           // Path to Admin HTML page, if omitted uses bundled HTML
+	ProfileInterface           *string                  `json:",omitempty"`                           // Interface to bind Go profile API to (no default)
+	ConfigServer               *string                  `json:",omitempty"`                           // URL of config server (for dynamic db discovery)
+	Facebook                   *FacebookConfig          `json:",omitempty"`                           // Configuration for Facebook validation
+	Google                     *GoogleConfig            `json:",omitempty"`                           // Configuration for Google validation
+	CORS                       *CORSConfig              `json:",omitempty"`                           // Configuration for allowing CORS
+	DeprecatedLog              []string                 `json:"log,omitempty"`                        // Log keywords to enable
+	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"`                // Path to log file, if missing write to stderr
+	Logging                    *base.LoggingConfig      `json:",omitempty"`                           // Configuration for logging with optional log file rotation
+	Pretty                     bool                     `json:",omitempty"`                           // Pretty-print JSON responses?
+	DeploymentID               *string                  `json:",omitempty"`                           // Optional customer/deployment ID for stats reporting
+	StatsReportInterval        *float64                 `json:",omitempty"`                           // Optional stats report interval (0 to disable)
+	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`                           // TCP keep-alive interval between SG and Couchbase server
+	SlowQueryWarningThreshold  *int                     `json:",omitempty"`                           // Log warnings if N1QL queries take this many ms
+	MaxIncomingConnections     *int                     `json:",omitempty"`                           // Max # of incoming HTTP connections to accept
+	MaxFileDescriptors         *uint64                  `json:",omitempty"`                           // Max # of open file descriptors (RLIMIT_NOFILE)
+	CompressResponses          *bool                    `json:",omitempty"`                           // If false, disables compression of HTTP responses
+	Databases                  DbConfigMap              `json:",omitempty"`                           // Pre-configured databases, mapped by name
+	Replications               []*ReplicationConfig     `json:",omitempty"`                           // sg-replicate replication definitions
+	MaxHeartbeat               uint64                   `json:",omitempty"`                           // Max heartbeat value for _changes request (seconds)
+	ClusterConfig              *ClusterConfig           `json:"cluster_config,omitempty"`             // Bucket and other config related to CBGT
+	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`                // Config for unsupported features
+	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"`     // BLIP data compression level (0-9)
+	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`                // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
 }
 
 // Bucket configuration elements - used by db, index
@@ -1039,6 +1040,12 @@ func RunServer(config *ServerConfig) {
 	}
 
 	go sc.PostStartup()
+
+	// If cookie override == true OR cookie override isn't set and using tls serving over tls
+	// Otherwise usingTLS will be set to false by default
+	if (config.TLSSecureCookieOverride != nil && *config.TLSSecureCookieOverride) || (config.TLSSecureCookieOverride == nil && config.SSLCert != nil) {
+		sc.usingTLS = true
+	}
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
