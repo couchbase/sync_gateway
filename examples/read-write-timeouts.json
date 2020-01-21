@@ -1,6 +1,8 @@
 {
   "ServerReadTimeout": 200,
   "ServerWriteTimeout": 200,
+  "ReadHeaderTimeout": 120,
+  "IdleTimeout": 180,
   "logging": {
     "console": {
       "log_keys": ["*"]

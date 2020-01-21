@@ -74,6 +74,8 @@ type ServerConfig struct {
 	SSLKey                     *string                  `json:",omitempty"`                       // Path to SSL private key file, or nil
 	ServerReadTimeout          *int                     `json:",omitempty"`                       // maximum duration.Second before timing out read of the HTTP(S) request
 	ServerWriteTimeout         *int                     `json:",omitempty"`                       // maximum duration.Second before timing out write of the HTTP(S) response
+	ReadHeaderTimeout          *int                     `json:",omitempty"`                       // The amount of time allowed to read request headers.
+	IdleTimeout                *int                     `json:",omitempty"`                       // The maximum amount of time to wait for the next request when keep-alives are enabled.
 	AdminInterface             *string                  `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
 	AdminUI                    *string                  `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface           *string                  `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
@@ -983,6 +985,8 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 		handler,
 		config.ServerReadTimeout,
 		config.ServerWriteTimeout,
+		config.ReadHeaderTimeout,
+		config.IdleTimeout,
 		http2Enabled,
 		tlsMinVersion,
 	)
