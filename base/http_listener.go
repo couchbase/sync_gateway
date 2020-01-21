@@ -8,9 +8,23 @@ import (
 	"time"
 )
 
+const (
+	// Default amount of time allowed to read request headers.
+	// If ReadHeaderTimeout is not defined in JSON config file,
+	// the value of DefaultReadHeaderTimeout is used.
+	DefaultReadHeaderTimeout = 5 * time.Second
+
+	// Default maximum amount of time to wait for the next request
+	// when keep-alives are enabled. If IdleTimeout is not defined
+	// in JSON config file, the value of DefaultIdleTimeout is used.
+	DefaultIdleTimeout = 90 * time.Second
+)
+
 // This is like a combination of http.ListenAndServe and http.ListenAndServeTLS, which also
 // uses ThrottledListen to limit the number of open HTTP connections.
-func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, handler http.Handler, readTimeout *int, writeTimeout *int, http2Enabled bool, tlsMinVersion uint16) error {
+func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, handler http.Handler,
+	readTimeout *int, writeTimeout *int, readHeaderTimeout *int, idleTimeout *int, http2Enabled bool,
+	tlsMinVersion uint16) error {
 	var config *tls.Config
 	if certFile != nil {
 		config = &tls.Config{}
@@ -43,7 +57,16 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 	if writeTimeout != nil {
 		server.WriteTimeout = time.Duration(*writeTimeout) * time.Second
 	}
-
+	if readHeaderTimeout != nil {
+		server.ReadHeaderTimeout = time.Duration(*readHeaderTimeout) * time.Second
+	} else {
+		server.ReadHeaderTimeout = DefaultReadHeaderTimeout
+	}
+	if idleTimeout != nil {
+		server.IdleTimeout = time.Duration(*idleTimeout) * time.Second
+	} else {
+		server.IdleTimeout = DefaultIdleTimeout
+	}
 	return server.Serve(listener)
 }
 
