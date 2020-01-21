@@ -72,6 +72,7 @@ var QueryChannels = SGQuery{
 			"$sync.flags AS flags, "+
 			"META(`%s`).id AS id "+
 			"FROM `%s` "+
+			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
 			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
 			"ORDER BY seq",
@@ -86,7 +87,8 @@ var QueryStarChannel = SGQuery{
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(`%s`).id AS id "+
-			"FROM `%s`"+
+			"FROM `%s` "+
+			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
 			"AND META().id NOT LIKE '%s'",
 		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
@@ -357,6 +359,7 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	}
 
 	channelQueryStatement := replaceSyncTokensQuery(channelQuery.statement, context.UseXattrs())
+	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, sgIndexes[IndexChannels], context.UseXattrs())
 	if limit > 0 {
 		channelQueryStatement = fmt.Sprintf("%s LIMIT %d", channelQueryStatement, limit)
 	}

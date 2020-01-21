@@ -24,6 +24,7 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 		// Create the star channel query
 		statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
 		starChannelQueryStatement := replaceSyncTokensQuery(statement, useXattrs)
+		starChannelQueryStatement = replaceIndexTokensQuery(starChannelQueryStatement, sgIndexes[IndexChannels], useXattrs)
 		params := map[string]interface{}{}
 		params[QueryParamStartSeq] = 0
 		params[QueryParamEndSeq] = math.MaxInt64
