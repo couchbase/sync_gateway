@@ -27,15 +27,21 @@ type BlipTesterClient struct {
 
 	rt *RestTester
 
-	docs                  map[string]map[string][]byte // Client's local store of documents - Map of docID to rev ID to bytes
-	attachments           map[string][]byte            // Client's local store of attachments - Map of digest to bytes
-	lastReplicatedRev     map[string]string            // Latest known rev pulled or pushed
-	docsLock              sync.RWMutex                 // lock for docs map
-	attachmentsLock       sync.RWMutex                 // lock for attachments map
-	lastReplicatedRevLock sync.RWMutex                 // lock for lastReplicatedRev map
+	docs map[string]map[string]*BodyMessagePair // Client's local store of documents - Map of docID
+	// to rev ID to bytes
+	attachments           map[string][]byte // Client's local store of attachments - Map of digest to bytes
+	lastReplicatedRev     map[string]string // Latest known rev pulled or pushed
+	docsLock              sync.RWMutex      // lock for docs map
+	attachmentsLock       sync.RWMutex      // lock for attachments map
+	lastReplicatedRevLock sync.RWMutex      // lock for lastReplicatedRev map
 
 	pullReplication *BlipTesterReplicator // SG -> CBL replications
 	pushReplication *BlipTesterReplicator // CBL -> SG replications
+}
+
+type BodyMessagePair struct {
+	body    []byte
+	message *blip.Message
 }
 
 // BlipTesterReplicator is a BlipTester which stores a map of messages keyed by Serial Number
@@ -179,9 +185,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		if msg.Properties[revMessageDeleted] == "1" {
 			btc.docsLock.Lock()
 			if _, ok := btc.docs[docID]; ok {
-				btc.docs[docID][revID] = body
+				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
+				btc.docs[docID][revID] = bodyMessagePair
 			} else {
-				btc.docs[docID] = map[string][]byte{revID: body}
+				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
+				btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
 			}
 			btc.updateLastReplicatedRev(docID, revID)
 			btc.docsLock.Unlock()
@@ -207,7 +215,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 			var old db.Body
 			btc.docsLock.RLock()
-			oldBytes := btc.docs[docID][deltaSrc]
+			oldBytes := btc.docs[docID][deltaSrc].body
 			btc.docsLock.RUnlock()
 			if err := old.Unmarshal(oldBytes); err != nil {
 				panic(err)
@@ -296,9 +304,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		btc.docsLock.Lock()
 		if _, ok := btc.docs[docID]; ok {
-			btc.docs[docID][revID] = body
+			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
+			btc.docs[docID][revID] = bodyMessagePair
 		} else {
-			btc.docs[docID] = map[string][]byte{revID: body}
+			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
+			btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
 		}
 		btc.updateLastReplicatedRev(docID, revID)
 		btc.docsLock.Unlock()
@@ -418,7 +428,7 @@ func NewBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClie
 	btc := BlipTesterClient{
 		BlipTesterClientOpts: *opts,
 		rt:                   rt,
-		docs:                 make(map[string]map[string][]byte),
+		docs:                 make(map[string]map[string]*BodyMessagePair),
 		attachments:          make(map[string][]byte),
 		lastReplicatedRev:    make(map[string]string),
 	}
@@ -477,7 +487,7 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string
 // Close will empty the stored docs and close the underlying replications.
 func (btc *BlipTesterClient) Close() {
 	btc.docsLock.Lock()
-	btc.docs = make(map[string]map[string][]byte, 0)
+	btc.docs = make(map[string]map[string]*BodyMessagePair, 0)
 	btc.docsLock.Unlock()
 
 	btc.lastReplicatedRevLock.Lock()
@@ -562,8 +572,9 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 		if _, ok := btc.docs[docID]; ok {
 			// create new rev if doc and parent rev already exists
 			if parentDoc, okParent := btc.docs[docID][parentRev]; okParent {
-				parentDocBody = parentDoc
-				btc.docs[docID][newRevID] = body
+				parentDocBody = parentDoc.body
+				bodyMessagePair := &BodyMessagePair{body: body}
+				btc.docs[docID][newRevID] = bodyMessagePair
 			} else {
 				return "", fmt.Errorf("docID: %v with parent rev: %v was not found on the client", docID, parentRev)
 			}
@@ -572,7 +583,8 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 		}
 	} else {
 		// create new doc + rev
-		btc.docs[docID] = map[string][]byte{newRevID: body}
+		bodyMessagePair := &BodyMessagePair{body: body}
+		btc.docs[docID] = map[string]*BodyMessagePair{newRevID: bodyMessagePair}
 	}
 	btc.docsLock.Unlock()
 
@@ -646,7 +658,7 @@ func (btc *BlipTesterClient) GetRev(docID, revID string) (data []byte, found boo
 
 	if rev, ok := btc.docs[docID]; ok {
 		data, found := rev[revID]
-		return data, found
+		return data.body, found
 	}
 
 	return nil, false
@@ -715,4 +727,34 @@ func (btr *BlipTesterReplicator) storeMessage(msg *blip.Message) {
 	btr.messagesLock.Lock()
 	defer btr.messagesLock.Unlock()
 	btr.messages[msg.SerialNumber()] = msg
+}
+
+func (btc *BlipTesterClient) WaitForBlipRevMessage(docId, revId string) (msg *blip.Message, found bool) {
+	ticker := time.NewTicker(50 * time.Millisecond)
+	timeout := time.After(10 * time.Second)
+	for {
+		select {
+		case <-timeout:
+			btc.rt.tb.Fatalf("BlipTesterClient timed out waiting for BLIP message docId: %v, revId: %v", docId, revId)
+			return nil, false
+		case <-ticker.C:
+			if data, found := btc.GetBlipRevMessage(docId, revId); found {
+				return data, found
+			}
+		}
+	}
+}
+
+func (btc *BlipTesterClient) GetBlipRevMessage(docId, revId string) (msg *blip.Message, found bool) {
+	btc.docsLock.RLock()
+	defer btc.docsLock.RUnlock()
+
+	if rev, ok := btc.docs[docId]; ok {
+		if pair, found := rev[revId]; found {
+			found = pair.message != nil
+			return pair.message, found
+		}
+	}
+
+	return nil, false
 }
