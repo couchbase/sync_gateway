@@ -102,7 +102,7 @@ func (auth *Authenticator) GetSession(sessionID string) (*LoginSession, error) {
 	return &session, nil
 }
 
-func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie {
+func (auth *Authenticator) MakeSessionCookie(session *LoginSession, secureCookie bool) *http.Cookie {
 	if session == nil {
 		return nil
 	}
@@ -110,6 +110,7 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession) *http.Cookie
 		Name:    auth.sessionCookieName,
 		Value:   session.ID,
 		Expires: session.Expiration,
+		Secure:  secureCookie,
 	}
 }
 

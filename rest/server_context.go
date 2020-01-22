@@ -509,6 +509,13 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		compactIntervalSecs = uint32(*compactIntervalDays * 60 * 60 * 24)
 	}
 
+	var secureCookieOverride bool
+	if config.SecureCookieOverride != nil {
+		secureCookieOverride = *config.SecureCookieOverride
+	} else {
+		secureCookieOverride = sc.config.SSLCert != nil
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
@@ -520,6 +527,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		DBOnlineCallback:          dbOnlineCallback,
 		ImportOptions:             importOptions,
 		EnableXattr:               config.UseXattrs(),
+		SecureCookieOverride:      secureCookieOverride,
 		SessionCookieName:         config.SessionCookieName,
 		AllowConflicts:            config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
