@@ -188,7 +188,7 @@ type DbConfig struct {
 	ViewQueryTimeoutSecs      *uint32                        `json:"view_query_timeout_secs,omitempty"`      // The view query timeout in seconds
 	LocalDocExpirySecs        *uint32                        `json:"local_doc_expiry_secs,omitempty"`        // The _local doc expiry time in seconds
 	EnableXattrs              *bool                          `json:"enable_shared_bucket_access,omitempty"`  // Whether to use extended attributes to store _sync metadata
-	SecureCookieOverride      *bool                          `json:"secure_session_cookies,omitempty"`       // Override cookie secure flag
+	SecureCookieOverride      *bool                          `json:"session_cookie_secure,omitempty"`        // Override cookie secure flag
 	SessionCookieName         string                         `json:"session_cookie_name"`                    // Custom per-database session cookie name
 	AllowConflicts            *bool                          `json:"allow_conflicts,omitempty"`              // False forbids creating conflicts
 	NumIndexReplicas          *uint                          `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
