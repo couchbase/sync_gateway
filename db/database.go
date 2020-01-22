@@ -111,6 +111,7 @@ type DatabaseContextOptions struct {
 	ImportOptions             ImportOptions
 	EnableXattr               bool             // Use xattr for _sync
 	LocalDocExpirySecs        uint32           // The _local doc expiry time in seconds
+	SecureCookieOverride      bool             // Pass-through DBConfig.SecureCookieOverride
 	SessionCookieName         string           // Pass-through DbConfig.SessionCookieName
 	AllowConflicts            *bool            // False forbids creating conflicts
 	SendWWWAuthenticateHeader *bool            // False disables setting of 'WWW-Authenticate' header

@@ -68,7 +68,6 @@ const (
 
 // JSON object that defines the server configuration.
 type ServerConfig struct {
-	SecureCookieOverride       *bool                    `json:"secure_session_cookies,omitempty"` // Override cookie secure flag
 	TLSMinVersion              *string                  `json:"tls_minimum_version,omitempty"`    // Set TLS Version
 	Interface                  *string                  `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
 	SSLCert                    *string                  `json:",omitempty"`                       // Path to SSL cert file, or nil
@@ -189,6 +188,7 @@ type DbConfig struct {
 	ViewQueryTimeoutSecs      *uint32                        `json:"view_query_timeout_secs,omitempty"`      // The view query timeout in seconds
 	LocalDocExpirySecs        *uint32                        `json:"local_doc_expiry_secs,omitempty"`        // The _local doc expiry time in seconds
 	EnableXattrs              *bool                          `json:"enable_shared_bucket_access,omitempty"`  // Whether to use extended attributes to store _sync metadata
+	SecureCookieOverride      *bool                          `json:"secure_session_cookies,omitempty"`       // Override cookie secure flag
 	SessionCookieName         string                         `json:"session_cookie_name"`                    // Custom per-database session cookie name
 	AllowConflicts            *bool                          `json:"allow_conflicts,omitempty"`              // False forbids creating conflicts
 	NumIndexReplicas          *uint                          `json:"num_index_replicas"`                     // Number of GSI index replicas used for core indexes
@@ -801,14 +801,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 		self.Databases[name] = db
 	}
 	return nil
-}
-
-func (config *ServerConfig) UseSecureCookies() bool {
-	if config.SecureCookieOverride != nil {
-		return *config.SecureCookieOverride
-	}
-	return config.SSLCert != nil
-
 }
 
 // Reads the command line flags and the optional config file.
