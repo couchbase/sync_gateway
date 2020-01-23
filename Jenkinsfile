@@ -246,6 +246,8 @@ pipeline {
                                             githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
                                             githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
                                             unstable("At least one CE unit test failed")
                                         }
                                     }
@@ -292,6 +294,8 @@ pipeline {
                                             githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
                                             githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
+                                            // archive verbose test logs in the event of a test failure
+                                            archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
                                             unstable("At least one EE unit test failed")
                                         }
                                     }
@@ -370,13 +374,14 @@ pipeline {
 
     post {
         always {
+            // archive all other build outputs now
+            archiveArtifacts excludes: 'verbose_*.out', artifacts: '*.out', fingerprint: false
+
             // Publish the cobertura formatted test coverage reports into Jenkins
             cobertura autoUpdateHealth: false, onlyStable: false, autoUpdateStability: false, coberturaReportFile: 'reports/coverage-*.xml', conditionalCoverageTargets: '70, 0, 0', failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', sourceEncoding: 'ASCII', zoomCoverageChart: false
 
             // Publish the junit test reports
             junit allowEmptyResults: true, testResults: 'reports/test-*.xml'
-
-            archiveArtifacts artifacts: 'benchmark.out', fingerprint: true
 
             // TODO: Might be better to clean the workspace to before a job runs instead
             step([$class: 'WsCleanup'])
