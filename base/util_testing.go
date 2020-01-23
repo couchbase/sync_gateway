@@ -326,7 +326,9 @@ func getIndexes(gocbBucket *CouchbaseBucketGoCB) (indexes []string, err error) {
 	}
 
 	for _, indexInfo := range indexInfo {
-		indexes = append(indexes, indexInfo.Name)
+		if indexInfo.Keyspace == gocbBucket.GetName() {
+			indexes = append(indexes, indexInfo.Name)
+		}
 	}
 
 	return indexes, nil
