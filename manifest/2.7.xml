@@ -13,7 +13,7 @@
 
     <!-- Build Scripts (required on CI servers) -->
     <project name="product-texts" path="product-texts" remote="couchbase"/>
-    <project name="build" path="cbbuild" remote="couchbase">
+    <project name="build" path="cbbuild" remote="couchbase" revision="2cfa322faebe58200b02e53f343ebe70b494a975">
         <annotation name="VERSION" value="2.7.0"     keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
@@ -21,7 +21,7 @@
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.7.0"/>
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="155773a7d3d7c6c3cbc9b0b74e319aabf75dbb7b"/>
 
     <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
 
