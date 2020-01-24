@@ -2744,3 +2744,44 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	_, found = syncData.Attachments["myAttachment"]
 	assert.True(t, found)
 }
+
+// Test pushing new attachments
+// 1. Create test client that have deltas enabled
+// 2. Start continuous push and pull replication in client
+// 3. Make sure that sync gateway is running with delta sync on, in enterprise edition
+// 4. Create doc with attachment in SGW
+// 5. Update doc in the test client by adding another attachment
+// 6. Have that update pushed using delta sync via the continuous replication started in step 2
+
+func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: base.BoolPtr(true)}}}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClient(t, rt)
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	btc.ClientDeltas = true
+	err = btc.StartPull()
+	assert.NoError(t, err)
+
+	// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
+	bodyText := `{"greetings": [{"hi": "alice"}], "_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	response := rt.SendAdminRequest(http.MethodPut, "/db/doc1", bodyText)
+	assert.Equal(t, http.StatusCreated, response.Code)
+	log.Printf("response: %v", response.Body.String())
+
+	data, ok := btc.WaitForRev("doc1", "1-77d9041e49931ceef58a1eef5fd032e8")
+	assert.True(t, ok)
+	bodyTextExpected := `{"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":1,"stub":true}},"greetings":[{"hi":"alice"}]}`
+	assert.Equal(t, bodyTextExpected, string(data))
+
+	bodyText = `{"greetings": [{"hi": "alice"}], "_attachments": {"hello.txt": {"stub":true, "revpos":1},"world.txt": {"data": "bGVsbG8gd29ybGQ="}}}`
+	revID, err := btc.PushRev("doc1", "1-77d9041e49931ceef58a1eef5fd032e8", []byte(bodyText))
+	require.NoError(t, err)
+	log.Printf("revID: %v", revID)
+
+}
