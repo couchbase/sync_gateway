@@ -1924,7 +1924,6 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
 	var db *Database
 	var enableCallback bool
-	var revId string
 
 	writeUpdateCallback := func(key string) {
 		if enableCallback {
@@ -1950,7 +1949,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 	assert.Equal(t, "409 Document exists", err.Error())
 
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
-	assert.Equal(t, revId, doc.RevID)
+	assert.Equal(t, "1-9d374b41c24611a6d1cc3a1cea6ce202", doc.CurrentRev)
 	assert.NoError(t, err, "Couldn't retrieve document")
 	assert.Equal(t, "Bob", doc.Body()["name"])
 	assert.Equal(t, json.Number("52"), doc.Body()["age"])
