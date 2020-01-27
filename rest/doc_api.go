@@ -368,7 +368,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		return base.ErrEmptyDocument
 	}
 
-	newDoc := &db.Document{
+	newDoc := &db.IncomingDocument{
 		ID: docid,
 	}
 	newDoc.UpdateBodyBytes(bodyBytes)
@@ -408,7 +408,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
 		body := newDoc.Body()
 
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
+		newDoc.DocAttachment = db.GetBodyAttachments(body)
 		delete(body, db.BodyAttachments)
 		newDoc.UpdateBody(body)
 	}

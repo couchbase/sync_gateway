@@ -985,7 +985,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
-	newDoc := &db.Document{
+	newDoc := &db.IncomingDocument{
 		ID:    docID,
 		RevID: revID,
 	}
@@ -1087,7 +1087,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return err
 		}
 
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
+		newDoc.DocAttachment = db.GetBodyAttachments(body)
 		delete(body, db.BodyAttachments)
 		newDoc.UpdateBody(body)
 	}

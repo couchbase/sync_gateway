@@ -943,7 +943,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	body := Body{"foo": "bar"}
 	_, _, _ = db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 
-	getDelta := func(newDoc *Document) {
+	getDelta := func(newDoc *IncomingDocument) {
 		deltaSrcRev, _ := db.GetRev("doc1", "1-a", false, nil)
 
 		deltaSrcBody, _ := deltaSrcRev.DeepMutableBody()
@@ -958,7 +958,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	}
 
 	b.Run("SmallDiff", func(b *testing.B) {
-		newDoc := &Document{
+		newDoc := &IncomingDocument{
 			ID:    "doc1",
 			RevID: "1a",
 		}
@@ -969,7 +969,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	})
 
 	b.Run("Huge Diff", func(b *testing.B) {
-		newDoc := &Document{
+		newDoc := &IncomingDocument{
 			ID:    "doc1",
 			RevID: "1a",
 		}

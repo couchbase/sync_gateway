@@ -113,14 +113,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		body = Body{}
 	}
 
-	newDoc := &Document{
+	newDoc := &IncomingDocument{
 		ID:      docid,
 		Deleted: isDelete,
 	}
 
 	var newRev string
 	var alreadyImportedDoc *Document
-	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, existingDoc, func(doc *Document) (resultDocument *IncomingDocument, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
