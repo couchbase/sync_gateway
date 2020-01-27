@@ -1201,11 +1201,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
 func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
 
-	crc32cMacroExpansionSupported := bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion)
-	if err != nil {
-		return 0, err
-	}
-
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
@@ -1229,7 +1224,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
-		if crc32cMacroExpansionSupported {
+		if bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion) {
 			builder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the body hash on the xattr
 		}
 		if deleteBody {
