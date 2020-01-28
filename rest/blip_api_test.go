@@ -2768,21 +2768,23 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	btc.ClientDeltas = true
 	err = btc.StartPull()
 	assert.NoError(t, err)
+	const docId = "doc1"
 
 	// Create doc1 rev 1-77d9041e49931ceef58a1eef5fd032e8 on SG with an attachment
 	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	response := rt.SendAdminRequest(http.MethodPut, "/db/doc1", bodyText)
+	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docId, bodyText)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
 	// Wait for the document to be replicated at the client
-	data, ok := btc.WaitForRev("doc1", "1-77d9041e49931ceef58a1eef5fd032e8")
+	revId := respRevID(t, response)
+	data, ok := btc.WaitForRev(docId, revId)
 	assert.True(t, ok)
 	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	require.JSONEq(t, bodyTextExpected, string(data))
 
 	// Update the replicated doc at client by adding another attachment.
 	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
-	revId, err := btc.PushRev("doc1", "1-77d9041e49931ceef58a1eef5fd032e8", []byte(bodyText))
+	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
 	require.NoError(t, err)
 	assert.Equal(t, "2-abcxyz", revId)
 
@@ -2790,12 +2792,12 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	_, ok = btc.pushReplication.WaitForMessage(2)
 	assert.True(t, ok)
 
-	resp := rt.SendAdminRequest(http.MethodGet, "/db/doc1?rev="+revId, "")
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
-	assert.Equal(t, "doc1", respBody[db.BodyId])
+	assert.Equal(t, docId, respBody[db.BodyId])
 	assert.Equal(t, "2-abcxyz", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
