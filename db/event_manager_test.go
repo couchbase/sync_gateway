@@ -758,12 +758,15 @@ func TestWebhookTimeout(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 
-	// Test slow webhook, short timeout, numProcess=1, waitForProcess > timeout.  All events should get processed.
+	// Test slow webhook, short timeout, numProcess=1, waitForProcess > webhook timeout.  All events should get processed.
+	// Webhook timeout 1s
+	// WaitForProcess event manager time 1.5s
+	// Webhook should timeout and clear item from queue before another item attempts to be added to the queue
 	log.Println("Test slow webhook, short timeout")
 	wr.Clear()
 	errCount := 0
 	em = NewEventManager()
-	em.Start(1, 1100)
+	em.Start(1, 1500)
 	timeout = uint64(1)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow_2s", url), "", &timeout)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
