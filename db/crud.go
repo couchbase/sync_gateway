@@ -712,7 +712,9 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 	// Create newDoc which will be used to pass around Body
 	newDoc := &IncomingDocument{
-		ID: docid,
+		SpecialProperties: SpecialProperties{
+			ID: docid,
+		},
 	}
 
 	// Pull out attachments
@@ -889,23 +891,11 @@ func (db *Database) PutExistingRev(newDoc *IncomingDocument, docHistory []string
 }
 
 func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
-	expiry, _ := body.ExtractExpiry()
-	deleted := body.ExtractDeleted()
-	revid := body.ExtractRev()
-
-	newDoc := &IncomingDocument{
-		ID:        docid,
-		Deleted:   deleted,
-		DocExpiry: expiry,
-		RevID:     revid,
+	body[BodyId] = docid
+	newDoc, err := body.ToIncomingDoc()
+	if err != nil {
+		return nil, "", err
 	}
-
-	delete(body, BodyId)
-	delete(body, BodyRevisions)
-
-	newDoc.DocAttachment = GetBodyAttachments(body)
-	delete(body, BodyAttachments)
-	newDoc.UpdateBody(body)
 
 	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts)
 

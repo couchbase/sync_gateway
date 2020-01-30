@@ -369,7 +369,9 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	}
 
 	newDoc := &db.IncomingDocument{
-		ID: docid,
+		SpecialProperties: db.SpecialProperties{
+			ID: docid,
+		},
 	}
 	newDoc.UpdateBodyBytes(bodyBytes)
 

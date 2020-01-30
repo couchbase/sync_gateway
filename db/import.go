@@ -114,8 +114,10 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	}
 
 	newDoc := &IncomingDocument{
-		ID:      docid,
-		Deleted: isDelete,
+		SpecialProperties: SpecialProperties{
+			ID:      docid,
+			Deleted: isDelete,
+		},
 	}
 
 	var newRev string

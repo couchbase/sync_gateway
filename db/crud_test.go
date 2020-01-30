@@ -959,8 +959,10 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 
 	b.Run("SmallDiff", func(b *testing.B) {
 		newDoc := &IncomingDocument{
-			ID:    "doc1",
-			RevID: "1a",
+			SpecialProperties: SpecialProperties{
+				ID:    "doc1",
+				RevID: "1a",
+			},
 		}
 		newDoc.UpdateBodyBytes([]byte(`{"foo": "bart"}`))
 		for n := 0; n < b.N; n++ {
@@ -970,8 +972,10 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 
 	b.Run("Huge Diff", func(b *testing.B) {
 		newDoc := &IncomingDocument{
-			ID:    "doc1",
-			RevID: "1a",
+			SpecialProperties: SpecialProperties{
+				ID:    "doc1",
+				RevID: "1a",
+			},
 		}
 		largeDoc := make([]byte, 1000000)
 		longBody := Body{"val": string(largeDoc)}

@@ -16,6 +16,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -161,13 +162,82 @@ type Document struct {
 }
 
 type IncomingDocument struct {
-	_body         Body
-	_rawBody      []byte
+	_body    Body
+	_rawBody []byte
+
+	SpecialProperties
+}
+
+type SpecialProperties struct {
 	ID            string
 	Deleted       bool
 	DocExpiry     uint32
 	RevID         string
 	DocAttachment AttachmentsMeta
+	Revisions     Revisions
+}
+
+func (b Body) ToIncomingDoc() (*IncomingDocument, error) {
+	specialProperties := SpecialProperties{}
+	err := b.ExtractSpecialProperties(&specialProperties)
+	if err != nil {
+		return nil, err
+	}
+
+	bodyBytes, err := base.JSONMarshalCanonical(b)
+	if err != nil {
+		return nil, err
+	}
+
+	incomingDocument := IncomingDocument{
+		_body:             b,
+		_rawBody:          bodyBytes,
+		SpecialProperties: specialProperties,
+	}
+
+	return &incomingDocument, nil
+}
+
+func (b Body) ExtractSpecialProperties(specialProperties *SpecialProperties) error {
+	if bodyID, found := b[BodyId]; found {
+		bodyIDStr, _ := bodyID.(string)
+		specialProperties.ID = bodyIDStr
+	}
+
+	delete(b, BodyId)
+
+	if bodyDeleted, found := b[BodyDeleted]; found {
+		bodyDeletedBool, _ := bodyDeleted.(bool)
+		specialProperties.Deleted = bodyDeletedBool
+	}
+
+	delete(b, BodyDeleted)
+
+	bodyExp, err := base.ReflectExpiry(b[BodyExpiry])
+	if err != nil {
+		return err
+	}
+	if bodyExp != nil {
+		specialProperties.DocExpiry = *bodyExp
+	}
+	delete(b, BodyExpiry)
+
+	bodyAttachments := GetBodyAttachments(b)
+	if bodyAttachments == nil && b[BodyAttachments] != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachments")
+	}
+	if bodyAttachments != nil {
+		specialProperties.DocAttachment = bodyAttachments
+	}
+	delete(b, BodyAttachments)
+
+	if bodyRevisions, found := b[BodyRevisions]; found {
+		bodyRevisionsMap, _ := bodyRevisions.(map[string]interface{})
+		specialProperties.Revisions = bodyRevisionsMap
+	}
+	delete(b, BodyRevisions)
+
+	return nil
 }
 
 func (doc *IncomingDocument) UpdateBodyBytes(bodyBytes []byte) {

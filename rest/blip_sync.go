@@ -991,8 +991,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	newDoc := &db.IncomingDocument{
-		ID:    docID,
-		RevID: revID,
+		SpecialProperties: db.SpecialProperties{
+			ID:    docID,
+			RevID: revID,
+		},
 	}
 	newDoc.UpdateBodyBytes(bodyBytes)
 
