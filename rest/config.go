@@ -291,8 +291,6 @@ type Http2Config struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether HTTP2 support is enabled
 }
 
-//TODO: Add support for TLS 1.3 when we switch to Go 1.13
-
 func GetTLSVersionFromString(stringV *string) uint16 {
 	if stringV != nil {
 		switch *stringV {
@@ -302,6 +300,8 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 			return tls.VersionTLS11
 		case "tlsv1.2":
 			return tls.VersionTLS12
+		case "tlsv1.3":
+			return tls.VersionTLS13
 		}
 	}
 	return uint16(DefaultMinimumTLSVersionConst)
