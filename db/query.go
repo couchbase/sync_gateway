@@ -42,6 +42,7 @@ var QueryAccess = SGQuery{
 	statement: fmt.Sprintf(
 		"SELECT $sync.access.`$$selectUserName` as `value` "+
 			"FROM `%s` "+
+			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.access) satisfies op.name = $userName end;",
 		base.BucketQueryToken),
 	adhoc: true,
@@ -52,6 +53,7 @@ var QueryRoleAccess = SGQuery{
 	statement: fmt.Sprintf(
 		"SELECT $sync.role_access.`$$selectUserName` as `value` "+
 			"FROM `%s` "+
+			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = $userName end;",
 		base.BucketQueryToken),
 	adhoc: true,
@@ -102,7 +104,8 @@ var QuerySequences = SGQuery{
 			"$sync.rev AS rev, "+
 			"$sync.flags AS flags, "+
 			"META(`%s`).id AS id "+
-			"FROM `%s`"+
+			"FROM `%s` "+
+			"USE INDEX($idx) "+
 			"WHERE $sync.sequence IN $inSequences "+
 			"AND META().id NOT LIKE '%s'",
 		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
@@ -123,6 +126,7 @@ var QueryPrincipals = SGQuery{
 	statement: fmt.Sprintf(
 		"SELECT META(`%s`).id "+
 			"FROM `%s` "+
+			"USE INDEX($idx) "+
 			"WHERE META(`%s`).id LIKE '%s' "+
 			"AND (META(`%s`).id LIKE '%s' "+
 			"OR META(`%s`).id LIKE '%s')",
@@ -135,6 +139,7 @@ var QuerySessions = SGQuery{
 	statement: fmt.Sprintf(
 		"SELECT META(`%s`).id "+
 			"FROM `%s` "+
+			"USE INDEX($idx) "+
 			"WHERE META(`%s`).id LIKE '%s' "+
 			"AND META(`%s`).id LIKE '%s' "+
 			"AND username = $userName",
@@ -146,6 +151,7 @@ var QueryTombstones = SGQuery{
 	statement: fmt.Sprintf(
 		"SELECT META(`%s`).id "+
 			"FROM `%s` "+
+			"USE INDEX ($idx) "+
 			"WHERE $sync.tombstoned_at BETWEEN 0 AND $olderThan",
 		base.BucketQueryToken, base.BucketQueryToken),
 	adhoc: false,
@@ -160,6 +166,7 @@ var QueryResync = SGQuery{
 	statement: fmt.Sprintf(
 		"SELECT META(`%s`).id "+
 			"FROM `%s` "+
+			"USE INDEX ($idx) "+
 			"WHERE META(`%s`).id NOT LIKE '%s' "+
 			"AND $sync.sequence > 0", // Required to use IndexAllDocs
 		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
@@ -180,6 +187,7 @@ var QueryAllDocs = SGQuery{
 			"$sync.sequence as s, "+
 			"$sync.channels as c "+
 			"FROM `%s` "+
+			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence > 0 AND "+ // Required to use IndexAllDocs
 			"META(`%s`).id NOT LIKE '%s' "+
 			"AND $sync IS NOT MISSING "+
@@ -274,6 +282,7 @@ func (context *DatabaseContext) buildAccessQuery(username string) string {
 	// SG usernames don't allow back tick, but guard username in select clause for additional safety
 	username = strings.Replace(username, "`", "``", -1)
 	statement = strings.Replace(statement, QuerySelectUserName, username, -1)
+	statement = replaceIndexTokensQuery(statement, sgIndexes[IndexAccess], context.UseXattrs())
 	return statement
 }
 
@@ -305,6 +314,7 @@ func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
 	// SG usernames don't allow back tick, but guard username in select clause for additional safety
 	username = strings.Replace(username, "`", "``", -1)
 	statement = strings.Replace(statement, QuerySelectUserName, username, -1)
+	statement = replaceIndexTokensQuery(statement, sgIndexes[IndexRoleAccess], context.UseXattrs())
 	return statement
 }
 
@@ -338,10 +348,8 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 	}
 
 	// N1QL Query
-	// Standard channel index/query doesn't support the star channel.  For star channel queries, QueryStarChannel
-	// (which is backed by IndexAllDocs) is used.  The QueryStarChannel result schema is a subset of the
-	// QueryChannels result schema (removal handling isn't needed for the star channel).
 	sequenceQueryStatement := replaceSyncTokensQuery(QuerySequences.statement, context.UseXattrs())
+	sequenceQueryStatement = replaceIndexTokensQuery(sequenceQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
 
 	params := make(map[string]interface{})
 	params[QueryParamInSequences] = sequences
@@ -354,12 +362,14 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int) (statement string, params map[string]interface{}) {
 
 	channelQuery := QueryChannels
+	index := sgIndexes[IndexChannels]
 	if channelName == "*" {
 		channelQuery = QueryStarChannel
+		index = sgIndexes[IndexAllDocs]
 	}
 
 	channelQueryStatement := replaceSyncTokensQuery(channelQuery.statement, context.UseXattrs())
-	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, sgIndexes[IndexChannels], context.UseXattrs())
+	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, index, context.UseXattrs())
 	if limit > 0 {
 		channelQueryStatement = fmt.Sprintf("%s LIMIT %d", channelQueryStatement, limit)
 	}
@@ -391,6 +401,8 @@ func (context *DatabaseContext) QueryResync() (sgbucket.QueryResultIterator, err
 	// N1QL Query
 	var importQueryStatement string
 	importQueryStatement = replaceSyncTokensQuery(QueryResync.statement, context.UseXattrs())
+	importQueryStatement = replaceIndexTokensQuery(importQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
+
 	return context.N1QLQueryWithStats(QueryTypeResync, importQueryStatement, nil, gocb.RequestPlus, QueryResync.adhoc)
 }
 
@@ -403,8 +415,10 @@ func (context *DatabaseContext) QueryPrincipals() (sgbucket.QueryResultIterator,
 		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
+	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+
 	// N1QL Query
-	return context.N1QLQueryWithStats(QueryTypePrincipals, QueryPrincipals.statement, nil, gocb.RequestPlus, QueryPrincipals.adhoc)
+	return context.N1QLQueryWithStats(QueryTypePrincipals, queryStatement, nil, gocb.RequestPlus, QueryPrincipals.adhoc)
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index
@@ -418,10 +432,12 @@ func (context *DatabaseContext) QuerySessions(userName string) (sgbucket.QueryRe
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewSessions, opts)
 	}
 
+	queryStatement := replaceIndexTokensQuery(QuerySessions.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+
 	// N1QL Query
 	params := make(map[string]interface{}, 1)
 	params[QueryParamUserName] = userName
-	return context.N1QLQueryWithStats(QueryTypeSessions, QuerySessions.statement, params, gocb.RequestPlus, QuerySessions.adhoc)
+	return context.N1QLQueryWithStats(QueryTypeSessions, queryStatement, params, gocb.RequestPlus, QuerySessions.adhoc)
 }
 
 type AllDocsViewQueryRow struct {
@@ -459,6 +475,8 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 
 	// N1QL Query
 	allDocsQueryStatement := replaceSyncTokensQuery(QueryAllDocs.statement, context.UseXattrs())
+	allDocsQueryStatement = replaceIndexTokensQuery(allDocsQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
+
 	params := make(map[string]interface{}, 0)
 	if startKey != "" {
 		allDocsQueryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startkey",
@@ -492,6 +510,7 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int, 
 
 	// N1QL Query
 	tombstoneQueryStatement := replaceSyncTokensQuery(QueryTombstones.statement, context.UseXattrs())
+	tombstoneQueryStatement = replaceIndexTokensQuery(tombstoneQueryStatement, sgIndexes[IndexTombstones], context.UseXattrs())
 	if limit != 0 {
 		tombstoneQueryStatement = fmt.Sprintf("%s LIMIT %d", tombstoneQueryStatement, limit)
 	}
