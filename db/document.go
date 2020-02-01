@@ -162,8 +162,8 @@ type Document struct {
 }
 
 type IncomingDocument struct {
-	_body    Body
-	_rawBody []byte
+	UnmarshalledBody Body
+	RawBody          []byte
 
 	SpecialProperties
 }
@@ -177,9 +177,11 @@ type SpecialProperties struct {
 	Revisions     Revisions
 }
 
-func (b Body) ToIncomingDoc() (*IncomingDocument, error) {
-	specialProperties := SpecialProperties{}
-	err := b.ExtractSpecialProperties(&specialProperties)
+func (b Body) ToIncomingDoc(specialProperties *SpecialProperties) (*IncomingDocument, error) {
+	if specialProperties == nil {
+		specialProperties = &SpecialProperties{}
+	}
+	err := b.ExtractSpecialProperties(specialProperties)
 	if err != nil {
 		return nil, err
 	}
@@ -190,9 +192,9 @@ func (b Body) ToIncomingDoc() (*IncomingDocument, error) {
 	}
 
 	incomingDocument := IncomingDocument{
-		_body:             b,
-		_rawBody:          bodyBytes,
-		SpecialProperties: specialProperties,
+		UnmarshalledBody:  b,
+		RawBody:           bodyBytes,
+		SpecialProperties: *specialProperties,
 	}
 
 	return &incomingDocument, nil
@@ -205,6 +207,13 @@ func (b Body) ExtractSpecialProperties(specialProperties *SpecialProperties) err
 	}
 
 	delete(b, BodyId)
+
+	if bodyRev, found := b[BodyRev]; found {
+		bodyRevString, _ := bodyRev.(string)
+		specialProperties.RevID = bodyRevString
+	}
+
+	delete(b, BodyRev)
 
 	if bodyDeleted, found := b[BodyDeleted]; found {
 		bodyDeletedBool, _ := bodyDeleted.(bool)
@@ -241,13 +250,13 @@ func (b Body) ExtractSpecialProperties(specialProperties *SpecialProperties) err
 }
 
 func (doc *IncomingDocument) UpdateBodyBytes(bodyBytes []byte) {
-	doc._rawBody = bodyBytes
-	doc._body = nil
+	doc.RawBody = bodyBytes
+	doc.UnmarshalledBody = nil
 }
 
 func (doc *IncomingDocument) UpdateBody(body Body) {
-	doc._body = body
-	doc._rawBody = nil
+	doc.UnmarshalledBody = body
+	doc.RawBody = nil
 }
 
 func (doc *IncomingDocument) Body() Body {
@@ -256,23 +265,23 @@ func (doc *IncomingDocument) Body() Body {
 		caller = base.GetCallersName(1, true)
 	}
 
-	if doc._body != nil {
+	if doc.UnmarshalledBody != nil {
 		base.Tracef(base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-		return doc._body
+		return doc.UnmarshalledBody
 	}
 
-	if doc._rawBody == nil {
+	if doc.RawBody == nil {
 		base.Warnf("Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil
 	}
 
 	base.Tracef(base.KeyAll, "        UNMARSHAL doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
-	err := doc._body.Unmarshal(doc._rawBody)
+	err := doc.UnmarshalledBody.Unmarshal(doc.RawBody)
 	if err != nil {
 		base.Warnf("Unable to unmarshal document body from raw body : %s", err)
 		return nil
 	}
-	return doc._body
+	return doc.UnmarshalledBody
 }
 
 func (doc *IncomingDocument) BodyBytes() ([]byte, error) {
@@ -281,33 +290,33 @@ func (doc *IncomingDocument) BodyBytes() ([]byte, error) {
 		caller = base.GetCallersName(1, true)
 	}
 
-	if doc._rawBody != nil {
-		return doc._rawBody, nil
+	if doc.RawBody != nil {
+		return doc.RawBody, nil
 	}
 
-	if doc._body == nil {
+	if doc.UnmarshalledBody == nil {
 		base.Warnf("Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil, nil
 	}
 
-	bodyBytes, err := base.JSONMarshal(doc._body)
+	bodyBytes, err := base.JSONMarshal(doc.UnmarshalledBody)
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "Error marshalling document body")
 	}
-	doc._rawBody = bodyBytes
-	return doc._rawBody, nil
+	doc.RawBody = bodyBytes
+	return doc.RawBody, nil
 }
 
-// Get a deep mutable copy of the body, using _rawBody.  Initializes _rawBody based on _body if not already present.
+// Get a deep mutable copy of the body, using RawBody.  Initializes RawBody based on UnmarshalledBody if not already present.
 func (doc *IncomingDocument) GetDeepMutableBody() Body {
 
-	// If doc._rawBody isn't present, marshal from doc.Body
-	if doc._rawBody == nil {
-		if doc._body == nil {
+	// If doc.RawBody isn't present, marshal from doc.Body
+	if doc.RawBody == nil {
+		if doc.UnmarshalledBody == nil {
 			return nil
 		}
 		var err error
-		doc._rawBody, err = base.JSONMarshal(doc._body)
+		doc.RawBody, err = base.JSONMarshal(doc.UnmarshalledBody)
 		if err != nil {
 			base.Warnf("Unable to marshal document body into raw body : %s", err)
 			return nil
@@ -316,7 +325,7 @@ func (doc *IncomingDocument) GetDeepMutableBody() Body {
 	}
 
 	var mutableBody Body
-	err := mutableBody.Unmarshal(doc._rawBody)
+	err := mutableBody.Unmarshal(doc.RawBody)
 	if err != nil {
 		base.Warnf("Unable to unmarshal document body from raw body : %s", err)
 		return nil
@@ -747,7 +756,7 @@ func (doc *Document) removeRevisionBody(revID string) {
 // makeBodyActive moves a previously non-winning revision body from the rev tree to the document body
 func (doc *Document) promoteNonWinningRevisionBody(revid string, loader RevLoaderFunc) {
 	// If the new revision is not current, transfer the current revision's
-	// body to the top level doc._body:
+	// body to the top level doc.UnmarshalledBody:
 	doc.UpdateBody(doc.getNonWinningRevisionBody(revid, loader))
 	doc.removeRevisionBody(revid)
 }
@@ -766,8 +775,8 @@ func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
 // Adds a revision body (as Body) to a document.  Removes special properties first.
 func (doc *Document) setRevisionBody(revid string, newDoc *IncomingDocument, storeInline bool) {
 	if revid == doc.CurrentRev {
-		doc._body = newDoc._body
-		doc._rawBody = newDoc._rawBody
+		doc._body = newDoc.UnmarshalledBody
+		doc._rawBody = newDoc.RawBody
 	} else {
 		bodyBytes, _ := newDoc.BodyBytes()
 		doc.setNonWinningRevisionBody(revid, bodyBytes, storeInline)

@@ -787,9 +787,9 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		newDoc.UpdateBody(body)
 
 		// If no special properties were stripped and document wasn't deleted, the canonical bytes represent the current
-		// body.  In this scenario, store canonical bytes as newDoc._rawBody
+		// body.  In this scenario, store canonical bytes as newDoc.RawBody
 		if !wasStripped && !isDeleted {
-			newDoc._rawBody = canonicalBytesForRevID
+			newDoc.RawBody = canonicalBytesForRevID
 		}
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
@@ -892,7 +892,7 @@ func (db *Database) PutExistingRev(newDoc *IncomingDocument, docHistory []string
 
 func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory []string, noConflicts bool) (doc *Document, newRev string, err error) {
 	body[BodyId] = docid
-	newDoc, err := body.ToIncomingDoc()
+	newDoc, err := body.ToIncomingDoc(nil)
 	if err != nil {
 		return nil, "", err
 	}

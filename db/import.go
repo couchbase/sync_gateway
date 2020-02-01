@@ -259,7 +259,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		newDoc.UpdateBody(body)
 		if !wasStripped && !isDelete {
-			newDoc._rawBody = rawBodyForRevID
+			newDoc.RawBody = rawBodyForRevID
 		}
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.

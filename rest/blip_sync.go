@@ -990,15 +990,20 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
+	hasAttachments := bytes.Contains(bodyBytes, []byte(db.BodyAttachments))
+	hasExpiry := bytes.Contains(bodyBytes, []byte(db.BodyExpiry))
+
 	newDoc := &db.IncomingDocument{
 		SpecialProperties: db.SpecialProperties{
-			ID:    docID,
-			RevID: revID,
+			ID:      docID,
+			RevID:   revID,
+			Deleted: revMessage.deleted(),
 		},
+		RawBody: bodyBytes,
 	}
-	newDoc.UpdateBodyBytes(bodyBytes)
 
-	injectedAttachmentsForDelta := false
+	var newBody db.Body
+
 	if deltaSrcRevID, isDelta := revMessage.deltaSrc(); isDelta {
 		if !bh.sgCanUseDeltas {
 			return base.HTTPErrorf(http.StatusBadRequest, "Deltas are disabled for this peer")
@@ -1032,34 +1037,28 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
 			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
-			injectedAttachmentsForDelta = true
+		}
+
+		var newOne map[string]interface{}
+		err = rq.ReadJSONBody(&newOne)
+		if err != nil {
+			panic(err)
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, newDoc.Body())
+		err = base.Patch(&deltaSrcMap, newOne)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
 			base.WarnfCtx(bh.blipContextDb.Ctx, "Error patching deltaSrc %s with %s for key %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
-		newDoc.UpdateBody(deltaSrcMap)
+		newBody = deltaSrcMap
+		_, hasAttachments = newBody[db.BodyAttachments]
+		_, hasExpiry = newBody[db.BodyExpiry]
 		base.TracefCtx(bh.blipContextDb.Ctx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		bh.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
-
-	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
-		body := newDoc.Body()
-		expiry, err := body.ExtractExpiry()
-		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
-		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
-	}
-
-	newDoc.Deleted = revMessage.deleted()
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
@@ -1084,19 +1083,23 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		minRevpos++
 	}
 
-	// Pull out attachments
-	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
+	if hasAttachments || hasExpiry {
+		if newBody == nil {
+			newBody = newDoc.Body()
+		}
+		newDoc, err = newBody.ToIncomingDoc(&newDoc.SpecialProperties)
+		if err != nil {
+			panic("some error")
+		}
 
-		// Check for any attachments I don't have yet, and request them:
-		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID); err != nil {
+		if err := bh.downloadOrVerifyAttachments(rq.Sender, newDoc.DocAttachment, minRevpos, docID); err != nil {
 			base.ErrorfCtx(bh.blipContextDb.Ctx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
 			return err
 		}
-
-		newDoc.DocAttachment = db.GetBodyAttachments(body)
-		delete(body, db.BodyAttachments)
-		newDoc.UpdateBody(body)
+	} else {
+		if newBody != nil {
+			newDoc.UpdateBody(newBody)
+		}
 	}
 
 	// Finally, save the revision (with the new attachments inline)
@@ -1139,8 +1142,8 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.Body, minRevpos int, docID string) error {
-	return bh.db.ForEachStubAttachment(body, minRevpos,
+func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, atts db.AttachmentsMeta, minRevpos int, docID string) error {
+	return bh.db.ForEachStubAttachment(atts, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			if knownData != nil {
 				// If I have the attachment already I don't need the client to send it, but for
