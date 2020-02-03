@@ -122,6 +122,7 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	//       how this can be optimized if we're not actually using it in the indexImpl
 	indexParams := `{"name": "` + dbName + `"}`
 	indexName := GenerateIndexName(dbName)
+	Infof(KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
 
 	// Required for initial pools request, before BucketDataSourceOptions kick in
 	if spec.Certpath != "" {
