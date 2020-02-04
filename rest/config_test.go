@@ -864,39 +864,11 @@ func TestValidateServerContext(t *testing.T) {
 	assert.Subset(t, []string{"db1", "db2"}, SharedBucketError.GetSharedBucket().dbNames)
 }
 
-func TestParseCommandLineWihIllegalOptionBucket(t *testing.T) {
-	var (
-		adminInterface     = "127.0.0.1:4985"
-		bucket             = "sync_gateway"
-		cacertpath         = "/etc/ssl/certs/ca.cert"
-		certpath           = "/etc/ssl/certs/client.pem"
-		configServer       = "http://127.0.0.1:4981/conf"
-		dbname             = "beer_sample"
-		defaultLogFilePath = "/var/log/sync_gateway"
-		deploymentID       = "DEPID100"
-		interfaceAddress   = "4984"
-		keypath            = "/etc/ssl/certs/key.pem"
-		logKeys            = "Admin,Access,Auth,Bucket"
-		logFilePath        = "/var/log/sync_gateway"
-		pool               = "liverpool"
-	)
+func TestParseCommandLineWithIllegalOptionBucket(t *testing.T) {
 	args := []string{
 		"sync_gateway",
-		"--adminInterface", adminInterface,
-		"--bucket", bucket, // Bucket option has been removed
-		"--cacertpath", cacertpath,
-		"--certpath", certpath,
-		"--configServer", configServer,
-		"--dbname", dbname,
-		"--defaultLogFilePath", defaultLogFilePath,
-		"--deploymentID", deploymentID,
-		"--interface", interfaceAddress,
-		"--keypath", keypath,
-		"--log", logKeys,
-		"--logFilePath", logFilePath,
-		"--pool", pool,
-		"--pretty"}
-
+		"--bucket", "sync_gateway", // Bucket option has been removed
+	}
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
 	assert.Error(t, err, "Parsing commandline arguments without any config file")
 	assert.Empty(t, config, "Couldn't parse commandline arguments")
