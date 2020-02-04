@@ -624,7 +624,6 @@ func TestParseCommandLine(t *testing.T) {
 	args := []string{
 		"sync_gateway",
 		"--adminInterface", adminInterface,
-		"--bucket", bucket,
 		"--cacertpath", cacertpath,
 		"--certpath", certpath,
 		"--configServer", configServer,
@@ -706,16 +705,18 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
 
-	configFilePath := filepath.Join(os.TempDir(), "sync_gateway.conf")
-	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
+	configFile, err := ioutil.TempFile("", "sync_gateway.conf")
+	require.NoError(t, err, "Couldn't create configuration file")
+	_, err = configFile.Write([]byte(content))
 	assert.NoError(t, err, "Writing JSON content")
 
 	defer func() {
-		err := os.Remove(configFilePath)
+		err := os.Remove(configFile.Name())
 		assert.NoError(t, err)
+		assert.False(t, base.FileExists(configFile.Name()), "File %v should be removed", configFile.Name())
 	}()
 
-	args := []string{"sync_gateway", configFilePath}
+	args := []string{"sync_gateway", configFile.Name()}
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
 	require.Error(t, err, "Parsing configuration file with an unknown field")
 	assert.NotNil(t, config)
@@ -729,19 +730,20 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
         "certpath":"/etc/ssl/certs/cert.pem","cacertpath":"/etc/ssl/certs/ca.cert","keypath":"/etc/ssl/certs/key.pem",
         "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
 
-	configFilePath := filepath.Join(os.TempDir(), "sync_gateway1.conf")
-	err := ioutil.WriteFile(configFilePath, []byte(content), 0644)
+	configFile, err := ioutil.TempFile("", "sync_gateway.conf")
+	require.NoError(t, err, "Couldn't create configuration file")
+	_, err = configFile.Write([]byte(content))
 	assert.NoError(t, err, "Writing JSON content")
 
 	defer func() {
-		err := os.Remove(configFilePath)
+		err := os.Remove(configFile.Name())
 		assert.NoError(t, err)
+		assert.False(t, base.FileExists(configFile.Name()), "File %v should be removed", configFile.Name())
 	}()
 
 	var (
 		adminInterface     = "127.10.0.1:4985"
 		profileInterface   = "127.10.0.1:8088"
-		bucket             = "sync_gateway"
 		cacertpath         = "/etc/ssl/certs/ca.cert"
 		certpath           = "/etc/ssl/certs/client.pem"
 		configServer       = "http://127.0.0.1:4981/conf"
@@ -756,7 +758,6 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	args := []string{
 		"sync_gateway",
 		"--adminInterface", adminInterface,
-		"--bucket", bucket,
 		"--cacertpath", cacertpath,
 		"--certpath", certpath,
 		"--configServer", configServer,
@@ -770,7 +771,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		"--pretty",
 		"--verbose",
 		"--profileInterface", profileInterface,
-		configFilePath}
+		configFile.Name()}
 
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
 	require.NoError(t, err, "while parsing commandline options")
@@ -861,4 +862,42 @@ func TestValidateServerContext(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, testDataBucket, SharedBucketError.GetSharedBucket().bucketName)
 	assert.Subset(t, []string{"db1", "db2"}, SharedBucketError.GetSharedBucket().dbNames)
+}
+
+func TestParseCommandLineWihIllegalOptionBucket(t *testing.T) {
+	var (
+		adminInterface     = "127.0.0.1:4985"
+		bucket             = "sync_gateway"
+		cacertpath         = "/etc/ssl/certs/ca.cert"
+		certpath           = "/etc/ssl/certs/client.pem"
+		configServer       = "http://127.0.0.1:4981/conf"
+		dbname             = "beer_sample"
+		defaultLogFilePath = "/var/log/sync_gateway"
+		deploymentID       = "DEPID100"
+		interfaceAddress   = "4984"
+		keypath            = "/etc/ssl/certs/key.pem"
+		logKeys            = "Admin,Access,Auth,Bucket"
+		logFilePath        = "/var/log/sync_gateway"
+		pool               = "liverpool"
+	)
+	args := []string{
+		"sync_gateway",
+		"--adminInterface", adminInterface,
+		"--bucket", bucket, // Bucket option has been removed
+		"--cacertpath", cacertpath,
+		"--certpath", certpath,
+		"--configServer", configServer,
+		"--dbname", dbname,
+		"--defaultLogFilePath", defaultLogFilePath,
+		"--deploymentID", deploymentID,
+		"--interface", interfaceAddress,
+		"--keypath", keypath,
+		"--log", logKeys,
+		"--logFilePath", logFilePath,
+		"--pool", pool,
+		"--pretty"}
+
+	config, err := ParseCommandLine(args, flag.ContinueOnError)
+	assert.Error(t, err, "Parsing commandline arguments without any config file")
+	assert.Empty(t, config, "Couldn't parse commandline arguments")
 }
