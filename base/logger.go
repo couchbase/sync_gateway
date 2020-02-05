@@ -31,12 +31,14 @@ func logCollationWorker(collateBuffer chan string, logger *log.Logger, maxBuffer
 				logBuffer = logBuffer[:0]
 			} else {
 				// Start the timeout timer going to flush this partial buffer
-				t.Reset(collateFlushTimeout)
+				_ = t.Reset(collateFlushTimeout)
 			}
 		case <-t.C:
-			// We've timed out waiting for more logs to be put into the buffer, so flush it now.
-			logger.Print(strings.Join(logBuffer, "\n"))
-			logBuffer = logBuffer[:0]
+			if len(logBuffer) > 0 {
+				// We've timed out waiting for more logs to be put into the buffer, so flush it now.
+				logger.Print(strings.Join(logBuffer, "\n"))
+				logBuffer = logBuffer[:0]
+			}
 		}
 	}
 }
