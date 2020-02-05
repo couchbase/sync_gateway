@@ -69,6 +69,12 @@ func cbgtFeedParams(spec BucketSpec) (string, error) {
 	return string(paramBytes), nil
 }
 
+// Given a dbName, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
+func GenerateIndexName(dbName string) string {
+	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
+	return "db" + Crc32cHashString([]byte(dbName)) + "_index"
+}
+
 // Creates a CBGT index definition for the specified bucket.  This adds the index definition
 // to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
@@ -115,8 +121,8 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	// TODO: If this isn't well-formed JSON, cbgt emits errors when opening locally persisted pindex files.  Review
 	//       how this can be optimized if we're not actually using it in the indexImpl
 	indexParams := `{"name": "` + dbName + `"}`
-
-	indexName := dbName + "_import"
+	indexName := GenerateIndexName(dbName)
+	Infof(KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
 
 	// Required for initial pools request, before BucketDataSourceOptions kick in
 	if spec.Certpath != "" {
