@@ -706,14 +706,15 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
 
 	configFile, err := ioutil.TempFile("", "sync_gateway.conf")
+	configFileName := configFile.Name()
 	require.NoError(t, err, "Couldn't create configuration file")
 	_, err = configFile.Write([]byte(content))
 	assert.NoError(t, err, "Writing JSON content")
 
 	defer func() {
-		err := os.Remove(configFile.Name())
-		assert.NoError(t, err)
-		assert.False(t, base.FileExists(configFile.Name()), "File %v should be removed", configFile.Name())
+		assert.NoError(t, configFile.Close(), "Couldn't close file: %v ", configFileName)
+		assert.NoError(t, os.Remove(configFileName), "Couldn't remove file: %v ", configFileName)
+		assert.False(t, base.FileExists(configFileName), "File %v should be removed", configFileName)
 	}()
 
 	args := []string{"sync_gateway", configFile.Name()}
@@ -731,14 +732,15 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
         "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
 
 	configFile, err := ioutil.TempFile("", "sync_gateway.conf")
+	configFileName := configFile.Name()
 	require.NoError(t, err, "Couldn't create configuration file")
 	_, err = configFile.Write([]byte(content))
 	assert.NoError(t, err, "Writing JSON content")
 
 	defer func() {
-		err := os.Remove(configFile.Name())
-		assert.NoError(t, err)
-		assert.False(t, base.FileExists(configFile.Name()), "File %v should be removed", configFile.Name())
+		assert.NoError(t, configFile.Close(), "Couldn't close file: %v ", configFileName)
+		assert.NoError(t, os.Remove(configFileName), "Couldn't remove file: %v ", configFileName)
+		assert.False(t, base.FileExists(configFileName), "File %v should be removed", configFileName)
 	}()
 
 	var (
