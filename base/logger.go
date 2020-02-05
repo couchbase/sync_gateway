@@ -17,7 +17,7 @@ func FlushLogBuffers() {
 func logCollationWorker(collateBuffer chan string, logger *log.Logger, maxBufferSize int, collateFlushTimeout time.Duration) {
 
 	// The initial duration of the timeout timer doesn't matter,
-	// because we start it whenever we buffer a log without flushing it.
+	// because we reset it whenever we buffer a log without flushing it.
 	t := time.NewTimer(math.MaxInt64)
 	logBuffer := make([]string, 0, maxBufferSize)
 
@@ -26,11 +26,14 @@ func logCollationWorker(collateBuffer chan string, logger *log.Logger, maxBuffer
 		case l := <-collateBuffer:
 			logBuffer = append(logBuffer, l)
 			if len(logBuffer) >= maxBufferSize {
-				// flush if the buffer is full after this log
+				// Flush if the buffer is full after this log
 				logger.Print(strings.Join(logBuffer, "\n"))
 				logBuffer = logBuffer[:0]
 			} else {
-				// Start the timeout timer going to flush this partial buffer
+				// Start the timeout timer to flush this partial buffer.
+				// Note: We don't need to care about stopping the timer as per Go docs,
+				// because we're not bothered about a double-firing of the timer,
+				// since we check if there's anything to flush first.
 				_ = t.Reset(collateFlushTimeout)
 			}
 		case <-t.C:
