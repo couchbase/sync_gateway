@@ -15,6 +15,8 @@ func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, 
 	base.Infof(base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
 	go func() {
 		defer base.FatalPanicHandler()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-time.After(interval):

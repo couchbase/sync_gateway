@@ -1608,6 +1608,7 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	channelOptions := ChannelCacheOptions{
 		ChannelCacheMinLength: 600,
 		ChannelCacheMaxLength: 600,
+		ChannelCacheAge:       DefaultChannelCacheAge,
 	}
 	options := DefaultCacheOptions()
 	options.ChannelCacheOptions = channelOptions
@@ -1854,8 +1855,11 @@ func TestMaxChannelCacheConfig(t *testing.T) {
 	for _, val := range channelCacheMaxChannels {
 		options := CacheOptions{
 			ChannelCacheOptions: ChannelCacheOptions{
-				MaxNumChannels: val,
+				MaxNumChannels:  val,
+				ChannelCacheAge: DefaultChannelCacheAge,
 			},
+			CachePendingSeqMaxWait: DefaultCachePendingSeqMaxWait,
+			CacheSkippedSeqMaxWait: DefaultSkippedSeqMaxWait,
 		}
 		db, testBucket := setupTestDBWithCacheOptions(t, options)
 		assert.Equal(t, val, db.DatabaseContext.Options.CacheOptions.MaxNumChannels)
