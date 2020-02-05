@@ -840,6 +840,7 @@ func TestUnavailableWebhook(t *testing.T) {
 // asserts that the number of items seen in the channel within the specified time limit is the same as the expected value.
 // WARNING: This function will drain the channel of items!
 func assertChannelLengthWithTimeout(t *testing.T, c chan interface{}, expectedLength int, timeout time.Duration) {
+	ticker := time.NewTicker(timeout)
 	count := 0
 	for {
 		if count >= expectedLength {
@@ -847,13 +848,15 @@ func assertChannelLengthWithTimeout(t *testing.T, c chan interface{}, expectedLe
 			// This avoids relying on the longer timeout value for the final check.
 			time.Sleep(timeout / 100)
 			assert.Equal(t, expectedLength, count+len(c))
+			ticker.Stop()
 			return
 		}
 
 		select {
 		case _ = <-c:
 			count++
-		case <-time.After(timeout):
+		case <-ticker.C:
+			ticker.Stop()
 			t.Fatalf("timed out waiting for items on channel... got: %d, expected: %d", count, expectedLength)
 		}
 	}

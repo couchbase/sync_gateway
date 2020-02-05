@@ -279,6 +279,8 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 	// Returns slice of non-nil events received.
 	nextFeedIteration := func() []*ChangeEntry {
 		events := make([]*ChangeEntry, 0)
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
 		for {
 			select {
 			case event := <-feed:
@@ -286,7 +288,7 @@ func TestLateSequenceErrorRecovery(t *testing.T) {
 					return events
 				}
 				events = append(events, event)
-			case <-time.After(10 * time.Second):
+			case <-ticker.C:
 				assert.Fail(t, "Expected sequence didn't arrive over feed")
 				return nil
 			}
@@ -574,10 +576,13 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 	WriteUserDirect(db, "bernard", 1)
 
 	// Wait 3 seconds for notification, else fail the test.
+	timer := time.NewTimer(time.Second * 3)
+	defer timer.Stop()
+
 	select {
 	case <-successChan:
 		log.Println("notification successful")
-	case <-time.After(time.Second * 3):
+	case <-timer.C:
 		t.Fatal("No notification after 3 seconds")
 	}
 
@@ -1025,10 +1030,12 @@ func TestChannelQueryCancellation(t *testing.T) {
 	}()
 
 	// Wait for queryBlocked=true - ensures the first goroutine has acquired view lock
+	timer := time.NewTimer(10 * time.Second)
 	select {
 	case <-queryBlocked:
 		// continue
-	case <-time.After(10 * time.Second):
+	case <-timer.C:
+		timer.Stop()
 		assert.Fail(t, "Changes goroutine failed to initiate view query in 10 seconds.")
 	}
 
@@ -1541,7 +1548,8 @@ func verifySequencesInFeed(feed <-chan (*ChangeEntry), sequences []uint64) ([]*C
 }
 
 func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntries int, maxWaitTime time.Duration) error {
-
+	timer := time.NewTimer(maxWaitTime)
+	defer timer.Stop()
 	count := 0
 	timeout := false
 	for !timeout {
@@ -1558,7 +1566,7 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 			if count == numEntries {
 				return nil
 			}
-		case <-time.After(maxWaitTime):
+		case <-timer.C:
 			timeout = true
 		}
 	}
@@ -1566,11 +1574,11 @@ func appendFromFeed(changes *[]*ChangeEntry, feed <-chan (*ChangeEntry), numEntr
 		return fmt.Errorf("appendFromFeed expected %d entries but only received %d.  Timeout: %v", numEntries, count, timeout)
 	}
 	return nil
-
 }
 
 func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*ChangeEntry, error) {
-
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case entry, ok := <-feed:
 		if ok {
@@ -1579,10 +1587,9 @@ func readNextFromFeed(feed <-chan (*ChangeEntry), timeout time.Duration) (*Chang
 			log.Printf("Non-entry error (%v): %v", ok, entry)
 			return nil, errors.New("Non-entry returned on feed.")
 		}
-	case <-time.After(timeout):
+	case <-timer.C:
 		return nil, errors.New("Timeout waiting for entry")
 	}
-
 }
 
 // Repro SG #2633
@@ -1826,13 +1833,14 @@ func TestNotifyForInactiveChannel(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Wait for notify to arrive
+	timer := time.NewTimer(10 * time.Second)
 	select {
 	case <-notifyChannel:
 		// success
-	case <-time.After(10 * time.Second):
+	case <-timer.C:
+		timer.Stop()
 		assert.Fail(t, "Timed out waiting for notify to fire")
 	}
-
 }
 
 // logChangesResponse helper function, useful to dump changes response during test development.
