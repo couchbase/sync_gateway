@@ -414,9 +414,6 @@ func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
 
 func TestWebhookBasic(t *testing.T) {
 
-	// FIXME:
-	t.Skip("Skipping flaky test until current WIP fixes are merged")
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -564,10 +561,6 @@ func TestWebhookBasic(t *testing.T) {
 // Test Webhook where there is an old doc revision and where the filter
 // function is expecting an old doc revision.
 func TestWebhookOldDoc(t *testing.T) {
-
-	// FIXME:
-	t.Skip("Skipping flaky test until current WIP fixes are merged")
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -709,10 +702,6 @@ func TestWebhookOldDoc(t *testing.T) {
 }
 
 func TestWebhookTimeout(t *testing.T) {
-
-	// FIXME:
-	t.Skip("Skipping flaky test until current WIP fixes are merged")
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
