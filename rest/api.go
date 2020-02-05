@@ -419,8 +419,10 @@ type stats struct {
 }
 
 func sleep(rq *http.Request, d time.Duration) {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
 	select {
-	case <-time.After(d):
+	case <-timer.C:
 	case <-rq.Context().Done():
 	}
 }

@@ -103,9 +103,11 @@ func (em *EventManager) raiseEvent(event Event) error {
 	if !event.Synchronous() {
 		// When asyncEventChannel is full, the raiseEvent method will block for (waitTime).
 		// Default value of (waitTime) is 5 ms.
+		timer := time.NewTimer(time.Duration(em.waitTime) * time.Millisecond)
+		defer timer.Stop()
 		select {
 		case em.asyncEventChannel <- event:
-		case <-time.After(time.Duration(em.waitTime) * time.Millisecond):
+		case <-timer.C:
 			// Event queue channel is full - ignore event and log error
 			base.Warnf("Event queue full - discarding event: %s", base.UD(event.String()))
 			return errors.New("Event queue full")
