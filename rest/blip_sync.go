@@ -969,7 +969,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		bh.dbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
 	}()
 
-	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := revMessage{Message: rq}
 
 	base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
@@ -1039,14 +1038,15 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
 		}
 
-		var newOne map[string]interface{}
-		err = rq.ReadJSONBody(&newOne)
+		// Get the delta to apply the patching to. Need to have this in an unmarshaled format
+		var delta map[string]interface{}
+		err = rq.ReadJSONBody(&delta)
 		if err != nil {
-			panic(err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "Error reading incoming JSON body: %v", err)
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		err = base.Patch(&deltaSrcMap, newOne)
+		err = base.Patch(&deltaSrcMap, delta)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
 			base.WarnfCtx(bh.blipContextDb.Ctx, "Error patching deltaSrc %s with %s for key %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
@@ -1089,7 +1089,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 		newDoc, err = newBody.ToIncomingDoc(&newDoc.SpecialProperties)
 		if err != nil {
-			panic("some error")
+			return base.HTTPErrorf(http.StatusInternalServerError, "Failed to build IncomingDoc from body: %v", err)
 		}
 
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, newDoc.DocAttachment, minRevpos, docID); err != nil {

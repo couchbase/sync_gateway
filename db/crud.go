@@ -420,7 +420,11 @@ func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevision
 	roleAccess = doc.RoleAccess
 	sequence = doc.Sequence
 	flags = doc.Flags
-	gotRevID = doc.RevID
+	if revid == "" {
+		gotRevID = doc.CurrentRev
+	} else {
+		gotRevID = revid
+	}
 	return
 }
 
@@ -580,7 +584,7 @@ func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, erro
 		{Key: BodyRev, Val: ancestorRevID},
 	}
 
-	if doc.Deleted {
+	if doc.IsDeleted() {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
@@ -690,41 +694,21 @@ func (db *Database) OnDemandImportForWrite(docid string, doc *Document, deleted 
 // Updates or creates a document.
 // The new body's BodyRev property must match the current revision's, if any.
 func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document, err error) {
+	newDoc, err := body.ToIncomingDoc(nil)
+	if err != nil {
+		return "", nil, err
+	}
 
-	delete(body, BodyId)
-
-	// Get the revision ID to match, and the new generation number:
-	matchRev, _ := body[BodyRev].(string)
+	newDoc.ID = docid
+	matchRev := newDoc.RevID
 	generation, _ := ParseRevID(matchRev)
 	if generation < 0 {
 		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid revision ID")
 	}
 	generation++
-	delete(body, BodyRev)
-
-	// Not extracting it yet because we need this property around to generate a rev ID
-	deleted, _ := body[BodyDeleted].(bool)
-
-	expiry, err := body.ExtractExpiry()
-	if err != nil {
-		return "", nil, base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
-	}
-
-	// Create newDoc which will be used to pass around Body
-	newDoc := &IncomingDocument{
-		SpecialProperties: SpecialProperties{
-			ID: docid,
-		},
-	}
-
-	// Pull out attachments
-	newDoc.DocAttachment = GetBodyAttachments(body)
-	delete(body, BodyAttachments)
-
-	delete(body, BodyRevisions)
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, func(doc *Document) (resultDoc *IncomingDocument, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(docid, allowImport, newDoc.DocExpiry, nil, func(doc *Document) (resultDoc *IncomingDocument, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
 
 		var isSgWrite bool
 		var crc32Match bool
@@ -740,7 +724,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		// (Be careful: this block can be invoked multiple times if there are races!)
 		// If the existing doc isn't an SG write, import prior to updating
 		if doc != nil && !isSgWrite && db.UseXattrs() {
-			err := db.OnDemandImportForWrite(newDoc.ID, doc, deleted)
+			err := db.OnDemandImportForWrite(newDoc.ID, doc, newDoc.Deleted)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -758,49 +742,26 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
-		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false) {
+		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, newDoc.Deleted, false) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
-		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
-		// be done before calling createRevID (the ID is based on the digest of the body.)
 		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachment, generation, matchRev, nil)
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		doc.SyncData.Attachments = newDoc.DocAttachment
 
-		// Make up a new _rev, and add it to the history:
-		bodyWithoutSpecialProps, wasStripped := stripSpecialProperties(body)
-		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutSpecialProps)
+		newRev, err := newDoc.CreateRevID(generation, matchRev)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, base.HTTPErrorf(http.StatusInternalServerError, "Failed to generate revid: %v", err)
 		}
-		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
+		newDoc.RevID = newRev
 
-		// We needed to keep _deleted around in the body until we generated a rev ID, but now we can ditch it.
-		_, isDeleted := body[BodyDeleted]
-		if isDeleted {
-			delete(body, BodyDeleted)
-		}
-
-		// and now we can finally update the newDoc body to be without any special properties
-		newDoc.UpdateBody(body)
-
-		// If no special properties were stripped and document wasn't deleted, the canonical bytes represent the current
-		// body.  In this scenario, store canonical bytes as newDoc.RawBody
-		if !wasStripped && !isDeleted {
-			newDoc.RawBody = canonicalBytesForRevID
-		}
-
-		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
+		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: newDoc.Deleted}); err != nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
 			return nil, nil, nil, base.ErrRevTreeAddRevFailure
 		}
-
-		// move _attachment metadata to syncdata of doc after rev-id generation
-		doc.SyncData.Attachments = newDoc.DocAttachment
-		newDoc.RevID = newRev
-		newDoc.Deleted = deleted
 
 		return newDoc, newAttachments, nil, nil
 	})
@@ -974,7 +935,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 			}
 		}
 
-		if doc.Deleted {
+		if doc.IsDeleted() {
 			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 		}
 

@@ -156,9 +156,6 @@ type Document struct {
 	_rawBody []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
 	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas      uint64 // Document cas
-
-	Deleted bool
-	RevID   string
 }
 
 type IncomingDocument struct {
@@ -224,7 +221,7 @@ func (b Body) ExtractSpecialProperties(specialProperties *SpecialProperties) err
 
 	bodyExp, err := base.ReflectExpiry(b[BodyExpiry])
 	if err != nil {
-		return err
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
 	}
 	if bodyExp != nil {
 		specialProperties.DocExpiry = *bodyExp
@@ -299,7 +296,8 @@ func (doc *IncomingDocument) BodyBytes() ([]byte, error) {
 		return nil, nil
 	}
 
-	bodyBytes, err := base.JSONMarshal(doc.UnmarshalledBody)
+	// Necessary for items such as create rev id
+	bodyBytes, err := base.JSONMarshalCanonical(doc.UnmarshalledBody)
 	if err != nil {
 		return nil, pkgerrors.Wrapf(err, "Error marshalling document body")
 	}
@@ -332,6 +330,23 @@ func (doc *IncomingDocument) GetDeepMutableBody() Body {
 	}
 
 	return mutableBody
+}
+
+func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (string, error) {
+	rawBodyBytes, err := doc.BodyBytes()
+	if err != nil {
+		return "", err
+	}
+
+	if doc.Deleted {
+		var err error
+		rawBodyBytes, err = base.InjectJSONProperties(rawBodyBytes, base.KVPair{Key: BodyDeleted, Val: doc.Deleted})
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return CreateRevIDWithBytes(generation, parentRevID, rawBodyBytes), nil
 }
 
 type revOnlySyncData struct {
@@ -1111,7 +1126,7 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 	if len(data) == 0 && len(xdata) > 0 {
 		doc._body = Body{}
 		doc._rawBody = []byte(base.EmptyDocument)
-		doc.Deleted = true
+		doc.setFlag(channels.Deleted, true)
 	}
 	return nil
 }
