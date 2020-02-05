@@ -19,7 +19,7 @@ func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, 
 		defer ticker.Stop()
 		for {
 			select {
-			case <-time.After(interval):
+			case <-ticker.C:
 				ctx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: base.NewTaskID(dbName, taskName)})
 				if err := task(ctx); err != nil {
 					base.ErrorfCtx(ctx, "Background task returned error: %v", err)
