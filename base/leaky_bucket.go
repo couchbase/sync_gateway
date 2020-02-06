@@ -4,6 +4,7 @@ import (
 	"errors"
 	"expvar"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/couchbase/gocb"
@@ -344,8 +345,7 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 
 		// the buffer to hold tap events that are candidates for de-duplication
 		deDupeBuffer := []sgbucket.FeedEvent{}
-		timer := time.NewTimer(deDuplicationTimeoutMs)
-		defer timer.Stop()
+		timer := time.NewTimer(math.MaxInt64)
 		for {
 			select {
 			case tapEvent, ok := <-walrusTapFeed.Events():
@@ -368,12 +368,12 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 				}
 
 			case <-timer.C:
-
-				// give up on waiting for the buffer to fill up,
-				// de-dupe and send what we currently have
-				dedupeAndForward(deDupeBuffer, channel)
-				deDupeBuffer = []sgbucket.FeedEvent{}
-
+				if len(deDupeBuffer) > 0 {
+					// give up on waiting for the buffer to fill up,
+					// de-dupe and send what we currently have
+					dedupeAndForward(deDupeBuffer, channel)
+					deDupeBuffer = []sgbucket.FeedEvent{}
+				}
 			}
 		}
 

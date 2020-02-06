@@ -88,22 +88,18 @@ func (s *sequenceAllocator) Stop() {
 // that aren't used within 'releaseSequenceTimeout'.
 func (s *sequenceAllocator) releaseSequenceMonitor() {
 
-	timer := time.NewTimer(s.releaseSequenceWait)
-	defer timer.Stop()
-
 	// Outer loop - waits for an initial reserve of sequences, or terminate notification (idle state).
 	// Terminator is only checked while in idle state - ensures sequence allocation drains and unused sequences are released
 	// before exiting.
 	for {
 		select {
 		case <-s.reserveNotify:
-			_ = timer.Reset(s.releaseSequenceWait)
 			// On reserve, start the timer to release unused sequences. A new reserve resets the timer.
 			// On timeout, release sequences and return to idle state
 			for {
 				select {
 				case <-s.reserveNotify:
-				case <-timer.C:
+				case <-time.After(s.releaseSequenceWait):
 					s.releaseUnusedSequences()
 					break
 				}
