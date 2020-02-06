@@ -549,7 +549,7 @@ func (bc *blipSyncContext) handleChangesResponse(sender *blip.Sender, response *
 	var answer []interface{}
 	if err := response.ReadJSONBody(&answer); err != nil {
 		body, _ := response.Body()
-		base.ErrorfCtx(bc.blipContextDb.Ctx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
+		base.DebugfCtx(bc.blipContextDb.Ctx, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
 		return nil
 	}
 	changesResponseReceived := time.Now()
