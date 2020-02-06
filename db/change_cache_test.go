@@ -1605,13 +1605,9 @@ func TestLateArrivingSequenceTriggersOnChange(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges)()
 
 	// Create a test db that uses channel cache
-	channelOptions := ChannelCacheOptions{
-		ChannelCacheMinLength: 600,
-		ChannelCacheMaxLength: 600,
-		ChannelCacheAge:       DefaultChannelCacheAge,
-	}
 	options := DefaultCacheOptions()
-	options.ChannelCacheOptions = channelOptions
+	options.ChannelCacheOptions.ChannelCacheMinLength = 600
+	options.ChannelCacheOptions.ChannelCacheMaxLength = 600
 
 	db, testBucket := setupTestDBWithCacheOptions(t, options)
 	defer tearDownTestDB(t, db)
@@ -1853,14 +1849,12 @@ func TestMaxChannelCacheConfig(t *testing.T) {
 	channelCacheMaxChannels := []int{10, 50000, 100000}
 
 	for _, val := range channelCacheMaxChannels {
-		options := CacheOptions{
-			ChannelCacheOptions: ChannelCacheOptions{
-				MaxNumChannels:  val,
-				ChannelCacheAge: DefaultChannelCacheAge,
-			},
-			CachePendingSeqMaxWait: DefaultCachePendingSeqMaxWait,
-			CacheSkippedSeqMaxWait: DefaultSkippedSeqMaxWait,
+		options := DefaultCacheOptions()
+		channelCacheOptions := ChannelCacheOptions{
+			MaxNumChannels:  val,
+			ChannelCacheAge: DefaultChannelCacheAge,
 		}
+		options.ChannelCacheOptions = channelCacheOptions
 		db, testBucket := setupTestDBWithCacheOptions(t, options)
 		assert.Equal(t, val, db.DatabaseContext.Options.CacheOptions.MaxNumChannels)
 		testBucket.Close()

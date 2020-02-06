@@ -167,19 +167,30 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		c.options = DefaultCacheOptions()
 	}
 
-	c.channelCache = NewChannelCacheForContext(c.terminator, c.options.ChannelCacheOptions, c.context)
+	channelCache, backgroundTaskError := NewChannelCacheForContext(c.terminator, c.options.ChannelCacheOptions, c.context)
+	if backgroundTaskError != nil {
+		return backgroundTaskError
+	}
+	c.channelCache = channelCache
 
 	base.Infof(base.KeyCache, "Initializing changes cache for database %s with options %+v", base.UD(dbcontext.Name), c.options)
 
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
-	NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	backgroundTaskError = NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries,
+		c.options.CachePendingSeqMaxWait/2, c.terminator)
+	if backgroundTaskError != nil {
+		return backgroundTaskError
+	}
+	backgroundTaskError = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue,
+		c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	if backgroundTaskError != nil {
+		return backgroundTaskError
+	}
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
-
 	return nil
 }
 
