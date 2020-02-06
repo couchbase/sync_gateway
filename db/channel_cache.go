@@ -101,12 +101,9 @@ func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOp
 		activeChannels:       activeChannels,
 		statsMap:             statsMap,
 	}
-	backgroundTaskError := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
-	if backgroundTaskError != nil {
-		base.Errorf(base.KeyCache.String(), "Failed to initialize channel cache with maxChannels:%d, HWM: %d, "+
-			"LWM: %d, Error: %v",
-			channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark, backgroundTaskError)
-		return nil, backgroundTaskError
+	err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
+	if err != nil {
+		return nil, err
 	}
 	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)

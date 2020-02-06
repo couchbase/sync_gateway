@@ -516,11 +516,8 @@ func TestChannelCacheBackgroundTaskWithIllegalTimeInterval(t *testing.T) {
 	defer close(terminator)
 
 	options := DefaultCacheOptions().ChannelCacheOptions
-	options.MaxNumChannels = 20
-	options.CompactHighWatermarkPercent = 100
-	options.CompactLowWatermarkPercent = 50
-	options.ChannelCacheAge = 0 // Time interval should be > 0
-
+	// Specify illegal time interval for background task. Time interval should be > 0
+	options.ChannelCacheAge = 0
 	testStats := &expvar.Map{}
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &expvar.Int{}

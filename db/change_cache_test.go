@@ -1850,11 +1850,7 @@ func TestMaxChannelCacheConfig(t *testing.T) {
 
 	for _, val := range channelCacheMaxChannels {
 		options := DefaultCacheOptions()
-		channelCacheOptions := ChannelCacheOptions{
-			MaxNumChannels:  val,
-			ChannelCacheAge: DefaultChannelCacheAge,
-		}
-		options.ChannelCacheOptions = channelCacheOptions
+		options.ChannelCacheOptions.MaxNumChannels = val
 		db, testBucket := setupTestDBWithCacheOptions(t, options)
 		assert.Equal(t, val, db.DatabaseContext.Options.CacheOptions.MaxNumChannels)
 		testBucket.Close()
