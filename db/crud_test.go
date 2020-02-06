@@ -963,24 +963,24 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 				ID:    "doc1",
 				RevID: "1a",
 			},
+			RawBody: []byte(`{"foo": "bart"}`),
 		}
-		newDoc.UpdateBodyBytes([]byte(`{"foo": "bart"}`))
 		for n := 0; n < b.N; n++ {
 			getDelta(newDoc)
 		}
 	})
 
 	b.Run("Huge Diff", func(b *testing.B) {
+		largeDoc := make([]byte, 1000000)
+		longBody := Body{"val": string(largeDoc)}
+		bodyBytes, _ := base.JSONMarshal(longBody)
 		newDoc := &IncomingDocument{
 			SpecialProperties: SpecialProperties{
 				ID:    "doc1",
 				RevID: "1a",
 			},
+			RawBody: bodyBytes,
 		}
-		largeDoc := make([]byte, 1000000)
-		longBody := Body{"val": string(largeDoc)}
-		bodyBytes, _ := base.JSONMarshal(longBody)
-		newDoc.UpdateBodyBytes(bodyBytes)
 		for n := 0; n < b.N; n++ {
 			getDelta(newDoc)
 		}

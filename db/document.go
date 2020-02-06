@@ -246,11 +246,7 @@ func (b Body) ExtractSpecialProperties(specialProperties *SpecialProperties) err
 	return nil
 }
 
-func (doc *IncomingDocument) UpdateBodyBytes(bodyBytes []byte) {
-	doc.RawBody = bodyBytes
-	doc.UnmarshalledBody = nil
-}
-
+// TODO: Mostly unused, can be removed once work is complete
 func (doc *IncomingDocument) UpdateBody(body Body) {
 	doc.UnmarshalledBody = body
 	doc.RawBody = nil

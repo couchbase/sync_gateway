@@ -372,8 +372,8 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		SpecialProperties: db.SpecialProperties{
 			ID: docid,
 		},
+		RawBody: bodyBytes,
 	}
-	newDoc.UpdateBodyBytes(bodyBytes)
 
 	var parentRev string
 	if oldRev := h.getQuery("rev"); oldRev != "" {
@@ -396,23 +396,12 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 	}
 
 	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
+	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) || bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
 		body := newDoc.Body()
-		expiry, err := body.ExtractExpiry()
+		newDoc, err = body.ToIncomingDoc(&newDoc.SpecialProperties)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+			return err
 		}
-		newDoc.DocExpiry = expiry
-		newDoc.UpdateBody(body)
-	}
-
-	// Pull out attachments
-	if bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
-
-		newDoc.DocAttachment = db.GetBodyAttachments(body)
-		delete(body, db.BodyAttachments)
-		newDoc.UpdateBody(body)
 	}
 
 	doc, rev, err := h.db.PutExistingRev(newDoc, history, true)

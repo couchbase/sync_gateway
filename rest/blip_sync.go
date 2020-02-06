@@ -1098,7 +1098,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		}
 	} else {
 		if newBody != nil {
-			newDoc.UpdateBody(newBody)
+			newDoc, err = newBody.ToIncomingDoc(&newDoc.SpecialProperties)
+			if err != nil {
+				return base.HTTPErrorf(http.StatusInternalServerError, "Failed to build IncomingDoc from body: %v", err)
+			}
 		}
 	}
 
