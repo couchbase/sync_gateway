@@ -97,6 +97,7 @@ func (s *sequenceAllocator) releaseSequenceMonitor() {
 	for {
 		select {
 		case <-s.reserveNotify:
+			_ = timer.Reset(s.releaseSequenceWait)
 			// On reserve, start the timer to release unused sequences. A new reserve resets the timer.
 			// On timeout, release sequences and return to idle state
 			for {

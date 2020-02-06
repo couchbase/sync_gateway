@@ -344,8 +344,8 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 
 		// the buffer to hold tap events that are candidates for de-duplication
 		deDupeBuffer := []sgbucket.FeedEvent{}
-		ticker := time.NewTicker(deDuplicationTimeoutMs)
-		defer ticker.Stop()
+		timer := time.NewTimer(deDuplicationTimeoutMs)
+		defer timer.Stop()
 		for {
 			select {
 			case tapEvent, ok := <-walrusTapFeed.Events():
@@ -363,9 +363,11 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 				if len(deDupeBuffer) >= deDuplicationWindowSize {
 					dedupeAndForward(deDupeBuffer, channel)
 					deDupeBuffer = []sgbucket.FeedEvent{}
+				} else {
+					_ = timer.Reset(deDuplicationTimeoutMs)
 				}
 
-			case <-ticker.C:
+			case <-timer.C:
 
 				// give up on waiting for the buffer to fill up,
 				// de-dupe and send what we currently have

@@ -989,15 +989,12 @@ func getHistoryWithTimeout(rawDoc *Document, revId string, timeout time.Duration
 		}
 	}()
 
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
 	select {
 	case history := <-historyChannel:
 		return history, nil
 	case err := <-errChannel:
 		return nil, err
-	case _ = <-timer.C:
+	case _ = <-time.After(timeout):
 		return nil, fmt.Errorf("Timeout waiting for history")
 	}
 
