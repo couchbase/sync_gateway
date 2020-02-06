@@ -636,3 +636,19 @@ func testRetryUntilTrueCustom(t *testing.T, retryFunc RetryUntilTrueFunc, waitTi
 	}
 	assert.Fail(t, fmt.Sprintf("Retry until function didn't succeed within timeout (%d ms)", timeoutMs))
 }
+
+func FileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func DirExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return info.IsDir()
+}

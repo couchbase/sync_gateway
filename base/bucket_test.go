@@ -362,10 +362,10 @@ func mockCertificatesAndKeys(t *testing.T) (certPath, clientCertPath, clientKeyP
 	require.NoError(t, err, "Client certificate should be generated")
 	saveAsCertFile(t, clientCertPath, certBytes)
 
-	require.True(t, fileExists(rootKeyPath), "File %v should exists", rootKeyPath)
-	require.True(t, fileExists(rootCertPath), "File %v should exists", rootCertPath)
-	require.True(t, fileExists(clientKeyPath), "File %v should exists", clientKeyPath)
-	require.True(t, fileExists(clientCertPath), "File %v should exists", clientCertPath)
+	require.True(t, FileExists(rootKeyPath), "File %v should exists", rootKeyPath)
+	require.True(t, FileExists(rootCertPath), "File %v should exists", rootCertPath)
+	require.True(t, FileExists(clientKeyPath), "File %v should exists", clientKeyPath)
+	require.True(t, FileExists(clientCertPath), "File %v should exists", clientCertPath)
 
 	return certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath
 }
@@ -389,22 +389,6 @@ func saveAsCertFile(t *testing.T, filename string, derBytes []byte) {
 	require.NoError(t, err, "No error while closing cert.pem")
 }
 
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
-}
-
-func dirExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return info.IsDir()
-}
-
 func TestTLSConfig(t *testing.T) {
 	// Mock fake root CA and client certificates for verification
 	certPath, clientCertPath, clientKeyPath, rootCertPath, rootKeyPath := mockCertificatesAndKeys(t)
@@ -412,7 +396,7 @@ func TestTLSConfig(t *testing.T) {
 	// Remove the keys and certificates after verification
 	defer func() {
 		assert.NoError(t, os.RemoveAll(certPath))
-		assert.False(t, dirExists(certPath), "Directory: %v shouldn't exists", certPath)
+		assert.False(t, DirExists(certPath), "Directory: %v shouldn't exists", certPath)
 	}()
 
 	// Simulate error creating tlsConfig for DCP processing

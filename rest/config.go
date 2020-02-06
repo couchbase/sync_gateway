@@ -291,8 +291,6 @@ type Http2Config struct {
 	Enabled *bool `json:"enabled,omitempty"` // Whether HTTP2 support is enabled
 }
 
-//TODO: Add support for TLS 1.3 when we switch to Go 1.13
-
 func GetTLSVersionFromString(stringV *string) uint16 {
 	if stringV != nil {
 		switch *stringV {
@@ -302,6 +300,8 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 			return tls.VersionTLS11
 		case "tlsv1.2":
 			return tls.VersionTLS12
+		case "tlsv1.3":
+			return tls.VersionTLS13
 		}
 	}
 	return uint16(DefaultMinimumTLSVersionConst)
@@ -816,7 +816,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flagSet.String("url", DefaultServer, "Address of Couchbase server")
 	poolName := flagSet.String("pool", DefaultPool, "Name of pool")
-	bucketName := flagSet.String("bucket", "sync_gateway", "Name of bucket")
 	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flagSet.Bool("verbose", false, "Log more info about requests")
@@ -901,8 +900,9 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 
 	} else {
 		// If no config file is given, create a default config, filled in from command line flags:
+		var defaultBucketName = "sync_gateway"
 		if *dbName == "" {
-			*dbName = *bucketName
+			*dbName = defaultBucketName
 		}
 
 		// At this point the addr is either:
@@ -933,7 +933,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 					Name: *dbName,
 					BucketConfig: BucketConfig{
 						Server:     couchbaseURL,
-						Bucket:     bucketName,
+						Bucket:     &defaultBucketName,
 						Pool:       poolName,
 						CertPath:   *certpath,
 						CACertPath: *cacertpath,
