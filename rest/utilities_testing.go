@@ -1512,10 +1512,12 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 		wgFinished <- true
 	}()
 
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case <-wgFinished:
 		return nil
-	case <-time.After(timeout):
+	case <-timer.C:
 		return fmt.Errorf("Timed out waiting after %v", timeout)
 	}
 
