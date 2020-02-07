@@ -377,13 +377,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
 				db := Database{DatabaseContext: dbContext}
-				NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
+				err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
 					_, err := db.Compact()
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
 					}
 					return nil
 				}, time.Duration(dbContext.Options.CompactInterval)*time.Second, dbContext.terminator)
+				if err != nil {
+					return nil, err
+				}
 			} else {
 				base.Warnf("Automatic compaction can only be enabled on nodes running an Import process")
 			}

@@ -82,11 +82,13 @@ type channelCacheImpl struct {
 	validFromLock        sync.RWMutex              // Mutex used to avoid race between AddToCache and addChannelCache.  See CBG-520 for more details
 }
 
-func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) *channelCacheImpl {
+func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
 	return newChannelCache(context.Name, terminator, options, context, context.activeChannels, context.DbStats.StatsCache())
 }
 
-func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOptions, queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels, statsMap *expvar.Map) *channelCacheImpl {
+func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOptions,
+	queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels,
+	statsMap *expvar.Map) (*channelCacheImpl, error) {
 
 	channelCache := &channelCacheImpl{
 		queryHandler:         queryHandler,
@@ -99,9 +101,13 @@ func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOp
 		activeChannels:       activeChannels,
 		statsMap:             statsMap,
 	}
-	NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
-	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d", channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
-	return channelCache
+	err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
+	if err != nil {
+		return nil, err
+	}
+	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
+		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
+	return channelCache, nil
 }
 
 func (c *channelCacheImpl) Clear() {
