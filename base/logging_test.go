@@ -234,8 +234,10 @@ func TestLoggingLevel(t *testing.T) {
 }
 
 func TestLogColor(t *testing.T) {
-	consoleLogger.ColorEnabled = true
+	origColor := consoleLogger.ColorEnabled
+	defer func() { consoleLogger.ColorEnabled = origColor }()
 
+	consoleLogger.ColorEnabled = true
 	if colorEnabled() {
 		assert.Equal(t, "\x1b[0;36mFormat\x1b[0m", color("Format", LevelDebug))
 		assert.Equal(t, "\x1b[1;34mFormat\x1b[0m", color("Format", LevelInfo))

@@ -57,23 +57,23 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 		},
 	}
 	for _, h := range heartbeaters {
-		t.Run(h.name, func(tt *testing.T) {
+		t.Run(h.name, func(t *testing.T) {
 			testBucket := GetTestBucket(t)
 			defer testBucket.Close()
 
 			// Create three heartbeaters (representing three nodes)
 			handler1 := h.nodeSetHandlerConstructor(testBucket)
-			assert.NotNil(tt, handler1)
+			assert.NotNil(t, handler1)
 			node1, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node1", handler1)
-			assert.NoError(tt, err)
+			assert.NoError(t, err)
 			handler2 := h.nodeSetHandlerConstructor(testBucket)
-			assert.NotNil(tt, handler2)
+			assert.NotNil(t, handler2)
 			node2, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node2", handler2)
-			assert.NoError(tt, err)
+			assert.NoError(t, err)
 			handler3 := h.nodeSetHandlerConstructor(testBucket)
-			assert.NotNil(tt, handler3)
+			assert.NotNil(t, handler3)
 			node3, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node3", handler3)
-			assert.NoError(tt, err)
+			assert.NoError(t, err)
 
 			assert.NoError(t, node1.StartSendingHeartbeats(1))
 			assert.NoError(t, node2.StartSendingHeartbeats(1))
@@ -114,7 +114,7 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 			// Validate current node list
 			activeNodes, err := handler2.GetNodes()
 			require.NoError(t, err, "Error getting node list")
-			assert.Equal(t, 2, len(activeNodes))
+			require.Len(t, activeNodes, 2)
 			assert.NotContains(t, activeNodes, "node1")
 			assert.Contains(t, activeNodes, "node2")
 			assert.Contains(t, activeNodes, "node3")
@@ -209,7 +209,7 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	// Validate current node list
 	activeNodes, err := handler2.GetNodes()
 	require.NoError(t, err, "Error getting node list")
-	assert.Equal(t, 2, len(activeNodes))
+	require.Len(t, activeNodes, 2)
 	assert.NotContains(t, activeNodes, "node1")
 	assert.Contains(t, activeNodes, "node2")
 	assert.Contains(t, activeNodes, "node3")

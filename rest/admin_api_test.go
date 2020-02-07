@@ -249,10 +249,8 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AllowEmptyPassword: true}})
 	defer rt.Close()
-
-	rt.BucketAllowEmptyPassword()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
 	assertStatus(t, response, 201)
@@ -569,8 +567,7 @@ func TestLoggingCombined(t *testing.T) {
 }
 
 func TestGetStatus(t *testing.T) {
-	rtConfig := RestTesterConfig{NoFlush: true}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/_status", "")
@@ -959,7 +956,6 @@ func TestFlush(t *testing.T) {
 func TestDBOfflineSingle(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -982,7 +978,6 @@ func TestDBOfflineSingle(t *testing.T) {
 func TestDBOfflineConcurrent(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1025,8 +1020,8 @@ func TestDBOfflineConcurrent(t *testing.T) {
 func TestStartDBOffline(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
+
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
 	var body db.Body
@@ -1046,7 +1041,6 @@ func TestStartDBOffline(t *testing.T) {
 func TestDBOffline503Response(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1070,7 +1064,6 @@ func TestDBOffline503Response(t *testing.T) {
 func TestDBOfflinePutDbConfig(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1095,7 +1088,6 @@ func TestDBOfflinePutDbConfig(t *testing.T) {
 func TestDBGetConfigNames(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	p := "password"
@@ -1127,7 +1119,6 @@ func TestDBOfflinePostResync(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1208,7 +1199,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 func TestDBOnlineSingle(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1242,7 +1232,6 @@ func TestDBOnlineSingle(t *testing.T) {
 func TestDBOnlineConcurrent(t *testing.T) {
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1295,7 +1284,6 @@ func TestSingleDBOnlineWithDelay(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1340,7 +1328,6 @@ func TestDBOnlineWithDelayAndImmediate(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	log.Printf("Taking DB offline")
@@ -1394,7 +1381,6 @@ func TestDBOnlineWithTwoDelays(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true // No need to flush since this test doesn't add any data to the bucket
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("GET", "/db/", "")
@@ -1961,7 +1947,7 @@ func TestHandleActiveTasks(t *testing.T) {
 	resp := rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
 	assertStatus(t, resp, http.StatusOK)
 	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
-	assert.Equal(t, 0, len(tasks))
+	require.Len(t, tasks, 0)
 }
 
 func TestHandleSGCollect(t *testing.T) {
@@ -2095,7 +2081,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
-	sessionId := responseBody["session_id"].(string)
+	sessionId, _ := responseBody["session_id"].(string)
 	require.NotEmpty(t, sessionId, "Couldn't parse sessionID from response body")
 
 	// Delete user session using /db/_user/eve/_session/{sessionId}.

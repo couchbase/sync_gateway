@@ -1837,7 +1837,6 @@ func TestDcpBackfill(t *testing.T) {
 		DatabaseConfig: &DbConfig{
 			AutoImport: true,
 		},
-		NoFlush: true,
 	}
 	newRt := NewRestTester(t, &newRtConfig)
 	defer newRt.Close()

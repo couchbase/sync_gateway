@@ -61,7 +61,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
 	assert.NoError(t, err, "Couldn't GetChanges")
 	printChanges(changes)
-	assert.Equal(t, 3, len(changes))
+	require.Len(t, changes, 3)
 
 	// doc1, from ABC
 	assert.Equal(t, "doc1", changes[0].ID)
@@ -90,7 +90,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 
 	assert.NoError(t, err, "Couldn't GetChanges (2nd)")
 
-	assert.Equal(t, 1, len(changes))
+	require.Len(t, changes, 1)
 	assert.Equal(t, "doc2", changes[0].ID)
 	assert.Equal(t, []ChangeRev{{"rev": revid}}, changes[0].Changes)
 

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"testing"
 
 	"github.com/couchbase/gocb"
@@ -42,10 +41,8 @@ func TestN1qlQuery(t *testing.T) {
 
 	indexExpression := "val"
 	err := bucket.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
-	if err != nil {
-		if !strings.Contains(err.Error(), "index testIndex_value already exists") {
-			t.Errorf("Error creating index: %s", err)
-		}
+	if err != nil && err != ErrIndexAlreadyExists {
+		t.Errorf("Error creating index: %s", err)
 	}
 
 	// Wait for index readiness

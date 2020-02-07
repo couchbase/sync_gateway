@@ -92,7 +92,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 			return nil, pkgerrors.WithStack(certAuthErr)
 		}
 	} else if spec.Auth != nil {
-		Infof(KeyAuth, "Attempting credential authentication %s", connString)
+		Infof(KeyAuth, "Attempting credential authentication against bucket %s on server %s", MD(spec.BucketName), MD(spec.Server))
 		user, pass, _ := spec.Auth.GetCredentials()
 		authErr := cluster.Authenticate(gocb.PasswordAuthenticator{
 			Username: user,
@@ -147,10 +147,12 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	user, pass, _ := spec.Auth.GetCredentials()
 	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
 	if err != nil {
+		_ = goCBBucket.Close()
 		return nil, err
 	}
 
 	if len(nodesMetadata) == 0 {
+		_ = goCBBucket.Close()
 		return nil, errors.New("Unable to get server cluster compatibility")
 	}
 

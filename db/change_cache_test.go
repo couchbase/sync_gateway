@@ -794,7 +794,7 @@ func TestLowSequenceHandling(t *testing.T) {
 
 	changes, err := verifySequencesInFeed(feed, []uint64{1, 2, 5, 6})
 	goassert.True(t, err == nil)
-	goassert.Equals(t, len(changes), 4)
+	require.Len(t, changes, 4)
 	goassert.DeepEquals(t, changes[0], &ChangeEntry{
 		Seq:     SequenceID{Seq: 1, TriggeredBy: 0, LowSeq: 2},
 		ID:      "doc-1",
@@ -1770,7 +1770,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 			body := Body{"serialnumber": int64(i), "channels": channels}
 			docID := fmt.Sprintf("loadCache-%d", i)
 			_, _, err := db.Put(docID, body)
-			assert.NoError(t, err, "Couldn't create document")
+			require.NoError(t, err, "Couldn't create document")
 			if i < inProgressCount {
 				writesInProgress.Done()
 			}
@@ -1780,7 +1780,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	// Wait for writes to be in progress, then getChanges for channel zero
 	writesInProgress.Wait()
 	changes, err := db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{})
-	assert.NoError(t, err, "Couldn't GetChanges")
+	require.NoError(t, err, "Couldn't GetChanges")
 	firstChangesCount := len(changes)
 	var lastSeq SequenceID
 	if firstChangesCount > 0 {
@@ -1791,7 +1791,7 @@ func TestInitializeCacheUnderLoad(t *testing.T) {
 	cacheWaiter.Wait()
 
 	changes, err = db.GetChanges(channels.SetOf(t, "zero"), ChangesOptions{Since: lastSeq})
-	assert.NoError(t, err, "Couldn't GetChanges")
+	require.NoError(t, err, "Couldn't GetChanges")
 	secondChangesCount := len(changes)
 	assert.Equal(t, docCount, firstChangesCount+secondChangesCount)
 
@@ -2096,8 +2096,8 @@ func TestMakeFeedBytes(t *testing.T) {
 
 	body, xattr, err := parseXattrStreamData(base.SyncXattrName, rawBytes)
 	assert.NoError(t, err)
-	assert.Equal(t, 11, len(body))
-	assert.Equal(t, 13, len(xattr))
+	require.Len(t, body, 11)
+	require.Len(t, xattr, 13)
 
 }
 

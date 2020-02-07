@@ -287,12 +287,14 @@ func DropAllBucketIndexes(gocbBucket *CouchbaseBucketGoCB) error {
 
 			defer wg.Done()
 
-			log.Printf("Dropping index %s...", indexToDrop)
+			log.Printf("Dropping index %s on bucket %s...", indexToDrop, gocbBucket.Name())
 			dropErr := gocbBucket.DropIndex(indexToDrop)
 			if dropErr != nil {
 				asyncErrors <- dropErr
+				log.Printf("...failed to drop index %s on bucket %s: %s", indexToDrop, gocbBucket.Name(), dropErr)
+				return
 			}
-			log.Printf("...successfully dropped index %s", indexToDrop)
+			log.Printf("...successfully dropped index %s on bucket %s", indexToDrop, gocbBucket.Name())
 		}(index)
 
 	}
@@ -540,6 +542,10 @@ func NumOpenBuckets(bucketName string) int32 {
 // Shorthand style:
 //     defer SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)()
 func SetUpTestLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn func()) {
+	if !testing.Verbose() {
+		// noop
+		return func() {}
+	}
 	caller := GetCallersName(1, false)
 	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
 	return setTestLogging(logLevel, caller, logKeys...)

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var fileShouldLogTests = []struct {
@@ -122,7 +123,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = runLogDeletion(dir, "info", 5, 7)
 	assert.NoError(t, err)
 	dirContents, err = ioutil.ReadDir(dir)
-	assert.Equal(t, 3, len(dirContents))
+	require.Len(t, dirContents, 3)
 
 	var fileNames = []string{}
 
@@ -143,7 +144,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = runLogDeletion(dir, "error", 2, 4)
 	assert.NoError(t, err)
 	dirContents, err = ioutil.ReadDir(dir)
-	assert.Equal(t, 1, len(dirContents))
+	require.Len(t, dirContents, 1)
 	assert.NoError(t, os.RemoveAll(dir))
 
 	//Single file hitting low and high watermark
@@ -163,7 +164,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	err = runLogDeletion(dir, "error", 2, 4)
 	assert.NoError(t, err)
 	dirContents, err = ioutil.ReadDir(dir)
-	assert.Equal(t, 1, len(dirContents))
+	require.Len(t, dirContents, 1)
 	assert.NoError(t, os.RemoveAll(dir))
 
 	//Test deletion with files at the end of date boundaries
@@ -180,7 +181,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 
 	dirContents, err = ioutil.ReadDir(dir)
-	assert.Equal(t, 2, len(dirContents))
+	require.Len(t, dirContents, 2)
 
 	fileNames = []string{}
 	for fileIndex := range dirContents {
@@ -200,7 +201,7 @@ func TestRotatedLogDeletion(t *testing.T) {
 	assert.NoError(t, err)
 
 	dirContents, err = ioutil.ReadDir(dir)
-	assert.Equal(t, 2, len(dirContents))
+	require.Len(t, dirContents, 2)
 
 	fileNames = []string{}
 	for fileIndex := range dirContents {
