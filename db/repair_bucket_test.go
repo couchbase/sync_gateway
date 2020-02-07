@@ -5,11 +5,10 @@ import (
 	"log"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const (
