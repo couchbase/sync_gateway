@@ -176,7 +176,7 @@ fi
 ## If the repo tool is not installed, then download it into current directory
 if ! type "repo" > /dev/null; then
     echo "Did not find repo tool, downloading to current directory"
-    curl -s https://storage.googleapis.com/git-repo-downloads/repo > repo
+    curl -s https://storage.googleapis.com/git-repo-downloads/repo-1 > repo
     chmod +x repo
     export PATH=$PATH:.
 fi
