@@ -106,6 +106,19 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		}
 	}
 
+	user, pass, _ := spec.Auth.GetCredentials()
+	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(nodesMetadata) == 0 {
+		return nil, errors.New("Unable to get server cluster compatibility")
+	}
+
+	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
+	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
+
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
 		Infof(KeyAll, "Error opening bucket %s: %v", spec.BucketName, err)
@@ -116,9 +129,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	// Set the GoCB opTimeout which controls how long blocking GoCB ops remain blocked before
 	// returning an "operation timed out" error.  Defaults to 2.5 seconds.  (SG #3508)
 	if spec.BucketOpTimeout != nil {
-
 		goCBBucket.SetOperationTimeout(*spec.BucketOpTimeout)
-
 		// Update the bulk op timeout to preserve the 1:4 ratio between op timeouts and bulk op timeouts.
 		goCBBucket.SetBulkOperationTimeout(*spec.BucketOpTimeout * 4)
 
@@ -145,35 +156,24 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		nodeCount = len(mgmtEps)
 	}
 
-	user, pass, _ := spec.Auth.GetCredentials()
-	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
-	if err != nil {
-		_ = goCBBucket.Close()
-		return nil, err
-	}
-
-	if len(nodesMetadata) == 0 {
-		_ = goCBBucket.Close()
-		return nil, errors.New("Unable to get server cluster compatibility")
-	}
-
-	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
-	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
-
-	// Define channels to limit the number of concurrent single and bulk operations,
-	// to avoid gocb queue overflow issues
-
+	// Scale gocb pipeline size with KV pool size
 	numPools := 1
 	if spec.KvPoolSize > 0 {
 		numPools = spec.KvPoolSize
 	}
 
+	// Define channels to limit the number of concurrent single and bulk operations,
+	// to avoid gocb queue overflow issues
+	singleOpsQueue := make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
+	bucketOpsQueue := make(chan struct{}, MaxConcurrentBulkOps*nodeCount*numPools)
+	viewOpsQueue := make(chan struct{}, MaxConcurrentViewOps*nodeCount)
+
 	bucket = &CouchbaseBucketGoCB{
 		Bucket:                    goCBBucket,
 		spec:                      spec,
-		singleOps:                 make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools),
-		bulkOps:                   make(chan struct{}, MaxConcurrentBulkOps*nodeCount*numPools),
-		viewOps:                   make(chan struct{}, MaxConcurrentViewOps*nodeCount),
+		singleOps:                 singleOpsQueue,
+		bulkOps:                   bucketOpsQueue,
+		viewOps:                   viewOpsQueue,
 		clusterCompatMajorVersion: uint64(clusterCompatMajor),
 		clusterCompatMinorVersion: uint64(clusterCompatMinor),
 	}
