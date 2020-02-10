@@ -542,10 +542,6 @@ func NumOpenBuckets(bucketName string) int32 {
 // Shorthand style:
 //     defer SetUpTestLogging(LevelDebug, KeyCache,KeyDCP,KeySync)()
 func SetUpTestLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn func()) {
-	if !testing.Verbose() {
-		// noop
-		return func() {}
-	}
 	caller := GetCallersName(1, false)
 	Infof(KeyAll, "%s: Setup logging: level: %v - keys: %v", caller, logLevel, logKeys)
 	return setTestLogging(logLevel, caller, logKeys...)
