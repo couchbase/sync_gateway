@@ -320,7 +320,7 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	warnings := dbConfig.deprecatedConfigCacheFallback()
 
 	// Check we have 8 warnings as this is the number of deprecated values we are testing
-	assert.Equal(t, 8, len(warnings))
+	require.Len(t, warnings, 8)
 
 	// Check that the deprecated values have correctly been propagated upto the new config values
 	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.Size, uint32(10))
@@ -350,7 +350,7 @@ func TestDeprecatedCacheConfig(t *testing.T) {
 	warnings = dbConfig.deprecatedConfigCacheFallback()
 
 	// Check we have 2 warnings as this is the number of deprecated values we are testing
-	assert.Equal(t, 2, len(warnings))
+	require.Len(t, warnings, 2)
 
 	// Check that the deprecated value has been ignored as the new value is the priority
 	assert.Equal(t, *dbConfig.CacheConfig.RevCacheConfig.Size, uint32(20))

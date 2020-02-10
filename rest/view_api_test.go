@@ -69,23 +69,23 @@ func TestViewQuery(t *testing.T) {
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assert.NoError(t, err, "Got unexpected error")
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: "ten"}, result.Rows[1])
 
 	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?limit=1")
-	assert.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 
 	result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?endkey=9")
-	assert.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: "seven"}, result.Rows[0])
 
 	if base.UnitTestUrlIsWalrus() {
 		// include_docs=true only works with walrus as documented here:
 		// https://forums.couchbase.com/t/do-the-viewquery-options-omit-include-docs-on-purpose/12399
 		result, err = rt.WaitForNAdminViewResults(1, "/db/_design/foo/_view/bar?include_docs=true&endkey=9")
-		assert.Equal(t, 1, len(result.Rows))
+		require.Len(t, result.Rows, 1)
 		assert.Equal(t, map[string]interface{}{"key": 7.0, "value": "seven"}, *result.Rows[0].Doc)
 	}
 
@@ -106,17 +106,17 @@ func TestViewQueryMultipleViews(t *testing.T) {
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_age")
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)}, result.Rows[1])
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_fname")
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)}, result.Rows[1])
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/by_lname")
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)}, result.Rows[1])
 }
@@ -134,13 +134,13 @@ func TestViewQueryWithParams(t *testing.T) {
 
 	result, err := rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&endkey="test2"&endkey_docid=doc2&end_key_doc_id=doc2&startkey="test1"&startkey_docid=doc1`)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: interface{}(nil)})
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: interface{}(nil)})
 
 	result, err = rt.WaitForNAdminViewResults(2, `/db/_design/foodoc/_view/foobarview?conflicts=true&descending=false&conflicts=true&descending=false&keys=["test1", "test2"]`)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc1", Key: "test1", Value: interface{}(nil)})
 	assert.Contains(t, result.Rows, &sgbucket.ViewRow{ID: "doc2", Key: "test2", Value: interface{}(nil)})
 }
@@ -161,14 +161,14 @@ func TestViewQueryUserAccess(t *testing.T) {
 
 	result, err := rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
 	assert.NoError(t, err, "Unexpected error in WaitForNAdminViewResults")
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"}, result.Rows[1])
 
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar?stale=false")
 	assert.NoError(t, err, "Unexpected error in WaitForNAdminViewResults")
 
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"}, result.Rows[1])
 
@@ -181,7 +181,7 @@ func TestViewQueryUserAccess(t *testing.T) {
 	result, err = rt.WaitForNUserViewResults(2, "/db/_design/foo/_view/bar?stale=false", testUser, password)
 	assert.NoError(t, err, "Unexpected error in WaitForNUserViewResults")
 
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "state1", Value: "doc1"}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "state2", Value: "doc2"}, result.Rows[1])
 
@@ -213,21 +213,21 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: 7.0, Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: 10.0, Value: interface{}(nil)}, result.Rows[1])
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_fname", ``)
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Alice", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Bob", Value: interface{}(nil)}, result.Rows[1])
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo/_view/by_lname", ``)
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc2", Key: "Seven", Value: interface{}(nil)}, result.Rows[0])
 	assert.Equal(t, &sgbucket.ViewRow{ID: "doc1", Key: "Ten", Value: interface{}(nil)}, result.Rows[1])
 }
@@ -258,7 +258,7 @@ func TestUserViewQuery(t *testing.T) {
 	// Have the user query the view:
 	result, err := rt.WaitForNUserViewResults(1, "/db/_design/foo/_view/bar?include_docs=true", quinn, password)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 	assert.Equal(t, 1, result.TotalRows)
 	row := result.Rows[0]
 	assert.Equal(t, float64(7), row.Key)
@@ -273,7 +273,7 @@ func TestUserViewQuery(t *testing.T) {
 	// Admin should see both rows:
 	result, err = rt.WaitForNAdminViewResults(2, "/db/_design/foo/_view/bar")
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	row = result.Rows[0]
 	assert.Equal(t, float64(7), row.Key)
 	assert.Equal(t, "seven", row.Value)
@@ -327,7 +327,7 @@ func TestAdminReduceViewQuery(t *testing.T) {
 	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
-	assert.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 	row := result.Rows[0]
 	value := row.Value.(float64)
 	assert.True(t, value == 10)
@@ -372,7 +372,7 @@ func TestAdminReduceSumQuery(t *testing.T) {
 	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 1 row with the reduce result
-	assert.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 	row := result.Rows[0]
 	value := row.Value.(float64)
 	assert.Equal(t, 108.0, value)
@@ -403,7 +403,7 @@ func TestAdminGroupReduceSumQuery(t *testing.T) {
 	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 2 row with the reduce result
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	row := result.Rows[1]
 	value := row.Value.(float64)
 	assert.Equal(t, 99.0, value)
@@ -436,7 +436,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 
 	// Ensure that query for non-existent keys returns no rows
 	viewUrlPath = "/db/_design/foo/_view/bar?keys=%5B%22channel_b%22%5D&stale=false"
@@ -444,7 +444,7 @@ func TestViewQueryWithKeys(t *testing.T) {
 	assertStatus(t, response, http.StatusOK) // Query string was parsed properly
 
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 0, len(result.Rows))
+	require.Len(t, result.Rows, 0)
 }
 
 func TestViewQueryWithCompositeKeys(t *testing.T) {
@@ -473,7 +473,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 
 	// Ensure that a query for non-existent key returns no rows
 	viewUrlPath = "/db/_design/foo/_view/composite_key_test?keys=%5B%5B%22channel_b%22%2C%2055%5D%5D&stale=false"
@@ -481,7 +481,7 @@ func TestViewQueryWithCompositeKeys(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 0, len(result.Rows))
+	require.Len(t, result.Rows, 0)
 }
 
 func TestViewQueryWithIntKeys(t *testing.T) {
@@ -510,7 +510,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	var result sgbucket.ViewResult
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 1, len(result.Rows))
+	require.Len(t, result.Rows, 1)
 
 	// Ensure that a query for non-existent key returns no rows
 	//   keys:[65,75]
@@ -519,7 +519,7 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &result))
-	assert.Equal(t, 0, len(result.Rows))
+	require.Len(t, result.Rows, 0)
 }
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
@@ -547,7 +547,7 @@ func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
 	assert.NoError(t, err, "Unexpected error")
 
 	// we should get 2 row with the reduce result
-	assert.Equal(t, 2, len(result.Rows))
+	require.Len(t, result.Rows, 2)
 	row := result.Rows[1]
 	value := row.Value.(float64)
 	assert.Equal(t, 99.0, value)
@@ -585,7 +585,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.True(t, postUpgradeResponse.Preview)
-	assert.Equal(t, 2, len(postUpgradeResponse.Result["db"].RemovedDDocs))
+	require.Lenf(t, postUpgradeResponse.Result["db"].RemovedDDocs, 2, "Response: %#v", postUpgradeResponse)
 
 	// Run post-upgrade in non-preview mode
 	postUpgradeResponse = PostUpgradeResponse{}
@@ -593,7 +593,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.False(t, postUpgradeResponse.Preview)
-	assert.Equal(t, 2, len(postUpgradeResponse.Result["db"].RemovedDDocs))
+	require.Len(t, postUpgradeResponse.Result["db"].RemovedDDocs, 2)
 
 	// Run post-upgrade in preview mode again, expect no results for database
 	postUpgradeResponse = PostUpgradeResponse{}
@@ -601,7 +601,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.True(t, postUpgradeResponse.Preview)
-	assert.Equal(t, 0, len(postUpgradeResponse.Result["db"].RemovedDDocs))
+	require.Len(t, postUpgradeResponse.Result["db"].RemovedDDocs, 0)
 
 	// Run post-upgrade in non-preview mode again, expect no results for database
 	postUpgradeResponse = PostUpgradeResponse{}
@@ -609,7 +609,7 @@ func TestPostInstallCleanup(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &postUpgradeResponse), "Error unmarshalling post_upgrade response")
 	assert.False(t, postUpgradeResponse.Preview)
-	assert.Equal(t, 0, len(postUpgradeResponse.Result["db"].RemovedDDocs))
+	require.Len(t, postUpgradeResponse.Result["db"].RemovedDDocs, 0)
 }
 
 func TestViewQueryWrappers(t *testing.T) {

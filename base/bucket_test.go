@@ -414,7 +414,7 @@ func TestTLSConfig(t *testing.T) {
 	conf = spec.TLSConfig()
 	assert.NotEmpty(t, conf)
 	assert.NotNil(t, conf.RootCAs)
-	assert.Equal(t, 1, len(conf.Certificates))
+	require.Len(t, conf.Certificates, 1)
 	assert.False(t, conf.InsecureSkipVerify)
 
 	// Check TLSConfig with no CA certificate; InsecureSkipVerify should be true
@@ -422,7 +422,7 @@ func TestTLSConfig(t *testing.T) {
 	conf = spec.TLSConfig()
 	assert.NotEmpty(t, conf)
 	assert.True(t, conf.InsecureSkipVerify)
-	assert.Equal(t, 1, len(conf.Certificates))
+	require.Len(t, conf.Certificates, 1)
 	assert.Nil(t, conf.RootCAs)
 
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path

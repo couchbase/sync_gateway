@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbaselabs/sg-replicate"
+	sgreplicate "github.com/couchbaselabs/sg-replicate"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestReplicator(t *testing.T) {
 	r := NewReplicator()
-	assert.Equal(t, 0, len(r.ActiveTasks()))
+	require.Len(t, r.ActiveTasks(), 0)
 
 	params := sgreplicate.ReplicationParameters{
 		SourceDb:  "db1",

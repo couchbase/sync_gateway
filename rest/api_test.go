@@ -52,7 +52,6 @@ func init() {
 
 func TestRoot(t *testing.T) {
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/", "")
@@ -72,8 +71,7 @@ func TestRoot(t *testing.T) {
 }
 
 func TestDBRoot(t *testing.T) {
-	rtConfig := RestTesterConfig{NoFlush: true}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendRequest("GET", "/db/", "")
@@ -439,7 +437,6 @@ func TestFunkyDocAndAttachmentIDs(t *testing.T) {
 
 func TestCORSOrigin(t *testing.T) {
 	rt := NewRestTester(t, nil)
-	rt.NoFlush = true
 	defer rt.Close()
 
 	reqHeaders := map[string]string{
@@ -1276,6 +1273,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 	//Create a test user
 	user, err = a.NewUser("user1", "letmein", nil)
+	assert.NoError(t, err)
 	assert.NoError(t, a.Save(user))
 
 	input := `{"docs": [{"_id": "bulk1", "type" : "setaccess", "owner":"user1" , "channel":"chan1"}, {"_id": "bulk2" , "channel":"chan1"}]}`
@@ -2067,7 +2065,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 1)
+	require.Len(t, changes.Results, 1)
 	since := changes.Results[0].Seq
 	assert.Equal(t, "g1", changes.Results[0].ID)
 
@@ -2139,7 +2137,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	changes = changesResults{}
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "alice"))
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	assert.Equal(t, 1, len(changes.Results))
+	require.Len(t, changes.Results, 1)
 	assert.NoError(t, err)
 	assert.Equal(t, "d1", changes.Results[0].ID)
 
@@ -2148,7 +2146,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "zegpold"))
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
 	assert.NoError(t, err)
-	assert.Equal(t, 2, len(changes.Results))
+	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "g1", changes.Results[0].ID)
 	assert.Equal(t, gammaDocSeq, changes.Results[0].Seq.Seq)
 	assert.Equal(t, "a1", changes.Results[1].ID)
@@ -2162,7 +2160,7 @@ func TestChannelAccessChanges(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	changes.Results = nil
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	assert.Equal(t, 1, len(changes.Results))
+	require.Len(t, changes.Results, 1)
 	assert.Equal(t, "a1", changes.Results[0].ID)
 
 	// What happens if we call access() with a nonexistent username?
@@ -2247,7 +2245,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &changes)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(changes.Results), 1)
+	require.Len(t, changes.Results, 1)
 	if len(changes.Results) > 0 {
 		goassert.Equals(t, changes.Results[0].ID, "alpha")
 	}
@@ -2268,7 +2266,7 @@ func TestAccessOnTombstone(t *testing.T) {
 	response = rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
 	log.Printf("_changes looks like: %s", response.Body.Bytes())
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &changes))
-	goassert.Equals(t, len(changes.Results), 1)
+	require.Len(t, changes.Results, 1)
 	if len(changes.Results) > 0 {
 		goassert.Equals(t, changes.Results[0].ID, "alpha")
 		goassert.Equals(t, changes.Results[0].Deleted, true)
@@ -2414,14 +2412,14 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	limit := 50
 	changesResults, err := rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user1", false)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 50, len(changesResults.Results))
+	require.Len(t, changesResults.Results, 50)
 	since := changesResults.Results[49].Seq
 	assert.Equal(t, "doc48", changesResults.Results[49].ID)
 
 	//// Check the _changes feed with  since and limit, to get second half of feed
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=\"%s\"&limit=%d", since, limit), "user1", false)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 50, len(changesResults.Results))
+	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
 	assert.Equal(t, "doc98", changesResults.Results[49].ID)
 
@@ -2432,7 +2430,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	//Retrieve all changes for user2 with no limits
 	changesResults, err = rt.WaitForChanges(101, fmt.Sprintf("/db/_changes"), "user2", false)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 101, len(changesResults.Results))
+	require.Len(t, changesResults.Results, 101)
 	assert.Equal(t, "doc99", changesResults.Results[99].ID)
 
 	// Create user3
@@ -2450,7 +2448,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	//Get first 50 document changes.
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user3", false)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 50, len(changesResults.Results))
+	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
 	assert.Equal(t, "doc49", changesResults.Results[49].ID)
 	assert.Equal(t, userSequence, since.TriggeredBy)
@@ -2458,7 +2456,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	//// Get remainder of changes i.e. no limit parameter
 	changesResults, err = rt.WaitForChanges(51, fmt.Sprintf("/db/_changes?since=\"%s\"", since), "user3", false)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 51, len(changesResults.Results))
+	require.Len(t, changesResults.Results, 51)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
 	// Create user4
@@ -2470,7 +2468,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?limit=%d", limit), "user4", false)
 	assert.NoError(t, err, "Unexpected error")
-	assert.Equal(t, 50, len(changesResults.Results))
+	require.Len(t, changesResults.Results, 50)
 	since = changesResults.Results[49].Seq
 	assert.Equal(t, "doc49", changesResults.Results[49].ID)
 	assert.Equal(t, user4Sequence, since.TriggeredBy)
@@ -2478,7 +2476,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 	//// Check the _changes feed with  since and limit, to get second half of feed
 	changesResults, err = rt.WaitForChanges(50, fmt.Sprintf("/db/_changes?since=%s&limit=%d", since, limit), "user4", false)
 	assert.Equal(t, nil, err)
-	assert.Equal(t, 50, len(changesResults.Results))
+	require.Len(t, changesResults.Results, 50)
 	assert.Equal(t, "doc99", changesResults.Results[49].ID)
 
 }
@@ -3409,11 +3407,16 @@ func TestBulkGetBadAttachmentReproIssue2528(t *testing.T) {
 	*/
 
 	// Modify the doc directly in the bucket to delete the digest field
-	s := couchbaseDoc[base.SyncPropertyName].(map[string]interface{})
-	couchbaseDoc["_attachments"] = s["attachments"].(map[string]interface{})
-	attachments := couchbaseDoc["_attachments"].(map[string]interface{})
+	s, ok := couchbaseDoc[base.SyncPropertyName].(map[string]interface{})
+	require.True(t, ok)
+	couchbaseDoc["_attachments"], ok = s["attachments"].(map[string]interface{})
+	require.True(t, ok)
+	attachments, ok := couchbaseDoc["_attachments"].(map[string]interface{})
+	require.True(t, ok)
 
-	attach1 := attachments[attachmentName].(map[string]interface{})
+	attach1, ok := attachments[attachmentName].(map[string]interface{})
+	require.True(t, ok)
+
 	delete(attach1, "digest")
 	delete(attach1, "content_type")
 	delete(attach1, "length")

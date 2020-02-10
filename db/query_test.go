@@ -327,14 +327,18 @@ func TestCoveringQueries(t *testing.T) {
 	plan, explainErr := gocbBucket.ExplainQuery(channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
 	covered := isCovered(plan)
-	assert.True(t, covered, "Channel query isn't covered by index")
+	planJSON, err := base.JSONMarshal(plan)
+	assert.NoError(t, err)
+	assert.True(t, covered, "Channel query isn't covered by index: %s", planJSON)
 
 	// star channel
 	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100)
 	plan, explainErr = gocbBucket.ExplainQuery(channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
 	covered = isCovered(plan)
-	assert.True(t, covered, "Star channel query isn't covered by index")
+	planJSON, err = base.JSONMarshal(plan)
+	assert.NoError(t, err)
+	assert.True(t, covered, "Star channel query isn't covered by index: %s", planJSON)
 
 	// Access and roleAccess currently aren't covering, because of the need to target the user property by name
 	// in the SELECT.
@@ -343,14 +347,18 @@ func TestCoveringQueries(t *testing.T) {
 	plan, explainErr = gocbBucket.ExplainQuery(accessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for access query")
 	covered = isCovered(plan)
-	//assert.True(t, covered, "Access query isn't covered by index")
+	planJSON, err = base.JSONMarshal(plan)
+	assert.NoError(t, err)
+	//assert.True(t, covered, "Access query isn't covered by index: %s", planJSON)
 
 	// roleAccess
 	roleAccessStatement := db.buildRoleAccessQuery("user1")
 	plan, explainErr = gocbBucket.ExplainQuery(roleAccessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
 	covered = isCovered(plan)
-	//assert.True(t, !covered, "RoleAccess query isn't covered by index")
+	planJSON, err = base.JSONMarshal(plan)
+	assert.NoError(t, err)
+	//assert.True(t, !covered, "RoleAccess query isn't covered by index: %s", planJSON)
 
 }
 

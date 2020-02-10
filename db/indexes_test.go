@@ -9,6 +9,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInitializeIndexes(t *testing.T) {
@@ -176,7 +177,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, removeErr)
 
 	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false)
-	assert.Equal(t, 0, len(removedIndexes))
+	require.Len(t, removedIndexes, 0)
 	assert.NoError(t, removeErr)
 
 	// Cleanup design docs created during test

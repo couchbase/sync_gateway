@@ -17,6 +17,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -177,51 +178,44 @@ func TestBulkGetRaw(t *testing.T) {
 		for _, key := range keySet {
 			// Delete key
 			err := bucket.Delete(key)
-			if err != nil {
-				t.Errorf("Error removing key from bucket")
-			}
+			assert.NoError(t, err)
 		}
 
 	}()
 
 	for i := 0; i < 1000; i++ {
-
-		key := fmt.Sprintf("%s%d", keyPrefix, i)
-		val := []byte(fmt.Sprintf("bar%d", i))
+		iStr := strconv.Itoa(i)
+		key := keyPrefix + iStr
+		val := []byte("bar" + iStr)
 		keySet[i] = key
 		valueSet[key] = val
 
 		_, _, err := bucket.GetRaw(key)
-		if err == nil {
-			t.Errorf("Key [%s] should not exist yet, expected error but didn't get one.", key)
-		}
-
-		if err := bucket.SetRaw(key, 0, val); err != nil {
-			t.Errorf("Error calling SetRaw(): %v", err)
-		}
+		require.Truef(t, IsKeyNotFoundError(testBucket.Bucket, err), "Key [%s] should not exist yet, expected error but didn't get one.", key)
+		require.NoError(t, bucket.SetRaw(key, 0, val))
 	}
 
 	results, err := bucket.GetBulkRaw(keySet)
-	assert.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	goassert.True(t, len(results) == 1000)
+	require.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
+	assert.Len(t, results, 1000)
 
 	// validate results, and prepare new keySet with non-existent keys
 	mixedKeySet := make([]string, 2000)
 	for index, key := range keySet {
 		// Verify value
-		goassert.True(t, bytes.Equal(results[key], valueSet[key]))
+		assert.Equal(t, results[key], valueSet[key])
 		mixedKeySet[2*index] = key
 		mixedKeySet[2*index+1] = fmt.Sprintf("%s_invalid", key)
 	}
 
 	// Validate bulkGet that include non-existent keys work as expected
 	mixedResults, err := bucket.GetBulkRaw(mixedKeySet)
-	assert.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	goassert.True(t, len(results) == 1000)
+	require.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
+	assert.Len(t, results, 1000)
 
 	for _, key := range keySet {
 		// validate mixed results
-		goassert.True(t, bytes.Equal(mixedResults[key], valueSet[key]))
+		assert.Equal(t, mixedResults[key], valueSet[key])
 	}
 
 	// if passed all non-existent keys, should return an empty map
@@ -230,9 +224,9 @@ func TestBulkGetRaw(t *testing.T) {
 		nonExistentKeySet[index] = fmt.Sprintf("%s_invalid", key)
 	}
 	emptyResults, err := bucket.GetBulkRaw(nonExistentKeySet)
-	assert.NoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
-	goassert.False(t, emptyResults == nil)
-	goassert.True(t, len(emptyResults) == 0)
+	require.NoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
+	assert.NotNil(t, emptyResults)
+	assert.Len(t, emptyResults, 0)
 
 }
 
@@ -2139,7 +2133,7 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	spec.Keypath = keyPath
 
 	// Attempt to open a test bucket with invalid certs
-	_, err := GetBucket(spec)
+	bucket, err := GetBucket(spec)
 
 	// We no longer need the cert files, so go ahead and clean those up now before any assertions stop the test.
 	x509CleanupFn()
@@ -2152,6 +2146,8 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	kvErr, ok := errCause.(*gocbcore.KvError)
 	require.Truef(t, ok, "Expected error type gocbcore.KvError, but got %#v", errCause)
 	assert.Equal(t, gocbcore.StatusAccessError, kvErr.Code)
+
+	assert.Nil(t, bucket)
 }
 
 // tempX509Certs creates temporary files for an example X509 cert and key
