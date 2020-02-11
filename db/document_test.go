@@ -238,7 +238,7 @@ func BenchmarkMarshalStack(b *testing.B) {
 	b.Run("Copy", func(bm *testing.B) {
 		for i := 0; i < bm.N; i++ {
 			newDoc, _ := body.ToIncomingDoc(nil)
-			copiedBody := newDoc.UnmarshalledBody.DeepCopy()
+			copiedBody := newDoc.Body.DeepCopy()
 			stampSyncFnSpecialProperties(copiedBody, newDoc.SpecialProperties)
 		}
 	})

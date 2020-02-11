@@ -372,7 +372,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		SpecialProperties: db.SpecialProperties{
 			ID: docid,
 		},
-		RawBody: bodyBytes,
+		BodyBytes: bodyBytes,
 	}
 
 	var parentRev string
@@ -397,7 +397,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 
 	// Handle and pull out expiry
 	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) || bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
-		body := newDoc.Body()
+		body := newDoc.GetBody()
 		newDoc, err = body.ToIncomingDoc(&newDoc.SpecialProperties)
 		if err != nil {
 			return err

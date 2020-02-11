@@ -998,7 +998,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			RevID:   revID,
 			Deleted: revMessage.deleted(),
 		},
-		RawBody: bodyBytes,
+		BodyBytes: bodyBytes,
 	}
 
 	var newBody db.Body
@@ -1085,7 +1085,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 	if hasAttachments || hasExpiry {
 		if newBody == nil {
-			newBody = newDoc.Body()
+			newBody = newDoc.GetBody()
 		}
 		newDoc, err = newBody.ToIncomingDoc(&newDoc.SpecialProperties)
 		if err != nil {

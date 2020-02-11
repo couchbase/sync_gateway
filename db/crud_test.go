@@ -954,7 +954,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 		}
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
-		_ = base.Patch(&deltaSrcMap, newDoc.Body())
+		_ = base.Patch(&deltaSrcMap, newDoc.GetBody())
 	}
 
 	b.Run("SmallDiff", func(b *testing.B) {
@@ -963,7 +963,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 				ID:    "doc1",
 				RevID: "1a",
 			},
-			RawBody: []byte(`{"foo": "bart"}`),
+			BodyBytes: []byte(`{"foo": "bart"}`),
 		}
 		for n := 0; n < b.N; n++ {
 			getDelta(newDoc)
@@ -979,7 +979,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 				ID:    "doc1",
 				RevID: "1a",
 			},
-			RawBody: bodyBytes,
+			BodyBytes: bodyBytes,
 		}
 		for n := 0; n < b.N; n++ {
 			getDelta(newDoc)

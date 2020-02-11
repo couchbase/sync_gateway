@@ -634,7 +634,7 @@ func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (anc
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.
 func (db *Database) backupAncestorRevs(doc *Document, newDoc *IncomingDocument) {
-	newBodyBytes, err := newDoc.BodyBytes()
+	newBodyBytes, err := newDoc.GetBodyBytes()
 	if err != nil {
 		base.Warnf("Error getting body bytes when backing up ancestor revs")
 		return
@@ -1381,7 +1381,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		}
 
 		// Lazily marshal bytes for storage in revcache
-		storedDocBytes, err := storedDoc.BodyBytes()
+		storedDocBytes, err := storedDoc.GetBodyBytes()
 		if err != nil {
 			return nil, "", err
 		}
@@ -1396,7 +1396,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			Attachments:      doc.Attachments,
 			Expiry:           doc.Expiry,
 			Deleted:          doc.History[newRevID].Deleted,
-			_shallowCopyBody: storedDoc.Body(),
+			_shallowCopyBody: storedDoc.GetBody(),
 		}
 		db.revisionCache.Put(documentRevision)
 		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
