@@ -222,3 +222,25 @@ func TestParseDocumentCas(t *testing.T) {
 
 	goassert.Equals(t, casInt, uint64(1492749160563736576))
 }
+
+func BenchmarkMarshalStack(b *testing.B) {
+	body := Body{
+		"val": "foo",
+	}
+
+	b.Run("MarshalStack", func(bm *testing.B) {
+		for i := 0; i < bm.N; i++ {
+			newDoc, _ := body.ToIncomingDoc(nil)
+			_, _ = newDoc.GetSyncFnBody()
+		}
+	})
+
+	b.Run("Copy", func(bm *testing.B) {
+		for i := 0; i < bm.N; i++ {
+			newDoc, _ := body.ToIncomingDoc(nil)
+			copiedBody := newDoc.UnmarshalledBody.DeepCopy()
+			stampSyncFnSpecialProperties(copiedBody, newDoc.SpecialProperties)
+		}
+	})
+
+}

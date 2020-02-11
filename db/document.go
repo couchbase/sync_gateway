@@ -159,8 +159,8 @@ type Document struct {
 }
 
 type IncomingDocument struct {
-	UnmarshalledBody Body
-	RawBody          []byte
+	UnmarshalledBody Body   // Stored unmarshaled body without special properties
+	RawBody          []byte // Stored marshaled body without special properties
 
 	SpecialProperties
 }
@@ -258,12 +258,6 @@ func stampSyncFnSpecialProperties(docBody map[string]interface{}, properties Spe
 	if properties.Deleted {
 		docBody[BodyDeleted] = properties.Deleted
 	}
-}
-
-// TODO: Mostly unused, can be removed once work is complete
-func (doc *IncomingDocument) UpdateBody(body Body) {
-	doc.UnmarshalledBody = body
-	doc.RawBody = nil
 }
 
 func (doc *IncomingDocument) Body() Body {
