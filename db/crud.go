@@ -1162,7 +1162,10 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	syncFnBody := newDoc.GetDeepMutableBody()
+	syncFnBody, err := newDoc.GetSyncFnBody()
+	if err != nil {
+		return
+	}
 
 	// TODO: seems a bit late to do this. Could we move it earlier?
 	err = validateNewBody(syncFnBody)
@@ -1174,10 +1177,6 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags()
 	db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, newDoc)
-
-	syncFnBody[BodyId] = doc.ID
-	syncFnBody[BodyRev] = newRevID
-	syncFnBody[BodyDeleted] = newDoc.Deleted
 
 	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, syncFnBody, newRevID)
 	if err != nil {

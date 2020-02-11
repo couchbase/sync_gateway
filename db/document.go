@@ -246,6 +246,20 @@ func (b Body) ExtractSpecialProperties(specialProperties *SpecialProperties) err
 	return nil
 }
 
+func stampSyncFnSpecialProperties(docBody map[string]interface{}, properties SpecialProperties) {
+	if properties.ID != "" {
+		docBody[BodyId] = properties.ID
+	}
+
+	if properties.RevID != "" {
+		docBody[BodyRev] = properties.RevID
+	}
+
+	if properties.Deleted {
+		docBody[BodyDeleted] = properties.Deleted
+	}
+}
+
 // TODO: Mostly unused, can be removed once work is complete
 func (doc *IncomingDocument) UpdateBody(body Body) {
 	doc.UnmarshalledBody = body
@@ -343,6 +357,21 @@ func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (st
 	}
 
 	return CreateRevIDWithBytes(generation, parentRevID, rawBodyBytes), nil
+}
+
+func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
+	var syncFnBody Body
+
+	buf := bytes.NewBuffer(doc.RawBody)
+	d := base.JSONDecoder(buf)
+	d.UseNumber()
+	err := d.Decode(&syncFnBody)
+	if err != nil {
+		return nil, err
+	}
+	stampSyncFnSpecialProperties(syncFnBody, doc.SpecialProperties)
+
+	return syncFnBody, nil
 }
 
 type revOnlySyncData struct {
@@ -786,11 +815,9 @@ func (doc *Document) pruneRevisions(maxDepth uint32, keepRev string) int {
 // Adds a revision body (as Body) to a document.  Removes special properties first.
 func (doc *Document) setRevisionBody(revid string, newDoc *IncomingDocument, storeInline bool) {
 	if revid == doc.CurrentRev {
-		doc._body = newDoc.UnmarshalledBody
 		doc._rawBody = newDoc.RawBody
 	} else {
-		bodyBytes, _ := newDoc.BodyBytes()
-		doc.setNonWinningRevisionBody(revid, bodyBytes, storeInline)
+		doc.setNonWinningRevisionBody(revid, newDoc.RawBody, storeInline)
 	}
 }
 
