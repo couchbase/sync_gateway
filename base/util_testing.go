@@ -45,9 +45,9 @@ func (tb TestBucket) Close() {
 	tb.closeFn()
 }
 
-func GetTestBucket(t testing.TB) TestBucket {
+func GetTestBucket(t testing.TB) *TestBucket {
 	bucket, spec, closeFn := TestBucketPool.GetTestBucketAndSpec(t)
-	return TestBucket{
+	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,
 		closeFn:    closeFn,

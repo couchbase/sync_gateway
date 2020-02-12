@@ -39,12 +39,8 @@ func TestReproduce2383(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	testBucket := base.GetTestBucket(t)
-	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{})
-	testBucket.Bucket = leakyBucket
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
-	rt.WithTestBucket(&testBucket)
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	user, err := a.NewUser("ben", "letmein", channels.SetOf(t, "PBS"))
@@ -70,6 +66,9 @@ func TestReproduce2383(t *testing.T) {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
+
+	leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+	require.True(t, ok)
 
 	// Force a partial error for the first ViewCustom call we make to initialize an invalid cache.
 	leakyBucket.SetFirstTimeViewCustomPartialError(true)
@@ -2237,12 +2236,8 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
-	testBucket := base.GetTestBucket(t)
-	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{})
-	testBucket.Bucket = leakyBucket
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	rt.testBucket = &testBucket
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -2297,6 +2292,10 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 		}
 
 	}
+
+	leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+	require.True(t, ok)
+
 	leakyBucket.SetPostQueryCallback(postQueryCallback)
 
 	// Issue a since=0 changes request.  Will cause the following:

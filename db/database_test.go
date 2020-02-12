@@ -40,11 +40,11 @@ func init() {
 // Its important to call tearDownTestDB() on the database and .Close() on the TestBucket that is returned by this helper.
 // For example, if .Close() is not called on the TestBucket before the test is finished, it will be detected and
 // the next test will fail.
-func setupTestDB(t testing.TB) (*Database, base.TestBucket) {
+func setupTestDB(t testing.TB) (*Database, *base.TestBucket) {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
-func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, base.TestBucket) {
+func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, *base.TestBucket) {
 
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
@@ -60,7 +60,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
 // tests against Couchbase Server
-func setupTestDBWithViewsEnabled(t testing.TB) (*Database, base.TestBucket) {
+func setupTestDBWithViewsEnabled(t testing.TB) (*Database, *base.TestBucket) {
 
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
@@ -76,7 +76,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, base.TestBucket) {
 
 // Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
 // issues with custom _sync:seq values without triggering skipped sequences between 0 and customSeq
-func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, base.TestBucket) {
+func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, *base.TestBucket) {
 
 	dbcOptions := DatabaseContextOptions{}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
@@ -93,7 +93,7 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, ba
 	return db, tBucket
 }
 
-func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, base.TestBucket) {
+func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, *base.TestBucket) {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
@@ -1869,7 +1869,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket base.TestBucket
+	var testBucket *base.TestBucket
 	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
@@ -1907,7 +1907,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket base.TestBucket
+	var testBucket *base.TestBucket
 	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
@@ -1964,7 +1964,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket base.TestBucket
+	var testBucket *base.TestBucket
 	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
@@ -2021,7 +2021,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket base.TestBucket
+	var testBucket *base.TestBucket
 	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)

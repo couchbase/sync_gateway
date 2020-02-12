@@ -16,7 +16,7 @@ const (
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
-func testBucketWithViewsAndBrokenDoc(t testing.TB) (tBucket base.TestBucket, numDocs int) {
+func testBucketWithViewsAndBrokenDoc(t testing.TB) (tBucket *base.TestBucket, numDocs int) {
 
 	numDocsAdded := 0
 	tBucket = base.GetTestBucket(t)

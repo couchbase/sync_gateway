@@ -76,81 +76,79 @@ func (rt *RestTester) Bucket() base.Bucket {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
 
-	if rt.bucketDone.IsTrue() {
+	if rt.testBucket != nil {
 		return rt.testBucket.Bucket
 	}
 
-	rt.bucketInitOnce.Do(func() {
-		testBucket := base.GetTestBucket(rt.tb)
-		rt.WithTestBucket(&testBucket)
+	testBucket := base.GetTestBucket(rt.tb)
 
-		if rt.InitSyncSeq > 0 {
-			log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
-			_, incrErr := testBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
-			if incrErr != nil {
-				rt.tb.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
-			}
+	if rt.InitSyncSeq > 0 {
+		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
+		_, incrErr := testBucket.Incr(base.SyncSeqKey, rt.InitSyncSeq, rt.InitSyncSeq, 0)
+		if incrErr != nil {
+			rt.tb.Fatalf("Error initializing %s in test bucket: %v", base.SyncSeqKey, incrErr)
 		}
+	}
 
-		var syncFnPtr *string
-		if len(rt.SyncFn) > 0 {
-			syncFnPtr = &rt.SyncFn
-		}
+	var syncFnPtr *string
+	if len(rt.SyncFn) > 0 {
+		syncFnPtr = &rt.SyncFn
+	}
 
-		corsConfig := &CORSConfig{
-			Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
-			LoginOrigin: []string{"http://example.com"},
-			Headers:     []string{},
-			MaxAge:      1728000,
-		}
+	corsConfig := &CORSConfig{
+		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
+		LoginOrigin: []string{"http://example.com"},
+		Headers:     []string{},
+		MaxAge:      1728000,
+	}
 
-		rt.RestTesterServerContext = NewServerContext(&ServerConfig{
-			CORS:           corsConfig,
-			Facebook:       &FacebookConfig{},
-			AdminInterface: &DefaultAdminInterface,
-		})
-
-		useXattrs := base.TestUseXattrs()
-
-		if rt.DatabaseConfig == nil {
-			// If no db config was passed in, create one
-			rt.DatabaseConfig = &DbConfig{}
-		}
-
-		// Force views if running against walrus
-		if !base.TestUseCouchbaseServer() {
-			rt.DatabaseConfig.UseViews = true
-		}
-
-		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-		numReplicas := uint(0)
-		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
-		un, pw, _ := rt.testBucket.BucketSpec.Auth.GetCredentials()
-		rt.DatabaseConfig.BucketConfig = BucketConfig{
-			Server:   &rt.testBucket.BucketSpec.Server,
-			Bucket:   &rt.testBucket.BucketSpec.BucketName,
-			Username: un,
-			Password: pw,
-		}
-		rt.DatabaseConfig.Name = "db"
-		rt.DatabaseConfig.Sync = syncFnPtr
-		rt.DatabaseConfig.EnableXattrs = &useXattrs
-		if rt.EnableNoConflictsMode {
-			boolVal := false
-			rt.DatabaseConfig.AllowConflicts = &boolVal
-		}
-
-		_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
-		if err != nil {
-			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
-		}
-
-		rt.bucketDone.Set(true)
-
-		if !rt.noAdminParty {
-			rt.SetAdminParty(true)
-		}
+	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
+		CORS:           corsConfig,
+		Facebook:       &FacebookConfig{},
+		AdminInterface: &DefaultAdminInterface,
 	})
+
+	useXattrs := base.TestUseXattrs()
+
+	if rt.DatabaseConfig == nil {
+		// If no db config was passed in, create one
+		rt.DatabaseConfig = &DbConfig{}
+	}
+
+	// Force views if running against walrus
+	if !base.TestUseCouchbaseServer() {
+		rt.DatabaseConfig.UseViews = true
+	}
+
+	// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
+	numReplicas := uint(0)
+	rt.DatabaseConfig.NumIndexReplicas = &numReplicas
+	un, pw, _ := testBucket.BucketSpec.Auth.GetCredentials()
+	rt.DatabaseConfig.BucketConfig = BucketConfig{
+		Server:   &testBucket.BucketSpec.Server,
+		Bucket:   &testBucket.BucketSpec.BucketName,
+		Username: un,
+		Password: pw,
+	}
+	rt.DatabaseConfig.Name = "db"
+	rt.DatabaseConfig.Sync = syncFnPtr
+	rt.DatabaseConfig.EnableXattrs = &useXattrs
+	if rt.EnableNoConflictsMode {
+		boolVal := false
+		rt.DatabaseConfig.AllowConflicts = &boolVal
+	}
+
+	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
+	if err != nil {
+		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+	}
+
+	rt.WithTestBucket(testBucket)
+	rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
+
+	if !rt.noAdminParty {
+		rt.SetAdminParty(true)
+	}
 
 	return rt.testBucket.Bucket
 }
@@ -222,10 +220,6 @@ func (rt *RestTester) SetAdminParty(partyTime bool) {
 	}
 	guest.SetExplicitChannels(chans)
 	_ = a.Save(guest)
-}
-
-func (rt *RestTester) DisableGuestUser() {
-	rt.SetAdminParty(false)
 }
 
 func (rt *RestTester) Close() {
