@@ -106,19 +106,6 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		}
 	}
 
-	user, pass, _ := spec.Auth.GetCredentials()
-	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
-	if err != nil {
-		return nil, err
-	}
-
-	if len(nodesMetadata) == 0 {
-		return nil, errors.New("Unable to get server cluster compatibility")
-	}
-
-	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
-	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
-
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
 	if err != nil {
 		Infof(KeyAll, "Error opening bucket %s: %v", spec.BucketName, err)
@@ -126,13 +113,22 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	}
 	Infof(KeyAll, "Successfully opened bucket %s", spec.BucketName)
 
+	// Query node meta to find cluster compat version
+	user, pass, _ := spec.Auth.GetCredentials()
+	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
+	if err != nil || len(nodesMetadata) == 0 {
+		_ = goCBBucket.Close()
+		return nil, pkgerrors.Wrapf(err, "Unable to get server cluster compatibility for %d nodes", len(nodesMetadata))
+	}
+	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
+	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)
+
 	// Set the GoCB opTimeout which controls how long blocking GoCB ops remain blocked before
 	// returning an "operation timed out" error.  Defaults to 2.5 seconds.  (SG #3508)
 	if spec.BucketOpTimeout != nil {
 		goCBBucket.SetOperationTimeout(*spec.BucketOpTimeout)
 		// Update the bulk op timeout to preserve the 1:4 ratio between op timeouts and bulk op timeouts.
 		goCBBucket.SetBulkOperationTimeout(*spec.BucketOpTimeout * 4)
-
 	}
 
 	if spec.CouchbaseDriver == GoCBCustomSGTranscoder {
