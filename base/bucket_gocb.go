@@ -2710,7 +2710,7 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 		underlyingBucket = typedBucket.GetUnderlyingBucket()
 	case *LeakyBucket:
 		underlyingBucket = typedBucket.GetUnderlyingBucket()
-	case TestBucket:
+	case *TestBucket:
 		underlyingBucket = typedBucket.Bucket
 	default:
 		// bail out for unrecognised/unsupported buckets

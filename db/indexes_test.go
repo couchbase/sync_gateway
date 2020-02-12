@@ -23,7 +23,7 @@ func TestInitializeIndexes(t *testing.T) {
 	defer db.Close()
 
 	goCbBucket, isGoCBBucket := base.AsGoCBBucket(testBucket)
-	goassert.True(t, isGoCBBucket)
+	require.True(t, isGoCBBucket)
 
 	dropErr := base.DropAllBucketIndexes(goCbBucket)
 	assert.NoError(t, dropErr, "Error dropping all indexes")
