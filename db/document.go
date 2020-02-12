@@ -159,7 +159,7 @@ type Document struct {
 }
 
 type IncomingDocument struct {
-	Body      Body   // Stored unmarshaled body without special properties
+	Body      Body   // Unmarshaled body without special properties
 	BodyBytes []byte // Stored marshaled body without special properties
 
 	SpecialProperties
@@ -309,33 +309,6 @@ func (doc *IncomingDocument) GetBodyBytes() ([]byte, error) {
 	return doc.BodyBytes, nil
 }
 
-// Get a deep mutable copy of the body, using RawBody.  Initializes RawBody based on UnmarshalledBody if not already present.
-func (doc *IncomingDocument) GetDeepMutableBody() Body {
-
-	// If doc.RawBody isn't present, marshal from doc.Body
-	if doc.BodyBytes == nil {
-		if doc.Body == nil {
-			return nil
-		}
-		var err error
-		doc.BodyBytes, err = base.JSONMarshal(doc.Body)
-		if err != nil {
-			base.Warnf("Unable to marshal document body into raw body : %s", err)
-			return nil
-		}
-
-	}
-
-	var mutableBody Body
-	err := mutableBody.Unmarshal(doc.BodyBytes)
-	if err != nil {
-		base.Warnf("Unable to unmarshal document body from raw body : %s", err)
-		return nil
-	}
-
-	return mutableBody
-}
-
 func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (string, error) {
 	rawBodyBytes, err := doc.GetBodyBytes()
 	if err != nil {
@@ -353,19 +326,27 @@ func (doc *IncomingDocument) CreateRevID(generation int, parentRevID string) (st
 	return CreateRevIDWithBytes(generation, parentRevID, rawBodyBytes), nil
 }
 
+// This must return a mutable body as the sync fn can alter this
 func (doc *IncomingDocument) GetSyncFnBody() (map[string]interface{}, error) {
-	var syncFnBody Body
+	if doc.BodyBytes == nil {
+		if doc.BodyBytes == nil {
+			return nil, nil
+		}
+		var err error
+		doc.BodyBytes, err = base.JSONMarshal(doc.Body)
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	buf := bytes.NewBuffer(doc.BodyBytes)
-	d := base.JSONDecoder(buf)
-	d.UseNumber()
-	err := d.Decode(&syncFnBody)
+	var mutableBody Body
+	err := mutableBody.Unmarshal(doc.BodyBytes)
 	if err != nil {
 		return nil, err
 	}
-	stampSyncFnSpecialProperties(syncFnBody, doc.SpecialProperties)
+	stampSyncFnSpecialProperties(mutableBody, doc.SpecialProperties)
 
-	return syncFnBody, nil
+	return mutableBody, nil
 }
 
 type revOnlySyncData struct {

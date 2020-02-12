@@ -98,6 +98,7 @@ func TestDocumentNumbers(t *testing.T) {
 			//Create document
 			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", test.name), test.body)
 			assertStatus(ts, response, 201)
+			base.Infof(base.KeyAll, "Initial Response %s", response.BodyBytes())
 
 			// Get document, validate number value
 			getResponse := rt.SendAdminRequest("GET", fmt.Sprintf("/db/%s", test.name), "")
@@ -106,6 +107,9 @@ func TestDocumentNumbers(t *testing.T) {
 			// Check the raw bytes, because unmarshalling the response would be another opportunity for the number to get modified
 			responseString := string(getResponse.Body.Bytes())
 			if !strings.Contains(responseString, test.expectedString) {
+				base.Infof(base.KeyAll, "Expected result: %s", test.expectedString)
+				base.Infof(base.KeyAll, "Actual result: %s", responseString)
+
 				ts.Errorf("Response does not contain the expected number format (%s).  Response: %s", test.name, responseString)
 			}
 
