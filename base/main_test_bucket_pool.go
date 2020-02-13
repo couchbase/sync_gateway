@@ -604,7 +604,7 @@ func (tbp *GocbTestBucketPool) openTestBucket(testBucketName bucketName, sleeper
 	bucketSpec.BucketName = string(testBucketName)
 
 	waitForNewBucketWorker := func() (shouldRetry bool, err error, value interface{}) {
-		gocbBucket, err := GetCouchbaseBucketGoCBFromCluster(tbp.cluster, bucketSpec)
+		gocbBucket, err := GetCouchbaseBucketGoCBFromAuthenticatedCluster(tbp.cluster, bucketSpec, "")
 		if err != nil {
 			tbp.Logf(ctx, "Retrying OpenBucket")
 			return true, err, nil

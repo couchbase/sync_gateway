@@ -70,31 +70,8 @@ type CouchbaseBucketGoCB struct {
 	clusterCompatMajorVersion, clusterCompatMinorVersion uint64 // E.g: 6 and 0 for 6.0.3
 }
 
-func GetCouchbaseBucketGoCBFromCluster(cluster *gocb.Cluster, spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
-	password := ""
-	// Check for client cert (x.509) authentication
-	if spec.Certpath != "" {
-		Infof(KeyAuth, "Attempting cert authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
-		certAuthErr := cluster.Authenticate(gocb.CertAuthenticator{})
-		if certAuthErr != nil {
-			Infof(KeyAuth, "Error Attempting certificate authentication %s", certAuthErr)
-			return nil, pkgerrors.WithStack(certAuthErr)
-		}
-	} else if spec.Auth != nil {
-		Infof(KeyAuth, "Attempting credential authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
-		user, pass, _ := spec.Auth.GetCredentials()
-		authErr := cluster.Authenticate(gocb.PasswordAuthenticator{
-			Username: user,
-			Password: pass,
-		})
-		// If RBAC authentication fails, revert to non-RBAC authentication by including the password to OpenBucket
-		if authErr != nil {
-			Warnf("RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", MD(spec.BucketName), UD(user))
-			password = pass
-		}
-	}
-
-	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
+func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec BucketSpec, bucketPassword string) (bucket *CouchbaseBucketGoCB, err error) {
+	goCBBucket, err := cluster.OpenBucket(spec.BucketName, bucketPassword)
 	if err != nil {
 		Infof(KeyAll, "Error opening bucket %s: %v", spec.BucketName, err)
 		return nil, pkgerrors.WithStack(err)
@@ -183,7 +160,30 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		return nil, err
 	}
 
-	return GetCouchbaseBucketGoCBFromCluster(cluster, spec)
+	bucketPassword := ""
+	// Check for client cert (x.509) authentication
+	if spec.Certpath != "" {
+		Infof(KeyAuth, "Attempting cert authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		certAuthErr := cluster.Authenticate(gocb.CertAuthenticator{})
+		if certAuthErr != nil {
+			Infof(KeyAuth, "Error Attempting certificate authentication %s", certAuthErr)
+			return nil, pkgerrors.WithStack(certAuthErr)
+		}
+	} else if spec.Auth != nil {
+		Infof(KeyAuth, "Attempting credential authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
+		user, pass, _ := spec.Auth.GetCredentials()
+		authErr := cluster.Authenticate(gocb.PasswordAuthenticator{
+			Username: user,
+			Password: pass,
+		})
+		// If RBAC authentication fails, revert to non-RBAC authentication by including the password to OpenBucket
+		if authErr != nil {
+			Warnf("RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", MD(spec.BucketName), UD(user))
+			bucketPassword = pass
+		}
+	}
+
+	return GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster, spec, bucketPassword)
 }
 
 func (bucket *CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
