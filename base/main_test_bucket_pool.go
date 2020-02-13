@@ -207,15 +207,16 @@ func NewTestBucketPool(bucketReadierFunc GocbBucketReadierFunc, bucketInitFunc B
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(testEnvPreserve))
 
 	tbp := GocbTestBucketPool{
-		integrationMode:    true,
-		readyBucketPool:    make(chan *CouchbaseBucketGoCB, numBuckets),
-		bucketReadierQueue: make(chan bucketName, numBuckets),
-		cluster:            cluster,
-		clusterMgr:         cluster.Manager(testClusterUsername, testClusterPassword),
-		ctxCancelFunc:      ctxCancelFunc,
-		defaultBucketSpec:  defaultBucketSpec,
-		preserveBuckets:    preserveBuckets,
-		BucketInitFunc:     bucketInitFunc,
+		integrationMode:        true,
+		readyBucketPool:        make(chan *CouchbaseBucketGoCB, numBuckets),
+		bucketReadierQueue:     make(chan bucketName, numBuckets),
+		bucketReadierWaitGroup: &sync.WaitGroup{},
+		cluster:                cluster,
+		clusterMgr:             cluster.Manager(testClusterUsername, testClusterPassword),
+		ctxCancelFunc:          ctxCancelFunc,
+		defaultBucketSpec:      defaultBucketSpec,
+		preserveBuckets:        preserveBuckets,
+		BucketInitFunc:         bucketInitFunc,
 	}
 	tbp.verbose.Set(tbpEnvVerbose())
 
@@ -545,8 +546,6 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc 
 // A package requiring views or GSI, will need to pass in the db.ViewsAndGSIBucketReadier function.
 func (tbp *GocbTestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc GocbBucketReadierFunc) {
 	tbp.Logf(context.Background(), "Starting bucketReadier")
-
-	tbp.bucketReadierWaitGroup = &sync.WaitGroup{}
 
 loop:
 	for {
