@@ -324,8 +324,14 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 		}
 
 		tbp.Logf(ctx, "Teardown called - Pushing into bucketReadier queue")
-		tbp.bucketReadierQueue <- bucketName(gocbBucket.GetName())
+		tbp.addBucketToReadierQueue(ctx, bucketName(gocbBucket.GetName()))
 	}
+}
+
+func (tbp *GocbTestBucketPool) addBucketToReadierQueue(ctx context.Context, name bucketName) {
+	tbp.bucketReadierWaitGroup.Add(1)
+	tbp.Logf(ctx, "Putting bucket onto bucketReadierQueue")
+	tbp.bucketReadierQueue <- name
 }
 
 // bucketCtx extends the parent context with a bucket name.
@@ -528,9 +534,7 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc 
 		}
 
 		b.Close()
-
-		tbp.Logf(ctx, "Putting gocbBucket onto bucketReadierQueue")
-		tbp.bucketReadierQueue <- bucketName(testBucketName)
+		tbp.addBucketToReadierQueue(ctx, bucketName(testBucketName))
 	}
 
 	return nil
@@ -552,12 +556,15 @@ loop:
 			break loop
 
 		case testBucketName := <-tbp.bucketReadierQueue:
-			tbp.bucketReadierWaitGroup.Add(1)
 			atomic.AddInt32(&tbp.stats.TotalBucketReadierCount, 1)
 			ctx := bucketNameCtx(ctx, string(testBucketName))
 			tbp.Logf(ctx, "bucketReadier got bucket")
 
 			go func(testBucketName bucketName) {
+				// We might not actually be "done" with the bucket if something fails,
+				// but we need to release the waitgroup so tbp.Close() doesn't block forever.
+				defer tbp.bucketReadierWaitGroup.Done()
+
 				start := time.Now()
 				b, err := tbp.openTestBucket(testBucketName, CreateSleeperFunc(5, 1000))
 				if err != nil {
@@ -582,8 +589,6 @@ loop:
 				tbp.Logf(ctx, "Bucket ready, putting back into ready pool")
 				tbp.readyBucketPool <- b
 				atomic.AddInt64(&tbp.stats.TotalBucketReadierDurationNano, time.Since(start).Nanoseconds())
-
-				tbp.bucketReadierWaitGroup.Done()
 			}(testBucketName)
 		}
 	}
