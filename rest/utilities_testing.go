@@ -1076,9 +1076,10 @@ func (bt *BlipTester) GetChanges() (changes [][]interface{}) {
 
 }
 
-func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument) {
+func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[string]RestDocument, ok bool) {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		fmt.Println("BT WaitForNumDocsViaChanges retry")
 		allDocs := bt.PullDocs()
 		if len(allDocs) >= numDocsExpected {
 			return false, nil, allDocs
@@ -1092,11 +1093,11 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 	_, allDocs := base.RetryLoop(
 		"WaitForNumDocsViaChanges",
 		retryWorker,
-		base.CreateDoublingSleeperFunc(10, 10),
+		base.CreateDoublingSleeperFunc(20, 10),
 	)
 
-	return allDocs.(map[string]RestDocument)
-
+	docs, ok = allDocs.(map[string]RestDocument)
+	return docs, ok
 }
 
 // Get all documents and their attachments via the following steps:
