@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"expvar"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -88,23 +89,21 @@ func (s *sequenceAllocator) Stop() {
 // that aren't used within 'releaseSequenceTimeout'.
 func (s *sequenceAllocator) releaseSequenceMonitor() {
 
-	// Outer loop - waits for an initial reserve of sequences, or terminate notification (idle state).
-	// Terminator is only checked while in idle state - ensures sequence allocation drains and unused sequences are released
-	// before exiting.
+	// Terminator is only checked while in idle state - ensures sequence allocation drains and
+	// unused sequences are released before exiting.
+	timer := time.NewTimer(math.MaxInt64)
+	defer timer.Stop()
+
 	for {
 		select {
 		case <-s.reserveNotify:
 			// On reserve, start the timer to release unused sequences. A new reserve resets the timer.
 			// On timeout, release sequences and return to idle state
-			for {
-				select {
-				case <-s.reserveNotify:
-				case <-time.After(s.releaseSequenceWait):
-					s.releaseUnusedSequences()
-					break
-				}
-			}
+			_ = timer.Reset(s.releaseSequenceWait)
+		case <-timer.C:
+			s.releaseUnusedSequences()
 		case <-s.terminator:
+			s.releaseUnusedSequences()
 			return
 		}
 	}
@@ -113,6 +112,10 @@ func (s *sequenceAllocator) releaseSequenceMonitor() {
 // Releases any currently reserved, non-allocated sequences.
 func (s *sequenceAllocator) releaseUnusedSequences() {
 	s.mutex.Lock()
+	if s.last == s.max {
+		s.mutex.Unlock()
+		return
+	}
 	if s.last < s.max {
 		err := s.releaseSequenceRange(s.last+1, s.max)
 		if err != nil {
