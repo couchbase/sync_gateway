@@ -171,7 +171,7 @@
             "release": "2.7.0",
             "release_name": "Couchbase Sync Gateway 2.7.0",
             "production": true,
-            "interval": 120,
+            "interval": 1440,
             "go_version": "1.13.4",
             "start_build": 177
         },
