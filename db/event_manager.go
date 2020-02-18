@@ -3,6 +3,7 @@ package db
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -12,11 +13,29 @@ import (
 // eventChannel to minimize time spent blocking whatever process is raising the event.
 // The event queue worker goroutine works the event channel and sends events to the appropriate handlers
 type EventManager struct {
-	activeEventTypes   map[EventType]bool
-	eventHandlers      map[EventType][]EventHandler
-	asyncEventChannel  chan Event
-	activeCountChannel chan bool
-	waitTime           int
+	activeEventTypes       map[EventType]bool
+	eventHandlers          map[EventType][]EventHandler
+	asyncEventChannel      chan Event
+	activeCountChannel     chan bool
+	waitTime               int
+	eventsProcessedSuccess int64
+	eventsProcessedFail    int64
+}
+
+func (em *EventManager) GetEventsProcessedSuccess() int64 {
+	return atomic.LoadInt64(&em.eventsProcessedSuccess)
+}
+
+func (em *EventManager) IncrementEventsProcessedSuccess(delta int64) int64 {
+	return atomic.AddInt64(&em.eventsProcessedSuccess, delta)
+}
+
+func (em *EventManager) GetEventsProcessedFail() int64 {
+	return atomic.LoadInt64(&em.eventsProcessedFail)
+}
+
+func (em *EventManager) IncrementEventsProcessedFail(delta int64) int64 {
+	return atomic.AddInt64(&em.eventsProcessedFail, delta)
 }
 
 const kMaxActiveEvents = 500 // number of events that are processed concurrently
@@ -79,7 +98,13 @@ func (em *EventManager) ProcessEvent(event Event) {
 			defer wg.Done()
 			//TODO: Currently we're not tracking success/fail from event handlers.  When this
 			// is needed, could pass a channel to HandleEvent for tracking results
-			handler.HandleEvent(event)
+			if handler.HandleEvent(event) {
+				em.IncrementEventsProcessedSuccess(1)
+			} else {
+				em.IncrementEventsProcessedFail(1)
+			}
+			base.Tracef(base.KeyAll, "Webhook event processed %s", event)
+
 		}(event, handler)
 	}
 	wg.Wait()
@@ -107,6 +132,7 @@ func (em *EventManager) raiseEvent(event Event) error {
 		defer timer.Stop()
 		select {
 		case em.asyncEventChannel <- event:
+			base.Tracef(base.KeyAll, "Event sent to channel %s", event.String())
 		case <-timer.C:
 			// Event queue channel is full - ignore event and log error
 			base.Warnf("Event queue full - discarding event: %s", base.UD(event.String()))

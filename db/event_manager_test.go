@@ -1,9 +1,11 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +17,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
+
+const DefaultWaitForWebhook = time.Second * 5
 
 // Testing handler tracks received events in ResultChannel
 type TestingHandler struct {
@@ -333,6 +337,26 @@ func (wr *WebhookRequest) Clear() {
 	wr.mutex.Unlock()
 }
 
+func (em *EventManager) waitForProcessedTotal(ctx context.Context, waitCount int, maxWaitTime time.Duration) error {
+	startTime := time.Now()
+
+	worker := func() (bool, error, interface{}) {
+		eventTotal := em.GetEventsProcessedSuccess() + em.GetEventsProcessedFail()
+		if eventTotal >= int64(waitCount) {
+			base.Debugf(base.KeyAll, "waitForProcessedTotal(%d) took %v", waitCount, time.Since(startTime))
+			return false, nil, nil
+		}
+
+		return true, nil, nil
+	}
+
+	ctx, cancel := context.WithDeadline(ctx, startTime.Add(maxWaitTime))
+	sleeper := base.SleeperFuncCtx(base.CreateMaxDoublingSleeperFunc(math.MaxInt64, 1, 1000), ctx)
+	err, _ := base.RetryLoop(fmt.Sprintf("waitForProcessedTotal(%d)", waitCount), worker, sleeper)
+	cancel()
+	return err
+}
+
 func GetRouterWithHandler(wr *WebhookRequest) http.Handler {
 	r := http.NewServeMux()
 	r.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
@@ -390,9 +414,6 @@ func InitWebhookTest() (*httptest.Server, *WebhookRequest) {
 
 func TestWebhookBasic(t *testing.T) {
 
-	// FIXME:
-	t.Skip("Skipping flaky test until current WIP fixes are merged")
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -406,7 +427,6 @@ func TestWebhookBasic(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	time.Sleep(1 * time.Second)
 	eventForTest := func(i int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[i],
@@ -433,8 +453,9 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 10, wr.GetCount())
+	err := em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(10), em.GetEventsProcessedSuccess())
 
 	// Test webhook filter function
 	log.Println("Test filter function")
@@ -457,8 +478,9 @@ func TestWebhookBasic(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 4, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(4), em.GetEventsProcessedSuccess())
 
 	// Validate payload
 	log.Println("Test payload validation")
@@ -469,13 +491,13 @@ func TestWebhookBasic(t *testing.T) {
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	body, docId, channels := eventForTest(0)
 	bodyBytes, _ := base.JSONMarshalCanonical(body)
-	err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
+	err = em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 	assert.NoError(t, err)
-	time.Sleep(50 * time.Millisecond)
+	err = em.waitForProcessedTotal(context.TODO(), 1, DefaultWaitForWebhook)
+	assert.NoError(t, err)
 	receivedPayload := string((wr.GetPayloads())[0])
 	fmt.Println("payload:", receivedPayload)
 	assert.Equal(t, `{"_id":"0","value":0}`, receivedPayload)
-	assert.Equal(t, 1, wr.GetCount())
 
 	// Test fast fill, fast webhook
 	log.Println("Test fast fill, fast webhook")
@@ -491,8 +513,9 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	time.Sleep(500 * time.Millisecond)
-	assert.Equal(t, 100, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 100, DefaultWaitForWebhook)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(100), em.GetEventsProcessedSuccess())
 
 	// Test queue full, slow webhook.  Drops events
 	log.Println("Test queue full, slow webhook")
@@ -510,10 +533,11 @@ func TestWebhookBasic(t *testing.T) {
 			errCount++
 		}
 	}
-	time.Sleep(5 * time.Second)
 	// Expect 21 to complete.  5 get goroutines immediately, 15 get queued, and one is blocked waiting
 	// for a goroutine.  The rest get discarded because the queue is full.
-	assert.Equal(t, 21, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 21, 10*time.Second)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(21), em.GetEventsProcessedSuccess())
 	assert.Equal(t, 79, errCount)
 
 	// Test queue full, slow webhook, long wait time.  Throttles events
@@ -529,18 +553,14 @@ func TestWebhookBasic(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, "", channels)
 		assert.NoError(t, err)
 	}
-	time.Sleep(5 * time.Second)
-	assert.Equal(t, 100, wr.GetCount())
-
+	err = em.waitForProcessedTotal(context.TODO(), 100, 10*time.Second)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(100), em.GetEventsProcessedSuccess())
 }
 
 // Test Webhook where there is an old doc revision and where the filter
 // function is expecting an old doc revision.
 func TestWebhookOldDoc(t *testing.T) {
-
-	// FIXME:
-	t.Skip("Skipping flaky test until current WIP fixes are merged")
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
@@ -554,7 +574,6 @@ func TestWebhookOldDoc(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	time.Sleep(1 * time.Second)
 	eventForTest := func(k string, v int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[v],
@@ -585,8 +604,9 @@ func TestWebhookOldDoc(t *testing.T) {
 		assert.NoError(t, err)
 
 	}
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 10, wr.GetCount())
+	err := em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
 	// Test webhook where an old doc is passed and is not used by the filter
@@ -612,8 +632,9 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 		assert.NoError(t, err)
 	}
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 4, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(4), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
 	// Test webhook where an old doc is passed and is validated by the filter
@@ -639,8 +660,9 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 		assert.NoError(t, err)
 	}
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 4, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(4), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 4)
 
 	// Test webhook where an old doc is not passed but is referenced in the filter function args
@@ -672,22 +694,19 @@ func TestWebhookOldDoc(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docId, string(oldBodyBytes), channels)
 		assert.NoError(t, err)
 	}
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 10, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 20, DefaultWaitForWebhook)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 	log.Printf("Actual: %v, Expected: %v", wr.GetCount(), 10)
 
 }
 
 func TestWebhookTimeout(t *testing.T) {
-
-	// FIXME:
-	t.Skip("Skipping flaky test until current WIP fixes are merged")
-
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyEvents)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL
@@ -697,7 +716,6 @@ func TestWebhookTimeout(t *testing.T) {
 		ids[i] = fmt.Sprintf("%d", i)
 	}
 
-	time.Sleep(1 * time.Second)
 	eventForTest := func(k string, v int) (Body, string, base.Set) {
 		testBody := Body{
 			BodyId:  ids[v],
@@ -725,15 +743,19 @@ func TestWebhookTimeout(t *testing.T) {
 		err := em.RaiseDocumentChangeEvent(bodyBytes, docid, "", channels)
 		assert.NoError(t, err)
 	}
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 10, wr.GetCount())
+	err := em.waitForProcessedTotal(context.TODO(), 10, DefaultWaitForWebhook)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 
-	// Test slow webhook, short timeout, numProcess=1, waitForProcess > timeout.  All events should get processed.
+	// Test slow webhook, short timeout, numProcess=1, waitForProcess > webhook timeout.  All events should get processed.
+	// Webhook timeout 1s
+	// WaitForProcess event manager time 1.5s
+	// Webhook should timeout and clear item from queue before another item attempts to be added to the queue
 	log.Println("Test slow webhook, short timeout")
 	wr.Clear()
 	errCount := 0
 	em = NewEventManager()
-	em.Start(1, 1100)
+	em.Start(1, 1500)
 	timeout = uint64(1)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow_2s", url), "", &timeout)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
@@ -746,9 +768,11 @@ func TestWebhookTimeout(t *testing.T) {
 			errCount++
 		}
 	}
-	time.Sleep(15 * time.Second)
 	// Even though we timed out waiting for response on the SG side, POST still completed on target side.
-	assert.Equal(t, 10, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 10, 30*time.Second)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), em.GetEventsProcessedSuccess())
+	assert.Equal(t, int64(10), em.GetEventsProcessedFail())
 
 	// Test slow webhook, short timeout, numProcess=1, waitForProcess << timeout.  Events that don't fit in queues
 	// should get dropped (1 immediately processed, 1 in normal queue, 3 in overflow queue, 5 dropped)
@@ -770,8 +794,9 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	time.Sleep(25 * time.Second)
-	assert.Equal(t, 5, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 5, 30*time.Second)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), em.GetEventsProcessedSuccess())
 
 	// Test slow webhook, no timeout, numProcess=1, waitForProcess=1s.  All events should complete.
 	log.Println("Test slow webhook, no timeout, wait for process ")
@@ -792,8 +817,9 @@ func TestWebhookTimeout(t *testing.T) {
 		}
 	}
 	// wait for slow webhook to finish processing
-	time.Sleep(15 * time.Second)
-	assert.Equal(t, 10, wr.GetCount())
+	err = em.waitForProcessedTotal(context.TODO(), 10, 20*time.Second)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(10), em.eventsProcessedSuccess)
 
 }
 
