@@ -12,7 +12,8 @@
       "bucket": "default",
       "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
       "allow_conflicts": false,
-      "revs_limit": 20
+      "revs_limit": 20,
+      "num_index_replicas": 0
     }
   }
 }
