@@ -14,14 +14,14 @@
     <!-- Build Scripts (required on CI servers) -->
     <project name="product-texts" path="product-texts" remote="couchbase"/>
     <project name="build" path="cbbuild" revision="d519f77629dcfd769c425267752fca095906d7bc" remote="couchbase">
-        <annotation name="VERSION" value="2.6.1.1"   keep="true"/>
+        <annotation name="VERSION" value="2.6.1"     keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
     </project>
 
 
     <!-- Sync Gateway -->
-    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="release/2.6.1.1"/>
+    <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase" revision="4907fed4dcbb16d4719fdde3209166e20793cf2e"/>
 
 
     <!-- Sync Gateway Accel-->
