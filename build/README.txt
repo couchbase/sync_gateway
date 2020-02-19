@@ -22,3 +22,17 @@ You can stop Sync Gateway with Control-C. There is no specific shutdown procedur
 
 This application can be run from any location on any writeable volume.
 You can choose to move it to your Application directory, but this is not required. However, do not move the application while it's running.
+
+Run Couchbase Sync Gateway against Couchbase Server
+
+You can run Sync Gateway against Couchbase Server by specifying the connection details of Couchbase server through a
+configuration file:
+
+$ ./sync_gateway examples/config-server.json
+
+Refer [this](https://docs.couchbase.com/sync-gateway/current/getting-started.html) to get details about the database
+configuration.
+
+Note: Walrus is a Go library that provides a tiny implementation of the Bucket API from the sg-bucket package and the
+only purpose of Walrus is to be able to run/test Sync Gateway during development without needing to spin up a full
+Couchbase Server instance.
