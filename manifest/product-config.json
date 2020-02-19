@@ -144,12 +144,20 @@
             "start_build": 13
         },
         "manifest/2.6.xml": {
-            "release": "2.6.1",
-            "release_name": "Couchbase Sync Gateway 2.6.1",
+            "release": "2.6.2",
+            "release_name": "Couchbase Sync Gateway 2.6.2",
             "production": true,
             "interval": 120,
             "go_version": "1.11.5",
             "start_build": 1
+        },
+        "manifest/2.6/2.6.1.xml": {
+            "release": "2.6.1",
+            "release_name": "Couchbase Sync Gateway 2.6.1",
+            "production": true,
+            "interval": 1440,
+            "go_version": "1.11.5",
+            "start_build": 28
         },
         "manifest/2.6/2.6.0.xml": {
             "release": "2.6.0",
