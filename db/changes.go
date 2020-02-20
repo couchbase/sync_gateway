@@ -902,8 +902,8 @@ func (db *Database) closeLateFeeds(feeds map[string]*lateSequenceFeed) {
 	}
 }
 
-// Generate the changes for a specific list of doc ID's, only documents accesible to the user will generate
-// results.  Only supports non-continuous changes, closes buffered channel before returning.
+// Generate the changes for a specific list of doc ID's, only documents accessible to the user will generate
+// results. Only supports non-continuous changes, closes buffered channel before returning.
 func (db *Database) DocIDChangesFeed(userChannels base.Set, explicitDocIds []string, options ChangesOptions) (<-chan *ChangeEntry, error) {
 
 	// Subroutine that creates a response row for a document:
