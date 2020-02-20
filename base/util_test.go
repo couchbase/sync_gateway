@@ -266,15 +266,15 @@ func TestCouchbaseURIToHttpURL(t *testing.T) {
 	}
 
 	for _, inputAndExpected := range inputsAndExpected {
-		actual, err := CouchbaseURIToHttpURL(nil, inputAndExpected.input)
+		actual, err := CouchbaseURIToHttpURL(nil, inputAndExpected.input, nil)
 		assert.NoError(t, err, "Unexpected error")
 		goassert.DeepEquals(t, actual, inputAndExpected.expected)
 	}
 
 	// With a nil (or walrus bucket) and a couchbase or couchbases url, expect errors
-	_, err := CouchbaseURIToHttpURL(nil, "couchbases://host1:18191,host2:18191")
+	_, err := CouchbaseURIToHttpURL(nil, "couchbases://host1:18191,host2:18191", nil)
 	goassert.True(t, err != nil)
-	_, err = CouchbaseURIToHttpURL(nil, "couchbase://host1")
+	_, err = CouchbaseURIToHttpURL(nil, "couchbase://host1", nil)
 	goassert.True(t, err != nil)
 
 }

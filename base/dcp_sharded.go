@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/pkg/errors"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 const CBGTIndexTypeSyncGatewayImport = "syncGateway-import-"
@@ -132,6 +133,11 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 		couchbase.SetSkipVerify(false)
 	}
 
+	connSpec, err := gocbconnstr.Parse(spec.Server)
+	if err != nil {
+		return err
+	}
+
 	// Register bucketDataSource callback for new index if we need to configure TLS
 	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
 		if spec.IsTLS() {
@@ -139,7 +145,7 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 				return spec.TLSConfig()
 			}
 		}
-		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(spec.IsTLS())
+		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(spec.IsTLS(), connSpec.Addresses)
 		return options
 	})
 
@@ -239,7 +245,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 	var serverURL string
 	if feedType == cbgtFeedType_cbdatasource {
 		// cbdatasource expects server URL in http format
-		serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server)
+		serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
 		if errConvertServerSpec != nil {
 			return nil, errConvertServerSpec
 		}
@@ -315,7 +321,7 @@ func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
 	options := map[string]interface{}{
 		"keyPrefix": SyncPrefix,
 	}
-	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server)
+	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
 	if errConvertServerSpec != nil {
 		return nil, errConvertServerSpec
 	}

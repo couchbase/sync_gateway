@@ -16,6 +16,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/google/uuid"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 // Number of non-checkpoint updates per vbucket required to trigger metadata persistence.  Must be greater than zero to avoid
@@ -578,7 +579,7 @@ func getExternalAlternateAddress(alternateAddressMap map[string]string, dest str
 			host = extHostname
 		}
 
-		Tracef(KeyDCP, "Found alternate address mapping %s => %s", MD(dest), MD(host+":"+port))
+		Debugf(KeyDCP, "Using alternate address %s => %s", MD(dest), MD(host+":"+port))
 		dest = host + ":" + port
 	}
 
@@ -586,7 +587,7 @@ func getExternalAlternateAddress(alternateAddressMap map[string]string, dest str
 }
 
 // alternateAddressShims returns the 3 functions that wrap around ConnectBucket/Connect/ConnectTLS to provide alternate address support.
-func alternateAddressShims(bucketSpecTLS bool) (
+func alternateAddressShims(bucketSpecTLS bool, connSpecAddresses []gocbconnstr.Address) (
 	connectBucketShim func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error),
 	connectShim func(protocol, dest string) (*memcached.Client, error),
 	connectTLSShim func(protocol, dest string, tlsConfig *tls.Config) (*memcached.Client, error),
@@ -613,32 +614,70 @@ func alternateAddressShims(bucketSpecTLS bool) (
 			return nil, err
 		}
 
+		// Fetch any alternate external addresses/ports and store them in the externalAlternateAddresses map
 		pool, err := client.GetPool(poolName)
 		if err != nil {
 			return nil, err
 		}
 
+		poolServices, err := client.GetPoolServices(poolName)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(pool.Nodes) != len(poolServices.NodesExt) {
+			return nil, fmt.Errorf("length of pool nodes list is not equal to poolServices nodes list: poolNodes: %v, poolServices.NodesExt: %v", pool.Nodes, poolServices.NodesExt)
+		}
+
+		connSpecAddressesHostMap := make(map[string]struct{}, len(connSpecAddresses))
+		for _, connSpecAddress := range connSpecAddresses {
+			connSpecAddressesHostMap[connSpecAddress.Host] = struct{}{}
+		}
+
 		// Recreate the map to forget about previous clustermap information.
-		externalAlternateAddresses = make(map[string]string, len(pool.Nodes))
-		for _, node := range pool.Nodes {
+		externalAlternateAddresses = make(map[string]string, len(poolServices.NodesExt))
+		for i, node := range poolServices.NodesExt {
+			Tracef(KeyDCP, "ps.NodesExt[%d]: %v", i, MD(node))
 			if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
-				nodeHostname, _, err := SplitHostPort(node.Hostname)
+				// if hostname != match, continue/skip
+				if _, ok := connSpecAddressesHostMap[external.Hostname]; !ok {
+					Tracef(KeyDCP, "hostname %q not in connSpecAddressesHostMap: %#v", external.Hostname, connSpecAddressesHostMap)
+					// wasn't found, don't use externalAlternateAddress
+					continue
+				} else {
+					Tracef(KeyDCP, "hostname %q was in connSpecAddressesHostMap: %#v", external.Hostname, connSpecAddressesHostMap)
+				}
+
+				Tracef(KeyDCP, "ps.NodesExt[%d].external: %v", i, MD(external))
+				nodeHostname, _, err := SplitHostPort(pool.Nodes[i].Hostname)
+				Tracef(KeyDCP, "ps.NodesExt[%d].external SplitHostPort(%s) = %s, _, %v", i, pool.Nodes[i].Hostname, nodeHostname, err)
 				if err != nil {
 					return nil, err
 				}
 
 				var port string
 				if bucketSpecTLS {
+					Tracef(KeyDCP, "ps.NodesExt[%d].external bucketSpecTLS=true", i)
 					if extPort, ok := external.Ports["kvSSL"]; ok {
+						Tracef(KeyDCP, "ps.NodesExt[%d].external Ports[kvSSL]=port:%v,ok:%v", i, extPort, ok)
 						port = ":" + strconv.Itoa(extPort)
+					} else {
+						Tracef(KeyDCP, "kvSSL port not found in external alternate address map. Skipping host.")
+						continue
 					}
+					Debugf(KeyDCP, "Storing alternate address for kvSSL: %s => %s", MD(nodeHostname), MD(external.Hostname+port))
 				} else {
+					Tracef(KeyDCP, "ps.NodesExt[%d].external bucketSpecTLS=false", i)
 					if extPort, ok := external.Ports["kv"]; ok {
+						Tracef(KeyDCP, "ps.NodesExt[%d].external Ports[kv]=port:%v,ok:%v", i, extPort, ok)
 						port = ":" + strconv.Itoa(extPort)
+					} else {
+						Tracef(KeyDCP, "kv port not found in external alternate address map. Skipping host.")
+						continue
 					}
+					Debugf(KeyDCP, "Storing alternate address for kv: %s => %s", MD(nodeHostname), MD(external.Hostname+port))
 				}
 
-				Tracef(KeyDCP, "Alternate address mapping %s => %s", MD(nodeHostname), MD(external.Hostname+port))
 				externalAlternateAddresses[nodeHostname] = external.Hostname + port
 			}
 		}
