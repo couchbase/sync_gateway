@@ -615,18 +615,9 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 		}
 
 		// Fetch any alternate external addresses/ports and store them in the externalAlternateAddresses map
-		pool, err := client.GetPool(poolName)
-		if err != nil {
-			return nil, err
-		}
-
 		poolServices, err := client.GetPoolServices(poolName)
 		if err != nil {
 			return nil, err
-		}
-
-		if len(pool.Nodes) != len(poolServices.NodesExt) {
-			return nil, fmt.Errorf("length of pool nodes list is not equal to poolServices nodes list: poolNodes: %v, poolServices.NodesExt: %v", pool.Nodes, poolServices.NodesExt)
 		}
 
 		connSpecAddressesHostMap := make(map[string]struct{}, len(connSpecAddresses))
@@ -648,9 +639,8 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 					TracefCtx(loggingCtx, KeyDCP, "hostname %q was in connSpecAddressesHostMap: %#v", external.Hostname, connSpecAddressesHostMap)
 				}
 
-				Tracef(KeyDCP, "ps.NodesExt[%d].external: %v", i, MD(external))
-				nodeHostname, _, err := SplitHostPort(pool.Nodes[i].Hostname)
-				Tracef(KeyDCP, "ps.NodesExt[%d].external SplitHostPort(%s) = %s, _, %v", i, pool.Nodes[i].Hostname, nodeHostname, err)
+				TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d].external: %v", i, MD(external))
+				TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d].Hostname = %s", i, node.Hostname)
 				if err != nil {
 					return nil, err
 				}
@@ -678,8 +668,13 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kv: %s => %s", MD(node.Hostname), MD(external.Hostname+port))
 				}
 
-				externalAlternateAddresses[nodeHostname] = external.Hostname + port
+				externalAlternateAddresses[node.Hostname] = external.Hostname + port
 			}
+		}
+
+		pool, err := client.GetPool(poolName)
+		if err != nil {
+			return nil, err
 		}
 
 		bucket, err := pool.GetBucket(bucketName)
