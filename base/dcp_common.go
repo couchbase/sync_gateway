@@ -628,17 +628,16 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 		// Recreate the map to forget about previous clustermap information.
 		externalAlternateAddresses = make(map[string]string, len(poolServices.NodesExt))
 		for _, node := range poolServices.NodesExt {
+
+			if _, ok := connSpecAddressesHostMap[node.Hostname]; ok {
+				// Found default hostname in connSpec - abort all alternate address behaviour.
+				// The client MUST use the default/internal network.
+				externalAlternateAddresses = nil
+				break
+			}
+
 			// only try to map external alternate addresses if a hostname is present
 			if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
-				if _, ok := connSpecAddressesHostMap[external.Hostname]; !ok {
-					// external hostname wasn't in the connection string, skip trying to remap this node (use the default/internal address instead)
-					TracefCtx(loggingCtx, KeyDCP, "external hostname %q not in original connection string. Skipping alternate address remapping for this node.", external.Hostname)
-					continue
-				}
-
-				// external hostname was in the connection string, so we're able to remap the internal hostname to the external one for this particlar node
-				TracefCtx(loggingCtx, KeyDCP, "external hostname %q was in original connection string. Looking for exposed kv/kvSSL ports...", external.Hostname)
-
 				var port string
 				if bucketSpecTLS {
 					extPort, ok := external.Ports["kvSSL"]
