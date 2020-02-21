@@ -15,12 +15,12 @@ import (
 	"errors"
 	"expvar"
 
+	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/go-couchbase/cbdatasource"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
-
-	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/go-couchbase/cbdatasource"
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
 // Memcached binary protocol datatype bit flags (https://github.com/couchbase/memcached/blob/master/docs/BinaryProtocol.md#data-types),
@@ -211,9 +211,14 @@ func (nph NoPasswordAuthHandler) GetCredentials() (username string, password str
 // bucket is using, and it uses the go-couchbase cbdatasource DCP abstraction layer
 func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
 
+	connSpec, err := gocbconnstr.Parse(spec.Server)
+	if err != nil {
+		return err
+	}
+
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
 	// reusing the bucket connection we've already established.
-	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server)
+	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, &connSpec)
 	if errConvertServerSpec != nil {
 		return errConvertServerSpec
 	}
@@ -293,7 +298,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	}
 
 	// A lookup of host dest to external alternate address hostnames
-	dataSourceOptions.ConnectBucket, dataSourceOptions.Connect, dataSourceOptions.ConnectTLS = alternateAddressShims(spec.IsTLS())
+	dataSourceOptions.ConnectBucket, dataSourceOptions.Connect, dataSourceOptions.ConnectTLS = alternateAddressShims(loggingCtx, spec.IsTLS(), connSpec.Addresses)
 
 	DebugfCtx(loggingCtx, KeyDCP, "Connecting to new bucket datasource.  URLs:%s, pool:%s, bucket:%s", MD(urls), MD(poolName), MD(bucketName))
 
