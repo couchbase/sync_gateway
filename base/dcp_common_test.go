@@ -116,7 +116,7 @@ func TestGetExternalAlternateAddress(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			newDest, err := getExternalAlternateAddress(test.altAddrMap, test.dest)
+			newDest, err := getExternalAlternateAddress(nil, test.altAddrMap, test.dest)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedDest, newDest)
 		})

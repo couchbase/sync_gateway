@@ -83,7 +83,7 @@ func GenerateIndexName(dbName string) string {
 // TODO: If the index definition already exists in the cfg, it appears like this step can be bypassed,
 //       as we don't currently have a scenario where we want to update an existing index def.  Needs
 //       additional testing to validate.
-func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
+func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
 
 	// sourceType is based on cbgt.source_gocouchbase non-public constant.
 	// TODO: Request that cbgt make this and source_gocb public.
@@ -123,7 +123,7 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	//       how this can be optimized if we're not actually using it in the indexImpl
 	indexParams := `{"name": "` + dbName + `"}`
 	indexName := GenerateIndexName(dbName)
-	Infof(KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
+	InfofCtx(c.Cfg.loggingCtx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
 
 	// Required for initial pools request, before BucketDataSourceOptions kick in
 	if spec.Certpath != "" {
@@ -139,19 +139,19 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 	}
 
 	// Register bucketDataSource callback for new index if we need to configure TLS
-	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
+	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, c.Manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
 		if spec.IsTLS() {
 			options.TLSConfig = func() *tls.Config {
 				return spec.TLSConfig()
 			}
 		}
-		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(spec.IsTLS(), connSpec.Addresses)
+		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(c.Cfg.loggingCtx, spec.IsTLS(), connSpec.Addresses)
 		return options
 	})
 
-	_, previousIndexUUID, err := getCBGTIndexUUID(manager, indexName)
+	_, previousIndexUUID, err := getCBGTIndexUUID(c.Manager, indexName)
 	indexType := CBGTIndexTypeSyncGatewayImport + dbName
-	err = manager.CreateIndex(
+	err = c.Manager.CreateIndex(
 		sourceType,        // sourceType
 		bucket.GetName(),  // sourceName
 		bucketUUID,        // sourceUUID
@@ -162,9 +162,9 @@ func createCBGTIndex(manager *cbgt.Manager, dbName string, bucket Bucket, spec B
 		planParams,        // planParams
 		previousIndexUUID, // prevIndexUUID
 	)
-	manager.Kick("NewIndexesCreated")
+	c.Manager.Kick("NewIndexesCreated")
 
-	Infof(KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
+	InfofCtx(c.Cfg.loggingCtx, KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
 	return err
 
 }
@@ -305,7 +305,7 @@ func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec
 	}
 
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
-	err = createCBGTIndex(c.Manager, dbName, bucket, spec, numPartitions)
+	err = createCBGTIndex(c, dbName, bucket, spec, numPartitions)
 	if err != nil {
 		Errorf("cbgt index creation failed: %v", err)
 		return err
