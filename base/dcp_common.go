@@ -579,7 +579,7 @@ func getExternalAlternateAddress(loggingCtx context.Context, alternateAddressMap
 			host = extHostname
 		}
 
-		DebugfCtx(loggingCtx, KeyDCP, "Using alternate address %s => %s", MD(dest), MD(host+":"+port))
+		InfofCtx(loggingCtx, KeyDCP, "Using alternate address %s => %s", MD(dest), MD(host+":"+port))
 		dest = host + ":" + port
 	}
 
@@ -627,44 +627,38 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 
 		// Recreate the map to forget about previous clustermap information.
 		externalAlternateAddresses = make(map[string]string, len(poolServices.NodesExt))
-		for i, node := range poolServices.NodesExt {
-			TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d]: %v", i, MD(node))
+		for _, node := range poolServices.NodesExt {
+			// only try to map external alternate addresses if a hostname is present
 			if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
-				// if hostname != match, continue/skip
 				if _, ok := connSpecAddressesHostMap[external.Hostname]; !ok {
-					TracefCtx(loggingCtx, KeyDCP, "hostname %q not in connSpecAddressesHostMap: %#v", external.Hostname, connSpecAddressesHostMap)
-					// wasn't found, don't use externalAlternateAddress
+					// external hostname wasn't in the connection string, skip trying to remap this node (use the default/internal address instead)
+					TracefCtx(loggingCtx, KeyDCP, "external hostname %q not in original connection string. Skipping alternate address remapping for this node.", external.Hostname)
 					continue
-				} else {
-					TracefCtx(loggingCtx, KeyDCP, "hostname %q was in connSpecAddressesHostMap: %#v", external.Hostname, connSpecAddressesHostMap)
 				}
 
-				TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d].external: %v", i, MD(external))
-				TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d].Hostname = %s", i, node.Hostname)
-				if err != nil {
-					return nil, err
-				}
+				// external hostname was in the connection string, so we're able to remap the internal hostname to the external one for this particlar node
+				TracefCtx(loggingCtx, KeyDCP, "external hostname %q was in original connection string. Looking for exposed kv/kvSSL ports...", external.Hostname)
 
 				var port string
 				if bucketSpecTLS {
-					TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d].external bucketSpecTLS=true", i)
-					if extPort, ok := external.Ports["kvSSL"]; ok {
-						TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d].external Ports[kvSSL]=port:%v,ok:%v", i, extPort, ok)
-						port = ":" + strconv.Itoa(extPort)
-					} else {
-						TracefCtx(loggingCtx, KeyDCP, "kvSSL port not found in external alternate address map. Skipping host.")
+					extPort, ok := external.Ports["kvSSL"]
+					if !ok {
+						TracefCtx(loggingCtx, KeyDCP, "kvSSL port was not exposed for external alternate address. Don't remap this node.")
 						continue
 					}
+
+					// found exposed kvSSL port, use when connecting
+					port = ":" + strconv.Itoa(extPort)
 					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kvSSL: %s => %s", MD(node.Hostname), MD(external.Hostname+port))
 				} else {
-					TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d].external bucketSpecTLS=false", i)
-					if extPort, ok := external.Ports["kv"]; ok {
-						TracefCtx(loggingCtx, KeyDCP, "ps.NodesExt[%d].external Ports[kv]=port:%v,ok:%v", i, extPort, ok)
-						port = ":" + strconv.Itoa(extPort)
-					} else {
-						TracefCtx(loggingCtx, KeyDCP, "kv port not found in external alternate address map. Skipping host.")
+					extPort, ok := external.Ports["kv"]
+					if !ok {
+						TracefCtx(loggingCtx, KeyDCP, "kv port was not exposed for external alternate address. Skipping remapping of this node.")
 						continue
 					}
+
+					// found exposed kv port, use when connecting
+					port = ":" + strconv.Itoa(extPort)
 					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kv: %s => %s", MD(node.Hostname), MD(external.Hostname+port))
 				}
 
