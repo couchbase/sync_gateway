@@ -704,10 +704,11 @@ func BoolPtr(b bool) *bool {
 	return &b
 }
 
-// Convert a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
+// Convert a Bucket, or a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
+// connSpec can be optionally passed in if available, to prevent unnecessary double-parsing of connstr
 // Primary use case is for backwards compatibility with go-couchbase, cbdatasource, and CBGT. Supports secure URI's as well (couchbases://).
 // Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
-func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []string, err error) {
+func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string, connSpec *gocbconnstr.ConnSpec) (httpUrls []string, err error) {
 
 	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
 	switch typedBucket := bucket.(type) {
@@ -728,11 +729,20 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 		return []string{singleHttpUrl}, nil
 	}
 
-	// Unable to do simple URL parse, try to parse into components w/ gocbconnstr
-	connSpec, errParse := gocbconnstr.Parse(couchbaseUri)
-	if errParse != nil {
-		return httpUrls, pkgerrors.WithStack(RedactErrorf("Error parsing gocb connection string: %v.  Error: %v", MD(couchbaseUri), errParse))
+	// Parse the given URI if we've not already got a connSpec
+	if connSpec == nil {
+		// Unable to do simple URL parse, try to parse into components w/ gocbconnstr
+		newConnSpec, errParse := gocbconnstr.Parse(couchbaseUri)
+		if errParse != nil {
+			return httpUrls, pkgerrors.WithStack(RedactErrorf("Error parsing gocb connection string: %v.  Error: %v", MD(couchbaseUri), errParse))
+		}
+		connSpec = &newConnSpec
 	}
+
+	return connSpecToHTTPURLs(*connSpec)
+}
+
+func connSpecToHTTPURLs(connSpec gocbconnstr.ConnSpec) (httpUrls []string, err error) {
 
 	for _, address := range connSpec.Addresses {
 
@@ -745,7 +755,7 @@ func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string) (httpUrls []strin
 		case "couchbase":
 			fallthrough
 		case "couchbases":
-			return nil, RedactErrorf("couchbase:// and couchbases:// URI schemes can only be used with GoCB buckets.  Bucket: %+v", MD(bucket))
+			return nil, RedactErrorf("couchbase:// and couchbases:// URI schemes can only be used with GoCB buckets.")
 		case "https":
 			translatedScheme = "https"
 		}
