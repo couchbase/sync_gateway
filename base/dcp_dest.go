@@ -368,7 +368,7 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 	indexName := feedName
 
 	// cbdatasource expects server URL in http format
-	serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server)
+	serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
 	if errConvertServerSpec != nil {
 		return errConvertServerSpec
 	}
