@@ -10,5 +10,3 @@ You can stop Sync Gateway with Control-C. There is no specific shutdown procedur
 
 This application can be run from any location on any writeable volume. You can choose to move it to your Application
 directory, but this is not required. However, do not move the application while it's running.
-
-You can find more detailed documentation at https://docs.couchbase.com/sync-gateway/current/getting-started.html
