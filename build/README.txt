@@ -1,6 +1,8 @@
 Couchbase Sync Gateway
 
-This is a self-contained installation of Couchbase Sync Gateway. You can start Sync Gateway by specifying a configuration file through command-line. The configuration file determines the runtime behavior of Sync Gateway, including server configuration and the database or set of databases with which a Sync Gateway instance can interact.
+This is a self-contained installation of Couchbase Sync Gateway. You can start Sync Gateway by running sync_gateway and specifying a configuration file. Sample configuration files can be found in the examples folder. Modify the example configuration files to include your Couchbase Server address and credentials. 
+
+Detailed getting started information can be found at https://docs.couchbase.com/sync-gateway/current/getting-started.html
 
 $ ./sync_gateway examples/basic-couchbase-bucket.json
 
