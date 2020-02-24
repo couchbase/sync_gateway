@@ -260,10 +260,13 @@ func AccessNameToPrincipalName(accessPrincipalName string) (principalName string
 func ottoValueToStringArray(value otto.Value) []string {
 	nativeValue, _ := value.Export()
 
-	result := base.ValueToStringArray(nativeValue)
+	result, nonStrings := base.ValueToStringArray(nativeValue)
 
 	if result == nil && !value.IsNull() && !value.IsUndefined() {
 		base.Warnf("SyncRunner: Non-string, non-array passed to JS callback: %s", base.UD(value))
+	}
+	if nonStrings != nil {
+		base.Warnf("SyncRunner: Non-string slice values: %s passed to JS callback will be omitted", base.UD(nonStrings))
 	}
 
 	return result

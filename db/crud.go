@@ -1644,7 +1644,7 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 		// No ChannelMapper so by default use the "channels" property:
 		value := body["channels"]
 		if value != nil {
-			array := base.ValueToStringArray(value)
+			array, _ := base.ValueToStringArray(value)
 			result, err = channels.SetFromArray(array, channels.KeepStar)
 		}
 	}

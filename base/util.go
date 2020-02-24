@@ -556,23 +556,28 @@ func SyncSourceFromURL(u *url.URL) string {
 	return buf.String()
 }
 
-//Convert string or array into a string array, otherwise return nil
-func ValueToStringArray(value interface{}) []string {
+// Convert string or array into a string array, otherwise return nil
+// If the input array is a mixed slice, the result contains string array
+// and nonStrings contained non string entries from the mixed slice.
+func ValueToStringArray(value interface{}) ([]string, []interface{}) {
 	switch valueType := value.(type) {
 	case string:
-		return []string{valueType}
+		return []string{valueType}, nil
 	case []string:
-		return valueType
+		return valueType, nil
 	case []interface{}:
 		result := make([]string, 0, len(valueType))
+		var nonStrings []interface{}
 		for _, item := range valueType {
 			if str, ok := item.(string); ok {
 				result = append(result, str)
+			} else {
+				nonStrings = append(nonStrings, item)
 			}
 		}
-		return result
+		return result, nonStrings
 	default:
-		return nil
+		return nil, nil
 	}
 }
 

@@ -228,14 +228,21 @@ func TestSyncSourceFromURL(t *testing.T) {
 }
 
 func TestValueToStringArray(t *testing.T) {
-	result := ValueToStringArray("foobar")
-	goassert.DeepEquals(t, result, []string{"foobar"})
+	result, nonStrings := ValueToStringArray("foobar")
+	assert.Equal(t, []string{"foobar"}, result)
+	assert.Nil(t, nonStrings)
 
-	result = ValueToStringArray([]string{"foobar", "moocar"})
-	goassert.DeepEquals(t, result, []string{"foobar", "moocar"})
+	result, nonStrings = ValueToStringArray([]string{"foobar", "moocar"})
+	assert.Equal(t, []string{"foobar", "moocar"}, result)
+	assert.Nil(t, nonStrings)
 
-	result = ValueToStringArray([]interface{}{"foobar", 1, true})
-	goassert.DeepEquals(t, result, []string{"foobar"})
+	result, nonStrings = ValueToStringArray([]interface{}{"foobar", 1, true})
+	assert.Equal(t, []string{"foobar"}, result)
+	assert.Equal(t, []interface{}{1, true}, nonStrings)
+
+	result, nonStrings = ValueToStringArray([]interface{}{"a", []interface{}{"b", "g"}, "c", 4})
+	assert.Equal(t, []string{"a", "c"}, result)
+	assert.Equal(t, []interface{}{[]interface{}{"b", "g"}, 4}, nonStrings)
 }
 
 func TestCouchbaseURIToHttpURL(t *testing.T) {
