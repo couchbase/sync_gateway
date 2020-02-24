@@ -556,9 +556,9 @@ func SyncSourceFromURL(u *url.URL) string {
 	return buf.String()
 }
 
-// Convert string or array into a string array, otherwise return nil
-// If the input array is a mixed slice, the result contains string array
-// and nonStrings contained non string entries from the mixed slice.
+// Convert string or array into a string array, otherwise return nil. If
+// the input slice contains entries of mixed type, all string entries would
+// be collected and returned as a slice and non-string entries as another.
 func ValueToStringArray(value interface{}) ([]string, []interface{}) {
 	switch valueType := value.(type) {
 	case string:
