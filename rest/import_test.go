@@ -1627,6 +1627,133 @@ func TestImportBinaryDoc(t *testing.T) {
 	goassert.True(t, response.Code != 200)
 }
 
+// TestImportZeroValueDecimalPlaces tests that docs containing numbers of the form 0.0000 are imported correctly.
+func TestImportZeroValueDecimalPlaces(t *testing.T) {
+
+	SkipImportTestsIfNotEnabled(t)
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
+
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport: true,
+		},
+	}
+
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	const minDecimalPlaces = 0
+	const maxDecimalPlaces = 20
+
+	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
+		var docNumber string
+		if i == 0 {
+			docNumber = "0"
+		} else {
+			docNumber = "0." + strings.Repeat("0", i)
+		}
+		docID := "TestImportDecimalScale" + strconv.Itoa(i)
+		docBody := []byte(fmt.Sprintf(`{"key":%s}`, docNumber))
+
+		ok, err := rt.Bucket().AddRaw(docID, 0, docBody)
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		t.Logf("Inserting doc %s: %s", docID, string(docBody))
+	}
+
+	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
+	assert.NoError(t, err, "Error waiting for changes")
+	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
+
+	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
+		docID := "TestImportDecimalScale" + strconv.Itoa(i)
+		var docBody []byte
+		var syncData db.SyncData
+		_, err := rt.Bucket().GetWithXattr(docID, base.SyncXattrName, &docBody, &syncData)
+		require.NoError(t, err)
+
+		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
+		assert.Truef(t, strings.HasPrefix(syncData.CurrentRev, "1-"), "Expecting rev 1 for imported doc %v", docID)
+
+		var docNumber string
+		if i == 0 {
+			docNumber = "0"
+		} else {
+			docNumber = "0." + strings.Repeat("0", i)
+		}
+		assert.Contains(t, string(docBody), `"key":`+docNumber)
+		t.Logf("Got doc %s: %s with revID: %v", docID, string(docBody), syncData.CurrentRev)
+	}
+
+}
+
+// TestImportZeroValueDecimalPlacesScientificNotation tests that docs containing numbers of the form 0e10 are imported correctly.
+func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
+
+	// FIXME: Fails because of MB-38034
+	t.Skipf("Fails because of MB-38034")
+
+	SkipImportTestsIfNotEnabled(t)
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
+
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport: true,
+		},
+	}
+
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	const minDecimalPlaces = 0
+	const maxDecimalPlaces = 20
+
+	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
+		var docNumber string
+		if i == 0 {
+			docNumber = "0"
+		} else {
+			docNumber = "0E-" + strconv.Itoa(i)
+		}
+		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
+		docBody := []byte(fmt.Sprintf(`{"key":%s}`, docNumber))
+
+		ok, err := rt.Bucket().AddRaw(docID, 0, docBody)
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		t.Logf("Inserting doc %s: %s", docID, string(docBody))
+	}
+
+	changes, err := rt.WaitForChanges((maxDecimalPlaces+1)-minDecimalPlaces, "/db/_changes", "", true)
+	assert.NoError(t, err, "Error waiting for changes")
+	require.Lenf(t, changes.Results, maxDecimalPlaces+1-minDecimalPlaces, "Expected %d changes in: %#v", (maxDecimalPlaces+1)-minDecimalPlaces, changes.Results)
+
+	for i := minDecimalPlaces; i <= maxDecimalPlaces; i++ {
+		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
+		var docBody []byte
+		var syncData db.SyncData
+		_, err := rt.Bucket().GetWithXattr(docID, base.SyncXattrName, &docBody, &syncData)
+		require.NoError(t, err)
+
+		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
+		assert.Truef(t, strings.HasPrefix(syncData.CurrentRev, "1-"), "Expecting rev 1 for imported doc %v", docID)
+
+		var docNumber string
+		if i == 0 {
+			docNumber = "0"
+		} else {
+			docNumber = "0E-" + strconv.Itoa(i)
+		}
+		assert.Contains(t, string(docBody), `"key":`+docNumber)
+		t.Logf("Got doc %s: %s with revID: %v", docID, string(docBody), syncData.CurrentRev)
+	}
+
+}
+
 // Test creation of backup revision on import
 func TestImportRevisionCopy(t *testing.T) {
 
