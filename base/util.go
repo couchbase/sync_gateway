@@ -560,6 +560,7 @@ func SyncSourceFromURL(u *url.URL) string {
 // the input slice contains entries of mixed type, all string entries would
 // be collected and returned as a slice and non-string entries as another.
 func ValueToStringArray(value interface{}) ([]string, []interface{}) {
+	var nonStrings []interface{}
 	switch valueType := value.(type) {
 	case string:
 		return []string{valueType}, nil
@@ -567,7 +568,6 @@ func ValueToStringArray(value interface{}) ([]string, []interface{}) {
 		return valueType, nil
 	case []interface{}:
 		result := make([]string, 0, len(valueType))
-		var nonStrings []interface{}
 		for _, item := range valueType {
 			if str, ok := item.(string); ok {
 				result = append(result, str)
@@ -577,7 +577,8 @@ func ValueToStringArray(value interface{}) ([]string, []interface{}) {
 		}
 		return result, nonStrings
 	default:
-		return nil, nil
+		nonStrings = append(nonStrings, valueType)
+		return nil, nonStrings
 	}
 }
 

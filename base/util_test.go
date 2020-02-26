@@ -243,6 +243,10 @@ func TestValueToStringArray(t *testing.T) {
 	result, nonStrings = ValueToStringArray([]interface{}{"a", []interface{}{"b", "g"}, "c", 4})
 	assert.Equal(t, []string{"a", "c"}, result)
 	assert.Equal(t, []interface{}{[]interface{}{"b", "g"}, 4}, nonStrings)
+
+	result, nonStrings = ValueToStringArray(4)
+	assert.Nil(t, result)
+	assert.Equal(t, []interface{}{4}, nonStrings)
 }
 
 func TestCouchbaseURIToHttpURL(t *testing.T) {
