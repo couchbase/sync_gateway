@@ -23,7 +23,7 @@ func FlushLogBuffers() {
 	}
 
 	for _, logger := range loggers {
-		if cap(logger.collateBuffer) > 1 {
+		if logger != nil && cap(logger.collateBuffer) > 1 {
 			wg.Add(1)
 			logger.flushChan <- struct{}{}
 		}
