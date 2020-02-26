@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-var wg sync.WaitGroup
+var flushLogBuffersWaitGroup sync.WaitGroup
 
-// FlushLogBuffers will cause all log collation buffers to be flushed to the output.
+// FlushLogBuffers will cause all log collation buffers to be flushed to the output before returning.
 func FlushLogBuffers() {
 	loggers := []*FileLogger{
 		traceLogger,
@@ -24,12 +24,12 @@ func FlushLogBuffers() {
 
 	for _, logger := range loggers {
 		if logger != nil && cap(logger.collateBuffer) > 1 {
-			wg.Add(1)
+			flushLogBuffersWaitGroup.Add(1)
 			logger.flushChan <- struct{}{}
 		}
 	}
 
-	wg.Wait()
+	flushLogBuffersWaitGroup.Wait()
 }
 
 // logCollationWorker will take log lines over the given channel, and buffer them until either the buffer is full, or the flushTimeout is exceeded.
@@ -58,11 +58,11 @@ func logCollationWorker(collateBuffer chan string, flushChan chan struct{}, logg
 			}
 		case <-flushChan:
 			if len(logBuffer) > 0 {
-				// We've timed out waiting for more logs to be put into the buffer, so flush it now.
+				// We've sent an explicit "flush now" signal, and want to use a wait group to signal when we've actually performed the flush.
 				logger.Print(strings.Join(logBuffer, "\n"))
 				logBuffer = logBuffer[:0]
 			}
-			wg.Done()
+			flushLogBuffersWaitGroup.Done()
 		case <-t.C:
 			if len(logBuffer) > 0 {
 				// We've timed out waiting for more logs to be put into the buffer, so flush it now.
