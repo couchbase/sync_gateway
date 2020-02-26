@@ -46,7 +46,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100)
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -98,7 +98,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100)
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -323,7 +323,7 @@ func TestCoveringQueries(t *testing.T) {
 	}
 
 	// channels
-	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100)
+	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100, false)
 	plan, explainErr := gocbBucket.ExplainQuery(channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
 	covered := isCovered(plan)
@@ -332,7 +332,7 @@ func TestCoveringQueries(t *testing.T) {
 	assert.True(t, covered, "Channel query isn't covered by index: %s", planJSON)
 
 	// star channel
-	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100)
+	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100, false)
 	plan, explainErr = gocbBucket.ExplainQuery(channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
 	covered = isCovered(plan)
@@ -567,4 +567,66 @@ func countQueryResults(results sgbucket.QueryResultIterator) int {
 		count++
 	}
 	return count
+}
+
+func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test require Couchbase Server")
+	}
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	// Create doc1, revision 1-a
+	body := Body{"channels": []string{"ABC"}, "name": "Alice"}
+	doc, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	require.NoError(t, err, "Couldn't create document")
+	startSeq := doc.Sequence
+
+	// Tombstone doc1, revision 2-a
+	body[BodyDeleted] = true
+	doc, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
+	require.NoError(t, err, "Couldn't create document")
+
+	// Create doc2 and two conflicting changes:
+	body["name"] = "Bob"
+	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"1-a"}, false)
+	require.NoError(t, err, "Couldn't create document")
+
+	body["name"] = "Owen"
+	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"2-b", "1-a"}, false)
+	require.NoError(t, err, "Couldn't create revision 2-b of doc2")
+
+	body["name"] = "Chloe"
+	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"2-a", "1-a"}, false)
+	require.NoError(t, err, "Couldn't create revision 2-a of doc2")
+
+	// Tombstone the non-winning branch of a conflicted document
+	body[BodyDeleted] = true
+	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"3-a", "2-a"}, false)
+	assert.NoError(t, err, "Add 3-a (tombstone)")
+
+	// Create doc3
+	body["name"] = "Emily"
+	doc, _, err = db.PutExistingRevWithBody("doc3", body, []string{"1-a"}, false)
+	require.NoError(t, err, "Couldn't create revision 2-a of doc3")
+	endSeq := doc.Sequence
+
+	// Issue channel query with limit and activeOnly true
+	entries, err := db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 2, true)
+	assert.Len(t, entries, 1)
+
+	// Issue channel query with no limit and activeOnly true
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, true)
+	assert.Len(t, entries, 3)
+
+	// Issue channel query with limit and activeOnly false
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 3, false)
+	assert.Len(t, entries, 3)
+
+	// Issue channel query with no limit and activeOnly false
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, false)
+	assert.Len(t, entries, 3)
 }

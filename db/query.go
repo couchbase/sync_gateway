@@ -76,7 +76,8 @@ var QueryChannels = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
-			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
+			"WHERE $activeOnlyFilter [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),"+
+			"IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
 			"ORDER BY seq",
 		base.BucketQueryToken, base.BucketQueryToken),
 	adhoc: false,
@@ -319,7 +320,8 @@ func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
 }
 
 // Query to compute the set of documents assigned to the specified channel within the sequence range
-func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint64, endSeq uint64, limit int) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint64, endSeq uint64, limit int,
+	activeOnly bool) (sgbucket.QueryResultIterator, error) {
 
 	if context.Options.UseViews {
 		opts := changesViewOptions(channelName, startSeq, endSeq, limit)
@@ -330,7 +332,7 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	// Standard channel index/query doesn't support the star channel.  For star channel queries, QueryStarChannel
 	// (which is backed by IndexAllDocs) is used.  The QueryStarChannel result schema is a subset of the
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
-	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit)
+	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit, activeOnly)
 
 	return context.N1QLQueryWithStats(QueryChannels.name, channelQueryStatement, params, gocb.RequestPlus, QueryChannels.adhoc)
 }
@@ -359,7 +361,8 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 
 // Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
 // query is covering.
-func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int) (statement string, params map[string]interface{}) {
+func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int,
+	activeOnly bool) (statement string, params map[string]interface{}) {
 
 	channelQuery := QueryChannels
 	index := sgIndexes[IndexChannels]
@@ -368,7 +371,8 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 		index = sgIndexes[IndexAllDocs]
 	}
 
-	channelQueryStatement := replaceSyncTokensQuery(channelQuery.statement, context.UseXattrs())
+	channelQueryStatement := replaceActiveOnlyFilter(channelQuery.statement, limit, activeOnly)
+	channelQueryStatement = replaceSyncTokensQuery(channelQueryStatement, context.UseXattrs())
 	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, index, context.UseXattrs())
 	if limit > 0 {
 		channelQueryStatement = fmt.Sprintf("%s LIMIT %d", channelQueryStatement, limit)
