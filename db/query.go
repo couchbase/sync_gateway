@@ -76,43 +76,10 @@ var QueryChannels = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
-			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
+			"WHERE $activeOnlyFilter [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),"+
+			"IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
 			"ORDER BY seq",
 		base.BucketQueryToken, base.BucketQueryToken),
-	adhoc: false,
-}
-
-var QueryChannelsActiveOnly = SGQuery{
-	name: QueryTypeChannels,
-	statement: fmt.Sprintf(
-		"SELECT [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][1] AS seq, "+
-			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][2] AS rRev, "+
-			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
-			"$sync.rev AS rev, "+
-			"$sync.flags AS flags, "+
-			"META(`%s`).id AS id "+
-			"FROM `%s` "+
-			"USE INDEX ($idx) "+
-			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
-			"WHERE $sync.flags IS NOT MISSING AND BITTEST($sync.flags, 1) = false "+
-			"AND [op.name, LEAST($sync.sequence, op.val.seq),"+
-			"IFMISSING(op.val.rev,null),"+
-			"IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
-			"UNION SELECT [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),"+
-			"IFMISSING(op.val.del,null)][1] AS seq, "+
-			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][2] AS rRev, "+
-			"[op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)][3] AS rDel, "+
-			"$sync.rev AS rev, "+
-			"$sync.flags AS flags, "+
-			"META(`%s`).id AS id "+
-			"FROM `%s` "+
-			"USE INDEX ($idx) "+
-			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
-			"WHERE $sync.flags IS MISSING AND [op.name, LEAST($sync.sequence, op.val.seq),"+
-			"IFMISSING(op.val.rev,null),"+
-			"IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
-			"ORDER BY seq",
-		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken),
 	adhoc: false,
 }
 
@@ -398,16 +365,14 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	activeOnly bool) (statement string, params map[string]interface{}) {
 
 	channelQuery := QueryChannels
-	if activeOnly {
-		channelQuery = QueryChannelsActiveOnly
-	}
 	index := sgIndexes[IndexChannels]
 	if channelName == "*" {
 		channelQuery = QueryStarChannel
 		index = sgIndexes[IndexAllDocs]
 	}
 
-	channelQueryStatement := replaceSyncTokensQuery(channelQuery.statement, context.UseXattrs())
+	channelQueryStatement := replaceActiveOnlyFilter(channelQuery.statement, limit, activeOnly)
+	channelQueryStatement = replaceSyncTokensQuery(channelQueryStatement, context.UseXattrs())
 	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, index, context.UseXattrs())
 	if limit > 0 {
 		channelQueryStatement = fmt.Sprintf("%s LIMIT %d", channelQueryStatement, limit)
