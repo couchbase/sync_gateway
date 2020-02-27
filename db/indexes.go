@@ -14,10 +14,9 @@ import (
 )
 
 const (
-	indexNameFormat  = "sg_%s_%s%d"        // Name, xattrs, version.  e.g. "sg_channels_x1"
-	syncToken        = "$sync"             // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
-	indexToken       = "$idx"              // Index token, used to hint which index should be used for the query
-	activeOnlyFilter = "$activeOnlyFilter" // Placeholder to substitute active only filter in channel query
+	indexNameFormat = "sg_%s_%s%d" // Name, xattrs, version.  e.g. "sg_channels_x1"
+	syncToken       = "$sync"      // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
+	indexToken      = "$idx"       // Index token, used to hint which index should be used for the query
 
 	// N1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
 	// Need to escape the underscore in '_sync' to prevent it being treated as a N1QL wildcard
@@ -458,13 +457,4 @@ func replaceSyncTokensQuery(statement string, useXattrs bool) string {
 // Replace index tokens ($idx) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
 func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool) string {
 	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs), -1)
-}
-
-// Replace $activeOnlyFilter placeholder in the channel query statement.
-func replaceActiveOnlyFilter(statement string, limit int, activeOnly bool) string {
-	if limit > 0 && activeOnly {
-		return strings.Replace(statement, activeOnlyFilter, "BITTEST($sync.flags, 1) AND", -1)
-	} else {
-		return strings.Replace(statement, activeOnlyFilter, "", -1)
-	}
 }

@@ -579,34 +579,25 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	// Create doc1, revision 1-a
+	// Create doc1  and mark it as tombstone
 	body := Body{"channels": []string{"ABC"}, "name": "Alice"}
 	doc, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
 	require.NoError(t, err, "Couldn't create document")
 	startSeq := doc.Sequence
-
-	// Tombstone doc1, revision 2-a
 	body[BodyDeleted] = true
 	doc, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
 	require.NoError(t, err, "Couldn't create document")
 
-	// Create doc2 and two conflicting changes:
+	// Create doc2 with two conflicting changes:
 	body["name"] = "Bob"
 	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"1-a"}, false)
 	require.NoError(t, err, "Couldn't create document")
-
 	body["name"] = "Owen"
 	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"2-b", "1-a"}, false)
 	require.NoError(t, err, "Couldn't create revision 2-b of doc2")
-
 	body["name"] = "Chloe"
 	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"2-a", "1-a"}, false)
 	require.NoError(t, err, "Couldn't create revision 2-a of doc2")
-
-	// Tombstone the non-winning branch of a conflicted document
-	body[BodyDeleted] = true
-	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"3-a", "2-a"}, false)
-	assert.NoError(t, err, "Add 3-a (tombstone)")
 
 	// Create doc3
 	body["name"] = "Emily"
@@ -616,11 +607,11 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 
 	// Issue channel query with limit and activeOnly true
 	entries, err := db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 2, true)
-	assert.Len(t, entries, 1)
+	assert.Len(t, entries, 2)
 
 	// Issue channel query with no limit and activeOnly true
 	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, true)
-	assert.Len(t, entries, 3)
+	assert.Len(t, entries, 2)
 
 	// Issue channel query with limit and activeOnly false
 	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 3, false)
