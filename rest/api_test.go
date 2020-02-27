@@ -4103,6 +4103,99 @@ func TestConflictingBranchAttachments(t *testing.T) {
 
 }
 
+func TestAttachmentsWithTombstonedConflict(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	//Create a document
+	docRevId := rt.createDoc(t, "doc1")
+	//docRevDigest := strings.Split(docRevId, "-")[1]
+
+	//Create an attachment
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// Add an attachment at rev 2
+	var body db.Body
+	rev2Attachment := `aGVsbG8gd29ybGQ=` //hello.txt
+	response := rt.SendRequestWithHeaders("PUT", "/db/doc1/attach1?rev="+docRevId, rev2Attachment, reqHeaders)
+	assertStatus(t, response, http.StatusCreated)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	docRevId2 := body["rev"].(string)
+
+	// Create rev 3, preserve the attachment
+	rev3Body := `{"_id": "doc1", "mod":"mod_3", "_attachments": {"attach1": {"content_type": "content/type", "digest": "sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub":true}}}`
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId2, rev3Body)
+	assertStatus(t, response, http.StatusCreated)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	docRevId3 := body["rev"].(string)
+
+	// Add another attachment at rev 4
+	rev4Attachment := `Z29vZGJ5ZSBjcnVlbCB3b3JsZA==` //bye.txt
+	response = rt.SendRequestWithHeaders("PUT", "/db/doc1/attach2?rev="+docRevId3, rev4Attachment, reqHeaders)
+	assertStatus(t, response, http.StatusCreated)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	docRevId4 := body["rev"].(string)
+
+	// Create rev 5, preserve the attachments
+	rev5Body := `{"_id": "doc1",` +
+		`"mod":"mod_5",` +
+		`"_attachments": ` +
+		`{"attach1": {"content_type": "content/type", "digest": "sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub":true},` +
+		` "attach2": {"content_type": "content/type", "digest": "sha1-rdfKyt3ssqPHnWBUxl/xauXXcUs=", "length": 28, "revpos": 4, "stub":true}}` +
+		`}`
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId4, rev5Body)
+	assertStatus(t, response, http.StatusCreated)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	docRevId5 := body["rev"].(string)
+
+	// Create rev 6, preserve the attachments
+	rev6Body := `{"_id": "doc1",` +
+		`"mod":"mod_5",` +
+		`"_attachments": ` +
+		`{"attach1": {"content_type": "content/type", "digest": "sha1-b7fDq/pHG8Nf5F3fe0K2nu0xcw0=", "length": 16, "revpos": 2, "stub":true},` +
+		` "attach2": {"content_type": "content/type", "digest": "sha1-rdfKyt3ssqPHnWBUxl/xauXXcUs=", "length": 28, "revpos": 4, "stub":true}}` +
+		`}`
+	response = rt.SendRequest("PUT", "/db/doc1?rev="+docRevId5, rev6Body)
+	assertStatus(t, response, http.StatusCreated)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	//docRevId6 := body["rev"].(string)
+
+	response = rt.SendRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]", "")
+	log.Printf("Rev6 GET: %s", response.Body.Bytes())
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	_, attachmentsPresent := body["_attachments"]
+	assert.True(t, attachmentsPresent)
+
+	// Create conflicting rev 6 that doesn't have attachments
+	reqBodyRev6a := `{"_rev": "6-a", "_revisions": {"ids": ["a", "` + docRevId5 + `"], "start": 6}}`
+	response = rt.SendRequest("PUT", "/db/doc1?new_edits=false", reqBodyRev6a)
+	assertStatus(t, response, http.StatusCreated)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	docRevId2a := body["rev"].(string)
+	assert.Equal(t, "6-a", docRevId2a)
+
+	var rev6Response db.Body
+	response = rt.SendRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]", "")
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev6Response))
+	_, attachmentsPresent = rev6Response["_attachments"]
+	assert.False(t, attachmentsPresent)
+
+	// Tombstone revision 6-a, leaves 6-7368e68932e8261dba7ad831e3cd5a5e as winner
+	response = rt.SendRequest("DELETE", "/db/doc1?rev=6-a", "")
+	assertStatus(t, response, http.StatusOK)
+
+	// Retrieve current winning rev with attachments
+	var rev7Response db.Body
+	response = rt.SendRequest("GET", "/db/doc1?atts_since=[\""+docRevId+"\"]", "")
+	log.Printf("Rev6 GET: %s", response.Body.Bytes())
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &rev7Response))
+	_, attachmentsPresent = rev7Response["_attachments"]
+	assert.True(t, attachmentsPresent)
+}
+
 func TestNumAccessErrors(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc){if (doc.channels.indexOf("foo") > -1){requireRole("foobar")}}`,
