@@ -460,10 +460,11 @@ func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool) stri
 	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs), -1)
 }
 
-// Replace $activeOnlyFilter placeholder in the channel query statement.
+// Replace $activeOnlyFilter placeholder with activeOnlyFilterFilterExpression if activeOnly is true and the limit
+// is grater than zero. If activeOnly is false or limit is not grater than 0, the $activeOnlyFilter placeholder will
+// be replaced with an empty string in the channel query statement.
 func replaceActiveOnlyFilter(statement string, limit int, activeOnly bool) string {
-	activeOnlyFilterFilterExpression := "(($sync.flags IS NOT MISSING AND BITTEST($sync.flags, " +
-		"1) = false) OR $sync.flags IS MISSING) AND"
+	activeOnlyFilterFilterExpression := "($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false) AND"
 	if limit > 0 && activeOnly {
 		return strings.Replace(statement, activeOnlyFilter, activeOnlyFilterFilterExpression, -1)
 	} else {
