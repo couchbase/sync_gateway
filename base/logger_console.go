@@ -58,9 +58,10 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
+		logger.flushChan = make(chan struct{}, 1)
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
 	if *config.Enabled {

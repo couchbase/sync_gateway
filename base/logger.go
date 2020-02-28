@@ -4,17 +4,37 @@ import (
 	"log"
 	"math"
 	"strings"
+	"sync"
 	"time"
 )
 
-// FlushLogBuffers will cause all log collation buffers to be flushed to the output.
+var flushLogBuffersWaitGroup sync.WaitGroup
+
+// FlushLogBuffers will cause all log collation buffers to be flushed to the output before returning.
 func FlushLogBuffers() {
-	time.Sleep(loggerCollateFlushDelay)
+	loggers := []*FileLogger{
+		traceLogger,
+		debugLogger,
+		infoLogger,
+		warnLogger,
+		errorLogger,
+		statsLogger,
+		&consoleLogger.FileLogger,
+	}
+
+	for _, logger := range loggers {
+		if logger != nil && cap(logger.collateBuffer) > 1 {
+			flushLogBuffersWaitGroup.Add(1)
+			logger.flushChan <- struct{}{}
+		}
+	}
+
+	flushLogBuffersWaitGroup.Wait()
 }
 
 // logCollationWorker will take log lines over the given channel, and buffer them until either the buffer is full, or the flushTimeout is exceeded.
 // This is to reduce the number of writes to the log files, in order to batch them up as larger collated chunks, whilst maintaining a low-level of latency with the flush timeout.
-func logCollationWorker(collateBuffer chan string, logger *log.Logger, maxBufferSize int, collateFlushTimeout time.Duration) {
+func logCollationWorker(collateBuffer chan string, flushChan chan struct{}, logger *log.Logger, maxBufferSize int, collateFlushTimeout time.Duration) {
 
 	// The initial duration of the timeout timer doesn't matter,
 	// because we reset it whenever we buffer a log without flushing it.
@@ -36,6 +56,13 @@ func logCollationWorker(collateBuffer chan string, logger *log.Logger, maxBuffer
 				// since we check if there's anything to flush first.
 				_ = t.Reset(collateFlushTimeout)
 			}
+		case <-flushChan:
+			if len(logBuffer) > 0 {
+				// We've sent an explicit "flush now" signal, and want to use a wait group to signal when we've actually performed the flush.
+				logger.Print(strings.Join(logBuffer, "\n"))
+				logBuffer = logBuffer[:0]
+			}
+			flushLogBuffersWaitGroup.Done()
 		case <-t.C:
 			if len(logBuffer) > 0 {
 				// We've timed out waiting for more logs to be put into the buffer, so flush it now.

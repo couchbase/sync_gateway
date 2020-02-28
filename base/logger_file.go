@@ -36,6 +36,7 @@ type FileLogger struct {
 
 	// collateBuffer is used to store log entries to batch up multiple logs.
 	collateBuffer chan string
+	flushChan     chan struct{}
 	level         LogLevel
 	name          string
 	output        io.Writer
@@ -76,9 +77,10 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFile
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
+		logger.flushChan = make(chan struct{}, 1)
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
 	return logger, nil
