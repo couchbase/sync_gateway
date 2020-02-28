@@ -762,3 +762,114 @@ func TestStoreAttachments(t *testing.T) {
 	assert.Error(t, err, "It should throw 400 Missing/invalid revpos in stub attachment error")
 	assert.Contains(t, err.Error(), "400 Missing/invalid revpos in stub attachment")
 }
+
+func TestMigrateAttachments(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	assert.NoError(t, err, "The database context should be created for database 'db'")
+	defer context.Close()
+	db, err := CreateDatabase(context)
+	assert.NoError(t, err, "The database 'db' should be created")
+
+	// Put a document with hello.txt attachment, to write attachment to the bucket
+	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+	var body Body
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
+	_, _, err = db.Put("doc1", body)
+	assert.NoError(t, err, "Couldn't create document")
+
+	log.Printf("Retrieve doc...")
+	gotbody, err := db.Get1xRevBody("doc1", "", false, []string{})
+	assert.NoError(t, err, "Couldn't get document")
+	atts := gotbody[BodyAttachments].(AttachmentsMeta)
+
+	hello := atts["hello.txt"].(map[string]interface{})
+	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, 11, hello["length"])
+	assert.Equal(t, 1, hello["revpos"])
+
+	// Create 2.1 style document - metadata in xattr, _attachments in body, referencing attachment created above
+
+	bodyPre25 := `
+       {
+       "_attachments": {
+			"hello.txt": {
+				"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+				"length": 11,
+				"revpos": 1,
+				"stub": true
+			}
+		}
+	   }`
+
+	xattrPre25 := `
+    {
+ 	  "rev": "3-a",
+      "sequence": 4,
+      "recent_sequences": [
+        4
+      ],
+      "history": {
+        "revs": [
+          "2-a",
+          "3-a",
+          "1-a"
+        ],
+        "parents": [
+          2,
+          0,
+          -1
+        ],
+        "channels": [
+          [
+            "ABC"
+          ],
+          [
+            "ABC"
+          ],
+          [
+            "ABC"
+          ]
+        ]
+      },
+      "channels": {
+        "ABC": null
+      }
+    }
+	`
+	var bodyVal map[string]interface{}
+	var xattrVal map[string]interface{}
+	err = base.JSONUnmarshal([]byte(bodyPre25), &bodyVal)
+	assert.NoError(t, err)
+	err = base.JSONUnmarshal([]byte(xattrPre25), &xattrVal)
+	assert.NoError(t, err)
+
+	key := "TestAttachmentMigrate"
+
+	// Create w/ XATTR
+	log.Printf("Creating doc with bodyVal: %v %T", bodyVal, bodyVal)
+	log.Printf("Creating doc with xattrVal: %v %T", xattrVal, xattrVal)
+
+	cas := uint64(0)
+	cas, err = bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, bodyVal, xattrVal)
+	if err != nil {
+		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	}
+
+	// Verify body and XATTR in bucket
+	var retrievedVal map[string]interface{}
+	var retrievedXattr map[string]interface{}
+	mutateCas, err := bucket.GetWithXattr(key, base.SyncXattrName, &retrievedVal, &retrievedXattr)
+	log.Printf("err: %v", err)
+	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
+	log.Printf("MutateInEx cas: %v", mutateCas)
+
+	// Verify attachments are present on GetRev
+	rev, err := db.GetRev(key, "3-a", true, nil)
+	assert.NotEmpty(t, rev.Attachments)
+	log.Printf("attachments %v", rev.Attachments)
+}
