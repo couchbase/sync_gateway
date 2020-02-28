@@ -72,7 +72,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 		}
 
 		// Non-retry error - return
-		if !isIndexerError(queryErr) && !isSelectBucketError(queryErr) {
+		if !isIndexerError(queryErr) {
 			Warnf("Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
 			return queryResults, pkgerrors.WithStack(queryErr)
 		}
@@ -392,6 +392,8 @@ func isIndexerError(err error) bool {
 	} else if strings.Contains(err.Error(), "Indexer rollback") {
 		return true
 	} else if IsIndexerRetryBuildError(err) {
+		return true
+	} else if isSelectBucketError(err) {
 		return true
 	}
 
