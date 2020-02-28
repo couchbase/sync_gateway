@@ -64,6 +64,9 @@ type QueryAccessRow struct {
 	Value channels.TimedSet
 }
 
+// Placeholder to substitute active only filter in channel query.
+const activeOnlyFilter = "$$activeOnlyFilter"
+
 var QueryChannels = SGQuery{
 	name: QueryTypeChannels,
 	statement: fmt.Sprintf(
@@ -76,9 +79,9 @@ var QueryChannels = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
-			"WHERE $activeOnlyFilter [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),"+
-			"IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq] "+
-			"ORDER BY seq",
+			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),"+
+			"IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
+			"$$activeOnlyFilter ORDER BY seq",
 		base.BucketQueryToken, base.BucketQueryToken),
 	adhoc: false,
 }
@@ -371,7 +374,7 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 		index = sgIndexes[IndexAllDocs]
 	}
 
-	channelQueryStatement := replaceActiveOnlyFilter(channelQuery.statement, limit, activeOnly)
+	channelQueryStatement := replaceActiveOnlyFilter(channelQuery.statement, activeOnly)
 	channelQueryStatement = replaceSyncTokensQuery(channelQueryStatement, context.UseXattrs())
 	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, index, context.UseXattrs())
 	if limit > 0 {

@@ -14,10 +14,9 @@ import (
 )
 
 const (
-	indexNameFormat  = "sg_%s_%s%d"        // Name, xattrs, version.  e.g. "sg_channels_x1"
-	syncToken        = "$sync"             // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
-	indexToken       = "$idx"              // Index token, used to hint which index should be used for the query
-	activeOnlyFilter = "$activeOnlyFilter" // Placeholder to substitute active only filter in channel query
+	indexNameFormat = "sg_%s_%s%d" // Name, xattrs, version.  e.g. "sg_channels_x1"
+	syncToken       = "$sync"      // Sync token, used to swap between xattr/non-xattr handling in n1ql statements
+	indexToken      = "$idx"       // Index token, used to hint which index should be used for the query
 
 	// N1ql-encoded wildcard expression matching the '_sync:' prefix used for all sync gateway's system documents.
 	// Need to escape the underscore in '_sync' to prevent it being treated as a N1QL wildcard
@@ -460,13 +459,12 @@ func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool) stri
 	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs), -1)
 }
 
-// Replace $activeOnlyFilter placeholder with activeOnlyFilterFilterExpression if activeOnly is true and the limit
-// is grater than zero. If activeOnly is false or limit is not grater than 0, the $activeOnlyFilter placeholder will
-// be replaced with an empty string in the channel query statement.
-func replaceActiveOnlyFilter(statement string, limit int, activeOnly bool) string {
-	activeOnlyFilterFilterExpression := "($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false) AND"
-	if limit > 0 && activeOnly {
-		return strings.Replace(statement, activeOnlyFilter, activeOnlyFilterFilterExpression, -1)
+// Replace $$activeOnlyFilter placeholder with activeOnlyFilterExpression if activeOnly is true
+// and an empty string otherwise in the channel query statement.
+func replaceActiveOnlyFilter(statement string, activeOnly bool) string {
+	activeOnlyFilterExpression := "AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)"
+	if activeOnly {
+		return strings.Replace(statement, activeOnlyFilter, activeOnlyFilterExpression, -1)
 	} else {
 		return strings.Replace(statement, activeOnlyFilter, "", -1)
 	}

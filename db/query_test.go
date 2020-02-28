@@ -611,7 +611,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	// Create doc3
 	body["name"] = "Emily"
 	doc, _, err = db.PutExistingRevWithBody("doc3", body, []string{"1-a"}, false)
-	require.NoError(t, err, "Couldn't create revision 2-a of doc3")
+	require.NoError(t, err, "Couldn't create revision 1-a of doc3")
 	endSeq := doc.Sequence
 
 	// Issue channel query with limit and activeOnly true
@@ -626,29 +626,23 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 
 	// Issue channel query with no limit and activeOnly true
 	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, true)
-	assert.Len(t, entries, 3)
-	assert.Equal(t, "doc1", entries[0].DocID)
-	assert.Equal(t, "2-a", entries[0].RevID)
-	assert.Equal(t, "doc2", entries[1].DocID)
-	assert.Equal(t, "2-b", entries[1].RevID)
-	assert.Equal(t, "doc3", entries[2].DocID)
-	assert.Equal(t, "1-a", entries[2].RevID)
-	assert.Equal(t, uint8(0x1), entries[0].Flags)
-	assert.Equal(t, uint8(0x14), entries[1].Flags)
-	assert.Equal(t, uint8(0x0), entries[2].Flags)
+	assert.Len(t, entries, 2)
+	assert.Equal(t, "doc2", entries[0].DocID)
+	assert.Equal(t, "2-b", entries[0].RevID)
+	assert.Equal(t, uint8(0x14), entries[0].Flags)
+	assert.Equal(t, "doc3", entries[1].DocID)
+	assert.Equal(t, "1-a", entries[1].RevID)
+	assert.Equal(t, uint8(0x0), entries[1].Flags)
 
 	// Issue channel query with limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 3, false)
-	assert.Len(t, entries, 3)
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 2, false)
+	assert.Len(t, entries, 2)
 	assert.Equal(t, "doc1", entries[0].DocID)
 	assert.Equal(t, "2-a", entries[0].RevID)
 	assert.Equal(t, "doc2", entries[1].DocID)
 	assert.Equal(t, "2-b", entries[1].RevID)
-	assert.Equal(t, "doc3", entries[2].DocID)
-	assert.Equal(t, "1-a", entries[2].RevID)
 	assert.Equal(t, uint8(0x1), entries[0].Flags)
 	assert.Equal(t, uint8(0x14), entries[1].Flags)
-	assert.Equal(t, uint8(0x0), entries[2].Flags)
 
 	// Issue channel query with no limit and activeOnly false
 	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, false)
