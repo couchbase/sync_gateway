@@ -104,7 +104,7 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	go func() {
 		scanner := bufio.NewScanner(stderrPipeReader)
 		for scanner.Scan() {
-			base.Warnf("sgcollect_info: %v", scanner.Text())
+			base.Infof(base.KeyAll, "sgcollect_info: %v", scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
 			base.Errorf("sgcollect_info: unexpected error: %v", err)
@@ -115,7 +115,7 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	go func() {
 		scanner := bufio.NewScanner(stdoutPipeReader)
 		for scanner.Scan() {
-			base.Debugf(base.KeyAdmin, "sgcollect_info: %v", scanner.Text())
+			base.Infof(base.KeyAll, "sgcollect_info: %v", scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
 			base.Errorf("sgcollect_info: unexpected error: %v", err)
