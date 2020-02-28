@@ -72,7 +72,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 		}
 
 		// Non-retry error - return
-		if !isIndexerError(queryErr) {
+		if !isIndexerError(queryErr) && isSelectBucketError(queryErr) {
 			Warnf("Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
 			return queryResults, pkgerrors.WithStack(queryErr)
 		}
@@ -414,4 +414,10 @@ func StringSliceToN1QLArray(values []string, quote string) string {
 		asString = fmt.Sprintf("%s,%s%s%s", asString, quote, values[i], quote)
 	}
 	return asString
+}
+
+func isSelectBucketError(err error) bool {
+	return err != nil &&
+		strings.Contains(err.Error(), "status=KEY_ENOENT") &&
+		strings.Contains(err.Error(), "opcode=0x89")
 }
