@@ -79,8 +79,8 @@ var QueryChannels = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
-			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),"+
-			"IFMISSING(op.val.del,null)]  BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
+			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
+			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
 			"%s ORDER BY seq",
 		base.BucketQueryToken, base.BucketQueryToken, activeOnlyFilter),
 	adhoc: false,
@@ -96,8 +96,8 @@ var QueryStarChannel = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
-			"AND META().id NOT LIKE '%s'",
-		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
+			"AND META().id NOT LIKE '%s' %s",
+		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard, activeOnlyFilter),
 	adhoc: false,
 }
 
@@ -575,4 +575,15 @@ func (e *EmptyResultIterator) NextBytes() []byte {
 
 func (e *EmptyResultIterator) Close() error {
 	return nil
+}
+
+// Replace $$activeOnlyFilter placeholder with activeOnlyFilterExpression if activeOnly is true
+// and an empty string otherwise in the channel query statement.
+func replaceActiveOnlyFilter(statement string, activeOnly bool) string {
+	activeOnlyFilterExpression := "AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)"
+	if activeOnly {
+		return strings.Replace(statement, activeOnlyFilter, activeOnlyFilterExpression, -1)
+	} else {
+		return strings.Replace(statement, activeOnlyFilter, "", -1)
+	}
 }

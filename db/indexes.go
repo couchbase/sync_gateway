@@ -330,7 +330,11 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 			go func(index SGIndex) {
 				defer indexesWg.Done()
 				base.Debugf(base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
-				queryStatement := replaceSyncTokensQuery(index.readinessQuery, useXattrs)
+				queryStatement := index.readinessQuery
+				if index.simpleName == QueryTypeChannels {
+					queryStatement = replaceActiveOnlyFilter(queryStatement, false)
+				}
+				queryStatement = replaceSyncTokensQuery(queryStatement, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
 					base.Warnf("Query error for statement [%s], err:%v", queryStatement, queryErr)
@@ -457,15 +461,4 @@ func replaceSyncTokensQuery(statement string, useXattrs bool) string {
 // Replace index tokens ($idx) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
 func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool) string {
 	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs), -1)
-}
-
-// Replace $$activeOnlyFilter placeholder with activeOnlyFilterExpression if activeOnly is true
-// and an empty string otherwise in the channel query statement.
-func replaceActiveOnlyFilter(statement string, activeOnly bool) string {
-	activeOnlyFilterExpression := "AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)"
-	if activeOnly {
-		return strings.Replace(statement, activeOnlyFilter, activeOnlyFilterExpression, -1)
-	} else {
-		return strings.Replace(statement, activeOnlyFilter, "", -1)
-	}
 }
