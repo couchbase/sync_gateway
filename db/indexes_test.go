@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"testing"
@@ -238,4 +239,13 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	} else {
 		assert.Contains(t, removedIndex, "sg_channels_1")
 	}
+}
+
+func TestIsRecoverableIndexError(t *testing.T) {
+	var err error
+	assert.False(t, isRecoverableIndexError(err))
+	err = errors.New("MCResponse status=KEY_ENOENT, opcode=0x89, opaque=0")
+	assert.False(t, isRecoverableIndexError(err))
+	err = errors.New("err:[5000]  MCResponse status=KEY_ENOENT, opcode=0x89, opaque=0")
+	assert.True(t, isRecoverableIndexError(err))
 }

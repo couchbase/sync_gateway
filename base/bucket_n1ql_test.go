@@ -626,12 +626,3 @@ func TestIsIndexerError(t *testing.T) {
 	err = errors.New("Indexer rollback")
 	assert.True(t, isIndexerError(err))
 }
-
-func TestIsSelectBucketError(t *testing.T) {
-	var err error
-	assert.False(t, isSelectBucketError(err))
-	err = errors.New("cause:  MCResponse status=KEY_ENOENT, opcode=0x51, opaque=0, msg:")
-	assert.False(t, isSelectBucketError(err))
-	err = errors.New("cause:  MCResponse status=KEY_ENOENT, opcode=0x89, opaque=0, msg:")
-	assert.True(t, isSelectBucketError(err))
-}

@@ -363,11 +363,20 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 		}
 		if err == base.ErrViewTimeoutError {
 			base.Infof(base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
+		} else if isRecoverableIndexError(err) {
+			base.Infof(base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 		} else {
 			return err
 		}
 	}
 
+}
+
+// Return true if the GSI related errors are recoverable and false
+// otherwise. Index related errors with error code 5000 are considered
+// as recoverable errors.
+func isRecoverableIndexError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "err:[5000]")
 }
 
 // Iterates over the index set, removing obsolete indexes:

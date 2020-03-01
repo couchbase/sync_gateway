@@ -393,8 +393,6 @@ func isIndexerError(err error) bool {
 		return true
 	} else if IsIndexerRetryBuildError(err) {
 		return true
-	} else if isSelectBucketError(err) {
-		return true
 	}
 
 	return false
@@ -416,10 +414,4 @@ func StringSliceToN1QLArray(values []string, quote string) string {
 		asString = fmt.Sprintf("%s,%s%s%s", asString, quote, values[i], quote)
 	}
 	return asString
-}
-
-func isSelectBucketError(err error) bool {
-	return err != nil &&
-		strings.Contains(err.Error(), "status=KEY_ENOENT") &&
-		strings.Contains(err.Error(), "opcode=0x89")
 }
