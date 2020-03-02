@@ -249,7 +249,7 @@ func TestValueToStringArray(t *testing.T) {
 	assert.Equal(t, []interface{}{4}, nonStrings)
 
 	result, nonStrings = ValueToStringArray([]interface{}{1, true})
-	assert.Nil(t, result)
+	assert.Equal(t, result, []string{})
 	assert.Equal(t, []interface{}{1, true}, nonStrings)
 }
 
