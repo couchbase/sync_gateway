@@ -262,13 +262,8 @@ func ottoValueToStringArray(value otto.Value) []string {
 
 	result, nonStrings := base.ValueToStringArray(nativeValue)
 
-	if !value.IsNull() && !value.IsUndefined() {
-		if result == nil {
-			base.Warnf("SyncRunner: Non-string, non-array passed to JS callback: %s", base.UD(value))
-		}
-		if nonStrings != nil {
-			base.Warnf("SyncRunner: Non-string slice values: %s passed to JS callback will be omitted", base.UD(nonStrings))
-		}
+	if !value.IsNull() && !value.IsUndefined() && nonStrings != nil {
+		base.Warnf("Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 	}
 	return result
 }

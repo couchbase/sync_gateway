@@ -1646,7 +1646,7 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 		if value != nil {
 			array, nonStrings := base.ValueToStringArray(value)
 			if nonStrings != nil {
-				base.Warnf("Non-string, non-array values: %s passed as channels will be omitted", base.UD(nonStrings))
+				base.Warnf("Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 			}
 			result, err = channels.SetFromArray(array, channels.KeepStar)
 		}
