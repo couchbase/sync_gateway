@@ -35,7 +35,12 @@ func TestOttoValueToStringArray(t *testing.T) {
 	// Test for https://github.com/robertkrimen/otto/issues/24
 	value, _ := otto.New().ToValue([]string{"foo", "bar", "baz"})
 	strings := ottoValueToStringArray(value)
-	goassert.DeepEquals(t, strings, []string{"foo", "bar", "baz"})
+	assert.Equal(t, []string{"foo", "bar", "baz"}, strings)
+
+	// Test for https://issues.couchbase.com/browse/CBG-714
+	value, _ = otto.New().ToValue([]interface{}{"a", []interface{}{"b", "g"}, "c", 4})
+	strings = ottoValueToStringArray(value)
+	assert.Equal(t, []string{"a", "c"}, strings)
 }
 
 // verify that our version of Otto treats JSON parsed arrays like real arrays

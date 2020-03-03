@@ -1644,7 +1644,10 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 		// No ChannelMapper so by default use the "channels" property:
 		value := body["channels"]
 		if value != nil {
-			array := base.ValueToStringArray(value)
+			array, nonStrings := base.ValueToStringArray(value)
+			if nonStrings != nil {
+				base.Warnf("Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
+			}
 			result, err = channels.SetFromArray(array, channels.KeepStar)
 		}
 	}

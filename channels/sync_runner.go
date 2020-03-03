@@ -260,12 +260,11 @@ func AccessNameToPrincipalName(accessPrincipalName string) (principalName string
 func ottoValueToStringArray(value otto.Value) []string {
 	nativeValue, _ := value.Export()
 
-	result := base.ValueToStringArray(nativeValue)
+	result, nonStrings := base.ValueToStringArray(nativeValue)
 
-	if result == nil && !value.IsNull() && !value.IsUndefined() {
-		base.Warnf("SyncRunner: Non-string, non-array passed to JS callback: %s", base.UD(value))
+	if !value.IsNull() && !value.IsUndefined() && nonStrings != nil {
+		base.Warnf("Channel names must be string values only. Ignoring non-string channels: %s", base.UD(nonStrings))
 	}
-
 	return result
 }
 
