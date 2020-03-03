@@ -378,8 +378,7 @@ func isIndexerError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "err:[5000]")
 }
 
-// Iterates over the index
-//set, removing obsolete indexes:
+// Iterates over the index set, removing obsolete indexes:
 //  - indexes based on the inverse value of xattrs being used by the database
 //  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
 func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool, useViews bool) (removedIndexes []string, err error) {
