@@ -618,11 +618,11 @@ func TestIsIndexerRetryBuildError(t *testing.T) {
 	assert.True(t, IsIndexerRetryBuildError(err))
 }
 
-func TestIsIndexerError(t *testing.T) {
+func TestIsTransientIndexerError(t *testing.T) {
 	var err error
-	assert.False(t, isIndexerError(err))
+	assert.False(t, isTransientIndexerError(err))
 	err = errors.New("lost heartbeat")
-	assert.False(t, isIndexerError(err))
+	assert.False(t, isTransientIndexerError(err))
 	err = errors.New("Indexer rollback")
-	assert.True(t, isIndexerError(err))
+	assert.True(t, isTransientIndexerError(err))
 }

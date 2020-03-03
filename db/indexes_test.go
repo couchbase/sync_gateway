@@ -241,11 +241,11 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	}
 }
 
-func TestIsRecoverableIndexError(t *testing.T) {
+func TestIsIndexerError(t *testing.T) {
 	var err error
-	assert.False(t, isRecoverableIndexError(err))
+	assert.False(t, isIndexerError(err))
 	err = errors.New("MCResponse status=KEY_ENOENT, opcode=0x89, opaque=0")
-	assert.False(t, isRecoverableIndexError(err))
+	assert.False(t, isIndexerError(err))
 	err = errors.New("err:[5000]  MCResponse status=KEY_ENOENT, opcode=0x89, opaque=0")
-	assert.True(t, isRecoverableIndexError(err))
+	assert.True(t, isIndexerError(err))
 }

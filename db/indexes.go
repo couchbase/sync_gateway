@@ -363,7 +363,7 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 		}
 		if err == base.ErrViewTimeoutError {
 			base.Infof(base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
-		} else if isRecoverableIndexError(err) {
+		} else if isIndexerError(err) {
 			base.Infof(base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 		} else {
 			return err
@@ -372,14 +372,14 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 
 }
 
-// Return true if the GSI related errors are recoverable and false
-// otherwise. Index related errors with error code 5000 are considered
-// as recoverable errors.
-func isRecoverableIndexError(err error) bool {
+// Return true if the GSI related errors contains the text "err:[5000]"
+// and false otherwise.
+func isIndexerError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "err:[5000]")
 }
 
-// Iterates over the index set, removing obsolete indexes:
+// Iterates over the index
+//set, removing obsolete indexes:
 //  - indexes based on the inverse value of xattrs being used by the database
 //  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
 func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool, useViews bool) (removedIndexes []string, err error) {
