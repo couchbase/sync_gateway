@@ -1,10 +1,20 @@
 package rest
 
 import (
+	"bufio"
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -2819,4 +2829,298 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	assert.Equal(t, float64(11), world["length"])
 	assert.Equal(t, float64(2), world["revpos"])
 	assert.Equal(t, true, world["stub"])
+}
+
+func TestBasicCBLiteDBCRUD(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	db, err := NewCBLiteDB(context.TODO(), "db1")
+	require.NoError(t, err)
+	defer db.Close()
+
+	err = db.ReplicationOneShot(rt)
+	assert.NoError(t, err)
+
+	revID := rt.createDoc(t, "rttestdoc1")
+	assert.True(t, strings.HasPrefix(revID, "1-"))
+
+	err = db.ReplicationOneShot(rt)
+	assert.NoError(t, err)
+
+	const docID = "cbltestdoc1"
+
+	newDoc, err := db.DocCreate(docID, map[string]interface{}{
+		"test": true,
+		"asdf": "qwerty",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, docID, newDoc["_id"])
+	revID, ok := newDoc["_rev"].(string)
+	require.True(t, ok)
+	assert.True(t, strings.HasPrefix(revID, "1-"))
+
+	err = db.ReplicationOneShot(rt)
+	assert.NoError(t, err)
+
+	changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+	require.NoError(t, err)
+	require.Len(t, changes.Results, 2)
+
+	resp := rt.SendRequest(http.MethodGet, "/db/"+docID, "")
+	assertStatus(t, resp, http.StatusOK)
+	var doc map[string]interface{}
+	assert.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &doc))
+	assert.Equal(t, doc["test"].(bool), true)
+	assert.Equal(t, doc["asdf"].(string), "qwerty")
+
+	newDoc, err = db.DocUpdate(docID, revID, map[string]interface{}{
+		"test":    true,
+		"asdf":    "qwerty",
+		"updates": 1,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, docID, newDoc["_id"])
+	revID, ok = newDoc["_rev"].(string)
+	require.True(t, ok)
+	assert.True(t, strings.HasPrefix(revID, "2-"))
+
+	err = db.ReplicationOneShot(rt)
+	assert.NoError(t, err)
+
+	changes, err = rt.WaitForChanges(1, "/db/_changes", "", true)
+	require.NoError(t, err)
+	require.Len(t, changes.Results, 3)
+
+	resp = rt.SendRequest(http.MethodGet, "/db/"+docID, "")
+	assertStatus(t, resp, http.StatusOK)
+	doc = nil
+	assert.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &doc))
+	assert.Equal(t, doc["test"].(bool), true)
+	assert.Equal(t, doc["asdf"].(string), "qwerty")
+	assert.Equal(t, doc["updates"].(float64), float64(1))
+
+	err = db.DocDelete(docID)
+	assert.NoError(t, err)
+
+	err = db.ReplicationOneShot(rt)
+	assert.NoError(t, err)
+}
+
+type CBLiteDB struct {
+	// dbFilepath is a full filepath to the directory used by cblite
+	dbFilepath string
+
+	// lock prevents concurrent operations on a single underlying cblite database
+	lock sync.Mutex
+
+	// A context used for cancellation that is also propagated down into os/exec commands
+	ctx       context.Context
+	ctxCancel context.CancelFunc
+
+	rtSrv *httptest.Server
+}
+
+// NewCBLiteDB creates and initializesa new CBLiteDB with the given name in a temporary directory.
+func NewCBLiteDB(ctx context.Context, dbName string) (cblDB *CBLiteDB, err error) {
+
+	tempDir, err := ioutil.TempDir("", "cblitedb-")
+	if err != nil {
+		return nil, err
+	}
+
+	dbFilepath := filepath.Join(tempDir, dbName+".cblite2")
+
+	// stat dbFilepath to verify it doesn't already exist
+	_, err = os.Stat(dbFilepath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	newCtx, ctxCancel := context.WithCancel(ctx)
+
+	// https://github.com/couchbaselabs/couchbase-mobile-tools/blob/master/Documentation.md#file
+	cmd := exec.CommandContext(newCtx, "cblite", "--create", "file", dbFilepath)
+
+	cmdOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		base.ErrorfCtx(newCtx, "error running cblite command: %s\n%s", err, cmdOutput)
+		ctxCancel()
+		return nil, err
+	}
+	base.DebugfCtx(newCtx, base.KeyNone, "Created cblite database:\n%s", cmdOutput)
+
+	// stat dbFilepath to verify it was actually created
+	_, err = os.Stat(dbFilepath)
+	if err != nil {
+		ctxCancel()
+		return nil, err
+	}
+
+	return &CBLiteDB{
+		dbFilepath: dbFilepath,
+		lock:       sync.Mutex{},
+		ctx:        newCtx,
+		ctxCancel:  ctxCancel,
+	}, nil
+}
+
+// DocCreate creates a document with the given docID and docBody on the Lite client.
+// If successful, the function returns the revID of the created document.
+func (cblDB *CBLiteDB) DocCreate(docID string, docBody map[string]interface{}) (newDoc map[string]interface{}, err error) {
+	cblDB.lock.Lock()
+	defer cblDB.lock.Unlock()
+	return cblDB._docCreate(docID, docBody)
+}
+
+// DocRead will return the body of the given docID.
+func (cblDB *CBLiteDB) DocRead(docID string) (docBody map[string]interface{}, err error) {
+	cblDB.lock.Lock()
+	defer cblDB.lock.Unlock()
+	return cblDB._docRead(docID)
+}
+
+// DocUpdate will update the document for the given docID.
+func (cblDB *CBLiteDB) DocUpdate(docID string, revID string, docBody map[string]interface{}) (updatedDoc map[string]interface{}, err error) {
+	cblDB.lock.Lock()
+	defer cblDB.lock.Unlock()
+	return cblDB._docUpdate(docID, revID, docBody)
+}
+
+// DocDelete will delete the document of the given docID.
+func (cblDB *CBLiteDB) DocDelete(docID string) (err error) {
+	cblDB.lock.Lock()
+	defer cblDB.lock.Unlock()
+	return cblDB._docDelete(docID)
+}
+
+// _docCreate creates a document with the given docID and docBody on the Lite client.
+// If successful, the function returns the revID of the created document.
+func (cblDB *CBLiteDB) _docCreate(docID string, docBody map[string]interface{}) (newDoc map[string]interface{}, err error) {
+
+	docBodyBytes, err := base.JSONMarshalCanonical(docBody)
+	if err != nil {
+		return nil, err
+	}
+
+	// https://github.com/couchbaselabs/couchbase-mobile-tools/blob/master/Documentation.md#put
+	cmd := exec.CommandContext(cblDB.ctx, "cblite", "put", cblDB.dbFilepath, docID, string(docBodyBytes))
+
+	cmdOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		base.ErrorfCtx(cblDB.ctx, "error running cblite command: %s\n%s", err, cmdOutput)
+		return nil, err
+	}
+	base.DebugfCtx(cblDB.ctx, base.KeyNone, "Created doc %q:\n%s", docID, cmdOutput)
+
+	// Put doesn't return the created doc, so issue a read whilst holding the lock to get the newly created doc.
+	return cblDB._docRead(docID)
+}
+
+// _docRead will return the body of the given docID.
+func (cblDB *CBLiteDB) _docRead(docID string) (docBody map[string]interface{}, err error) {
+	// https://github.com/couchbaselabs/couchbase-mobile-tools/blob/master/Documentation.md#cat
+	cmd := exec.CommandContext(cblDB.ctx, "cblite", "cat", "--rev", "--raw", cblDB.dbFilepath, docID)
+
+	cmdOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		base.ErrorfCtx(cblDB.ctx, "error running cblite command: %s\n%s", err, cmdOutput)
+		return nil, err
+	}
+	base.DebugfCtx(cblDB.ctx, base.KeyNone, "Read doc %q:\n%s", docID, cmdOutput)
+
+	err = json.Unmarshal(cmdOutput, &docBody)
+	return docBody, err
+}
+
+// _docUpdate will update the document for the given docID.
+func (cblDB *CBLiteDB) _docUpdate(docID string, revID string, docBody map[string]interface{}) (updatedDoc map[string]interface{}, err error) {
+	// No real way of making sure we're putting on top of the given rev, without first fetching... Let's just ignore it for now.
+
+	// https://github.com/couchbaselabs/couchbase-mobile-tools/blob/master/Documentation.md#put
+	return cblDB._docCreate(docID, docBody)
+}
+
+// _docDelete will delete the document of the given docID.
+func (cblDB *CBLiteDB) _docDelete(docID string) (err error) {
+	// https://github.com/couchbaselabs/couchbase-mobile-tools/blob/master/Documentation.md#rm
+	cmd := exec.CommandContext(cblDB.ctx, "cblite", "rm", cblDB.dbFilepath, docID)
+
+	cmdOutput, err := cmd.CombinedOutput()
+	if err != nil {
+		base.ErrorfCtx(cblDB.ctx, "error running cblite command: %s\n%s", err, cmdOutput)
+		return err
+	}
+	base.DebugfCtx(cblDB.ctx, base.KeyNone, "Removed doc %q:\n%s", docID, cmdOutput)
+
+	return nil
+}
+
+func (cblDB *CBLiteDB) ReplicationOneShot(rt *RestTester) error {
+	// Start up a server for the RestTester so that cblite can initiate a blipsync websocket upgrade to it.
+	srv := httptest.NewServer(rt.TestPublicHandler())
+	// Since we'll need this every time cblite starts a one-shot replication, we'll need to keep a reference to it so we can close it later.
+	cblDB.rtSrv = srv
+
+	u, err := url.Parse(srv.URL + "/db")
+	if err != nil {
+
+		return err
+	}
+	u.Scheme = "ws"
+
+	// https://github.com/couchbaselabs/couchbase-mobile-tools/blob/master/Documentation.md#cp-aka-export-import-push-pull
+	cmd := exec.CommandContext(cblDB.ctx, "cblite", "cp", "--bidi", "--careful", "--existing", "--verbose", cblDB.dbFilepath, u.String())
+
+	// Send command stderr/stdout to pipes
+	cmdOutputPipeReader, cmdOutputPipeWriter := io.Pipe()
+	cmd.Stderr = cmdOutputPipeWriter
+	cmd.Stdout = cmdOutputPipeWriter
+
+	// Stream cblite stdout/stderr to logs
+	go func() {
+		scanner := bufio.NewScanner(cmdOutputPipeReader)
+		for scanner.Scan() {
+			base.Infof(base.KeyNone, "cblite: %v", scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			base.Errorf("cblite: unexpected error: %v", err)
+		}
+	}()
+
+	err = cmd.Start()
+	if err != nil {
+		base.ErrorfCtx(cblDB.ctx, "error running cblite command: %s", err)
+		return err
+	}
+
+	// block until the one-shot replication finishes
+	err = cmd.Wait()
+	if err != nil {
+		base.ErrorfCtx(cblDB.ctx, "error running cblite command: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+// Close will stop all running processes on the database, and remove the database files.
+func (cblDB *CBLiteDB) Close() error {
+	cblDB.lock.Lock()
+	defer cblDB.lock.Unlock()
+
+	if cblDB.rtSrv != nil {
+		cblDB.rtSrv.Close()
+	}
+
+	cblDB.ctxCancel()
+
+	err = os.RemoveAll(cblDB.dbFilepath)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
