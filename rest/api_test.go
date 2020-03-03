@@ -2278,30 +2278,29 @@ func TestAccessOnTombstone(t *testing.T) {
 // This can be used to introspect what properties ended up in the body passed to the sync function.
 func TestSyncFnBodyProperties(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyJavascript)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyJavascript)()
 
 	const (
 		testDocID   = "testdoc"
 		testdataKey = "testdata"
 	)
 
-	// All of these properties must be present in the sync function body for a regular PUT containing testdataKey
+	// All of these properties must EXACTLY match the top-level properties seen in the sync function body.
+	// Properties not present in this list, but present in the sync function body will be caught.
 	expectedProperties := []string{
 		testdataKey,
 		db.BodyId,
 		db.BodyRev,
 	}
 
-	// This sync function routes into channels based on the given expected properties above
-	var syncFn = `function(doc) {`
-	for _, prop := range expectedProperties {
-		syncFn += `
-if (doc.` + prop + `) {
-	console.log("saw doc property: ` + prop + `")
-	channel("` + prop + `")
-}`
-	}
-	syncFn += "}"
+	// This sync function routes into channels based on top-level properties contained in doc
+	syncFn := `function(doc) {
+		console.log("full doc: "+JSON.stringify(doc));
+		for (var p in doc) {
+			console.log("doc property: "+p);
+			channel(p);
+		}
+	}`
 
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
@@ -2313,28 +2312,22 @@ if (doc.` + prop + `) {
 	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
 	assert.NoError(t, err)
 
-	// Sort both slices so they're in the same order for comparison
 	actualProperties := syncData.Channels.KeySet()
-	sort.Strings(actualProperties)
-	sort.Strings(expectedProperties)
-
-	t.Logf("doc ended up in channels: %v", actualProperties)
-
-	assert.Equal(t, expectedProperties, actualProperties)
+	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn body %q to match expectedProperties: %q", actualProperties, expectedProperties)
 }
 
-// TestSyncFnBodyProperties puts a document into channels based on which properties are present on the document.
-// This can be used to introspect what properties ended up in the body passed to the sync function.
+// TestSyncFnBodyPropertiesTombstone puts a document into channels based on which properties are present on the document.
+// It creates a doc, and then tombstones it to see what properties are present in the body of the tombstone.
 func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyJavascript)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyJavascript)()
 
 	const (
 		testDocID   = "testdoc"
 		testdataKey = "testdata"
 	)
 
-	// All of these properties must be present in the sync function body for a regular PUT containing testdataKey
+	// All of these properties must be present in the sync function body for a tombstone
 	expectedProperties := []string{
 		testdataKey,
 		db.BodyId,
@@ -2342,16 +2335,14 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 		db.BodyDeleted,
 	}
 
-	// This sync function routes into channels based on the given expected properties above
-	var syncFn = `function(doc) {`
-	for _, prop := range expectedProperties {
-		syncFn += `
-if (doc.` + prop + `) {
-	console.log("saw doc property: ` + prop + `")
-	channel("` + prop + `")
-}`
-	}
-	syncFn += "}"
+	// This sync function routes into channels based on top-level properties contained in doc
+	syncFn := `function(doc) {
+		console.log("full doc: "+JSON.stringify(doc));
+		for (var p in doc) {
+			console.log("doc property: "+p);
+			channel(p);
+		}
+	}`
 
 	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
@@ -2370,14 +2361,8 @@ if (doc.` + prop + `) {
 	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
 	assert.NoError(t, err)
 
-	// Sort both slices so they're in the same order for comparison
 	actualProperties := syncData.Channels.KeySet()
-	sort.Strings(actualProperties)
-	sort.Strings(expectedProperties)
-
-	t.Logf("doc ended up in channels: %v", actualProperties)
-
-	assert.Equal(t, expectedProperties, actualProperties)
+	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn body %q to match expectedProperties: %q", actualProperties, expectedProperties)
 }
 
 //Test for wrong _changes entries for user joining a populated channel

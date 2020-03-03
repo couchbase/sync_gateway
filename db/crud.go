@@ -1226,7 +1226,9 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 
 	syncFnBody[BodyId] = doc.ID
 	syncFnBody[BodyRev] = newRevID
-	syncFnBody[BodyDeleted] = newDoc.Deleted
+	if newDoc.Deleted {
+		syncFnBody[BodyDeleted] = true
+	}
 
 	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, syncFnBody, newRevID)
 	if err != nil {
