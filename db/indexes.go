@@ -372,10 +372,10 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 
 }
 
-// Return true if the GSI related errors contains the text "err:[5000]"
-// and false otherwise.
+// Return true if the string representation of the error contains
+// the substring "[5000]" and false otherwise.
 func isIndexerError(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "err:[5000]")
+	return err != nil && strings.Contains(err.Error(), "[5000]")
 }
 
 // Iterates over the index set, removing obsolete indexes:
