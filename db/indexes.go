@@ -363,11 +363,19 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 		}
 		if err == base.ErrViewTimeoutError {
 			base.Infof(base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
+		} else if isIndexerError(err) {
+			base.Infof(base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 		} else {
 			return err
 		}
 	}
 
+}
+
+// Return true if the string representation of the error contains
+// the substring "[5000]" and false otherwise.
+func isIndexerError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "[5000]")
 }
 
 // Iterates over the index set, removing obsolete indexes:
