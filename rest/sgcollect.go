@@ -194,23 +194,23 @@ func validateOutputDirectory(dir string) error {
 }
 
 // Validate ensures the options are OK to use in sgcollect_info.
-func (c *sgCollectOptions) Validate() error {
+func (c *sgCollectOptions) Validate() (errs []error) {
 	if c.OutputDirectory != "" {
 		if err := validateOutputDirectory(c.OutputDirectory); err != nil {
-			return err
+			errs = append(errs, err)
 		}
 	}
 
 	if c.Ticket != "" {
 		if !validateTicketPattern.MatchString(c.Ticket) {
-			return errors.New("ticket number must be 1 to 7 digits")
+			errs = append(errs, errors.New("'ticket' must be 1 to 7 digits"))
 		}
 	}
 
 	if c.Upload {
 		// Customer number is required if uploading.
 		if c.Customer == "" {
-			return errors.New("customer must be set if upload is true")
+			errs = append(errs, errors.New("'customer' must be set if upload is true"))
 		}
 		// Default uploading to support bucket if upload_host is not specified.
 		if c.UploadHost == "" {
@@ -220,17 +220,21 @@ func (c *sgCollectOptions) Validate() error {
 		// These fields suggest the user actually wanted to upload,
 		// so we'll enforce "upload: true" if any of these are set.
 		if c.UploadHost != "" {
-			return errors.New("upload must be set to true if upload_host is specified")
+			errs = append(errs, errors.New("'upload' must be set to true if 'upload_host' is specified"))
 		}
 		if c.Customer != "" {
-			return errors.New("upload must be set to true if customer is specified")
+			errs = append(errs, errors.New("'upload' must be set to true if 'customer' is specified"))
 		}
 		if c.Ticket != "" {
-			return errors.New("upload must be set to true if ticket is specified")
+			errs = append(errs, errors.New("'upload' must be set to true if 'ticket' is specified"))
 		}
 	}
 
-	return nil
+	if c.RedactLevel != "" && c.RedactLevel != "none" && c.RedactLevel != "partial" {
+		errs = append(errs, errors.New("'redact_level' must be either 'none' or 'partial'"))
+	}
+
+	return errs
 }
 
 // Args returns a set of arguments to pass to sgcollect_info.

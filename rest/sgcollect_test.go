@@ -23,80 +23,108 @@ func TestSgcollectFilename(t *testing.T) {
 	assert.True(t, matched, fmt.Sprintf("Filename: %s did not match pattern: %s", filename, pattern))
 }
 
-func TestSgcollectOptionsValidate(t *testing.T) {
+func TestSgcollectOptionsValidateValid(t *testing.T) {
+	tests := []struct {
+		name    string
+		options *sgCollectOptions
+	}{
+		{
+			name:    "defaults",
+			options: &sgCollectOptions{},
+		},
+		{
+			name:    "upload with customer name",
+			options: &sgCollectOptions{Upload: true, Customer: "alice"},
+		},
+		{
+			name:    "custom upload with customer name",
+			options: &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
+		},
+		{
+			name:    "directory that exists",
+			options: &sgCollectOptions{OutputDirectory: "."},
+		},
+		{
+			name:    "valid redact level",
+			options: &sgCollectOptions{RedactLevel: "partial"},
+		},
+	}
 
-	binPath, err := os.Executable()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			errs := test.options.Validate()
+			assert.Len(t, errs, 0)
+		})
+	}
+}
+
+func TestSgcollectOptionsValidateInvalid(t *testing.T) {
+	binaryPath, err := os.Executable()
 	assert.NoError(t, err, "unexpected error getting executable path")
 
 	tests := []struct {
+		name        string
 		options     *sgCollectOptions
 		errContains string
 	}{
 		{
-			options:     &sgCollectOptions{},
-			errContains: "",
-		},
-		{
-			options:     &sgCollectOptions{Upload: true, Customer: "alice"},
-			errContains: "",
-		},
-		{
-			options:     &sgCollectOptions{Upload: true, Customer: "alice", Ticket: "abc"},
-			errContains: "ticket number must be",
-		},
-		{
-			options:     &sgCollectOptions{Upload: true, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
-			errContains: "",
-		},
-		{
-			options:     &sgCollectOptions{Upload: true},
-			errContains: "customer must be set",
-		},
-		{
-			options:     &sgCollectOptions{Upload: true, Ticket: "12345"},
-			errContains: "customer must be set",
-		},
-		{
-			options:     &sgCollectOptions{Upload: false, Customer: "alice"},
-			errContains: "upload must be set to true",
-		},
-		{
-			options:     &sgCollectOptions{Upload: false, Ticket: "12345"},
-			errContains: "upload must be set to true",
-		},
-		{
-			options:     &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
-			errContains: "upload must be set to true",
-		},
-		{
-			// Directory exists
-			options:     &sgCollectOptions{OutputDirectory: "."},
-			errContains: "",
-		},
-		{
-			// Directory doesn't exist
+			name:        "directory doesn't exist",
 			options:     &sgCollectOptions{OutputDirectory: "/path/to/output/dir"},
 			errContains: "no such file or directory",
 		},
 		{
-			// Path not a directory
-			options:     &sgCollectOptions{OutputDirectory: binPath},
+			name:        "path not a directory",
+			options:     &sgCollectOptions{OutputDirectory: binaryPath},
 			errContains: "not a directory",
+		},
+		{
+			name:        "invalid redact level",
+			options:     &sgCollectOptions{RedactLevel: "asdf"},
+			errContains: "'redact_level' must be",
+		},
+		{
+			name:        "no customer",
+			options:     &sgCollectOptions{Upload: true},
+			errContains: "'customer' must be set",
+		},
+		{
+			name:        "no customer with ticket",
+			options:     &sgCollectOptions{Upload: true, Ticket: "12345"},
+			errContains: "'customer' must be set",
+		},
+		{
+			name:        "customer no upload",
+			options:     &sgCollectOptions{Upload: false, Customer: "alice"},
+			errContains: "'upload' must be set to true",
+		},
+		{
+			name:        "ticket no upload",
+			options:     &sgCollectOptions{Upload: false, Ticket: "12345"},
+			errContains: "'upload' must be set to true",
+		},
+		{
+			name:        "customer upload host no upload",
+			options:     &sgCollectOptions{Upload: false, Customer: "alice", UploadHost: "example.org/custom-s3-bucket-url"},
+			errContains: "'upload' must be set to true",
+		},
+		{
+			name:        "non-digit ticket number",
+			options:     &sgCollectOptions{Upload: true, Customer: "alice", Ticket: "abc"},
+			errContains: "'ticket' must be",
 		},
 	}
 
-	for i, test := range tests {
-		t.Run(fmt.Sprintf("%d", i), func(ts *testing.T) {
-			err := test.options.Validate()
+	for _, test := range tests {
+		t.Run(test.name, func(ts *testing.T) {
+			errs := test.options.Validate()
 
-			errStr := ""
-			if err != nil {
-				errStr = err.Error()
+			// make sure we get at least one error for the given invalid options.
+			assert.True(t, len(errs) > 0)
+
+			// check each error matches the expected string.
+			for _, err := range errs {
+				assert.Contains(ts, err.Error(), test.errContains)
 			}
-
-			goassert.Equals(ts, err != nil, test.errContains != "")
-			goassert.StringContains(ts, errStr, test.errContains)
-
 		})
 	}
 
@@ -115,22 +143,20 @@ func TestSgcollectOptionsArgs(t *testing.T) {
 			expectedArgs: []string{},
 		},
 		{
-			// Validation will fail, as no Customer is passed, default value not populated.
 			options:      &sgCollectOptions{Upload: true},
-			expectedArgs: []string{"--upload-host", ""},
+			expectedArgs: []string{"--upload-host", defaultSGUploadHost},
 		},
 		{
-			// Validation will fail, as no Customer is passed, default value not populated.
 			options:      &sgCollectOptions{Upload: true, Ticket: "123456"},
-			expectedArgs: []string{"--upload-host", "", "--ticket", "123456"},
+			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--ticket", "123456"},
 		},
 		{
 			options:      &sgCollectOptions{Upload: true, RedactLevel: "partial"},
-			expectedArgs: []string{"--upload-host", "", "--log-redaction-level", "partial"},
+			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--log-redaction-level", "partial"},
 		},
 		{
 			options:      &sgCollectOptions{Upload: true, RedactLevel: "partial", RedactSalt: "asdf"},
-			expectedArgs: []string{"--upload-host", "", "--log-redaction-level", "partial", "--log-redaction-salt", "asdf"},
+			expectedArgs: []string{"--upload-host", defaultSGUploadHost, "--log-redaction-level", "partial", "--log-redaction-salt", "asdf"},
 		},
 		{
 			// Check that the default upload host is set
