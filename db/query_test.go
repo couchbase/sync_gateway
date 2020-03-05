@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -570,7 +571,6 @@ func countQueryResults(results sgbucket.QueryResultIterator) int {
 }
 
 func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
-
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test require Couchbase Server")
 	}
@@ -579,124 +579,118 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 	defer testBucket.Close()
 	defer tearDownTestDB(t, db)
 
-	// Create doc1, revision 1-a
-	body := Body{"channels": []string{"ABC"}, "name": "Alice"}
-	doc, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
-	require.NoError(t, err, "Couldn't create document")
-	startSeq := doc.Sequence
+	var sequence = 1
+	seqLogEntries := make(map[int]LogEntry)
+	body := Body{"channels": []string{"ABC"}}
 
-	// Tombstone doc1, revision 2-a
-	body[BodyDeleted] = true
-	doc, _, err = db.PutExistingRevWithBody("doc1", body, []string{"2-a", "1-a"}, false)
-	require.NoError(t, err, "Couldn't create document")
+	createDocs := func(name string, revs int) (startSeq, endSeq uint64) {
+		for i := 1; i <= revs; i++ {
+			body["version"] = "1-a"
+			id := name + strconv.Itoa(i)
+			doc, revId, err := db.PutExistingRevWithBody(id, body, []string{"1-a"}, false)
+			require.NoError(t, err, "Couldn't create document")
+			require.Equal(t, "1-a", revId)
+			seqLogEntries[sequence] = LogEntry{DocID: doc.ID, RevID: revId}
+			sequence++
+			if i == 1 {
+				startSeq = doc.Sequence
+			}
+			endSeq = doc.Sequence
+		}
+		delete(body, "version")
+		return startSeq, endSeq
+	}
 
-	// Create doc2 and two conflicting changes:
-	body["name"] = "Bob"
-	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"1-a"}, false)
-	require.NoError(t, err, "Couldn't create document")
+	deleteDocs := func(name string, revs int) (startSeq, endSeq uint64) {
+		for i := 1; i <= revs; i++ {
+			id := name + strconv.Itoa(i)
+			body[BodyDeleted] = true
+			doc, revId, err := db.PutExistingRevWithBody(id, body, []string{"2-a", "1-a"}, false)
+			require.NoError(t, err, "Couldn't create document")
+			require.Equal(t, "2-a", revId, "Couldn't create tombstone revision")
+			seqLogEntries[sequence] = LogEntry{DocID: doc.ID, RevID: revId, Flags: uint8(0x1)}
+			sequence++
+			if i == 1 {
+				startSeq = doc.Sequence
+			}
+			endSeq = doc.Sequence
+		}
+		return startSeq, endSeq
+	}
 
-	body["name"] = "Owen"
-	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"2-b", "1-a"}, false)
-	require.NoError(t, err, "Couldn't create revision 2-b of doc2")
+	checkDocs := func(entries LogEntries, sequence int) {
+		for _, entry := range entries {
+			assert.Equal(t, seqLogEntries[sequence].DocID, entry.DocID)
+			assert.Equal(t, seqLogEntries[sequence].RevID, entry.RevID)
+			assert.Equal(t, seqLogEntries[sequence].Flags, entry.Flags)
+			sequence++
+		}
+	}
 
-	body["name"] = "Chloe"
-	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"2-a", "1-a"}, false)
-	require.NoError(t, err, "Couldn't create revision 2-a of doc2")
+	// Create 10 active documents and 2 inactive documents.
+	startSeq, endSeq := createDocs("alice", 10)
+	_, endSeq = deleteDocs("alice", 2)
 
-	// Tombstone the non-winning branch of a conflicted document
-	body[BodyDeleted] = true
-	_, _, err = db.PutExistingRevWithBody("doc2", body, []string{"3-a", "2-a"}, false)
-	assert.NoError(t, err, "Add 3-a (tombstone)")
+	// Get changes from channel "ABC" with limit and activeOnly true
+	// 8 documents in channel "ABC" are active and 2 documents are inactive at this point.
+	// Retrieved active documents from channel "ABC" must be equal to limit.
+	limit := 4         // Set limit to retrieve only 4 documents
+	activeOnly := true // Set activeOnly to retrieve only active documents.
+	entries, err := db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, limit, activeOnly)
+	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
+	require.Len(t, entries, limit)
+	checkDocs(entries, 3)
 
-	// Create doc3
-	body["name"] = "Emily"
-	doc, _, err = db.PutExistingRevWithBody("doc3", body, []string{"1-a"}, false)
-	require.NoError(t, err, "Couldn't create revision 1-a of doc3")
-	endSeq := doc.Sequence
+	// Get changes from channel "*" with limit and activeOnly true
+	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, limit, activeOnly)
+	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
+	require.Len(t, entries, limit)
+	checkDocs(entries, 3)
 
-	// Get changes in ABC channel with limit and activeOnly true
-	entries, err := db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 2, true)
-	assert.Len(t, entries, 2)
-	assert.Equal(t, "doc2", entries[0].DocID)
-	assert.Equal(t, "2-b", entries[0].RevID)
-	assert.Equal(t, "doc3", entries[1].DocID)
-	assert.Equal(t, "1-a", entries[1].RevID)
-	assert.Equal(t, uint8(0x14), entries[0].Flags)
-	assert.Equal(t, uint8(0x0), entries[1].Flags)
+	// Get changes from channel "ABC" without limit and activeOnly true.
+	// 8 documents in channel "ABC" are active and 2 documents are inactive at this point.
+	// All the active documents (8) should be retrieved from channel "ABC" when limit is 0.
+	limit = 0 // Set limit to retrieve all documents
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, limit, activeOnly)
+	require.NoError(t, err, "Couldn't query active docs from channel ABC without limit")
+	require.Len(t, entries, 8) // 8 active documents
+	checkDocs(entries, 3)
 
-	// Get changes in star channel with limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 2, true)
-	assert.Len(t, entries, 2)
-	assert.Equal(t, "doc2", entries[0].DocID)
-	assert.Equal(t, "2-b", entries[0].RevID)
-	assert.Equal(t, "doc3", entries[1].DocID)
-	assert.Equal(t, "1-a", entries[1].RevID)
-	assert.Equal(t, uint8(0x14), entries[0].Flags)
-	assert.Equal(t, uint8(0x0), entries[1].Flags)
+	// Get changes from channel "*" without limit and activeOnly true.
+	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, limit, activeOnly)
+	require.NoError(t, err, "Couldn't query active docs from channel * without limit")
+	require.Len(t, entries, 8) // 8 active documents
+	checkDocs(entries, 3)
 
-	// Get changes in ABC channel with no limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, true)
-	assert.Len(t, entries, 2)
-	assert.Equal(t, "doc2", entries[0].DocID)
-	assert.Equal(t, "2-b", entries[0].RevID)
-	assert.Equal(t, uint8(0x14), entries[0].Flags)
-	assert.Equal(t, "doc3", entries[1].DocID)
-	assert.Equal(t, "1-a", entries[1].RevID)
-	assert.Equal(t, uint8(0x0), entries[1].Flags)
+	// Get changes from channel "ABC" with limit and activeOnly false
+	// 8 documents in channel "ABC" are active and 2 documents are inactive at this point.
+	// Retrieved active/inactive documents from channel "ABC" must be equal to limit.
+	limit = 6          // Set limit to retrieve only 6 documents
+	activeOnly = false // Set activeOnly to false to retrieve both active and inactive documents.
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 6, activeOnly)
+	require.NoError(t, err, "Couldn't query both active and inactive docs from channel ABC with limit")
+	require.Len(t, entries, limit) // 6 active/inactive documents
+	checkDocs(entries, 3)
 
-	// Get changes in star channel with no limit and activeOnly true
-	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 0, true)
-	assert.Len(t, entries, 2)
-	assert.Equal(t, "doc2", entries[0].DocID)
-	assert.Equal(t, "2-b", entries[0].RevID)
-	assert.Equal(t, uint8(0x14), entries[0].Flags)
-	assert.Equal(t, "doc3", entries[1].DocID)
-	assert.Equal(t, "1-a", entries[1].RevID)
-	assert.Equal(t, uint8(0x0), entries[1].Flags)
+	// Get changes from channel "*" with limit and activeOnly false
+	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 6, activeOnly)
+	require.NoError(t, err, "Couldn't query both active and inactive docs from channel * with limit")
+	require.Len(t, entries, limit) // 6 active/inactive documents
+	checkDocs(entries, 3)
 
-	// Get changes in ABC channel with limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 2, false)
-	assert.Len(t, entries, 2)
-	assert.Equal(t, "doc1", entries[0].DocID)
-	assert.Equal(t, "2-a", entries[0].RevID)
-	assert.Equal(t, "doc2", entries[1].DocID)
-	assert.Equal(t, "2-b", entries[1].RevID)
-	assert.Equal(t, uint8(0x1), entries[0].Flags)
-	assert.Equal(t, uint8(0x14), entries[1].Flags)
+	// Get changes from channel "ABC" with limit and activeOnly false
+	// 8 documents in channel "ABC" are active and 2 documents are inactive at this point.
+	// Retrieved active/inactive documents from channel "ABC" must be equal to limit.
+	limit = 0          // Set limit to retrieve all documents
+	activeOnly = false // Set activeOnly to false to retrieve both active and inactive documents.
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, limit, activeOnly)
+	require.NoError(t, err, "Couldn't query both active and inactive docs from channel ABC without limit")
+	require.Len(t, entries, 10) // 8 active + 2 inactive docs
+	checkDocs(entries, 3)
 
-	// Get changes in star channel with limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 2, false)
-	assert.Len(t, entries, 2)
-	assert.Equal(t, "doc1", entries[0].DocID)
-	assert.Equal(t, "2-a", entries[0].RevID)
-	assert.Equal(t, "doc2", entries[1].DocID)
-	assert.Equal(t, "2-b", entries[1].RevID)
-	assert.Equal(t, uint8(0x1), entries[0].Flags)
-	assert.Equal(t, uint8(0x14), entries[1].Flags)
-
-	// Get changes in ABC channel with no limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, false)
-	assert.Len(t, entries, 3)
-	assert.Equal(t, "doc1", entries[0].DocID)
-	assert.Equal(t, "2-a", entries[0].RevID)
-	assert.Equal(t, "doc2", entries[1].DocID)
-	assert.Equal(t, "2-b", entries[1].RevID)
-	assert.Equal(t, "doc3", entries[2].DocID)
-	assert.Equal(t, "1-a", entries[2].RevID)
-	assert.Equal(t, uint8(0x1), entries[0].Flags)
-	assert.Equal(t, uint8(0x14), entries[1].Flags)
-	assert.Equal(t, uint8(0x0), entries[2].Flags)
-
-	// Get changes in star channel with no limit and activeOnly false
-	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 0, false)
-	assert.Len(t, entries, 3)
-	assert.Equal(t, "doc1", entries[0].DocID)
-	assert.Equal(t, "2-a", entries[0].RevID)
-	assert.Equal(t, "doc2", entries[1].DocID)
-	assert.Equal(t, "2-b", entries[1].RevID)
-	assert.Equal(t, "doc3", entries[2].DocID)
-	assert.Equal(t, "1-a", entries[2].RevID)
-	assert.Equal(t, uint8(0x1), entries[0].Flags)
-	assert.Equal(t, uint8(0x14), entries[1].Flags)
-	assert.Equal(t, uint8(0x0), entries[2].Flags)
+	// Get changes from channel "*" with limit and activeOnly false
+	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, limit, activeOnly)
+	require.NoError(t, err, "Couldn't query both active and inactive docs from channel * without limit")
+	require.Len(t, entries, 10) // 8 active + 2 inactive docs
+	checkDocs(entries, 3)
 }
