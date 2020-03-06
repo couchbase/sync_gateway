@@ -1918,7 +1918,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 //   - Expected: receive all 5 docs (4 revs and 1 norev)
 //   - Actual: only recieve 4 docs (4 revs)
 func TestMissingNoRev(t *testing.T) {
-
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	btSpec := BlipTesterSpec{
 		restTester: rt,
