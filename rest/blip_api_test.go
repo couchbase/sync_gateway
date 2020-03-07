@@ -1943,6 +1943,10 @@ func TestMissingNoRev(t *testing.T) {
 	targetDb, err := db.GetDatabase(targetDbContext, nil)
 	assert.NoError(t, err, "failed")
 
+	// Make sure all 5 docs can be pulled
+	docs := bt.WaitForNumDocsViaChanges(5)
+	goassert.True(t, len(docs) == 5)
+
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
 	err = targetDb.Purge(doc0Id)
@@ -1952,9 +1956,8 @@ func TestMissingNoRev(t *testing.T) {
 	targetDb.FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
-	docs := bt.WaitForNumDocsViaChanges(4)
+	docs = bt.WaitForNumDocsViaChanges(4)
 	goassert.True(t, len(docs) == 4)
-
 }
 
 // TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
