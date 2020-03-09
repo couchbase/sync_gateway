@@ -1916,9 +1916,8 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 // - Reply to all changes saying all docs are wanted
 // - Wait to receive rev messages for all 5 docs
 //   - Expected: receive all 5 docs (4 revs and 1 norev)
-//   - Actual: only recieve 4 docs (4 revs)
+//   - Actual: only receive 4 docs (4 revs)
 func TestMissingNoRev(t *testing.T) {
-
 	rt := NewRestTester(t, nil)
 	btSpec := BlipTesterSpec{
 		restTester: rt,
@@ -1943,6 +1942,10 @@ func TestMissingNoRev(t *testing.T) {
 	targetDb, err := db.GetDatabase(targetDbContext, nil)
 	assert.NoError(t, err, "failed")
 
+	// Pull docs, expect to pull 5 docs since none of them has purged yet.
+	docs := bt.WaitForNumDocsViaChanges(5)
+	goassert.True(t, len(docs) == 5)
+
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
 	err = targetDb.Purge(doc0Id)
@@ -1952,9 +1955,8 @@ func TestMissingNoRev(t *testing.T) {
 	targetDb.FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
-	docs := bt.WaitForNumDocsViaChanges(4)
+	docs = bt.WaitForNumDocsViaChanges(4)
 	goassert.True(t, len(docs) == 4)
-
 }
 
 // TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,
