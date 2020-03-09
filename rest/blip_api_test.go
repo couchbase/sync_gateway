@@ -1916,9 +1916,8 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 // - Reply to all changes saying all docs are wanted
 // - Wait to receive rev messages for all 5 docs
 //   - Expected: receive all 5 docs (4 revs and 1 norev)
-//   - Actual: only recieve 4 docs (4 revs)
+//   - Actual: only receive 4 docs (4 revs)
 func TestMissingNoRev(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	btSpec := BlipTesterSpec{
 		restTester: rt,
@@ -1943,7 +1942,7 @@ func TestMissingNoRev(t *testing.T) {
 	targetDb, err := db.GetDatabase(targetDbContext, nil)
 	assert.NoError(t, err, "failed")
 
-	// Make sure all 5 docs can be pulled
+	// Pull docs, expect to pull 5 docs since none of them has purged yet.
 	docs := bt.WaitForNumDocsViaChanges(5)
 	goassert.True(t, len(docs) == 5)
 
