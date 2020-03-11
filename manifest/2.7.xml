@@ -13,7 +13,7 @@
 
     <!-- Build Scripts (required on CI servers) -->
     <project name="product-texts" path="product-texts" remote="couchbase"/>
-    <project name="build" path="cbbuild" remote="couchbase">
+    <project name="build" path="cbbuild" remote="couchbase" revision="07174391f2c769f5f50dd1c405340aa38cd3f886">
         <annotation name="VERSION" value="2.7.2"     keep="true"/>
         <annotation name="BLD_NUM" value="@BLD_NUM@" keep="true"/>
         <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
