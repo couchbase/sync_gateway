@@ -119,6 +119,12 @@ func ConvertJSONString(s string) string {
 	}
 }
 
+// ConvertToJSONString takes a string, and returns a JSON string, with any illegal characters escaped.
+func ConvertToJSONString(s string) string {
+	b, _ := JSONMarshal(s)
+	return string(b)
+}
+
 // Concatenates and merges multiple string arrays into one, discarding all duplicates (including
 // duplicates within a single array.) Ordering is preserved.
 func MergeStringArrays(arrays ...[]string) (merged []string) {

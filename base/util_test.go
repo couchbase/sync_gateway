@@ -41,8 +41,54 @@ func TestFixJSONNumbers(t *testing.T) {
 }
 
 func TestConvertJSONString(t *testing.T) {
-	goassert.Equals(t, ConvertJSONString(`"blah"`), "blah")
-	goassert.Equals(t, ConvertJSONString("blah"), "blah")
+	assert.Equal(t, "blah", ConvertJSONString(`"blah"`))
+	assert.Equal(t, "blah", ConvertJSONString("blah"))
+}
+
+func TestJSONStringUtils(t *testing.T) {
+	tests := []struct {
+		input  string
+		output string
+	}{
+		{`test`, `"test"`},
+		{`"test"`, `"\"test\""`},
+		{"\x00", `"\u0000"`},
+	}
+
+	for _, test := range tests {
+		t.Run("ConvertToJSONString "+test.input, func(t *testing.T) {
+			out := ConvertToJSONString(test.input)
+			assert.Equal(t, test.output, out)
+		})
+		t.Run("ConvertJSONString "+test.input, func(t *testing.T) {
+			out := ConvertJSONString(test.output)
+			assert.Equal(t, test.input, out)
+		})
+	}
+}
+
+func BenchmarkJSONStringUtils(b *testing.B) {
+	tests := []struct {
+		input  string
+		output string
+	}{
+		{`test`, `"test"`},
+		{`"test"`, `"\"test\""`},
+		{"\x00", `"\u0000"`},
+	}
+
+	for _, test := range tests {
+		b.Run("ConvertToJSONString "+test.input, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = ConvertToJSONString(test.input)
+			}
+		})
+		b.Run("ConvertJSONString "+test.input, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = ConvertJSONString(test.output)
+			}
+		})
+	}
 }
 
 func TestConvertBackQuotedStrings(t *testing.T) {
