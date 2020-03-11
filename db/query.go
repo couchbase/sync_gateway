@@ -64,8 +64,13 @@ type QueryAccessRow struct {
 	Value channels.TimedSet
 }
 
-// Placeholder to substitute active only filter in channel query.
-const activeOnlyFilter = "$$activeOnlyFilter"
+const (
+	// Placeholder to substitute active only filter in channel query.
+	activeOnlyFilter = "$$activeOnlyFilter"
+
+	// Filter expression to be used in channel query to select only active documents.
+	activeOnlyFilterExpression = "AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)"
+)
 
 var QueryChannels = SGQuery{
 	name: QueryTypeChannels,
@@ -580,7 +585,6 @@ func (e *EmptyResultIterator) Close() error {
 // Replace $$activeOnlyFilter placeholder with activeOnlyFilterExpression if activeOnly is true
 // and an empty string otherwise in the channel query statement.
 func replaceActiveOnlyFilter(statement string, activeOnly bool) string {
-	activeOnlyFilterExpression := "AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)"
 	if activeOnly {
 		return strings.Replace(statement, activeOnlyFilter, activeOnlyFilterExpression, -1)
 	} else {

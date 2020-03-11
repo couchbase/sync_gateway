@@ -614,7 +614,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "2-a", revId, "Couldn't create tombstone revision")
 
-		docIdFlagMap[doc.ID] = uint8(0x1) // 1 = Deleted(1)
+		docIdFlagMap[doc.ID] = channels.Deleted // 1 = Deleted(1)
 		endSeq = doc.Sequence
 	}
 
@@ -641,7 +641,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
 
-		docIdFlagMap[doc.ID] = uint8(0x14) // 20 = Branched (16) + Hidden(4)
+		docIdFlagMap[doc.ID] = channels.Branched + channels.Hidden // 20 = Branched (16) + Hidden(4)
 		endSeq = doc.Sequence
 	}
 
@@ -673,7 +673,7 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 		require.NoError(t, err, "Couldn't create document")
 		require.Equal(t, "3-b", revId, "Couldn't create tombstone revision")
 
-		docIdFlagMap[doc.ID] = uint8(0x11) // 17 = Branched (16) + Deleted(1)
+		docIdFlagMap[doc.ID] = channels.Branched + channels.Deleted // 17 = Branched (16) + Deleted(1)
 		endSeq = doc.Sequence
 	}
 
@@ -695,7 +695,8 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 		require.NoError(t, err, "Couldn't create revision 2-a")
 		require.Equal(t, "2-a", revId)
 
-		docIdFlagMap[doc.ID] = uint8(0x1c) // 28 = Branched(16) + Conflict(8) + Hidden(4)
+		// 28 = Branched(16) + Conflict(8) + Hidden(4)
+		docIdFlagMap[doc.ID] = channels.Branched + channels.Conflict + channels.Hidden
 		endSeq = doc.Sequence
 	}
 
