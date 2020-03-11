@@ -346,13 +346,6 @@ pipeline {
                                 // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
                                 build job: 'sync-gateway-integration', quietPeriod: 3600, wait: false
 
-
-
-                            }
-                        }
-
-                        stage('BenchmarkTemp'){
-                            steps{
                                 echo 'Queueing Benchmark Run test for branch "master" ...'
                                 build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
                             }
