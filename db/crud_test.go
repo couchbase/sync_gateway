@@ -78,17 +78,37 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "1-a", docRev.RevID)
 
-	// Validate that mutations to the body don't affect the revcache value
+	// Validate that mutations to the body bytes don't affect the revcache value
 	_, err = base.InjectJSONProperties(docRev.BodyBytes, base.KVPair{Key: "modified", Val: "property"})
 	assert.NoError(t, err)
 
+	// Add a property to the mutable body
+	docRevBody, err := docRev.MutableBody()
+	assert.NoError(t, err)
+	docRevBody["modifiedMutableBody"] = true
+
+	// Fetch another mutable body, and make sure we don't see the same modification.
+	docRevBody2, err := docRev.MutableBody()
+	assert.NoError(t, err)
+	_, ok := docRevBody2["modifiedMutableBody"]
+	assert.False(t, ok)
+
+	// check the injected bytes didn't affect MutableBody
+	_, ok = docRevBody2["modified"]
+	assert.False(t, ok)
+
+	// Fetch the rev again, and make sure our previous changes to MutableBody haven't been carried over between GetRev calls.
 	docRevAgain, err := db.GetRev("doc1", "1-a", false, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, "1-a", docRevAgain.RevID)
 
+	assert.NotContains(t, string(docRevAgain.BodyBytes), `"modified":"property"`)
+
 	body, err = docRevAgain.MutableBody()
 	assert.NoError(t, err)
-	_, ok := body["modified"]
+	_, ok = body["modified"]
+	assert.False(t, ok)
+	_, ok = body["modifiedMutableBody"]
 	assert.False(t, ok)
 }
 
