@@ -2365,6 +2365,186 @@ func TestSyncFnBodyPropertiesTombstone(t *testing.T) {
 	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn body %q to match expectedProperties: %q", actualProperties, expectedProperties)
 }
 
+// TestSyncFnOldDocBodyProperties puts a document into channels based on which properties are present in the 'oldDoc' body.
+// It creates a doc, and updates it to inspect what properties are present on the oldDoc body.
+func TestSyncFnOldDocBodyProperties(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyJavascript)()
+
+	const (
+		testDocID   = "testdoc"
+		testdataKey = "testdata"
+	)
+
+	// All of these properties must be present in the sync function oldDoc body for a regular PUT containing testdataKey
+	expectedProperties := []string{
+		testdataKey,
+		db.BodyId,
+	}
+
+	// This sync function routes into channels based on top-level properties contained in oldDoc
+	syncFn := `function(doc, oldDoc) {
+		console.log("full doc: "+JSON.stringify(doc));
+		console.log("full oldDoc: "+JSON.stringify(oldDoc));
+		for (var p in oldDoc) {
+			console.log("oldDoc property: "+p);
+			channel(p);
+		}
+	}`
+
+	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	response := rt.Send(request("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	goassert.Equals(t, body["ok"], true)
+	revID := body["rev"].(string)
+
+	response = rt.Send(request("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true,"update":2}`))
+	assertStatus(t, response, 201)
+
+	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
+	assert.NoError(t, err)
+
+	actualProperties := syncData.Channels.KeySet()
+	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn oldDoc body %q to match expectedProperties: %q", actualProperties, expectedProperties)
+}
+
+// TestSyncFnOldDocBodyPropertiesTombstoneResurrect puts a document into channels based on which properties are present in the 'oldDoc' body.
+// It creates a doc, tombstones it, and then resurrects it to inspect oldDoc properties on the tombstone.
+func TestSyncFnOldDocBodyPropertiesTombstoneResurrect(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyJavascript)()
+
+	const (
+		testDocID   = "testdoc"
+		testdataKey = "testdata"
+	)
+
+	// All of these properties must be present in the sync function body for a regular PUT containing testdataKey
+	expectedProperties := []string{
+		testdataKey,
+		db.BodyId,
+		db.BodyDeleted,
+	}
+
+	// This sync function routes into channels based on top-level properties contained in oldDoc
+	syncFn := `function(doc, oldDoc) {
+		console.log("full doc: "+JSON.stringify(doc));
+		console.log("full oldDoc: "+JSON.stringify(oldDoc));
+		for (var p in oldDoc) {
+			console.log("oldDoc property: "+p);
+			channel(p);
+		}
+	}`
+
+	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	response := rt.Send(request("PUT", "/db/"+testDocID, `{"`+testdataKey+`":true}`))
+	assertStatus(t, response, 201)
+	var body db.Body
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	goassert.Equals(t, body["ok"], true)
+	revID := body["rev"].(string)
+
+	response = rt.Send(request("DELETE", "/db/"+testDocID+"?rev="+revID, `{}`))
+	assertStatus(t, response, 200)
+	body = nil
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	goassert.Equals(t, body["ok"], true)
+	revID = body["rev"].(string)
+
+	response = rt.Send(request("PUT", "/db/"+testDocID+"?rev="+revID, `{"`+testdataKey+`":true}`))
+	assertStatus(t, response, 201)
+
+	syncData, err := rt.GetDatabase().GetDocSyncData(testDocID)
+	assert.NoError(t, err)
+
+	actualProperties := syncData.Channels.KeySet()
+	assert.ElementsMatchf(t, expectedProperties, actualProperties, "Expected sync fn oldDoc body %q to match expectedProperties: %q", actualProperties, expectedProperties)
+}
+
+// TestSyncFnDocBodyPropertiesSwitchActiveTombstone creates a branched revtree, where the first tombstone created becomes active again after the shorter b branch is tombstoned.
+// The test makes sure that in this scenario, the "doc" body of the sync function when switching from (T) 3-b to (T) 4-a contains a _deleted property (stamped by getAvailable1xRev)
+//     1-a
+//     ├── 2-a
+//     │   └── 3-a
+//     │       └──────── (T) 4-a
+//     └──────────── 2-b
+//                   └────────────── (T) 3-b
+func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyJavascript)()
+
+	const (
+		testDocID   = "testdoc"
+		testdataKey = "testdata"
+	)
+
+	// This sync function logs a warning for each revision pushed through the sync function, and an error when it sees _deleted inside doc, when oldDoc contains syncOldDocBodyCheck=true
+	//
+	// These are then asserted by looking at the expvar stats for warn and error counts.
+	// We can't rely on channels to get information out of the sync function environment, because we'd need an active doc, which this test does not allow for.
+	syncFn := `function(doc, oldDoc) {
+		console.log("full doc: "+JSON.stringify(doc));
+		console.log("full oldDoc: "+JSON.stringify(oldDoc));
+
+		if (oldDoc == null || !oldDoc.syncOldDocBodyCheck) {
+			console.log("skipping oldDoc property checks for this rev")
+			return
+		}
+
+		if (doc != null && doc._deleted) {
+			console.error("doc contained _deleted")
+		}
+	}`
+
+	rtConfig := RestTesterConfig{SyncFn: syncFn}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// rev 1-a
+	resp := rt.Send(request("PUT", "/db/"+testDocID, `{"`+testdataKey+`":1}`))
+	assertStatus(t, resp, 201)
+	rev1ID := respRevID(t, resp)
+
+	// rev 2-a
+	resp = rt.Send(request("PUT", "/db/"+testDocID+"?rev="+rev1ID, `{"`+testdataKey+`":2}`))
+	assertStatus(t, resp, 201)
+	rev2aID := respRevID(t, resp)
+
+	// rev 3-a
+	resp = rt.Send(request("PUT", "/db/"+testDocID+"?rev="+rev2aID, `{"`+testdataKey+`":3,"syncOldDocBodyCheck":true}`))
+	assertStatus(t, resp, 201)
+	rev3aID := respRevID(t, resp)
+
+	// rev 2-b
+	_, rev1Hash := db.ParseRevID(rev1ID)
+	resp = rt.Send(request("PUT", "/db/"+testDocID+"?new_edits=false", `{"`+db.BodyRevisions+`":{"start":2,"ids":["b", "`+rev1Hash+`"]}}`))
+	assertStatus(t, resp, 201)
+	rev2bID := respRevID(t, resp)
+
+	// tombstone at 4-a
+	resp = rt.Send(request("DELETE", "/db/"+testDocID+"?rev="+rev3aID, `{}`))
+	assertStatus(t, resp, 200)
+
+	numErrorsBefore, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	assert.NoError(t, err)
+	// tombstone at 3-b
+	resp = rt.Send(request("DELETE", "/db/"+testDocID+"?rev="+rev2bID, `{}`))
+	assertStatus(t, resp, 200)
+
+	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
+}
+
 //Test for wrong _changes entries for user joining a populated channel
 func TestUserJoiningPopulatedChannel(t *testing.T) {
 
