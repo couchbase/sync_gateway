@@ -10,6 +10,7 @@
 package db
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -763,113 +764,285 @@ func TestStoreAttachments(t *testing.T) {
 	assert.Contains(t, err.Error(), "400 Missing/invalid revpos in stub attachment")
 }
 
-func TestMigrateAttachments(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+// TestMigrateBodyAttachments will set up a document with an attachment in pre-2.5 metadata format, and test various upgrade scenarios.
+func TestMigrateBodyAttachments(t *testing.T) {
 
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
-	assert.NoError(t, err, "The database context should be created for database 'db'")
-	defer context.Close()
-	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "The database 'db' should be created")
-
-	// Put a document with hello.txt attachment, to write attachment to the bucket
-	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
-	var body Body
-	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
-	_, _, err = db.Put("doc1", body)
-	assert.NoError(t, err, "Couldn't create document")
-
-	log.Printf("Retrieve doc...")
-	gotbody, err := db.Get1xRevBody("doc1", "", false, []string{})
-	assert.NoError(t, err, "Couldn't get document")
-	atts := gotbody[BodyAttachments].(AttachmentsMeta)
-
-	hello := atts["hello.txt"].(map[string]interface{})
-	assert.Equal(t, "hello world", string(hello["data"].([]byte)))
-	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
-	assert.Equal(t, 11, hello["length"])
-	assert.Equal(t, 1, hello["revpos"])
-
-	// Create 2.1 style document - metadata in xattr, _attachments in body, referencing attachment created above
-
-	bodyPre25 := `
-       {
-       "_attachments": {
-			"hello.txt": {
-				"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
-				"length": 11,
-				"revpos": 1,
-				"stub": true
-			}
-		}
-	   }`
-
-	xattrPre25 := `
-    {
- 	  "rev": "3-a",
-      "sequence": 4,
-      "recent_sequences": [
-        4
-      ],
-      "history": {
-        "revs": [
-          "2-a",
-          "3-a",
-          "1-a"
-        ],
-        "parents": [
-          2,
-          0,
-          -1
-        ],
-        "channels": [
-          [
-            "ABC"
-          ],
-          [
-            "ABC"
-          ],
-          [
-            "ABC"
-          ]
-        ]
-      },
-      "channels": {
-        "ABC": null
-      }
-    }
-	`
-	var bodyVal map[string]interface{}
-	var xattrVal map[string]interface{}
-	err = base.JSONUnmarshal([]byte(bodyPre25), &bodyVal)
-	assert.NoError(t, err)
-	err = base.JSONUnmarshal([]byte(xattrPre25), &xattrVal)
-	assert.NoError(t, err)
-
-	key := "TestAttachmentMigrate"
-
-	// Create w/ XATTR
-	log.Printf("Creating doc with bodyVal: %v %T", bodyVal, bodyVal)
-	log.Printf("Creating doc with xattrVal: %v %T", xattrVal, xattrVal)
-
-	cas := uint64(0)
-	cas, err = bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, bodyVal, xattrVal)
-	if err != nil {
-		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+	if base.TestUseXattrs() && base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket when using xattrs")
 	}
 
-	// Verify body and XATTR in bucket
-	var retrievedVal map[string]interface{}
-	var retrievedXattr map[string]interface{}
-	mutateCas, err := bucket.GetWithXattr(key, base.SyncXattrName, &retrievedVal, &retrievedXattr)
-	log.Printf("err: %v", err)
-	log.Printf("value: %v, xattr: %v", retrievedVal, retrievedXattr)
-	log.Printf("MutateInEx cas: %v", mutateCas)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	// Verify attachments are present on GetRev
-	rev, err := db.GetRev(key, "3-a", true, nil)
-	assert.NotEmpty(t, rev.Attachments)
-	log.Printf("attachments %v", rev.Attachments)
+	const docKey = "TestAttachmentMigrate"
+
+	setupFn := func(t *testing.T) (db *Database, teardownFn func()) {
+		testBucket := base.GetTestBucket(t)
+		bucket := testBucket.Bucket
+
+		context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+			EnableXattr: base.TestUseXattrs(),
+		})
+
+		assert.NoError(t, err, "The database context should be created for database 'db'")
+		db, err = CreateDatabase(context)
+		assert.NoError(t, err, "The database 'db' should be created")
+
+		// Put a document with hello.txt attachment, to write attachment to the bucket
+		rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`
+		var body Body
+		assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
+		_, _, err = db.Put("doc1", body)
+		assert.NoError(t, err, "Couldn't create document")
+
+		gotbody, err := db.Get1xRevBody("doc1", "", false, []string{})
+		assert.NoError(t, err, "Couldn't get document")
+		atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
+		assert.True(t, ok)
+
+		hello, ok := atts["hello.txt"].(map[string]interface{})
+		assert.True(t, ok)
+
+		helloData, ok := hello["data"].([]byte)
+		assert.True(t, ok)
+
+		assert.Equal(t, "hello world", string(helloData))
+		assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+		assert.Equal(t, 11, hello["length"])
+		assert.Equal(t, 1, hello["revpos"])
+
+		// Create 2.1 style document - metadata in sync data, _attachments in body, referencing attachment created above
+		bodyPre25 := `{
+  "test":true,
+  "_attachments": {
+    "hello.txt": {
+      "digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+      "length": 11,
+      "revpos": 1,
+      "stub": true
+    }
+  }
+}`
+
+		syncData := `{
+  "rev": "3-a",
+  "sequence": 4,
+  "recent_sequences": [
+    4
+  ],
+  "history": {
+    "revs": [
+      "2-a",
+      "3-a",
+      "1-a"
+    ],
+    "parents": [
+      2,
+      0,
+      -1
+    ],
+    "channels": [
+      [
+        "ABC"
+      ],
+      [
+        "ABC"
+      ],
+      [
+        "ABC"
+      ]
+    ]
+  },
+  "channels": {
+    "ABC": null
+  }
+}`
+
+		var bodyVal map[string]interface{}
+		var xattrVal map[string]interface{}
+		err = base.JSONUnmarshal([]byte(bodyPre25), &bodyVal)
+		assert.NoError(t, err)
+		err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
+		assert.NoError(t, err)
+
+		if base.TestUseXattrs() {
+			_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal)
+			assert.NoError(t, err)
+		} else {
+			newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
+			assert.NoError(t, err)
+			ok, err := bucket.AddRaw(docKey, 0, newBody)
+			assert.NoError(t, err)
+			assert.True(t, ok)
+		}
+
+		// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
+		docSyncData, err := db.GetDocSyncData(docKey)
+		assert.NoError(t, err)
+		assert.Empty(t, docSyncData.Attachments)
+
+		return db, func() {
+			context.Close()
+			testBucket.Close()
+		}
+	}
+
+	// Reading the active rev of a doc containing pre 2.5 meta. Make sure the rev ID is not changed, and the metadata is appearing in syncData.
+	t.Run("2.1 meta, read active rev", func(t *testing.T) {
+		db, teardownFn := setupFn(t)
+		defer teardownFn()
+
+		rev, err := db.GetRev(docKey, "", true, nil)
+		require.NoError(t, err)
+
+		// latest rev was 3-a when we called GetActive, make sure that hasn't changed.
+		gen, _ := ParseRevID(rev.RevID)
+		assert.Equal(t, 3, gen)
+
+		// read-only operations don't "upgrade" the metadata, but it should still transform it on-demand before returning.
+		// Only write operations (tested down below) actually write an upgrade back to the bucket.
+		assert.Len(t, rev.Attachments, 1, "expecting 1 attachment returned in rev")
+
+		// _attachments shouldn't be present in the body at this point.
+		// It will be stamped in for 1.x clients that require it further up the stack.
+		body1, err := rev.MutableBody()
+		require.NoError(t, err)
+		bodyAtts, foundBodyAtts := body1[BodyAttachments]
+		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+
+		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
+		syncData, err := db.GetDocSyncData(docKey)
+		assert.NoError(t, err)
+		assert.Empty(t, syncData.Attachments)
+	})
+
+	// Reading a non-active revision shouldn't perform an upgrade, but should transform the metadata in memory for the returned rev.
+	t.Run("2.1 meta, read non-active rev", func(t *testing.T) {
+		db, teardownFn := setupFn(t)
+		defer teardownFn()
+
+		rev, err := db.GetRev(docKey, "3-a", true, nil)
+		require.NoError(t, err)
+
+		// latest rev was 3-a when we called Get, make sure that hasn't changed.
+		gen, _ := ParseRevID(rev.RevID)
+		assert.Equal(t, 3, gen)
+
+		// read-only operations don't "upgrade" the metadata, but it should still transform it on-demand before returning.
+		// Only write operations (tested down below) actually write an upgrade back to the bucket.
+		assert.Len(t, rev.Attachments, 1, "expecting 1 attachment returned in rev")
+
+		// _attachments shouldn't be present in the body at this point.
+		// It will be stamped in for 1.x clients that require it further up the stack.
+		body1, err := rev.MutableBody()
+		require.NoError(t, err)
+		bodyAtts, foundBodyAtts := body1[BodyAttachments]
+		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+
+		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
+		syncData, err := db.GetDocSyncData(docKey)
+		assert.NoError(t, err)
+		assert.Empty(t, syncData.Attachments)
+	})
+
+	// Writing a new rev should migrate the metadata and write that upgrade back to the bucket.
+	t.Run("2.1 meta, write new rev", func(t *testing.T) {
+		db, teardownFn := setupFn(t)
+		defer teardownFn()
+
+		// Update the doc with a the same body as rev 3-a, and make sure attachments are migrated.
+		newBody := Body{
+			"test":  true,
+			BodyRev: "3-a",
+			BodyAttachments: map[string]interface{}{
+				"hello.txt": map[string]interface{}{
+					"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+					"length": 11,
+					"revpos": 1,
+					"stub":   true,
+				},
+			},
+		}
+		newRevID, _, err := db.Put(docKey, newBody)
+		require.NoError(t, err)
+
+		gen, _ := ParseRevID(newRevID)
+		assert.Equal(t, 4, gen)
+
+		// Verify attachments are in syncData returned from GetRev
+		rev, err := db.GetRev(docKey, newRevID, true, nil)
+		require.NoError(t, err)
+
+		assert.Len(t, rev.Attachments, 1, "expecting 1 attachment returned in rev")
+
+		// _attachments shouldn't be present in the body at this point.
+		// It will be stamped in for 1.x clients that require it further up the stack.
+		body1, err := rev.MutableBody()
+		require.NoError(t, err)
+		bodyAtts, foundBodyAtts := body1[BodyAttachments]
+		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+
+		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
+		syncData, err := db.GetDocSyncData(docKey)
+		assert.NoError(t, err)
+		assert.Len(t, syncData.Attachments, 1)
+	})
+
+	// Adding a new attachment should migrate existing attachments, without losing any.
+	t.Run("2.1 meta, add new attachment", func(t *testing.T) {
+		db, teardownFn := setupFn(t)
+		defer teardownFn()
+
+		rev, err := db.GetRev(docKey, "3-a", true, nil)
+		require.NoError(t, err)
+
+		// read-only in-memory transformation should've been applied here, so we can append the new attachment to the existing rev.Attachments map when we write.
+		require.Len(t, rev.Attachments, 1)
+
+		// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
+		syncData, err := db.GetDocSyncData(docKey)
+		assert.NoError(t, err)
+		assert.Empty(t, syncData.Attachments)
+
+		byeTxtData, err := base64.StdEncoding.DecodeString("Z29vZGJ5ZSBjcnVlbCB3b3JsZA==")
+		require.NoError(t, err)
+
+		newAtts := rev.Attachments.ShallowCopy()
+		newAtts["bye.txt"] = map[string]interface{}{
+			"content_type": "text/plain",
+			"stub":         false,
+			"data":         byeTxtData,
+		}
+
+		// update the doc with a copy of the previous doc body
+		newBody, err := rev.DeepMutableBody()
+		require.NoError(t, err)
+		newBody[BodyRev] = "3-a"
+		newBody[BodyAttachments] = newAtts
+		newRevID, _, err := db.Put(docKey, newBody)
+		require.NoError(t, err)
+
+		gen, _ := ParseRevID(newRevID)
+		assert.Equal(t, 4, gen)
+
+		// Verify attachments are now present via GetRev
+		rev, err = db.GetRev(docKey, newRevID, true, nil)
+		require.NoError(t, err)
+
+		gen, _ = ParseRevID(rev.RevID)
+		assert.Equal(t, 4, gen)
+
+		assert.Len(t, rev.Attachments, 2, "expecting 2 attachments returned in rev")
+
+		// _attachments shouldn't be present in the body at this point.
+		// It will be stamped in for 1.x clients that require it further up the stack.
+		body1, err := rev.MutableBody()
+		require.NoError(t, err)
+		bodyAtts, foundBodyAtts := body1[BodyAttachments]
+		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+
+		// Fetch the raw doc sync data from the bucket to make sure we actually moved attachments on write.
+		syncData, err = db.GetDocSyncData(docKey)
+		assert.NoError(t, err)
+		assert.Len(t, syncData.Attachments, 2)
+	})
 }

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"encoding/json"
 	"expvar"
 	"time"
@@ -244,6 +245,7 @@ func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Docu
 		if isRemovalErr != nil {
 			return bodyBytes, body, history, channels, nil, isDelete, nil, isRemovalErr
 		}
+
 		if isRemoval {
 			return removalBodyBytes, body, removalHistory, removalChannels, nil, isDelete, nil, nil
 		} else {
@@ -251,6 +253,7 @@ func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Docu
 			return bodyBytes, body, history, channels, nil, isDelete, nil, err
 		}
 	}
+
 	deleted = doc.History[revid].Deleted
 
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
@@ -260,9 +263,42 @@ func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Docu
 	history = encodeRevisions(validatedHistory)
 	channels = doc.History[revid].Channels
 
+	// If we have "_attachments" present in the raw body (pre-2.5 metadata), we'll need an unmarshalled version of the body.
 	if doc.CurrentRev == revid {
 		body = doc._body
+		attachments = doc.Attachments
 	}
 
-	return bodyBytes, body, history, channels, doc.Attachments, deleted, doc.Expiry, err
+	if bytes.Contains(bodyBytes, []byte(`"`+BodyAttachments+`"`)) && body == nil {
+		if err := body.Unmarshal(bodyBytes); err != nil {
+			return nil, nil, nil, nil, nil, false, &time.Time{}, err
+		}
+	}
+
+	if pre25Atts, pre25Body, hasPre25Attachment, err := extractPre25Attachments(body); err != nil {
+		return nil, nil, nil, nil, nil, false, &time.Time{}, err
+	} else if hasPre25Attachment {
+		attachments = pre25Atts
+		bodyBytes = pre25Body
+	}
+
+	return bodyBytes, body, history, channels, attachments, deleted, doc.Expiry, err
+}
+
+func extractPre25Attachments(body Body) (attachments AttachmentsMeta, bodyBytes []byte, hasPre25Attachments bool, err error) {
+	// Move pre-2.5 "_attachments" meta into sync data in-memory before returning
+	if bodyAtts, ok := body[BodyAttachments]; ok {
+		if attsMap, ok := bodyAtts.(map[string]interface{}); ok {
+			attachments = attsMap
+			delete(body, BodyAttachments)
+			// remove _attachments from bodyBytes too. If we somehow error marshalling this, leave bodyBytes empty...
+			var err error
+			bodyBytes, err = base.JSONMarshal(body)
+			if err != nil {
+				return nil, nil, false, err
+			}
+			return attsMap, bodyBytes, true, nil
+		}
+	}
+	return nil, nil, false, nil
 }
