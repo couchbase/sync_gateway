@@ -580,7 +580,7 @@ func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, erro
 		{Key: BodyRev, Val: ancestorRevID},
 	}
 
-	if doc.Deleted {
+	if ancestorRev, ok := doc.History[ancestorRevID]; ok && ancestorRev != nil && ancestorRev.Deleted {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
@@ -984,7 +984,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 			}
 		}
 
-		if doc.Deleted {
+		if ancestorRev, ok := doc.History[prevCurrentRev]; ok && ancestorRev != nil && ancestorRev.Deleted {
 			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 		}
 
