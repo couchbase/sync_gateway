@@ -93,7 +93,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 	for {
 
 		// Query the view or index
-		queryResults, err := dbc.QueryChannels(channelName, startSeq, endSeq, limit)
+		queryResults, err := dbc.QueryChannels(channelName, startSeq, endSeq, limit, activeOnly)
 		if err != nil {
 			return nil, err
 		}

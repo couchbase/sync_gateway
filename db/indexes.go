@@ -330,7 +330,11 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 			go func(index SGIndex) {
 				defer indexesWg.Done()
 				base.Debugf(base.KeyQuery, "Verifying index availability for index %s...", base.MD(index.fullIndexName(useXattrs)))
-				queryStatement := replaceSyncTokensQuery(index.readinessQuery, useXattrs)
+				queryStatement := index.readinessQuery
+				if index.simpleName == QueryTypeChannels {
+					queryStatement = replaceActiveOnlyFilter(queryStatement, false)
+				}
+				queryStatement = replaceSyncTokensQuery(queryStatement, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
 					base.Warnf("Query error for statement [%s], err:%v", queryStatement, queryErr)

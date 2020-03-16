@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -46,7 +47,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100)
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -98,7 +99,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	channelQueryErrorCountBefore := base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(errorCountExpvar))
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100)
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -323,7 +324,7 @@ func TestCoveringQueries(t *testing.T) {
 	}
 
 	// channels
-	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100)
+	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100, false)
 	plan, explainErr := gocbBucket.ExplainQuery(channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
 	covered := isCovered(plan)
@@ -332,7 +333,7 @@ func TestCoveringQueries(t *testing.T) {
 	assert.True(t, covered, "Channel query isn't covered by index: %s", planJSON)
 
 	// star channel
-	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100)
+	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100, false)
 	plan, explainErr = gocbBucket.ExplainQuery(channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
 	covered = isCovered(plan)
@@ -567,4 +568,187 @@ func countQueryResults(results sgbucket.QueryResultIterator) int {
 		count++
 	}
 	return count
+}
+
+func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test require Couchbase Server")
+	}
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	docIdFlagMap := make(map[string]uint8)
+	var startSeq, endSeq uint64
+	body := Body{"channels": []string{"ABC"}}
+
+	checkFlags := func(entries LogEntries) {
+		for _, entry := range entries {
+			assert.Equal(t, docIdFlagMap[entry.DocID], entry.Flags, "Flags mismatch for doc %v", entry.DocID)
+		}
+	}
+
+	// Create 10 added documents
+	for i := 1; i <= 10; i++ {
+		id := "created" + strconv.Itoa(i)
+		doc, revId, err := db.PutExistingRevWithBody(id, body, []string{"1-a"}, false)
+		require.NoError(t, err, "Couldn't create document")
+		require.Equal(t, "1-a", revId)
+		docIdFlagMap[doc.ID] = uint8(0x0)
+		if i == 1 {
+			startSeq = doc.Sequence
+		}
+		endSeq = doc.Sequence
+	}
+
+	// Create 10 deleted documents
+	for i := 1; i <= 10; i++ {
+		id := "deleted" + strconv.Itoa(i)
+		doc, revId, err := db.PutExistingRevWithBody(id, body, []string{"1-a"}, false)
+		require.NoError(t, err, "Couldn't create document")
+		require.Equal(t, "1-a", revId)
+
+		body[BodyDeleted] = true
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"2-a", "1-a"}, false)
+		require.NoError(t, err, "Couldn't create document")
+		require.Equal(t, "2-a", revId, "Couldn't create tombstone revision")
+
+		docIdFlagMap[doc.ID] = channels.Deleted // 1 = Deleted(1)
+		endSeq = doc.Sequence
+	}
+
+	// Create 10 branched documents (two branches, one branch is tombstoned)
+	for i := 1; i <= 10; i++ {
+		body["sound"] = "meow"
+		id := "branched" + strconv.Itoa(i)
+		doc, revId, err := db.PutExistingRevWithBody(id, body, []string{"1-a"}, false)
+		require.NoError(t, err, "Couldn't create document revision 1-a")
+		require.Equal(t, "1-a", revId)
+
+		body["sound"] = "bark"
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"2-b", "1-a"}, false)
+		require.NoError(t, err, "Couldn't create revision 2-b")
+		require.Equal(t, "2-b", revId)
+
+		body["sound"] = "bleat"
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"2-a", "1-a"}, false)
+		require.NoError(t, err, "Couldn't create revision 2-a")
+		require.Equal(t, "2-a", revId)
+
+		body[BodyDeleted] = true
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"3-a", "2-a"}, false)
+		require.NoError(t, err, "Couldn't create document")
+		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
+
+		docIdFlagMap[doc.ID] = channels.Branched | channels.Hidden // 20 = Branched (16) + Hidden(4)
+		endSeq = doc.Sequence
+	}
+
+	// Create 10 branched|deleted documents (two branches, both branches tombstoned)
+	for i := 1; i <= 10; i++ {
+		body["sound"] = "meow"
+		id := "branched|deleted" + strconv.Itoa(i)
+		doc, revId, err := db.PutExistingRevWithBody(id, body, []string{"1-a"}, false)
+		require.NoError(t, err, "Couldn't create document revision 1-a")
+		require.Equal(t, "1-a", revId)
+
+		body["sound"] = "bark"
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"2-b", "1-a"}, false)
+		require.NoError(t, err, "Couldn't create revision 2-b")
+		require.Equal(t, "2-b", revId)
+
+		body["sound"] = "bleat"
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"2-a", "1-a"}, false)
+		require.NoError(t, err, "Couldn't create revision 2-a")
+		require.Equal(t, "2-a", revId)
+
+		body[BodyDeleted] = true
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"3-a", "2-a"}, false)
+		require.NoError(t, err, "Couldn't create document")
+		require.Equal(t, "3-a", revId, "Couldn't create tombstone revision")
+
+		body[BodyDeleted] = true
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"3-b", "2-b"}, false)
+		require.NoError(t, err, "Couldn't create document")
+		require.Equal(t, "3-b", revId, "Couldn't create tombstone revision")
+
+		docIdFlagMap[doc.ID] = channels.Branched | channels.Deleted // 17 = Branched (16) + Deleted(1)
+		endSeq = doc.Sequence
+	}
+
+	// Create 10 branched|conflict (two branched, neither branch tombstoned) documents
+	for i := 1; i <= 10; i++ {
+		body["sound"] = "meow"
+		id := "branched|conflict" + strconv.Itoa(i)
+		doc, revId, err := db.PutExistingRevWithBody(id, body, []string{"1-a"}, false)
+		require.NoError(t, err, "Couldn't create document revision 1-a")
+		require.Equal(t, "1-a", revId)
+
+		body["sound"] = "bark"
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"2-b", "1-a"}, false)
+		require.NoError(t, err, "Couldn't create revision 2-b")
+		require.Equal(t, "2-b", revId)
+
+		body["sound"] = "bleat"
+		doc, revId, err = db.PutExistingRevWithBody(id, body, []string{"2-a", "1-a"}, false)
+		require.NoError(t, err, "Couldn't create revision 2-a")
+		require.Equal(t, "2-a", revId)
+
+		// 28 = Branched(16) + Conflict(8) + Hidden(4)
+		docIdFlagMap[doc.ID] = channels.Branched | channels.Conflict | channels.Hidden
+		endSeq = doc.Sequence
+	}
+
+	// At this point the bucket has 50 documents
+	// 30 active documents (10 created + 10 branched + 10 branched|conflict)
+	// 20 Deleted documents (10 deleted + 10 branched|deleted)
+
+	// Get changes from channel "ABC" with limit and activeOnly true
+	entries, err := db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 25, true)
+	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
+	require.Len(t, entries, 25)
+	checkFlags(entries)
+
+	// Get changes from channel "*" with limit and activeOnly true
+	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 25, true)
+	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
+	require.Len(t, entries, 25)
+	checkFlags(entries)
+
+	// Get changes from channel "ABC" without limit and activeOnly true
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, true)
+	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
+	require.Len(t, entries, 30)
+	checkFlags(entries)
+
+	// Get changes from channel "*" without limit and activeOnly true
+	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 0, true)
+	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
+	require.Len(t, entries, 30)
+	checkFlags(entries)
+
+	// Get changes from channel "ABC" with limit and activeOnly false
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 45, false)
+	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
+	require.Len(t, entries, 45)
+	checkFlags(entries)
+
+	// Get changes from channel "*" with limit and activeOnly false
+	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 45, false)
+	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
+	require.Len(t, entries, 45)
+	checkFlags(entries)
+
+	// Get changes from channel "ABC" without limit and activeOnly false
+	entries, err = db.getChangesInChannelFromQuery("ABC", startSeq, endSeq, 0, false)
+	require.NoError(t, err, "Couldn't query active docs from channel ABC with limit")
+	require.Len(t, entries, 50)
+	checkFlags(entries)
+
+	// Get changes from channel "*" without limit and activeOnly true
+	entries, err = db.getChangesInChannelFromQuery("*", startSeq, endSeq, 0, false)
+	require.NoError(t, err, "Couldn't query active docs from channel * with limit")
+	require.Len(t, entries, 50)
+	checkFlags(entries)
 }
