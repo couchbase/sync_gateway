@@ -347,6 +347,7 @@ pipeline {
                                 build job: 'sync-gateway-integration', quietPeriod: 3600, wait: false
                             }
                         }
+
                         stage('PR') {
                             // TODO: Remove skip
                             when { expression { return false } }
@@ -367,14 +368,11 @@ pipeline {
             }
         }
         stage('Benchmarks'){
+            when { branch 'master' }
             steps{
-                withEnv(["PATH+=${GO}:${GOPATH}/bin"]){
-                    warnError(message: "one or more benchmarks failed") {
-                        sh "go test -timeout=20m -count=1 -run=- -bench=. -benchmem -benchtime 0.1s -v ${SGW_REPO}/... | tee benchmark.out"
-                    }
-                }
+                echo 'Queueing Benchmark Run test for branch "master" ...'
+                build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: false
             }
-
         }
     }
 
