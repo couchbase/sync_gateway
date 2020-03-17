@@ -2100,3 +2100,35 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 	log.Printf("assertXattrSyncMetaRevGeneration generation: %d rev: %s", generation, revision)
 	goassert.True(t, generation == expectedRevGeneration)
 }
+
+func TestDeletedEmptyDocumentImport(t *testing.T) {
+	SkipImportTestsIfNotEnabled(t)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport)()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	bucket := rt.Bucket()
+
+	// Create a document with empty body through SG
+	const docId = "doc1"
+	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docId, `{}`)
+	assert.Equal(t, http.StatusCreated, response.Code)
+
+	var body db.Body
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, "1-ca9ad22802b66f662ff171f226211d5c", body["rev"])
+
+	// Delete the document through SDK
+	err = bucket.Delete(docId)
+	assert.NoError(t, err, "Unable to delete doc %s", docId)
+
+	// Get the doc and check deleted revision is getting imported
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_raw/"+docId, "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	rawResponse := make(map[string]interface{})
+	err = base.JSONUnmarshal(response.Body.Bytes(), &rawResponse)
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+
+	assert.True(t, rawResponse[db.BodyDeleted].(bool))
+	syncMeta := rawResponse["_sync"].(map[string]interface{})
+	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", syncMeta["rev"])
+}

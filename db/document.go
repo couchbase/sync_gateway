@@ -45,6 +45,9 @@ const (
 	DeletedDocument = `{"` + BodyDeleted + `":true}`
 )
 
+// CRC-32 checksum of an empty document body JSON
+var emptyBodyCrc32cHash = base.Crc32cHashString([]byte(`{}`))
+
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
@@ -525,7 +528,8 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 		base.Warnf("Unable to marshal doc body during SG write check for doc %s. Error: %v", base.UD(doc.ID), err)
 		return false, false
 	}
-	if base.Crc32cHashString(bodyBytes) == doc.SyncData.Crc32c {
+
+	if base.Crc32cHashString(bodyBytes) == doc.SyncData.Crc32c && emptyBodyCrc32cHash != doc.SyncData.Crc32c {
 		return true, true
 	}
 
