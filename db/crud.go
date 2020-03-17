@@ -11,6 +11,7 @@ package db
 
 import (
 	"bytes"
+	"encoding/json"
 	"math"
 	"net/http"
 	"strings"
@@ -462,16 +463,109 @@ func (db *DatabaseContext) getRevision(doc *Document, revid string) ([]byte, err
 	}
 
 	if doc.CurrentRev == revid && doc.Attachments != nil {
-		bodyBytes, err = base.InjectJSONProperties(bodyBytes, base.KVPair{
-			Key: BodyAttachments,
-			Val: doc.Attachments,
-		})
+		bodyBytes, err = injectBodyAttachments(bodyBytes, doc.Attachments)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return bodyBytes, nil
+}
+
+func injectBodyAttachments(bodyBytes []byte, atts AttachmentsMeta) (newBodyBytes []byte, err error) {
+	// If we can't see any _attachments anywhere in bodyBytes, we can safely stamp _attachments into bodyBytes without unmarshalling.`
+	if !bytes.Contains(bodyBytes, []byte(`"`+BodyAttachments+`"`)) {
+		return base.InjectJSONProperties(bodyBytes, base.KVPair{
+			Key: BodyAttachments,
+			Val: atts,
+		})
+	}
+
+	// We saw _attachments in the bodyBytes, so we'll need to unmarshal, merge the two, and remarshal.
+	var body Body
+	if err := body.Unmarshal(bodyBytes); err != nil {
+		return nil, err
+	}
+	if pre25Atts, cleanBodyBytes, err := extractPre25Attachments(body); err != nil {
+		return nil, err
+	} else if len(pre25Atts) > 0 {
+		// Set bodyBytes to be the clean version (no _attachments property)
+		bodyBytes = cleanBodyBytes
+		atts, err = mergeAttachments(pre25Atts, atts)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	bodyBytes, err = base.JSONMarshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	return bodyBytes, nil
+}
+
+func mergeAttachments(pre25Attachments, docAttachments AttachmentsMeta) (merged AttachmentsMeta, err error) {
+	merged = make(AttachmentsMeta, len(docAttachments))
+	for k, v := range docAttachments {
+		merged[k] = v
+	}
+
+	// Iterate over pre-2.5 attachments, and merge with syncData
+	for attName, pre25Att := range pre25Attachments {
+		if docAtt, exists := docAttachments[attName]; !exists {
+			// we didn't have an attachment matching this name already in syncData, so we'll use the pre-2.5 attachment.
+			merged[attName] = pre25Att
+		} else {
+			// we had the same attachment name in syncData and in a pre-2.5 body property.
+			// Figure out which one of these has the highest revpos, and use that.
+			var pre25AttRevpos float64
+			if pre25AttMeta, ok := pre25Att.(map[string]interface{}); ok {
+				if pre25AttRevposNumber, ok := pre25AttMeta["revpos"].(json.Number); ok {
+					pre25AttRevpos, err = pre25AttRevposNumber.Float64()
+					if err != nil {
+						return nil, err
+					}
+				}
+			}
+
+			if docAttMeta, ok := docAtt.(map[string]interface{}); ok {
+				if docAttRevpos, ok := docAttMeta["revpos"].(float64); ok {
+					// Attachment exists in both syncData and body.
+					// Determine which revpos is greater, and use that.
+					if docAttRevpos < pre25AttRevpos {
+						merged[attName] = pre25Att
+					}
+				}
+			}
+		}
+	}
+
+	return merged, nil
+}
+
+// extractPre25Attachments moves any pre-2.5 "_attachments" meta into a returned map, for it to be merged into syncData.
+func extractPre25Attachments(body Body) (attachments AttachmentsMeta, bodyBytes []byte, err error) {
+	bodyAtts, ok := body[BodyAttachments]
+	if !ok {
+		// no pre-2.5 attachments
+		return nil, nil, nil
+	}
+
+	attsMap, ok := bodyAtts.(map[string]interface{})
+	if !ok {
+		// "_attachments" in body was not valid attachment metadata
+		return nil, nil, nil
+	}
+
+	// remove _attachments from body and marshal for clean bodyBytes.
+	delete(body, BodyAttachments)
+	bodyBytes, err = base.JSONMarshal(body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return attsMap, bodyBytes, nil
 }
 
 // Gets a revision of a document as raw JSON.

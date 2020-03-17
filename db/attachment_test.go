@@ -1046,3 +1046,350 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		assert.Len(t, syncData.Attachments, 2)
 	})
 }
+
+// TestMigrateBodyAttachmentsMerge will set up a document with attachments in both pre-2.5 and post-2.5 metadata, making sure that both attachments are preserved.
+func TestMigrateBodyAttachmentsMerge(t *testing.T) {
+
+	if base.TestUseXattrs() && base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket when using xattrs")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	const docKey = "TestAttachmentMigrate"
+
+	testBucket := base.GetTestBucket(t)
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+		EnableXattr: base.TestUseXattrs(),
+	})
+	require.NoError(t, err, "The database context should be created for database 'db'")
+
+	db, err := CreateDatabase(context)
+	require.NoError(t, err, "The database 'db' should be created")
+	defer testBucket.Close()
+	defer context.Close()
+
+	// Put a document 2 attachments, to write attachment to the bucket
+	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
+	var body Body
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
+	_, _, err = db.Put("doc1", body)
+	assert.NoError(t, err, "Couldn't create document")
+
+	gotbody, err := db.Get1xRevBody("doc1", "", false, []string{})
+	assert.NoError(t, err, "Couldn't get document")
+	atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
+	assert.True(t, ok)
+
+	hello, ok := atts["hello.txt"].(map[string]interface{})
+	assert.True(t, ok)
+
+	helloData, ok := hello["data"].([]byte)
+	assert.True(t, ok)
+
+	assert.Equal(t, "hello world", string(helloData))
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, 11, hello["length"])
+	assert.Equal(t, 1, hello["revpos"])
+
+	bye, ok := atts["bye.txt"].(map[string]interface{})
+	assert.True(t, ok)
+
+	byeData, ok := bye["data"].([]byte)
+	assert.True(t, ok)
+
+	assert.Equal(t, "goodbye cruel world", string(byeData))
+	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+	assert.Equal(t, 19, bye["length"])
+	assert.Equal(t, 1, bye["revpos"])
+
+	// Create 2.1 style document - metadata in sync data, _attachments in body, referencing attachments created above
+	bodyPre25 := `{
+  "test":true,
+  "_attachments": {
+    "hello.txt": {
+      "digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+      "length": 11,
+      "revpos": 1,
+      "stub": true
+    }
+  }
+}`
+
+	syncData := `{
+  "rev": "3-a",
+  "sequence": 4,
+  "recent_sequences": [
+    4
+  ],
+  "history": {
+    "revs": [
+      "2-a",
+      "3-a",
+      "1-a"
+    ],
+    "parents": [
+      2,
+      0,
+      -1
+    ],
+    "channels": [
+      [
+        "ABC"
+      ],
+      [
+        "ABC"
+      ],
+      [
+        "ABC"
+      ]
+    ]
+  },
+  "channels": {
+    "ABC": null
+  },
+  "attachments": {
+    "bye.txt": {
+      "digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+      "length": 19,
+      "revpos": 1,
+      "stub": true
+    }
+  }
+}`
+
+	var bodyVal map[string]interface{}
+	var xattrVal map[string]interface{}
+	err = base.JSONUnmarshal([]byte(bodyPre25), &bodyVal)
+	assert.NoError(t, err)
+	err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
+	assert.NoError(t, err)
+
+	if base.TestUseXattrs() {
+		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal)
+		assert.NoError(t, err)
+	} else {
+		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
+		assert.NoError(t, err)
+		ok, err := bucket.AddRaw(docKey, 0, newBody)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+	}
+
+	// Fetch the raw doc sync data from the bucket to make sure we didn't store pre-2.5 attachments in syncData.
+	docSyncData, err := db.GetDocSyncData(docKey)
+	assert.NoError(t, err)
+	assert.Len(t, docSyncData.Attachments, 1)
+	_, ok = docSyncData.Attachments["hello.txt"]
+	assert.False(t, ok)
+	_, ok = docSyncData.Attachments["bye.txt"]
+	assert.True(t, ok)
+
+	rev, err := db.GetRev(docKey, "3-a", true, nil)
+	require.NoError(t, err)
+
+	// read-only in-memory transformation should've been applied here, both attachments should be present in rev.Attachments
+	assert.Len(t, rev.Attachments, 2)
+	_, ok = rev.Attachments["hello.txt"]
+	assert.True(t, ok)
+	_, ok = rev.Attachments["bye.txt"]
+	assert.True(t, ok)
+
+	// _attachments shouldn't be present in the body at this point.
+	// It will be stamped in for 1.x clients that require it further up the stack.
+	body1, err := rev.MutableBody()
+	require.NoError(t, err)
+	bodyAtts, foundBodyAtts := body1[BodyAttachments]
+	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+
+	// Fetch the raw doc sync data from the bucket to see if this read-only op unintentionally persisted the migrated meta.
+	docSyncData, err = db.GetDocSyncData(docKey)
+	assert.NoError(t, err)
+	_, ok = docSyncData.Attachments["hello.txt"]
+	assert.False(t, ok)
+	_, ok = docSyncData.Attachments["bye.txt"]
+	assert.True(t, ok)
+}
+
+// TestMigrateBodyAttachmentsMergeConflicting will set up a document with the same attachment name in both pre-2.5 and post-2.5 metadata, making sure that the metadata with the most recent revpos is chosen.
+func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
+
+	if base.TestUseXattrs() && base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket when using xattrs")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	const docKey = "TestAttachmentMigrate"
+
+	testBucket := base.GetTestBucket(t)
+	bucket := testBucket.Bucket
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
+		EnableXattr: base.TestUseXattrs(),
+	})
+	require.NoError(t, err, "The database context should be created for database 'db'")
+
+	db, err := CreateDatabase(context)
+	require.NoError(t, err, "The database 'db' should be created")
+	defer testBucket.Close()
+	defer context.Close()
+
+	// Put a document with 3 attachments, to write attachments to the bucket
+	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="},"new.txt": {"data":"bmV3IGRhdGE="}}}`
+	var body Body
+	assert.NoError(t, base.JSONUnmarshal([]byte(rev1input), &body))
+	_, _, err = db.Put("doc1", body)
+	assert.NoError(t, err, "Couldn't create document")
+
+	gotbody, err := db.Get1xRevBody("doc1", "", false, []string{})
+	assert.NoError(t, err, "Couldn't get document")
+	atts, ok := gotbody[BodyAttachments].(AttachmentsMeta)
+	assert.True(t, ok)
+
+	hello, ok := atts["hello.txt"].(map[string]interface{})
+	assert.True(t, ok)
+
+	helloData, ok := hello["data"].([]byte)
+	assert.True(t, ok)
+
+	assert.Equal(t, "hello world", string(helloData))
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, 11, hello["length"])
+	assert.Equal(t, 1, hello["revpos"])
+
+	bye, ok := atts["bye.txt"].(map[string]interface{})
+	assert.True(t, ok)
+
+	byeData, ok := bye["data"].([]byte)
+	assert.True(t, ok)
+
+	assert.Equal(t, "goodbye cruel world", string(byeData))
+	assert.Equal(t, "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=", bye["digest"])
+	assert.Equal(t, 19, bye["length"])
+	assert.Equal(t, 1, bye["revpos"])
+
+	new, ok := atts["new.txt"].(map[string]interface{})
+	assert.True(t, ok)
+
+	newData, ok := new["data"].([]byte)
+	assert.True(t, ok)
+
+	assert.Equal(t, "new data", string(newData))
+	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", new["digest"])
+	assert.Equal(t, 8, new["length"])
+	assert.Equal(t, 1, new["revpos"])
+
+	// Create 2.1 style document - metadata in sync data, _attachments in body, referencing attachments created above
+	bodyPre25 := `{
+  "test":true,
+  "_attachments": {
+    "hello.txt": {
+      "digest": "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=",
+      "length": 8,
+      "revpos": 2,
+      "stub": true
+    },
+    "bye.txt": {
+      "digest": "sha1-l+N7VpXGnoxMm8xfvtWPbz2YvDc=",
+      "length": 19,
+      "revpos": 1,
+      "stub": true
+    }
+  }
+}`
+
+	syncData := `{
+  "rev": "3-a",
+  "sequence": 4,
+  "recent_sequences": [
+    4
+  ],
+  "history": {
+    "revs": [
+      "2-a",
+      "3-a",
+      "1-a"
+    ],
+    "parents": [
+      2,
+      0,
+      -1
+    ],
+    "channels": [
+      [
+        "ABC"
+      ],
+      [
+        "ABC"
+      ],
+      [
+        "ABC"
+      ]
+    ]
+  },
+  "channels": {
+    "ABC": null
+  },
+  "attachments": {
+    "hello.txt": {
+      "digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=",
+      "length": 11,
+      "revpos": 1,
+      "stub": true
+    },
+    "bye.txt": {
+      "digest": "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=",
+      "length": 8,
+      "revpos": 2,
+      "stub": true
+    }
+  }
+}`
+
+	var bodyVal map[string]interface{}
+	var xattrVal map[string]interface{}
+	err = base.JSONUnmarshal([]byte(bodyPre25), &bodyVal)
+	assert.NoError(t, err)
+	err = base.JSONUnmarshal([]byte(syncData), &xattrVal)
+	assert.NoError(t, err)
+
+	if base.TestUseXattrs() {
+		_, err = bucket.WriteCasWithXattr(docKey, base.SyncXattrName, 0, 0, bodyVal, xattrVal)
+		assert.NoError(t, err)
+	} else {
+		newBody, err := base.InjectJSONPropertiesFromBytes([]byte(bodyPre25), base.KVPairBytes{Key: base.SyncPropertyName, Val: []byte(syncData)})
+		assert.NoError(t, err)
+		ok, err := bucket.AddRaw(docKey, 0, newBody)
+		assert.NoError(t, err)
+		assert.True(t, ok)
+	}
+
+	rev, err := db.GetRev(docKey, "3-a", true, nil)
+	require.NoError(t, err)
+
+	// read-only in-memory transformation should've been applied here, both attachments should be present in rev.Attachments
+	assert.Len(t, rev.Attachments, 2)
+
+	// see if we got new.txt's meta for both attachments (because of the higher revpos)
+	helloAtt, ok := rev.Attachments["hello.txt"]
+	assert.True(t, ok)
+	helloAttMeta, ok := helloAtt.(map[string]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", helloAttMeta["digest"])
+
+	byeAtt, ok := rev.Attachments["bye.txt"]
+	assert.True(t, ok)
+	byeAttMeta, ok := byeAtt.(map[string]interface{})
+	assert.True(t, ok)
+	assert.Equal(t, "sha1-AZffsEGpPp0Zn4jv1xFA8ydfxp0=", byeAttMeta["digest"])
+
+	// _attachments shouldn't be present in the body at this point.
+	// It will be stamped in for 1.x clients that require it further up the stack.
+	body1, err := rev.MutableBody()
+	require.NoError(t, err)
+	bodyAtts, foundBodyAtts := body1[BodyAttachments]
+	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+}
