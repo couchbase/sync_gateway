@@ -175,7 +175,7 @@
             "go_version": "1.13.4",
             "start_build": 1
         },
-        "manifest/2.7.1.xml": {
+        "manifest/2.7/2.7.1.xml": {
             "release": "2.7.1",
             "release_name": "Couchbase Sync Gateway 2.7.1",
             "production": true,
