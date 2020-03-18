@@ -28,14 +28,14 @@ func TestDesignDocs(t *testing.T) {
 
 	response := rt.SendRequest(http.MethodGet, "/db/_design/foo", "")
 	assertStatus(t, response, http.StatusForbidden)
-	response = rt.SendRequest(http.MethodPut, "/db/_design/foo", `{"prop":true}`)
+	response = rt.SendRequest(http.MethodPut, "/db/_design/foo", `{}`)
 	assertStatus(t, response, http.StatusForbidden)
 	response = rt.SendRequest(http.MethodDelete, "/db/_design/foo", "")
 	assertStatus(t, response, http.StatusForbidden)
 
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo", "")
 	assertStatus(t, response, http.StatusNotFound)
-	response = rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"prop":true}`)
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{}`)
 	assertStatus(t, response, http.StatusCreated)
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_design/foo", "")
 
