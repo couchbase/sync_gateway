@@ -45,9 +45,6 @@ const (
 	DeletedDocument = `{"` + BodyDeleted + `":true}`
 )
 
-// CRC-32 checksum of an empty document body JSON
-var emptyBodyCrc32cHash = base.Crc32cHashString([]byte(`{}`))
-
 // Maps what users have access to what channels or roles, and when they got that access.
 type UserAccessMap map[string]channels.TimedSet
 
@@ -514,7 +511,6 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 		}
 
 		return isSgWriteFeed, crc32MatchFeed
-
 	}
 
 	// If raw body isn't available, first do the inexpensive cas check
@@ -528,8 +524,15 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 		base.Warnf("Unable to marshal doc body during SG write check for doc %s. Error: %v", base.UD(doc.ID), err)
 		return false, false
 	}
+	// Underlying problem is that bodyBytes has been replaced with "{}" if the document is a delete
+	//  - This means that we can't use bodyBytes in a crc32c comparison
+	currentBodyCrc32c := base.Crc32cHashString(bodyBytes)
+	if doc.Deleted {
+		currentBodyCrc32c = base.XattrMacroCrc32cDelete // revert back to the correct crc32c before we replace bodyBytes
+	}
 
-	if base.Crc32cHashString(bodyBytes) == doc.SyncData.Crc32c && emptyBodyCrc32cHash != doc.SyncData.Crc32c {
+	// If the current body crc32c matches the one in doc.SyncData, this was an SG write (i.e. has already been imported)
+	if currentBodyCrc32c == doc.SyncData.Crc32c {
 		return true, true
 	}
 

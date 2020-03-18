@@ -46,8 +46,9 @@ const (
 	// so this is set to 1
 	numNodesPersistTo = uint(1)
 
-	xattrMacroCas         = "cas"
-	xattrMacroValueCrc32c = "value_crc32c"
+	xattrMacroCas          = "cas"
+	xattrMacroValueCrc32c  = "value_crc32c"
+	XattrMacroCrc32cDelete = "0x00"
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
@@ -1198,7 +1199,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 }
 
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
-func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody bool) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody, isDelete bool) (casOut uint64, err error) {
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
@@ -1224,7 +1225,12 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
 		if bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion) {
-			builder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the body hash on the xattr
+			// Stamp the body hash on the xattr
+			if isDelete {
+				builder.UpsertEx(xattrBodyHashProperty, XattrMacroCrc32cDelete, gocb.SubdocFlagXattr)
+			} else {
+				builder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros)
+			}
 		}
 		if deleteBody {
 			builder.RemoveEx("", gocb.SubdocFlagNone) // Delete the document body
@@ -1741,7 +1747,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 func (bucket *CouchbaseBucketGoCB) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
 	// If this is a tombstone, we want to delete the document and update the xattr
 	if isDelete {
-		return bucket.UpdateXattr(k, xattrKey, exp, cas, xattrValue, deleteBody)
+		return bucket.UpdateXattr(k, xattrKey, exp, cas, xattrValue, deleteBody, isDelete)
 	} else {
 		// Not a delete - update the body and xattr
 		return bucket.WriteCasWithXattr(k, xattrKey, exp, cas, value, xattrValue)
