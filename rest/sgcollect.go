@@ -5,14 +5,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math/rand"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -54,7 +52,7 @@ type sgCollect struct {
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
+func (sg *sgCollect) Start(ctxSerialNumber uint64, zipFilename string, params sgCollectOptions) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
@@ -86,9 +84,9 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	args = append(args, "--sync-gateway-executable", sgPath)
 	args = append(args, zipPath)
 
-	sg.context = context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: fmt.Sprintf("SGCollect-%s", strconv.Itoa(rand.Intn(65536)))})
+	ctx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: fmt.Sprintf("SGCollect-%03d", ctxSerialNumber)})
 
-	sg.context, sg.cancel = context.WithCancel(sg.context)
+	sg.context, sg.cancel = context.WithCancel(ctx)
 	cmd := exec.CommandContext(sg.context, sgCollectPath, args...)
 
 	// Send command stderr/stdout to pipes

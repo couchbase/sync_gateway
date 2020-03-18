@@ -564,7 +564,7 @@ func (h *handler) handleSGCollect() error {
 
 	zipFilename := sgcollectFilename()
 
-	if err := sgcollectInstance.Start(zipFilename, params); err != nil {
+	if err := sgcollectInstance.Start(h.serialNumber, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 
