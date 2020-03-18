@@ -1143,6 +1143,7 @@ func ServerMain() {
 
 	var unknownFieldsErr error
 
+	var err error
 	config, err = ParseCommandLine(os.Args, flag.ExitOnError)
 	if errors.Cause(err) == ErrUnknownField {
 		unknownFieldsErr = err
