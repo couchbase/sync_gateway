@@ -86,7 +86,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 // RevisionCacheBackingStore is the interface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
 type RevisionCacheBackingStore interface {
 	GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
-	getRevision(doc *Document, revid string) ([]byte, error)
+	getRevision(doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
 }
 
 // DocumentRevision stored and returned by the rev cache
@@ -237,13 +237,14 @@ func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev, unmarsh
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
 func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
-	if bodyBytes, err = backingStore.getRevision(doc, revid); err != nil {
+	if bodyBytes, body, attachments, err = backingStore.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
 		removalBodyBytes, removalHistory, removalChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(revid)
 		if isRemovalErr != nil {
 			return bodyBytes, body, history, channels, nil, isDelete, nil, isRemovalErr
 		}
+
 		if isRemoval {
 			return removalBodyBytes, body, removalHistory, removalChannels, nil, isDelete, nil, nil
 		} else {
@@ -251,6 +252,7 @@ func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Docu
 			return bodyBytes, body, history, channels, nil, isDelete, nil, err
 		}
 	}
+
 	deleted = doc.History[revid].Deleted
 
 	validatedHistory, getHistoryErr := doc.History.getHistory(revid)
@@ -260,9 +262,5 @@ func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Docu
 	history = encodeRevisions(validatedHistory)
 	channels = doc.History[revid].Channels
 
-	if doc.CurrentRev == revid {
-		body = doc._body
-	}
-
-	return bodyBytes, body, history, channels, doc.Attachments, deleted, doc.Expiry, err
+	return bodyBytes, body, history, channels, attachments, deleted, doc.Expiry, err
 }
