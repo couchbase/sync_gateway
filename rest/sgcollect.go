@@ -5,12 +5,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -84,11 +86,9 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	args = append(args, "--sync-gateway-executable", sgPath)
 	args = append(args, zipPath)
 
-	sg.context = context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: base.NewTaskID("Something", "Something")})
+	sg.context = context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: fmt.Sprintf("SGCollect-%s", strconv.Itoa(rand.Intn(65536)))})
 
-	var cancelFunc context.CancelFunc
-	sg.context, cancelFunc = context.WithCancel(sg.context)
-	sg.cancel = cancelFunc
+	sg.context, sg.cancel = context.WithCancel(sg.context)
 	cmd := exec.CommandContext(sg.context, sgCollectPath, args...)
 
 	// Send command stderr/stdout to pipes
