@@ -31,7 +31,8 @@ var (
 		status:        base.Uint32Ptr(sgStopped),
 		sgPath:        sgPath,
 		sgCollectPath: sgCollectPath,
-		pathError:     err}
+		pathError:     err,
+	}
 )
 
 const (
@@ -47,6 +48,7 @@ type sgCollect struct {
 	sgPath        string
 	sgCollectPath string
 	pathError     error
+	context       context.Context
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
@@ -57,7 +59,7 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 
 	// Return error if there is any failure while obtaining sgCollectPaths.
 	if sg.pathError != nil {
-		return err
+		return sg.pathError
 	}
 
 	if params.OutputDirectory == "" {
@@ -82,9 +84,12 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	args = append(args, "--sync-gateway-executable", sgPath)
 	args = append(args, zipPath)
 
-	ctx, cancelFunc := context.WithCancel(context.Background())
+	sg.context = context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: base.NewTaskID("Something", "Something")})
+
+	var cancelFunc context.CancelFunc
+	sg.context, cancelFunc = context.WithCancel(sg.context)
 	sg.cancel = cancelFunc
-	cmd := exec.CommandContext(ctx, sgCollectPath, args...)
+	cmd := exec.CommandContext(sg.context, sgCollectPath, args...)
 
 	// Send command stderr/stdout to pipes
 	stderrPipeReader, stderrPipeWriter := io.Pipe()
@@ -98,16 +103,16 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 
 	atomic.StoreUint32(sg.status, sgRunning)
 	startTime := time.Now()
-	base.Infof(base.KeyAdmin, "sgcollect_info started with args: %v", base.UD(args))
+	base.InfofCtx(sg.context, base.KeyAdmin, "sgcollect_info started with args: %v", base.UD(args))
 
 	// Stream sgcollect_info stderr to warn logs
 	go func() {
 		scanner := bufio.NewScanner(stderrPipeReader)
 		for scanner.Scan() {
-			base.Infof(base.KeyAll, "sgcollect_info: %v", scanner.Text())
+			base.InfofCtx(sg.context, base.KeyAll, "sgcollect_info: %v", scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
-			base.Errorf("sgcollect_info: unexpected error: %v", err)
+			base.ErrorfCtx(sg.context, "sgcollect_info: unexpected error: %v", err)
 		}
 	}()
 
@@ -115,10 +120,10 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 	go func() {
 		scanner := bufio.NewScanner(stdoutPipeReader)
 		for scanner.Scan() {
-			base.Infof(base.KeyAll, "sgcollect_info: %v", scanner.Text())
+			base.InfofCtx(sg.context, base.KeyAll, "sgcollect_info: %v", scanner.Text())
 		}
 		if err := scanner.Err(); err != nil {
-			base.Errorf("sgcollect_info: unexpected error: %v", err)
+			base.ErrorfCtx(sg.context, "sgcollect_info: unexpected error: %v", err)
 		}
 	}()
 
@@ -131,15 +136,15 @@ func (sg *sgCollect) Start(zipFilename string, params sgCollectOptions) error {
 
 		if err != nil {
 			if err.Error() == "signal: killed" {
-				base.Infof(base.KeyAdmin, "sgcollect_info cancelled after %v", duration)
+				base.InfofCtx(sg.context, base.KeyAdmin, "sgcollect_info cancelled after %v", duration)
 				return
 			}
 
-			base.Errorf("sgcollect_info failed after %v with reason: %v. Check warning level logs for more information.", duration, err)
+			base.ErrorfCtx(sg.context, "sgcollect_info failed after %v with reason: %v. Check warning level logs for more information.", duration, err)
 			return
 		}
 
-		base.Infof(base.KeyAdmin, "sgcollect_info finished successfully after %v", duration)
+		base.InfofCtx(sg.context, base.KeyAdmin, "sgcollect_info finished successfully after %v", duration)
 	}()
 
 	return nil
