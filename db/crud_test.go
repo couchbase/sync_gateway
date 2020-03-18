@@ -1014,16 +1014,16 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 	meta, found := db.getAvailableRevAttachments(doc, parent)
 	attachment := meta["camera.txt"].(map[string]interface{})
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, float64(20), attachment["length"])
-	assert.Equal(t, float64(1), attachment["revpos"])
+	assert.Equal(t, json.Number("20"), attachment["length"])
+	assert.Equal(t, json.Number("1"), attachment["revpos"])
 	assert.True(t, found, "Ancestor should exists")
 
 	// Get available attachments by immediate ancestor revision
 	meta, found = db.getAvailableRevAttachments(doc, ancestor)
 	attachment = meta["camera.txt"].(map[string]interface{})
 	assert.Equal(t, "sha1-VoSNiNQGHE1HirIS5HMxj6CrlHI=", attachment["digest"])
-	assert.Equal(t, float64(20), attachment["length"])
-	assert.Equal(t, float64(1), attachment["revpos"])
+	assert.Equal(t, json.Number("20"), attachment["length"])
+	assert.Equal(t, json.Number("1"), attachment["revpos"])
 	assert.True(t, found, "Ancestor should exists")
 }
 
@@ -1187,4 +1187,163 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.Empty(t, bodyBytes, "Document body bytes should be empty")
 	assert.False(t, removed, "This shouldn't be a removed document")
 	assert.Error(t, response.Unmarshal(bodyBytes), "Unexpected empty JSON input to body.Unmarshal")
+}
+
+func TestMergeAttachments(t *testing.T) {
+	tests := []struct {
+		name             string
+		pre25Attachments AttachmentsMeta
+		docAttachments   AttachmentsMeta
+		wantMerged       AttachmentsMeta
+	}{
+		{
+			"all nil",
+			nil,
+			nil,
+			nil,
+		},
+		{
+			"pre25Atts only",
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+			nil,
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+		},
+		{
+			"docAtts only",
+			nil,
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+		},
+		{
+			"disjoint set",
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att2": map[string]interface{}{
+					"digest": "def",
+					"revpos": json.Number("6"),
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+				"att2": map[string]interface{}{
+					"digest": "def",
+					"revpos": json.Number("6"),
+					"stub":   true,
+				},
+			},
+		},
+		{
+			"25Atts wins",
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "def",
+					"revpos": json.Number("6"),
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "def",
+					"revpos": json.Number("6"),
+					"stub":   true,
+				},
+			},
+		},
+		{
+			"docAtts wins",
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "def",
+					"revpos": json.Number("6"),
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "def",
+					"revpos": json.Number("6"),
+					"stub":   true,
+				},
+			},
+		},
+		{
+			"invalid pre25 revpos",
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "def",
+					"revpos": "6",
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+			AttachmentsMeta{
+				"att1": map[string]interface{}{
+					"digest": "abc",
+					"revpos": json.Number("4"),
+					"stub":   true,
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merged := mergeAttachments(tt.pre25Attachments, tt.docAttachments)
+			assert.Equal(t, tt.wantMerged, merged)
+		})
+	}
 }

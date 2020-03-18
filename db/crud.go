@@ -11,7 +11,6 @@ package db
 
 import (
 	"bytes"
-	"encoding/json"
 	"math"
 	"net/http"
 	"strings"
@@ -444,128 +443,121 @@ func (db *Database) authorizeDoc(doc *Document, revid string) error {
 }
 
 // Gets a revision of a document. If it's obsolete it will be loaded from the database if possible.
-func (db *DatabaseContext) getRevision(doc *Document, revid string) ([]byte, error) {
-	var bodyBytes []byte
-	var err error
-
+// inline "_attachments" properties in the body will be extracted and returned separately if present (pre-2.5 metadata, or backup revisions)
+func (db *DatabaseContext) getRevision(doc *Document, revid string) (bodyBytes []byte, body Body, attachments AttachmentsMeta, err error) {
 	bodyBytes = doc.getRevisionBodyJSON(revid, db.RevisionBodyLoader)
 
 	// No inline body, so look for separate doc:
 	if bodyBytes == nil {
 		if !doc.History.contains(revid) {
-			return nil, base.HTTPErrorf(404, "missing")
+			return nil, nil, nil, base.HTTPErrorf(404, "missing")
 		}
 
 		bodyBytes, err = db.getOldRevisionJSON(doc.ID, revid)
 		if err != nil || bodyBytes == nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 	}
 
-	if doc.CurrentRev == revid && doc.Attachments != nil {
-		bodyBytes, err = injectBodyAttachments(bodyBytes, doc.Attachments)
-		if err != nil {
-			return nil, err
-		}
+	// optimistically grab the doc body and to store as a pre-unmarshalled version, as well as anticipating no inline attachments.
+	if doc.CurrentRev == revid {
+		body = doc._body
+		attachments = doc.Attachments
 	}
 
-	return bodyBytes, nil
-}
-
-func injectBodyAttachments(bodyBytes []byte, atts AttachmentsMeta) (newBodyBytes []byte, err error) {
-	// If we can't see any _attachments anywhere in bodyBytes, we can safely stamp _attachments into bodyBytes without unmarshalling.`
-	if !bytes.Contains(bodyBytes, []byte(`"`+BodyAttachments+`"`)) {
-		return base.InjectJSONProperties(bodyBytes, base.KVPair{
-			Key: BodyAttachments,
-			Val: atts,
-		})
-	}
-
-	// We saw _attachments in the bodyBytes, so we'll need to unmarshal, merge the two, and remarshal.
-	var body Body
-	if err := body.Unmarshal(bodyBytes); err != nil {
-		return nil, err
-	}
-	if pre25Atts, cleanBodyBytes, err := extractPre25Attachments(body); err != nil {
-		return nil, err
-	} else if len(pre25Atts) > 0 {
-		// Set bodyBytes to be the clean version (no _attachments property)
+	// handle backup revision inline attachments, or pre-2.5 meta
+	if inlineAtts, cleanBodyBytes, cleanBody, err := extractInlineAttachments(bodyBytes); err != nil {
+		return nil, nil, nil, err
+	} else if len(inlineAtts) > 0 {
+		// we found some inline attachments, so merge them with attachments, and update the bodies
+		attachments = mergeAttachments(inlineAtts, attachments)
 		bodyBytes = cleanBodyBytes
-		atts, err = mergeAttachments(pre25Atts, atts)
-		if err != nil {
-			return nil, err
-		}
+		body = cleanBody
 	}
 
-	bodyBytes, err = base.JSONMarshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	return bodyBytes, nil
+	return bodyBytes, body, attachments, nil
 }
 
-func mergeAttachments(pre25Attachments, docAttachments AttachmentsMeta) (merged AttachmentsMeta, err error) {
-	merged = make(AttachmentsMeta, len(docAttachments))
+// mergeAttachments copies the docAttachments map, and merges pre25Attachments into it.
+// conflicting attachment names falls back to a revpos comparison - highest wins.
+func mergeAttachments(pre25Attachments, docAttachments AttachmentsMeta) AttachmentsMeta {
+	if len(pre25Attachments)+len(docAttachments) == 0 {
+		return nil // noop
+	} else if len(pre25Attachments) == 0 {
+		return copyMap(docAttachments)
+	} else if len(docAttachments) == 0 {
+		return copyMap(pre25Attachments)
+	}
+
+	merged := make(AttachmentsMeta, len(docAttachments))
 	for k, v := range docAttachments {
 		merged[k] = v
 	}
 
-	// Iterate over pre-2.5 attachments, and merge with syncData
+	// Iterate over pre-2.5 attachments, and merge with docAttachments
 	for attName, pre25Att := range pre25Attachments {
 		if docAtt, exists := docAttachments[attName]; !exists {
 			// we didn't have an attachment matching this name already in syncData, so we'll use the pre-2.5 attachment.
 			merged[attName] = pre25Att
 		} else {
-			// we had the same attachment name in syncData and in a pre-2.5 body property.
-			// Figure out which one of these has the highest revpos, and use that.
-			var pre25AttRevpos float64
+			// we had the same attachment name in docAttachments and in pre25Attachments.
+			// Use whichever has the highest revpos.
+			var pre25AttRevpos, docAttRevpos int64
 			if pre25AttMeta, ok := pre25Att.(map[string]interface{}); ok {
-				if pre25AttRevposNumber, ok := pre25AttMeta["revpos"].(json.Number); ok {
-					pre25AttRevpos, err = pre25AttRevposNumber.Float64()
-					if err != nil {
-						return nil, err
-					}
+				pre25AttRevpos, ok = base.ToInt64(pre25AttMeta["revpos"])
+				if !ok {
+					// pre25 revpos wasn't a number, docAttachment should win.
+					continue
 				}
 			}
-
 			if docAttMeta, ok := docAtt.(map[string]interface{}); ok {
-				if docAttRevpos, ok := docAttMeta["revpos"].(float64); ok {
-					// Attachment exists in both syncData and body.
-					// Determine which revpos is greater, and use that.
-					if docAttRevpos < pre25AttRevpos {
-						merged[attName] = pre25Att
-					}
-				}
+				// if docAttRevpos can't be converted into an int64, pre25 revpos wins, so fall through with docAttRevpos=0
+				docAttRevpos, _ = base.ToInt64(docAttMeta["revpos"])
+			}
+
+			// pre-2.5 meta has larger revpos
+			if pre25AttRevpos > docAttRevpos {
+				merged[attName] = pre25Att
 			}
 		}
 	}
 
-	return merged, nil
+	return merged
 }
 
-// extractPre25Attachments moves any pre-2.5 "_attachments" meta into a returned map, for it to be merged into syncData.
-func extractPre25Attachments(body Body) (attachments AttachmentsMeta, bodyBytes []byte, err error) {
+// extractInlineAttachments moves any inline attachments, from backup revision bodies, or pre-2.5 "_attachments", along with a "cleaned" version of bodyBytes and body.
+func extractInlineAttachments(bodyBytes []byte) (attachments AttachmentsMeta, cleanBodyBytes []byte, cleanBody Body, err error) {
+	if !bytes.Contains(bodyBytes, []byte(`"`+BodyAttachments+`"`)) {
+		// we can safely say this doesn't contain any inline attachments.
+		return nil, bodyBytes, nil, nil
+	}
+
+	var body Body
+	if err = body.Unmarshal(bodyBytes); err != nil {
+		return nil, nil, nil, err
+	}
+
 	bodyAtts, ok := body[BodyAttachments]
 	if !ok {
-		// no pre-2.5 attachments
-		return nil, nil, nil
+		// no _attachments found (in a top-level property)
+		// probably a false-positive on the byte scan above
+		return nil, bodyBytes, body, nil
 	}
 
 	attsMap, ok := bodyAtts.(map[string]interface{})
 	if !ok {
 		// "_attachments" in body was not valid attachment metadata
-		return nil, nil, nil
+		return nil, bodyBytes, body, nil
 	}
 
 	// remove _attachments from body and marshal for clean bodyBytes.
 	delete(body, BodyAttachments)
 	bodyBytes, err = base.JSONMarshal(body)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return attsMap, bodyBytes, nil
+	return attsMap, bodyBytes, body, nil
 }
 
 // Gets a revision of a document as raw JSON.
@@ -599,6 +591,7 @@ func (db *Database) getAncestorJSON(doc *Document, revid string) ([]byte, error)
 // If the user is not authorized to see the specific revision they asked for,
 // instead returns a minimal deletion or removal revision to let them know it's gone.
 func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions bool) (bodyBytes []byte, removed bool, err error) {
+	var attachments AttachmentsMeta
 	if err := db.authorizeDoc(doc, revid); err != nil {
 		// As a special case, you don't need channel access to see a deletion revision,
 		// otherwise the client's replicator can't process the deletion (since deletions
@@ -622,7 +615,7 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 				return nil, false, base.HTTPErrorf(404, "deleted")
 			}
 		}
-		if bodyBytes, err = db.getRevision(doc, revid); err != nil {
+		if bodyBytes, _, attachments, err = db.getRevision(doc, revid); err != nil {
 			return nil, false, err
 		}
 	}
@@ -630,6 +623,10 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 	kvPairs := []base.KVPair{
 		{Key: BodyId, Val: doc.ID},
 		{Key: BodyRev, Val: revid},
+	}
+
+	if len(attachments) > 0 {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: attachments})
 	}
 
 	if doc.History[revid].Deleted {
@@ -653,18 +650,18 @@ func (db *Database) get1xRevFromDoc(doc *Document, revid string, listRevisions b
 }
 
 // Returns the body and rev ID of the asked-for revision or the most recent available ancestor.
-func (db *Database) getAvailableRev(doc *Document, revid string) ([]byte, string, error) {
+func (db *Database) getAvailableRev(doc *Document, revid string) ([]byte, string, AttachmentsMeta, error) {
 	for ; revid != ""; revid = doc.History[revid].Parent {
-		if bodyBytes, _ := db.getRevision(doc, revid); bodyBytes != nil {
-			return bodyBytes, revid, nil
+		if bodyBytes, _, attachments, _ := db.getRevision(doc, revid); bodyBytes != nil {
+			return bodyBytes, revid, attachments, nil
 		}
 	}
-	return nil, "", base.HTTPErrorf(404, "missing")
+	return nil, "", nil, base.HTTPErrorf(404, "missing")
 }
 
 // Returns the 1x-style body of the asked-for revision or the most recent available ancestor.
 func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, error) {
-	bodyBytes, ancestorRevID, err := db.getAvailableRev(doc, revid)
+	bodyBytes, ancestorRevID, attachments, err := db.getAvailableRev(doc, revid)
 	if err != nil {
 		return nil, err
 	}
@@ -678,8 +675,8 @@ func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, erro
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
-	if doc.CurrentRev == revid && doc.Attachments != nil {
-		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
+	if len(attachments) > 0 {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: attachments})
 	}
 
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
@@ -693,33 +690,12 @@ func (db *Database) getAvailable1xRev(doc *Document, revid string) ([]byte, erro
 // Returns the attachments of the asked-for revision or the most recent available ancestor.
 // Returns nil if no attachments or ancestors are found.
 func (db *Database) getAvailableRevAttachments(doc *Document, revid string) (ancestorAttachments AttachmentsMeta, foundAncestor bool) {
-	bodyBytes, ancestorRevID, err := db.getAvailableRev(doc, revid)
+	_, _, attachments, err := db.getAvailableRev(doc, revid)
 	if err != nil {
 		return nil, false
 	}
 
-	// If the ancestor rev is the current rev (and has att meta in _sync (2.5+) we can pull attachments directly from the doc
-	if doc.CurrentRev == ancestorRevID && doc.Attachments != nil {
-		return doc.Attachments, true
-	}
-
-	// Otherwise, we need to go and extract _attachments from bodyBytes, which is a backup revision
-
-	// exit early if we know we have no attachments with a simple byte-contains check
-	if !bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
-		return nil, true
-	}
-
-	// Unmarshal attachments into a struct
-	var parentAttachmentsStruct struct {
-		Attachments AttachmentsMeta `json:"_attachments"`
-	}
-	if err := base.JSONUnmarshal(bodyBytes, &parentAttachmentsStruct); err != nil {
-		base.Warnf("Error unmarshaling attachments metadata: %s", err)
-		return nil, true
-	}
-
-	return parentAttachmentsStruct.Attachments, true
+	return attachments, true
 }
 
 // Moves a revision's ancestor's body out of the document object and into a separate db doc.

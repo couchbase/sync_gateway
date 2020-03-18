@@ -1,7 +1,6 @@
 package db
 
 import (
-	"bytes"
 	"encoding/json"
 	"expvar"
 	"time"
@@ -87,7 +86,7 @@ func DefaultRevisionCacheOptions() *RevisionCacheOptions {
 // RevisionCacheBackingStore is the interface required to be passed into a RevisionCache constructor to provide a backing store for loading documents.
 type RevisionCacheBackingStore interface {
 	GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error)
-	getRevision(doc *Document, revid string) ([]byte, error)
+	getRevision(doc *Document, revid string) ([]byte, Body, AttachmentsMeta, error)
 }
 
 // DocumentRevision stored and returned by the rev cache
@@ -238,7 +237,7 @@ func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev, unmarsh
 
 // Common revCacheLoader functionality used either during a cache miss (from revCacheLoader), or directly when retrieving current rev from cache
 func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
-	if bodyBytes, err = backingStore.getRevision(doc, revid); err != nil {
+	if bodyBytes, body, attachments, err = backingStore.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
 		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
 		removalBodyBytes, removalHistory, removalChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(revid)
@@ -262,29 +261,6 @@ func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Docu
 	}
 	history = encodeRevisions(validatedHistory)
 	channels = doc.History[revid].Channels
-
-	if doc.CurrentRev == revid {
-		body = doc._body
-		attachments = doc.Attachments
-	}
-
-	// If we don't have an unmarshalled body already, and we have "_attachments" present in the raw body (pre-2.5 metadata), unmarshal it.
-	if body == nil && bytes.Contains(bodyBytes, []byte(`"`+BodyAttachments+`"`)) {
-		if err := body.Unmarshal(bodyBytes); err != nil {
-			return nil, nil, nil, nil, nil, false, &time.Time{}, err
-		}
-	}
-
-	if pre25Atts, cleanBodyBytes, err := extractPre25Attachments(body); err != nil {
-		return nil, nil, nil, nil, nil, false, &time.Time{}, err
-	} else if len(pre25Atts) > 0 {
-		// Set bodyBytes to be the clean version (no _attachments property)
-		bodyBytes = cleanBodyBytes
-		attachments, err = mergeAttachments(pre25Atts, attachments)
-		if err != nil {
-			return nil, nil, nil, nil, nil, false, nil, err
-		}
-	}
 
 	return bodyBytes, body, history, channels, attachments, deleted, doc.Expiry, err
 }
