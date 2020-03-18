@@ -28,12 +28,12 @@ var (
 
 	validateTicketPattern = regexp.MustCompile(`\d{1,7}`)
 
-	sgPath, sgCollectPath, err = sgCollectPaths()
-	sgcollectInstance          = sgCollect{
+	sgPath, sgCollectPath, sgCollectPathErr = sgCollectPaths()
+	sgcollectInstance                       = sgCollect{
 		status:        base.Uint32Ptr(sgStopped),
 		sgPath:        sgPath,
 		sgCollectPath: sgCollectPath,
-		pathError:     err,
+		pathError:     sgCollectPathErr,
 	}
 )
 
