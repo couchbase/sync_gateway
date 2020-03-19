@@ -37,7 +37,7 @@ type FileLogger struct {
 
 	// collateBuffer is used to store log entries to batch up multiple logs.
 	collateBuffer   chan string
-	collateBufferWg sync.WaitGroup
+	collateBufferWg *sync.WaitGroup
 	flushChan       chan struct{}
 	level           LogLevel
 	name            string
@@ -80,9 +80,10 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFile
 	if *config.CollationBufferSize > 1 {
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
 		logger.flushChan = make(chan struct{}, 1)
+		logger.collateBufferWg = &sync.WaitGroup{}
 
 		// Start up a single worker to consume messages from the buffer
-		go logCollationWorker(logger.collateBuffer, logger.flushChan, &logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
+		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, fileLoggerCollateFlushTimeout)
 	}
 
 	return logger, nil
@@ -101,7 +102,7 @@ func (l *FileLogger) Rotate() error {
 	return errors.New("can't rotate non-lumberjack log output")
 }
 
-func (l FileLogger) String() string {
+func (l *FileLogger) String() string {
 	return "FileLogger(" + l.level.String() + ")"
 }
 
