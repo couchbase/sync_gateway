@@ -2264,3 +2264,85 @@ func verifyDocDeletedXattrExists(bucket *CouchbaseBucketGoCB, key, xattrName str
 	}
 	return true
 }
+
+func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	testBucket := GetTestBucket(t)
+
+	defer testBucket.Close()
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	require.True(t, ok, "Can't cast to bucket")
+
+	// Create a document with extended attributes
+	key := "DocWithXattrAndIsDelete"
+	val := make(map[string]interface{})
+	val["type"] = key
+
+	xattrKey := SyncXattrName
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = 123
+	xattrVal["rev"] = "1-EmDC"
+
+	cas := uint64(0)
+	// CAS-safe write of the document and it's associated named extended attributes
+	cas, err := bucket.WriteCasWithXattr(key, xattrKey, 0, cas, val, xattrVal)
+	require.NoError(t, err, "Error doing WriteCasWithXattr")
+
+	updatedXattrVal := make(map[string]interface{})
+	updatedXattrVal["seq"] = 123
+	updatedXattrVal["rev"] = "2-EmDC"
+
+	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
+	_, errDelete := bucket.UpdateXattr(key, xattrKey, 0, cas, &updatedXattrVal, true, true)
+	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
+	assert.True(t, verifyDocDeletedXattrExists(bucket, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
+
+	var docResult map[string]interface{}
+	var xattrResult map[string]interface{}
+	_, err = bucket.GetWithXattr(key, xattrKey, &docResult, &xattrResult)
+	assert.Len(t, docResult, 0)
+	assert.Equal(t, "2-EmDC", xattrResult["rev"])
+	assert.Equal(t, DeleteCrc32c, xattrResult[xattrMacroValueCrc32c])
+}
+
+func TestUpdateXattrWithDeleteBodyAndIsNotDelete(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	testBucket := GetTestBucket(t)
+
+	defer testBucket.Close()
+	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	require.True(t, ok, "Can't cast to bucket")
+
+	// Create a document with extended attributes
+	key := "DocWithXattrAndIsNotDelete"
+	val := make(map[string]interface{})
+	val["type"] = key
+
+	xattrKey := SyncXattrName
+	xattrVal := make(map[string]interface{})
+	xattrVal["seq"] = 123
+	xattrVal["rev"] = "1-EmDC"
+
+	cas := uint64(0)
+	// CAS-safe write of the document and it's associated named extended attributes
+	cas, err := bucket.WriteCasWithXattr(key, xattrKey, 0, cas, val, xattrVal)
+	require.NoError(t, err, "Error doing WriteCasWithXattr")
+
+	updatedXattrVal := make(map[string]interface{})
+	updatedXattrVal["seq"] = 123
+	updatedXattrVal["rev"] = "2-EmDC"
+
+	// Attempt to delete the document body (deleteBody = true); isDelete is false
+	_, errDelete := bucket.UpdateXattr(key, xattrKey, 0, cas, &updatedXattrVal, true, false)
+	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
+	assert.True(t, verifyDocDeletedXattrExists(bucket, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
+
+	var docResult map[string]interface{}
+	var xattrResult map[string]interface{}
+	_, err = bucket.GetWithXattr(key, xattrKey, &docResult, &xattrResult)
+	assert.Len(t, docResult, 0)
+	assert.Equal(t, "2-EmDC", xattrResult["rev"])
+	assert.NotEqual(t, DeleteCrc32c, xattrResult[xattrMacroValueCrc32c])
+}

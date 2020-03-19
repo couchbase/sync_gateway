@@ -46,9 +46,11 @@ const (
 	// so this is set to 1
 	numNodesPersistTo = uint(1)
 
-	xattrMacroCas          = "cas"
-	xattrMacroValueCrc32c  = "value_crc32c"
-	XattrMacroCrc32cDelete = "0x00"
+	xattrMacroCas         = "cas"
+	xattrMacroValueCrc32c = "value_crc32c"
+
+	// CRC-32 checksum represents the body hash of "Deleted" document.
+	DeleteCrc32c = "0x00"
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
@@ -1227,7 +1229,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		if bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion) {
 			// Stamp the body hash on the xattr
 			if isDelete {
-				builder.UpsertEx(xattrBodyHashProperty, XattrMacroCrc32cDelete, gocb.SubdocFlagXattr)
+				builder.UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr)
 			} else {
 				builder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros)
 			}
