@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -874,4 +875,12 @@ func TestParseCommandLineWithIllegalOptionBucket(t *testing.T) {
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
 	assert.Error(t, err, "Parsing commandline arguments without any config file")
 	assert.Empty(t, config, "Couldn't parse commandline arguments")
+}
+
+func TestPutInvalidConfig(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/db/_config", `{"db": {"server": "walrus"}}`)
+	assert.Equal(t, http.StatusBadRequest, response.Code)
 }

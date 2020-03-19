@@ -48,6 +48,7 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 	}
 
 	decoder := base.JSONDecoder(input)
+	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
 	err := decoder.Decode(into)
 	if err != nil {
