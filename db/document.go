@@ -511,7 +511,6 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 		}
 
 		return isSgWriteFeed, crc32MatchFeed
-
 	}
 
 	// If raw body isn't available, first do the inexpensive cas check
@@ -525,7 +524,16 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 		base.Warnf("Unable to marshal doc body during SG write check for doc %s. Error: %v", base.UD(doc.ID), err)
 		return false, false
 	}
-	if base.Crc32cHashString(bodyBytes) == doc.SyncData.Crc32c {
+	// The bodyBytes would be replaced with "{}" if the document is a "Delete" and it can’t be used for
+	// CRC-32 checksum comparison to determine whether the document has already been imported. So the value
+	// currentBodyCrc32c needs to be revised to "0x00".
+	currentBodyCrc32c := base.Crc32cHashString(bodyBytes)
+	if doc.Deleted {
+		currentBodyCrc32c = base.DeleteCrc32c // revert back to the correct crc32c before we replace bodyBytes
+	}
+
+	// If the current body crc32c matches the one in doc.SyncData, this was an SG write (i.e. has already been imported)
+	if currentBodyCrc32c == doc.SyncData.Crc32c {
 		return true, true
 	}
 
