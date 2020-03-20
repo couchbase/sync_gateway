@@ -443,14 +443,16 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 
 	// If using client certificate for authentication, configure go-couchbase for cbdatasource's initial
 	// connection to retrieve cluster configuration.
-	if spec.Certpath != "" {
+	if spec.Certpath != "" && spec.Keypath != "" {
 		couchbase.SetCertFile(spec.Certpath)
 		couchbase.SetKeyFile(spec.Keypath)
+		// TODO: x.509 not supported for cbgt with cbdatasource until cbAuth supports
+		// a way to use NoPasswordAuthHandler, and custom options.Connect
+		// auth = NoPasswordAuthHandler{handler: spec.Auth}
+	}
+	if spec.CACertPath != "" {
 		couchbase.SetRootFile(spec.CACertPath)
 		couchbase.SetSkipVerify(false)
-		// TODO: x.509 not supported for cbgt with cbdatasource until cbAuth supports
-		//    a way to use NoPasswordAuthHandler, and custom options.Connect
-		//auth = NoPasswordAuthHandler{handler: spec.Auth}
 	}
 
 	// If using TLS, pass a custom connect method to support using TLS for cbdatasource's memcached connections
