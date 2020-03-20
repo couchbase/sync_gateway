@@ -2118,7 +2118,7 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	assert.Equal(t, "1-ca9ad22802b66f662ff171f226211d5c", body["rev"])
 
 	// Delete the document through SDK
-	err = bucket.Delete(docId)
+	err := bucket.Delete(docId)
 	assert.NoError(t, err, "Unable to delete doc %s", docId)
 
 	// Get the doc and check deleted revision is getting imported
