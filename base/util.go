@@ -1101,6 +1101,18 @@ func (ab *AtomicBool) IsTrue() bool {
 	return atomic.LoadInt32(&ab.value) == 1
 }
 
+func (ab *AtomicBool) CompareAndSwap(old bool, new bool) bool {
+	var oldint32 int32
+	var newint32 int32
+	if old {
+		oldint32 = 1
+	}
+	if new {
+		newint32 = 1
+	}
+	return atomic.CompareAndSwapInt32(&ab.value, oldint32, newint32)
+}
+
 func Sha1HashString(str string, salt string) string {
 	h := sha1.New()
 	h.Write([]byte(salt + str))
