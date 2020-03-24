@@ -4969,6 +4969,7 @@ func TestHandleStats(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 }
 
+// Put doc xattr, delete doc, resurrect doc xattr
 func TestXattr764(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test doesn't work with Walrus")
@@ -5007,6 +5008,7 @@ func TestXattr764(t *testing.T) {
 	assertStatus(t, response, http.StatusCreated)
 }
 
+// Put doc with non-xattr, delete doc, resurrect doc with xattr
 func TestNonXattrPutThenXattr764(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test doesn't work with Walrus")
@@ -5043,6 +5045,7 @@ func TestNonXattrPutThenXattr764(t *testing.T) {
 	assertStatus(t, response, http.StatusCreated)
 }
 
+// Put doc with xattr, delete doc, put with non-xattr
 func TestXattrPutThenNonXattr764(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test doesn't work with Walrus")
@@ -5095,6 +5098,7 @@ func TestXattrPutThenNonXattr764(t *testing.T) {
 	assertStatus(t, response, http.StatusCreated)
 }
 
+// Put doc with non-xattr, delete doc, put doc with non-xattr
 func TestNonXattr764(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test doesn't work with Walrus")
