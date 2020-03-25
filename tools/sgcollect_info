@@ -327,8 +327,10 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
                 log_file_item_path = os.path.join(log_file_path, log_file_item_name)
                 # As long as a task that monitors this log file path has not already been added, add a new task
                 if log_file_item_path not in sg_log_file_paths:
+                    print('Capturing compressed rotated log file {0}'.format(log_file_item_path))
+                    # If we're redacting a gzipped log file, we'll need to extract, redact and recompress it.
+                    # If we're not redacting, we can skip extraction entirely, and use the existing .gz log file.
                     if should_redact:
-                        print('Capturing compressed rotated log file {0}'.format(log_file_item_path))
                         task = add_gzip_file_task(sourcefile_path=log_file_item_path, salt=salt)
                         sg_tasks.append(task)
                     else:
