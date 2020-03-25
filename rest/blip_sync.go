@@ -67,7 +67,7 @@ type blipSyncContext struct {
 	handlerSerialNumber uint64            // Each handler within a context gets a unique serial number for logging
 	terminatorOnce      sync.Once         // Used to ensure the terminator channel below is only ever closed once.
 	terminator          chan bool         // Closed during blipSyncContext.close(). Ensures termination of async goroutines.
-	activeSubChanges    uint32            // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	activeSubChanges    base.AtomicBool   // Flag for whether there is a subChanges subscription currently active.  Atomic access
 	useDeltas           bool              // Whether deltas can be used for this connection - This should be set via setUseDeltas()
 	sgCanUseDeltas      bool              // Whether deltas can be used by Sync Gateway for this connection
 	userChangeWaiter    *db.ChangeWaiter  // Tracks whether the users/roles associated with the replication have changed
@@ -344,11 +344,9 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
-	if bh.hasActiveSubChanges() {
+	if !bh.activeSubChanges.CompareAndSwap(false, true) {
 		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one.")
 	}
-
-	bh.setActiveSubChanges(true)
 
 	if len(subChangesParams.docIDs()) > 0 && subChangesParams.continuous() {
 		return base.HTTPErrorf(http.StatusBadRequest, "DocIDs filter not supported for continuous subChanges")
@@ -387,7 +385,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}
 
 		defer func() {
-			bh.setActiveSubChanges(false)
+			bh.activeSubChanges.Set(false)
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
@@ -1229,18 +1227,6 @@ func (ctx *blipSyncContext) isAttachmentAllowed(digest string) bool {
 	ctx.lock.Lock()
 	defer ctx.lock.Unlock()
 	return ctx.allowedAttachments[digest] > 0
-}
-
-func (ctx *blipSyncContext) hasActiveSubChanges() bool {
-	return atomic.LoadUint32(&ctx.activeSubChanges) == uint32(1)
-}
-
-func (ctx *blipSyncContext) setActiveSubChanges(changesActive bool) {
-	if changesActive {
-		atomic.StoreUint32(&ctx.activeSubChanges, uint32(1))
-	} else {
-		atomic.StoreUint32(&ctx.activeSubChanges, uint32(0))
-	}
 }
 
 // setUseDeltas will set useDeltas on the blipSyncContext as long as both sides of the connection have it enabled.
