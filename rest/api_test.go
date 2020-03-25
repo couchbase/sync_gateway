@@ -4969,84 +4969,16 @@ func TestHandleStats(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 }
 
-// Put doc xattr, delete doc, resurrect doc xattr
-func TestXattr764(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test doesn't work with Walrus")
-	}
-
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
-
-	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			AutoImport: true,
-		},
-	}
-
-	rt := NewRestTester(t, rtConfig)
+func TestXattr(t *testing.T) {
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)
-	assertStatus(t, response, http.StatusCreated)
-	var body db.Body
-	err := base.JSONUnmarshal(response.BodyBytes(), &body)
-	assert.NoError(t, err)
-	revID := body["rev"].(string)
-
-	// Trigger import
-	response = rt.SendAdminRequest("GET", "/db/doc1?rev="+revID, "")
-	assertStatus(t, response, http.StatusOK)
-
-	// Delete
-	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev=1-fc2cf22c5e5007bd966869ebfe9e276a", ``)
-	assertStatus(t, response, http.StatusOK)
-
-	// Put
-	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"new"}`)
-	assertStatus(t, response, http.StatusCreated)
-}
-
-// Put doc with non-xattr, delete doc, resurrect doc with xattr
-func TestNonXattrPutThenXattr764(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test doesn't work with Walrus")
-	}
-
-	if !base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be enabled")
-	}
-
-	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			AutoImport: true,
-		},
-	}
-
-	rt := NewRestTester(t, rtConfig)
-	defer rt.Close()
-
-	// Put
-	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 2, "recent_sequences": [ 2 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
-	ok, err := rt.Bucket().Add("doc1", 0, []byte(body))
-	assert.True(t, ok)
-	assert.NoError(t, err)
-
-	response := rt.SendAdminRequest("GET", "/db/doc1?rev=1-fc2cf22c5e5007bd966869ebfe9e276a", "")
-	assertStatus(t, response, http.StatusOK)
-
-	// Delete
-	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev=1-fc2cf22c5e5007bd966869ebfe9e276a", ``)
-	assertStatus(t, response, http.StatusOK)
-
-	// Put
-	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"new"}`)
-	assertStatus(t, response, http.StatusCreated)
+	rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)
 }
 
 // Put doc with xattr, delete doc, put with non-xattr
 func TestXattrPutThenNonXattr764(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test doesn't work with Walrus")
 	}
@@ -5057,7 +4989,7 @@ func TestXattrPutThenNonXattr764(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DbConfig{
-			AutoImport: true,
+			// AutoImport: true,
 		},
 	}
 
@@ -5067,73 +4999,56 @@ func TestXattrPutThenNonXattr764(t *testing.T) {
 	bodyString := `{"value":"foo"}`
 	xattrString := `
 	{
-		"rev": "1-fc2cf22c5e5007bd966869ebfe9e276a",
-		"sequence": 2,
-		"recent_sequences": [ 2 ],
-		"history": {
-			"revs": [
-				"1-fc2cf22c5e5007bd966869ebfe9e276a"
-			],
-			"parents": [ -1],
-			"channels": [ null ]
-		},
-		"cas": "",
-		"value_crc32c": "",
-		"time_saved": "2019-04-10T12:40:04.490083+01:00"
+      "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a",
+      "sequence": 1,
+      "recent_sequences": [
+        1
+      ],
+      "history": {
+        "revs": [
+          "1-fc2cf22c5e5007bd966869ebfe9e276a"
+        ],
+        "parents": [
+          -1
+        ],
+        "channels": [
+          null
+        ]
+      },
+      "cas": "0x00008da5a662ff15",
+      "value_crc32c": "0x7bf1d853",
+      "time_saved": "2020-03-24T23:54:21.725474Z"
 	}`
 
 	_, err := rt.Bucket().WriteCasWithXattr("doc1", base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err)
 
-	// Trigger import
-	response := rt.SendAdminRequest("GET", "/db/doc1", "")
+	// rt.MustWaitForDoc("doc1", t)
+	// assert.NoError(t, err)
+
+	response := rt.SendAdminRequest("GET", "/db/doc1", ``)
 	assertStatus(t, response, http.StatusOK)
+	fmt.Println(string(response.BodyBytes()))
+
+	// Check doc state
+	response = rt.SendAdminRequest("GET", "/db/_raw/doc1", ``)
+	assertStatus(t, response, http.StatusOK)
+	fmt.Println(string(response.BodyBytes()))
 
 	// Delete
 	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev=1-fc2cf22c5e5007bd966869ebfe9e276a", ``)
 	assertStatus(t, response, http.StatusOK)
 
-	// Put
-	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"new"}`)
-	assertStatus(t, response, http.StatusCreated)
-}
+	response = rt.SendAdminRequest("GET", "/db/doc1", ``)
+	assertStatus(t, response, http.StatusNotFound)
+	fmt.Println(string(response.BodyBytes()))
 
-// Put doc with non-xattr, delete doc, put doc with non-xattr
-func TestNonXattr764(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Test doesn't work with Walrus")
-	}
-
-	if base.TestUseXattrs() {
-		t.Skip("Test requires xattrs to be disabled")
-	}
-
-	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			AutoImport: true,
-		},
-	}
-
-	rt := NewRestTester(t, rtConfig)
-	defer rt.Close()
-
-	response := rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"foo"}`)
-	assertStatus(t, response, http.StatusCreated)
-	var body db.Body
-	err := base.JSONUnmarshal(response.BodyBytes(), &body)
-	assert.NoError(t, err)
-	revID := body["rev"].(string)
-
-	// Trigger import
-	response = rt.SendAdminRequest("GET", "/db/doc1?rev="+revID, "")
-	assertStatus(t, response, http.StatusOK)
-
-	// Delete
-	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev=1-fc2cf22c5e5007bd966869ebfe9e276a", ``)
-	assertStatus(t, response, http.StatusOK)
+	// Check doc state
+	response = rt.SendAdminRequest("GET", "/db/_raw/doc1", ``)
+	// assertStatus(t, response, http.StatusOK)
+	fmt.Println(string(response.BodyBytes()))
 
 	// Put
 	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"new"}`)
 	assertStatus(t, response, http.StatusCreated)
-
 }
