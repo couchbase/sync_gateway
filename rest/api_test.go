@@ -5023,15 +5023,11 @@ func TestXattrPutThenNonXattr764(t *testing.T) {
 	_, err := rt.Bucket().WriteCasWithXattr("doc1", base.SyncXattrName, 0, 0, []byte(bodyString), []byte(xattrString))
 	assert.NoError(t, err)
 
-	// rt.MustWaitForDoc("doc1", t)
-	// assert.NoError(t, err)
-
-	response := rt.SendAdminRequest("GET", "/db/doc1", ``)
-	assertStatus(t, response, http.StatusOK)
-	fmt.Println(string(response.BodyBytes()))
+	rt.MustWaitForDoc("doc1", t)
+	assert.NoError(t, err)
 
 	// Check doc state
-	response = rt.SendAdminRequest("GET", "/db/_raw/doc1", ``)
+	response := rt.SendAdminRequest("GET", "/db/_raw/doc1", ``)
 	assertStatus(t, response, http.StatusOK)
 	fmt.Println(string(response.BodyBytes()))
 
@@ -5039,16 +5035,18 @@ func TestXattrPutThenNonXattr764(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev=1-fc2cf22c5e5007bd966869ebfe9e276a", ``)
 	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendAdminRequest("GET", "/db/doc1", ``)
-	assertStatus(t, response, http.StatusNotFound)
+	// Check doc state
+
+	// Doesn't appear to exist with a raw get non-xattr
+	response = rt.SendAdminRequest("GET", "/db/_raw/doc1", ``)
 	fmt.Println(string(response.BodyBytes()))
 
-	// Check doc state
-	response = rt.SendAdminRequest("GET", "/db/_raw/doc1", ``)
-	// assertStatus(t, response, http.StatusOK)
-	fmt.Println(string(response.BodyBytes()))
+	// Doc is visible and exists when checked with xattr
+	doc, _, err := rt.GetDatabase().GetDocWithXattr("doc1", db.DocUnmarshalAll)
+	assert.NoError(t, err)
+	fmt.Println(doc.ID)
 
 	// Put
 	response = rt.SendAdminRequest("PUT", "/db/doc1", `{"value":"new"}`)
-	assertStatus(t, response, http.StatusCreated)
+	assertStatus(t, response, http.StatusConflict)
 }
