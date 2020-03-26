@@ -20,17 +20,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-const (
-	OIDC_AUTH_RESPONSE_TYPE = "response_type"
-	OIDC_AUTH_CLIENT_ID     = "client_id"
-	OIDC_AUTH_SCOPE         = "scope"
-	OIDC_AUTH_REDIRECT_URI  = "redirect_uri"
-	OIDC_AUTH_STATE         = "state"
-
-	OIDC_RESPONSE_TYPE_CODE     = "code"
-	OIDC_RESPONSE_TYPE_IMPLICIT = "id_token%20token"
-)
-
 type OIDCTokenResponse struct {
 	IDToken      string `json:"id_token"`                // ID token, from OP
 	RefreshToken string `json:"refresh_token,omitempty"` // Refresh token, from OP
