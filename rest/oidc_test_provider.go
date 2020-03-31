@@ -119,7 +119,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 		ClaimsSupported:                   []string{"email", "sub", "exp", "iat", "iss", "aud", "nickname"},
 	}
 
-	if bytes, err := base.JSONMarshal(config); err == nil {
+	if bytes, err := base.JSONMarshalIndent(config, "", " "); err == nil {
 		_, _ = h.response.Write(bytes)
 	}
 

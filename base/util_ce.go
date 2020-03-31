@@ -56,3 +56,8 @@ func JSONEncoder(w io.Writer) JSONEncoderI {
 func JSONEncoderCanonical(w io.Writer) JSONEncoderI {
 	return json.NewEncoder(w)
 }
+
+// JSONMarshalIndent is like JSONMarshal but applies Indent to format the output.
+func JSONMarshalIndent(v interface{}, prefix, indent string) ([]byte, error) {
+	return json.MarshalIndent(v, prefix, indent)
+}
