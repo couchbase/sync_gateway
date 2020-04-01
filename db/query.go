@@ -512,11 +512,12 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int, 
 	// View Query
 	if context.Options.UseViews {
 		opts := Body{"stale": "ok"}
-		opts[QueryParamStartKey] = 1
-		opts[QueryParamEndKey] = olderThan.Unix()
 		if limit != 0 {
+			opts = Body{"stale": false}
 			opts[QueryParamLimit] = limit
 		}
+		opts[QueryParamStartKey] = 1
+		opts[QueryParamEndKey] = olderThan.Unix()
 		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewTombstones, opts)
 	}
 
