@@ -3144,7 +3144,7 @@ func TestTombstoneCompaction(t *testing.T) {
 	defer rt.Close()
 
 	compactionTotal := 0
-	queryTotal := 0
+	expectedBatches := 0
 
 	TestCompact := func(numDocs int) {
 
@@ -3169,8 +3169,15 @@ func TestTombstoneCompaction(t *testing.T) {
 		compactionTotal += numDocs
 		assert.Equal(t, compactionTotal, int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted))))
 
-		queryTotal += numDocs/db.QueryTombstoneBatch + 1
-		assert.Equal(t, queryTotal, int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones)))))
+		var actualBatches int
+		if base.TestsDisableGSI() {
+			actualBatches = int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, db.DesignDocSyncHousekeeping(), db.ViewTombstones))))
+		} else {
+			actualBatches = int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones))))
+		}
+
+		expectedBatches += numDocs/db.QueryTombstoneBatch + 1
+		assert.Equal(t, expectedBatches, actualBatches)
 	}
 
 	// Multiples of Batch Size
