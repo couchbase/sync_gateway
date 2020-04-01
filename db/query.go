@@ -507,13 +507,15 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 	return context.N1QLQueryWithStats(QueryTypeAllDocs, allDocsQueryStatement, params, gocb.RequestPlus, QueryAllDocs.adhoc)
 }
 
-func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int, consistencyMode gocb.ConsistencyMode) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
-		opts := Body{"stale": "ok"}
-		opts[QueryParamStartKey] = 1
-		opts[QueryParamEndKey] = olderThan.Unix()
+		opts := Body{
+			"stale":            false,
+			QueryParamStartKey: 1,
+			QueryParamEndKey:   olderThan.Unix(),
+		}
 		if limit != 0 {
 			opts[QueryParamLimit] = limit
 		}
@@ -526,11 +528,12 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int, 
 	if limit != 0 {
 		tombstoneQueryStatement = fmt.Sprintf("%s LIMIT %d", tombstoneQueryStatement, limit)
 	}
-	params := make(map[string]interface{}, 1)
-	params[QueryParamOlderThan] = olderThan.Unix()
-	params[QueryParamLimit] = limit
 
-	return context.N1QLQueryWithStats(QueryTypeTombstones, tombstoneQueryStatement, params, consistencyMode, QueryTombstones.adhoc)
+	params := map[string]interface{}{
+		QueryParamOlderThan: olderThan.Unix(),
+	}
+
+	return context.N1QLQueryWithStats(QueryTypeTombstones, tombstoneQueryStatement, params, gocb.RequestPlus, QueryTombstones.adhoc)
 }
 
 func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) map[string]interface{} {
