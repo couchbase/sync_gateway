@@ -115,8 +115,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig = &DbConfig{}
 	}
 
-	// Force views if running against walrus
-	if !base.TestUseCouchbaseServer() {
+	if base.TestsUseViews() {
 		rt.DatabaseConfig.UseViews = true
 	}
 
