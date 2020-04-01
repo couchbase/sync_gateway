@@ -815,7 +815,7 @@ func (db *Database) Compact() (int, error) {
 	purgeBody := Body{"_purged": true}
 	for {
 		purgedDocs := make([]string, 0)
-		results, err := db.QueryTombstones(purgeOlderThan, QueryTombstoneBatch, false)
+		results, err := db.QueryTombstones(purgeOlderThan, QueryTombstoneBatch)
 		if err != nil {
 			return 0, err
 		}
