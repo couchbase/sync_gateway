@@ -127,7 +127,9 @@ func TestsShouldDropIndexes() bool {
 // This is always true for Walrus buckets, and defaults to false for Couchbase buckets.
 func TestsUseViews() bool {
 	// TODO: Undo force UseViews=true after 6.5.1 GSI fixes.
-	return true
+	if true {
+		return true
+	}
 
 	// Force views when running with Walrus anyway.
 	if !TestUseCouchbaseServer() && UnitTestUrlIsWalrus() {
