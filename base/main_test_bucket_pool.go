@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	testBucketQuotaMB    = 100
+	testBucketQuotaMB    = 150
 	testBucketNamePrefix = "sg_int_"
 	testClusterUsername  = "Administrator"
 	testClusterPassword  = "password"
