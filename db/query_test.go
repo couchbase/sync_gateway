@@ -213,8 +213,8 @@ func TestQuerySequencesStatsView(t *testing.T) {
 // Validate query and stats for sequence view query
 func TestQuerySequencesStatsN1ql(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() || !base.TestsUseViews() {
-		t.Skip("This test is Walrus and UseViews=true only")
+	if base.UnitTestUrlIsWalrus() || base.TestsUseViews() {
+		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
 	db, testBucket := setupTestDB(t)
