@@ -21,7 +21,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -816,7 +815,7 @@ func (db *Database) Compact() (int, error) {
 	purgeBody := Body{"_purged": true}
 	for {
 		purgedDocs := make([]string, 0)
-		results, err := db.QueryTombstones(purgeOlderThan, QueryTombstoneBatch, gocb.RequestPlus)
+		results, err := db.QueryTombstones(purgeOlderThan, QueryTombstoneBatch, false)
 		if err != nil {
 			return 0, err
 		}
