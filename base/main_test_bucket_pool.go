@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	testBucketQuotaMB    = 150
 	testBucketNamePrefix = "sg_int_"
 	testClusterUsername  = "Administrator"
 	testClusterPassword  = "password"
@@ -26,6 +25,9 @@ const (
 	// Creates this many buckets in the backing store to be pooled for testing.
 	defaultBucketPoolSize = 10
 	testEnvPoolSize       = "SG_TEST_BUCKET_POOL_SIZE"
+
+	defaultBucketQuotaMB = 150
+	testEnvBucketQuotaMB = "SG_TEST_BUCKET_QUOTA_MB"
 
 	// Prevents reuse and cleanup of buckets used in failed tests for later inspection.
 	// When all pooled buckets are in a preserved state, any remaining tests are skipped.
@@ -87,6 +89,18 @@ func numBuckets() int {
 		}
 	}
 	return numBuckets
+}
+
+func bucketQuotaMB() int {
+	bucketQuota := defaultBucketQuotaMB
+	if envBucketQuotaMB := os.Getenv(testEnvBucketQuotaMB); envBucketQuotaMB != "" {
+		var err error
+		bucketQuota, err = strconv.Atoi(envBucketQuotaMB)
+		if err != nil {
+			log.Fatalf("Couldn't parse %s: %v", testEnvBucketQuotaMB, err)
+		}
+	}
+	return bucketQuota
 }
 
 func testCluster(server string) *gocb.Cluster {
@@ -244,7 +258,7 @@ func NewTestBucketPool(bucketReadierFunc GocbBucketReadierFunc, bucketInitFunc B
 
 	// Make sure the test buckets are created and put into the readier worker queue
 	start := time.Now()
-	if err := tbp.createTestBuckets(numBuckets, bucketInitFunc); err != nil {
+	if err := tbp.createTestBuckets(numBuckets, bucketQuotaMB(), bucketInitFunc); err != nil {
 		log.Fatalf("Couldn't create test buckets: %v", err)
 	}
 	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, int32(numBuckets))
@@ -465,7 +479,7 @@ func (tbp *GocbTestBucketPool) removeOldTestBuckets() error {
 }
 
 // creates a new set of integration test buckets and pushes them into the readier queue.
-func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc BucketInitFunc) error {
+func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, bucketInitFunc BucketInitFunc) error {
 
 	wg := sync.WaitGroup{}
 
@@ -498,7 +512,7 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketInitFunc 
 				tbp.Logf(ctx, "Creating new test bucket")
 				err := tbp.clusterMgr.InsertBucket(&gocb.BucketSettings{
 					Name:          testBucketName,
-					Quota:         testBucketQuotaMB,
+					Quota:         bucketQuotaMB,
 					Type:          gocb.Couchbase,
 					FlushEnabled:  true,
 					IndexReplicas: false,
