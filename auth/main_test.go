@@ -8,7 +8,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	base.TestBucketPool = base.NewTestBucketPool(base.BucketEmptierFunc, base.PrimaryIndexInitFunc)
+	base.TestBucketPool = base.NewTestBucketPool(base.FlushBucketEmptierFunc, base.NoopInitFunc)
 
 	status := m.Run()
 

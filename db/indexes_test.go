@@ -14,8 +14,8 @@ import (
 )
 
 func TestInitializeIndexes(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Index tests require Couchbase Bucket")
+	if base.TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
 	db, testBucket := setupTestDB(t)
@@ -74,8 +74,8 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
 	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Index tests require Couchbase Bucket")
+	if base.TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
 	db, testBucket := setupTestDB(t)
@@ -122,13 +122,13 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Index tests require Couchbase Bucket")
-	}
-
 	// FIXME: Overwriting sgIndexes global map is disrupting the async bucket pooling workers
 	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
 	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
+
+	if base.TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
+	}
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
@@ -167,8 +167,8 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
 	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Index tests require Couchbase Bucket")
+	if base.TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
 	db, testBucket := setupTestDB(t)
@@ -218,13 +218,9 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
 	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Index tests require Couchbase Bucket")
+	if base.TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
-
-	// FIXME: Overwriting sgIndexes global map is disrupting the async bucket pooling workers
-	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
-	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()

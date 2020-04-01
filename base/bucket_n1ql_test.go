@@ -20,8 +20,8 @@ func TestN1qlQuery(t *testing.T) {
 	// Disabled due to CBG-755:
 	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
 	testBucket := GetTestBucket(t)
@@ -128,8 +128,8 @@ func TestN1qlFilterExpression(t *testing.T) {
 	// Disabled due to CBG-755:
 	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
 	testBucket := GetTestBucket(t)
@@ -205,8 +205,8 @@ func TestIndexMeta(t *testing.T) {
 	// Disabled due to CBG-755:
 	t.Skip("WARNING: TEST DISABLED - the testIndex_value creation is causing issues with CB 6.5.0")
 
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
 	testBucket := GetTestBucket(t)
@@ -248,9 +248,10 @@ func TestIndexMeta(t *testing.T) {
 
 // Ensure that n1ql query errors are handled and returned (and don't result in panic etc)
 func TestMalformedN1qlQuery(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -314,9 +315,10 @@ func TestMalformedN1qlQuery(t *testing.T) {
 }
 
 func TestCreateAndDropIndex(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -341,9 +343,10 @@ func TestCreateAndDropIndex(t *testing.T) {
 }
 
 func TestCreateDuplicateIndex(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -372,9 +375,10 @@ func TestCreateDuplicateIndex(t *testing.T) {
 }
 
 func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -399,9 +403,10 @@ func TestCreateAndDropIndexSpecialCharacters(t *testing.T) {
 }
 
 func TestDeferredCreateIndex(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
@@ -441,9 +446,10 @@ func TestDeferredCreateIndex(t *testing.T) {
 }
 
 func TestBuildDeferredIndexes(t *testing.T) {
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 
@@ -506,10 +512,10 @@ func TestBuildDeferredIndexes(t *testing.T) {
 }
 
 func TestCreateAndDropIndexErrors(t *testing.T) {
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
@@ -585,11 +591,11 @@ func tearDownTestIndex(bucket *CouchbaseBucketGoCB, indexName string) (err error
 
 func TestWaitForBucketExistence(t *testing.T) {
 
-	defer SetUpTestLogging(LevelDebug, KeyAll)()
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
+	if TestsUseViews() {
+		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
+
+	defer SetUpTestLogging(LevelDebug, KeyAll)()
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()

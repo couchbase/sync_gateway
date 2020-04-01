@@ -16,8 +16,8 @@ import (
 // Validate stats for view query
 func TestQueryChannelsStatsView(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is walrus-only (requires views)")
+	if !base.UnitTestUrlIsWalrus() || !base.TestsUseViews() {
+		t.Skip("This test is Walrus and UseViews=true only")
 	}
 
 	db, testBucket := setupTestDB(t)
@@ -68,7 +68,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 // Validate stats for n1ql query
 func TestQueryChannelsStatsN1ql(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
+	if base.UnitTestUrlIsWalrus() || base.TestsUseViews() {
 		t.Skip("This test is Couchbase Server only")
 	}
 
@@ -213,8 +213,8 @@ func TestQuerySequencesStatsView(t *testing.T) {
 // Validate query and stats for sequence view query
 func TestQuerySequencesStatsN1ql(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is Couchbase Server only")
+	if !base.UnitTestUrlIsWalrus() || !base.TestsUseViews() {
+		t.Skip("This test is Walrus and UseViews=true only")
 	}
 
 	db, testBucket := setupTestDB(t)
@@ -310,8 +310,8 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 
 // Validate that channels queries (channels, starChannel) are covering
 func TestCoveringQueries(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is Couchbase Server only")
+	if base.UnitTestUrlIsWalrus() || base.TestsUseViews() {
+		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
 	db, testBucket := setupTestDB(t)
@@ -365,8 +365,8 @@ func TestCoveringQueries(t *testing.T) {
 
 func TestAllDocsQuery(t *testing.T) {
 
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is Couchbase Server only")
+	if base.UnitTestUrlIsWalrus() || base.TestsUseViews() {
+		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
 	db, testBucket := setupTestDB(t)
@@ -428,8 +428,8 @@ func TestAllDocsQuery(t *testing.T) {
 }
 
 func TestAccessQuery(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is Couchbase Server only")
+	if base.UnitTestUrlIsWalrus() || base.TestsUseViews() {
+		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
 	db, testBucket := setupTestDB(t)
@@ -571,8 +571,8 @@ func countQueryResults(results sgbucket.QueryResultIterator) int {
 }
 
 func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test require Couchbase Server")
+	if base.UnitTestUrlIsWalrus() || base.TestsUseViews() {
+		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
 	db, testBucket := setupTestDB(t)

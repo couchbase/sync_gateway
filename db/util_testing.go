@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Removes any existing views and installs a new set into the given bucket.
+// viewBucketReadier removes any existing views and installs a new set into the given bucket.
 func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.GocbTestBucketPool) error {
 	var ddocs map[string]interface{}
 	err := b.GetDDocs(&ddocs)
@@ -42,20 +42,26 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.GocbTestBuc
 // ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
 var ViewsAndGSIBucketReadier base.GocbBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
 
-	err := base.BucketEmptierFunc(ctx, b, tbp)
-	if err != nil {
-		return err
+	if base.TestsUseViews() {
+		tbp.Logf(ctx, "flushing bucket and readying views only")
+		if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
+			return err
+		}
+		// Exit early if we're not using GSI.
+		return viewBucketReadier(ctx, b, tbp)
 	}
 
-	err = viewBucketReadier(ctx, b, tbp)
-	if err != nil {
+	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
+	if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
+		return err
+	}
+	if err := viewBucketReadier(ctx, b, tbp); err != nil {
 		return err
 	}
 
 	tbp.Logf(ctx, "waiting for empty bucket indexes")
 	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-	err = WaitForIndexEmpty(b, base.TestUseXattrs())
-	if err != nil {
+	if err := WaitForIndexEmpty(b, base.TestUseXattrs()); err != nil {
 		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
 		return err
 	}
@@ -75,6 +81,11 @@ var ViewsAndGSIBucketInit base.BucketInitFunc = func(ctx context.Context, b base
 
 		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
 		return viewBucketReadier(ctx, b, tbp)
+	}
+
+	// Exit early if we're not using GSI.
+	if base.TestsUseViews() {
+		return nil
 	}
 
 	if empty, err := isIndexEmpty(gocbBucket, base.TestUseXattrs()); empty && err == nil {

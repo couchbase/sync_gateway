@@ -47,6 +47,9 @@ const (
 	// Should the tests drop the GSI indexes?
 	TestEnvSyncGatewayDropIndexes = "SG_TEST_DROP_INDEXES"
 
+	// Should the tests force the use of views?
+	TestEnvSyncGatewayUseViews = "SG_TEST_USE_VIEWS"
+
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
@@ -140,6 +143,7 @@ var (
 	DefaultWarnThresholdGrantsPerDoc   = uint32(50)
 )
 
+// UnitTestUrl returns the configured test URL.
 func UnitTestUrl() string {
 	if TestUseCouchbaseServer() {
 		testCouchbaseServerUrl := os.Getenv(TestEnvCouchbaseServerUrl)
@@ -154,6 +158,7 @@ func UnitTestUrl() string {
 	}
 }
 
+// UnitTestUrlIsWalrus returns true if we're running with a Walrus test URL.
 func UnitTestUrlIsWalrus() bool {
 	unitTestUrl := UnitTestUrl()
 	return strings.Contains(unitTestUrl, kTestWalrusURL)

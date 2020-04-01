@@ -119,8 +119,13 @@ type BucketInitFunc func(ctx context.Context, b Bucket, tbp *GocbTestBucketPool)
 
 type GocbBucketReadierFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error
 
-// BucketEmptierFunc ensures the bucket is empty.
-var BucketEmptierFunc GocbBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+// FlushBucketEmptierFunc ensures the bucket is empty by flushing. It is not recommended to use with GSI.
+var FlushBucketEmptierFunc GocbBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+	return b.Flush()
+}
+
+// N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.
+var N1QLBucketEmptierFunc GocbBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
 	if hasPrimary, _, err := b.getIndexMetaWithoutRetry(PrimaryIndexName); err != nil {
 		return err
 	} else if !hasPrimary {
@@ -142,6 +147,11 @@ var BucketEmptierFunc GocbBucketReadierFunc = func(ctx context.Context, b *Couch
 		_ = res.Close()
 	}
 
+	return nil
+}
+
+// NoopInitFunc does nothing to init a bucket. This can be used in conjunction with FlushBucketReadier when there's no requirement for views/GSI.
+var NoopInitFunc BucketInitFunc = func(ctx context.Context, b Bucket, tbp *GocbTestBucketPool) error {
 	return nil
 }
 

@@ -110,13 +110,11 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 // If certain environemnt variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
-
 	if base.TestUseXattrs() {
 		dbcOptions.EnableXattr = true
 	}
 
-	// Force views if not testing against Couchbase Server
-	if !base.TestUseCouchbaseServer() {
+	if base.TestsUseViews() {
 		dbcOptions.UseViews = true
 	}
 }

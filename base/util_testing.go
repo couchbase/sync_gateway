@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -120,6 +121,20 @@ func TestsShouldDropIndexes() bool {
 	// Otherwise fallback to hardcoded default
 	return DefaultDropIndexes
 
+}
+
+// TestsUseViews returns true if tests should be forced to use views.
+// This is always true for Walrus buckets, and defaults to false for Couchbase buckets.
+func TestsUseViews() bool {
+	// TODO: Undo force UseViews=true after 6.5.1 GSI fixes.
+	return true
+
+	// Force views when running with Walrus anyway.
+	if !TestUseCouchbaseServer() && UnitTestUrlIsWalrus() {
+		return true
+	}
+	useViews, _ := strconv.ParseBool(os.Getenv(TestEnvSyncGatewayUseViews))
+	return useViews
 }
 
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
