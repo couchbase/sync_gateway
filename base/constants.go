@@ -47,8 +47,8 @@ const (
 	// Should the tests drop the GSI indexes?
 	TestEnvSyncGatewayDropIndexes = "SG_TEST_DROP_INDEXES"
 
-	// Should the tests force the use of views?
-	TestEnvSyncGatewayUseViews = "SG_TEST_USE_VIEWS"
+	// Should the tests disable the use of any GSI-related code?
+	TestEnvSyncGatewayDisableGSI = "SG_TEST_DISABLE_GSI"
 
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"

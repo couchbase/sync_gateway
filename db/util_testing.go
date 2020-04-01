@@ -42,7 +42,7 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.GocbTestBuc
 // ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
 var ViewsAndGSIBucketReadier base.GocbBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
 
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		tbp.Logf(ctx, "flushing bucket and readying views only")
 		if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
 			return err
@@ -84,7 +84,7 @@ var ViewsAndGSIBucketInit base.BucketInitFunc = func(ctx context.Context, b base
 	}
 
 	// Exit early if we're not using GSI.
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		return nil
 	}
 

@@ -828,7 +828,7 @@ func TestValidateServerContext(t *testing.T) {
 					Username: tb1User,
 					Password: tb1Password,
 				},
-				UseViews:         base.TestsUseViews(),
+				UseViews:         base.TestsDisableGSI(),
 				NumIndexReplicas: base.UintPtr(0),
 			},
 			"db2": {
@@ -838,7 +838,7 @@ func TestValidateServerContext(t *testing.T) {
 					Username: tb1User,
 					Password: tb1Password,
 				},
-				UseViews:         base.TestsUseViews(),
+				UseViews:         base.TestsDisableGSI(),
 				NumIndexReplicas: base.UintPtr(0),
 			},
 			"db3": {
@@ -848,7 +848,7 @@ func TestValidateServerContext(t *testing.T) {
 					Username: tb2User,
 					Password: tb2Password,
 				},
-				UseViews:         base.TestsUseViews(),
+				UseViews:         base.TestsDisableGSI(),
 				NumIndexReplicas: base.UintPtr(0),
 			},
 		},

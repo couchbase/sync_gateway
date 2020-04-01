@@ -14,7 +14,7 @@ import (
 )
 
 func TestInitializeIndexes(t *testing.T) {
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
@@ -74,7 +74,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
 	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
@@ -126,7 +126,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
 	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
@@ -167,7 +167,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
 	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
@@ -218,7 +218,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
 	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 

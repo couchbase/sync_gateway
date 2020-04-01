@@ -115,7 +115,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig = &DbConfig{}
 	}
 
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		rt.DatabaseConfig.UseViews = true
 	}
 

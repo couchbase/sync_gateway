@@ -123,20 +123,19 @@ func TestsShouldDropIndexes() bool {
 
 }
 
-// TestsUseViews returns true if tests should be forced to use views.
-// This is always true for Walrus buckets, and defaults to false for Couchbase buckets.
-func TestsUseViews() bool {
-	// TODO: Undo force UseViews=true after 6.5.1 GSI fixes.
+// TestsDisableGSI returns true if tests should be forced to avoid any GSI-specific code.
+func TestsDisableGSI() bool {
+	// TODO: Undo force TestsDisableGSI=true override after 6.5.1
 	if true {
 		return true
 	}
 
-	// Force views when running with Walrus anyway.
+	// Disable GSI when running with Walrus
 	if !TestUseCouchbaseServer() && UnitTestUrlIsWalrus() {
 		return true
 	}
-	useViews, _ := strconv.ParseBool(os.Getenv(TestEnvSyncGatewayUseViews))
-	return useViews
+	disableGSI, _ := strconv.ParseBool(os.Getenv(TestEnvSyncGatewayDisableGSI))
+	return disableGSI
 }
 
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase

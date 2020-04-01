@@ -230,7 +230,10 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 		removedDDocs, _ := database.RemoveObsoleteDesignDocs(preview)
 
 		// Index cleanup
-		removedIndexes, _ := database.RemoveObsoleteIndexes(preview)
+		var removedIndexes []string
+		if !base.TestsDisableGSI() {
+			removedIndexes, _ = database.RemoveObsoleteIndexes(preview)
+		}
 
 		postUpgradeResults[name] = PostUpgradeDatabaseResult{
 			RemovedDDocs:   removedDDocs,

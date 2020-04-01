@@ -3127,6 +3127,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	longpollWg.Wait()
 }
 
+// TODO: RETEST
 func TestTombstoneCompaction(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 

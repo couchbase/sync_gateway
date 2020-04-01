@@ -114,7 +114,7 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 		dbcOptions.EnableXattr = true
 	}
 
-	if base.TestsUseViews() {
+	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
 	}
 }

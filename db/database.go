@@ -513,7 +513,7 @@ func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remo
 	return removeObsoleteDesignDocs(context.Bucket, previewOnly, context.UseViews())
 }
 
-// Removes previous versions of Sync Gateway's design docs found on the server
+// Removes previous versions of Sync Gateway's indexes found on the server
 func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIndexes []string, err error) {
 
 	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
