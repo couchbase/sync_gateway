@@ -10,18 +10,19 @@
 package auth
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
-	phttp "github.com/coreos/go-oidc/http"
-	"github.com/coreos/go-oidc/oauth2"
-	"github.com/coreos/go-oidc/oidc"
+	"github.com/coreos/go-oidc" //"github.com/coreos/go-oidc/oidc"
 	"github.com/couchbase/sync_gateway/base"
-	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/net/context" //phttp "github.com/coreos/go-oidc/http"
+	"golang.org/x/oauth2"      //"github.com/coreos/go-oidc/oauth2"
+	jose "gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -36,8 +37,14 @@ type OIDCOptions struct {
 	DefaultProvider *string         `json:"default_provider,omitempty"` // Issuer used when not specified by client
 }
 
+type OIDCClient struct {
+	Provider *oidc.Provider
+	Config   oauth2.Config
+	Context  context.Context
+}
+
 type OIDCProvider struct {
-	JWTOptions
+	//JWTOptions
 	Issuer                  string   `json:"issuer"`                           // OIDC Issuer
 	Register                bool     `json:"register"`                         // If true, server will register new user accounts
 	ClientID                *string  `json:"client_id,omitempty"`              // Client ID
@@ -49,7 +56,7 @@ type OIDCProvider struct {
 	UserPrefix              string   `json:"user_prefix,omitempty"`            // Username prefix for users created for this provider
 	DiscoveryURI            string   `json:"discovery_url,omitempty"`          // Non-standard discovery endpoints
 	DisableConfigValidation bool     `json:"disable_cfg_validation,omitempty"` // Bypasses config validation based on the OIDC spec.  Required for some OPs that don't strictly adhere to spec (eg. Yahoo)
-	OIDCClient              *oidc.Client
+	OIDCClient              *OIDCClient
 	OIDCClientOnce          sync.Once
 	IsDefault               bool
 	Name                    string
@@ -85,7 +92,7 @@ func (opm OIDCProviderMap) GetProviderForIssuer(issuer string, audiences []strin
 	return nil
 }
 
-func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *oidc.Client {
+func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OIDCClient {
 	// Initialize the client on first request.  If the callback URL isn't defined for the provider,
 	// uses buildCallbackURLFunc to construct (based on current request)
 	op.OIDCClientOnce.Do(func() {
@@ -141,65 +148,52 @@ func (op *OIDCProvider) InitOIDCClient() error {
 		return base.RedactErrorf("Issuer not defined for OpenID Connect provider %+v", base.UD(op))
 	}
 
-	config, shouldSyncConfig, err := op.DiscoverConfig()
-	if err != nil || config == nil {
-		return pkgerrors.Wrap(err, "unable to discover config")
-	}
-
-	clientCredentials := oidc.ClientCredentials{
-		ID: *op.ClientID,
-	}
-	if op.ValidationKey != nil {
-		clientCredentials.Secret = *op.ValidationKey
-	}
-
-	clientConfig := oidc.ClientConfig{
-		ProviderConfig: *config,
-		Credentials:    clientCredentials,
-		RedirectURL:    *op.CallbackURL,
-	}
-
-	if op.Scope != nil || len(op.Scope) > 0 {
-		clientConfig.Scope = op.Scope
-	} else {
-		clientConfig.Scope = []string{"openid", "email"}
-	}
-
-	op.OIDCClient, err = oidc.NewClient(clientConfig)
+	context := context.Background()
+	provider, err := oidc.NewProvider(context, op.Issuer)
 	if err != nil {
 		return err
 	}
 
-	// Start process for ongoing sync of the provider config
-	if shouldSyncConfig {
-		op.OIDCClient.SyncProviderConfig(op.Issuer)
+	config := oauth2.Config{
+		ClientID:    *op.ClientID,
+		Endpoint:    provider.Endpoint(),
+		RedirectURL: *op.CallbackURL,
+	}
+
+	if op.ValidationKey != nil {
+		config.ClientSecret = *op.ValidationKey
+	}
+
+	if op.Scope != nil || len(op.Scope) > 0 {
+		config.Scopes = op.Scope
 	} else {
-		base.Infof(base.KeyAuth, "Not synchronizing provider config for issuer %s...", base.UD(op.Issuer))
+		config.Scopes = []string{oidc.ScopeOpenID, "email"}
 	}
 
 	// Initialize the prefix for users created for this provider
 	if err = op.InitUserPrefix(); err != nil {
 		return err
 	}
+	op.OIDCClient = &OIDCClient{
+		Provider: provider,
+		Config:   config,
+		Context:  context,
+	}
 
 	return nil
 }
 
-func (op *OIDCProvider) DiscoverConfig() (config *oidc.ProviderConfig, shouldSync bool, err error) {
-
+func (op *OIDCProvider) DiscoverConfig() (config *oidc.Provider, shouldSync bool, err error) {
+	ctx := context.Background()
 	// If discovery URI is explicitly defined, use it instead of the standard issuer-based discovery.
-
 	if op.DiscoveryURI != "" || op.DisableConfigValidation {
-		config, err = op.FetchCustomProviderConfig(op.DiscoveryURI)
+		config, err = oidc.NewProvider(ctx, op.DiscoveryURI)
 		shouldSync = false
 	} else {
-
-		var standardConfig oidc.ProviderConfig
 		maxRetryAttempts := 5
 		for i := 1; i <= maxRetryAttempts; i++ {
-			standardConfig, err = oidc.FetchProviderConfig(http.DefaultClient, op.Issuer)
+			config, err = oidc.NewProvider(ctx, op.Issuer)
 			if err == nil {
-				config = &standardConfig
 				shouldSync = true
 				break
 			}
@@ -212,73 +206,94 @@ func (op *OIDCProvider) DiscoverConfig() (config *oidc.ProviderConfig, shouldSyn
 	return config, shouldSync, err
 }
 
-func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.ProviderConfig, error) {
-
-	var customConfig OidcProviderConfiguration
-
-	// If discovery URL is empty, use the standard discovery URL
-	if discoveryURL == "" {
-		discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
-	}
-
-	base.Debugf(base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
-	req, err := http.NewRequest("GET", discoveryURL, nil)
-	if err != nil {
-		base.Debugf(base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
-		return nil, err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if err := base.JSONDecoder(resp.Body).Decode(&customConfig); err != nil {
-		base.Debugf(base.KeyAuth, "Error parsing body %s: %v", base.UD(discoveryURL), err)
-		return nil, err
-	}
-
-	var oidcConfig oidc.ProviderConfig
-	oidcConfig, err = customConfig.AsProviderConfig()
-	if err != nil {
-		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %+v", base.UD(discoveryURL), err)
-		return nil, err
-	}
-
-	// Set expiry on config, if defined in response header
-	if ttl, ok, _ := phttp.Cacheable(resp.Header); ok {
-		oidcConfig.ExpiresAt = time.Now().UTC().Add(ttl)
-	}
-
-	base.Debugf(base.KeyAuth, "Returning config: %v", base.UD(oidcConfig))
-	return &oidcConfig, nil
-
-}
-
 func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
 }
 
 // Converts an OpenID Connect / OAuth2 error to an HTTP error
 func OIDCToHTTPError(err error) error {
-
-	if oauthErr, ok := pkgerrors.Cause(err).(*oauth2.Error); ok {
-		status := 400
-		switch oauthErr.Type {
-		case oauth2.ErrorAccessDenied,
-			oauth2.ErrorUnauthorizedClient,
-			oauth2.ErrorInvalidClient,
-			oauth2.ErrorInvalidGrant,
-			oauth2.ErrorInvalidRequest:
-			status = 401
-		case oauth2.ErrorServerError:
-			status = 502
-		case oauth2.ErrorUnsupportedGrantType,
-			oauth2.ErrorUnsupportedResponseType:
-			status = 400
+	/*
+		if oauthErr, ok := pkgerrors.Cause(err).(*oauth2.Error); ok {
+			status := 400
+			switch oauthErr.Type {
+			case oauth2.ErrorAccessDenied,
+				oauth2.ErrorUnauthorizedClient,
+				oauth2.ErrorInvalidClient,
+				oauth2.ErrorInvalidGrant,
+				oauth2.ErrorInvalidRequest:
+				status = 401
+			case oauth2.ErrorServerError:
+				status = 502
+			case oauth2.ErrorUnsupportedGrantType,
+				oauth2.ErrorUnsupportedResponseType:
+				status = 400
+			}
+			err = base.HTTPErrorf(status, "OpenID Connect error: %s (%s)",
+				oauthErr.Description, oauthErr.Type)
 		}
-		err = base.HTTPErrorf(status, "OpenID Connect error: %s (%s)",
-			oauthErr.Description, oauthErr.Type)
-	}
+	*/
 	return err
+}
+
+type jsonTime time.Time
+
+type idToken struct {
+	Issuer       string                 `json:"iss"`
+	Subject      string                 `json:"sub"`
+	Audience     audience               `json:"aud"`
+	Expiry       jsonTime               `json:"exp"`
+	IssuedAt     jsonTime               `json:"iat"`
+	NotBefore    *jsonTime              `json:"nbf"`
+	Nonce        string                 `json:"nonce"`
+	AtHash       string                 `json:"at_hash"`
+	ClaimNames   map[string]string      `json:"_claim_names"`
+	ClaimSources map[string]claimSource `json:"_claim_sources"`
+}
+
+type claimSource struct {
+	Endpoint    string `json:"endpoint"`
+	AccessToken string `json:"access_token"`
+}
+
+type audience []string
+
+func GetIDToken(rawIDToken string) (*oidc.IDToken, error) {
+	_, err := jose.ParseSigned(rawIDToken)
+	if err != nil {
+		return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
+	}
+
+	// Throw out tokens with invalid claims before trying to verify the token.
+	// This lets us do cheap checks before possibly re-syncing keys.
+	payload, err := parseJWT(rawIDToken)
+	if err != nil {
+		return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
+	}
+	var token idToken
+	if err := json.Unmarshal(payload, &token); err != nil {
+		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %v", err)
+	}
+
+	idToken := &oidc.IDToken{
+		Issuer:          token.Issuer,
+		Subject:         token.Subject,
+		Audience:        []string(token.Audience),
+		Expiry:          time.Time(token.Expiry),
+		IssuedAt:        time.Time(token.IssuedAt),
+		Nonce:           token.Nonce,
+		AccessTokenHash: token.AtHash,
+	}
+	return idToken, nil
+}
+
+func parseJWT(p string) ([]byte, error) {
+	parts := strings.Split(p, ".")
+	if len(parts) < 3 {
+		return nil, fmt.Errorf("oidc: malformed jwt, expected 3 parts got %d", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("oidc: malformed jwt payload: %v", err)
+	}
+	return payload, nil
 }

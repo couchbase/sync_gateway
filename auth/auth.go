@@ -12,8 +12,7 @@ package auth
 import (
 	"fmt"
 
-	"github.com/coreos/go-oidc/jose"
-	"github.com/coreos/go-oidc/oidc"
+	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
@@ -412,115 +411,103 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 	return user
 }
 
-// Authenticates a user based on a JWT token string and a set of providers.  Attempts to match the
-// issuer in the token with a provider.
-// Used to authenticate a JWT token coming from an insecure source (e.g. client request)
-// If the token is validated but the user for the username defined in the subject claim doesn't exist,
-// creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
+// Authenticates a user based on a JWT token string and a set of providers. Attempts to match the issuer in the
+// token with a provider. Used to authenticate a JWT token coming from an insecure source (e.g. client request).
+// If the token is validated but the user for the username defined in the subject claim doesn't exist, creates
+// the user when autoRegister=true.
+func (auth *Authenticator) AuthenticateUntrustedJWT(rawIDToken string, providers OIDCProviderMap,
+	callbackURLFunc OIDCCallbackURLFunc) (User, *oidc.IDToken, error) {
+	base.Debugf(base.KeyAuth, "AuthenticateJWT called with token: %s", base.UD(rawIDToken))
 
-	base.Debugf(base.KeyAuth, "AuthenticateJWT called with token: %s", base.UD(token))
-
-	// Parse JWT (needed to determine issuer/provider)
-	jwt, err := jose.ParseJWT(token)
+	// Get the ID Token from the raw JWT string; determine issuer/provider.
+	idToken, err := GetIDToken(rawIDToken)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Error parsing JWT in AuthenticateJWT: %v", err)
-		return nil, jose.JWT{}, err
-	}
-
-	// Get client for issuer
-	issuer, audiences, err := GetJWTIssuer(jwt)
-	base.Debugf(base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
-	if err != nil {
-		base.Debugf(base.KeyAuth, "Error getting JWT issuer: %v", err)
-		return nil, jose.JWT{}, err
+		base.Debugf(base.KeyAuth, "Error parsing JWT string to IDToken in AuthenticateJWT: %v", err)
+		return nil, &oidc.IDToken{}, err
 	}
 
 	base.Debugf(base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
-	provider := providers.GetProviderForIssuer(issuer, audiences)
+	provider := providers.GetProviderForIssuer(idToken.Issuer, idToken.Audience)
 	base.Debugf(base.KeyAuth, "Provider for issuer: %+v", base.UD(provider))
-
 	if provider == nil {
-		return nil, jose.JWT{}, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
+		return nil, &oidc.IDToken{}, base.RedactErrorf("No provider found for issuer %v", base.UD(idToken.Issuer))
 	}
 
 	// VerifyJWT validates the claims and signature on the JWT
 	client := provider.GetClient(callbackURLFunc)
 	if client == nil {
-		return nil, jose.JWT{}, fmt.Errorf("OIDC client was not initialized")
+		return nil, &oidc.IDToken{}, fmt.Errorf("OIDC client was not initialized")
 	}
 
-	err = client.VerifyJWT(jwt)
+	config := &oidc.Config{ClientID: *provider.ClientID}
+	idTokenVerifier := provider.OIDCClient.Provider.Verifier(config)
+	idToken, err = idTokenVerifier.Verify(provider.OIDCClient.Context, rawIDToken)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
-		return nil, jwt, err
+		return nil, &oidc.IDToken{}, err
 	}
 
-	return auth.authenticateJWT(jwt, provider)
+	return auth.authenticateJWT(idToken, provider)
 }
 
 // Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
 // Verifies the token claims, but doesn't require signature verification.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, jose.JWT, error) {
-
-	// Parse JWT
-	jwt, err := jose.ParseJWT(token)
-	if err != nil {
-		base.Debugf(base.KeyAuth, "Error parsing JWT in AuthenticateTrustedJWT: %v", err)
-		return nil, jose.JWT{}, err
-	}
-
+func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider,
+	callbackURLFunc OIDCCallbackURLFunc) (User, *oidc.IDToken, error) {
 	// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
-	if err := oidc.VerifyClaims(jwt, provider.Issuer, *provider.ClientID); err != nil {
-		return nil, jose.JWT{}, err
+	config := &oidc.Config{ClientID: *provider.ClientID}
+	idTokenVerifier := provider.OIDCClient.Provider.Verifier(config)
+	idToken, err := idTokenVerifier.Verify(provider.OIDCClient.Context, token)
+	if err != nil {
+		base.Debugf(base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
+		return nil, idToken, err
 	}
-	return auth.authenticateJWT(jwt, provider)
+	return auth.authenticateJWT(idToken, provider)
 }
 
-// Obtains a Sync Gateway User for the JWT.  Expects that the JWT has already been verified for OIDC compliance.
-func (auth *Authenticator) authenticateJWT(jwt jose.JWT, provider *OIDCProvider) (User, jose.JWT, error) {
-
-	// Extract identity from token
-	identity, identityErr := GetJWTIdentity(jwt)
-	base.Debugf(base.KeyAuth, "JWT identity: %+v", base.UD(identity))
-	if identityErr != nil {
-		base.Debugf(base.KeyAuth, "Error getting JWT identity. Error: %v", identityErr)
-		return nil, jwt, identityErr
-	}
-
-	username := GetOIDCUsername(provider, identity.ID)
+// Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
+func (auth *Authenticator) authenticateJWT(
+	idToken *oidc.IDToken, provider *OIDCProvider) (User, *oidc.IDToken, error) {
+	username := GetOIDCUsername(provider, idToken.Subject)
 	base.Debugf(base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
 	user, userErr := auth.GetUser(username)
 	if userErr != nil {
-		base.Debugf(base.KeyAuth, "Failed to get OIDC User from %v.  Error: %v", base.UD(username), userErr)
-		return nil, jwt, userErr
+		base.Debugf(base.KeyAuth, "Failed to get OIDC user from %v. Error: %v", base.UD(username), userErr)
+		return nil, idToken, userErr
 	}
 
-	// If user found, check whether the email needs to be updated (e.g. user has changed email in
-	// external auth system)
-	if user != nil && identity.Email != "" {
-		err := auth.UpdateUserEmail(user, identity.Email)
+	// If user found, check whether the email needs to be updated (e.g. user has changed email in external auth system)
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if err := idToken.Claims(&claims); err != nil {
+		base.Debugf(base.KeyAuth, "Failed to get OIDC User from %v.  Error: %v", base.UD(username), userErr)
+		return nil, idToken, userErr
+	}
+
+	if user != nil && claims.Email != "" {
+		err := auth.UpdateUserEmail(user, claims.Email)
 		if err != nil {
-			base.Warnf("Unable to set user email to %v for OIDC", base.UD(identity.Email))
+			base.Warnf("Unable to set user email to %v for OIDC", base.UD(claims.Email))
 		}
 	}
 
 	// Auto-registration.  This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if user == nil && provider.Register {
-		base.Debugf(base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
+		base.Debugf(base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(claims.Email))
 		var err error
-		user, err = auth.RegisterNewUser(username, identity.Email)
+		user, err = auth.RegisterNewUser(username, claims.Email)
 		if err != nil && !base.IsCasMismatch(err) {
 			base.Debugf(base.KeyAuth, "Error registering new user: %v", err)
-			return nil, jwt, err
+			return nil, idToken, err
 		}
 	}
 
-	return user, jwt, nil
+	return user, idToken, nil
 }
 
 // Registers a new user account based on the given verified username and optional email address.

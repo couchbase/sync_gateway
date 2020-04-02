@@ -15,34 +15,45 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/coreos/go-oidc/oauth2"
+	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"golang.org/x/oauth2"
 )
 
 const (
-	OIDC_AUTH_RESPONSE_TYPE = "response_type"
-	OIDC_AUTH_CLIENT_ID     = "client_id"
-	OIDC_AUTH_SCOPE         = "scope"
-	OIDC_AUTH_REDIRECT_URI  = "redirect_uri"
-	OIDC_AUTH_STATE         = "state"
-
-	OIDC_RESPONSE_TYPE_CODE     = "code"
-	OIDC_RESPONSE_TYPE_IMPLICIT = "id_token%20token"
+	requestParamCode         = "code"
+	requestParamProvider     = "provider"
+	requestParamOffline      = "offline"
+	requestParamError        = "error"
+	requestParamErrorDesc    = "error_description"
+	requestParamRefreshToken = "refresh_token"
+	requestParamState        = "state"
+	requestParamScope        = "scope"
+	requestParamRedirectURI  = "redirect_uri"
 )
 
+const (
+	keyIDToken = "id_token"
+)
+
+// A string value created by Sync Gateway to maintain state between the request and callback.
+// This parameter should be used for preventing Cross-site Request Forgery and will be passed
+// back to Sync Gateway, unchanged, in the redirect URI.
+// var openIDConnectOAuthState = strings.Replace(uuid.New().String(), "-", "", -1)
+var openIDConnectOAuthState = "ebfe9fbac6bd4f28afefcf21eb545a6b"
+
 type OIDCTokenResponse struct {
-	IDToken      string `json:"id_token"`                // ID token, from OP
-	RefreshToken string `json:"refresh_token,omitempty"` // Refresh token, from OP
-	SessionID    string `json:"session_id,omitempty"`    // Sync Gateway session ID
-	Username     string `json:"name,omitempty"`          // Sync Gateway user name
-	AccessToken  string `json:"access_token,omitempty"`  // Access token, from OP
-	TokenType    string `json:"token_type,omitempty"`    // Access token type, from OP
-	Expires      int    `json:"expires_in,omitempty"`    // Access token expiry, from OP
+	IDToken      string    `json:"id_token"`                // ID token, from OP
+	RefreshToken string    `json:"refresh_token,omitempty"` // Refresh token, from OP
+	SessionID    string    `json:"session_id,omitempty"`    // Sync Gateway session ID
+	Username     string    `json:"name,omitempty"`          // Sync Gateway user name
+	AccessToken  string    `json:"access_token,omitempty"`  // Access token, from OP
+	TokenType    string    `json:"token_type,omitempty"`    // Access token type, from OP
+	Expires      time.Time `json:"expires_in,omitempty"`    // Access token expiry, from OP
 }
 
 func (h *handler) handleOIDC() error {
-
 	redirectURL, err := h.handleOIDCCommon()
 	if err != nil {
 		return err
@@ -59,15 +70,11 @@ func (h *handler) handleOIDCChallenge() error {
 
 	authHeader := fmt.Sprintf("OIDC login=%q", redirectURL)
 	h.setHeader("WWW-Authenticate", authHeader)
-
 	return base.HTTPErrorf(http.StatusUnauthorized, "Login Required")
 }
 
 func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
-
-	redirectURLString = ""
-
-	providerName := h.getQuery("provider")
+	providerName := h.getQuery(requestParamProvider)
 	base.Infof(base.KeyAuth, "Getting provider for name %v", base.UD(providerName))
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
@@ -76,25 +83,22 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 
 	client := provider.GetClient(h.getOIDCCallbackURL)
 	if client == nil {
-		return redirectURLString, base.HTTPErrorf(http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider:%s", providerName))
-	}
-	oac, err := client.OAuthClient()
-	if err != nil {
-		return redirectURLString, err
+		return redirectURLString, base.HTTPErrorf(
+			http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider:%s", providerName))
 	}
 
-	state := ""
-	accessType := ""
-	prompt := ""
+	var redirectURL *url.URL
+	state := openIDConnectOAuthState
 
 	// TODO: Is there a use case where we need to support direct pass-through of access_type and prompt from the caller?
-	offline := h.getBoolQuery("offline")
+	offline := h.getBoolQuery(requestParamOffline)
 	if offline {
-		accessType = "offline"
-		prompt = "consent"
+		// Set access type to offline and prompt to consent in auth code request URL.
+		redirectURL, err = url.Parse(client.Config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce))
+	} else {
+		redirectURL, err = url.Parse(client.Config.AuthCodeURL(state))
 	}
 
-	redirectURL, err := url.Parse(oac.AuthCodeURL(state, accessType, prompt))
 	if err != nil {
 		return redirectURLString, err
 	}
@@ -103,50 +107,72 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 }
 
 func (h *handler) handleOIDCCallback() error {
-	callbackError := h.getQuery("error")
+	callbackError := h.getQuery(requestParamError)
 	if callbackError != "" {
-		errorDescription := h.getQuery("error_description")
-		return base.HTTPErrorf(http.StatusUnauthorized, "oidc_callback received an error: %v", errorDescription)
+		errorDescription := h.getQuery(requestParamErrorDesc)
+		return base.HTTPErrorf(http.StatusUnauthorized, "oidc callback received an error: %v", errorDescription)
 	}
 
-	code := h.getQuery("code")
+	code := h.getQuery(requestParamCode)
 	if code == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Code must be present on oidc callback")
 	}
 
-	providerName := h.getQuery("provider")
+	providerName := h.getQuery(requestParamProvider)
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	oac, err := provider.GetClient(h.getOIDCCallbackURL).OAuthClient()
-	if err != nil {
+	if state := h.getQuery(requestParamState); state != openIDConnectOAuthState {
+		base.Infof(base.KeyAuth, "State mismatch in OpenID Connect callback request, Expected: %s, Actual: %s",
+			openIDConnectOAuthState, state)
+		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify state for callback request")
+	}
+
+	client := provider.GetClient(h.getOIDCCallbackURL)
+	if client == nil {
 		return err
 	}
 
-	tokenResponse, err := oac.RequestToken(oauth2.GrantTypeAuthCode, code)
+	// Converts the authorization code into a token.
+	token, err := client.Config.Exchange(client.Context, code)
 	if err != nil {
-		return err
+		return base.HTTPErrorf(http.StatusUnauthorized, "Failed to exchange token: "+err.Error())
+	}
+
+	rawIDToken, ok := token.Extra("id_token").(string)
+	if !ok {
+		return base.HTTPErrorf(http.StatusInternalServerError, "No id_token field in oauth2 token.")
+	}
+	base.Infof(base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
+
+	config := &oidc.Config{
+		ClientID: client.Config.ClientID,
+	}
+	idToken, err := client.Provider.Verifier(config).Verify(client.Context, rawIDToken)
+	if err != nil {
+		return base.HTTPErrorf(
+			http.StatusInternalServerError, "Failed to verify ID Token: %s, Error: %s", idToken, err.Error())
 	}
 
 	// Create a Sync Gateway session
-	username, sessionID, err := h.createSessionForTrustedIdToken(tokenResponse.IDToken, provider)
+	username, sessionID, err := h.createSessionForTrustedIdToken(rawIDToken, provider)
 	if err != nil {
 		return err
 	}
 
 	callbackResponse := &OIDCTokenResponse{
-		IDToken:      tokenResponse.IDToken,
-		RefreshToken: tokenResponse.RefreshToken,
+		IDToken:      rawIDToken,
+		RefreshToken: token.RefreshToken,
 		SessionID:    sessionID,
 		Username:     username,
 	}
 
 	if provider.IncludeAccessToken {
-		callbackResponse.AccessToken = tokenResponse.AccessToken
-		callbackResponse.Expires = tokenResponse.Expires
-		callbackResponse.TokenType = tokenResponse.TokenType
+		callbackResponse.AccessToken = token.AccessToken
+		callbackResponse.Expires = token.Expiry
+		callbackResponse.TokenType = token.TokenType
 	}
 
 	h.writeJSON(callbackResponse)
@@ -154,63 +180,64 @@ func (h *handler) handleOIDCCallback() error {
 }
 
 func (h *handler) handleOIDCRefresh() error {
-
-	refreshToken := h.getQuery("refresh_token")
+	refreshToken := h.getQuery(requestParamRefreshToken)
 	if refreshToken == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Refresh token must be present for oidc refresh")
 	}
 
-	providerName := h.getQuery("provider")
+	providerName := h.getQuery(requestParamProvider)
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	oac, err := provider.GetClient(h.getOIDCCallbackURL).OAuthClient()
-	if err != nil {
+	client := provider.GetClient(h.getOIDCCallbackURL)
+	if client == nil {
 		return err
 	}
 
-	tokenResponse, err := oac.RequestToken(oauth2.GrantTypeRefreshToken, refreshToken)
+	token, err := client.Config.TokenSource(client.Context, &oauth2.Token{RefreshToken: refreshToken}).Token()
 	if err != nil {
 		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
 		return base.HTTPErrorf(http.StatusUnauthorized, "Unable to refresh token.")
 	}
 
-	username, sessionID, err := h.createSessionForTrustedIdToken(tokenResponse.IDToken, provider)
+	rawIDToken, ok := token.Extra(keyIDToken).(string)
+	if !ok {
+		return base.HTTPErrorf(http.StatusInternalServerError, "No id_token field in oauth2 token.")
+	}
+	base.Infof(base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
+
+	username, sessionID, err := h.createSessionForTrustedIdToken(rawIDToken, provider)
 	if err != nil {
 		return err
 	}
 
 	refreshResponse := &OIDCTokenResponse{
-		IDToken:   tokenResponse.IDToken,
+		IDToken:   rawIDToken,
 		SessionID: sessionID,
 		Username:  username,
 	}
 
 	if provider.IncludeAccessToken {
-		refreshResponse.AccessToken = tokenResponse.AccessToken
-		refreshResponse.Expires = tokenResponse.Expires
-		refreshResponse.TokenType = tokenResponse.TokenType
+		refreshResponse.AccessToken = token.AccessToken
+		refreshResponse.Expires = token.Expiry
+		refreshResponse.TokenType = token.TokenType
 	}
 
 	h.writeJSON(refreshResponse)
-
 	return nil
 }
 
-func (h *handler) createSessionForTrustedIdToken(idToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
-
-	user, jwt, err := h.db.Authenticator().AuthenticateTrustedJWT(idToken, provider, h.getOIDCCallbackURL)
+func (h *handler) createSessionForTrustedIdToken(
+	rawIDToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
+	user, idToken, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
 	}
 
 	if !provider.DisableSession {
-		tokenExpiryTime, err := auth.GetJWTExpiry(jwt)
-		if err != nil {
-			return "", "", err
-		}
+		tokenExpiryTime := idToken.Expiry
 		sessionTTL := tokenExpiryTime.Sub(time.Now())
 		sessionID, err := h.makeSessionWithTTL(user, sessionTTL)
 		return user.Name(), sessionID, err
@@ -221,20 +248,21 @@ func (h *handler) createSessionForTrustedIdToken(idToken string, provider *auth.
 func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
 	provider, err := h.db.GetOIDCProvider(providerName)
 	if provider == nil || err != nil {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
+		return nil, base.HTTPErrorf(
+			http.StatusBadRequest, fmt.Sprintf("OpenID Connect not configured for database %v", h.db.Name))
 	}
 	return provider, nil
 }
 
-// Builds the OIDC callback based on the current request and database. Used during OIDC Client lazy initialization.  Needs to pass
-// in dbName, as it's not necessarily initialized on the request yet.
+// Builds the OpenID Connect callback based on the current request and database. Used during OpenID Connect Client
+// lazy initialization. Needs to pass in dbName, as it's not necessarily initialized on the request yet.
 func (h *handler) getOIDCCallbackURL() string {
 	scheme := "http"
 	if h.rq.TLS != nil {
 		scheme = "https"
 	}
 	if dbName := h.PathVar("db"); dbName == "" {
-		base.Warnf("Can't calculate OIDC callback URL without DB in path.")
+		base.Warnf("Can't calculate OpenID Connect callback URL without DB in path.")
 		return ""
 	} else {
 		return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbName, "_oidc_callback")

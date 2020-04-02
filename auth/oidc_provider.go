@@ -9,14 +9,6 @@
 
 package auth
 
-import (
-	"fmt"
-	"net/url"
-
-	"github.com/coreos/go-oidc/oidc"
-	pkgerrors "github.com/pkg/errors"
-)
-
 type OidcProviderConfiguration struct {
 	Issuer                 string   `json:"issuer"`
 	AuthEndpoint           string   `json:"authorization_endpoint"`
@@ -58,87 +50,4 @@ type OidcProviderConfiguration struct {
 
 	Policy         string `json:"op_policy_uri,omitempty"`
 	TermsOfService string `json:"op_tos_uri,omitempty"`
-}
-
-// Converts a provider config (based on the OpenID Connect spec) to the type used by coreos/go-oidc.  Used to handle scenarios
-// where the provider doesn't adhere to spec.
-func (pc OidcProviderConfiguration) AsProviderConfig() (oidc.ProviderConfig, error) {
-	conf := oidc.ProviderConfig{
-		ScopesSupported:                            pc.ScopesSupported,
-		ResponseTypesSupported:                     pc.ResponseTypesSupported,
-		ResponseModesSupported:                     pc.ResponseModesSupported,
-		GrantTypesSupported:                        pc.GrantTypesSupported,
-		ACRValuesSupported:                         pc.ACRValuesSupported,
-		SubjectTypesSupported:                      pc.SubjectTypesSupported,
-		IDTokenSigningAlgValues:                    pc.IDTokenSigningAlgValues,
-		IDTokenEncryptionAlgValues:                 pc.IDTokenEncryptionAlgValues,
-		IDTokenEncryptionEncValues:                 pc.IDTokenEncryptionEncValues,
-		UserInfoSigningAlgValues:                   pc.UserInfoSigningAlgValues,
-		UserInfoEncryptionAlgValues:                pc.UserInfoEncryptionAlgValues,
-		UserInfoEncryptionEncValues:                pc.UserInfoEncryptionEncValues,
-		ReqObjSigningAlgValues:                     pc.ReqObjSigningAlgValues,
-		ReqObjEncryptionAlgValues:                  pc.ReqObjEncryptionAlgValues,
-		ReqObjEncryptionEncValues:                  pc.ReqObjEncryptionEncValues,
-		TokenEndpointAuthMethodsSupported:          pc.TokenEndpointAuthMethodsSupported,
-		TokenEndpointAuthSigningAlgValuesSupported: pc.TokenEndpointAuthSigningAlgValuesSupported,
-		DisplayValuesSupported:                     pc.DisplayValuesSupported,
-		ClaimTypesSupported:                        pc.ClaimTypesSupported,
-		ClaimsSupported:                            pc.ClaimsSupported,
-		ClaimsLocalsSupported:                      pc.ClaimsLocalsSupported,
-		UILocalsSupported:                          pc.UILocalsSupported,
-		ClaimsParameterSupported:                   pc.ClaimsParameterSupported,
-		RequestParameterSupported:                  pc.RequestParameterSupported,
-		RequestURIParamaterSupported:               pc.RequestURIParamaterSupported,
-		RequireRequestURIRegistration:              pc.RequireRequestURIRegistration,
-	}
-
-	var err error
-	if conf.Issuer, err = pc.parseURI(pc.Issuer); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.Issuer")
-	}
-	if conf.AuthEndpoint, err = pc.parseURI(pc.AuthEndpoint); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.AuthEndpoint")
-	}
-	if conf.TokenEndpoint, err = pc.parseURI(pc.TokenEndpoint); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.TokenEndpoint")
-	}
-	if conf.UserInfoEndpoint, err = pc.parseURI(pc.UserInfoEndpoint); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.UserInfoEndpoint")
-	}
-	if conf.KeysEndpoint, err = pc.parseURI(pc.JwksUri); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.JwksUri")
-	}
-	if conf.RegistrationEndpoint, err = pc.parseURI(pc.RegistrationEndpoint); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.RegistrationEndpoint")
-	}
-	if conf.Policy, err = pc.parseURI(pc.Policy); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.Policy")
-	}
-	if conf.TermsOfService, err = pc.parseURI(pc.TermsOfService); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.TermsOfService")
-	}
-	if conf.ServiceDocs, err = pc.parseURI(pc.ServiceDocs); err != nil {
-		return oidc.ProviderConfig{}, pkgerrors.Wrapf(err, "Error parsing OidcProviderConfiguration.ServiceDocs")
-	}
-
-	return conf, nil
-}
-
-func (pc *OidcProviderConfiguration) parseURI(s string) (*url.URL, error) {
-
-	if s == "" {
-		return nil, nil
-	}
-	u, err := url.Parse(s)
-	if err != nil {
-		return nil, pkgerrors.Wrapf(err, "Error parsing URI")
-	}
-
-	if u.Host == "" {
-		return nil, fmt.Errorf("Host required in URI")
-	} else if u.Scheme != "http" && u.Scheme != "https" {
-		return nil, fmt.Errorf("Invalid URI scheme.  Only valid schemes are http and https")
-	}
-
-	return u, nil
 }
