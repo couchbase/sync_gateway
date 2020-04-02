@@ -127,7 +127,6 @@ func TestAddRaw(t *testing.T) {
 // TestAddRawTimeout attempts to fill up the gocbpipeline by writing large documents concurrently with a small timeout,
 // to verify that timeout errors are returned, and the operation isn't retried (which would return a cas error).
 //   (see CBG-463)
-// TODO: Lower limits if possible? Seems to be exceeding the pooled 200MB bucket limit occasionally.
 func TestAddRawTimeoutRetry(t *testing.T) {
 
 	testBucket := GetTestBucket(t)
@@ -164,8 +163,6 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 }
 
 func TestBulkGetRaw(t *testing.T) {
-
-	defer SetUpTestLogging(LevelTrace, KeyHTTP, KeyBucket, KeyCRUD, KeyCache)()
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
@@ -627,8 +624,6 @@ func SkipXattrTestsIfNotEnabled(t *testing.T) {
 
 // TestXattrWriteCasSimple.  Validates basic write of document with xattr, and retrieval of the same doc w/ xattr.
 func TestXattrWriteCasSimple(t *testing.T) {
-
-	defer SetUpTestLogging(LevelInfo, KeyAll)()
 
 	SkipXattrTestsIfNotEnabled(t)
 

@@ -1644,8 +1644,6 @@ func TestResponseEncoding(t *testing.T) {
 }
 
 func TestLogin(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP, base.KeyHTTPResp, base.KeyCRUD, base.KeyCache, base.KeyBucket)()
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 

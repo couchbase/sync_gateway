@@ -14,99 +14,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// viewBucketReadier removes any existing views and installs a new set into the given bucket.
-func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.GocbTestBucketPool) error {
-	var ddocs map[string]interface{}
-	err := b.GetDDocs(&ddocs)
-	if err != nil {
-		return err
-	}
+// Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
+// Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
+func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 
-	for ddocName, _ := range ddocs {
-		tbp.Logf(ctx, "removing existing view: %s", ddocName)
-		if err := b.DeleteDDoc(ddocName); err != nil {
-			return err
+	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
+		empty, err := isIndexEmpty(bucket, useXattrs)
+		if err != nil {
+			return true, err, nil
 		}
+		return !empty, nil, empty
 	}
 
-	tbp.Logf(ctx, "initializing bucket views")
-	err = InitializeViews(b)
-	if err != nil {
-		return err
-	}
+	// Kick off the retry loop
+	err, _ := base.RetryLoop(
+		"Wait for index to be empty",
+		retryWorker,
+		base.CreateMaxDoublingSleeperFunc(60, 500, 5000),
+	)
+	return err
 
-	tbp.Logf(ctx, "bucket views initialized")
-	return nil
-}
-
-// ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
-var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
-
-	if base.TestsDisableGSI() {
-		tbp.Logf(ctx, "flushing bucket and readying views only")
-		if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
-			return err
-		}
-		// Exit early if we're not using GSI.
-		return viewBucketReadier(ctx, b, tbp)
-	}
-
-	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
-	if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
-		return err
-	}
-	if err := viewBucketReadier(ctx, b, tbp); err != nil {
-		return err
-	}
-
-	tbp.Logf(ctx, "waiting for empty bucket indexes")
-	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-	if err := WaitForIndexEmpty(b, base.TestUseXattrs()); err != nil {
-		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
-		return err
-	}
-	tbp.Logf(ctx, "bucket indexes empty")
-
-	return nil
-}
-
-// ViewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
-var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.GocbTestBucketPool) error {
-	gocbBucket, ok := base.AsGoCBBucket(b)
-	if !ok {
-		// Check we're not running with an invalid combination of backing store and xattrs.
-		if base.TestUseXattrs() {
-			return fmt.Errorf("xattrs not supported when using Walrus buckets")
-		}
-
-		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
-		return viewBucketReadier(ctx, b, tbp)
-	}
-
-	// Exit early if we're not using GSI.
-	if base.TestsDisableGSI() {
-		return nil
-	}
-
-	if empty, err := isIndexEmpty(gocbBucket, base.TestUseXattrs()); empty && err == nil {
-		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
-		return nil
-	} else {
-		tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
-	}
-
-	tbp.Logf(ctx, "dropping existing bucket indexes")
-	if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
-		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
-		return err
-	}
-
-	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(gocbBucket, base.TestUseXattrs(), 0, true); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error) {
@@ -137,28 +64,6 @@ func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error
 	}
 
 	return !found, nil
-}
-
-// Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
-// Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
-func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
-
-	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		empty, err := isIndexEmpty(bucket, useXattrs)
-		if err != nil {
-			return true, err, nil
-		}
-		return !empty, nil, empty
-	}
-
-	// Kick off the retry loop
-	err, _ := base.RetryLoop(
-		"Wait for index to be empty",
-		retryWorker,
-		base.CreateMaxDoublingSleeperFunc(60, 500, 5000),
-	)
-	return err
-
 }
 
 // Count how many rows are in gocb.QueryResults
@@ -277,4 +182,99 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 		time.Sleep(10 * time.Millisecond)
 	}
 	return isChanged
+}
+
+// ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
+var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
+
+	if base.TestsDisableGSI() {
+		tbp.Logf(ctx, "flushing bucket and readying views only")
+		if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
+			return err
+		}
+		// Exit early if we're not using GSI.
+		return viewBucketReadier(ctx, b, tbp)
+	}
+
+	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
+	if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
+		return err
+	}
+	if err := viewBucketReadier(ctx, b, tbp); err != nil {
+		return err
+	}
+
+	tbp.Logf(ctx, "waiting for empty bucket indexes")
+	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
+	if err := WaitForIndexEmpty(b, base.TestUseXattrs()); err != nil {
+		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
+		return err
+	}
+	tbp.Logf(ctx, "bucket indexes empty")
+
+	return nil
+}
+
+// ViewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
+var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.GocbTestBucketPool) error {
+	gocbBucket, ok := base.AsGoCBBucket(b)
+	if !ok {
+		// Check we're not running with an invalid combination of backing store and xattrs.
+		if base.TestUseXattrs() {
+			return fmt.Errorf("xattrs not supported when using Walrus buckets")
+		}
+
+		tbp.Logf(ctx, "bucket not a gocb bucket... skipping GSI setup")
+		return viewBucketReadier(ctx, b, tbp)
+	}
+
+	// Exit early if we're not using GSI.
+	if base.TestsDisableGSI() {
+		return nil
+	}
+
+	if empty, err := isIndexEmpty(gocbBucket, base.TestUseXattrs()); empty && err == nil {
+		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
+		return nil
+	} else {
+		tbp.Logf(ctx, "indexes not empty (or doesn't exist) - %v %v", empty, err)
+	}
+
+	tbp.Logf(ctx, "dropping existing bucket indexes")
+	if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
+		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
+		return err
+	}
+
+	tbp.Logf(ctx, "creating SG bucket indexes")
+	if err := InitializeIndexes(gocbBucket, base.TestUseXattrs(), 0, true); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// viewBucketReadier removes any existing views and installs a new set into the given bucket.
+func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.GocbTestBucketPool) error {
+	var ddocs map[string]interface{}
+	err := b.GetDDocs(&ddocs)
+	if err != nil {
+		return err
+	}
+
+	for ddocName, _ := range ddocs {
+		tbp.Logf(ctx, "removing existing view: %s", ddocName)
+		if err := b.DeleteDDoc(ddocName); err != nil {
+			return err
+		}
+	}
+
+	tbp.Logf(ctx, "initializing bucket views")
+	err = InitializeViews(b)
+	if err != nil {
+		return err
+	}
+
+	tbp.Logf(ctx, "bucket views initialized")
+	return nil
 }
