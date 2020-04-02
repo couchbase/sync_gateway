@@ -1911,7 +1911,18 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) er
 		return bucket.putDDocForTombstones(gocbDesignDoc)
 	}
 
-	return manager.UpsertDesignDocument(gocbDesignDoc)
+	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
+	var worker RetryWorker = func() (bool, error, interface{}) {
+		err := manager.UpsertDesignDocument(gocbDesignDoc)
+		if err != nil {
+			Warnf("Got error from UpsertDesignDocument: %v - Retrying...", err)
+			return true, err, nil
+		}
+		return false, nil, nil
+	}
+
+	err, _ = RetryLoop("PutDDocRetryLoop", worker, CreateSleeperFunc(5, 100))
+	return err
 
 }
 
