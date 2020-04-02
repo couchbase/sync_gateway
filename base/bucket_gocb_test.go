@@ -135,14 +135,14 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 
 	gocbBucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if ok {
-		gocbBucket.Bucket.SetOperationTimeout(100 * time.Millisecond)
+		gocbBucket.Bucket.SetOperationTimeout(250 * time.Millisecond)
 	}
 
 	largeDoc := make([]byte, 1000000)
 	rand.Read(largeDoc)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
