@@ -40,7 +40,7 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.GocbTestBuc
 }
 
 // ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
-var ViewsAndGSIBucketReadier base.GocbBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
+var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.GocbTestBucketPool) error {
 
 	if base.TestsDisableGSI() {
 		tbp.Logf(ctx, "flushing bucket and readying views only")
@@ -71,7 +71,7 @@ var ViewsAndGSIBucketReadier base.GocbBucketReadierFunc = func(ctx context.Conte
 }
 
 // ViewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
-var ViewsAndGSIBucketInit base.BucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.GocbTestBucketPool) error {
+var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.GocbTestBucketPool) error {
 	gocbBucket, ok := base.AsGoCBBucket(b)
 	if !ok {
 		// Check we're not running with an invalid combination of backing store and xattrs.

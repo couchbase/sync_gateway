@@ -19,10 +19,6 @@ import (
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
 // util_test.go, which is only accessible from the base package.
 
-// TestBucketPool is used to manage a pool of buckets for testing.
-// This is safe to leave as nil to use Walrus test buckets.
-var TestBucketPool *GocbTestBucketPool
-
 var TestExternalRevStorage = false
 var numOpenBucketsByName map[string]int32
 var mutexNumOpenBucketsByName sync.Mutex

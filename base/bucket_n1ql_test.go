@@ -595,8 +595,6 @@ func TestWaitForBucketExistence(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	defer SetUpTestLogging(LevelDebug, KeyAll)()
-
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 	bucket, ok := AsGoCBBucket(testBucket)
