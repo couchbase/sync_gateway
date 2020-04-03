@@ -54,12 +54,13 @@ const (
 
 var testProviderAudiences = []string{testProviderAud} // Audiences in array format for test provider validation
 
-//This is the HTML template used to display the testing OP internal authentication form
-const login_html = `
+// This is the HTML template used to display the testing OP internal authentication form
+const loginHtml = `
 <h1>{{.Title}}</h1>
-<div>This OIDC test provider can be used in development or test to simulate an OIDC Provider service.<br>
-This provider is enabled per database by adding the following database proeprties to the Sync Gateway config
-<pre>
+<div>
+   This OIDC test provider can be used in development or test to simulate an OIDC Provider service.<br>
+   This provider is enabled per database by adding the following database proeprties to the Sync Gateway config
+   <pre>
 "oidc": {
   "default_provider":"sync_gateway",
   "providers": {
@@ -78,15 +79,17 @@ This provider is enabled per database by adding the following database proeprtie
 </pre>
 </div>
 <div>
-To simulate a successful user authentication, enter a username and click "Return a valid authorization code for this user".<br>
-To simulate a failed user authentication, enter a username and click "Return an authorization error for this user".<br><br><br><br>
+   To simulate a successful user authentication, enter a username and click "Return a valid authorization code for this user".<br>
+   To simulate a failed user authentication, enter a username and click "Return an authorization error for this user".<br><br><br><br>
 </div>
 <form action="authenticate?{{.Query}}" method="POST" enctype="multipart/form-data">
-    <div>Username:<input type="text" name="username" cols="80"></div>
-    <div>ID Token TTL (seconds):<input type="text" name="tokenttl" cols="30" value="3600"></div>
-    <div><input type="checkbox" name="offline" value="offlineAccess">Allow Offline Access<div>
-    <div><input type="submit" name="authenticated" value="Return a valid authorization code for this user"></div>
-    <div><input type="submit" name="notauthenticated" value="Return an authorization error for this user"></div>
+   <div>Username:<input type="text" name="username" cols="80"></div>
+   <div>ID Token TTL (seconds):<input type="text" name="tokenttl" cols="30" value="3600"></div>
+   <div>
+   <input type="checkbox" name="offline" value="offlineAccess">Allow Offline Access
+   <div>
+   <div><input type="submit" name="authenticated" value="Return a valid authorization code for this user"></div>
+   <div><input type="submit" name="notauthenticated" value="Return an authorization error for this user"></div>
 </form>
 `
 
@@ -101,7 +104,7 @@ type AuthState struct {
 	Scopes      map[string]struct{}
 }
 
-var authCodeTokenMap map[string]AuthState = make(map[string]AuthState)
+var authCodeTokenMap = make(map[string]AuthState)
 
 /*
  * Returns the OpenID provider configuration info
@@ -168,7 +171,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	p := &Page{Title: "Oidc Test Provider", Query: requestParams}
 	t := template.New("Test Login")
-	if t, err := t.Parse(login_html); err != nil {
+	if t, err := t.Parse(loginHtml); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, err.Error())
 	} else {
 		err := t.Execute(h.response, p)
@@ -322,7 +325,7 @@ func scopeStringToMap(scope string) map[string]struct{} {
 	return scopesMap
 }
 
-//Creates a signed JWT token for the requesting subject and issuer URL
+// Creates a signed JWT for the requesting subject and issuer URL
 func createJWTToken(subject string, issuerUrl string, ttl time.Duration, scopesMap map[string]struct{}) (token string,
 	err error) {
 
@@ -472,6 +475,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl t
 func extractSubjectFromRefreshToken(refreshToken string) (string, error) {
 	decodedToken, err := base64.StdEncoding.DecodeString(refreshToken)
 	if err != nil {
+		base.Debugf(base.KeyAuth, "invalid refresh token provided, error: %v", err)
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid OIDC Refresh Token")
 	}
 
@@ -482,6 +486,5 @@ func extractSubjectFromRefreshToken(refreshToken string) (string, error) {
 	if len(components) != 2 || subject == "" {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "OIDC Refresh Token does not contain subject")
 	}
-
 	return subject, nil
 }

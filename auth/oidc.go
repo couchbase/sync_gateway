@@ -10,11 +10,9 @@
 package auth
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -45,7 +43,7 @@ type OIDCClient struct {
 }
 
 type OIDCProvider struct {
-	//JWTOptions
+	JWTOptions
 	Issuer                  string   `json:"issuer"`                           // OIDC Issuer
 	Register                bool     `json:"register"`                         // If true, server will register new user accounts
 	ClientID                *string  `json:"client_id,omitempty"`              // Client ID
@@ -259,16 +257,4 @@ func GetIDToken(rawIDToken string) (*oidc.IDToken, error) {
 		AccessTokenHash: token.AtHash,
 	}
 	return idToken, nil
-}
-
-func parseJWT(p string) ([]byte, error) {
-	parts := strings.Split(p, ".")
-	if len(parts) < 3 {
-		return nil, fmt.Errorf("oidc: malformed jwt, expected 3 parts got %d", len(parts))
-	}
-	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, fmt.Errorf("oidc: malformed jwt payload: %v", err)
-	}
-	return payload, nil
 }
