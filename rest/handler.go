@@ -715,7 +715,6 @@ func (h *handler) flush() {
 // writes a CouchDB-style JSON description to the body.
 func (h *handler) writeError(err error) {
 	if err != nil {
-		err = auth.OIDCToHTTPError(err) // Map OIDC/OAuth2 errors to HTTP form
 		status, message := base.ErrorAsHTTPStatus(err)
 		h.writeStatus(status, message)
 		if status >= 500 {

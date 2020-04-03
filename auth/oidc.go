@@ -18,11 +18,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/go-oidc" //"github.com/coreos/go-oidc/oidc"
+	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/base"
-	"golang.org/x/net/context" //phttp "github.com/coreos/go-oidc/http"
-	"golang.org/x/oauth2"      //"github.com/coreos/go-oidc/oauth2"
-	jose "gopkg.in/square/go-jose.v2"
+	pkgerrors "github.com/pkg/errors"
+	"golang.org/x/net/context"
+	"golang.org/x/oauth2"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -54,7 +55,6 @@ type OIDCProvider struct {
 	Scope                   []string `json:"scope,omitempty"`                  // Scope sent for openid request
 	IncludeAccessToken      bool     `json:"include_access,omitempty"`         // Whether the _oidc_callback response should include OP access token and associated fields (token_type, expires_in)
 	UserPrefix              string   `json:"user_prefix,omitempty"`            // Username prefix for users created for this provider
-	DiscoveryURI            string   `json:"discovery_url,omitempty"`          // Non-standard discovery endpoints
 	DisableConfigValidation bool     `json:"disable_cfg_validation,omitempty"` // Bypasses config validation based on the OIDC spec.  Required for some OPs that don't strictly adhere to spec (eg. Yahoo)
 	OIDCClient              *OIDCClient
 	OIDCClientOnce          sync.Once
@@ -150,8 +150,8 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	context := context.Background()
 	provider, err := oidc.NewProvider(context, op.Issuer)
-	if err != nil {
-		return err
+	if err != nil || provider == nil {
+		return pkgerrors.Wrap(err, "unable to discover config")
 	}
 
 	config := oauth2.Config{
@@ -186,8 +186,8 @@ func (op *OIDCProvider) InitOIDCClient() error {
 func (op *OIDCProvider) DiscoverConfig() (config *oidc.Provider, shouldSync bool, err error) {
 	ctx := context.Background()
 	// If discovery URI is explicitly defined, use it instead of the standard issuer-based discovery.
-	if op.DiscoveryURI != "" || op.DisableConfigValidation {
-		config, err = oidc.NewProvider(ctx, op.DiscoveryURI)
+	if op.DisableConfigValidation {
+		config, err = oidc.NewProvider(ctx, op.Issuer)
 		shouldSync = false
 	} else {
 		maxRetryAttempts := 5
@@ -208,31 +208,6 @@ func (op *OIDCProvider) DiscoverConfig() (config *oidc.Provider, shouldSync bool
 
 func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
-}
-
-// Converts an OpenID Connect / OAuth2 error to an HTTP error
-func OIDCToHTTPError(err error) error {
-	/*
-		if oauthErr, ok := pkgerrors.Cause(err).(*oauth2.Error); ok {
-			status := 400
-			switch oauthErr.Type {
-			case oauth2.ErrorAccessDenied,
-				oauth2.ErrorUnauthorizedClient,
-				oauth2.ErrorInvalidClient,
-				oauth2.ErrorInvalidGrant,
-				oauth2.ErrorInvalidRequest:
-				status = 401
-			case oauth2.ErrorServerError:
-				status = 502
-			case oauth2.ErrorUnsupportedGrantType,
-				oauth2.ErrorUnsupportedResponseType:
-				status = 400
-			}
-			err = base.HTTPErrorf(status, "OpenID Connect error: %s (%s)",
-				oauthErr.Description, oauthErr.Type)
-		}
-	*/
-	return err
 }
 
 type jsonTime time.Time

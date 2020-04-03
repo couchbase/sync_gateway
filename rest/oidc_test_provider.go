@@ -15,8 +15,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/square/go-jose.v2"
-	"gopkg.in/square/go-jose.v2/jwt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -26,6 +24,8 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 // This is the private RSA Key that will be used to sign all tokens
@@ -35,15 +35,13 @@ const (
 	testProviderKeyIdentifier = "sync_gateway_oidc_test_provider" // Identifier for test provider private keys
 	testProviderAud           = "sync_gateway"                    // Audience for test provider
 	defaultIdTokenTTL         = 3600                              // Default ID token expiry
-)
 
-const (
+	// Keys to access values from user consent form.
 	formKeyUsername      = "username"
 	formKeyTokenTTL      = "tokenttl"
 	formKeyAuthenticated = "authenticated"
-)
 
-const (
+	// Headers
 	headerLocation = "Location"
 )
 
@@ -478,9 +476,7 @@ func extractSubjectFromRefreshToken(refreshToken string) (string, error) {
 	}
 
 	components := strings.Split(string(decodedToken), ":::")
-
 	subject := components[0]
-
 	base.Debugf(base.KeyAuth, "subject extracted from refresh token = %v", subject)
 
 	if len(components) != 2 || subject == "" {
