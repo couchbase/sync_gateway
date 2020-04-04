@@ -153,12 +153,6 @@ func (op *OIDCProvider) InitOIDCClient() error {
 		return base.RedactErrorf("Issuer not defined for OpenID Connect provider %+v", base.UD(op))
 	}
 
-	//context := context.Background()
-	//provider, err := oidc.NewProvider(context, op.Issuer)
-	//if err != nil || provider == nil {
-	//	return pkgerrors.Wrap(err, "unable to discover config")
-	//}
-
 	provider, context, _, err := op.DiscoverConfig()
 	if err != nil || provider == nil {
 		return pkgerrors.Wrap(err, "unable to discover config")
@@ -198,7 +192,7 @@ func (op *OIDCProvider) DiscoverConfig() (config *oidc.Provider, ctx context.Con
 	// If discovery URI is explicitly defined, use it instead of the standard issuer-based discovery.
 	if op.DiscoveryURI != "" || op.DisableConfigValidation {
 		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(op.DiscoveryURI))
-		config, err = NewProvider(ctx, op.Issuer)
+		config, err = NewProvider(ctx, op.Issuer, op.DiscoveryURI)
 		shouldSync = false
 	} else {
 		wellKnown := strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
@@ -278,9 +272,8 @@ func GetIDToken(rawIDToken string) (*oidc.IDToken, error) {
 //
 // The issuer is the URL identifier for the service. For example: "https://accounts.google.com"
 // or "https://login.salesforce.com".
-func NewProvider(ctx context.Context, issuer string) (*oidc.Provider, error) {
-	wellKnown := strings.TrimSuffix(issuer, "/") + discoveryConfigPath
-	req, err := http.NewRequest("GET", wellKnown, nil)
+func NewProvider(ctx context.Context, issuer, wellKnown string) (*oidc.Provider, error) {
+	req, err := http.NewRequest(http.MethodGet, wellKnown, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -316,20 +309,19 @@ func NewProvider(ctx context.Context, issuer string) (*oidc.Provider, error) {
 	}
 
 	provider := &oidc.Provider{}
-	remoteKeySet := oidc.NewRemoteKeySet(ctx, p.JWKSURL)
 	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("issuer"), p.Issuer)
 	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("authURL"), p.AuthURL)
 	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("tokenURL"), p.TokenURL)
 	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("userInfoURL"), p.UserInfoURL)
 	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("algorithms"), algs)
 	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("rawClaims"), body)
-	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("remoteKeySet"), remoteKeySet)
+	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("remoteKeySet"), oidc.NewRemoteKeySet(ctx, p.JWKSURL))
 
 	return provider, nil
 }
 
-// supportedAlgorithms is a list of algorithms explicitly supported by this
-// package. If a provider supports other algorithms, such as HS256 or none,
+// List of algorithms explicitly supported by this go-oidc library.
+// If a provider supports other algorithms, such as HS256 or none,
 // those values won't be passed to the IDTokenVerifier.
 var supportedAlgorithms = map[string]bool{
 	oidc.RS256: true,
