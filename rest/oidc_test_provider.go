@@ -40,6 +40,7 @@ const (
 	formKeyUsername      = "username"
 	formKeyTokenTTL      = "tokenttl"
 	formKeyAuthenticated = "authenticated"
+	formKeyRefreshToken  = "refresh_token"
 
 	// Headers
 	headerLocation = "Location"
@@ -159,7 +160,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	base.Infof(base.KeyAuth, "handleOidcTestProviderAuthorize() raw authorize request raw query params = %v", requestParams)
 
-	scope := h.getQueryValues().Get("scope")
+	scope := h.getQueryValues().Get(requestParamScope)
 	if scope == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "missing scope parameter")
 	}
@@ -219,7 +220,7 @@ func (h *handler) handleOidcTestProviderToken() error {
 
 	base.Infof(base.KeyAuth, "handleOidcTestProviderToken() called")
 
-	//determine the grant_type being requested
+	// determine the grant_type being requested
 	grantType := h.rq.FormValue("grant_type")
 
 	if grantType == "authorization_code" {
@@ -326,7 +327,7 @@ func scopeStringToMap(scope string) map[string]struct{} {
 }
 
 // Creates a signed JWT for the requesting subject and issuer URL
-func createJWTToken(subject string, issuerUrl string, ttl time.Duration, scopesMap map[string]struct{}) (token string,
+func createJWT(subject string, issuerUrl string, ttl time.Duration, scopesMap map[string]struct{}) (token string,
 	err error) {
 
 	key, err := privateKey()
@@ -386,10 +387,9 @@ func issuerUrlForDB(h *handler, dbname string) string {
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbname, "_oidc_testing")
 }
 
-//Return the internal test RSA private key, this is decoded from a base64 encoded string
-//stored as a constant above
+// Return the internal test RSA private key, this is decoded from a base64 encoded string
+// stored as a constant above
 func privateKey() (key *rsa.PrivateKey, err error) {
-
 	decodedPrivateKey, err := base64.StdEncoding.DecodeString(base64EncodedPrivateKey)
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error decoding private RSA Key")
@@ -398,15 +398,12 @@ func privateKey() (key *rsa.PrivateKey, err error) {
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error parsing private RSA Key")
 	}
-
 	return
 }
 
 func handleAuthCodeRequest(h *handler) error {
-
-	//Validate the token request
-	code := h.rq.FormValue("code")
-
+	// Validate the token request
+	code := h.rq.FormValue(requestParamCode)
 	subject, err := base64.StdEncoding.DecodeString(code)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
@@ -417,7 +414,6 @@ func handleAuthCodeRequest(h *handler) error {
 	if !ok {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
 	}
-
 	return writeTokenResponse(h, string(subject), issuerUrl(h), authState.TokenTTL, authState.Scopes, TokenRequest_AuthCode)
 }
 
@@ -449,7 +445,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl t
 		refreshToken = base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
 	}
 
-	idToken, err := createJWTToken(subject, issuerUrl, tokenttl, scopesMap)
+	idToken, err := createJWT(subject, issuerUrl, tokenttl, scopesMap)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
 	}

@@ -2,15 +2,15 @@ package rest
 
 import (
 	"encoding/base64"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/require"
 	"log"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCreateJWTToken(t *testing.T) {
@@ -18,7 +18,7 @@ func TestCreateJWTToken(t *testing.T) {
 	issueURL := "http://localhost:4984/default/_oidc_testing"
 	ttl := 5 * time.Minute
 	scopes := make(map[string]struct{})
-	token, err := createJWTToken(subject, issueURL, ttl, scopes)
+	token, err := createJWT(subject, issueURL, ttl, scopes)
 	assert.NoError(t, err, "Couldn't to create JSON Web Token for OpenID Connect")
 	log.Printf("Token: %s", token)
 }
