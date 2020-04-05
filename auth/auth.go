@@ -415,14 +415,13 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 // token with a provider. Used to authenticate a JWT token coming from an insecure source (e.g. client request).
 // If the token is validated but the user for the username defined in the subject claim doesn't exist, creates
 // the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateUntrustedJWT(rawIDToken string, providers OIDCProviderMap,
-	callbackURLFunc OIDCCallbackURLFunc) (User, *oidc.IDToken, error) {
-	base.Debugf(base.KeyAuth, "AuthenticateJWT called with token: %s", base.UD(rawIDToken))
+func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, *oidc.IDToken, error) {
+	base.Debugf(base.KeyAuth, "AuthenticateUntrustedJWT called with token: %s", base.UD(token))
 
 	// Get the ID Token from the raw JWT string; determine issuer/provider.
-	idToken, err := GetIDToken(rawIDToken)
+	idToken, err := GetIDToken(token)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Error parsing JWT string to IDToken in AuthenticateJWT: %v", err)
+		base.Debugf(base.KeyAuth, "Error parsing JWT string to IDToken in AuthenticateUntrustedJWT: %v", err)
 		return nil, &oidc.IDToken{}, err
 	}
 
@@ -441,7 +440,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawIDToken string, providers
 
 	config := &oidc.Config{ClientID: *provider.ClientID}
 	idTokenVerifier := provider.OIDCClient.Provider.Verifier(config)
-	idToken, err = idTokenVerifier.Verify(provider.OIDCClient.Context, rawIDToken)
+	idToken, err = idTokenVerifier.Verify(provider.OIDCClient.Context, token)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
 		return nil, &oidc.IDToken{}, err
@@ -451,11 +450,10 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(rawIDToken string, providers
 }
 
 // Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
-// Verifies the token claims, but doesn't require signature verification.
-// If the token is validated but the user for the username defined in the subject claim doesn't exist,
-// creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider,
-	callbackURLFunc OIDCCallbackURLFunc) (User, *oidc.IDToken, error) {
+// Verifies the token claims, but doesn't require signature verification. If the token is validated but the
+// user for the username defined in the subject claim doesn't exist, creates the user when autoRegister=true.
+func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, *oidc.IDToken, error) {
+	base.Debugf(base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 	// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
 	config := &oidc.Config{ClientID: *provider.ClientID}
 	idTokenVerifier := provider.OIDCClient.Provider.Verifier(config)
@@ -468,8 +466,7 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 }
 
 // Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
-func (auth *Authenticator) authenticateJWT(
-	idToken *oidc.IDToken, provider *OIDCProvider) (User, *oidc.IDToken, error) {
+func (auth *Authenticator) authenticateJWT(idToken *oidc.IDToken, provider *OIDCProvider) (User, *oidc.IDToken, error) {
 	username := GetOIDCUsername(provider, idToken.Subject)
 	base.Debugf(base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
