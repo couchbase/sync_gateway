@@ -325,10 +325,8 @@ pipeline {
                             }
                         }
                         stage('against EE') {
-                            // TODO: Remove skip
-                            when { expression { return false } }
                             steps {
-                                echo 'Example of where we could run lite-core unit tests against a running SG EE'
+                                sh 'docker run jrascagneres/sglitecoretest:latest'
                                 gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
                                     echo "..."
                                 }
