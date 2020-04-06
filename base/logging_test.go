@@ -338,3 +338,60 @@ func CaptureConsolefLogOutput(f func()) string {
 	consoleFOutput = os.Stderr
 	return buf.String()
 }
+
+func BenchmarkGetCallersName(b *testing.B) {
+	tests := []struct {
+		depth       int
+		includeLine bool
+	}{
+		{
+			depth:       1,
+			includeLine: false,
+		},
+		{
+			depth:       2,
+			includeLine: false,
+		},
+		{
+			depth:       3,
+			includeLine: false,
+		},
+		{
+			// depth of 4 exceeds the call stack size for this benchnark
+			// this should actually exit-early and be faster than the above
+			depth:       4,
+			includeLine: false,
+		},
+		{
+			depth:       100,
+			includeLine: false,
+		},
+		{
+			depth:       1,
+			includeLine: true,
+		},
+		{
+			depth:       2,
+			includeLine: true,
+		},
+		{
+			depth:       3,
+			includeLine: true,
+		},
+		{
+			depth:       4,
+			includeLine: true,
+		},
+		{
+			depth:       100,
+			includeLine: true,
+		},
+	}
+	for _, tt := range tests {
+		b.Run(fmt.Sprintf("%v-%v", tt.depth, tt.includeLine), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				GetCallersName(tt.depth, tt.includeLine)
+			}
+		})
+	}
+}
