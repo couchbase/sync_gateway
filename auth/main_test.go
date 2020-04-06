@@ -8,11 +8,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	base.TestBucketPool = base.NewTestBucketPool(base.FlushBucketEmptierFunc, base.NoopInitFunc)
+	base.GTestBucketPool = base.NewTestBucketPool(base.FlushBucketEmptierFunc, base.NoopInitFunc)
 
 	status := m.Run()
 
-	base.TestBucketPool.Close()
+	base.GTestBucketPool.Close()
 
 	os.Exit(status)
 }

@@ -17,8 +17,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// TestBucketPool is a global instance of a GocbTestBucketPool used to manage a pool of buckets for integration testing.
-var TestBucketPool *GocbTestBucketPool
+// GTestBucketPool is a global instance of a TestBucketPool used to manage a pool of buckets for integration testing.
+var GTestBucketPool *TestBucketPool
 
 const (
 	tbpEnvClusterUsername     = "SG_TEST_USERNAME"
@@ -46,9 +46,9 @@ const (
 	tbpEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
 )
 
-// GocbTestBucketPool is used to manage a pool of gocb buckets on a Couchbase Server for testing purposes.
+// TestBucketPool is used to manage a pool of gocb buckets on a Couchbase Server for testing purposes.
 // The zero-value/uninitialized version of this struct is safe to use as Walrus buckets are returned.
-type GocbTestBucketPool struct {
+type TestBucketPool struct {
 	// integrationMode should be true if using Couchbase Server. If this is false, Walrus buckets are returned instead of pooled buckets.
 	integrationMode bool
 
@@ -60,7 +60,7 @@ type GocbTestBucketPool struct {
 	ctxCancelFunc          context.CancelFunc
 	defaultBucketSpec      BucketSpec
 
-	BucketInitFunc TBPBucketInitFunc
+	bucketInitFunc TBPBucketInitFunc
 
 	stats bucketPoolStats
 
@@ -73,12 +73,12 @@ type GocbTestBucketPool struct {
 	verbose AtomicBool
 }
 
-// NewTestBucketPool initializes a new GocbTestBucketPool. To be called from TestMain for packages requiring test buckets.
-func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *GocbTestBucketPool {
+// NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
+func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TBPBucketInitFunc) *TestBucketPool {
 	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
 	if !TestUseCouchbaseServer() {
-		tbp := GocbTestBucketPool{
-			BucketInitFunc: bucketInitFunc,
+		tbp := TestBucketPool{
+			bucketInitFunc: bucketInitFunc,
 		}
 		tbp.verbose.Set(tbpVerbose())
 		return &tbp
@@ -99,7 +99,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	preserveBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvPreserve))
 
-	tbp := GocbTestBucketPool{
+	tbp := TestBucketPool{
 		integrationMode:        true,
 		readyBucketPool:        make(chan *CouchbaseBucketGoCB, numBuckets),
 		bucketReadierQueue:     make(chan tbpBucketName, numBuckets),
@@ -138,7 +138,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 }
 
 // Logf formats the given test bucket logging and logs to stderr.
-func (tbp *GocbTestBucketPool) Logf(ctx context.Context, format string, args ...interface{}) {
+func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...interface{}) {
 	if tbp != nil && !tbp.verbose.IsTrue() {
 		return
 	}
@@ -155,7 +155,7 @@ func (tbp *GocbTestBucketPool) Logf(ctx context.Context, format string, args ...
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
-func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s BucketSpec, teardownFn func()) {
+func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s BucketSpec, teardownFn func()) {
 
 	ctx := testCtx(t)
 
@@ -224,14 +224,14 @@ func (tbp *GocbTestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s B
 	}
 }
 
-func (tbp *GocbTestBucketPool) addBucketToReadierQueue(ctx context.Context, name tbpBucketName) {
+func (tbp *TestBucketPool) addBucketToReadierQueue(ctx context.Context, name tbpBucketName) {
 	tbp.bucketReadierWaitGroup.Add(1)
 	tbp.Logf(ctx, "Putting bucket onto bucketReadierQueue")
 	tbp.bucketReadierQueue <- name
 }
 
 // Close waits for any buckets to be cleaned, and closes the pool.
-func (tbp *GocbTestBucketPool) Close() {
+func (tbp *TestBucketPool) Close() {
 	if tbp == nil {
 		// noop
 		return
@@ -253,7 +253,7 @@ func (tbp *GocbTestBucketPool) Close() {
 }
 
 // printStats outputs test bucket stats for the current package's test run.
-func (tbp *GocbTestBucketPool) printStats() {
+func (tbp *TestBucketPool) printStats() {
 
 	numBucketsOpened := time.Duration(atomic.LoadInt32(&tbp.stats.NumBucketsOpened))
 	if numBucketsOpened == 0 {
@@ -303,7 +303,7 @@ func (tbp *GocbTestBucketPool) printStats() {
 }
 
 // removeOldTestBuckets removes all buckets starting with testBucketNamePrefix
-func (tbp *GocbTestBucketPool) removeOldTestBuckets() error {
+func (tbp *TestBucketPool) removeOldTestBuckets() error {
 	buckets, err := getBuckets(tbp.clusterMgr)
 	if err != nil {
 		return errors.Wrap(err, "couldn't retrieve buckets from cluster manager")
@@ -350,7 +350,7 @@ func getBuckets(cm *gocb.ClusterManager) ([]*gocb.BucketSettings, error) {
 }
 
 // createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
-func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
+func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
 
 	// get a list of any existing buckets, so we can skip creation of them.
 	existingBuckets, err := getBuckets(tbp.clusterMgr)
@@ -441,7 +441,7 @@ func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB i
 // bucketReadierWorker reads a channel of "dirty" buckets (bucketReadierQueue), does something to get them ready, and then puts them back into the pool.
 // The mechanism for getting the bucket ready can vary by package being tested (for instance, a package not requiring views or GSI can use FlushBucketEmptierFunc)
 // A package requiring views or GSI, will need to pass in the db.ViewsAndGSIBucketReadier function.
-func (tbp *GocbTestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc) {
+func (tbp *TestBucketPool) bucketReadierWorker(ctx context.Context, bucketReadierFunc TBPBucketReadierFunc) {
 	tbp.Logf(context.Background(), "Starting bucketReadier")
 
 loop:
@@ -492,8 +492,8 @@ loop:
 	tbp.Logf(context.Background(), "Stopped bucketReadier")
 }
 
-// openTestBucket opens the bucket of the given name for the gocb cluster in the given GocbTestBucketPool.
-func (tbp *GocbTestBucketPool) openTestBucket(testBucketName tbpBucketName, sleeper RetrySleeper) (*CouchbaseBucketGoCB, error) {
+// openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
+func (tbp *TestBucketPool) openTestBucket(testBucketName tbpBucketName, sleeper RetrySleeper) (*CouchbaseBucketGoCB, error) {
 
 	ctx := bucketNameCtx(context.Background(), string(testBucketName))
 
@@ -518,16 +518,16 @@ func (tbp *GocbTestBucketPool) openTestBucket(testBucketName tbpBucketName, slee
 }
 
 // TBPBucketInitFunc is a function that is run once (synchronously) when creating/opening a bucket.
-type TBPBucketInitFunc func(ctx context.Context, b Bucket, tbp *GocbTestBucketPool) error
+type TBPBucketInitFunc func(ctx context.Context, b Bucket, tbp *TestBucketPool) error
 
 // NoopInitFunc does nothing to init a bucket. This can be used in conjunction with FlushBucketReadier when there's no requirement for views/GSI.
-var NoopInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *GocbTestBucketPool) error {
+var NoopInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
 	return nil
 }
 
 // PrimaryIndexInitFunc creates a primary index on the given bucket. This can then be used with N1QLBucketEmptierFunc, for improved compatibility with GSI.
 // Will be used when GSI is re-enabled (CBG-813)
-var PrimaryIndexInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *GocbTestBucketPool) error {
+var PrimaryIndexInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *TestBucketPool) error {
 	gocbBucket, ok := AsGoCBBucket(b)
 	if !ok {
 		tbp.Logf(ctx, "skipping primary index creation for non-gocb bucket")
@@ -546,16 +546,16 @@ var PrimaryIndexInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket,
 }
 
 // TBPBucketReadierFunc is a function that runs once a test is finished with a bucket. This runs asynchronously.
-type TBPBucketReadierFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error
+type TBPBucketReadierFunc func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *TestBucketPool) error
 
 // FlushBucketEmptierFunc ensures the bucket is empty by flushing. It is not recommended to use with GSI.
-var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *TestBucketPool) error {
 	return b.Flush()
 }
 
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.
 // Will be used when GSI is re-enabled (CBG-813)
-var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
+var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *TestBucketPool) error {
 	if hasPrimary, _, err := b.getIndexMetaWithoutRetry(PrimaryIndexName); err != nil {
 		return err
 	} else if !hasPrimary {
