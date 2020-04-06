@@ -62,7 +62,7 @@ func TestSetGetRaw(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	val := []byte("bar")
 
 	_, _, err := bucket.GetRaw(key)
@@ -91,7 +91,7 @@ func TestAddRaw(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	val := []byte("bar")
 
 	_, _, err := bucket.GetRaw(key)
@@ -234,7 +234,7 @@ func TestWriteCasBasic(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	val := []byte("bar2")
 
 	_, _, err := bucket.GetRaw(key)
@@ -276,7 +276,7 @@ func TestWriteCasAdvanced(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
@@ -422,7 +422,7 @@ func TestUpdate(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	valInitial := []byte("initial")
 	valUpdated := []byte("updated")
 
@@ -478,7 +478,7 @@ func TestIncrCounter(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 
 	defer func() {
 		err := bucket.Delete(key)
@@ -517,7 +517,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 	// There's no easy way to validate the expiry time of a doc (that I know of)
 	// so this is just a smoke test
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	val := []byte("bar")
 
 	testBucket := GetTestBucket(t)
@@ -631,7 +631,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -699,7 +699,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -765,7 +765,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["sg_field"] = "sg_value"
@@ -839,7 +839,7 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -892,7 +892,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -976,7 +976,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -1061,7 +1061,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["counter"] = float64(1)
@@ -1185,7 +1185,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1240,7 +1240,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	xattrVal["seq"] = 1
 	xattrVal["rev"] = "1-1234"
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1313,7 +1313,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1545,7 +1545,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 		return
 	}
 
-	key := getTestKeyNamespace(t) + "1"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	createTombstonedDoc(bucket, key, xattrName)
 
