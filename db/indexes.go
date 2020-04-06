@@ -375,7 +375,6 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 		r, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
 		// Retry on timeout error, otherwise return
 		if err == nil {
-			_ = r.Close()
 			return nil
 		}
 		if err == base.ErrViewTimeoutError {
