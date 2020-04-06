@@ -82,6 +82,8 @@
 
   <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="couchbasedeps" revision="8d771559cf6e5111c9b9159810d0e4538e7cdc82"/>
 
+  <project name="go-oidc" path="godeps/src/github.com/square/go-jose" remote="couchbasedeps" revision="4ef0f1b175ccd65472d154e1207c4d7b8102545f"/>
+
   <project name="go-systemd" path="godeps/src/github.com/coreos/go-systemd" remote="couchbasedeps" revision="1d9051fe7a349daf6dac904c0b277c3520c09368"/>
 
   <project name="pkg" path="godeps/src/github.com/coreos/pkg" remote="couchbasedeps" revision="160ae6282d8c48a33d8c150e4e4817fdef8a5cde"/>

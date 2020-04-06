@@ -11,8 +11,6 @@ package auth
 
 import (
 	"context"
-	"github.com/couchbase/sync_gateway/base"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +18,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
@@ -280,7 +281,7 @@ func TestNewProvider(t *testing.T) {
 		{
 			name: "basic_case",
 			data: `{
-				"issuer": "ISSUER",
+				"issuer": "${issuer}",
 				"authorization_endpoint": "https://example.com/auth",
 				"token_endpoint": "https://example.com/token",
 				"jwks_uri": "https://example.com/keys",
@@ -293,7 +294,7 @@ func TestNewProvider(t *testing.T) {
 		{
 			name: "additional_algorithms",
 			data: `{
-				"issuer": "ISSUER",
+				"issuer": "${issuer}",
 				"authorization_endpoint": "https://example.com/auth",
 				"token_endpoint": "https://example.com/token",
 				"jwks_uri": "https://example.com/keys",
@@ -306,7 +307,7 @@ func TestNewProvider(t *testing.T) {
 		{
 			name: "unsupported_algorithms",
 			data: `{
-				"issuer": "ISSUER",
+				"issuer": "${issuer}",
 				"authorization_endpoint": "https://example.com/auth",
 				"token_endpoint": "https://example.com/token",
 				"jwks_uri": "https://example.com/keys",
@@ -332,7 +333,7 @@ func TestNewProvider(t *testing.T) {
 		{
 			name: "issuer_with_trailing_slash",
 			data: `{
-				"issuer": "ISSUER",
+				"issuer": "${issuer}",
 				"authorization_endpoint": "https://example.com/auth",
 				"token_endpoint": "https://example.com/token",
 				"jwks_uri": "https://example.com/keys",
@@ -352,7 +353,7 @@ func TestNewProvider(t *testing.T) {
 			wantUserInfoURL: "https://openidconnect.googleapis.com/v1/userinfo",
 			wantAlgorithms:  []string{"RS256"},
 			data: `{
-				"issuer": "ISSUER",
+				"issuer": "${issuer}",
 				"authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
 				"device_authorization_endpoint": "https://oauth2.googleapis.com/device/code",
 				"token_endpoint": "https://oauth2.googleapis.com/token",
@@ -382,7 +383,7 @@ func TestNewProvider(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				io.WriteString(w, strings.ReplaceAll(test.data, "ISSUER", issuer))
+				io.WriteString(w, strings.ReplaceAll(test.data, "${issuer}", issuer))
 			}
 			s := httptest.NewServer(http.HandlerFunc(hf))
 			defer s.Close()
