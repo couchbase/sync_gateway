@@ -71,7 +71,7 @@ var (
 		KeySyncMsg:        "SyncMsg",
 		KeyWebSocket:      "WS",
 		KeyWebSocketFrame: "WSFrame",
-		KeySGTest:         "~~~~~ TEST",
+		KeySGTest:         "TEST",
 	}
 	logKeyNamesInverse = inverselogKeyNames(logKeyNames)
 )
