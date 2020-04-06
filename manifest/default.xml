@@ -86,6 +86,8 @@
 
   <project name="go-jose" path="godeps/src/gopkg.in/square/go-jose.v2" remote="couchbasedeps" revision="4ef0f1b175ccd65472d154e1207c4d7b8102545f"/>
 
+  <project name="cachecontrol" path="godeps/src/github.com/pquerna/cachecontrol" remote="couchbasedeps" revision="1555304b9b35fdd2b425bccf1a5613677705e7d0"/>
+
   <project name="go-systemd" path="godeps/src/github.com/coreos/go-systemd" remote="couchbasedeps" revision="1d9051fe7a349daf6dac904c0b277c3520c09368"/>
 
   <project name="pkg" path="godeps/src/github.com/coreos/pkg" remote="couchbasedeps" revision="160ae6282d8c48a33d8c150e4e4817fdef8a5cde"/>
