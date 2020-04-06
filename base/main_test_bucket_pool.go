@@ -296,7 +296,7 @@ func (tbp *GocbTestBucketPool) printStats() {
 
 // removeOldTestBuckets removes all buckets starting with testBucketNamePrefix
 func (tbp *GocbTestBucketPool) removeOldTestBuckets() error {
-	buckets, err := tbp.clusterMgr.GetBuckets()
+	buckets, err := getBuckets(tbp.clusterMgr)
 	if err != nil {
 		return errors.Wrap(err, "couldn't retrieve buckets from cluster manager")
 	}
@@ -328,11 +328,24 @@ func (tbp *GocbTestBucketPool) removeOldTestBuckets() error {
 	return nil
 }
 
+// getBuckets returns a list of buckets in the cluster.
+func getBuckets(cm *gocb.ClusterManager) ([]*gocb.BucketSettings, error) {
+	buckets, err := cm.GetBuckets()
+	if err != nil {
+		// special handling for gocb's empty non-nil error if we send this request with invalid credentials
+		if err.Error() == "" {
+			err = errors.New("couldn't get buckets from cluster, check authentication credentials")
+		}
+		return nil, err
+	}
+	return buckets, nil
+}
+
 // createTestBuckets creates a new set of integration test buckets and pushes them into the readier queue.
 func (tbp *GocbTestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
 
 	// get a list of any existing buckets, so we can skip creation of them.
-	existingBuckets, err := tbp.clusterMgr.GetBuckets()
+	existingBuckets, err := getBuckets(tbp.clusterMgr)
 	if err != nil {
 		return err
 	}
