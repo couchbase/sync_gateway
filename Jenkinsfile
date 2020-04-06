@@ -326,7 +326,7 @@ pipeline {
                         }
                         stage('against EE') {
                             steps {
-                                sh 'docker run -v /root/.ssh/id_rsa:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v output.out:/output.out jrascagneres/sglitecoretest:latest'
+                                sh 'docker run --rm -v /root/.ssh/id_rsa:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v output.out:/output.out jrascagneres/sglitecoretest:latest'
                                 gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
                                     echo "..."
                                 }
