@@ -29,8 +29,8 @@ const (
 	tbpBucketNamePrefix = "sg_int_"
 
 	// Creates this many buckets in the backing store to be pooled for testing.
-	defaultBucketPoolSize = 10
-	tbpEnvPoolSize        = "SG_TEST_BUCKET_POOL_SIZE"
+	tbpDefaultBucketPoolSize = 3
+	tbpEnvPoolSize           = "SG_TEST_BUCKET_POOL_SIZE"
 
 	defaultBucketQuotaMB = 150
 	tbpEnvBucketQuotaMB  = "SG_TEST_BUCKET_QUOTA_MB"
@@ -642,7 +642,7 @@ func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
 
 // tbpNumBuckets returns the configured number of buckets to use in the pool.
 func tbpNumBuckets() int {
-	numBuckets := defaultBucketPoolSize
+	numBuckets := tbpDefaultBucketPoolSize
 	if envPoolSize := os.Getenv(tbpEnvPoolSize); envPoolSize != "" {
 		var err error
 		numBuckets, err = strconv.Atoi(envPoolSize)
