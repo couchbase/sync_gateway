@@ -51,44 +51,6 @@ func GetTestBucket(t testing.TB) *TestBucket {
 	}
 }
 
-func GetTestBucketSpec(bucketType CouchbaseBucketType) BucketSpec {
-
-	bucketName := DefaultTestBucketname
-	username := DefaultTestUsername
-	password := DefaultTestPassword
-
-	// Use a different bucket name for index buckets to avoid interference
-	switch bucketType {
-	case IndexBucket:
-		bucketName = DefaultTestIndexBucketname
-		username = DefaultTestIndexUsername
-		password = DefaultTestIndexPassword
-	}
-
-	testAuth := TestAuthenticator{
-		Username:   username,
-		Password:   password,
-		BucketName: bucketName,
-	}
-
-	spec := BucketSpec{
-		Server:     UnitTestUrl(),
-		BucketName: bucketName,
-
-		CouchbaseDriver: ChooseCouchbaseDriver(bucketType),
-		Auth:            testAuth,
-		UseXattrs:       TestUseXattrs(),
-	}
-
-	if spec.IsWalrusBucket() {
-		// Use a unique bucket name to reduce the chance of interference between temporary test walrus buckets
-		spec.BucketName = fmt.Sprintf("%s-%s", spec.BucketName, GenerateRandomID())
-	}
-
-	return spec
-
-}
-
 // Should Sync Gateway use XATTRS functionality when running unit tests?
 func TestUseXattrs() bool {
 
