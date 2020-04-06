@@ -254,10 +254,13 @@ func (tbp *GocbTestBucketPool) Close() {
 
 // printStats outputs test bucket stats for the current package's test run.
 func (tbp *GocbTestBucketPool) printStats() {
-	origVerbose := tbp.verbose.IsTrue()
-	tbp.verbose.Set(true)
 
-	ctx := context.Background()
+	numBucketsOpened := time.Duration(atomic.LoadInt32(&tbp.stats.NumBucketsOpened))
+	if numBucketsOpened == 0 {
+		// we may have been running benchmarks if we've opened zero test buckets
+		// in any case; if we have no stats, don't bother printing anything.
+		return
+	}
 
 	totalBucketInitTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalBucketInitDurationNano))
 	totalBucketInitCount := time.Duration(atomic.LoadInt32(&tbp.stats.TotalBucketInitCount))
@@ -266,9 +269,12 @@ func (tbp *GocbTestBucketPool) printStats() {
 	totalBucketReadierCount := time.Duration(atomic.LoadInt32(&tbp.stats.TotalBucketReadierCount))
 
 	totalBucketWaitTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalWaitingForReadyBucketNano))
-	numBucketsOpened := time.Duration(atomic.LoadInt32(&tbp.stats.NumBucketsOpened))
 
 	totalBucketUseTime := time.Duration(atomic.LoadInt64(&tbp.stats.TotalInuseBucketNano))
+
+	origVerbose := tbp.verbose.IsTrue()
+	tbp.verbose.Set(true)
+	ctx := context.Background()
 
 	tbp.Logf(ctx, "==========================")
 	tbp.Logf(ctx, "= Test Bucket Pool Stats =")
