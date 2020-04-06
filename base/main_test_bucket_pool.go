@@ -526,6 +526,7 @@ var NoopInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *Go
 }
 
 // PrimaryIndexInitFunc creates a primary index on the given bucket. This can then be used with N1QLBucketEmptierFunc, for improved compatibility with GSI.
+// Will be used when GSI is re-enabled (CBG-813)
 var PrimaryIndexInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket, tbp *GocbTestBucketPool) error {
 	gocbBucket, ok := AsGoCBBucket(b)
 	if !ok {
@@ -553,6 +554,7 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *C
 }
 
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.
+// Will be used when GSI is re-enabled (CBG-813)
 var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *GocbTestBucketPool) error {
 	if hasPrimary, _, err := b.getIndexMetaWithoutRetry(PrimaryIndexName); err != nil {
 		return err
