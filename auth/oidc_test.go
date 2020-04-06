@@ -379,7 +379,7 @@ func TestNewProvider(t *testing.T) {
 
 			var issuer string
 			hf := func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != "/.well-known/openid-configuration" {
+				if r.URL.Path != discoveryConfigPath {
 					http.NotFound(w, r)
 					return
 				}

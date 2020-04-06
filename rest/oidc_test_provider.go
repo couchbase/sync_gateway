@@ -60,7 +60,7 @@ const loginHtml = `
 <h1>{{.Title}}</h1>
 <div>
    This OIDC test provider can be used in development or test to simulate an OIDC Provider service.<br>
-   This provider is enabled per database by adding the following database proeprties to the Sync Gateway config
+   This provider is enabled per database by adding the following database properties to the Sync Gateway config
    <pre>
 "oidc": {
   "default_provider":"sync_gateway",
@@ -368,7 +368,7 @@ func createJWT(subject string, issuerUrl string, ttl time.Duration, scopesMap ma
 
 type CustomClaims struct {
 	Email    string `json:"email,omitempty"`
-	Nickname string `json:"email,nickname"`
+	Nickname string `json:"nickname,omitempty"`
 }
 
 //Generates the issuer URL based on the scheme and host in the client request

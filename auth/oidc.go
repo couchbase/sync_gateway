@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -25,7 +26,6 @@ import (
 	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
-	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"gopkg.in/square/go-jose.v2"
 )
