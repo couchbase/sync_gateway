@@ -11,6 +11,7 @@ package auth
 
 import (
 	"context"
+	"github.com/stretchr/testify/require"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -383,7 +384,8 @@ func TestNewProvider(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				io.WriteString(w, strings.ReplaceAll(test.data, "${issuer}", issuer))
+				_, err := io.WriteString(w, strings.ReplaceAll(test.data, "${issuer}", issuer))
+				require.NoError(t, err)
 			}
 			s := httptest.NewServer(http.HandlerFunc(hf))
 			defer s.Close()

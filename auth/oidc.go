@@ -281,8 +281,11 @@ func NewProvider(ctx context.Context, issuer, wellKnown string) (*oidc.Provider,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			base.Debugf(base.KeyAuth, "Error closing response body, issuer: %s, error: %v", base.UD(issuer), err)
+		}
+	}()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read response body: %v", err)
