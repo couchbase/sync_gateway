@@ -62,7 +62,7 @@ func TestSetGetRaw(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	val := []byte("bar")
 
 	_, _, err := bucket.GetRaw(key)
@@ -91,7 +91,7 @@ func TestAddRaw(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	val := []byte("bar")
 
 	_, _, err := bucket.GetRaw(key)
@@ -146,7 +146,7 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			key := fmt.Sprintf("%s_%d", getTestKeyNamespace(), i)
+			key := fmt.Sprintf("%s_%d", getTestKeyNamespace(t), i)
 			added, err := bucket.AddRaw(key, 0, largeDoc)
 			if err != nil {
 				if pkgerrors.Cause(err) != gocb.ErrTimeout {
@@ -183,7 +183,7 @@ func TestBulkGetRaw(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		iStr := strconv.Itoa(i)
-		key := getTestKeyNamespace() + iStr
+		key := getTestKeyNamespace(t) + iStr
 		val := []byte("bar" + iStr)
 		keySet[i] = key
 		valueSet[key] = val
@@ -234,7 +234,7 @@ func TestWriteCasBasic(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	val := []byte("bar2")
 
 	_, _, err := bucket.GetRaw(key)
@@ -276,7 +276,7 @@ func TestWriteCasAdvanced(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
@@ -320,9 +320,9 @@ func TestSetBulk(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key1 := getTestKeyNamespace() + "1"
-	key2 := getTestKeyNamespace() + "2"
-	key3 := getTestKeyNamespace() + "3"
+	key1 := getTestKeyNamespace(t) + "1"
+	key2 := getTestKeyNamespace(t) + "2"
+	key3 := getTestKeyNamespace(t) + "3"
 	var returnVal interface{}
 
 	// Cleanup
@@ -422,7 +422,7 @@ func TestUpdate(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	valInitial := []byte("initial")
 	valUpdated := []byte("updated")
 
@@ -478,7 +478,7 @@ func TestIncrCounter(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 
 	defer func() {
 		err := bucket.Delete(key)
@@ -517,7 +517,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 	// There's no easy way to validate the expiry time of a doc (that I know of)
 	// so this is just a smoke test
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	val := []byte("bar")
 
 	testBucket := GetTestBucket(t)
@@ -631,7 +631,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -699,7 +699,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -765,7 +765,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["sg_field"] = "sg_value"
@@ -839,7 +839,7 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -892,7 +892,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -976,7 +976,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -1061,7 +1061,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["counter"] = float64(1)
@@ -1185,7 +1185,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1240,7 +1240,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	xattrVal["seq"] = 1
 	xattrVal["rev"] = "1-1234"
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1313,7 +1313,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1361,10 +1361,10 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 		return
 	}
 
-	key1 := getTestKeyNamespace() + "DocExistsXattrExists"
-	key2 := getTestKeyNamespace() + "DocExistsNoXattr"
-	key3 := getTestKeyNamespace() + "XattrExistsNoDoc"
-	key4 := getTestKeyNamespace() + "NoDocNoXattr"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
+	key2 := getTestKeyNamespace(t) + "DocExistsNoXattr"
+	key3 := getTestKeyNamespace(t) + "XattrExistsNoDoc"
+	key4 := getTestKeyNamespace(t) + "NoDocNoXattr"
 
 	// 1. Create document with XATTR
 	val := make(map[string]interface{})
@@ -1461,10 +1461,10 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 		return
 	}
 
-	key1 := getTestKeyNamespace() + "DocExistsXattrExists"
-	key2 := getTestKeyNamespace() + "DocExistsNoXattr"
-	key3 := getTestKeyNamespace() + "XattrExistsNoDoc"
-	key4 := getTestKeyNamespace() + "NoDocNoXattr"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
+	key2 := getTestKeyNamespace(t) + "DocExistsNoXattr"
+	key3 := getTestKeyNamespace(t) + "XattrExistsNoDoc"
+	key4 := getTestKeyNamespace(t) + "NoDocNoXattr"
 
 	// 1. Create document with XATTR
 	val := make(map[string]interface{})
@@ -1545,7 +1545,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 		return
 	}
 
-	key := getTestKeyNamespace() + "1"
+	key := getTestKeyNamespace(t) + "1"
 	xattrName := SyncXattrName
 	createTombstonedDoc(bucket, key, xattrName)
 
@@ -1594,10 +1594,10 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 		return
 	}
 
-	key1 := getTestKeyNamespace() + "DocExistsXattrExists"
-	key2 := getTestKeyNamespace() + "DocExistsNoXattr"
-	key3 := getTestKeyNamespace() + "XattrExistsNoDoc"
-	key4 := getTestKeyNamespace() + "NoDocNoXattr"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
+	key2 := getTestKeyNamespace(t) + "DocExistsNoXattr"
+	key3 := getTestKeyNamespace(t) + "XattrExistsNoDoc"
+	key4 := getTestKeyNamespace(t) + "NoDocNoXattr"
 
 	// 1. Create document with XATTR
 	val := make(map[string]interface{})
@@ -1686,10 +1686,10 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 		return
 	}
 
-	key1 := getTestKeyNamespace() + "DocExistsXattrExists"
-	key2 := getTestKeyNamespace() + "DocExistsNoXattr"
-	key3 := getTestKeyNamespace() + "XattrExistsNoDoc"
-	key4 := getTestKeyNamespace() + "NoDocNoXattr"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
+	key2 := getTestKeyNamespace(t) + "DocExistsNoXattr"
+	key3 := getTestKeyNamespace(t) + "XattrExistsNoDoc"
+	key4 := getTestKeyNamespace(t) + "NoDocNoXattr"
 
 	// 1. Create document with XATTR
 	val := make(map[string]interface{})
@@ -1800,7 +1800,7 @@ func TestGetXattr(t *testing.T) {
 	}
 
 	//Doc 1
-	key1 := getTestKeyNamespace() + "DocExistsXattrExists"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
 	val1 := make(map[string]interface{})
 	val1["type"] = key1
 	xattrName1 := "sync"
@@ -1809,7 +1809,7 @@ func TestGetXattr(t *testing.T) {
 	xattrVal1["rev"] = "1-foo"
 
 	//Doc 2 - Tombstone
-	key2 := getTestKeyNamespace() + "TombstonedDocXattrExists"
+	key2 := getTestKeyNamespace(t) + "TombstonedDocXattrExists"
 	val2 := make(map[string]interface{})
 	val2["type"] = key2
 	xattrVal2 := make(map[string]interface{})
@@ -1817,7 +1817,7 @@ func TestGetXattr(t *testing.T) {
 	xattrVal2["rev"] = "1-foo"
 
 	//Doc 3 - To Delete
-	key3 := getTestKeyNamespace() + "DeletedDocXattrExists"
+	key3 := getTestKeyNamespace(t) + "DeletedDocXattrExists"
 	val3 := make(map[string]interface{})
 	val3["type"] = key3
 	xattrName3 := "sync"
