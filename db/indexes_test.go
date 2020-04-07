@@ -75,10 +75,6 @@ func validateAllIndexesOnline(bucket base.Bucket) error {
 
 func TestPostUpgradeIndexesSimple(t *testing.T) {
 
-	// FIXME: CBG-815 - Overwriting sgIndexes global map is disrupting the async bucket pooling workers
-	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
-	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
-
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
