@@ -109,7 +109,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		ctxCancelFunc:          ctxCancelFunc,
 		defaultBucketSpec:      tbpDefaultBucketSpec,
 		preserveBuckets:        preserveBuckets,
-		BucketInitFunc:         bucketInitFunc,
+		bucketInitFunc:         bucketInitFunc,
 	}
 
 	tbp.verbose.Set(tbpVerbose())
@@ -175,7 +175,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		tbp.Logf(ctx, "Creating new walrus test bucket")
 
 		initFuncStart := time.Now()
-		err := tbp.BucketInitFunc(ctx, b, tbp)
+		err := tbp.bucketInitFunc(ctx, b, tbp)
 		if err != nil {
 			panic(err)
 		}

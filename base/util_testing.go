@@ -43,7 +43,7 @@ func (tb TestBucket) Close() {
 }
 
 func GetTestBucket(t testing.TB) *TestBucket {
-	bucket, spec, closeFn := TestBucketPool.GetTestBucketAndSpec(t)
+	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
 	return &TestBucket{
 		Bucket:     bucket,
 		BucketSpec: spec,

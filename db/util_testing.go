@@ -247,7 +247,12 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 
 	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(gocbBucket, base.TestUseXattrs(), 0, true); err != nil {
+	if err := InitializeIndexes(gocbBucket, base.TestUseXattrs(), 0); err != nil {
+		return err
+	}
+
+	err := gocbBucket.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	if err != nil {
 		return err
 	}
 

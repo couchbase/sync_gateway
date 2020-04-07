@@ -28,8 +28,13 @@ func TestInitializeIndexes(t *testing.T) {
 	dropErr := base.DropAllBucketIndexes(goCbBucket)
 	assert.NoError(t, dropErr, "Error dropping all indexes")
 
-	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0, true)
+	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0)
 	assert.NoError(t, initErr, "Error initializing all indexes")
+
+	if !base.TestsDisableGSI() {
+		err := goCbBucket.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+		assert.NoError(t, err)
+	}
 
 	validateErr := validateAllIndexesOnline(testBucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
