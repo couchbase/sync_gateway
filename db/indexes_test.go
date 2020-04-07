@@ -102,7 +102,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(testBucket, db.UseXattrs(), 0, false)
+	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -121,7 +121,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
-	err = InitializeIndexes(testBucket, db.UseXattrs(), 0, false)
+	err = InitializeIndexes(testBucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 }
 
@@ -268,7 +268,7 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	}
 
 	// Restore indexes after test
-	err := InitializeIndexes(testBucket, db.UseXattrs(), 0, false)
+	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
 }
