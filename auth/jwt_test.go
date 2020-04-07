@@ -23,7 +23,7 @@ func mockClaims() *jose.Claims {
 		"name":  "John Wick",
 		"aud":   audience,
 		"iat":   1516239022,
-		"exp":   1586239022,
+		"exp":   3000000000, // 2065-01-24
 		"email": "johnwick@couchbase.com"}
 	return claims
 }
@@ -165,7 +165,7 @@ func TestGetJWTExpiry(t *testing.T) {
 		{
 			name:        "Test GetJWTExpiry with a good JWT token",
 			input:       mockToken(t),
-			expiresAt:   "2020-04-07 05:57:02 +0000 UTC",
+			expiresAt:   "2065-01-24 05:20:00 +0000 UTC",
 			expectedErr: "",
 		},
 		{
