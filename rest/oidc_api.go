@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -26,6 +27,14 @@ const (
 	OIDC_AUTH_SCOPE         = "scope"
 	OIDC_AUTH_REDIRECT_URI  = "redirect_uri"
 	OIDC_AUTH_STATE         = "state"
+
+	// Request parameter to specify the OpenID Connect provider to be used for authentication,
+	// from the list of providers defined in the Sync Gateway configuration.
+	requestParamProvider = "provider"
+
+	// Request parameter to specify the URL to which you want the end-user to be redirected
+	// after the authorization is complete.
+	requestParamRedirectURI = "redirect_uri"
 
 	OIDC_RESPONSE_TYPE_CODE     = "code"
 	OIDC_RESPONSE_TYPE_IMPLICIT = "id_token%20token"
@@ -99,7 +108,36 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 		return redirectURLString, err
 	}
 
+	if !provider.IsDefault {
+		base.Debugf(base.KeyAuth, "Adding provider (%v) to callback URL", base.UD(provider.Name))
+		if err = addCallbackURLQueryParam(redirectURL, requestParamProvider, provider.Name); err != nil {
+			base.Errorf("Failed to add provider to callback URL, err: %v", err)
+		}
+		base.Debugf(base.KeyAuth, "Callback URL: %s", redirectURL.String())
+	}
+
 	return redirectURL.String(), nil
+}
+
+func addCallbackURLQueryParam(uri *url.URL, name, value string) error {
+	if uri == nil {
+		return errors.New("URL must not be nil")
+	}
+	if name == "" {
+		return errors.New("parameter name must not be empty")
+	}
+	rawQuery, err := url.ParseQuery(uri.RawQuery)
+	if err != nil {
+		return err
+	}
+	redirectURL := rawQuery.Get(requestParamRedirectURI)
+	if redirectURL == "" {
+		return errors.New("no " + requestParamRedirectURI + " parameter found in URL")
+	}
+	redirectURL += "&" + name + "=" + value
+	rawQuery.Set(requestParamRedirectURI, redirectURL)
+	uri.RawQuery = rawQuery.Encode()
+	return nil
 }
 
 func (h *handler) handleOIDCCallback() error {
