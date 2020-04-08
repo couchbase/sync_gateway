@@ -323,7 +323,7 @@ func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCa
 
 	singleChannelCache = AsSingleChannelCache(cacheValue)
 
-	if !c.isCompactActive() && cacheSize > c.compactHighWatermark {
+	if cacheSize > c.compactHighWatermark {
 		c.startCacheCompaction()
 	}
 
@@ -368,9 +368,12 @@ func (c *channelCacheImpl) isCompactActive() bool {
 	return c.compactRunning.IsTrue()
 }
 
+// startCacheCompaction starts a goroutine for cache compaction if it's not already running.
 func (c *channelCacheImpl) startCacheCompaction() {
-	c.compactRunning.Set(true)
-	go c.compactChannelCache()
+	compactNotStarted := c.compactRunning.CompareAndSwap(false, true)
+	if compactNotStarted {
+		go c.compactChannelCache()
+	}
 }
 
 // Compact runs until the number of channels in the cache is lower than compactLowWatermark
