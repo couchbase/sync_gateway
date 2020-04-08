@@ -25,7 +25,6 @@ const (
 	OIDC_AUTH_RESPONSE_TYPE = "response_type"
 	OIDC_AUTH_CLIENT_ID     = "client_id"
 	OIDC_AUTH_SCOPE         = "scope"
-	OIDC_AUTH_REDIRECT_URI  = "redirect_uri"
 	OIDC_AUTH_STATE         = "state"
 
 	// Request parameter to specify the OpenID Connect provider to be used for authentication,
@@ -34,7 +33,7 @@ const (
 
 	// Request parameter to specify the URL to which you want the end-user to be redirected
 	// after the authorization is complete.
-	oidcAuthRequestURI = "redirect_uri"
+	oidcAuthRedirectURI = "redirect_uri"
 
 	OIDC_RESPONSE_TYPE_CODE     = "code"
 	OIDC_RESPONSE_TYPE_IMPLICIT = "id_token%20token"
@@ -133,7 +132,7 @@ func addCallbackURLQueryParam(uri *url.URL, name, value string) error {
 	if err != nil {
 		return err
 	}
-	redirectURL := rawQuery.Get(oidcAuthRequestURI)
+	redirectURL := rawQuery.Get(oidcAuthRedirectURI)
 	if redirectURL == "" {
 		return ErrNoRedirectURI
 	}
@@ -147,7 +146,7 @@ func addCallbackURLQueryParam(uri *url.URL, name, value string) error {
 	}
 	rawQueryRedirectURI.Set(name, value)
 	redirectURI.RawQuery = rawQueryRedirectURI.Encode()
-	rawQuery.Set(oidcAuthRequestURI, redirectURI.String())
+	rawQuery.Set(oidcAuthRedirectURI, redirectURI.String())
 	uri.RawQuery = rawQuery.Encode()
 	return nil
 }
