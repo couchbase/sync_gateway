@@ -33,7 +33,7 @@ func TestMigrateMetadata(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	key := "TestMigrateMetadata"
 	bodyBytes := rawDocWithSyncMeta()
@@ -104,7 +104,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	type testcase struct {
 		docBody            []byte
@@ -229,7 +229,7 @@ func TestImportNullDoc(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	key := "TestImportNullDoc"
 	var body Body
@@ -247,7 +247,7 @@ func TestImportNullDocRaw(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Feed import of null doc
 	exp := uint32(0)
@@ -271,7 +271,7 @@ func TestEvaluateFunction(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	// Simulate unexpected error invoking import filter for document
 	body := Body{"key": "value", "version": "1a"}

@@ -11,7 +11,7 @@ import (
 
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
-	testBucket := testBucket(t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 	mapFunction := `function (doc, meta) { emit(); }`
@@ -75,7 +75,7 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	mapFunction := `function (doc, meta){ emit(); }`
 
@@ -130,10 +130,10 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 		DDocGetErrorCount:    1,
 		DDocDeleteErrorCount: 1,
 	}
-	testBucket := testLeakyBucket(leakyBucketConfig, t)
+	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
+	bucket := base.NewLeakyBucket(testBucket.Bucket, leakyBucketConfig)
 
-	bucket := testBucket
 	mapFunction := `function (doc, meta){ emit(); }`
 
 	err := bucket.PutDDoc(DesignDocSyncGatewayPrefix+"_test", sgbucket.DesignDoc{

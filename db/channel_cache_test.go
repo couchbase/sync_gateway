@@ -29,14 +29,15 @@ func TestChannelCacheMaxSize(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	context := testBucketContext(t)
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	require.NoError(t, err)
 	defer context.Close()
-	defer base.DecrNumOpenBuckets(context.Bucket.GetName())
-
 	cache := context.changeCache.getChannelCache()
 
 	// Make channels active
-	_, err := cache.GetChanges("TestA", ChangesOptions{})
+	_, err = cache.GetChanges("TestA", ChangesOptions{})
 	require.NoError(t, err)
 	_, err = cache.GetChanges("TestB", ChangesOptions{})
 	require.NoError(t, err)

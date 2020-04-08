@@ -56,7 +56,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 	db, testBucket := setupTestDBWithViewsEnabled(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	base.TestExternalRevStorage = true
 
@@ -100,7 +100,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	base.TestExternalRevStorage = true
 
@@ -284,7 +284,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	base.TestExternalRevStorage = true
 
@@ -442,7 +442,7 @@ func TestOldRevisionStorage(t *testing.T) {
 
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	prop_1000_bytes := base.CreateProperty(1000)
 
@@ -602,8 +602,9 @@ func TestOldRevisionStorageError(t *testing.T) {
 	leakyConfig := base.LeakyBucketConfig{
 		ForceErrorSetRawKeys: []string{forceErrorKey},
 	}
-	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
-	defer tearDownTestDB(t, db)
+	db, testBucket := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
+	defer testBucket.Close()
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
 
@@ -731,7 +732,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 func TestLargeSequence(t *testing.T) {
 
 	db, testBucket := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 	defer testBucket.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -772,7 +773,7 @@ const rawDocMalformedRevisionStorage = `
 func TestMalformedRevisionStorageRecovery(t *testing.T) {
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
 
@@ -823,7 +824,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 
 	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()
-	defer tearDownTestDB(b, db)
+	defer db.Close()
 
 	body := Body{"foo": "bar", "rev": "1-a"}
 	_, _, _ = db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
@@ -880,7 +881,7 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 
 	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()
-	defer tearDownTestDB(b, db)
+	defer db.Close()
 
 	body := Body{"foo": "bar", "rev": "1-a"}
 	_, _, _ = db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
@@ -938,7 +939,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 
 	db, testBucket := setupTestDB(b)
 	defer testBucket.Close()
-	defer tearDownTestDB(b, db)
+	defer db.Close()
 
 	body := Body{"foo": "bar"}
 	_, _, _ = db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)

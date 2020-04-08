@@ -62,7 +62,7 @@ func TestSetGetRaw(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestSetGetRaw2"
+	key := getTestKeyNamespace(t)
 	val := []byte("bar")
 
 	_, _, err := bucket.GetRaw(key)
@@ -91,7 +91,7 @@ func TestAddRaw(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestAddRaw"
+	key := getTestKeyNamespace(t)
 	val := []byte("bar")
 
 	_, _, err := bucket.GetRaw(key)
@@ -135,19 +135,18 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 
 	gocbBucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
 	if ok {
-		gocbBucket.Bucket.SetOperationTimeout(100 * time.Millisecond)
+		gocbBucket.Bucket.SetOperationTimeout(250 * time.Millisecond)
 	}
 
-	keyPrefix := "TestAddRawTimeout"
 	largeDoc := make([]byte, 1000000)
 	rand.Read(largeDoc)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			key := fmt.Sprintf("%s_%d", keyPrefix, i)
+			key := fmt.Sprintf("%s_%d", getTestKeyNamespace(t), i)
 			added, err := bucket.AddRaw(key, 0, largeDoc)
 			if err != nil {
 				if pkgerrors.Cause(err) != gocb.ErrTimeout {
@@ -169,7 +168,6 @@ func TestBulkGetRaw(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	keyPrefix := "TestBulkGetRaw"
 	keySet := make([]string, 1000)
 	valueSet := make(map[string][]byte, 1000)
 
@@ -185,7 +183,7 @@ func TestBulkGetRaw(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		iStr := strconv.Itoa(i)
-		key := keyPrefix + iStr
+		key := getTestKeyNamespace(t) + iStr
 		val := []byte("bar" + iStr)
 		keySet[i] = key
 		valueSet[key] = val
@@ -236,7 +234,7 @@ func TestWriteCasBasic(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestWriteCas"
+	key := getTestKeyNamespace(t)
 	val := []byte("bar2")
 
 	_, _, err := bucket.GetRaw(key)
@@ -278,7 +276,7 @@ func TestWriteCasAdvanced(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestWriteCas"
+	key := getTestKeyNamespace(t)
 
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
@@ -322,14 +320,14 @@ func TestSetBulk(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestSetBulk1"
-	key2 := "TestSetBulk2"
-	key3 := "TestSetBulk3"
+	key1 := getTestKeyNamespace(t) + "1"
+	key2 := getTestKeyNamespace(t) + "2"
+	key3 := getTestKeyNamespace(t) + "3"
 	var returnVal interface{}
 
 	// Cleanup
 	defer func() {
-		keys2del := []string{key, key2, key3}
+		keys2del := []string{key1, key2, key3}
 		for _, key2del := range keys2del {
 			err := bucket.Delete(key2del)
 			if err != nil {
@@ -339,20 +337,20 @@ func TestSetBulk(t *testing.T) {
 		}
 	}()
 
-	_, err := bucket.Get(key, &returnVal)
+	_, err := bucket.Get(key1, &returnVal)
 	if err == nil {
 		t.Errorf("Key should not exist yet, expected error but got nil")
 	}
 
 	// Write a single key, get cas val: casStale
 	casZero := uint64(0)
-	casStale, err := bucket.WriteCas(key, 0, 0, casZero, "key-initial", sgbucket.Raw)
+	casStale, err := bucket.WriteCas(key1, 0, 0, casZero, "key-initial", sgbucket.Raw)
 	if err != nil {
 		t.Errorf("Error doing WriteCas: %v", err)
 	}
 
 	// Update that key so that casStale is now stale, get casFresh
-	casUpdated, err := bucket.WriteCas(key, 0, 0, casStale, "key-updated", sgbucket.Raw)
+	casUpdated, err := bucket.WriteCas(key1, 0, 0, casStale, "key-updated", sgbucket.Raw)
 	if err != nil {
 		t.Errorf("Error doing WriteCas: %v", err)
 	}
@@ -360,7 +358,7 @@ func TestSetBulk(t *testing.T) {
 	// Do bulk set with a new key and the prev key with casStale
 	entries := []*sgbucket.BulkSetEntry{}
 	entries = append(entries, &sgbucket.BulkSetEntry{
-		Key:   key,
+		Key:   key1,
 		Value: "key-updated2",
 		Cas:   casStale,
 	})
@@ -385,7 +383,7 @@ func TestSetBulk(t *testing.T) {
 	// Retry with bulk set with another new key and casFresh key
 	entries = []*sgbucket.BulkSetEntry{}
 	entries = append(entries, &sgbucket.BulkSetEntry{
-		Key:   key,
+		Key:   key1,
 		Value: "key-updated3",
 		Cas:   casUpdated,
 	})
@@ -402,7 +400,7 @@ func TestSetBulk(t *testing.T) {
 	goassert.Equals(t, numNonNilErrors(entries), 0)
 
 	// Make sure the original key that previously failed now works
-	_, err = bucket.Get(key, &returnVal)
+	_, err = bucket.Get(key1, &returnVal)
 	goassert.True(t, err == nil)
 	goassert.Equals(t, returnVal, "key-updated3")
 
@@ -424,7 +422,7 @@ func TestUpdate(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestUpdate"
+	key := getTestKeyNamespace(t)
 	valInitial := []byte("initial")
 	valUpdated := []byte("updated")
 
@@ -480,7 +478,7 @@ func TestIncrCounter(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestIncr"
+	key := getTestKeyNamespace(t)
 
 	defer func() {
 		err := bucket.Delete(key)
@@ -519,7 +517,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 	// There's no easy way to validate the expiry time of a doc (that I know of)
 	// so this is just a smoke test
 
-	key := "TestGetAndTouchRaw"
+	key := getTestKeyNamespace(t)
 	val := []byte("bar")
 
 	testBucket := GetTestBucket(t)
@@ -633,7 +631,7 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestWriteCasXATTRSimple"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -701,7 +699,7 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteCasXATTRUpsert"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -767,7 +765,7 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	defer testBucket.Close()
 	bucket := testBucket.Bucket
 
-	key := "TestWriteCasXATTRSimple"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["sg_field"] = "sg_value"
@@ -841,7 +839,7 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteCasXattrRaw"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -894,7 +892,7 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteCasXattrTombstoneResurrect"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -978,7 +976,7 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteCasXattrTombstoneXattrUpdate"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["body_field"] = "1234"
@@ -1063,7 +1061,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 	bucket.SetTranscoder(SGTranscoder{})
 
-	key := "TestWriteUpdateXATTR"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	val := make(map[string]interface{})
 	val["counter"] = float64(1)
@@ -1187,7 +1185,7 @@ func TestXattrDeleteDocument(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
-	key := "TestDeleteDocumentHavingXATTR"
+	key := getTestKeyNamespace(t)
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1242,7 +1240,7 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	xattrVal["seq"] = 1
 	xattrVal["rev"] = "1-1234"
 
-	key := "TestDeleteDocumentHavingXATTR"
+	key := getTestKeyNamespace(t)
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1315,7 +1313,7 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
-	key := "TestDeleteDocumentAndUpdateXATTR_2"
+	key := getTestKeyNamespace(t)
 	_, _, err := bucket.GetRaw(key)
 	if err == nil {
 		log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
@@ -1363,10 +1361,10 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 		return
 	}
 
-	key1 := "DocExistsXattrExists"
-	key2 := "DocExistsNoXattr"
-	key3 := "XattrExistsNoDoc"
-	key4 := "NoDocNoXattr"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
+	key2 := getTestKeyNamespace(t) + "DocExistsNoXattr"
+	key3 := getTestKeyNamespace(t) + "XattrExistsNoDoc"
+	key4 := getTestKeyNamespace(t) + "NoDocNoXattr"
 
 	// 1. Create document with XATTR
 	val := make(map[string]interface{})
@@ -1463,10 +1461,10 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 		return
 	}
 
-	key1 := "DocExistsXattrExists"
-	key2 := "DocExistsNoXattr"
-	key3 := "XattrExistsNoDoc"
-	key4 := "NoDocNoXattr"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
+	key2 := getTestKeyNamespace(t) + "DocExistsNoXattr"
+	key3 := getTestKeyNamespace(t) + "XattrExistsNoDoc"
+	key4 := getTestKeyNamespace(t) + "NoDocNoXattr"
 
 	// 1. Create document with XATTR
 	val := make(map[string]interface{})
@@ -1513,12 +1511,6 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 	}
 
 	// 4. No xattr, no document
-	updatedVal := make(map[string]interface{})
-	updatedVal["type"] = "updated"
-
-	updatedXattrVal := make(map[string]interface{})
-	updatedXattrVal["seq"] = 123
-	updatedXattrVal["rev"] = "2-1234"
 
 	// Attempt to delete DocExistsXattrExists, DocExistsNoXattr, and XattrExistsNoDoc
 	// No errors should be returned when deleting these.
@@ -1533,9 +1525,9 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 	// Now attempt to delete key4 (NoDocNoXattr), which is expected to return a Key Not Found error
 	log.Printf("Deleting key: %v", key4)
 	errDelete := bucket.DeleteWithXattr(key4, xattrName)
-	assert.True(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error")
+	assert.Error(t, errDelete, "Expected error when calling bucket.DeleteWithXattr")
+	assert.Truef(t, bucket.IsKeyNotFoundError(errDelete), "Exepcted keynotfound error but got %v", errDelete)
 	assert.True(t, verifyDocAndXattrDeleted(bucket, key4, xattrName), "Expected doc to be deleted")
-
 }
 
 // This simulates a race condition by calling deleteWithXattrInternal() and passing a custom
@@ -1553,7 +1545,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 		return
 	}
 
-	key := "TestDeleteWithXattrWithSimulatedRace"
+	key := getTestKeyNamespace(t)
 	xattrName := SyncXattrName
 	createTombstonedDoc(bucket, key, xattrName)
 
@@ -1602,10 +1594,10 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 		return
 	}
 
-	key1 := "DocExistsXattrExists"
-	key2 := "DocExistsNoXattr"
-	key3 := "XattrExistsNoDoc"
-	key4 := "NoDocNoXattr"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
+	key2 := getTestKeyNamespace(t) + "DocExistsNoXattr"
+	key3 := getTestKeyNamespace(t) + "XattrExistsNoDoc"
+	key4 := getTestKeyNamespace(t) + "NoDocNoXattr"
 
 	// 1. Create document with XATTR
 	val := make(map[string]interface{})
@@ -1694,10 +1686,10 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 		return
 	}
 
-	key1 := "DocExistsXattrExists"
-	key2 := "DocExistsNoXattr"
-	key3 := "XattrExistsNoDoc"
-	key4 := "NoDocNoXattr"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
+	key2 := getTestKeyNamespace(t) + "DocExistsNoXattr"
+	key3 := getTestKeyNamespace(t) + "XattrExistsNoDoc"
+	key4 := getTestKeyNamespace(t) + "NoDocNoXattr"
 
 	// 1. Create document with XATTR
 	val := make(map[string]interface{})
@@ -1808,7 +1800,7 @@ func TestGetXattr(t *testing.T) {
 	}
 
 	//Doc 1
-	key1 := "DocExistsXattrExists"
+	key1 := getTestKeyNamespace(t) + "DocExistsXattrExists"
 	val1 := make(map[string]interface{})
 	val1["type"] = key1
 	xattrName1 := "sync"
@@ -1817,7 +1809,7 @@ func TestGetXattr(t *testing.T) {
 	xattrVal1["rev"] = "1-foo"
 
 	//Doc 2 - Tombstone
-	key2 := "TombstonedDocXattrExists"
+	key2 := getTestKeyNamespace(t) + "TombstonedDocXattrExists"
 	val2 := make(map[string]interface{})
 	val2["type"] = key2
 	xattrVal2 := make(map[string]interface{})
@@ -1825,7 +1817,7 @@ func TestGetXattr(t *testing.T) {
 	xattrVal2["rev"] = "1-foo"
 
 	//Doc 3 - To Delete
-	key3 := "DeletedDocXattrExists"
+	key3 := getTestKeyNamespace(t) + "DeletedDocXattrExists"
 	val3 := make(map[string]interface{})
 	val3["type"] = key3
 	xattrName3 := "sync"
@@ -2101,10 +2093,20 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	// Bad auth creds cause a fatal error with logs indicating the reason why.
-	_, err := GetBucketWithInvalidUsernamePassword(DataBucket)
-	goassert.Equals(t, err, ErrFatalBucketConnection)
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
 
+	// Override test bucket spec with invalid creds
+	testBucket.BucketSpec.Auth = TestAuthenticator{
+		Username:   "invalid_username",
+		Password:   "invalid_password",
+		BucketName: testBucket.BucketSpec.BucketName,
+	}
+
+	// Attempt to open the bucket again using invalid creds. We should expect an error.
+	bucket, err := GetBucket(testBucket.BucketSpec)
+	assert.Equal(t, ErrFatalBucketConnection, err)
+	assert.Nil(t, bucket)
 }
 
 // TestCouchbaseServerIncorrectX509Login tries to open a bucket using an example X509 Cert/Key
@@ -2114,26 +2116,27 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	spec := GetTestBucketSpec(DataBucket)
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
 
 	// Remove existing password-based authentication
-	spec.Auth = nil
+	testBucket.BucketSpec.Auth = nil
 
 	// Force use of TLS so we are able to use X509
-	if strings.HasPrefix(spec.Server, "http://") {
-		spec.Server = "couchbases://" + spec.Server[7:]
-	} else if strings.HasPrefix(spec.Server, "couchbase://") {
-		spec.Server = "couchbases://" + spec.Server[12:]
+	if strings.HasPrefix(testBucket.BucketSpec.Server, "http://") {
+		testBucket.BucketSpec.Server = "couchbases://" + testBucket.BucketSpec.Server[7:]
+	} else if strings.HasPrefix(testBucket.BucketSpec.Server, "couchbase://") {
+		testBucket.BucketSpec.Server = "couchbases://" + testBucket.BucketSpec.Server[12:]
 	}
-	spec.Server = strings.TrimSuffix(spec.Server, ":8091")
+	testBucket.BucketSpec.Server = strings.TrimSuffix(testBucket.BucketSpec.Server, ":8091")
 
 	// Set CertPath/KeyPath for X509 auth
 	certPath, keyPath, x509CleanupFn := tempX509Certs(t)
-	spec.Certpath = certPath
-	spec.Keypath = keyPath
+	testBucket.BucketSpec.Certpath = certPath
+	testBucket.BucketSpec.Keypath = keyPath
 
 	// Attempt to open a test bucket with invalid certs
-	bucket, err := GetBucket(spec)
+	bucket, err := GetBucket(testBucket.BucketSpec)
 
 	// We no longer need the cert files, so go ahead and clean those up now before any assertions stop the test.
 	x509CleanupFn()

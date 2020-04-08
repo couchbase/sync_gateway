@@ -1,8 +1,10 @@
 package base
 
 import (
+	"context"
 	"math/rand"
 	"strconv"
+	"testing"
 )
 
 // LogContextKey is used to key a LogContext value
@@ -13,6 +15,12 @@ type LogContext struct {
 	// CorrelationID is a pre-formatted identifier used to correlate logs.
 	// E.g: Either blip context ID or HTTP Serial number.
 	CorrelationID string
+
+	// TestName can be a unit test name (from t.Name())
+	TestName string
+
+	// TestBucketName is the name of a bucket used during a test
+	TestBucketName string
 }
 
 // addContext returns a string format with additional log context if present.
@@ -25,6 +33,14 @@ func (lc *LogContext) addContext(format string) string {
 		format = "c:" + lc.CorrelationID + " " + format
 	}
 
+	if lc.TestBucketName != "" {
+		format = "b:" + lc.TestBucketName + " " + format
+	}
+
+	if lc.TestName != "" {
+		format = "t:" + lc.TestName + " " + format
+	}
+
 	return format
 }
 
@@ -34,4 +50,24 @@ func FormatBlipContextID(contextID string) string {
 
 func NewTaskID(contextID string, taskName string) string {
 	return contextID + "-" + taskName + "-" + strconv.Itoa(rand.Intn(65536))
+}
+
+// testCtx creates a log context for the given test.
+func testCtx(t testing.TB) context.Context {
+	return context.WithValue(context.Background(), LogContextKey{}, LogContext{TestName: t.Name()})
+}
+
+// bucketCtx extends the parent context with a bucket name.
+func bucketCtx(parent context.Context, b Bucket) context.Context {
+	return bucketNameCtx(parent, b.GetName())
+}
+
+// bucketNameCtx extends the parent context with a bucket name.
+func bucketNameCtx(parent context.Context, bucketName string) context.Context {
+	parentLogCtx, _ := parent.Value(LogContextKey{}).(LogContext)
+	newCtx := LogContext{
+		TestName:       parentLogCtx.TestName,
+		TestBucketName: bucketName,
+	}
+	return context.WithValue(parent, LogContextKey{}, newCtx)
 }
