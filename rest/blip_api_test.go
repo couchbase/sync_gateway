@@ -1499,10 +1499,11 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	goassert.True(t, sent)
 
 	// Get all docs and attachment via subChanges request
-	allDocs := bt.WaitForNumDocsViaChanges(1)
+	allDocs, ok := bt.WaitForNumDocsViaChanges(1)
+	require.True(t, ok)
 
 	// make assertions on allDocs -- make sure attachment is present w/ expected body
-	goassert.Equals(t, len(allDocs), 1)
+	require.Len(t, allDocs, 1)
 	retrievedDoc := allDocs[input.docId]
 
 	// doc assertions
@@ -1924,8 +1925,10 @@ func TestMissingNoRev(t *testing.T) {
 	}
 	defer rt.Close()
 	bt, err := NewBlipTesterFromSpec(t, btSpec)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
+
+	require.NoError(t, rt.WaitForDBOnline())
 
 	// Create 5 docs
 	for i := 0; i < 5; i++ {
@@ -1943,8 +1946,8 @@ func TestMissingNoRev(t *testing.T) {
 	assert.NoError(t, err, "failed")
 
 	// Pull docs, expect to pull 5 docs since none of them has purged yet.
-	docs := bt.WaitForNumDocsViaChanges(5)
-	goassert.True(t, len(docs) == 5)
+	docs, ok := bt.WaitForNumDocsViaChanges(5)
+	assert.Len(t, docs, 5)
 
 	// Purge one doc
 	doc0Id := fmt.Sprintf("doc-%d", 0)
@@ -1955,8 +1958,10 @@ func TestMissingNoRev(t *testing.T) {
 	targetDb.FlushRevisionCacheForTest()
 
 	// Pull docs, expect to pull 4 since one was purged.  (also expect to NOT get stuck)
-	docs = bt.WaitForNumDocsViaChanges(4)
-	goassert.True(t, len(docs) == 4)
+	docs, ok = bt.WaitForNumDocsViaChanges(4)
+	assert.True(t, ok)
+	assert.Len(t, docs, 4)
+
 }
 
 // TestBlipDeltaSyncPull tests that a simple pull replication uses deltas in EE,

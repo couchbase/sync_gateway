@@ -72,8 +72,6 @@ type CouchbaseBucketGoCB struct {
 
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
-
-	// TODO: Push the above down into spec.GetConnString
 	connString, err := spec.GetGoCBConnString()
 	if err != nil {
 		Warnf("Unable to parse server value: %s error: %v", SD(spec.Server), err)
@@ -86,17 +84,17 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		return nil, err
 	}
 
-	password := ""
+	bucketPassword := ""
 	// Check for client cert (x.509) authentication
 	if spec.Certpath != "" {
-		Infof(KeyAuth, "Attempting cert authentication against bucket %s on %s", MD(spec.BucketName), MD(connString))
+		Infof(KeyAuth, "Attempting cert authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 		certAuthErr := cluster.Authenticate(gocb.CertAuthenticator{})
 		if certAuthErr != nil {
 			Infof(KeyAuth, "Error Attempting certificate authentication %s", certAuthErr)
 			return nil, pkgerrors.WithStack(certAuthErr)
 		}
 	} else if spec.Auth != nil {
-		Infof(KeyAuth, "Attempting credential authentication against bucket %s on %s", MD(spec.BucketName), MD(connString))
+		Infof(KeyAuth, "Attempting credential authentication against bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
 		user, pass, _ := spec.Auth.GetCredentials()
 		authErr := cluster.Authenticate(gocb.PasswordAuthenticator{
 			Username: user,
@@ -105,11 +103,15 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 		// If RBAC authentication fails, revert to non-RBAC authentication by including the password to OpenBucket
 		if authErr != nil {
 			Warnf("RBAC authentication against bucket %s as user %s failed - will re-attempt w/ bucketname, password", MD(spec.BucketName), UD(user))
-			password = pass
+			bucketPassword = pass
 		}
 	}
 
-	goCBBucket, err := cluster.OpenBucket(spec.BucketName, password)
+	return GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster, spec, bucketPassword)
+}
+
+func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec BucketSpec, bucketPassword string) (bucket *CouchbaseBucketGoCB, err error) {
+	goCBBucket, err := cluster.OpenBucket(spec.BucketName, bucketPassword)
 	if err != nil {
 		Infof(KeyAll, "Error opening bucket %s: %v", spec.BucketName, err)
 		return nil, pkgerrors.WithStack(err)
@@ -181,9 +183,7 @@ func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err e
 	bucket.Bucket.SetN1qlTimeout(bucket.spec.GetViewQueryTimeout())
 
 	Infof(KeyAll, "Set query timeouts for bucket %s to cluster:%v, bucket:%v", spec.BucketName, cluster.N1qlTimeout(), bucket.N1qlTimeout())
-
 	return bucket, err
-
 }
 
 func (bucket *CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
@@ -1786,6 +1786,35 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 
 }
 
+func (bucket *CouchbaseBucketGoCB) GetDDocs(into interface{}) error {
+	bucketManager, err := bucket.getBucketManager()
+	if err != nil {
+		return err
+	}
+
+	ddocs, err := bucketManager.GetDesignDocuments()
+	if err != nil {
+		return err
+	}
+
+	result := make(map[string]*gocb.DesignDocument, len(ddocs))
+	for _, ddoc := range ddocs {
+		result[ddoc.Name] = ddoc
+	}
+
+	resultBytes, err := JSONMarshal(result)
+	if err != nil {
+		return err
+	}
+
+	// Deserialize []byte into "into" empty interface
+	if err := JSONUnmarshal(resultBytes, into); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {
 
 	bucketManager, err := bucket.getBucketManager()
@@ -1882,7 +1911,18 @@ func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) er
 		return bucket.putDDocForTombstones(gocbDesignDoc)
 	}
 
-	return manager.UpsertDesignDocument(gocbDesignDoc)
+	// Retry for all errors (The view service sporadically returns 500 status codes with Erlang errors (for unknown reasons) - E.g: 500 {"error":"case_clause","reason":"false"})
+	var worker RetryWorker = func() (bool, error, interface{}) {
+		err := manager.UpsertDesignDocument(gocbDesignDoc)
+		if err != nil {
+			Warnf("Got error from UpsertDesignDocument: %v - Retrying...", err)
+			return true, err, nil
+		}
+		return false, nil, nil
+	}
+
+	err, _ = RetryLoop("PutDDocRetryLoop", worker, CreateSleeperFunc(5, 100))
+	return err
 
 }
 
@@ -2346,10 +2386,22 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 
 }
 
+// BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
+// but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
+func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
+	itemCount, err = bucket.QueryBucketItemCount()
+	if err == nil {
+		return itemCount, nil
+	}
+
+	itemCount, err = bucket.APIBucketItemCount()
+	return itemCount, err
+}
+
 // Get the number of items in the bucket.
 // GOCB doesn't currently offer a way to do this, and so this is a workaround to go directly
 // to Couchbase Server REST API.
-func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
+func (bucket *CouchbaseBucketGoCB) APIBucketItemCount() (itemCount int, err error) {
 	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.Name())
 	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
 	if err != nil {
@@ -2377,6 +2429,22 @@ func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) 
 	itemCountFloat := itemCountRaw.(float64)
 
 	return int(itemCountFloat), nil
+}
+
+// QueryBucketItemCount uses a request plus query to get the number of items in a bucket, as the REST API can be slow to update its value.
+func (bucket *CouchbaseBucketGoCB) QueryBucketItemCount() (itemCount int, err error) {
+	r, err := bucket.Query("SELECT COUNT(1) AS count FROM `$_bucket`", nil, gocb.RequestPlus, true)
+	if err != nil {
+		return -1, err
+	}
+	var val struct {
+		Count int `json:"count"`
+	}
+	err = r.One(&val)
+	if err != nil {
+		return -1, err
+	}
+	return val.Count, nil
 }
 
 func (bucket *CouchbaseBucketGoCB) getExpirySingleAttempt(k string) (expiry uint32, getMetaError error) {
@@ -2653,7 +2721,7 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 		underlyingBucket = typedBucket.GetUnderlyingBucket()
 	case *LeakyBucket:
 		underlyingBucket = typedBucket.GetUnderlyingBucket()
-	case TestBucket:
+	case *TestBucket:
 		underlyingBucket = typedBucket.Bucket
 	default:
 		// bail out for unrecognised/unsupported buckets

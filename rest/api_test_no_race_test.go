@@ -34,24 +34,24 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
 
-	it := initIndexTester(`function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`, t)
-	defer it.Close()
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel); access(doc.accessUser, doc.accessChannel);}`})
+	defer rt.Close()
 
 	// Create user:
-	a := it.ServerContext().Database("db").Authenticator()
+	a := rt.ServerContext().Database("db").Authenticator()
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
 
 	// Put several documents in channel PBS
-	response := it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = it.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = it.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	caughtUpWaiter := it.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
+	caughtUpWaiter := rt.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
 	// Start longpoll changes request
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -62,7 +62,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		changesJSON := `{"style":"all_docs", "heartbeat":300000, "feed":"longpoll", "limit":50, "since":"0"}`
-		changesResponse := it.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		goassert.Equals(t, len(changes.Results), 3)
 	}()
@@ -71,7 +71,7 @@ func TestChangesAccessNotifyInteger(t *testing.T) {
 	caughtUpWaiter.AddAndWait(1)
 
 	// Put document that triggers access grant for user, PBS
-	response = it.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/access1", `{"accessUser":"bernard", "accessChannel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	wg.Wait()
@@ -89,16 +89,16 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
 
-	it := initIndexTester(`function(doc) {channel(doc.channel);}`, t)
-	defer it.Close()
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	defer rt.Close()
 
 	// Create user:
-	userResponse := it.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["ABC"]}`)
+	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"name":"bernard", "password":"letmein", "admin_channels":["ABC"]}`)
 	assertStatus(t, userResponse, 201)
 
 	// Get user, to trigger all_channels calculation and bump the user change count BEFORE we write the PBS docs - otherwise the user key count
 	// will still be higher than the latest change count.
-	userResponse = it.SendAdminRequest("GET", "/db/_user/bernard", "")
+	userResponse = rt.SendAdminRequest("GET", "/db/_user/bernard", "")
 	assertStatus(t, userResponse, 200)
 
 	/*
@@ -109,11 +109,11 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	*/
 
 	// Put several documents in channel PBS
-	response := it.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
+	response := rt.SendAdminRequest("PUT", "/db/pbs1", `{"value":1, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = it.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/pbs2", `{"value":2, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-	response = it.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
 	// Run an initial changes request to get the user doc, and update since based on last_seq:
@@ -129,13 +129,13 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 					 "filter":"sync_gateway/bychannel",
 					 "channels":"ABC,PBS"}`
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
-	changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))
 	err := base.JSONUnmarshal(changesResponse.Body.Bytes(), &initialChanges)
 	assert.NoError(t, err, "Unexpected error unmarshalling initialChanges")
 	lastSeq := initialChanges.Last_Seq.String()
 	goassert.Equals(t, lastSeq, "1")
 
-	caughtUpWaiter := it.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
+	caughtUpWaiter := rt.GetDatabase().NewPullReplicationCaughtUpWaiter(t)
 	caughtUpWaiter.Add(1)
 	// Start longpoll changes request, requesting (unavailable) channel PBS.  Should block.
 	var wg sync.WaitGroup
@@ -147,7 +147,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 			Last_Seq db.SequenceID
 		}
 		sinceLastJSON := fmt.Sprintf(changesJSON, lastSeq)
-		changesResponse := it.Send(requestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
+		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", sinceLastJSON, "bernard"))
 		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 		goassert.Equals(t, len(changes.Results), 1)
 	}()
@@ -156,7 +156,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 	caughtUpWaiter.Wait()
 
 	// Put public document that triggers termination of the longpoll
-	response = it.SendAdminRequest("PUT", "/db/abc1", `{"value":3, "channel":["ABC"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/abc1", `{"value":3, "channel":["ABC"]}`)
 	assertStatus(t, response, 201)
 	wg.Wait()
 }
