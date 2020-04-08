@@ -30,14 +30,20 @@ const (
 
 	// Request parameter to specify the OpenID Connect provider to be used for authentication,
 	// from the list of providers defined in the Sync Gateway configuration.
-	requestParamProvider = "provider"
+	oidcAuthProvider = "provider"
 
 	// Request parameter to specify the URL to which you want the end-user to be redirected
 	// after the authorization is complete.
-	requestParamRedirectURI = "redirect_uri"
+	oidcAuthRequestURI = "redirect_uri"
 
 	OIDC_RESPONSE_TYPE_CODE     = "code"
 	OIDC_RESPONSE_TYPE_IMPLICIT = "id_token%20token"
+)
+
+// Error codes returned by failures to add parameters to callback URL.
+var (
+	ErrBadCallbackURL = errors.New("oidc: callback URL must not be nil")
+	ErrNoRedirectURI  = errors.New("oidc: no redirect_uri parameter found in URL")
 )
 
 type OIDCTokenResponse struct {
@@ -110,7 +116,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 
 	if !provider.IsDefault {
 		base.Debugf(base.KeyAuth, "Adding provider (%v) to callback URL", base.UD(provider.Name))
-		if err = addCallbackURLQueryParam(redirectURL, requestParamProvider, provider.Name); err != nil {
+		if err = addCallbackURLQueryParam(redirectURL, oidcAuthProvider, provider.Name); err != nil {
 			base.Errorf("Failed to add provider to callback URL, err: %v", err)
 		}
 		base.Debugf(base.KeyAuth, "Callback URL: %s", redirectURL.String())
@@ -121,21 +127,27 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 
 func addCallbackURLQueryParam(uri *url.URL, name, value string) error {
 	if uri == nil {
-		return errors.New("URL must not be nil")
-	}
-	if name == "" {
-		return errors.New("parameter name must not be empty")
+		return ErrBadCallbackURL
 	}
 	rawQuery, err := url.ParseQuery(uri.RawQuery)
 	if err != nil {
 		return err
 	}
-	redirectURL := rawQuery.Get(requestParamRedirectURI)
+	redirectURL := rawQuery.Get(oidcAuthRequestURI)
 	if redirectURL == "" {
-		return errors.New("no " + requestParamRedirectURI + " parameter found in URL")
+		return ErrNoRedirectURI
 	}
-	redirectURL += "&" + name + "=" + value
-	rawQuery.Set(requestParamRedirectURI, redirectURL)
+	redirectURI, err := url.Parse(redirectURL)
+	if err != nil {
+		return err
+	}
+	rawQueryRedirectURI, err := url.ParseQuery(redirectURI.RawQuery)
+	if err != nil {
+		return err
+	}
+	rawQueryRedirectURI.Set(name, value)
+	redirectURI.RawQuery = rawQueryRedirectURI.Encode()
+	rawQuery.Set(oidcAuthRequestURI, redirectURI.String())
 	uri.RawQuery = rawQuery.Encode()
 	return nil
 }
