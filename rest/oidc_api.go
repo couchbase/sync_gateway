@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"golang.org/x/oauth2"
@@ -146,15 +145,6 @@ func (h *handler) handleOIDCCallback() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "No id_token field in oauth2 token.")
 	}
 	base.Infof(base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
-
-	config := &oidc.Config{
-		ClientID: client.Config.ClientID,
-	}
-	idToken, err := client.Provider.Verifier(config).Verify(client.Context, rawIDToken)
-	if err != nil {
-		return base.HTTPErrorf(
-			http.StatusInternalServerError, "Failed to verify ID Token: %s, Error: %s", idToken, err.Error())
-	}
 
 	// Create a Sync Gateway session
 	username, sessionID, err := h.createSessionForTrustedIdToken(rawIDToken, provider)

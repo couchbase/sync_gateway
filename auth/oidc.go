@@ -27,7 +27,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
 	"golang.org/x/oauth2"
-	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 const (
@@ -43,9 +43,16 @@ type OIDCOptions struct {
 }
 
 type OIDCClient struct {
-	Provider *oidc.Provider
-	Config   oauth2.Config
-	Context  context.Context
+	Config          oauth2.Config
+	Context         context.Context
+	IDTokenVerifier *oidc.IDTokenVerifier
+	Provider        *oidc.Provider
+}
+
+// Config options for Json Web Token validation
+type JWTOptions struct {
+	ValidationKey *string `json:"validation_key"`           // Key used to validate signed tokens
+	SigningMethod *string `json:"signing_method,omitempty"` // Algorithm used for signing.  Can be specified for additional security to handle scenario described here: https://auth0.com/blog/2015/03/31/critical-vulnerabilities-in-json-web-token-libraries/
 }
 
 type OIDCProvider struct {
@@ -76,6 +83,20 @@ func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 		if provider.IsDefault {
 			return provider
 		}
+	}
+	return nil
+}
+
+// Return true if multiple providers are defined in OpenID
+// Connect provider configuration and false otherwise.
+func (opm OIDCProviderMap) hasMultipleProviders() bool {
+	return len(opm) > 1
+}
+
+// Return the first provider from defined list of providers.
+func (opm OIDCProviderMap) getSingleProvider() *OIDCProvider {
+	for _, value := range opm {
+		return value
 	}
 	return nil
 }
@@ -178,10 +199,14 @@ func (op *OIDCProvider) InitOIDCClient() error {
 	if err = op.InitUserPrefix(); err != nil {
 		return err
 	}
+
+	idTokenVerifier := provider.Verifier(&oidc.Config{ClientID: *op.ClientID})
+
 	op.OIDCClient = &OIDCClient{
-		Provider: provider,
-		Config:   config,
-		Context:  context,
+		Provider:        provider,
+		Config:          config,
+		Context:         context,
+		IDTokenVerifier: idTokenVerifier,
 	}
 
 	return nil
@@ -215,57 +240,6 @@ func (op *OIDCProvider) DiscoverConfig() (config *oidc.Provider, ctx context.Con
 
 func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
-}
-
-type jsonTime time.Time
-
-type idToken struct {
-	Issuer       string                 `json:"iss"`
-	Subject      string                 `json:"sub"`
-	Audience     audience               `json:"aud"`
-	Expiry       jsonTime               `json:"exp"`
-	IssuedAt     jsonTime               `json:"iat"`
-	NotBefore    *jsonTime              `json:"nbf"`
-	Nonce        string                 `json:"nonce"`
-	AtHash       string                 `json:"at_hash"`
-	ClaimNames   map[string]string      `json:"_claim_names"`
-	ClaimSources map[string]claimSource `json:"_claim_sources"`
-}
-
-type claimSource struct {
-	Endpoint    string `json:"endpoint"`
-	AccessToken string `json:"access_token"`
-}
-
-type audience []string
-
-func GetIDToken(rawIDToken string) (*oidc.IDToken, error) {
-	_, err := jose.ParseSigned(rawIDToken)
-	if err != nil {
-		return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
-	}
-
-	// Throw out tokens with invalid claims before trying to verify the token.
-	// This lets us do cheap checks before possibly re-syncing keys.
-	payload, err := parseJWT(rawIDToken)
-	if err != nil {
-		return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
-	}
-	var token idToken
-	if err := json.Unmarshal(payload, &token); err != nil {
-		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %v", err)
-	}
-
-	idToken := &oidc.IDToken{
-		Issuer:          token.Issuer,
-		Subject:         token.Subject,
-		Audience:        []string(token.Audience),
-		Expiry:          time.Time(token.Expiry),
-		IssuedAt:        time.Time(token.IssuedAt),
-		Nonce:           token.Nonce,
-		AccessTokenHash: token.AtHash,
-	}
-	return idToken, nil
 }
 
 // NewProvider uses the OpenID Connect discovery mechanism to construct a Provider.
@@ -374,4 +348,18 @@ func GetUnexportedField(field reflect.Value) interface{} {
 
 func SetUnexportedField(field reflect.Value, value interface{}) {
 	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
+}
+
+// Returns "issuer" and "audiences" claims from the given JSON Web Token.
+func GetJWTIssuer(token *jwt.JSONWebToken) (issuer string, audiences []string, err error) {
+	claims := &jwt.Claims{}
+	err = token.UnsafeClaimsWithoutVerification(claims)
+	if err != nil {
+		return issuer, audiences, pkgerrors.Wrapf(err, "failed to parse JWT claims")
+	}
+	return claims.Issuer, claims.Audience, err
+}
+
+func (client OIDCClient) VerifyJWT(token string) (*oidc.IDToken, error) {
+	return client.IDTokenVerifier.Verify(client.Context, token)
 }

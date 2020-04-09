@@ -11,7 +11,8 @@ package auth
 
 import (
 	"context"
-	"github.com/stretchr/testify/require"
+	"crypto/rand"
+	"crypto/rsa"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,6 +23,9 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
@@ -407,4 +411,37 @@ func TestNewProvider(t *testing.T) {
 			assert.True(t, !reflect.DeepEqual(test.wantAlgorithms, reflect.ValueOf(*p).FieldByName("algorithms")))
 		})
 	}
+}
+
+func TestGetJWTIssuer(t *testing.T) {
+	wantIssuer := "https://accounts.google.com"
+	wantAudience := jwt.Audience{"aud1", "aud2"}
+	signer, err := GetRSASigner()
+	require.NoError(t, err, "Failed to create RSA signer")
+
+	claims := jwt.Claims{Issuer: wantIssuer, Audience: wantAudience}
+	builder := jwt.Signed(signer).Claims(claims)
+	token, err := builder.CompactSerialize()
+	require.NoError(t, err, "Failed to serialize JSON Web Token")
+
+	jwt, err := jwt.ParseSigned(token)
+	require.NoError(t, err, "Failed to decode raw JSON Web Token")
+	issuer, audiences, err := GetJWTIssuer(jwt)
+	assert.Equal(t, wantIssuer, issuer)
+	assert.Equal(t, []string(wantAudience), audiences)
+}
+
+func GetRSASigner() (signer jose.Signer, err error) {
+	rsaPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return signer, err
+	}
+	signingKey := jose.SigningKey{Algorithm: jose.RS256, Key: rsaPrivateKey}
+	var signerOptions = jose.SignerOptions{}
+	signerOptions.WithType("JWT")
+	signer, err = jose.NewSigner(signingKey, &signerOptions)
+	if err != nil {
+		return signer, err
+	}
+	return signer, nil
 }

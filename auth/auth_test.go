@@ -34,6 +34,7 @@ func canSeeAllChannels(princ Principal, channels base.Set) bool {
 }
 
 func TestValidateGuestUser(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	bucket := gTestBucket.Bucket
@@ -44,6 +45,7 @@ func TestValidateGuestUser(t *testing.T) {
 }
 
 func TestValidateUser(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -59,6 +61,7 @@ func TestValidateUser(t *testing.T) {
 }
 
 func TestValidateRole(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -74,6 +77,7 @@ func TestValidateRole(t *testing.T) {
 }
 
 func TestValidateUserEmail(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -91,6 +95,7 @@ func TestValidateUserEmail(t *testing.T) {
 }
 
 func TestUserPasswords(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -112,6 +117,7 @@ func TestUserPasswords(t *testing.T) {
 }
 
 func TestSerializeUser(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -132,6 +138,7 @@ func TestSerializeUser(t *testing.T) {
 }
 
 func TestSerializeRole(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -148,6 +155,7 @@ func TestSerializeRole(t *testing.T) {
 }
 
 func TestUserAccess(t *testing.T) {
+
 	// User with no access:
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
@@ -219,6 +227,7 @@ func TestUserAccess(t *testing.T) {
 }
 
 func TestGetMissingUser(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -231,6 +240,7 @@ func TestGetMissingUser(t *testing.T) {
 }
 
 func TestGetMissingRole(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -240,6 +250,7 @@ func TestGetMissingRole(t *testing.T) {
 }
 
 func TestGetGuestUser(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -249,6 +260,7 @@ func TestGetGuestUser(t *testing.T) {
 }
 
 func TestSaveUsers(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -262,6 +274,7 @@ func TestSaveUsers(t *testing.T) {
 }
 
 func TestSaveRoles(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -301,6 +314,7 @@ func (self *mockComputer) UseGlobalSequence() bool {
 }
 
 func TestRebuildUserChannels(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	computer := mockComputer{channels: ch.AtSequence(ch.SetOf(t, "derived1", "derived2"), 1)}
@@ -316,6 +330,7 @@ func TestRebuildUserChannels(t *testing.T) {
 }
 
 func TestRebuildRoleChannels(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	computer := mockComputer{roleChannels: ch.AtSequence(ch.SetOf(t, "derived1", "derived2"), 1)}
@@ -331,6 +346,7 @@ func TestRebuildRoleChannels(t *testing.T) {
 }
 
 func TestRebuildChannelsError(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	computer := mockComputer{}
@@ -347,6 +363,7 @@ func TestRebuildChannelsError(t *testing.T) {
 }
 
 func TestRebuildUserRoles(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
