@@ -709,5 +709,5 @@ func TestAuthenticateUnTrustedJWTWithBadToken(t *testing.T) {
 	user, jws, err := auth.AuthenticateUntrustedJWT("bad.bearer.token", providers, nil)
 	assert.Error(t, err)
 	assert.Nil(t, user)
-	assert.NotNil(t, jws)
+	assert.Nil(t, jws)
 }
