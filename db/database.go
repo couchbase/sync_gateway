@@ -342,7 +342,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 			// If this isn't the default provider, add the provider to the callback URL (needed to identify provider to _oidc_callback)
 			if !provider.IsDefault && provider.CallbackURL != nil {
-				updatedCallback, err := auth.AddURLQueryParam(*provider.CallbackURL, auth.OIDCAuthProvider, name)
+				updatedCallback, err := auth.SetURLQueryParam(*provider.CallbackURL, auth.OIDCAuthProvider, name)
 				if err != nil {
 					return nil, base.RedactErrorf("Failed to add provider %q to OIDC callback URL", base.UD(name))
 				}

@@ -381,7 +381,7 @@ func TestOIDCToHTTPError(t *testing.T) {
 	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusBadRequest))
 }
 
-func TestAddURLQueryParam(t *testing.T) {
+func TestSetURLQueryParam(t *testing.T) {
 	var oidcAuthProviderGoogle = "google"
 	tests := []struct {
 		name             string
@@ -424,6 +424,12 @@ func TestAddURLQueryParam(t *testing.T) {
 		wantCallbackURL:  "",
 		wantError:        ErrAddURLQueryParam,
 	}, {
+		name:             "Update provider in callback URL",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback?provider=facebook",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  oidcAuthProviderGoogle,
+		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=google",
+	}, {
 		name:             "Add provider to callback URL with illegal value in query param",
 		inputCallbackURL: "http://localhost:4984/default/_oidc_callback?provider=%%3",
 		inputParamName:   OIDCAuthProvider,
@@ -440,7 +446,7 @@ func TestAddURLQueryParam(t *testing.T) {
 	}}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			callbackURL, err := AddURLQueryParam(test.inputCallbackURL, test.inputParamName, test.inputParamValue)
+			callbackURL, err := SetURLQueryParam(test.inputCallbackURL, test.inputParamName, test.inputParamValue)
 			assert.Equal(t, test.wantError, err)
 			assert.Equal(t, test.wantCallbackURL, callbackURL)
 		})

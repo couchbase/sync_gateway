@@ -290,7 +290,7 @@ func OIDCToHTTPError(err error) error {
 	return err
 }
 
-func AddURLQueryParam(strURL, name, value string) (string, error) {
+func SetURLQueryParam(strURL, name, value string) (string, error) {
 	if strURL == "" || name == "" || value == "" {
 		return "", ErrAddURLQueryParam
 	}
@@ -302,7 +302,7 @@ func AddURLQueryParam(strURL, name, value string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rawQuery.Add(name, value)
+	rawQuery.Set(name, value)
 	uri.RawQuery = rawQuery.Encode()
 	return uri.String(), nil
 }
