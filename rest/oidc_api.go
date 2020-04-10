@@ -228,7 +228,8 @@ func (h *handler) getOIDCProvider(providerName string) (*auth.OIDCProvider, erro
 
 // Builds the OIDC callback based on the current request and database. Used during OIDC Client lazy initialization.  Needs to pass
 // in dbName, as it's not necessarily initialized on the request yet.
-func (h *handler) getOIDCCallbackURL() string {
+func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string {
+	callbackPath := "_oidc_callback"
 	scheme := "http"
 	if h.rq.TLS != nil {
 		scheme = "https"
@@ -236,7 +237,9 @@ func (h *handler) getOIDCCallbackURL() string {
 	if dbName := h.PathVar("db"); dbName == "" {
 		base.Warnf("Can't calculate OIDC callback URL without DB in path.")
 		return ""
+	} else if !isDefault && providerName != "" {
+		return fmt.Sprintf("%s://%s/%s/%s?%s=%s", scheme, h.rq.Host, dbName, callbackPath, auth.OIDCAuthProvider, providerName)
 	} else {
-		return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbName, "_oidc_callback")
+		return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbName, callbackPath)
 	}
 }
