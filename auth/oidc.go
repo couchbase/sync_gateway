@@ -35,7 +35,8 @@ var OIDCDiscoveryRetryWait = 500 * time.Millisecond
 // from the list of providers defined in the Sync Gateway configuration.
 var OIDCAuthProvider = "provider"
 
-var ErrAddURLQueryParam = errors.New("URL, parameter name and value must not be empty")
+// Error code returned by failures to set parameters to URL query string.
+var ErrSetURLQueryParam = errors.New("URL, parameter name and value must not be empty")
 
 // Options for OpenID Connect
 type OIDCOptions struct {
@@ -292,7 +293,7 @@ func OIDCToHTTPError(err error) error {
 
 func SetURLQueryParam(strURL, name, value string) (string, error) {
 	if strURL == "" || name == "" || value == "" {
-		return "", ErrAddURLQueryParam
+		return "", ErrSetURLQueryParam
 	}
 	uri, err := url.Parse(strURL)
 	if err != nil {
