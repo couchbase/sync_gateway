@@ -309,7 +309,7 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 	query := locationURL.Query()
 	query.Set(requestParamCode, code)
-	query.Set(requestParamState, openIDConnectOAuthState)
+	query.Set(requestParamState, "af0ifjsldkj")
 	locationURL.RawQuery = query.Encode()
 	h.setHeader(headerLocation, locationURL.String())
 	h.response.WriteHeader(http.StatusFound)
