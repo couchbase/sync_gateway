@@ -423,7 +423,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	var provider *OIDCProvider
 	var issuer string
 
-	if providers.hasMultipleProviders() {
+	if providers.hasMultiple() {
 		base.Infof(base.KeyAuth, "Multiple providers found in configuration")
 		// Parse JWT (needed to determine issuer/provider)
 		jwt, err := jwt.ParseSigned(token)
@@ -446,7 +446,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 
 	} else {
 		base.Infof(base.KeyAuth, "Only a single provider found in configuration")
-		provider = providers.getSingleProvider()
+		provider = providers.first()
 		issuer = provider.Issuer
 	}
 

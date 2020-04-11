@@ -87,14 +87,14 @@ func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 	return nil
 }
 
-// Return true if multiple providers are defined in OpenID
-// Connect provider configuration and false otherwise.
-func (opm OIDCProviderMap) hasMultipleProviders() bool {
+// Determines if there is more than one OpenID Connect providers configured.
+// Returns true if there are multiple providers, false otherwise.
+func (opm OIDCProviderMap) hasMultiple() bool {
 	return len(opm) > 1
 }
 
-// Return the first provider from defined list of providers.
-func (opm OIDCProviderMap) getSingleProvider() *OIDCProvider {
+// Return the first provider from the list of OpenID Connect providers.
+func (opm OIDCProviderMap) first() *OIDCProvider {
 	for _, value := range opm {
 		return value
 	}
@@ -246,22 +246,31 @@ func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 //
 // The issuer is the URL identifier for the service. For example: "https://accounts.google.com"
 // or "https://login.salesforce.com".
-func NewProvider(ctx context.Context, issuer, wellKnown string) (*oidc.Provider, error) {
-	req, err := http.NewRequest(http.MethodGet, wellKnown, nil)
+func NewProvider(ctx context.Context, issuer, discoveryURL string) (*oidc.Provider, error) {
+	// If discovery URL is empty, use the standard discovery URL
+	if discoveryURL == "" {
+		discoveryURL = strings.TrimSuffix(issuer, "/") + discoveryConfigPath
+	}
+
+	base.Debugf(base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
+	req, err := http.NewRequest(http.MethodGet, discoveryURL, nil)
 	if err != nil {
+		base.Debugf(base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 	resp, err := doRequest(ctx, req)
 	if err != nil {
+		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
 	defer func() {
 		if err := resp.Body.Close(); err != nil {
-			base.Debugf(base.KeyAuth, "Error closing response body, issuer: %s, error: %v", base.UD(issuer), err)
+			base.Debugf(base.KeyAuth, "Error closing response body %s: %v", base.UD(discoveryURL), err)
 		}
 	}()
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		base.Debugf(base.KeyAuth, "Error reading response body %s: %v", base.UD(discoveryURL), err)
 		return nil, fmt.Errorf("unable to read response body: %v", err)
 	}
 
@@ -272,6 +281,7 @@ func NewProvider(ctx context.Context, issuer, wellKnown string) (*oidc.Provider,
 	var p providerJSON
 	err = unmarshalResp(resp, body, &p)
 	if err != nil {
+		base.Debugf(base.KeyAuth, "Error parsing body %s: %v", base.UD(discoveryURL), err)
 		return nil, fmt.Errorf("oidc: failed to decode provider discovery object: %v", err)
 	}
 
@@ -294,6 +304,7 @@ func NewProvider(ctx context.Context, issuer, wellKnown string) (*oidc.Provider,
 	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("rawClaims"), body)
 	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("remoteKeySet"), oidc.NewRemoteKeySet(ctx, p.JWKSURL))
 
+	base.Debugf(base.KeyAuth, "Returning config: %v", base.UD(provider))
 	return provider, nil
 }
 

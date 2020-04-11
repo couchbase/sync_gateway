@@ -36,12 +36,6 @@ const (
 	keyIDToken = "id_token"
 )
 
-// A string value created by Sync Gateway to maintain state between the request and callback.
-// This parameter should be used for preventing Cross-site Request Forgery and will be passed
-// back to Sync Gateway, unchanged, in the redirect URI.
-// var openIDConnectOAuthState = strings.Replace(uuid.New().String(), "-", "", -1)
-var openIDConnectOAuthState = "ebfe9fbac6bd4f28afefcf21eb545a6b"
-
 type OIDCTokenResponse struct {
 	IDToken      string    `json:"id_token"`                // ID token, from OP
 	RefreshToken string    `json:"refresh_token,omitempty"` // Refresh token, from OP
@@ -87,7 +81,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	}
 
 	var redirectURL *url.URL
-	state := openIDConnectOAuthState
+	state := ""
 
 	// TODO: Is there a use case where we need to support direct pass-through of access_type and prompt from the caller?
 	offline := h.getBoolQuery(requestParamOffline)
@@ -121,12 +115,6 @@ func (h *handler) handleOIDCCallback() error {
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
-	}
-
-	if state := h.getQuery(requestParamState); state != openIDConnectOAuthState {
-		base.Infof(base.KeyAuth, "State mismatch in OpenID Connect callback request, Expected: %s, Actual: %s",
-			openIDConnectOAuthState, state)
-		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify state for callback request")
 	}
 
 	client := provider.GetClient(h.getOIDCCallbackURL)
