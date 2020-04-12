@@ -272,7 +272,7 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 
 }
 
-func TestNewProvider(t *testing.T) {
+func TestFetchCustomProviderConfig(t *testing.T) {
 	tests := []struct {
 		name            string
 		data            string
@@ -398,8 +398,9 @@ func TestNewProvider(t *testing.T) {
 			if test.trailingSlash {
 				issuer += "/"
 			}
-			wellKnown := strings.TrimSuffix(issuer, "/") + discoveryConfigPath
-			p, err := NewProvider(ctx, issuer, wellKnown)
+			discoveryURL := strings.TrimSuffix(issuer, "/") + discoveryConfigPath
+			op := &OIDCProvider{Issuer: issuer}
+			p, err := op.FetchCustomProviderConfig(ctx, discoveryURL)
 			if err != nil {
 				assert.True(t, test.wantErr, "Unexpected Error!")
 				return

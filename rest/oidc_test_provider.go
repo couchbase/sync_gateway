@@ -118,14 +118,14 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	issuerUrl := issuerUrl(h)
 	base.Debugf(base.KeyAuth, "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
 
-	config := &auth.OidcProviderConfiguration{
+	config := &auth.ProviderMetadata{
 		Issuer:                            issuerUrl,
-		AuthEndpoint:                      fmt.Sprintf("%s/%s", issuerUrl, "authorize"),
+		AuthorizationEndpoint:             fmt.Sprintf("%s/%s", issuerUrl, "authorize"),
 		TokenEndpoint:                     fmt.Sprintf("%s/%s", issuerUrl, "token"),
 		JwksUri:                           fmt.Sprintf("%s/%s", issuerUrl, "certs"),
 		ResponseTypesSupported:            []string{"code"},
 		SubjectTypesSupported:             []string{"public"},
-		IDTokenSigningAlgValues:           []string{"RS256"},
+		IdTokenSigningAlgValuesSupported:  []string{"RS256"},
 		ScopesSupported:                   []string{"openid", "email", "profile"},
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
 		ClaimsSupported:                   []string{"email", "sub", "exp", "iat", "iss", "aud", "nickname"},
