@@ -325,12 +325,11 @@ pipeline {
                             }
                         }
                         stage('against EE') {
-                            // TODO: Remove skip
-                            when { expression { return false } }
                             steps {
-                                echo 'Example of where we could run lite-core unit tests against a running SG EE'
                                 gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
-                                    echo "..."
+                                    sh 'touch litecore.out'
+                                    sh 'docker pull couchbase/sg-test-litecore:latest'
+                                    sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/litecore.out:/output.out couchbase/sg-test-litecore:latest'
                                 }
                             }
                         }
