@@ -312,7 +312,8 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 		require.NoError(t, err, "Couldn't delete document")
 	}
 
-	db.WaitForPendingChanges(context.Background())
+	waitErr := db.WaitForPendingChanges(context.Background())
+	assert.NoError(t, waitErr)
 
 	changesOptions := ChangesOptions{
 		Since:      SequenceID{Seq: 0},
