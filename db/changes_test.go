@@ -294,7 +294,6 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	defer tearDownTestDB(t, db)
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
-	log.Printf("Starting actual test code")
 	// Create 10 documents
 	revId := ""
 	var err error
@@ -329,13 +328,25 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 
 	// Ensure the test is triggering a query, and not serving from DCP-generated cache
 	postChangesQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
-	assert.Equal(t, postChangesQueryCount, initQueryCount+1)
+	assert.Equal(t, initQueryCount+1, postChangesQueryCount)
 
-	// Get changes with active_only=false
+	// Get changes with active_only=false, validate that triggers a new query
 	changesOptions.ActiveOnly = false
 	allChanges, err := db.GetChanges(base.SetOf("*"), changesOptions)
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 10, len(allChanges))
+
+	postChangesQueryCount, _ = base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
+
+	// Get changes with active_only=false again, verify results are served from the cache
+	changesOptions.ActiveOnly = false
+	allChanges, err = db.GetChanges(base.SetOf("*"), changesOptions)
+	require.NoError(t, err, "Error getting changes with active_only true")
+	require.Equal(t, 10, len(allChanges))
+
+	postChangesQueryCount, _ = base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
 
 }
 
