@@ -443,6 +443,12 @@ func TestSetURLQueryParam(t *testing.T) {
 		inputParamValue:  oidcAuthProviderGoogle,
 		wantCallbackURL:  "",
 		wantError:        &url.Error{Op: "parse", URL: "://localhost:4984/default/_oidc_callback", Err: errors.New("missing protocol scheme")},
+	}, {
+		name:             "Add provider with non-conforming characters to callback URL",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  "test&provider ?",
+		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=test%26provider+%3F",
 	}}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

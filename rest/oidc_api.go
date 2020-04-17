@@ -240,7 +240,7 @@ func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string
 		callbackURL := fmt.Sprintf("%s://%s/%s/_oidc_callback", scheme, h.rq.Host, dbName)
 		if !isDefault && providerName != "" {
 			if callbackURL, err := auth.SetURLQueryParam(callbackURL, auth.OIDCAuthProvider, providerName); err != nil {
-				base.Warnf("Failed set provider to OpenID Connect Callback URL: %s", callbackURL)
+				base.Warnf("Failed to add provider %q to OIDC callback URL (%s): %v", base.UD(providerName), callbackURL, err)
 			}
 		}
 		return callbackURL

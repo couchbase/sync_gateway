@@ -344,7 +344,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			if !provider.IsDefault && provider.CallbackURL != nil {
 				updatedCallback, err := auth.SetURLQueryParam(*provider.CallbackURL, auth.OIDCAuthProvider, name)
 				if err != nil {
-					return nil, base.RedactErrorf("Failed to add provider %q to OIDC callback URL", base.UD(name))
+					return nil, base.RedactErrorf("Failed to add provider %q to OIDC callback URL: %v", base.UD(name), err)
 				}
 				provider.CallbackURL = &updatedCallback
 			}
@@ -352,7 +352,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			dbContext.OIDCProviders[name] = provider
 		}
 		if len(dbContext.OIDCProviders) == 0 {
-			return nil, errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified.")
+			return nil, errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified")
 		}
 
 	}
