@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func canSeeAllChannels(princ Principal, channels base.Set) bool {
@@ -591,7 +592,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 	assert.Equal(t, cost, bcryptDefaultCost)
 }
 
-func TestAuthenticateTrustedJWTWithMalformedToken(t *testing.T) {
+func TestAuthenticateTrustedJWTWithBadToken(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
@@ -605,9 +606,37 @@ func TestAuthenticateTrustedJWTWithMalformedToken(t *testing.T) {
 		CallbackURL: &callbackURL,
 	}
 
-	require.NoError(t, provider.InitOIDCClient(), "Couldn't initiate OpenID Connect client")
-	_, _, err := auth.AuthenticateTrustedJWT("malformed.bearer.token", provider, nil)
-	assert.Error(t, err, "Can't verify malformed token")
+	user, idToken, err := auth.AuthenticateTrustedJWT("malformed.bearer.token", provider, nil)
+	assert.Error(t, err, "Can't verify malformed JSON Web Token")
+	assert.Nil(t, user, "User shouldn't be authenticated with malformed JSON Web Token")
+	assert.Nil(t, idToken, "IDToken shouldn't be available when authenticating with malformed JSON Web Token")
+}
+
+func TestAuthenticateTrustedJWTWithBadClaim(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	clientID := "comcast"
+	callbackURL := "http://comcast:4984/_callback"
+
+	provider := &OIDCProvider{
+		ClientID:    &clientID,
+		Issuer:      "https://accounts.google.com",
+		CallbackURL: &callbackURL,
+	}
+
+	signer, err := GetRSASigner()
+	require.NoError(t, err, "Failed to create RSA signer")
+	claims := jwt.Claims{Issuer: "accounts.google.com"}
+	builder := jwt.Signed(signer).Claims(claims)
+	token, err := builder.CompactSerialize()
+	require.NoError(t, err, "Failed to serialize JSON Web Token")
+
+	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
+	assert.Error(t, err)
+	assert.Nil(t, user)
+	assert.Nil(t, jws)
 }
 
 func TestGetPrincipal(t *testing.T) {
