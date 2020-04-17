@@ -279,6 +279,7 @@ type ChannelCacheConfig struct {
 	MaxLength            *int    `json:"max_length,omitempty"`                 // Maximum number of entries maintained in cache per channel
 	MinLength            *int    `json:"min_length,omitempty"`                 // Minimum number of entries maintained in cache per channel
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
+	QueryLimit           *int    `json:"query_limit,omitempty"`                // Limit used for channel queries, if not specified by client
 }
 
 type UnsupportedServerConfig struct {

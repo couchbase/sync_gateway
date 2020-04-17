@@ -1295,3 +1295,10 @@ func FatalPanicHandler() {
 		Fatalf("Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
 	}
 }
+
+func MinInt(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}

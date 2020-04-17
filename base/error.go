@@ -41,6 +41,7 @@ var (
 	ErrNotFound              = &sgError{"Not Found"}
 	ErrUpdateCancel          = &sgError{"Cancel update"}
 	ErrImportCancelledPurged = &sgError{"Import Cancelled Due to Purge"}
+	ErrChannelFeed           = &sgError{"Error while building channel feed"}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.

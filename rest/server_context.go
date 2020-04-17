@@ -397,6 +397,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
 				cacheOptions.CompactLowWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
 			}
+			if config.CacheConfig.ChannelCacheConfig.QueryLimit != nil && *config.CacheConfig.ChannelCacheConfig.QueryLimit > 0 {
+				cacheOptions.ChannelQueryLimit = *config.CacheConfig.ChannelCacheConfig.QueryLimit
+			}
 		}
 
 		if config.CacheConfig.RevCacheConfig != nil {
