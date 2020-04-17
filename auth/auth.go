@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/coreos/go-oidc"
@@ -417,14 +418,13 @@ func (auth *Authenticator) AuthenticateUser(username string, password string) Us
 // Used to authenticate a JWT token coming from an insecure source (e.g. client request)
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, *oidc.IDToken, error) {
+func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDCProviderMap, callbackURLFunc OIDCCallbackURLFunc) (User, *Identity, error) {
 
 	base.Debugf(base.KeyAuth, "AuthenticateUntrustedJWT called with token: %s", base.UD(token))
 	var provider *OIDCProvider
 	var issuer string
 
-	if providers.hasMultiple() {
-		base.Infof(base.KeyAuth, "Multiple providers found in configuration")
+	if len(providers) > 1 {
 		// Parse JWT (needed to determine issuer/provider)
 		jwt, err := jwt.ParseSigned(token)
 		if err != nil {
@@ -445,9 +445,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		base.Debugf(base.KeyAuth, "Provider for issuer: %+v", base.UD(provider))
 
 	} else {
-		base.Infof(base.KeyAuth, "Only a single provider found in configuration")
-		provider = providers.first()
-		issuer = provider.Issuer
+		provider = providers.getProviderWhenSingle()
 	}
 
 	if provider == nil {
@@ -466,66 +464,65 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		return nil, nil, err
 	}
 
-	return auth.authenticateJWT(idToken, provider)
+	identity, err := GetIdentity(idToken)
+	if err != nil {
+		base.Debugf(base.KeyAuth, "Error getting identity from token", base.UD(identity), err)
+	}
+	return auth.authenticateJWT(identity, provider)
 }
 
 // Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
 // Verifies the token claims, but doesn't require signature verification.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, *oidc.IDToken, error) {
-
+func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, *Identity, error) {
 	base.Debugf(base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
 	// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
-	idToken, err := provider.OIDCClient.VerifyJWT(token)
+	identity, err := VerifyClaims(&oidc.Config{ClientID: *provider.ClientID}, token, provider.Issuer)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
-		return nil, idToken, err
+		return nil, identity, err
 	}
-	return auth.authenticateJWT(idToken, provider)
+	return auth.authenticateJWT(identity, provider)
 }
 
 // Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
-func (auth *Authenticator) authenticateJWT(idToken *oidc.IDToken, provider *OIDCProvider) (User, *oidc.IDToken, error) {
-	username := GetOIDCUsername(provider, idToken.Subject)
+func (auth *Authenticator) authenticateJWT(identity *Identity, provider *OIDCProvider) (User, *Identity, error) {
+	if identity.Subject == "" {
+		base.Debugf(base.KeyAuth, "Error getting Subject from JWT, token: %v", base.UD(identity))
+		return nil, identity, errors.New("subject not found in JWT")
+	}
+	username := GetOIDCUsername(provider, identity.Subject)
 	base.Debugf(base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
 	user, userErr := auth.GetUser(username)
 	if userErr != nil {
 		base.Debugf(base.KeyAuth, "Failed to get OIDC user from %v. Error: %v", base.UD(username), userErr)
-		return nil, idToken, userErr
+		return nil, identity, userErr
 	}
 
 	// If user found, check whether the email needs to be updated (e.g. user has changed email in external auth system)
-	var claims struct {
-		Email string `json:"email"`
-	}
-	if err := idToken.Claims(&claims); err != nil {
-		base.Debugf(base.KeyAuth, "Failed to get OIDC User from %v.  Error: %v", base.UD(username), userErr)
-		return nil, idToken, userErr
-	}
-
-	if user != nil && claims.Email != "" {
-		err := auth.UpdateUserEmail(user, claims.Email)
+	if user != nil && identity.Email != "" {
+		err := auth.UpdateUserEmail(user, identity.Email)
 		if err != nil {
-			base.Warnf("Unable to set user email to %v for OIDC", base.UD(claims.Email))
+			base.Warnf("Unable to set user email to %v for OIDC", base.UD(identity.Email))
 		}
 	}
 
 	// Auto-registration. This will normally be done when token is originally returned
 	// to client by oidc callback, but also needed here to handle clients obtaining their own tokens.
 	if user == nil && provider.Register {
-		base.Debugf(base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(claims.Email))
+		base.Debugf(base.KeyAuth, "Registering new user: %v with email: %v", base.UD(username), base.UD(identity.Email))
 		var err error
-		user, err = auth.RegisterNewUser(username, claims.Email)
+		user, err = auth.RegisterNewUser(username, identity.Email)
 		if err != nil && !base.IsCasMismatch(err) {
 			base.Debugf(base.KeyAuth, "Error registering new user: %v", err)
-			return nil, idToken, err
+			return nil, identity, err
 		}
 	}
 
-	return user, idToken, nil
+	return user, identity, nil
 }
 
 // Registers a new user account based on the given verified username and optional email address.

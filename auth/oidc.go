@@ -11,17 +11,13 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
-	"mime"
 	"net/http"
 	"net/url"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/base"
@@ -42,21 +38,20 @@ type OIDCOptions struct {
 	DefaultProvider *string         `json:"default_provider,omitempty"` // Issuer used when not specified by client
 }
 
+// Represents client configurations to authenticate end-users with an OpenID Connect provider.
 type OIDCClient struct {
-	Config          oauth2.Config
-	Context         context.Context
-	IDTokenVerifier *oidc.IDTokenVerifier
-	Provider        *oidc.Provider
-}
+	// Describes a typical OAuth2 flow, with both the client
+	// application information and the server's endpoint URLs.
+	Config oauth2.Config
 
-// Config options for Json Web Token validation
-type JWTOptions struct {
-	ValidationKey *string `json:"validation_key"`           // Key used to validate signed tokens
-	SigningMethod *string `json:"signing_method,omitempty"` // Algorithm used for signing.  Can be specified for additional security to handle scenario described here: https://auth0.com/blog/2015/03/31/critical-vulnerabilities-in-json-web-token-libraries/
+	// Carries a deadline, a cancellation signal, and other values across Auth requests.
+	Context context.Context
+
+	// Provides verification for ID Tokens.
+	Verifier *oidc.IDTokenVerifier
 }
 
 type OIDCProvider struct {
-	JWTOptions
 	Issuer                  string   `json:"issuer"`                           // OIDC Issuer
 	Register                bool     `json:"register"`                         // If true, server will register new user accounts
 	ClientID                *string  `json:"client_id,omitempty"`              // Client ID
@@ -68,10 +63,21 @@ type OIDCProvider struct {
 	UserPrefix              string   `json:"user_prefix,omitempty"`            // Username prefix for users created for this provider
 	DiscoveryURI            string   `json:"discovery_url,omitempty"`          // Non-standard discovery endpoints
 	DisableConfigValidation bool     `json:"disable_cfg_validation,omitempty"` // Bypasses config validation based on the OIDC spec.  Required for some OPs that don't strictly adhere to spec (eg. Yahoo)
-	OIDCClient              *OIDCClient
-	OIDCClientOnce          sync.Once
-	IsDefault               bool
-	Name                    string
+
+	// Represents client configurations to authenticate end-users with an OpenID Connect provider.
+	// It must not be accessed directly, use accessor methods instead.
+	oidcClient     *OIDCClient
+	OIDCClientOnce sync.Once
+	IsDefault      bool
+	Name           string
+}
+
+func (op *OIDCProvider) OIDCClient() *OIDCClient {
+	return op.oidcClient
+}
+
+func (op *OIDCProvider) SetOIDCClient(client *OIDCClient) {
+	op.oidcClient = client
 }
 
 type OIDCProviderMap map[string]*OIDCProvider
@@ -87,16 +93,12 @@ func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 	return nil
 }
 
-// Determines if there is more than one OpenID Connect providers configured.
-// Returns true if there are multiple providers, false otherwise.
-func (opm OIDCProviderMap) hasMultiple() bool {
-	return len(opm) > 1
-}
-
-// Return the first provider from the list of OpenID Connect providers.
-func (opm OIDCProviderMap) first() *OIDCProvider {
-	for _, value := range opm {
-		return value
+// Get the provider from OIDCProviderMap when only a single provider is defined.
+func (opm OIDCProviderMap) getProviderWhenSingle() *OIDCProvider {
+	if len(opm) == 1 {
+		for _, value := range opm {
+			return value
+		}
 	}
 	return nil
 }
@@ -136,7 +138,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OID
 		}
 	})
 
-	return op.OIDCClient
+	return op.OIDCClient()
 }
 
 // To support multiple providers referencing the same issuer, the user prefix used to build the SG usernames for
@@ -175,14 +177,14 @@ func (op *OIDCProvider) InitOIDCClient() error {
 	}
 
 	ctx := context.Background()
-	provider, _, err := op.DiscoverConfig(ctx)
-	if err != nil || provider == nil {
+	verifier, endpoint, err := op.DiscoverConfig(ctx)
+	if err != nil || verifier == nil {
 		return pkgerrors.Wrap(err, "unable to discover config")
 	}
 
 	config := oauth2.Config{
 		ClientID:    *op.ClientID,
-		Endpoint:    provider.Endpoint(),
+		Endpoint:    *endpoint,
 		RedirectURL: *op.CallbackURL,
 	}
 
@@ -201,53 +203,56 @@ func (op *OIDCProvider) InitOIDCClient() error {
 		return err
 	}
 
-	idTokenVerifier := provider.Verifier(&oidc.Config{ClientID: *op.ClientID})
-
-	op.OIDCClient = &OIDCClient{
-		Provider:        provider,
-		Config:          config,
-		Context:         ctx,
-		IDTokenVerifier: idTokenVerifier,
-	}
+	client := &OIDCClient{Config: config, Context: ctx, Verifier: verifier}
+	op.SetOIDCClient(client)
 
 	return nil
 }
 
-func (op *OIDCProvider) DiscoverConfig(ctx context.Context) (config *oidc.Provider, shouldSync bool, err error) {
+func (op *OIDCProvider) DiscoverConfig(ctx context.Context) (verifier *oidc.IDTokenVerifier, endpoint *oauth2.Endpoint, err error) {
 	// If discovery URI is explicitly defined, use it instead of the standard issuer-based discovery.
 	if op.DiscoveryURI != "" || op.DisableConfigValidation {
+		discoveryURL := op.DiscoveryURI
+
+		// If the end-user has opted out for config validation and the discovery URI is not defined
+		// in provider config, construct the discovery URI based on standard issuer-based discovery.
+		if op.DisableConfigValidation && op.DiscoveryURI == "" {
+			discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
+		}
 		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(op.DiscoveryURI))
-		config, err = op.FetchCustomProviderConfig(ctx, op.DiscoveryURI)
-		shouldSync = false
+		metadata, err := op.FetchCustomProviderConfig(discoveryURL)
+		if err != nil {
+			return nil, nil, err
+		}
+		verifier = op.GenerateVerifier(metadata, ctx)
+		endpoint = &oauth2.Endpoint{AuthURL: metadata.AuthorizationEndpoint, TokenURL: metadata.TokenEndpoint}
 	} else {
-		wellKnown := strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
-		base.Infof(base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint: %s", base.UD(wellKnown))
+		base.Infof(base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint, issuer: %s", base.UD(op.Issuer))
+		var provider *oidc.Provider
 		maxRetryAttempts := 5
 		for i := 1; i <= maxRetryAttempts; i++ {
-			config, err = oidc.NewProvider(ctx, op.Issuer)
-			if err == nil {
-				shouldSync = true
+			provider, err = oidc.NewProvider(ctx, op.Issuer)
+			if err == nil && provider != nil {
+				providerEndpoint := provider.Endpoint()
+				endpoint = &providerEndpoint
+				verifier = provider.Verifier(&oidc.Config{ClientID: *op.ClientID})
 				break
 			}
-			base.Debugf(base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v",
-				base.UD(op.Issuer), i, maxRetryAttempts, err)
+			base.Debugf(base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v", base.UD(op.Issuer), i, maxRetryAttempts, err)
 			time.Sleep(OIDCDiscoveryRetryWait)
 		}
 	}
 
-	return config, shouldSync, err
+	return verifier, endpoint, err
 }
 
 func GetOIDCUsername(provider *OIDCProvider, subject string) string {
 	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
 }
 
-// Clone of provider metadata construction from go-oidc library.
-// https://github.com/coreos/go-oidc/blob/v2/oidc.go#L113
-func (op *OIDCProvider) FetchCustomProviderConfig(ctx context.Context, discoveryURL string) (*oidc.Provider, error) {
-	// If discovery URL is empty, use the standard discovery URL
+func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*ProviderMetadata, error) {
 	if discoveryURL == "" {
-		discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
+		return nil, errors.New("URL must not be empty for custom identity provider discovery")
 	}
 
 	base.Debugf(base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
@@ -256,58 +261,61 @@ func (op *OIDCProvider) FetchCustomProviderConfig(ctx context.Context, discovery
 		base.Debugf(base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
-	resp, err := doRequest(ctx, req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			base.Debugf(base.KeyAuth, "Error closing response body %s: %v", base.UD(discoveryURL), err)
-		}
-	}()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		base.Debugf(base.KeyAuth, "Error reading response body %s: %v", base.UD(discoveryURL), err)
-		return nil, fmt.Errorf("unable to read response body: %v", err)
-	}
-
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: %s", resp.Status, body)
+		return nil, fmt.Errorf("%s: %s", resp.Status, resp.Body)
 	}
-
-	var p ProviderMetadata
-	err = unmarshalResp(resp, body, &p)
-	if err != nil {
+	var metadata ProviderMetadata
+	if err := base.JSONDecoder(resp.Body).Decode(&metadata); err != nil {
 		base.Debugf(base.KeyAuth, "Error parsing body %s: %v", base.UD(discoveryURL), err)
-		return nil, fmt.Errorf("oidc: failed to decode provider discovery object: %v", err)
+		return nil, err
 	}
 
-	if p.Issuer != op.Issuer {
-		return nil, fmt.Errorf("oidc: issuer did not match the issuer returned by provider, expected %q got %q", op.Issuer, p.Issuer)
-	}
-	var algs []string
-	for _, a := range p.IdTokenSigningAlgValuesSupported {
-		if supportedAlgorithms[a] {
-			algs = append(algs, a)
-		}
+	if metadata.Issuer != op.Issuer {
+		return nil, fmt.Errorf("oidc: issuer did not match the issuer returned by provider, expected %q got %q", op.Issuer, metadata.Issuer)
 	}
 
-	provider := &oidc.Provider{}
-	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("issuer"), p.Issuer)
-	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("authURL"), p.AuthorizationEndpoint)
-	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("tokenURL"), p.TokenEndpoint)
-	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("userInfoURL"), p.UserInfoEndpoint)
-	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("algorithms"), algs)
-	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("rawClaims"), body)
-	SetUnexportedField(reflect.ValueOf(provider).Elem().FieldByName("remoteKeySet"), oidc.NewRemoteKeySet(ctx, p.JwksUri))
-
-	base.Debugf(base.KeyAuth, "Returning config: %v", base.UD(provider))
-	return provider, nil
+	base.Debugf(base.KeyAuth, "Returning config: %v", base.UD(metadata))
+	return &metadata, nil
 }
 
-// Clone of algorithms explicitly supported by this go-oidc library.
-// https://github.com/coreos/go-oidc/blob/v2/oidc.go#L97
+func (op *OIDCProvider) GenerateVerifier(metadata *ProviderMetadata, ctx context.Context) *oidc.IDTokenVerifier {
+	signingAlgorithms := op.GetSigningAlgorithms(metadata)
+	if len(signingAlgorithms.unsupportedAlgorithms) > 0 {
+		base.Warnf("Found algorithms not supported by underlying OpenID Connect library: %v", signingAlgorithms.unsupportedAlgorithms)
+	}
+	config := &oidc.Config{ClientID: *op.ClientID}
+	if len(signingAlgorithms.supportedAlgorithms) > 0 {
+		config.SupportedSigningAlgs = signingAlgorithms.supportedAlgorithms
+	}
+	return oidc.NewVerifier(metadata.Issuer, oidc.NewRemoteKeySet(ctx, metadata.JwksUri), config)
+}
+
+type SigningAlgorithms struct {
+	supportedAlgorithms   []string
+	unsupportedAlgorithms []string
+}
+
+// Returns the list of supported and unsupported signing algorithms.
+func (op *OIDCProvider) GetSigningAlgorithms(metadata *ProviderMetadata) (signingAlgorithms SigningAlgorithms) {
+	for _, algorithm := range metadata.IdTokenSigningAlgValuesSupported {
+		if supportedAlgorithms[algorithm] {
+			signingAlgorithms.supportedAlgorithms = append(signingAlgorithms.supportedAlgorithms, algorithm)
+		} else {
+			signingAlgorithms.unsupportedAlgorithms = append(signingAlgorithms.unsupportedAlgorithms, algorithm)
+		}
+	}
+	return signingAlgorithms
+}
+
+// List of algorithms explicitly supported by go-oidc library.
+// If a provider supports other algorithms, such as HS256 or none,
+// those values won't be passed to the IDTokenVerifier.
 var supportedAlgorithms = map[string]bool{
 	oidc.RS256: true,
 	oidc.RS384: true,
@@ -318,16 +326,6 @@ var supportedAlgorithms = map[string]bool{
 	oidc.PS256: true,
 	oidc.PS384: true,
 	oidc.PS512: true,
-}
-
-// Clone of provider discovery request execution from go-oidc library.
-// https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L58
-func doRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
-	client := http.DefaultClient
-	if c, ok := ctx.Value(oauth2.HTTPClient).(*http.Client); ok {
-		client = c
-	}
-	return client.Do(req.WithContext(ctx))
 }
 
 // Represents the metadata describing the configuration of OpenID Connect Providers.
@@ -347,29 +345,6 @@ type ProviderMetadata struct {
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported,omitempty"`
 }
 
-// Clone of unmarshalling provider discovery response.
-// https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L398
-func unmarshalResp(r *http.Response, body []byte, v interface{}) error {
-	err := json.Unmarshal(body, &v)
-	if err == nil {
-		return nil
-	}
-	ct := r.Header.Get("Content-Type")
-	mediaType, _, parseErr := mime.ParseMediaType(ct)
-	if parseErr == nil && mediaType == "application/json" {
-		return fmt.Errorf("got Content-Type = application/json, but could not unmarshal as JSON: %v", err)
-	}
-	return fmt.Errorf("expected Content-Type = application/json, got %q: %v", ct, err)
-}
-
-func GetUnexportedField(field reflect.Value) interface{} {
-	return reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Interface()
-}
-
-func SetUnexportedField(field reflect.Value, value interface{}) {
-	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
-}
-
 // Returns "issuer" and "audiences" claims from the given JSON Web Token.
 func GetJWTIssuer(token *jwt.JSONWebToken) (issuer string, audiences []string, err error) {
 	claims := &jwt.Claims{}
@@ -380,6 +355,6 @@ func GetJWTIssuer(token *jwt.JSONWebToken) (issuer string, audiences []string, e
 	return claims.Issuer, claims.Audience, err
 }
 
-func (client OIDCClient) VerifyJWT(token string) (*oidc.IDToken, error) {
-	return client.IDTokenVerifier.Verify(client.Context, token)
+func (client *OIDCClient) VerifyJWT(token string) (*oidc.IDToken, error) {
+	return client.Verifier.Verify(client.Context, token)
 }

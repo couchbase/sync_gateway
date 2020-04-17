@@ -10,10 +10,10 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -269,7 +270,6 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestFetchCustomProviderConfig(t *testing.T) {
@@ -282,82 +282,62 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 		wantUserInfoURL string
 		wantAlgorithms  []string
 		wantErr         bool
-	}{
-		{
-			name: "basic_case",
-			data: `{
+	}{{
+		name: "basic_case",
+		data: `{
 				"issuer": "${issuer}",
 				"authorization_endpoint": "https://example.com/auth",
 				"token_endpoint": "https://example.com/token",
 				"jwks_uri": "https://example.com/keys",
 				"id_token_signing_alg_values_supported": ["RS256"]
 			}`,
-			wantAuthURL:    "https://example.com/auth",
-			wantTokenURL:   "https://example.com/token",
-			wantAlgorithms: []string{"RS256"},
-		},
-		{
-			name: "additional_algorithms",
-			data: `{
+		wantAuthURL:    "https://example.com/auth",
+		wantTokenURL:   "https://example.com/token",
+		wantAlgorithms: []string{"RS256"},
+	}, {
+		name: "additional_algorithms",
+		data: `{
 				"issuer": "${issuer}",
 				"authorization_endpoint": "https://example.com/auth",
 				"token_endpoint": "https://example.com/token",
 				"jwks_uri": "https://example.com/keys",
 				"id_token_signing_alg_values_supported": ["RS256", "RS384", "ES256"]
 			}`,
-			wantAuthURL:    "https://example.com/auth",
-			wantTokenURL:   "https://example.com/token",
-			wantAlgorithms: []string{"RS256", "RS384", "ES256"},
-		},
-		{
-			name: "unsupported_algorithms",
-			data: `{
-				"issuer": "${issuer}",
-				"authorization_endpoint": "https://example.com/auth",
-				"token_endpoint": "https://example.com/token",
-				"jwks_uri": "https://example.com/keys",
-				"id_token_signing_alg_values_supported": [
-					"RS256", "RS384", "ES256", "HS256", "none"
-				]
-			}`,
-			wantAuthURL:    "https://example.com/auth",
-			wantTokenURL:   "https://example.com/token",
-			wantAlgorithms: []string{"RS256", "RS384", "ES256"},
-		},
-		{
-			name: "mismatched_issuer",
-			data: `{
+		wantAuthURL:    "https://example.com/auth",
+		wantTokenURL:   "https://example.com/token",
+		wantAlgorithms: []string{"RS256", "RS384", "ES256"},
+	}, {
+		name: "mismatched_issuer",
+		data: `{
 				"issuer": "https://example.com",
 				"authorization_endpoint": "https://example.com/auth",
 				"token_endpoint": "https://example.com/token",
 				"jwks_uri": "https://example.com/keys",
 				"id_token_signing_alg_values_supported": ["RS256"]
 			}`,
-			wantErr: true,
-		},
-		{
-			name: "issuer_with_trailing_slash",
-			data: `{
+		wantErr: true,
+	}, {
+		name: "issuer_with_trailing_slash",
+		data: `{
 				"issuer": "${issuer}",
 				"authorization_endpoint": "https://example.com/auth",
 				"token_endpoint": "https://example.com/token",
 				"jwks_uri": "https://example.com/keys",
 				"id_token_signing_alg_values_supported": ["RS256"]
 			}`,
-			trailingSlash:  true,
-			wantAuthURL:    "https://example.com/auth",
-			wantTokenURL:   "https://example.com/token",
-			wantAlgorithms: []string{"RS256"},
-		},
-		{
-			// Test case taken directly from:
-			// https://accounts.google.com/.well-known/openid-configuration
-			name:            "google",
-			wantAuthURL:     "https://accounts.google.com/o/oauth2/v2/auth",
-			wantTokenURL:    "https://oauth2.googleapis.com/token",
-			wantUserInfoURL: "https://openidconnect.googleapis.com/v1/userinfo",
-			wantAlgorithms:  []string{"RS256"},
-			data: `{
+		trailingSlash:  true,
+		wantAuthURL:    "https://example.com/auth",
+		wantTokenURL:   "https://example.com/token",
+		wantAlgorithms: []string{"RS256"},
+	}, {
+		// Test case taken directly from:
+		// https://accounts.google.com/.well-known/openid-configuration
+		name:            "google",
+		wantAuthURL:     "https://accounts.google.com/o/oauth2/v2/auth",
+		wantTokenURL:    "https://oauth2.googleapis.com/token",
+		wantUserInfoURL: "https://openidconnect.googleapis.com/v1/userinfo",
+		wantAlgorithms:  []string{"RS256"},
+		data: `{
 				"issuer": "${issuer}",
 				"authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
 				"device_authorization_endpoint": "https://oauth2.googleapis.com/device/code",
@@ -374,12 +354,10 @@ func TestFetchCustomProviderConfig(t *testing.T) {
                  "code_challenge_methods_supported": ["plain","S256"],
                  "grant_types_supported": ["authorization_code","refresh_token","urn:ietf:params:oauth:grant-type:device_code","urn:ietf:params:oauth:grant-type:jwt-bearer"]
             }`,
-		},
+	},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
 
 			var issuer string
 			hf := func(w http.ResponseWriter, r *http.Request) {
@@ -400,16 +378,17 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 			}
 			discoveryURL := strings.TrimSuffix(issuer, "/") + discoveryConfigPath
 			op := &OIDCProvider{Issuer: issuer}
-			p, err := op.FetchCustomProviderConfig(ctx, discoveryURL)
+			metadata, err := op.FetchCustomProviderConfig(discoveryURL)
 			if err != nil {
 				assert.True(t, test.wantErr, "Unexpected Error!")
 				return
 			}
 			assert.False(t, test.wantErr, "Expected Error Not Found!")
-			assert.Equal(t, test.wantAuthURL, reflect.ValueOf(*p).FieldByName("authURL").String())
-			assert.Equal(t, test.wantTokenURL, reflect.ValueOf(*p).FieldByName("tokenURL").String())
-			assert.Equal(t, test.wantUserInfoURL, reflect.ValueOf(*p).FieldByName("userInfoURL").String())
-			assert.True(t, !reflect.DeepEqual(test.wantAlgorithms, reflect.ValueOf(*p).FieldByName("algorithms")))
+			assert.Equal(t, test.wantAuthURL, metadata.AuthorizationEndpoint)
+			assert.Equal(t, test.wantTokenURL, metadata.TokenEndpoint)
+			assert.Equal(t, test.wantUserInfoURL, metadata.UserInfoEndpoint)
+			log.Printf("wantAlgorithms: %v, IdTokenSigningAlgValuesSupported: %v", test.wantAlgorithms, metadata.IdTokenSigningAlgValuesSupported)
+			assert.True(t, reflect.DeepEqual(test.wantAlgorithms, metadata.IdTokenSigningAlgValuesSupported))
 		})
 	}
 }
@@ -445,4 +424,42 @@ func GetRSASigner() (signer jose.Signer, err error) {
 		return signer, err
 	}
 	return signer, nil
+}
+
+func TestGetSigningAlgorithms(t *testing.T) {
+	tests := []struct {
+		name                      string
+		inputAlgorithms           []string
+		wantSupportedAlgorithms   []string
+		wantUnsupportedAlgorithms []string
+	}{{
+		name:                      "Identity Provider supports single algorithm supported by OpenID Connect Library",
+		inputAlgorithms:           []string{oidc.RS256},
+		wantSupportedAlgorithms:   []string{oidc.RS256},
+		wantUnsupportedAlgorithms: nil,
+	}, {
+		name:                      "OpenID Connect Library supports all signing algorithms supported by Identity Provider",
+		inputAlgorithms:           []string{oidc.RS256, oidc.RS384, oidc.RS512, oidc.ES256, oidc.ES384, oidc.ES512, oidc.PS256, oidc.PS384, oidc.PS512},
+		wantSupportedAlgorithms:   []string{oidc.RS256, oidc.RS384, oidc.RS512, oidc.ES256, oidc.ES384, oidc.ES512, oidc.PS256, oidc.PS384, oidc.PS512},
+		wantUnsupportedAlgorithms: nil,
+	}, {
+		name:                      "None of the signing algorithms supported by Identity Provider are supported by OpenID Connect Library",
+		inputAlgorithms:           []string{"HS256", "HS512", "SHA256", "SHA512"},
+		wantSupportedAlgorithms:   nil,
+		wantUnsupportedAlgorithms: []string{"HS256", "HS512", "SHA256", "SHA512"},
+	}, {
+		name:                      "Few of the signing algorithms supported by Identity Provider are supported by OpenID Connect Library",
+		inputAlgorithms:           []string{oidc.RS256, oidc.RS384, oidc.RS512, "HS256", "HS512", "SHA256", "SHA512"},
+		wantSupportedAlgorithms:   []string{oidc.RS256, oidc.RS384, oidc.RS512},
+		wantUnsupportedAlgorithms: []string{"HS256", "HS512", "SHA256", "SHA512"},
+	}}
+	for _, test := range tests {
+		provider := OIDCProvider{}
+		t.Run(test.name, func(t *testing.T) {
+			metadata := &ProviderMetadata{IdTokenSigningAlgValuesSupported: test.inputAlgorithms}
+			signingAlgorithms := provider.GetSigningAlgorithms(metadata)
+			assert.Equal(t, test.wantSupportedAlgorithms, signingAlgorithms.supportedAlgorithms)
+			assert.Equal(t, test.wantUnsupportedAlgorithms, signingAlgorithms.unsupportedAlgorithms)
+		})
+	}
 }

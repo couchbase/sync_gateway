@@ -207,8 +207,7 @@ func (h *handler) handleOIDCRefresh() error {
 	return nil
 }
 
-func (h *handler) createSessionForTrustedIdToken(
-	rawIDToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
+func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
 	user, idToken, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
