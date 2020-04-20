@@ -79,10 +79,9 @@ type handler struct {
 type handlerPrivs int
 
 const (
-	regularPrivs              = iota // Handler requires valid authentication
-	publicPrivs                      // Handler ensures valid auth if present, but doesn't require it
-	adminPrivs                       // Handler ignores auth, always runs with root/admin privs
-	ignoreInvalidSessionPrivs        // Handler will continue as guest if session auth fails
+	regularPrivs = iota // Handler requires valid authentication
+	publicPrivs         // Handler Handler checks auth and falls back to guest if invalid or missing
+	adminPrivs          // Handler ignores auth, always runs with root/admin privs
 )
 
 type handlerMethod func(*handler) error
@@ -354,7 +353,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 
 	// Check cookie
 	h.user, err = context.Authenticator().AuthenticateCookie(h.rq, h.response)
-	if err != nil && h.privs != ignoreInvalidSessionPrivs {
+	if err != nil && h.privs != publicPrivs {
 		return err
 	} else if h.user != nil {
 		return nil
