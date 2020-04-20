@@ -4968,3 +4968,29 @@ func TestHandleStats(t *testing.T) {
 	assert.Contains(t, string(response.BodyBytes()), "MemStats")
 	assertStatus(t, response, http.StatusOK)
 }
+
+// Try to create session with invalid cert but valid credentials
+func TestSessionFail(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create user
+	response := rt.SendAdminRequest("PUT", "/db/_user/user1", `{"name":"user1", "password":"letmein", "admin_channels":["user1"]}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	// Create fake, invalid session
+	fakeSession := auth.LoginSession{
+		ID:         base.GenerateRandomSecret(),
+		Username:   "user1",
+		Expiration: time.Now().Add(4 * time.Hour),
+		Ttl:        24 * time.Hour,
+	}
+
+	reqHeaders := map[string]string{
+		"Cookie": auth.DefaultCookieName + "=" + fakeSession.ID,
+	}
+
+	// Attempt to create session with invalid cert but valid login
+	response = rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"user1", "password":"letmein"}`, reqHeaders)
+	assertStatus(t, response, http.StatusOK)
+}
