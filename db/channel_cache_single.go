@@ -412,13 +412,16 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 
 	// Cache some of the query results, if there's room in the cache.  If query hit the limit,
 	// the query results are only valid for the range of sequences in the result set.
-	resultValidTo := endSeq
-	numResults := len(resultFromQuery)
-	if options.Limit != 0 && numResults >= options.Limit {
-		resultValidTo = resultFromQuery[numResults-1].Sequence
-	}
-	if len(resultFromCache) < c.options.ChannelCacheMaxLength {
-		c.prependChanges(resultFromQuery, startSeq, resultValidTo)
+	// Don't cache when active_only=true since query results aren't complete.
+	if options.ActiveOnly != true {
+		resultValidTo := endSeq
+		numResults := len(resultFromQuery)
+		if options.Limit != 0 && numResults >= options.Limit {
+			resultValidTo = resultFromQuery[numResults-1].Sequence
+		}
+		if len(resultFromCache) < c.options.ChannelCacheMaxLength {
+			c.prependChanges(resultFromQuery, startSeq, resultValidTo)
+		}
 	}
 
 	result := resultFromQuery

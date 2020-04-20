@@ -11,6 +11,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log"
 	"testing"
@@ -284,6 +285,69 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		Changes: []ChangeRev{{"rev": "3-e99405a23fa102238fa8c3fd499b15bc"}}})
 
 	printChanges(changes)
+}
+
+func TestActiveOnlyCacheUpdate(t *testing.T) {
+
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer tearDownTestDB(t, db)
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
+	// Create 10 documents
+	revId := ""
+	var err error
+	for i := 1; i <= 10; i++ {
+		key := fmt.Sprintf("%s_%d", t.Name(), i)
+		body := Body{"foo": "bar"}
+		revId, _, err = db.Put(key, body)
+		require.NoError(t, err, "Couldn't create document")
+	}
+
+	// Tombstone 5 documents
+	for i := 2; i <= 6; i++ {
+		key := fmt.Sprintf("%s_%d", t.Name(), i)
+		_, err = db.DeleteDoc(key, revId)
+		require.NoError(t, err, "Couldn't delete document")
+	}
+
+	waitErr := db.WaitForPendingChanges(context.Background())
+	assert.NoError(t, waitErr)
+
+	changesOptions := ChangesOptions{
+		Since:      SequenceID{Seq: 0},
+		ActiveOnly: true,
+	}
+
+	initQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+
+	// Get changes with active_only=true
+	activeChanges, err := db.GetChanges(base.SetOf("*"), changesOptions)
+	require.NoError(t, err, "Error getting changes with active_only true")
+	require.Equal(t, 5, len(activeChanges))
+
+	// Ensure the test is triggering a query, and not serving from DCP-generated cache
+	postChangesQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	assert.Equal(t, initQueryCount+1, postChangesQueryCount)
+
+	// Get changes with active_only=false, validate that triggers a new query
+	changesOptions.ActiveOnly = false
+	allChanges, err := db.GetChanges(base.SetOf("*"), changesOptions)
+	require.NoError(t, err, "Error getting changes with active_only true")
+	require.Equal(t, 10, len(allChanges))
+
+	postChangesQueryCount, _ = base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
+
+	// Get changes with active_only=false again, verify results are served from the cache
+	changesOptions.ActiveOnly = false
+	allChanges, err = db.GetChanges(base.SetOf("*"), changesOptions)
+	require.NoError(t, err, "Error getting changes with active_only true")
+	require.Equal(t, 10, len(allChanges))
+
+	postChangesQueryCount, _ = base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
+
 }
 
 // Benchmark to validate fix for https://github.com/couchbase/sync_gateway/issues/2428
