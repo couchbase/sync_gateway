@@ -79,8 +79,8 @@ type handler struct {
 type handlerPrivs int
 
 const (
-	regularPrivs              = iota // Handler requires authentication
-	publicPrivs                      // Handler checks auth but doesn't require it
+	regularPrivs              = iota // Handler requires valid authentication
+	publicPrivs                      // Handler ensures valid auth if present, but doesn't require it
 	adminPrivs                       // Handler ignores auth, always runs with root/admin privs
 	ignoreInvalidSessionPrivs        // Handler will continue as guest if session auth fails
 )
