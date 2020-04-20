@@ -78,9 +78,18 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
-	rawValue, rawXattr, err := existingDoc.MarshalWithXattr()
-	if err != nil {
-		return nil, err
+
+	var rawValue []byte
+	var rawXattr []byte
+
+	if existingDoc.migrationRequired {
+		rawValue, err = existingDoc.MarshalJSON()
+		rawXattr = nil
+	} else {
+		rawValue, rawXattr, err = existingDoc.MarshalWithXattr()
+		if err != nil {
+			return nil, err
+		}
 	}
 	existingBucketDoc := &sgbucket.BucketDocument{
 		Body:   rawValue,
@@ -155,7 +164,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
-		if ok {
+		if ok || doc.migrationRequired {
 			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc)
 			if migrateErr != nil {
 				return nil, nil, updatedExpiry, migrateErr
@@ -302,7 +311,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 
 	// Unmarshal the existing doc in legacy SG format
 	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
-	if err != nil {
+	if unmarshalErr != nil {
 		return nil, false, unmarshalErr
 	}
 	doc.Cas = existingDoc.Cas

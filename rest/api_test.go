@@ -4994,3 +4994,32 @@ func TestSessionFail(t *testing.T) {
 	response = rt.SendRequestWithHeaders("POST", "/db/_session", `{"name":"user1", "password":"letmein"}`, reqHeaders)
 	assertStatus(t, response, http.StatusOK)
 }
+
+func TestImportOnWriteMigration(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test doesn't work with Walrus")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs to be enabled")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Put doc with sync data / non-xattr
+	key := "doc1"
+	body := `{"_sync": { "rev": "1-fc2cf22c5e5007bd966869ebfe9e276a", "sequence": 1, "recent_sequences": [ 1 ], "history": { "revs": [ "1-fc2cf22c5e5007bd966869ebfe9e276a" ], "parents": [ -1], "channels": [ null ] }, "cas": "","value_crc32c": "", "time_saved": "2019-04-10T12:40:04.490083+01:00" }, "value": "foo"}`
+	ok, err := rt.Bucket().Add(key, 0, body)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	// Update doc with xattr - get 409, creates new rev, has old body
+	response := rt.SendAdminRequest("PUT", "/db/doc1?rev=1-fc2cf22c5e5007bd966869ebfe9e276a", `{"value":"new"}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	// Update doc with xattr - successful update
+	response = rt.SendAdminRequest("PUT", "/db/doc1?rev=2-44ad6f128a2b1f75d0d0bb49b1fc0019", `{"value":"newer"}`)
+	assertStatus(t, response, http.StatusCreated)
+}
