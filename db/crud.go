@@ -1420,6 +1420,12 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll); err != nil {
 				return
 			}
+
+			// Check whether Sync Data originated in body
+			if currentXattr == nil && bytes.Contains(currentValue, []byte(base.SyncPropertyName)) {
+				doc.inlineSyncData = true
+			}
+
 			docExists := currentValue != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {

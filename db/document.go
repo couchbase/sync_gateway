@@ -156,11 +156,11 @@ type Document struct {
 	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas      uint64 // Document cas
 
-	Deleted           bool
-	DocExpiry         uint32
-	RevID             string
-	DocAttachments    AttachmentsMeta
-	migrationRequired bool
+	Deleted        bool
+	DocExpiry      uint32
+	RevID          string
+	DocAttachments AttachmentsMeta
+	inlineSyncData bool
 }
 
 type revOnlySyncData struct {
@@ -335,7 +335,9 @@ func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas
 	if xattrData == nil || len(xattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
-		doc.migrationRequired = true
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		doc = NewDocument(docid)
 		err = doc.UnmarshalWithXattr(data, xattrData, unmarshalLevel)
