@@ -30,11 +30,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	// Mock OpenID Connect Provider Discovery Endpoints
 	var issuerGoogle, issuerSalesforce string
 	mux := http.NewServeMux()
-	mux.HandleFunc("/google/", func(res http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/google/.well-known/openid-configuration" {
-			http.NotFound(res, req)
-			return
-		}
+	mux.HandleFunc("/google"+wellKnownPath, func(res http.ResponseWriter, req *http.Request) {
 		res.Header().Set("Content-Type", "application/json")
 		body := `{
 			"issuer": "${issuer}", 
@@ -46,11 +42,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 		_, err := io.WriteString(res, strings.ReplaceAll(body, "${issuer}", issuerGoogle))
 		require.NoError(t, err, "Failed to write response body for google provider")
 	})
-	mux.HandleFunc("/salesforce/", func(res http.ResponseWriter, req *http.Request) {
-		if req.URL.Path != "/salesforce/.well-known/openid-configuration" {
-			http.NotFound(res, req)
-			return
-		}
+	mux.HandleFunc("/salesforce"+wellKnownPath, func(res http.ResponseWriter, req *http.Request) {
 		res.Header().Set("Content-Type", "application/json")
 		body := `{
 			"issuer": "${issuer}", 
