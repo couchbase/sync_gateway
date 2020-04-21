@@ -43,7 +43,8 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 			"jwks_uri": "https://www.googleapis.com/oauth2/v3/certs", 
 			"id_token_signing_alg_values_supported": ["RS256"]
 		}`
-		io.WriteString(res, strings.ReplaceAll(body, "${issuer}", issuerGoogle))
+		_, err := io.WriteString(res, strings.ReplaceAll(body, "${issuer}", issuerGoogle))
+		require.NoError(t, err, "Failed to write response body for google provider")
 	})
 	mux.HandleFunc("/salesforce/", func(res http.ResponseWriter, req *http.Request) {
 		if req.URL.Path != "/salesforce/.well-known/openid-configuration" {
@@ -58,7 +59,8 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 			"jwks_uri": "https://login.salesforce.com/id/keys", 
 			"id_token_signing_alg_values_supported": ["RS256"]
 		}`
-		io.WriteString(res, strings.ReplaceAll(body, "${issuer}", issuerSalesforce))
+		_, err := io.WriteString(res, strings.ReplaceAll(body, "${issuer}", issuerSalesforce))
+		require.NoError(t, err, "Failed to write response body for salesforce provider")
 	})
 
 	ts := httptest.NewServer(mux)
