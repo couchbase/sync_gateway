@@ -1259,6 +1259,16 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, kvPairs []KVPairBytes)
 	return newJSON
 }
 
+func UnknownFieldErrCheck(err error) error {
+	if err != nil && strings.Contains(err.Error(), "unknown field") {
+		// Special handling for unknown field errors
+		// json.Decode continues to decode the full data into the struct
+		// so it's safe to use even after this error
+		return pkgerrors.WithMessage(ErrUnknownField, err.Error())
+	}
+	return err
+}
+
 // UseStdlibJSON if true, uses the stdlib JSON package.
 // This variable is not thread-safe, and should be set only once on startup.
 var UseStdlibJSON bool
