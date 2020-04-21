@@ -239,11 +239,12 @@ func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string
 	} else {
 		callbackURL := fmt.Sprintf("%s://%s/%s/_oidc_callback", scheme, h.rq.Host, dbName)
 		if !isDefault && providerName != "" {
-			if callbackURL, err := auth.SetURLQueryParam(callbackURL, auth.OIDCAuthProvider, providerName); err != nil {
+			callbackURL, err := auth.SetURLQueryParam(callbackURL, auth.OIDCAuthProvider, providerName)
+			if err != nil {
 				base.Warnf("Failed to add provider %q to OIDC callback URL (%s): %v", base.UD(providerName), callbackURL, err)
 			}
+			return callbackURL
 		}
 		return callbackURL
 	}
-
 }
