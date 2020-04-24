@@ -435,10 +435,10 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		}
 
 		// Extract issuer and audience(s) from JSON Web Token.
-		issuer, audiences, err := GetJWTIssuer(jwt)
+		issuer, audiences, err := GetIssuerWithAudience(jwt)
 		base.Debugf(base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
 		if err != nil {
-			base.Debugf(base.KeyAuth, "Error getting JWT issuer: %v", err)
+			base.Debugf(base.KeyAuth, "Error getting issuer and audience from token: %v", err)
 			return nil, time.Time{}, err
 		}
 

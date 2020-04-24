@@ -374,12 +374,19 @@ type ProviderMetadata struct {
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported,omitempty"`
 }
 
-// GetJWTIssuer returns "issuer" and "audiences" claims from the given JSON Web Token.
-func GetJWTIssuer(token *jwt.JSONWebToken) (issuer string, audiences []string, err error) {
+// GetIssuerWithAudience returns "issuer" and "audiences" claims from the given JSON Web Token.
+// Returns malformed oidc token error when issuer/audience doesn't exist in token.
+func GetIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []string, err error) {
 	claims := &jwt.Claims{}
 	err = token.UnsafeClaimsWithoutVerification(claims)
 	if err != nil {
 		return issuer, audiences, pkgerrors.Wrapf(err, "failed to parse JWT claims")
+	}
+	if claims.Issuer == "" {
+		return issuer, audiences, fmt.Errorf("malformed oidc token %v, issuer claim doesn't exist", token)
+	}
+	if claims.Audience == nil || len(claims.Audience) == 0 {
+		return issuer, audiences, fmt.Errorf("malformed oidc token %v, audience claim doesn't exist", token)
 	}
 	return claims.Issuer, claims.Audience, err
 }

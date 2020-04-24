@@ -406,7 +406,7 @@ func TestGetJWTIssuer(t *testing.T) {
 
 	jwt, err := jwt.ParseSigned(token)
 	require.NoError(t, err, "Failed to decode raw JSON Web Token")
-	issuer, audiences, err := GetJWTIssuer(jwt)
+	issuer, audiences, err := GetIssuerWithAudience(jwt)
 	assert.Equal(t, wantIssuer, issuer)
 	assert.Equal(t, []string(wantAudience), audiences)
 }
