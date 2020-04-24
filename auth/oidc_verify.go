@@ -3,11 +3,13 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/coreos/go-oidc"
+	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -16,6 +18,8 @@ const (
 	issuerGoogleAccountsNoScheme = "accounts.google.com"
 )
 
+var ErrorClientIDNotFound = fmt.Errorf("oidc: invalid configuration, clientID must be provided")
+
 // Identity claims required for claims verification
 type Identity struct {
 	Issuer   string
@@ -23,7 +27,6 @@ type Identity struct {
 	Subject  string
 	Expiry   time.Time
 	IssuedAt time.Time
-	Claims   []byte
 	Email    string
 }
 
@@ -38,9 +41,7 @@ type IdentityJson struct {
 }
 
 // VerifyClaims parses a raw ID Token and verifies the claim.
-// VerifyClaims does NOT do signature validation, which is the callers responsibility.
-// Functionality is cloned from https://github.com/coreos/go-oidc/blob/v2/verify.go
-func VerifyClaims(config *oidc.Config, rawIDToken, issuer string) (*Identity, error) {
+func VerifyClaims(rawIDToken, clientID, issuer string) (*Identity, error) {
 	payload, err := parseJWT(rawIDToken)
 	if err != nil {
 		return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
@@ -56,56 +57,40 @@ func VerifyClaims(config *oidc.Config, rawIDToken, issuer string) (*Identity, er
 		Audience: []string(identityJson.Audience),
 		Expiry:   time.Time(identityJson.Expiry),
 		IssuedAt: time.Time(identityJson.IssuedAt),
-		Claims:   payload,
 		Email:    identityJson.Email,
 	}
 
-	// Check issuer.
-	if !config.SkipIssuerCheck && identity.Issuer != issuer {
-		// Google sometimes returns "accounts.google.com" as the issuer claim instead of
-		// the required "https://accounts.google.com". Detect this case and allow it only
-		// for Google.
-		//
-		// We will not add hooks to let other providers go off spec like this.
-		if !(issuer == issuerGoogleAccounts && identity.Issuer == issuerGoogleAccountsNoScheme) {
-			return nil, fmt.Errorf("oidc: id token issued by a different provider, expected %q got %q", issuer, identity.Issuer)
-		}
+	// Check issuer. Google sometimes returns "accounts.google.com" as the issuer claim instead of the required
+	// "https://accounts.google.com". Detect this case and allow it only for Google. We will not add hooks to let
+	// other providers go off spec like this.
+	if (identity.Issuer != issuer) && !(issuer == issuerGoogleAccounts && identity.Issuer == issuerGoogleAccountsNoScheme) {
+		return nil, fmt.Errorf("oidc: id token issued by a different provider, expected %q got %q", issuer, identity.Issuer)
 	}
 
-	// If a client ID has been provided, make sure it's part of the audience. SkipClientIDCheck must be true if ClientID is empty.
-	//
-	// This check DOES NOT ensure that the ClientID is the party to which the ID Token was issued (i.e. Authorized party).
-	if !config.SkipClientIDCheck {
-		if config.ClientID != "" {
-			if !contains(identity.Audience, config.ClientID) {
-				return nil, fmt.Errorf("oidc: expected audience %q got %q", config.ClientID, identity.Audience)
-			}
-		} else {
-			return nil, fmt.Errorf("oidc: invalid configuration, clientID must be provided or SkipClientIDCheck must be set")
-		}
+	// Make sure client ID has been provided.
+	if clientID == "" {
+		return nil, ErrorClientIDNotFound
+	}
+	// Provided client ID must be part of the audience.
+	if !base.ContainsString(identity.Audience, clientID) {
+		return nil, fmt.Errorf("oidc: expected audience %q got %q", clientID, identity.Audience)
 	}
 
-	// If a SkipExpiryCheck is false, make sure token is not expired.
-	if !config.SkipExpiryCheck {
-		now := time.Now
-		if config.Now != nil {
-			now = config.Now
-		}
-		nowTime := now()
+	// Make sure token is not expired.
+	now := time.Now()
+	if identity.Expiry.Before(now) {
+		return nil, fmt.Errorf("oidc: token is expired (Token Expiry: %v)", identity.Expiry)
+	}
 
-		if identity.Expiry.Before(nowTime) {
-			return nil, fmt.Errorf("oidc: token is expired (Token Expiry: %v)", identity.Expiry)
+	// If nbf claim is provided in token, ensure that it is indeed in the past.
+	if identityJson.NotBefore != nil {
+		nbfTime := time.Time(*identityJson.NotBefore)
+		leeway := 1 * time.Minute
+
+		if now.Add(leeway).Before(nbfTime) {
+			return nil, fmt.Errorf("oidc: current time %v before the nbf (not before) time: %v", now, nbfTime)
 		}
 
-		// If nbf claim is provided in token, ensure that it is indeed in the past.
-		if identityJson.NotBefore != nil {
-			nbfTime := time.Time(*identityJson.NotBefore)
-			leeway := 1 * time.Minute
-
-			if nowTime.Add(leeway).Before(nbfTime) {
-				return nil, fmt.Errorf("oidc: current time %v before the nbf (not before) time: %v", nowTime, nbfTime)
-			}
-		}
 	}
 	return identity, nil
 }
@@ -160,21 +145,15 @@ func (j *jsonTime) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func contains(sli []string, ele string) bool {
-	for _, s := range sli {
-		if s == ele {
-			return true
-		}
-	}
-	return false
-}
-
 func GetIdentity(idToken *oidc.IDToken) (identity *Identity, identityErr error) {
+	if idToken == nil {
+		return nil, errors.New("can't extract identity from a nil token")
+	}
 	var claims struct {
 		Email string `json:"email"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
-		identityErr = pkgerrors.Wrap(err, "Failed to get email from token")
+		identityErr = pkgerrors.Wrap(err, "failed to get email from token")
 	}
 	identity = &Identity{
 		Issuer:   idToken.Issuer,

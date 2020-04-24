@@ -80,12 +80,10 @@
 
   <project name="osext" path="godeps/src/github.com/kardianos/osext" remote="couchbasedeps" revision="29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"/>
 
+  <!--OpenID Connect Dependencies-->
   <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="couchbasedeps" revision="8d771559cf6e5111c9b9159810d0e4538e7cdc82"/>
-
   <project name="oauth2" path="godeps/src/golang.org/x/oauth2" remote="couchbasedeps" revision="bf48bf16ab8d622ce64ec6ce98d2c98f916b6303"/>
-
   <project name="go-jose" path="godeps/src/gopkg.in/square/go-jose.v2" remote="couchbasedeps" revision="4ef0f1b175ccd65472d154e1207c4d7b8102545f"/>
-
   <project name="cachecontrol" path="godeps/src/github.com/pquerna/cachecontrol" remote="couchbasedeps" revision="1555304b9b35fdd2b425bccf1a5613677705e7d0"/>
 
   <project name="go-systemd" path="godeps/src/github.com/coreos/go-systemd" remote="couchbasedeps" revision="1d9051fe7a349daf6dac904c0b277c3520c09368"/>

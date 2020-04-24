@@ -208,13 +208,12 @@ func (h *handler) handleOIDCRefresh() error {
 }
 
 func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
-	user, idToken, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
+	user, tokenExpiryTime, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
 	}
 
 	if !provider.DisableSession {
-		tokenExpiryTime := idToken.Expiry
 		sessionTTL := tokenExpiryTime.Sub(time.Now())
 		sessionID, err := h.makeSessionWithTTL(user, sessionTTL)
 		return user.Name(), sessionID, err
