@@ -867,7 +867,6 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("registered user with valid token and new email", func(t *testing.T) {
-		defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 		wantUsername := strings.ToLower(providerGoogle.Name) + "_layla"
 		wantUserEmail := "layla@couchdb.com"
 		wantUser, err := auth.RegisterNewUser(wantUsername, wantUserEmail)
@@ -907,7 +906,6 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("registered user with valid token and same email", func(t *testing.T) {
-		defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 		wantUsername := strings.ToLower(providerGoogle.Name) + "_noah"
 		wantUserEmail := "noah@couchdb.com"
 		wantUser, err := auth.RegisterNewUser(wantUsername, wantUserEmail)
@@ -945,7 +943,6 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("registered user with valid token and invalid email", func(t *testing.T) {
-		defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 		wantUsername := strings.ToLower(providerGoogle.Name) + "_emily"
 		wantUserEmail := "emily@couchdb.com"
 		wantUser, err := auth.RegisterNewUser(wantUsername, wantUserEmail)
@@ -984,7 +981,6 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	})
 
 	t.Run("new user with valid token and invalid email", func(t *testing.T) {
-		defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 		wantUsername := strings.ToLower(providerGoogle.Name) + "_layla"
 		provider := &OIDCProvider{
 			Register:    true,
