@@ -44,9 +44,6 @@ var (
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
-
-	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
-	ErrUnknownField = errors.New("unrecognized JSON field")
 )
 
 var config *ServerConfig

@@ -143,8 +143,8 @@ var (
 	DefaultWarnThresholdChannelsPerDoc = uint32(50)
 	DefaultWarnThresholdGrantsPerDoc   = uint32(50)
 
-	// ErrUnknownField is marked as the cause of the error when trying to decode JSON with unknown fields
-	ErrUnknownField = errors.New("unrecognized config value")
+	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
+	ErrUnknownField = errors.New("unrecognized JSON field")
 )
 
 // UnitTestUrl returns the configured test URL.
