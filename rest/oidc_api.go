@@ -13,10 +13,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 )
 
@@ -30,6 +32,31 @@ const (
 	requestParamState        = "state"
 	requestParamScope        = "scope"
 	requestParamRedirectURI  = "redirect_uri"
+
+	// stateCookieName is the name of state cookie to prevent cross-site request forgery (CSRF).
+	stateCookieName = "sg-oidc-state"
+
+	// stateCookieTimeout represents the duration of state cookie; state
+	// cookie expires within 5 minutes.
+	stateCookieTimeout = time.Minute * 5
+)
+
+var (
+	// ErrNoStateCookie is returned by handler's handleOIDCCallback method when
+	// the state cookie is not found during OpenID Connect Auth callback.
+	ErrNoStateCookie = base.HTTPErrorf(http.StatusBadRequest,
+		"OIDC Auth Failure: No state cookie found; possible request forgery")
+
+	// ErrStateMismatch is returned by handler's handleOIDCCallback method when
+	// the state cookie value doesn't match with state param in the callback URL
+	// during OpenID Connect Auth callback.
+	ErrStateMismatch = base.HTTPErrorf(http.StatusBadRequest,
+		"OIDC Auth Failure: State mismatch; possible request forgery")
+
+	// ErrReadStateCookie is returned by handler's handleOIDCCallback method when
+	// there is failure reading state cookie value during OpenID Connect Auth callback.
+	ErrReadStateCookie = base.HTTPErrorf(http.StatusBadRequest,
+		"OIDC Auth Failure: Couldn't read state; possible request forgery")
 )
 
 const (
@@ -81,7 +108,14 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	}
 
 	var redirectURL *url.URL
-	state := ""
+
+	// Set state parameter to prevent cross-site request forgery (CSRF).
+	state := strings.Replace(uuid.New().String(), "-", "", -1)
+	http.SetCookie(h.response, &http.Cookie{
+		Name:    stateCookieName,
+		Value:   state,
+		Expires: time.Now().Add(stateCookieTimeout),
+	})
 
 	// TODO: Is there a use case where we need to support direct pass-through of access_type and prompt from the caller?
 	offline := h.getBoolQuery(requestParamOffline)
@@ -104,6 +138,18 @@ func (h *handler) handleOIDCCallback() error {
 	if callbackError != "" {
 		errorDescription := h.getQuery(requestParamErrorDesc)
 		return base.HTTPErrorf(http.StatusUnauthorized, "oidc callback received an error: %v", errorDescription)
+	}
+
+	stateCookie, err := h.rq.Cookie(stateCookieName)
+	if stateCookie == nil {
+		return ErrNoStateCookie
+	}
+	if err != nil {
+		return ErrReadStateCookie
+	}
+	stateParam := h.rq.URL.Query().Get(requestParamState)
+	if stateCookie != nil && stateParam != stateCookie.Value {
+		return ErrStateMismatch
 	}
 
 	code := h.getQuery(requestParamCode)
