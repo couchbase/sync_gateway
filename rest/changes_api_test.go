@@ -2819,23 +2819,25 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	response = rt.SendAdminRequest("PUT", "/db/conflictedDoc", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(5)
 
 	// Create a conflict, then tombstone it
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictTombstone"}], "new_edits":false}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
 	response = rt.SendAdminRequest("DELETE", "/db/conflictedDoc?rev=1-conflictTombstone", "")
 	assertStatus(t, response, 200)
+	cacheWaiter.AddAndWait(1)
 
 	// Create a conflict, and don't tombstone it
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictActive"}], "new_edits":false}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
 
 	var changes struct {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
-
-	cacheWaiter.AddAndWait(8)
 
 	// Get pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
