@@ -41,7 +41,7 @@ func TestReadServerConfig(t *testing.T) {
 		{
 			name:        "unknown field",
 			config:      `{"invalid": true}`,
-			errStdlib:   `json: unknown field "invalid": unrecognized config value`,
+			errStdlib:   `json: unknown field "invalid": unrecognized JSON field`,
 			errJSONIter: `found unknown field: invalid`,
 		},
 		{
