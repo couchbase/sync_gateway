@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -906,6 +907,8 @@ func TestConfigToDatabaseOptions(t *testing.T) {
 			"username": "` + bucketUser + `",
 			"password": "` + bucketPassword + `",
 			"bucket": "` + spec.BucketName + `",
+			"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
+			"num_index_replicas": 0,
 			"cache":{
 				"channel_cache":{
 					  "query_limit": 200
