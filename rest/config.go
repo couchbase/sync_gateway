@@ -44,6 +44,9 @@ var (
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
+
+	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
+	ErrUnknownField = errors.New("unrecognized JSON field")
 )
 
 var config *ServerConfig
@@ -639,7 +642,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	d := base.JSONDecoder(bytes.NewBuffer(b))
 	d.DisallowUnknownFields()
 	err = d.Decode(config)
-	return base.UnknownFieldErrCheck(err)
+	return base.WrapJSONUnknownFieldErr(err)
 }
 
 func (config *ServerConfig) setupAndValidateDatabases() []error {
