@@ -312,41 +312,33 @@ pipeline {
                     }
                 }
 
-                stage('LiteCore') {
-                    stages {
-                        stage('EE') {
-                            steps {
-                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
-                                    sh 'touch litecore.out'
-                                    sh 'docker pull couchbase/sg-test-litecore:latest'
-                                    sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/litecore.out:/output.out couchbase/sg-test-litecore:latest'
-                                }
-                            }
+                stage('LiteCore EE') {
+                    steps {
+                        gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
+                            sh 'touch litecore.out'
+                            sh 'docker pull couchbase/sg-test-litecore:latest'
+                            sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/litecore.out:/output.out couchbase/sg-test-litecore:latest'
                         }
                     }
                 }
 
                 stage('Integration') {
-                    stages {
-                        stage('Master') {
-                            //when { branch 'master' }
-                            steps {
-                                echo 'Running integration tests for commit ...'
-                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration', successDescription: 'Integration Tests Passed') {
-                                    build job: 'sync-gateway-integration', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: true
-                                }
-                            }
+                    //when { branch 'master' }
+                    steps {
+                        echo 'Running integration tests for commit ...'
+                        gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration', successDescription: 'Integration Tests Passed') {
+                            build job: 'sync-gateway-integration', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: true
                         }
                     }
                 }
-            }
-        }
 
-        stage('Benchmarks'){
-            //when { branch 'master' }
-            steps{
-                echo 'Running benchmarks for commit ...'
-                build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: true
+                stage('Benchmarks'){
+                    //when { branch 'master' }
+                    steps{
+                        echo 'Running benchmarks for commit ...'
+                        build job: 'sync-gateway-benchmark', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: true
+                    }
+                }
             }
         }
     }
