@@ -314,17 +314,7 @@ pipeline {
 
                 stage('LiteCore') {
                     stages {
-                        stage('against CE') {
-                            // TODO: Remove skip
-                            when { expression { return false } }
-                            steps {
-                                echo 'Example of where we could run lite-core unit tests against a running SG CE'
-                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'CE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ce', successDescription: 'CE with LiteCore Test Passed') {
-                                    echo "..."
-                                }
-                            }
-                        }
-                        stage('against EE') {
+                        stage('EE') {
                             steps {
                                 gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
                                     sh 'touch litecore.out'
