@@ -331,25 +331,9 @@ pipeline {
                         stage('Master') {
                             when { branch 'master' }
                             steps {
-                                echo 'Queueing Integration test for branch "master" ...'
-                                // Queues up an async integration test run using default build params (master branch),
-                                // but waits up to an hour for batches of PR merges before actually running (via quietPeriod)
-                                build job: 'sync-gateway-integration', quietPeriod: 3600, wait: false
-                            }
-                        }
-
-                        stage('PR') {
-                            // TODO: Remove skip
-                            when { expression { return false } }
-                            steps {
-                                // TODO: Read labels on PR for 'integration-test'
-                                // if present, run stage as separate GH status
-                                echo 'Example of where we can run integration tests for this commit'
-                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
-                                    echo "Waiting for integration test to finish..."
-                                    // TODO: add commit parameter
-                                    // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
-                                    build job: 'sync-gateway-integration-master', wait: true, propagate: false
+                                echo 'Running integration tests for commit ...'
+                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration', successDescription: 'Integration Tests Passed') {
+                                    build job: 'sync-gateway-integration', parameters: [string(name: 'SG_COMMIT', value: env.SG_COMMIT)], wait: true
                                 }
                             }
                         }
