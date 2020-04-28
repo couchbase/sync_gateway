@@ -3,11 +3,13 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -886,4 +888,44 @@ func TestPutInvalidConfig(t *testing.T) {
 
 	response := rt.SendAdminRequest("PUT", "/db/_config", `{"db": {"server": "walrus"}}`)
 	assert.Equal(t, http.StatusBadRequest, response.Code)
+}
+
+// Validate basic mapping from config to database options
+func TestConfigToDatabaseOptions(t *testing.T) {
+
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	bucketUser, bucketPassword, _ := bucket.BucketSpec.Auth.GetCredentials()
+	spec := bucket.BucketSpec
+
+	jsonConfig := []byte(`
+{
+	"databases": {
+		"db": {
+			"server": "` + spec.Server + `",
+			"username": "` + bucketUser + `",
+			"password": "` + bucketPassword + `",
+			"bucket": "` + spec.BucketName + `",
+			"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
+			"num_index_replicas": 0,
+			"cache":{
+				"channel_cache":{
+					  "query_limit": 200
+				}
+			}
+		}
+	}
+}
+`)
+	var config ServerConfig
+	unmarshalErr := json.Unmarshal(jsonConfig, &config)
+	require.NoError(t, unmarshalErr)
+
+	sc := NewServerContext(&config)
+	database, addDatabaseError := sc.AddDatabaseFromConfig(config.Databases["db"])
+	require.NoError(t, addDatabaseError)
+
+	assert.Equal(t, *config.Databases["db"].CacheConfig.ChannelCacheConfig.QueryLimit, database.Options.CacheOptions.ChannelQueryLimit)
+
 }
