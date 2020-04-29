@@ -18,8 +18,6 @@ const (
 	issuerGoogleAccountsNoScheme = "accounts.google.com"
 )
 
-var ErrorClientIDNotFound = fmt.Errorf("oidc: invalid configuration, clientID must be provided")
-
 // Identity claims required for claims verification
 type Identity struct {
 	Issuer   string
@@ -67,10 +65,6 @@ func VerifyClaims(rawIDToken, clientID, issuer string) (*Identity, error) {
 		return nil, fmt.Errorf("oidc: id token issued by a different provider, expected %q got %q", issuer, identity.Issuer)
 	}
 
-	// Make sure client ID has been provided.
-	if clientID == "" {
-		return nil, ErrorClientIDNotFound
-	}
 	// Provided client ID must be part of the audience.
 	if !base.ContainsString(identity.Audience, clientID) {
 		return nil, fmt.Errorf("oidc: expected audience %q got %q", clientID, identity.Audience)

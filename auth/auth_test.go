@@ -642,7 +642,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			CallbackURL: providerGoogle.CallbackURL}
 		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
-		assert.Equal(t, err, ErrorClientIDNotFound, "Error checking clientID config")
+		assert.Error(t, err, "Error checking clientID config")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
 	})
