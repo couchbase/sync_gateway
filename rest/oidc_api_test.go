@@ -65,7 +65,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	providerGoogle := auth.OIDCProvider{
 		Name:          providerNameGoogle,
 		Issuer:        issuerGoogle,
-		ClientID:      &clientIDGoogle,
+		ClientID:      clientIDGoogle,
 		ValidationKey: &validationKeyGoogle,
 		DiscoveryURI:  issuerGoogle + wellKnownPath,
 	}
@@ -74,7 +74,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	providerSalesforce := auth.OIDCProvider{
 		Name:          providerNameSalesforce,
 		Issuer:        issuerSalesforce,
-		ClientID:      &clientIDSalesforce,
+		ClientID:      clientIDSalesforce,
 		ValidationKey: &validationKeySalesforce,
 		DiscoveryURI:  issuerSalesforce + wellKnownPath,
 	}
