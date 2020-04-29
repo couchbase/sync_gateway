@@ -150,7 +150,7 @@ func (h *handler) handleOIDCCallback() error {
 
 	if provider.IncludeAccessToken {
 		callbackResponse.AccessToken = token.AccessToken
-		callbackResponse.Expires = seconds(token.Expiry)
+		callbackResponse.Expires = int(token.Expiry.Sub(time.Now()).Seconds())
 		callbackResponse.TokenType = token.TokenType
 	}
 
@@ -200,7 +200,7 @@ func (h *handler) handleOIDCRefresh() error {
 
 	if provider.IncludeAccessToken {
 		refreshResponse.AccessToken = token.AccessToken
-		refreshResponse.Expires = seconds(token.Expiry)
+		refreshResponse.Expires = int(token.Expiry.Sub(time.Now()).Seconds())
 		refreshResponse.TokenType = token.TokenType
 	}
 
@@ -244,9 +244,4 @@ func (h *handler) getOIDCCallbackURL() string {
 	} else {
 		return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbName, "_oidc_callback")
 	}
-}
-
-// seconds returns expiration time of the Access Token in seconds since the response was generated.
-func seconds(expiry time.Time) int {
-	return int(expiry.Sub(time.Now()).Seconds())
 }
