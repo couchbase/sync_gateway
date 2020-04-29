@@ -10,6 +10,7 @@
 package rest
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -37,13 +38,13 @@ const (
 )
 
 type OIDCTokenResponse struct {
-	IDToken      string    `json:"id_token"`                // ID token, from OP
-	RefreshToken string    `json:"refresh_token,omitempty"` // Refresh token, from OP
-	SessionID    string    `json:"session_id,omitempty"`    // Sync Gateway session ID
-	Username     string    `json:"name,omitempty"`          // Sync Gateway user name
-	AccessToken  string    `json:"access_token,omitempty"`  // Access token, from OP
-	TokenType    string    `json:"token_type,omitempty"`    // Access token type, from OP
-	Expires      time.Time `json:"expires_in,omitempty"`    // Access token expiry, from OP
+	IDToken      string `json:"id_token"`                // ID token, from OP
+	RefreshToken string `json:"refresh_token,omitempty"` // Refresh token, from OP
+	SessionID    string `json:"session_id,omitempty"`    // Sync Gateway session ID
+	Username     string `json:"name,omitempty"`          // Sync Gateway user name
+	AccessToken  string `json:"access_token,omitempty"`  // Access token, from OP
+	TokenType    string `json:"token_type,omitempty"`    // Access token type, from OP
+	Expires      int    `json:"expires_in,omitempty"`    // Access token expiry, from OP
 }
 
 func (h *handler) handleOIDC() error {
@@ -123,7 +124,7 @@ func (h *handler) handleOIDCCallback() error {
 	}
 
 	// Converts the authorization code into a token.
-	token, err := client.Config.Exchange(client.Context, code)
+	token, err := client.Config.Exchange(context.Background(), code)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusUnauthorized, "Failed to exchange token: "+err.Error())
 	}
@@ -149,7 +150,7 @@ func (h *handler) handleOIDCCallback() error {
 
 	if provider.IncludeAccessToken {
 		callbackResponse.AccessToken = token.AccessToken
-		callbackResponse.Expires = token.Expiry
+		callbackResponse.Expires = seconds(token.Expiry)
 		callbackResponse.TokenType = token.TokenType
 	}
 
@@ -174,7 +175,7 @@ func (h *handler) handleOIDCRefresh() error {
 		return err
 	}
 
-	token, err := client.Config.TokenSource(client.Context, &oauth2.Token{RefreshToken: refreshToken}).Token()
+	token, err := client.Config.TokenSource(context.Background(), &oauth2.Token{RefreshToken: refreshToken}).Token()
 	if err != nil {
 		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
 		return base.HTTPErrorf(http.StatusUnauthorized, "Unable to refresh token.")
@@ -199,7 +200,7 @@ func (h *handler) handleOIDCRefresh() error {
 
 	if provider.IncludeAccessToken {
 		refreshResponse.AccessToken = token.AccessToken
-		refreshResponse.Expires = token.Expiry
+		refreshResponse.Expires = seconds(token.Expiry)
 		refreshResponse.TokenType = token.TokenType
 	}
 
@@ -208,7 +209,7 @@ func (h *handler) handleOIDCRefresh() error {
 }
 
 func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
-	user, tokenExpiryTime, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
+	user, tokenExpiryTime, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider)
 	if err != nil {
 		return "", "", err
 	}
@@ -243,4 +244,9 @@ func (h *handler) getOIDCCallbackURL() string {
 	} else {
 		return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbName, "_oidc_callback")
 	}
+}
+
+// seconds returns expiration time of the Access Token in seconds since the response was generated.
+func seconds(expiry time.Time) int {
+	return int(expiry.Sub(time.Now()).Seconds())
 }

@@ -109,17 +109,17 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 	cbProvider := OIDCProvider{
 		Name:     "Couchbase",
 		Issuer:   "http://127.0.0.1:1234",
-		ClientID: &clientID,
+		ClientID: clientID,
 	}
 	glProvider := OIDCProvider{
 		Name:     "Gügul",
 		Issuer:   "http://127.0.0.1:1235",
-		ClientID: &clientID,
+		ClientID: clientID,
 	}
 	fbProvider := OIDCProvider{
 		Name:     "Fæsbuk",
 		Issuer:   "http://127.0.0.1:1236",
-		ClientID: &clientID,
+		ClientID: clientID,
 	}
 	providerMap := OIDCProviderMap{
 		"gl": &glProvider,
@@ -236,7 +236,7 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 		{
 			Name: "valid provider",
 			Provider: &OIDCProvider{
-				ClientID:    &clientID,
+				ClientID:    clientID,
 				Issuer:      "https://accounts.google.com",
 				CallbackURL: &callbackURL,
 			},

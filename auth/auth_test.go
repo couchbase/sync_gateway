@@ -600,10 +600,9 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	auth := NewAuthenticator(testBucket.Bucket, nil)
 
 	callbackURL := base.StringPointer("http://comcast:4984/_callback")
-	var callbackURLFunc OIDCCallbackURLFunc
 	providerGoogle := &OIDCProvider{
 		Name:        "Google",
-		ClientID:    base.StringPointer("aud1"),
+		ClientID:    "aud1",
 		Issuer:      issuerGoogleAccounts,
 		CallbackURL: callbackURL,
 	}
@@ -613,14 +612,14 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	require.NoError(t, err, "Failed to create RSA signer")
 
 	t.Run("malformed token with bad header no payload", func(t *testing.T) {
-		user, expiry, err := auth.AuthenticateTrustedJWT("DmBb9C5", providerGoogle, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT("DmBb9C5", providerGoogle)
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
 	})
 
 	t.Run("malformed token with bad header bad payload", func(t *testing.T) {
-		user, expiry, err := auth.AuthenticateTrustedJWT("DmBb9C5.C#m7G#7", providerGoogle, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT("DmBb9C5.C#m7G#7", providerGoogle)
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -628,7 +627,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 
 	t.Run("malformed token with bad header bad base64 payload", func(t *testing.T) {
 		token := "DmBb9C5." + ToBase64String(`{"unknown":"value"}`)
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, providerGoogle, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, providerGoogle)
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -642,7 +641,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
 			CallbackURL: providerGoogle.CallbackURL}
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.Equal(t, err, ErrorClientIDNotFound, "Error checking clientID config")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -654,7 +653,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 		}
 		err = provider.InitUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -670,7 +669,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
 		assert.Equal(t, wantUsername, user.Name())
 		assert.Equal(t, claims.Expiry.Time(), expiry)
@@ -682,7 +681,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 		}
 		err = provider.InitUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -697,7 +696,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.Error(t, err, "Error verifying issuer claim from token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -709,7 +708,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud4"),
+			ClientID:    "aud4",
 		}
 		err = provider.InitUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -724,7 +723,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.Error(t, err, "Error verifying audience claim from token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -736,7 +735,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud4"),
+			ClientID:    "aud4",
 		}
 		err = provider.InitUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -750,7 +749,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.Error(t, err, "Error verifying audience claim from token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -762,7 +761,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 		}
 		err = provider.InitUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -777,7 +776,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.Error(t, err, "Can't authenticate with expired token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -789,7 +788,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 		}
 		err = provider.InitUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -806,7 +805,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.NoError(t, err, "Error authenticating with trusted token")
 		assert.Equal(t, wantUsername, user.Name())
 		assert.Equal(t, claims.Expiry.Time(), expiry)
@@ -818,7 +817,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 		}
 		err = provider.InitUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -834,7 +833,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.Error(t, err, "Token with expired nbf (not before) time")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -846,7 +845,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 		}
 		err = provider.InitUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
@@ -860,7 +859,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.Error(t, err, "Token must contain valid subject claim")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
@@ -879,7 +878,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 			UserPrefix:  strings.ToLower(providerGoogle.Name),
 		}
 		err = provider.InitUserPrefix()
@@ -898,7 +897,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
 		assert.Equal(t, wantUsername, user.Name())
 		assert.Equal(t, claims.Expiry.Time(), expiry)
@@ -917,7 +916,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 			UserPrefix:  strings.ToLower(providerGoogle.Name),
 		}
 		err = provider.InitUserPrefix()
@@ -935,7 +934,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
 		assert.Equal(t, wantUsername, user.Name())
 		assert.Equal(t, claims.Expiry.Time(), expiry)
@@ -955,7 +954,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 			UserPrefix:  strings.ToLower(providerGoogle.Name),
 		}
 		err = provider.InitUserPrefix()
@@ -973,7 +972,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
 		assert.Equal(t, wantUsername, user.Name())
 		assert.Equal(t, claims.Expiry.Time(), expiry)
@@ -987,7 +986,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			CallbackURL: providerGoogle.CallbackURL,
 			Name:        providerGoogle.Name,
 			Issuer:      issuerGoogleAccounts,
-			ClientID:    base.StringPointer("aud1"),
+			ClientID:    "aud1",
 			UserPrefix:  strings.ToLower(providerGoogle.Name),
 		}
 		err = provider.InitUserPrefix()
@@ -1005,7 +1004,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
-		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider, callbackURLFunc)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
 		assert.NoError(t, err, "Error authenticating with trusted JWT")
 		assert.Equal(t, wantUsername, user.Name())
 		assert.Empty(t, "", user.Email(), "Should skip updating invalid email from token")
@@ -1095,13 +1094,13 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	var callbackURLFunc OIDCCallbackURLFunc
 	providerGoogle := &OIDCProvider{
 		Name:        "Google",
-		ClientID:    base.StringPointer("aud1"),
+		ClientID:    "aud1",
 		Issuer:      issuerGoogleAccounts,
 		CallbackURL: callbackURL,
 	}
 	providerFacebook := &OIDCProvider{
 		Name:        "Facebook",
-		ClientID:    base.StringPointer("aud1"),
+		ClientID:    "aud1",
 		Issuer:      issuerFacebookAccounts,
 		CallbackURL: callbackURL,
 	}
@@ -1124,7 +1123,6 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
-		providers[providerGoogle.Name].GetClient(callbackURLFunc).Context.Done()
 	})
 
 	t.Run("multiple providers malformed token with bad header no payload", func(t *testing.T) {
@@ -1133,7 +1131,6 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		assert.Error(t, err, "Error parsing malformed token")
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
-		providers[providerGoogle.Name].GetClient(callbackURLFunc).Context.Done()
 	})
 
 	t.Run("multiple providers malformed token with bad header bad payload", func(t *testing.T) {

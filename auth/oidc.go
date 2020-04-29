@@ -7,22 +7,22 @@
 //  either express or implied. See the License for the specific language governing permissions
 //  and limitations under the License.
 
-// Since Hydrogen, Sync Gateway started using the latest github.com/coreos/go-oidc package which enables
-// support for the golang.org/x/oauth2 package. The github.com/coreos/go-oidc package also make use of the
-// gopkg.in/square/go-jose.v2/jwt package for verifying and validating ID Tokens. But it doesn't support
-// determining the location of the OpenID Provider from custom endpoints/locations and enabling custom provider
-// discovery in Sync Gateway while using the new github. com/coreos/go-oidc package requires cloning certain
-// un-exported functions/methods, variables from  the library with quite a bit of refactoring.
+// Sync Gateway uses the github.com/coreos/go-oidc package for oidc support, which also depends on the
+// gopkg.in/square/go-jose.v2/jwt package for verifying and validating ID Tokens.
+// The go-oidc library doesn't support retrieval of OIDC provider configurations from non-standard locations.
+// Support for this in Sync Gateway requires cloning some unexported functionality from go-oidc.
+// The following methods should be reviewed for consistency when updating the commit of go-oidc being used:
 //
-// parseClaim: https://github.com/coreos/go-oidc/blob/v2/verify.go#L174
-// VerifyClaims: https://github.com/coreos/go-oidc/blob/v2/verify.go#L208
-// supportedAlgorithms: https://github.com/coreos/go-oidc/blob/v2/oidc.go#L97
-// audience: https://github.com/coreos/go-oidc/blob/v2/oidc.go#L360
-// audience.UnmarshalJSON: https://github.com/coreos/go-oidc/blob/v2/oidc.go#L362
-// jsonTime: https://github.com/coreos/go-oidc/blob/v2/oidc.go#L376
-// jsonTime.UnmarshalJSON: https://github.com/coreos/go-oidc/blob/v2/oidc.go#L378
-// issuerGoogleAccounts: https://github.com/coreos/go-oidc/blob/v2/verify.go#L20
-// issuerGoogleAccountsNoScheme: https://github.com/coreos/go-oidc/blob/v2/verify.go#L21
+// parseClaim: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/verify.go#L174
+// VerifyClaims: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/verify.go#L208
+// supportedAlgorithms: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L97
+// audience: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L360
+// audience.UnmarshalJSON: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L362
+// jsonTime: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L376
+// jsonTime.UnmarshalJSON: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/oidc.go#L378
+// issuerGoogleAccounts: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/verify.go#L20
+// issuerGoogleAccountsNoScheme: https://github.com/coreos/go-oidc/blob/8d771559cf6e5111c9b9159810d0e4538e7cdc82/verify.go#L21
+
 package auth
 
 import (
@@ -62,10 +62,6 @@ type OIDCClient struct {
 	// application information and the server's endpoint URLs.
 	Config oauth2.Config
 
-	// Context carries a deadline, a cancellation signal, and other
-	// values across Auth requests.
-	Context context.Context
-
 	// Verifier provides verification for ID Tokens.
 	Verifier *oidc.IDTokenVerifier
 }
@@ -73,7 +69,7 @@ type OIDCClient struct {
 type OIDCProvider struct {
 	Issuer                  string   `json:"issuer"`                           // OIDC Issuer
 	Register                bool     `json:"register"`                         // If true, server will register new user accounts
-	ClientID                *string  `json:"client_id,omitempty"`              // Client ID
+	ClientID                string   `json:"client_id,omitempty"`              // Client ID
 	ValidationKey           *string  `json:"validation_key,omitempty"`         // Client secret
 	CallbackURL             *string  `json:"callback_url,omitempty"`           // Sync Gateway redirect URL.  Needs to be specified to handle load balancer endpoints?  Or can we lazy load on first client use, based on request
 	DisableSession          bool     `json:"disable_session,omitempty"`        // Disable Sync Gateway session creation on successful OIDC authentication
@@ -129,10 +125,10 @@ func (opm OIDCProviderMap) getProviderWhenSingle() (*OIDCProvider, bool) {
 func (opm OIDCProviderMap) GetProviderForIssuer(issuer string, audiences []string) *OIDCProvider {
 	base.Debugf(base.KeyAuth, "GetProviderForIssuer with issuer: %v, audiences: %+v", base.UD(issuer), base.UD(audiences))
 	for _, provider := range opm {
-		if provider.Issuer == issuer && provider.ClientID != nil {
+		if provider.Issuer == issuer && provider.ClientID != "" {
 			// Iterate over the audiences looking for a match
 			for _, aud := range audiences {
-				if *provider.ClientID == aud {
+				if provider.ClientID == aud {
 					base.Debugf(base.KeyAuth, "Provider matches, returning")
 					return provider
 				}
@@ -199,14 +195,13 @@ func (op *OIDCProvider) InitOIDCClient() error {
 		return base.RedactErrorf("Issuer not defined for OpenID Connect provider %+v", base.UD(op))
 	}
 
-	ctx := context.Background()
-	verifier, endpoint, err := op.DiscoverConfig(ctx)
+	verifier, endpoint, err := op.DiscoverConfig()
 	if err != nil || verifier == nil {
 		return pkgerrors.Wrap(err, "unable to discover config")
 	}
 
 	config := oauth2.Config{
-		ClientID:    *op.ClientID,
+		ClientID:    op.ClientID,
 		Endpoint:    *endpoint,
 		RedirectURL: *op.CallbackURL,
 	}
@@ -226,12 +221,12 @@ func (op *OIDCProvider) InitOIDCClient() error {
 		return err
 	}
 
-	op.client = &OIDCClient{Config: config, Context: ctx, Verifier: verifier}
+	op.client = &OIDCClient{Config: config, Verifier: verifier}
 
 	return nil
 }
 
-func (op *OIDCProvider) DiscoverConfig(ctx context.Context) (verifier *oidc.IDTokenVerifier, endpoint *oauth2.Endpoint, err error) {
+func (op *OIDCProvider) DiscoverConfig() (verifier *oidc.IDTokenVerifier, endpoint *oauth2.Endpoint, err error) {
 	// If discovery URI is explicitly defined, use it instead of the standard issuer-based discovery.
 	if op.DiscoveryURI != "" || op.DisableConfigValidation {
 		discoveryURL := op.DiscoveryURI
@@ -246,18 +241,18 @@ func (op *OIDCProvider) DiscoverConfig(ctx context.Context) (verifier *oidc.IDTo
 		if err != nil {
 			return nil, nil, err
 		}
-		verifier = op.GenerateVerifier(metadata, ctx)
+		verifier = op.GenerateVerifier(metadata, context.Background())
 		endpoint = &oauth2.Endpoint{AuthURL: metadata.AuthorizationEndpoint, TokenURL: metadata.TokenEndpoint}
 	} else {
 		base.Infof(base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint, issuer: %s", base.UD(op.Issuer))
 		var provider *oidc.Provider
 		maxRetryAttempts := 5
 		for i := 1; i <= maxRetryAttempts; i++ {
-			provider, err = oidc.NewProvider(ctx, op.Issuer)
+			provider, err = oidc.NewProvider(context.Background(), op.Issuer)
 			if err == nil && provider != nil {
 				providerEndpoint := provider.Endpoint()
 				endpoint = &providerEndpoint
-				verifier = provider.Verifier(&oidc.Config{ClientID: *op.ClientID})
+				verifier = provider.Verifier(&oidc.Config{ClientID: op.ClientID})
 				break
 			}
 			base.Debugf(base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v", base.UD(op.Issuer), i, maxRetryAttempts, err)
@@ -312,7 +307,7 @@ func (op *OIDCProvider) GenerateVerifier(metadata *ProviderMetadata, ctx context
 	if len(signingAlgorithms.unsupportedAlgorithms) > 0 {
 		base.Infof(base.KeyAuth, "Found algorithms not supported by underlying OpenID Connect library: %v", signingAlgorithms.unsupportedAlgorithms)
 	}
-	config := &oidc.Config{ClientID: *op.ClientID}
+	config := &oidc.Config{ClientID: op.ClientID}
 	if len(signingAlgorithms.supportedAlgorithms) > 0 {
 		config.SupportedSigningAlgs = signingAlgorithms.supportedAlgorithms
 	}
@@ -394,5 +389,5 @@ func GetIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []
 // VerifyJWT parses a raw ID Token, verifies it's been signed by the provider
 // and returns the payload. It uses the ID Token Verifier to verify the token.
 func (client *OIDCClient) VerifyJWT(token string) (*oidc.IDToken, error) {
-	return client.Verifier.Verify(client.Context, token)
+	return client.Verifier.Verify(context.Background(), token)
 }
