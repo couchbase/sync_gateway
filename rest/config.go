@@ -44,9 +44,6 @@ var (
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
-
-	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON config with unknown fields
-	ErrUnknownField = errors.New("unrecognized config value")
 )
 
 var config *ServerConfig
@@ -279,6 +276,7 @@ type ChannelCacheConfig struct {
 	MaxLength            *int    `json:"max_length,omitempty"`                 // Maximum number of entries maintained in cache per channel
 	MinLength            *int    `json:"min_length,omitempty"`                 // Minimum number of entries maintained in cache per channel
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
+	QueryLimit           *int    `json:"query_limit,omitempty"`                // Limit used for channel queries, if not specified by client
 }
 
 type UnsupportedServerConfig struct {
@@ -642,13 +640,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	d := base.JSONDecoder(bytes.NewBuffer(b))
 	d.DisallowUnknownFields()
 	err = d.Decode(config)
-	if err != nil && strings.Contains(err.Error(), "unknown field") {
-		// Special handling for unknown field errors
-		// json.Decode continues to decode the full data into the struct
-		// so it's safe to use even after this error
-		return errors.WithMessage(ErrUnknownField, err.Error())
-	}
-	return err
+	return base.WrapJSONUnknownFieldErr(err)
 }
 
 func (config *ServerConfig) setupAndValidateDatabases() []error {
@@ -840,7 +832,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		for _, filename := range flagSet.Args() {
 			newConfig, newConfigErr := LoadServerConfig(filename)
 
-			if errors.Cause(newConfigErr) == ErrUnknownField {
+			if errors.Cause(newConfigErr) == base.ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
 				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			} else if newConfigErr != nil {
@@ -1145,7 +1137,7 @@ func ServerMain() {
 
 	var err error
 	config, err = ParseCommandLine(os.Args, flag.ExitOnError)
-	if errors.Cause(err) == ErrUnknownField {
+	if errors.Cause(err) == base.ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {
 		base.Fatalf(err.Error())

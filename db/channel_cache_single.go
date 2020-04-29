@@ -158,6 +158,7 @@ type ChannelCacheOptions struct {
 	MaxNumChannels              int           // Maximum number of per-channel caches which will exist at any one point
 	CompactHighWatermarkPercent int           // Compact HWM (as percent of MaxNumChannels)
 	CompactLowWatermarkPercent  int           // Compact LWM (as percent of MaxNumChannels)
+	ChannelQueryLimit           int           // Query limit
 }
 
 func (c *singleChannelCacheImpl) ChannelName() string {

@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/pkg/errors"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -52,8 +53,13 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 	decoder.UseNumber()
 	err := decoder.Decode(into)
 	if err != nil {
+		err = base.WrapJSONUnknownFieldErr(err)
 		base.Warnf("Couldn't parse JSON in HTTP request: %v", err)
-		err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON")
+		if errors.Cause(err) == base.ErrUnknownField {
+			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
+		} else {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
+		}
 	}
 
 	_ = input.Close()

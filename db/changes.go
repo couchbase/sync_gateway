@@ -23,7 +23,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// Options for changes-feeds
+// Options for changes-feeds.  ChangesOptions must not contain any mutable pointer references, as
+// changes processing currently assumes a deep copy when doing chanOpts := changesOptions.
 type ChangesOptions struct {
 	Since        SequenceID      // sequence # to start _after_
 	Limit        int             // Max number of changes to return, if nonzero
@@ -171,56 +172,87 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
-func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options ChangesOptions, currentCachedSequence uint64, to string) (<-chan *ChangeEntry, error) {
-	// TODO: pass db.Ctx down to changeCache?
-	log, err := singleChannelCache.GetChanges(options)
-	base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(log), base.UD(singleChannelCache.ChannelName()))
-	if err != nil {
-		return nil, err
-	}
-
-	if len(log) == 0 {
-		// There are no entries newer than 'since'. Return an empty feed:
-		feed := make(chan *ChangeEntry)
-		close(feed)
-		return feed, nil
-	}
+func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
 
 	feed := make(chan *ChangeEntry, 1)
+
+	queryLimit := db.Options.CacheOptions.ChannelQueryLimit
+	requestLimit := options.Limit
+
+	// Make a copy of the changesOptions so that query pagination can modify since and limit.  Pagination uses safe sequence
+	// as starting point and can subsequently ignore LowSeq - it is added back to entries as needed when the main
+	// changes loop processes the channel's feed.
+	paginationOptions := options
+	paginationOptions.Since.Seq = options.Since.SafeSequence()
+	paginationOptions.Since.LowSeq = 0
+
 	go func() {
 		defer base.FatalPanicHandler()
 		defer close(feed)
-
-		// Now write each log entry to the 'feed' channel in turn:
-		for _, logEntry := range log {
-			if !options.Conflicts && (logEntry.Flags&channels.Hidden) != 0 {
-				//continue  // FIX: had to comment this out.
-				// This entry is shadowed by a conflicting one. We would like to skip it.
-				// The problem is that if this is the newest revision of this doc, then the
-				// doc will appear under this sequence # in the changes view, which means
-				// we won't emit the doc at all because we already stopped emitting entries
-				// from the view before this point.
-			}
-			if logEntry.Sequence >= options.Since.TriggeredBy {
-				options.Since.TriggeredBy = 0
-			}
-			seqID := SequenceID{
-				Seq:         logEntry.Sequence,
-				TriggeredBy: options.Since.TriggeredBy,
+		var itemsSent int
+		var lastSeq uint64
+		// Pagination based on ChannelQueryLimit.  This loop may terminated in three ways (see return statements):
+		//   1. Query returns fewer rows than ChannelQueryLimit
+		//   2. A limit is specified on the incoming ChangesOptions, and that limit is reached
+		//   3. An error is returned when calling singleChannelCache.GetChanges
+		for {
+			// Calculate limit for this iteration
+			if requestLimit == 0 {
+				paginationOptions.Limit = queryLimit
+			} else {
+				remainingLimit := requestLimit - itemsSent
+				paginationOptions.Limit = base.MinInt(remainingLimit, queryLimit)
 			}
 
-			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
-
-			base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.ChannelName()), base.UD(to))
-			select {
-			case <-options.Terminator:
-				base.DebugfCtx(db.Ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
+			// TODO: pass db.Ctx down to changeCache?
+			changes, err := singleChannelCache.GetChanges(paginationOptions)
+			if err != nil {
+				base.WarnfCtx(db.Ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelName()), err)
+				change := ChangeEntry{
+					Err: base.ErrChannelFeed,
+				}
+				feed <- &change
 				return
-			case feed <- &change:
 			}
+			base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelName()))
+
+			// Now write each log entry to the 'feed' channel in turn:
+			for _, logEntry := range changes {
+				if logEntry.Sequence >= options.Since.TriggeredBy {
+					options.Since.TriggeredBy = 0
+				}
+				seqID := SequenceID{
+					Seq:         logEntry.Sequence,
+					TriggeredBy: options.Since.TriggeredBy,
+				}
+
+				change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
+
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.ChannelName()), base.UD(to))
+				select {
+				case <-options.Terminator:
+					base.DebugfCtx(db.Ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
+					return
+				case feed <- &change:
+					lastSeq = logEntry.Sequence
+				}
+			}
+
+			// If the query returned fewer results than the query limit, we're done
+			if len(changes) < queryLimit {
+				return
+			}
+
+			// If we've reached the request limit, we're done
+			itemsSent += len(changes)
+			if requestLimit > 0 && itemsSent >= requestLimit {
+				return
+			}
+
+			paginationOptions.Since.Seq = lastSeq
 		}
 	}()
-	return feed, nil
+	return feed
 }
 
 func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) ChangeEntry {
@@ -543,13 +575,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy}
 				}
 
-				feed, err := db.changesFeed(singleChannelCache, chanOpts, currentCachedSequence, to)
-				if err != nil {
-					base.WarnfCtx(db.Ctx, "MultiChangesFeed got error reading changes feed %q: %v", base.UD(name), err)
-					change := makeErrorEntry("Error reading changes feed - terminating changes feed")
-					output <- &change
-					return
-				}
+				feed := db.changesFeed(singleChannelCache, chanOpts, to)
 				feeds = append(feeds, feed)
 				names = append(names, name)
 
@@ -576,6 +602,13 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 						current[i], ok = <-feeds[i]
 						if !ok {
 							feeds[i] = nil
+						} else {
+							// On feed error, send the error and exit changes processing
+							if current[i].Err == base.ErrChannelFeed {
+								base.WarnfCtx(db.Ctx, "MultiChangesFeed got error reading changes feed: %v", current[i].Err)
+								output <- current[i]
+								return
+							}
 						}
 					}
 				}

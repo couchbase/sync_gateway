@@ -2225,6 +2225,293 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 
 }
 
+// Tests query backfill with limit
+func TestChangesQueryBackfillWithLimit(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+
+	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	testDb := rt.GetDatabase()
+
+	changesLimitTests := []struct {
+		name                string // test name
+		queryLimit          int    // CacheOptions.ChannelQueryLimit
+		requestLimit        int    // _changes request limit
+		totalDocuments      int    // Total document in the user's channel (documents also created in non-user channel)
+		expectedQueryCount  int64  // Expected number of channel queries performed for channel
+		expectedResultCount int    // Expected number of documents returned by _changes
+	}{
+		{ // queryLimit < requestLimit < totalDocuments
+			name:                "case1",
+			queryLimit:          5,
+			requestLimit:        15,
+			totalDocuments:      20,
+			expectedQueryCount:  3,
+			expectedResultCount: 15,
+		},
+		{ // queryLimit <  totalDocuments < requestLimit
+			name:                "case2",
+			queryLimit:          5,
+			requestLimit:        25,
+			totalDocuments:      20,
+			expectedQueryCount:  5,
+			expectedResultCount: 20,
+		},
+		{ // requestLimit < queryLimit < totalDocuments
+			name:                "case3",
+			queryLimit:          10,
+			requestLimit:        5,
+			totalDocuments:      20,
+			expectedQueryCount:  1,
+			expectedResultCount: 5,
+		},
+		{ // requestLimit < totalDocuments < queryLimit
+			name:                "case4",
+			queryLimit:          25,
+			requestLimit:        15,
+			totalDocuments:      20,
+			expectedQueryCount:  1,
+			expectedResultCount: 15,
+		},
+		{ // totalDocuments < queryLimit < requestLimit
+			name:                "case5",
+			queryLimit:          25,
+			requestLimit:        30,
+			totalDocuments:      20,
+			expectedQueryCount:  1,
+			expectedResultCount: 20,
+		},
+		{ // totalDocuments < requestLimit < queryLimit
+			name:                "case6",
+			queryLimit:          30,
+			requestLimit:        25,
+			totalDocuments:      20,
+			expectedQueryCount:  1,
+			expectedResultCount: 20,
+		},
+		{ // totalDocuments = requestLimit < queryLimit
+			name:                "case7",
+			queryLimit:          30,
+			requestLimit:        20,
+			totalDocuments:      20,
+			expectedQueryCount:  1,
+			expectedResultCount: 20,
+		},
+		{ // totalDocuments = queryLimit < requestLimit
+			name:                "case8",
+			queryLimit:          20,
+			requestLimit:        30,
+			totalDocuments:      20,
+			expectedQueryCount:  2,
+			expectedResultCount: 20,
+		},
+		{ // queryLimit < totalDocuments = requestLimit
+			name:                "case9",
+			queryLimit:          20,
+			requestLimit:        30,
+			totalDocuments:      30,
+			expectedQueryCount:  2,
+			expectedResultCount: 30,
+		},
+		{ // requestLimit < totalDocuments = queryLimit
+			name:                "case10",
+			queryLimit:          30,
+			requestLimit:        30,
+			totalDocuments:      20,
+			expectedQueryCount:  1,
+			expectedResultCount: 20,
+		},
+		{ // queryLimit = requestLimit < totalDocuments
+			name:                "case11",
+			queryLimit:          20,
+			requestLimit:        20,
+			totalDocuments:      30,
+			expectedQueryCount:  1,
+			expectedResultCount: 20,
+		},
+		{ // totalDocuments < requestLimit = queryLimit
+			name:                "case12",
+			queryLimit:          30,
+			requestLimit:        30,
+			totalDocuments:      20,
+			expectedQueryCount:  1,
+			expectedResultCount: 20,
+		},
+	}
+
+	for _, test := range changesLimitTests {
+
+		t.Run(test.name, func(t *testing.T) {
+			testDb.Options.CacheOptions.ChannelQueryLimit = test.queryLimit
+
+			// Create user
+			username := "user_" + test.name
+			a := testDb.Authenticator()
+			testUser, err := a.NewUser(username, "letmein", channels.SetOf(t, test.name))
+			assert.NoError(t, err)
+			assert.NoError(t, a.Save(testUser))
+
+			// Put documents
+			cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
+			for i := 1; i <= test.totalDocuments; i++ {
+				response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s_%d", test.name, i), fmt.Sprintf(`{"channels":["%s"]}`, test.name))
+				assertStatus(t, response, 201)
+				// write a document not in the channel, to ensure high sequence as query end value doesn't bypass query edge cases
+				response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s_%d_other", test.name, i), `{"channels":["other"]}`)
+				assertStatus(t, response, 201)
+			}
+			cacheWaiter.AddAndWait(test.totalDocuments * 2)
+
+			// Flush the channel cache
+			assert.NoError(t, testDb.FlushChannelCache())
+			startQueryCount := testDb.GetChannelQueryCount()
+
+			// Issue a since=0 changes request.
+			var changes struct {
+				Results  []db.ChangeEntry
+				Last_Seq interface{}
+			}
+			changesJSON := fmt.Sprintf(`{"since":0, "limit":%d}`, test.requestLimit)
+			changes.Results = nil
+			changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, username))
+			err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+			assert.NoError(t, err, "Error unmarshalling changes response")
+			require.Equal(t, test.expectedResultCount, len(changes.Results))
+
+			// Validate expected number of queries
+			finalQueryCount := testDb.GetChannelQueryCount()
+			// We expect one query for the public channel, so need to subtract one for the expected count for the channel
+			assert.Equal(t, test.expectedQueryCount, finalQueryCount-startQueryCount-1)
+		})
+	}
+
+}
+
+// Tests query backfill with limit
+func TestMultichannelChangesQueryBackfillWithLimit(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+
+	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	testDb := rt.GetDatabase()
+
+	testDb.Options.CacheOptions.ChannelQueryLimit = 5
+
+	// Create user with access to three channels
+	username := "user_" + t.Name()
+	a := testDb.Authenticator()
+	testUser, err := a.NewUser(username, "letmein", channels.SetOf(t, "ch1", "ch2", "ch3"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(testUser))
+
+	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
+
+	// Put documents with varying channel values:
+	//    Sequences      Channels
+	//    ---------      --------
+	//     1-10			ch1
+	//     11-20		ch1, ch3
+	//     21-30		ch1
+	//     31-40		ch2
+	//     41-50		ch1, ch2, ch3
+	channelSets := []string{`"ch1"`, `"ch1", "ch3"`, `"ch1"`, `"ch2"`, `"ch1", "ch2", "ch3"`}
+
+	for i := 0; i < 50; i++ {
+		channelSet := channelSets[i/10]
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s_%d", t.Name(), i), fmt.Sprintf(`{"channels":[%s]}`, channelSet))
+		assertStatus(t, response, 201)
+	}
+	cacheWaiter.AddAndWait(50)
+
+	// Flush the channel cache
+	assert.NoError(t, testDb.FlushChannelCache())
+
+	// 1. Issue a since=0 changes request, validate results
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	changesJSON := fmt.Sprintf(`{"since":0}`)
+	changes.Results = nil
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, username))
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Equal(t, 50, len(changes.Results))
+
+	// Verify results ordering
+	for i := 0; i < 50; i++ {
+		assert.Equal(t, fmt.Sprintf("%s_%d", t.Name(), i), changes.Results[i].ID)
+	}
+
+	// 2. Same again, but with limit on the changes request
+	assert.NoError(t, testDb.FlushChannelCache())
+	changes.Results = nil
+	changesJSON = fmt.Sprintf(`{"since":0, "limit":25}`)
+	changes.Results = nil
+	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, username))
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Equal(t, 25, len(changes.Results))
+
+	// Verify results ordering
+	for i := 0; i < 25; i++ {
+		assert.Equal(t, fmt.Sprintf("%s_%d", t.Name(), i), changes.Results[i].ID)
+	}
+
+}
+
+// Tests star channel query backfill with limit
+func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
+
+	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
+	queryLimit := 5
+	rtConfig.DatabaseConfig = &DbConfig{CacheConfig: &CacheConfig{ChannelCacheConfig: &ChannelCacheConfig{QueryLimit: &queryLimit}}}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// Create user:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "*"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	testDb := rt.ServerContext().Database("db")
+	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
+
+	// Put 10 documents
+	for i := 1; i <= 10; i++ {
+		key := fmt.Sprintf("%s%d", t.Name(), i)
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", key), `{"starChannel":"istrue"}`)
+		assertStatus(t, response, 201)
+	}
+
+	cacheWaiter.AddAndWait(10)
+
+	// Flush the channel cache
+	assert.NoError(t, testDb.FlushChannelCache())
+	startQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+
+	// Issue a since=0 changes request.  Validate that there's a view-based backfill
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+	changesJSON := `{"since":0, "limit":7}`
+	changes.Results = nil
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Equal(t, len(changes.Results), 7)
+	finalQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	assert.Equal(t, 2, finalQueryCount-startQueryCount)
+}
+
 // Tests view backfill with slow query, checks duplicate handling for cache entries if a document is updated after query runs, but before document is
 // prepended to the cache.  Reproduces #3475
 func TestChangesViewBackfillSlowQuery(t *testing.T) {
@@ -2259,10 +2546,8 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	cacheWaiter.Wait()
 
-	log.Printf("about to flush")
 	// Flush the channel cache
 	assert.NoError(t, testDb.FlushChannelCache())
-	log.Printf("flush done")
 
 	// Write another doc, to initialize the cache (and guarantee overlap)
 	response = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["PBS"]}`)
@@ -2534,23 +2819,25 @@ func TestChangesActiveOnlyWithLimitAndViewBackfill(t *testing.T) {
 
 	response = rt.SendAdminRequest("PUT", "/db/conflictedDoc", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(5)
 
 	// Create a conflict, then tombstone it
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictTombstone"}], "new_edits":false}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
 	response = rt.SendAdminRequest("DELETE", "/db/conflictedDoc?rev=1-conflictTombstone", "")
 	assertStatus(t, response, 200)
+	cacheWaiter.AddAndWait(1)
 
 	// Create a conflict, and don't tombstone it
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictActive"}], "new_edits":false}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
 
 	var changes struct {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
-
-	cacheWaiter.AddAndWait(8)
 
 	// Get pre-delete changes
 	changesJSON := `{"style":"all_docs"}`

@@ -48,6 +48,13 @@ const (
 
 var OIDCDiscoveryRetryWait = 500 * time.Millisecond
 
+// Request parameter to specify the OpenID Connect provider to be used for authentication,
+// from the list of providers defined in the Sync Gateway configuration.
+var OIDCAuthProvider = "provider"
+
+// Error code returned by failures to set parameters to URL query string.
+var ErrSetURLQueryParam = errors.New("URL, parameter name and value must not be empty")
+
 // Options for OpenID Connect
 type OIDCOptions struct {
 	Providers       OIDCProviderMap `json:"providers,omitempty"`        // List of OIDC issuers
@@ -99,7 +106,7 @@ type OIDCProvider struct {
 
 type OIDCProviderMap map[string]*OIDCProvider
 
-type OIDCCallbackURLFunc func() string
+type OIDCCallbackURLFunc func(string, bool) string
 
 func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 	for _, provider := range opm {
@@ -147,7 +154,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OID
 		// If the redirect URL is not defined for the provider generate it from the
 		// handler request and set it on the provider
 		if op.CallbackURL == nil || *op.CallbackURL == "" {
-			callbackURL := buildCallbackURLFunc()
+			callbackURL := buildCallbackURLFunc(op.Name, op.IsDefault)
 			if callbackURL != "" {
 				op.CallbackURL = &callbackURL
 			}
@@ -390,4 +397,21 @@ func GetIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []
 // and returns the payload. It uses the ID Token Verifier to verify the token.
 func (client *OIDCClient) VerifyJWT(token string) (*oidc.IDToken, error) {
 	return client.Verifier.Verify(context.Background(), token)
+}
+
+func SetURLQueryParam(strURL, name, value string) (string, error) {
+	if strURL == "" || name == "" || value == "" {
+		return "", ErrSetURLQueryParam
+	}
+	uri, err := url.Parse(strURL)
+	if err != nil {
+		return "", err
+	}
+	rawQuery, err := url.ParseQuery(uri.RawQuery)
+	if err != nil {
+		return "", err
+	}
+	rawQuery.Set(name, value)
+	uri.RawQuery = rawQuery.Encode()
+	return uri.String(), nil
 }

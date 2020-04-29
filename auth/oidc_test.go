@@ -12,10 +12,12 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/rsa"
+  "errors"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
+  "net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -261,7 +263,7 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 			}
 
 			if test.Provider != nil {
-				client := test.Provider.GetClient(func() string { return "" })
+				client := test.Provider.GetClient(func(string, bool) string { return "" })
 				if test.ExpectOIDCClient {
 					assert.NotEqual(tt, (*OIDCClient)(nil), client)
 				} else {
@@ -460,6 +462,84 @@ func TestGetSigningAlgorithms(t *testing.T) {
 			signingAlgorithms := provider.GetSigningAlgorithms(metadata)
 			assert.Equal(t, test.wantSupportedAlgorithms, signingAlgorithms.supportedAlgorithms)
 			assert.Equal(t, test.wantUnsupportedAlgorithms, signingAlgorithms.unsupportedAlgorithms)
+		})
+	}
+}
+
+func TestSetURLQueryParam(t *testing.T) {
+	var oidcAuthProviderGoogle = "google"
+	tests := []struct {
+		name             string
+		inputCallbackURL string
+		inputParamName   string
+		inputParamValue  string
+		wantCallbackURL  string
+		wantError        error
+	}{{
+		name:             "Add provider to callback URL",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  oidcAuthProviderGoogle,
+		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=google",
+	}, {
+		name:             "Add provider to callback URL with ? character",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback?",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  oidcAuthProviderGoogle,
+		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=google",
+	}, {
+		name:             "Add provider to empty callback URL",
+		inputCallbackURL: "",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  oidcAuthProviderGoogle,
+		wantCallbackURL:  "",
+		wantError:        ErrSetURLQueryParam,
+	}, {
+		name:             "Add empty provider value to callback URL",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  "",
+		wantCallbackURL:  "",
+		wantError:        ErrSetURLQueryParam,
+	}, {
+		name:             "Add empty provider name to callback URL",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputParamName:   "",
+		inputParamValue:  oidcAuthProviderGoogle,
+		wantCallbackURL:  "",
+		wantError:        ErrSetURLQueryParam,
+	}, {
+		name:             "Update provider in callback URL",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback?provider=facebook",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  oidcAuthProviderGoogle,
+		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=google",
+	}, {
+		name:             "Add provider to callback URL with illegal value in query param",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback?provider=%%3",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  oidcAuthProviderGoogle,
+		wantCallbackURL:  "",
+		wantError:        url.EscapeError("%%3"),
+	}, {
+		name:             "Add provider to callback URL with missing protocol scheme",
+		inputCallbackURL: "://localhost:4984/default/_oidc_callback",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  oidcAuthProviderGoogle,
+		wantCallbackURL:  "",
+		wantError:        &url.Error{Op: "parse", URL: "://localhost:4984/default/_oidc_callback", Err: errors.New("missing protocol scheme")},
+	}, {
+		name:             "Add provider with non-conforming characters to callback URL",
+		inputCallbackURL: "http://localhost:4984/default/_oidc_callback",
+		inputParamName:   OIDCAuthProvider,
+		inputParamValue:  "test&provider ?",
+		wantCallbackURL:  "http://localhost:4984/default/_oidc_callback?provider=test%26provider+%3F",
+	}}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			callbackURL, err := SetURLQueryParam(test.inputCallbackURL, test.inputParamName, test.inputParamValue)
+			assert.Equal(t, test.wantError, err)
+			assert.Equal(t, test.wantCallbackURL, callbackURL)
 		})
 	}
 }
