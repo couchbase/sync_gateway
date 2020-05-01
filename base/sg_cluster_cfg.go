@@ -73,14 +73,6 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 
 	casOut, err := c.bucket.WriteCas(bucketKey, 0, 0, cas, val, 0)
 
-	/*
-		if cas == 0 {
-			casOut, err = c.bucket.Insert(bucketKey, val, 0)
-		} else {
-			casOut, err = c.bucket.Replace(bucketKey, val, gocb.Cas(cas), 0)
-		}
-	*/
-
 	if err == gocb.ErrKeyExists {
 		InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)
 		return 0, &cbgt.CfgCASError{}
