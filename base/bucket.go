@@ -403,8 +403,8 @@ func IsCasMismatch(err error) bool {
 func GetFeedType(bucket Bucket) (feedType string) {
 	switch typedBucket := bucket.(type) {
 	case *CouchbaseBucketGoCB:
-		if typedBucket.spec.FeedType != "" {
-			return strings.ToLower(typedBucket.spec.FeedType)
+		if typedBucket.Spec.FeedType != "" {
+			return strings.ToLower(typedBucket.Spec.FeedType)
 		} else {
 			return DcpFeedType
 		}
