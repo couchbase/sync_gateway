@@ -475,16 +475,11 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 // Verifies the token claims, but doesn't require signature verification.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (User, time.Time, error) {
+func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider) (User, time.Time, error) {
 	base.Debugf(base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
-	if provider.ClientID == nil {
-		base.Debugf(base.KeyAuth, "No clientID found in provider configuration: %v", base.UD(provider.Name))
-		return nil, time.Time{}, ErrorClientIDNotFound
-	}
-
 	// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
-	identity, err := VerifyClaims(token, *provider.ClientID, provider.Issuer)
+	identity, err := VerifyClaims(token, provider.ClientID, provider.Issuer)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
 		return nil, time.Time{}, err
@@ -503,7 +498,7 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 
 	user, userErr := auth.GetUser(username)
 	if userErr != nil {
-		base.Debugf(base.KeyAuth, "User %q doesn't exists, Error: %v", base.UD(username), userErr)
+		base.Debugf(base.KeyAuth, "Error retrieving user for username %q: %v", base.UD(username), userErr)
 		return nil, time.Time{}, userErr
 	}
 

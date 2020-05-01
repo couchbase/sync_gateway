@@ -1259,6 +1259,14 @@ func injectJSONPropertyFromBytes(b []byte, bIsEmpty bool, kvPairs []KVPairBytes)
 	return newJSON
 }
 
+// WrapJSONUnknownFieldErr wraps JSON unknown field errors with ErrUnknownField for later checking via errors.Cause
+func WrapJSONUnknownFieldErr(err error) error {
+	if err != nil && strings.Contains(err.Error(), "unknown field") {
+		return pkgerrors.WithMessage(ErrUnknownField, err.Error())
+	}
+	return err
+}
+
 // UseStdlibJSON if true, uses the stdlib JSON package.
 // This variable is not thread-safe, and should be set only once on startup.
 var UseStdlibJSON bool
@@ -1294,4 +1302,11 @@ func FatalPanicHandler() {
 	if r := recover(); r != nil {
 		Fatalf("Unexpected panic: %v - stopping process\n%v", r, string(debug.Stack()))
 	}
+}
+
+func MinInt(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
 }

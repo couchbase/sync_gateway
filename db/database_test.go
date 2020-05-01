@@ -1592,7 +1592,7 @@ func mockOIDCProvider() auth.OIDCProvider {
 		Name:          "Google",
 		Issuer:        "https://accounts.google.com",
 		CallbackURL:   &callbackURL,
-		ClientID:      &clientID,
+		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
@@ -1602,7 +1602,7 @@ func mockOIDCProviderWithCallbackURLQuery() auth.OIDCProvider {
 		Name:          "Google",
 		Issuer:        "https://accounts.google.com",
 		CallbackURL:   &callbackURLWithQuery,
-		ClientID:      &clientID,
+		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
@@ -1611,7 +1611,7 @@ func mockOIDCProviderWithNoIss() auth.OIDCProvider {
 	return auth.OIDCProvider{
 		Name:          "Microsoft",
 		CallbackURL:   &callbackURL,
-		ClientID:      &clientID,
+		ClientID:      clientID,
 		ValidationKey: &validationKey,
 	}
 }
@@ -1630,7 +1630,7 @@ func mockOIDCProviderWithNoValidationKey() auth.OIDCProvider {
 		Name:        "Yahoo",
 		Issuer:      "https://accounts.yahoo.com",
 		CallbackURL: &callbackURL,
-		ClientID:    &clientID,
+		ClientID:    clientID,
 	}
 }
 
