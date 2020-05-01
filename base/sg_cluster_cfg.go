@@ -8,25 +8,27 @@ import (
 	"github.com/couchbase/gocb"
 )
 
-// CfgSG is an implementation of Cfg that uses Sync Gateway's existing
-// bucket connection, and existing caching feed to get change notifications.
+// CfgSG is used to manage shared information between Sync Gateway nodes.
+// It implements cbgt.Cfg for use with cbgt, but can be used for to manage
+// any shared data.  It uses Sync Gateway's existing
+// bucket as a keystore, and existing caching feed for change notifications.
 //
 type CfgSG struct {
-	bucket        *gocb.Bucket
+	bucket        Bucket
 	loggingCtx    context.Context
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions
 }
 
-// NewCfgCB returns a Cfg implementation that reads/writes its entries
+// NewCfgSG returns a Cfg implementation that reads/writes its entries
 // from/to a couchbase bucket, using DCP streams to subscribe to
 // changes.
 //
 // urlStr: single URL or multiple URLs delimited by ';'
 // bucket: couchbase bucket name
-func NewCfgSG(bucket *gocb.Bucket) (*CfgSG, error) {
+func NewCfgSG(bucket Bucket) (*CfgSG, error) {
 
-	cfgContextID := MD(bucket.Name()).Redact() + "-" + DCPImportFeedID
+	cfgContextID := MD(bucket.GetName()).Redact() + "-cfgSG"
 	loggingCtx := context.WithValue(context.Background(), LogContextKey{},
 		LogContext{CorrelationID: cfgContextID},
 	)
@@ -50,7 +52,7 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	bucketKey := sgCfgBucketKey(cfgKey)
 	var value []byte
 	casOut, err := c.bucket.Get(bucketKey, &value)
-	if err != nil && err != gocb.ErrKeyNotFound {
+	if err != nil && !IsKeyNotFoundError(c.bucket, err) {
 		InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Get, key: %s, cas: %d, err: %v", cfgKey, cas, err)
 		return nil, 0, err
 	}
@@ -66,14 +68,10 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 
 	InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Set, key: %s, cas: %d", cfgKey, cas)
-	var casOut gocb.Cas
 	var err error
 	bucketKey := sgCfgBucketKey(cfgKey)
-	if cas == 0 {
-		casOut, err = c.bucket.Insert(bucketKey, val, 0)
-	} else {
-		casOut, err = c.bucket.Replace(bucketKey, val, gocb.Cas(cas), 0)
-	}
+
+	casOut, err := c.bucket.WriteCas(bucketKey, 0, 0, cas, val, 0)
 
 	if err == gocb.ErrKeyExists {
 		InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)
@@ -83,20 +81,20 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 		return 0, err
 	}
 
-	c.FireEvent(cfgKey, uint64(casOut), nil)
-	return uint64(casOut), nil
+	c.FireEvent(cfgKey, casOut, nil)
+	return casOut, nil
 }
 
 func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 
 	InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := sgCfgBucketKey(cfgKey)
-	casOut, err := c.bucket.Remove(bucketKey, gocb.Cas(cas))
-	if err != nil && err != gocb.ErrKeyNotFound {
+	casOut, err := c.bucket.Remove(bucketKey, cas)
+	if err != nil && !IsKeyNotFoundError(c.bucket, err) {
 		return err
 	}
 
-	c.FireEvent(cfgKey, uint64(casOut), nil)
+	c.FireEvent(cfgKey, casOut, nil)
 	return err
 }
 

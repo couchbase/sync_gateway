@@ -97,6 +97,7 @@ type DatabaseContext struct {
 	CompactState       uint32                   // Status of database compaction
 	terminator         chan bool                // Signal termination of background goroutines
 	activeChannels     *channels.ActiveChannels // Tracks active replications by channel
+	CfgSG              *base.CfgSG              // Sync Gateway cluster shared config
 }
 
 type DatabaseContextOptions struct {
@@ -285,6 +286,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName())
 
+	// Initialize sg cluster config if needed
+	err = dbContext.InitCfgSG()
+	if err != nil {
+		return nil, err
+	}
+
 	// If this is an xattr import node, start import feed
 	if dbContext.UseXattrs() && dbContext.autoImport {
 		dbContext.ImportListener = NewImportListener()
@@ -405,6 +412,30 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	return dbContext, nil
+}
+
+func (context *DatabaseContext) InitCfgSG() (err error) {
+
+	requiresCfg := false
+
+	// Import requires cfg
+	if context.UseXattrs() && context.autoImport {
+		requiresCfg = true
+	}
+
+	// sg-replicate requires cfg
+	// TODO: check for replication definitions
+
+	if requiresCfg {
+		context.CfgSG, err = base.NewCfgSG(context.Bucket)
+		if err != nil {
+			base.Warnf("Error initializing cfg for cluster HA: %v", err)
+			return err
+		}
+	}
+
+	return nil
+
 }
 
 func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {

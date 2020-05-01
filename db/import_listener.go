@@ -60,7 +60,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 		// Non-gocb bucket or CE, start a non-sharded feed
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap)
 	} else {
-		il.cbgtContext, err = gocbBucket.StartShardedDCPFeed(dbContext.Name, il.database.Options.ImportOptions.ImportPartitions)
+		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, gocbBucket, dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
 	}
 

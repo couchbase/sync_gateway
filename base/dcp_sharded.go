@@ -1,6 +1,7 @@
 package base
 
 import (
+	"context"
 	"crypto/tls"
 	"strings"
 
@@ -16,22 +17,28 @@ const DefaultImportPartitions = 16
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
-	Manager     *cbgt.Manager // Manager is main entry point for initialization, registering indexes
-	Cfg         *CfgSG        // Cfg manages storage of the current pindex set and node assignment
-	Heartbeater Heartbeater   // Detects failed nodes when running in multi-node configuration
+	Manager     *cbgt.Manager   // Manager is main entry point for initialization, registering indexes
+	Cfg         *CfgSG          // Cfg manages storage of the current pindex set and node assignment
+	Heartbeater Heartbeater     // Detects failed nodes when running in multi-node configuration
+	loggingCtx  context.Context // Context for cbgt logging
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, bucket *CouchbaseBucketGoCB, numPartitions uint16, cfg *CfgSG) (*CbgtContext, error) {
 
-	cbgtContext, err := initCBGTManager(dbName, bucket, spec)
+	cbgtContext, err := initCBGTManager(bucket, bucket.Spec, cfg)
 	if err != nil {
 		return nil, err
 	}
 
+	dcpContextID := MD(bucket.Spec.BucketName).Redact() + "-" + DCPImportFeedID
+	cbgtContext.loggingCtx = context.WithValue(context.Background(), LogContextKey{},
+		LogContext{CorrelationID: dcpContextID},
+	)
+
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, bucket, spec, numPartitions)
+	err = cbgtContext.StartManager(dbName, bucket, bucket.Spec, numPartitions)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +130,7 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 	//       how this can be optimized if we're not actually using it in the indexImpl
 	indexParams := `{"name": "` + dbName + `"}`
 	indexName := GenerateIndexName(dbName)
-	InfofCtx(c.Cfg.loggingCtx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
+	InfofCtx(c.loggingCtx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
 
 	// Required for initial pools request, before BucketDataSourceOptions kick in
 	if spec.Certpath != "" && spec.Keypath != "" {
@@ -147,7 +154,7 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 				return spec.TLSConfig()
 			}
 		}
-		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(c.Cfg.loggingCtx, spec.IsTLS(), connSpec.Addresses)
+		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(c.loggingCtx, spec.IsTLS(), connSpec.Addresses)
 		return options
 	})
 
@@ -166,7 +173,7 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 	)
 	c.Manager.Kick("NewIndexesCreated")
 
-	InfofCtx(c.Cfg.loggingCtx, KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
+	InfofCtx(c.loggingCtx, KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
 	return err
 
 }
@@ -190,7 +197,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContext, error) {
+func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG *CfgSG) (*CbgtContext, error) {
 
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
@@ -198,17 +205,6 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 	// 		(note that in a single node scenario, this can result in latency removing previous version of itself
 	//  	on restart, if time between restarts is less than heartbeat expiry time).
 	uuid := cbgt.NewUUID()
-
-	gocbBucket, ok := AsGoCBBucket(bucket)
-	if !ok {
-		return nil, errors.New("gocbBucket required to initCBGTManager")
-	}
-
-	cfgCB, err := NewCfgSG(gocbBucket.Bucket)
-	if err != nil {
-		Warnf("Error initializing cfg for import sharding: %v", err)
-		return nil, err
-	}
 
 	// tags: Every node participating in sharded DCP has feed, janitor, pindex and planner roles
 	//   	"feed": runs dcp feed
@@ -245,6 +241,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 
 	// serverURL: Passing gocb connect string.
 	var serverURL string
+	var err error
 	if feedType == cbgtFeedType_cbdatasource {
 		// cbdatasource expects server URL in http format
 		serverURLs, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, nil)
@@ -277,7 +274,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 	// Creates a new cbgt manager.
 	mgr := cbgt.NewManagerEx(
 		cbgt.VERSION, // cbgt metadata version
-		cfgCB,
+		cfgSG,
 		uuid,
 		tags,
 		container,
@@ -291,7 +288,7 @@ func initCBGTManager(dbName string, bucket Bucket, spec BucketSpec) (*CbgtContex
 
 	cbgtContext := &CbgtContext{
 		Manager: mgr,
-		Cfg:     cfgCB,
+		Cfg:     cfgSG,
 	}
 	return cbgtContext, nil
 }
