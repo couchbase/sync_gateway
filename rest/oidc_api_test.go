@@ -241,6 +241,9 @@ func TestCallbackState(t *testing.T) {
 		require.Equal(t, http.StatusOK, response.StatusCode)
 		responseData := make(map[string]interface{})
 		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseData))
+		assert.NotEmpty(t, responseData["id_token"], "id_token doesn't exists")
+		assert.NotEmpty(t, responseData["refresh_token"], "refresh_token doesn't exists")
+		assert.NotEmpty(t, responseData["session_id"], "session_id doesn't exists")
 	})
 
 	t.Run("check whether state is maintained when callback state is enabled", func(t *testing.T) {
@@ -269,6 +272,9 @@ func TestCallbackState(t *testing.T) {
 		require.Equal(t, http.StatusOK, response.StatusCode)
 		responseData := make(map[string]interface{})
 		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseData))
+		assert.NotEmpty(t, responseData["id_token"], "id_token doesn't exists")
+		assert.NotEmpty(t, responseData["refresh_token"], "refresh_token doesn't exists")
+		assert.NotEmpty(t, responseData["session_id"], "session_id doesn't exists")
 	})
 
 	t.Run("check whether state is maintained when callback state is disabled implicitly", func(t *testing.T) {
