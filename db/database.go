@@ -287,7 +287,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.mutationListener.Init(bucket.GetName())
 
 	// Initialize sg cluster config if needed
-	dbContext.InitCfgSG()
+	err = dbContext.InitCfgSG()
+	if err != nil {
+		return nil, err
+	}
 
 	// If this is an xattr import node, start import feed
 	if dbContext.UseXattrs() && dbContext.autoImport {
