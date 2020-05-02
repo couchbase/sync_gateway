@@ -14,6 +14,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,7 +23,8 @@ import (
 )
 
 var (
-	fakeSyncGatewayURL    = ""
+	tokenTypeBearer       = "Bearer"
+	mockSyncGatewayURL    = ""
 	issuerGoogle          = ""
 	issuerFacebook        = ""
 	authProvider          = "provider"
@@ -33,18 +35,20 @@ var (
 	validationKeyFacebook = "validation.key.facebook"
 	validationKeyGoogle   = "validation.key.google"
 	wellKnownPath         = "/.well-known/openid-configuration"
+
+	wantTokenResponse OIDCTokenResponse
 )
 
-func fakeAuthServer() (*httptest.Server, error) {
+func mockAuthServer() (*httptest.Server, error) {
 	router := mux.NewRouter()
-	router.HandleFunc("/google"+wellKnownPath, discoveryHandleFuncGoogle).Methods(http.MethodGet)
-	router.HandleFunc("/facebook"+wellKnownPath, discoveryHandleFuncFacebook).Methods(http.MethodGet)
-	router.HandleFunc("/google/auth", authHandleFunc).Methods(http.MethodGet, http.MethodPost)
-	router.HandleFunc("/google/token", tokenHandleFunc).Methods(http.MethodPost)
+	router.HandleFunc("/google"+wellKnownPath, mockDiscoveryHandlerGoogle).Methods(http.MethodGet)
+	router.HandleFunc("/google/auth", mockAuthHandler).Methods(http.MethodGet, http.MethodPost)
+	router.HandleFunc("/google/token", mockTokenHandler).Methods(http.MethodPost)
+	router.HandleFunc("/facebook"+wellKnownPath, mockDiscoveryHandlerFacebook).Methods(http.MethodGet)
 	return httptest.NewServer(router), nil
 }
 
-func discoveryHandleFuncGoogle(res http.ResponseWriter, req *http.Request) {
+func mockDiscoveryHandlerGoogle(res http.ResponseWriter, req *http.Request) {
 	metadata := auth.ProviderMetadata{
 		Issuer: issuerGoogle, AuthorizationEndpoint: issuerGoogle + "/auth",
 		TokenEndpoint: issuerGoogle + "/token", JwksUri: issuerGoogle + "/oauth2/v3/certs",
@@ -53,7 +57,7 @@ func discoveryHandleFuncGoogle(res http.ResponseWriter, req *http.Request) {
 	renderJSON(res, req, http.StatusOK, metadata)
 }
 
-func discoveryHandleFuncFacebook(res http.ResponseWriter, req *http.Request) {
+func mockDiscoveryHandlerFacebook(res http.ResponseWriter, req *http.Request) {
 	metadata := auth.ProviderMetadata{
 		Issuer: issuerFacebook, AuthorizationEndpoint: issuerFacebook + "/auth",
 		TokenEndpoint: issuerFacebook + "/token", JwksUri: issuerFacebook + "/oauth2/v3/certs",
@@ -71,7 +75,8 @@ func renderJSON(res http.ResponseWriter, req *http.Request, statusCode int, data
 		return
 	}
 }
-func authHandleFunc(res http.ResponseWriter, req *http.Request) {
+
+func mockAuthHandler(res http.ResponseWriter, req *http.Request) {
 	var redirectionURL string
 	state := req.URL.Query().Get(requestParamState)
 	redirect := req.URL.Query().Get(requestParamRedirectURI)
@@ -87,7 +92,7 @@ func authHandleFunc(res http.ResponseWriter, req *http.Request) {
 	http.Redirect(res, req, redirectionURL, http.StatusTemporaryRedirect)
 }
 
-func tokenHandleFunc(res http.ResponseWriter, req *http.Request) {
+func mockTokenHandler(res http.ResponseWriter, req *http.Request) {
 	claims := jwt.Claims{ID: "id0123456789", Issuer: issuerGoogle,
 		Audience: jwt.Audience{"aud1", "aud2", "aud3", clientIDGoogle},
 		IssuedAt: jwt.NewNumericDate(time.Now()), Subject: "noah",
@@ -111,15 +116,11 @@ func tokenHandleFunc(res http.ResponseWriter, req *http.Request) {
 		IDToken:      token,
 		AccessToken:  token,
 		RefreshToken: token,
+		TokenType:    tokenTypeBearer,
 		Expires:      time.Now().Add(5 * time.Minute).UTC().Second(),
 	}
-	res.Header().Set("Content-Type", "application/json")
-	res.WriteHeader(http.StatusOK)
-	if err = json.NewEncoder(res).Encode(response); err != nil {
-		base.Errorf("Error encoding token response: %s", err)
-		res.WriteHeader(http.StatusInternalServerError)
-		return
-	}
+	wantTokenResponse = response
+	renderJSON(res, req, http.StatusOK, response)
 }
 
 func getRSASigner() (signer jose.Signer, err error) {
@@ -138,7 +139,7 @@ func getRSASigner() (signer jose.Signer, err error) {
 }
 
 func TestGetOIDCCallbackURL(t *testing.T) {
-	authServer, err := fakeAuthServer()
+	authServer, err := mockAuthServer()
 	require.NoError(t, err, "Error mocking fake authorization server")
 	defer authServer.Close()
 
@@ -213,14 +214,15 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 }
 
 func TestCallbackState(t *testing.T) {
-	authServer, err := fakeAuthServer()
+	authServer, err := mockAuthServer()
 	require.NoError(t, err, "Error mocking fake authorization server")
 	defer authServer.Close()
 	issuerGoogle = authServer.URL + "/google"
+	wantUsername := "google_noah"
 
 	t.Run("check whether state is maintained when callback state is disabled explicitly", func(t *testing.T) {
 		providerGoogle := auth.OIDCProvider{
-			Name: providerNameGoogle, Issuer: issuerGoogle, ClientID: clientIDGoogle,
+			Name: providerNameGoogle, Issuer: issuerGoogle, ClientID: clientIDGoogle, IncludeAccessToken: true,
 			UserPrefix: providerNameGoogle, ValidationKey: &validationKeyGoogle, Register: true,
 			DiscoveryURI: issuerGoogle + wellKnownPath, DisableCallbackState: base.BoolPtr(true),
 		}
@@ -231,24 +233,42 @@ func TestCallbackState(t *testing.T) {
 		defer restTester.Close()
 		fakeSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 		defer fakeSyncGateway.Close()
-		fakeSyncGatewayURL = fakeSyncGateway.URL
+		mockSyncGatewayURL = fakeSyncGateway.URL
 
-		requestURL := fmt.Sprintf("%s/db/_oidc?provider=google&offline=true", fakeSyncGatewayURL)
+		// Initiate OpenID Connect Authorization Code flow.
+		requestURL := fmt.Sprintf("%s/db/_oidc?provider=google&offline=true", mockSyncGatewayURL)
 		request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 		require.NoError(t, err, "Error creating new request")
 		response, err := http.DefaultClient.Do(request)
 		require.NoError(t, err, "Error sending request")
 		require.Equal(t, http.StatusOK, response.StatusCode)
-		responseData := make(map[string]interface{})
-		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseData))
-		assert.NotEmpty(t, responseData["id_token"], "id_token doesn't exist")
-		assert.NotEmpty(t, responseData["refresh_token"], "refresh_token doesn't exist")
-		assert.NotEmpty(t, responseData["session_id"], "session_id doesn't exist")
+
+		// Validate received token response
+		var receivedToken OIDCTokenResponse
+		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&receivedToken))
+		assert.NotEmpty(t, receivedToken.SessionID, "session_id doesn't exist")
+		assert.Equal(t, wantUsername, receivedToken.Username, "name mismatch")
+		assert.Equal(t, wantTokenResponse.IDToken, receivedToken.IDToken, "id_token mismatch")
+		assert.Equal(t, wantTokenResponse.RefreshToken, receivedToken.RefreshToken, "refresh_token mismatch")
+		assert.Equal(t, wantTokenResponse.AccessToken, receivedToken.AccessToken, "access_token mismatch")
+		assert.Equal(t, wantTokenResponse.TokenType, receivedToken.TokenType, "token_type mismatch")
+		assert.True(t, wantTokenResponse.Expires >= receivedToken.Expires, "expires_in mismatch")
+
+		// Query db endpoint with bearer token
+		var responseBody db.Body
+		dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
+		request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
+		request.Header.Add("Authorization", receivedToken.IDToken)
+		response, err = http.DefaultClient.Do(request)
+		require.NoError(t, err, "Error sending request with bearer token")
+		require.Equal(t, http.StatusOK, response.StatusCode)
+		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
+		assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 	})
 
 	t.Run("check whether state is maintained when callback state is enabled", func(t *testing.T) {
 		providerGoogle := auth.OIDCProvider{
-			Name: providerNameGoogle, Issuer: issuerGoogle, ClientID: clientIDGoogle,
+			Name: providerNameGoogle, Issuer: issuerGoogle, ClientID: clientIDGoogle, IncludeAccessToken: true,
 			UserPrefix: providerNameGoogle, ValidationKey: &validationKeyGoogle, Register: true,
 			DiscoveryURI: issuerGoogle + wellKnownPath, DisableCallbackState: base.BoolPtr(false),
 		}
@@ -259,9 +279,10 @@ func TestCallbackState(t *testing.T) {
 		defer restTester.Close()
 		fakeSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 		defer fakeSyncGateway.Close()
-		fakeSyncGatewayURL = fakeSyncGateway.URL
+		mockSyncGatewayURL = fakeSyncGateway.URL
 
-		requestURL := fmt.Sprintf("%s/db/_oidc?provider=google&offline=true", fakeSyncGatewayURL)
+		// Initiate OpenID Connect Authorization Code flow.
+		requestURL := fmt.Sprintf("%s/db/_oidc?provider=google&offline=true", mockSyncGatewayURL)
 		request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 		require.NoError(t, err, "Error creating new request")
 		jar, err := cookiejar.New(nil)
@@ -270,18 +291,35 @@ func TestCallbackState(t *testing.T) {
 		response, err := client.Do(request)
 		require.NoError(t, err, "Error sending request")
 		require.Equal(t, http.StatusOK, response.StatusCode)
-		responseData := make(map[string]interface{})
-		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseData))
-		assert.NotEmpty(t, responseData["id_token"], "id_token doesn't exist")
-		assert.NotEmpty(t, responseData["refresh_token"], "refresh_token doesn't exist")
-		assert.NotEmpty(t, responseData["session_id"], "session_id doesn't exist")
+
+		// Validate received token response
+		var receivedToken OIDCTokenResponse
+		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&receivedToken))
+		assert.NotEmpty(t, receivedToken.SessionID, "session_id doesn't exist")
+		assert.Equal(t, wantUsername, receivedToken.Username, "name mismatch")
+		assert.Equal(t, wantTokenResponse.IDToken, receivedToken.IDToken, "id_token mismatch")
+		assert.Equal(t, wantTokenResponse.RefreshToken, receivedToken.RefreshToken, "refresh_token mismatch")
+		assert.Equal(t, wantTokenResponse.AccessToken, receivedToken.AccessToken, "access_token mismatch")
+		assert.Equal(t, wantTokenResponse.TokenType, receivedToken.TokenType, "token_type mismatch")
+		assert.True(t, wantTokenResponse.Expires >= receivedToken.Expires, "expires_in mismatch")
+
+		// Query db endpoint with bearer token
+		var responseBody db.Body
+		dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
+		request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
+		request.Header.Add("Authorization", receivedToken.IDToken)
+		response, err = client.Do(request)
+		require.NoError(t, err, "Error sending request with bearer token")
+		require.Equal(t, http.StatusOK, response.StatusCode)
+		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
+		assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 	})
 
 	t.Run("check whether state is maintained when callback state is disabled implicitly", func(t *testing.T) {
 		providerGoogle := auth.OIDCProvider{
 			Name: providerNameGoogle, Issuer: issuerGoogle, ClientID: clientIDGoogle,
 			UserPrefix: providerNameGoogle, ValidationKey: &validationKeyGoogle, Register: true,
-			DiscoveryURI: issuerGoogle + wellKnownPath,
+			DiscoveryURI: issuerGoogle + wellKnownPath, IncludeAccessToken: true,
 		}
 		providers := auth.OIDCProviderMap{providerGoogle.Name: &providerGoogle}
 		options := auth.OIDCOptions{Providers: providers, DefaultProvider: &providerGoogle.Name}
@@ -290,9 +328,10 @@ func TestCallbackState(t *testing.T) {
 		defer restTester.Close()
 		fakeSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 		defer fakeSyncGateway.Close()
-		fakeSyncGatewayURL = fakeSyncGateway.URL
+		mockSyncGatewayURL = fakeSyncGateway.URL
 
-		requestURL := fmt.Sprintf("%s/db/_oidc?provider=google&offline=true", fakeSyncGatewayURL)
+		// Initiate OpenID Connect Authorization Code flow.
+		requestURL := fmt.Sprintf("%s/db/_oidc?provider=google&offline=true", mockSyncGatewayURL)
 		request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 		require.NoError(t, err, "Error creating new request")
 		jar, err := cookiejar.New(nil)
@@ -301,11 +340,27 @@ func TestCallbackState(t *testing.T) {
 		response, err := client.Do(request)
 		require.NoError(t, err, "Error sending request")
 		require.Equal(t, http.StatusOK, response.StatusCode)
-		responseData := make(map[string]interface{})
-		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseData))
-		assert.NotEmpty(t, responseData["id_token"], "id_token doesn't exist")
-		assert.NotEmpty(t, responseData["refresh_token"], "refresh_token doesn't exist")
-		assert.NotEmpty(t, responseData["session_id"], "session_id doesn't exist")
-	})
 
+		// Validate received token response
+		var receivedToken OIDCTokenResponse
+		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&receivedToken))
+		assert.NotEmpty(t, receivedToken.SessionID, "session_id doesn't exist")
+		assert.Equal(t, wantUsername, receivedToken.Username, "name mismatch")
+		assert.Equal(t, wantTokenResponse.IDToken, receivedToken.IDToken, "id_token mismatch")
+		assert.Equal(t, wantTokenResponse.RefreshToken, receivedToken.RefreshToken, "refresh_token mismatch")
+		assert.Equal(t, wantTokenResponse.AccessToken, receivedToken.AccessToken, "access_token mismatch")
+		assert.Equal(t, wantTokenResponse.TokenType, receivedToken.TokenType, "token_type mismatch")
+		assert.True(t, wantTokenResponse.Expires >= receivedToken.Expires, "expires_in mismatch")
+
+		// Query db endpoint with bearer token
+		var responseBody db.Body
+		dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
+		request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
+		request.Header.Add("Authorization", receivedToken.IDToken)
+		response, err = client.Do(request)
+		require.NoError(t, err, "Error sending request with bearer token")
+		require.Equal(t, http.StatusOK, response.StatusCode)
+		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
+		assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
+	})
 }
