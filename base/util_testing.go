@@ -87,7 +87,6 @@ func TestsDisableGSI() bool {
 	if true {
 		return true
 	}
-
 	// Disable GSI when running with Walrus
 	if !TestUseCouchbaseServer() && UnitTestUrlIsWalrus() {
 		return true

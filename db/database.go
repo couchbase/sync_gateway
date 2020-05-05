@@ -551,7 +551,7 @@ func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removed
 		return make([]string, 0), nil
 	}
 
-	return removeObsoleteIndexes(gocbBucket, previewOnly, context.UseXattrs(), context.UseViews())
+	return removeObsoleteIndexes(gocbBucket, previewOnly, context.UseXattrs(), context.UseViews(), sgIndexes)
 }
 
 // Trigger terminate check handling for connected continuous replications.

@@ -385,7 +385,7 @@ func isIndexerError(err error) bool {
 // Iterates over the index set, removing obsolete indexes:
 //  - indexes based on the inverse value of xattrs being used by the database
 //  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
-func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool, useViews bool) (removedIndexes []string, err error) {
+func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
 
 	if !bucket.IsSupported(sgbucket.BucketFeatureN1ql) {
@@ -394,7 +394,7 @@ func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs b
 
 	// Build set of candidates for cleanup
 	removalCandidates := make([]string, 0)
-	for _, sgIndex := range sgIndexes {
+	for _, sgIndex := range indexMap {
 		// Current version, opposite xattr setting
 		removalCandidates = append(removalCandidates, sgIndex.fullIndexName(!useXattrs))
 		// If using views we can remove current version for xattr setting too
@@ -469,4 +469,14 @@ func replaceSyncTokensQuery(statement string, useXattrs bool) string {
 // Replace index tokens ($idx) in the provided createIndex statement with the appropriate token, depending on whether xattrs should be used.
 func replaceIndexTokensQuery(statement string, idx SGIndex, useXattrs bool) string {
 	return strings.Replace(statement, indexToken, idx.fullIndexName(useXattrs), -1)
+}
+
+func copySGIndexes(inputMap map[SGIndexType]SGIndex) map[SGIndexType]SGIndex {
+	outputMap := make(map[SGIndexType]SGIndex, len(inputMap))
+
+	for idx, value := range inputMap {
+		outputMap[idx] = value
+	}
+
+	return outputMap
 }

@@ -94,7 +94,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	// We don't know the current state of the bucket (may already have xattrs enabled), so run
 	// an initial cleanup to remove existing obsolete indexes
-	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), db.UseViews())
+	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), db.UseViews(), sgIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
@@ -102,17 +102,17 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, !db.UseXattrs(), db.UseViews())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs(), db.UseViews())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs(), db.UseViews())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
@@ -122,10 +122,6 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 }
 
 func TestPostUpgradeIndexesVersionChange(t *testing.T) {
-
-	// FIXME: CBG-815 - Overwriting sgIndexes global map is disrupting the async bucket pooling workers
-	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
-	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
@@ -138,35 +134,41 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
 	assert.True(t, ok)
 
+	copiedIndexes := copySGIndexes(sgIndexes)
+
 	// Validate that removeObsoleteIndexes is a no-op for the default case
-	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, true, db.UseXattrs(), db.UseViews())
+	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
 
 	// Hack sgIndexes to simulate new version of indexes
-	accessIndex := sgIndexes[IndexAccess]
-	restoreIndex := sgIndexes[IndexAccess]
+	accessIndex := copiedIndexes[IndexAccess]
+	restoreIndex := copiedIndexes[IndexAccess]
 	defer func() {
-		sgIndexes[IndexAccess] = restoreIndex
+		copiedIndexes[IndexAccess] = restoreIndex
 	}()
 
 	accessIndex.version = 2
 	accessIndex.previousVersions = []int{1}
-	sgIndexes[IndexAccess] = accessIndex
+	copiedIndexes[IndexAccess] = accessIndex
 
 	// Validate that removeObsoleteIndexes now triggers removal of one index
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, db.UseXattrs(), db.UseViews())
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 1)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
+
+	// Restore indexes after test
+	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	assert.NoError(t, err)
+
+	validateErr := validateAllIndexesOnline(testBucket)
+	assert.NoError(t, validateErr, "Error validating indexes online")
+
 }
 
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
-
-	// FIXME: CBG-815 - Overwriting sgIndexes global map is disrupting the async bucket pooling workers
-	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
-	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
@@ -175,6 +177,8 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	db, testBucket := setupTestDB(t)
 	defer testBucket.Close()
 	defer db.Close()
+
+	copiedIndexes := copySGIndexes(sgIndexes)
 
 	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
 	assert.True(t, ok)
@@ -190,11 +194,11 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		expectedIndexes--
 	}
 
-	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), true)
+	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), true, copiedIndexes)
 	assert.Equal(t, expectedIndexes, len(removedIndexes))
 	assert.NoError(t, removeErr)
 
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false)
+	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false, copiedIndexes)
 	require.Len(t, removedIndexes, 0)
 	assert.NoError(t, removeErr)
 
@@ -211,13 +215,16 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	// Restore ddocs after test
 	err = InitializeViews(gocbBucket)
 	assert.NoError(t, err)
+
+	// Restore indexes after test
+	err = InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	assert.NoError(t, err)
+
+	validateErr := validateAllIndexesOnline(testBucket)
+	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
 func TestRemoveObsoleteIndexOnFail(t *testing.T) {
-
-	// FIXME: CBG-815 - Overwriting sgIndexes global map is disrupting the async bucket pooling workers
-	// Is there a way of refactoring removeObsoleteIndexes to pass in the index map instead?
-	t.Skipf("FIXME: can't touch sgIndexes map - bucket pooling relies on it")
 
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
@@ -228,33 +235,25 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	defer db.Close()
 
 	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
-
-	//Copy references to existing indexes to variable for future use
-	oldIndexes := sgIndexes
-
-	//Remove all index references used in testing and restore the earlier indexes
-	defer func() {
-		sgIndexes = map[SGIndexType]SGIndex{}
-		sgIndexes = oldIndexes
-	}()
+	copiedIndexes := copySGIndexes(sgIndexes)
 
 	//Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
 	//indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:
 	// All previous versions and opposite of current xattr setting eg. for this test ran with non-xattrs:
 	// [sg_channels_x2 sg_channels_x1 sg_channels_1 sg_access_x2 sg_access_x1 sg_access_1]
-	sgIndexes = map[SGIndexType]SGIndex{}
+	testIndexes := map[SGIndexType]SGIndex{}
 
-	accessIndex := oldIndexes[IndexAccess]
+	accessIndex := copiedIndexes[IndexAccess]
 	accessIndex.version = 2
 	accessIndex.previousVersions = []int{1}
-	sgIndexes[IndexAccess] = accessIndex
+	testIndexes[IndexAccess] = accessIndex
 
-	channelIndex := oldIndexes[IndexChannels]
+	channelIndex := copiedIndexes[IndexChannels]
 	channelIndex.version = 2
 	channelIndex.previousVersions = []int{1}
-	sgIndexes[IndexChannels] = channelIndex
+	testIndexes[IndexChannels] = channelIndex
 
-	removedIndex, removeErr := removeObsoleteIndexes(leakyBucket, false, db.UseXattrs(), db.UseViews())
+	removedIndex, removeErr := removeObsoleteIndexes(leakyBucket, false, db.UseXattrs(), db.UseViews(), testIndexes)
 	assert.NoError(t, removeErr)
 
 	if base.TestUseXattrs() {
@@ -266,6 +265,9 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	// Restore indexes after test
 	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
+
+	validateErr := validateAllIndexesOnline(testBucket)
+	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }
 
