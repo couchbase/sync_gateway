@@ -158,6 +158,14 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 1)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
+
+	// Restore indexes after test
+	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	assert.NoError(t, err)
+
+	validateErr := validateAllIndexesOnline(testBucket)
+	assert.NoError(t, validateErr, "Error validating indexes online")
+
 }
 
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
@@ -207,6 +215,13 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	// Restore ddocs after test
 	err = InitializeViews(gocbBucket)
 	assert.NoError(t, err)
+
+	// Restore indexes after test
+	err = InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	assert.NoError(t, err)
+
+	validateErr := validateAllIndexesOnline(testBucket)
+	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
 func TestRemoveObsoleteIndexOnFail(t *testing.T) {
