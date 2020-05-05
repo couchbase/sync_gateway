@@ -37,7 +37,7 @@ var (
 	ErrEmptyMetadata         = &sgError{"Empty Sync Gateway metadata"}
 	ErrCasFailureShouldRetry = &sgError{"CAS failure should retry"}
 	ErrIndexerError          = &sgError{"Indexer error"}
-	ErrIndexAlreadyExists    = &sgError{"Index already exists"}
+	ErrAlreadyExists         = &sgError{"Already exists"}
 	ErrNotFound              = &sgError{"Not Found"}
 	ErrUpdateCancel          = &sgError{"Cancel update"}
 	ErrImportCancelledPurged = &sgError{"Import Cancelled Due to Purge"}

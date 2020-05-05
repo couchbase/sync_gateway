@@ -122,7 +122,7 @@ func (bucket *CouchbaseBucketGoCB) CreateIndex(indexName string, expression stri
 
 	createErr := bucket.createIndex(indexName, createStatement, options)
 	if createErr != nil && strings.Contains(createErr.Error(), "already exists") {
-		return ErrIndexAlreadyExists
+		return ErrAlreadyExists
 	}
 	return createErr
 }
