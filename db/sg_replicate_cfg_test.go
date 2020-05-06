@@ -146,7 +146,8 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 		nodeWg.Add(1)
 		go func(i int) {
 			defer nodeWg.Done()
-			manager.RegisterNode(fmt.Sprintf("node_%d", i))
+			err := manager.RegisterNode(fmt.Sprintf("node_%d", i))
+			assert.NoError(t, err)
 		}(i)
 	}
 
@@ -159,7 +160,8 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 		nodeWg.Add(1)
 		go func(i int) {
 			defer nodeWg.Done()
-			manager.RemoveNode(fmt.Sprintf("node_%d", i))
+			err := manager.RemoveNode(fmt.Sprintf("node_%d", i))
+			assert.NoError(t, err)
 		}(i)
 	}
 
@@ -187,7 +189,8 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 		replicationWg.Add(1)
 		go func(i int) {
 			defer replicationWg.Done()
-			manager.AddReplication(&ReplicationCfg{ID: fmt.Sprintf("r_%d", i)})
+			err := manager.AddReplication(&ReplicationCfg{ID: fmt.Sprintf("r_%d", i)})
+			assert.NoError(t, err)
 		}(i)
 	}
 
@@ -200,7 +203,8 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 		replicationWg.Add(1)
 		go func(i int) {
 			defer replicationWg.Done()
-			manager.DeleteReplication(fmt.Sprintf("r_%d", i))
+			err := manager.DeleteReplication(fmt.Sprintf("r_%d", i))
+			assert.NoError(t, err)
 		}(i)
 	}
 
