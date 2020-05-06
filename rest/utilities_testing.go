@@ -31,12 +31,13 @@ import (
 // file, they wouldn't be publicly exported to other packages)
 
 type RestTesterConfig struct {
-	noAdminParty          bool      // Unless this is true, Admin Party is in full effect
-	SyncFn                string    // put the sync() function source in here (optional)
-	DatabaseConfig        *DbConfig // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	InitSyncSeq           uint64    // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode bool      // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	distributedIndex      bool      // Test with walrus-based index bucket
+	noAdminParty          bool             // Unless this is true, Admin Party is in full effect
+	SyncFn                string           // put the sync() function source in here (optional)
+	DatabaseConfig        *DbConfig        // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	InitSyncSeq           uint64           // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode bool             // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	distributedIndex      bool             // Test with walrus-based index bucket
+	TestBucket            *base.TestBucket // If set, use this bucket instead of requesting a new one.
 }
 
 type RestTester struct {
@@ -80,7 +81,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		return rt.testBucket.Bucket
 	}
 
-	testBucket := base.GetTestBucket(rt.tb)
+	// If we have a TestBucket defined on the RestTesterConfig, use that instead of requesting a new one.
+	testBucket := rt.RestTesterConfig.TestBucket
+	if testBucket == nil {
+		testBucket = base.GetTestBucket(rt.tb)
+	}
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
