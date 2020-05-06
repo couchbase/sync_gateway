@@ -246,7 +246,7 @@ func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs boo
 		err = bucket.CreateIndex(indexName, indexExpression, filterExpression, options)
 		if err != nil {
 			// If index has already been created (race w/ other SG node), return without error
-			if err == base.ErrIndexAlreadyExists {
+			if err == base.ErrAlreadyExists {
 				isDeferred = false // Index already exists, don't need to update.
 				return false, nil, nil
 			}

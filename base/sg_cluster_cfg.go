@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/couchbase/cbgt"
-	"github.com/couchbase/gocb"
 )
 
 // CfgSG is used to manage shared information between Sync Gateway nodes.
@@ -19,6 +18,8 @@ type CfgSG struct {
 	subscriptions map[string][]chan<- cbgt.CfgEvent // Keyed by key
 	lock          sync.Mutex                        // mutex for subscriptions
 }
+
+var ErrCfgCasError = &cbgt.CfgCASError{}
 
 // NewCfgSG returns a Cfg implementation that reads/writes its entries
 // from/to a couchbase bucket, using DCP streams to subscribe to
@@ -57,12 +58,12 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 		return nil, 0, err
 	}
 
-	if cas != 0 && uint64(casOut) != cas {
+	if cas != 0 && casOut != cas {
 		InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Get, CasError key: %s, cas: %d", cfgKey, cas)
-		return nil, 0, &cbgt.CfgCASError{}
+		return nil, 0, ErrCfgCasError
 	}
 
-	return value, uint64(casOut), nil
+	return value, casOut, nil
 }
 
 func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
@@ -73,9 +74,9 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 
 	casOut, err := c.bucket.WriteCas(bucketKey, 0, 0, cas, val, 0)
 
-	if err == gocb.ErrKeyExists {
+	if IsCasMismatch(err) {
 		InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Set, ErrKeyExists key: %s, cas: %d", cfgKey, cas)
-		return 0, &cbgt.CfgCASError{}
+		return 0, ErrCfgCasError
 	} else if err != nil {
 		InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Set Error key: %s, cas: %d err:%s", cfgKey, cas, err)
 		return 0, err
@@ -90,7 +91,9 @@ func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 	InfofCtx(c.loggingCtx, KeyDCP, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := sgCfgBucketKey(cfgKey)
 	casOut, err := c.bucket.Remove(bucketKey, cas)
-	if err != nil && !IsKeyNotFoundError(c.bucket, err) {
+	if IsCasMismatch(err) {
+		return ErrCfgCasError
+	} else if err != nil && !IsKeyNotFoundError(c.bucket, err) {
 		return err
 	}
 

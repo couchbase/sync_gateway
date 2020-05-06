@@ -44,7 +44,7 @@ func TestN1qlQuery(t *testing.T) {
 
 	indexExpression := "val"
 	err := bucket.CreateIndex("testIndex_value", indexExpression, "", testN1qlOptions)
-	if err != nil && err != ErrIndexAlreadyExists {
+	if err != nil && err != ErrAlreadyExists {
 		t.Errorf("Error creating index: %s", err)
 	}
 
@@ -365,7 +365,7 @@ func TestCreateDuplicateIndex(t *testing.T) {
 
 	// Attempt to create duplicate, validate duplicate error
 	duplicateErr := bucket.CreateIndex("testIndexDuplicateSequence", createExpression, "", testN1qlOptions)
-	assert.Equal(t, ErrIndexAlreadyExists, duplicateErr)
+	assert.Equal(t, ErrAlreadyExists, duplicateErr)
 
 	// Drop the index
 	err = bucket.DropIndex("testIndexDuplicateSequence")
