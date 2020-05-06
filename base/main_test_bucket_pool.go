@@ -44,6 +44,9 @@ const (
 
 	// Prints detailed debug logs from the test pooling framework.
 	tbpEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
+
+	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
+	waitForReadyBucketTimeout = time.Second * 15
 )
 
 // TestBucketPool is used to manage a pool of gocb buckets on a Couchbase Server for testing purposes.
@@ -200,7 +203,13 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 
 	tbp.Logf(ctx, "Attempting to get test bucket from pool")
 	waitingBucketStart := time.Now()
-	gocbBucket := <-tbp.readyBucketPool
+	var gocbBucket *CouchbaseBucketGoCB
+	select {
+	case gocbBucket = <-tbp.readyBucketPool:
+	case <-time.After(waitForReadyBucketTimeout):
+		tbp.Logf(ctx, "Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
+		t.Fatalf("Timed out after %s waiting for a bucket to become available.", waitForReadyBucketTimeout)
+	}
 	atomic.AddInt64(&tbp.stats.TotalWaitingForReadyBucketNano, time.Since(waitingBucketStart).Nanoseconds())
 	ctx = bucketCtx(ctx, gocbBucket)
 	tbp.Logf(ctx, "Got test bucket from pool")
