@@ -46,7 +46,7 @@ const (
 	tbpEnvVerbose = "SG_TEST_BUCKET_POOL_DEBUG"
 
 	// wait this long when requesting a test bucket from the pool before giving up and failing the test.
-	waitForReadyBucketTimeout = time.Second * 15
+	waitForReadyBucketTimeout = time.Second * 30
 )
 
 // TestBucketPool is used to manage a pool of gocb buckets on a Couchbase Server for testing purposes.
