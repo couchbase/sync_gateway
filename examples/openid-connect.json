@@ -1,5 +1,5 @@
 {
-  "interface": ":4984",
+  "interface":":4984",
   "logging": {
     "console": {
       "log_keys": ["*"]
@@ -12,15 +12,14 @@
       "password": "password",
       "bucket": "default",
       "oidc": {
-        "default_provider": "google",
+        "default_provider":"google",
         "providers": {
           "google": {
-            "issuer": "https://accounts.google.com",
-            "client_id": "YOUR_CLIENT_ID",
-            "validation_key": "YOUR_CLIENT_SECRET",
-            "callback_url": "http://localhost:4984/default/_oidc_callback",
-            "register": true,
-            "disable_callback_state": true
+            "issuer":"https://accounts.google.com",
+            "client_id":"YOUR_CLIENT_ID",
+            "validation_key":"YOUR_CLIENT_SECRET",
+            "callback_url":"http://localhost:4984/default/_oidc_callback",
+            "register":true
           }
         }
       },

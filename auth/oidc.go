@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	discoveryConfigPath = "/.well-known/openid-configuration"
+	DiscoveryConfigPath = "/.well-known/openid-configuration"
 )
 
 var OIDCDiscoveryRetryWait = 500 * time.Millisecond
@@ -93,6 +93,11 @@ type OIDCProvider struct {
 	// by setting property "disable_callback_state": false. Enabling callback state is
 	// recommended to mitigate from Cross-Site Request Forgery (CSRF, XSRF).
 	DisableCallbackState *bool `json:"disable_callback_state,omitempty"`
+
+	// CallbackStateCookieHTTPOnly determines whether or not to make the callback state
+	// cookie inaccessible to JavaScript's Document.cookie API to mitigate cross-site
+	// scripting (XSS) attacks.
+	CallbackStateCookieHTTPOnly bool `json:"callback_state_cookie_http_only"`
 
 	// client represents client configurations to authenticate end-users
 	// with an OpenID Connect provider. It must not be accessed directly,
@@ -249,7 +254,7 @@ func (op *OIDCProvider) DiscoverConfig() (verifier *oidc.IDTokenVerifier, endpoi
 		// If the end-user has opted out for config validation and the discovery URI is not defined
 		// in provider config, construct the discovery URI based on standard issuer-based discovery.
 		if op.DisableConfigValidation && discoveryURL == "" {
-			discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
+			discoveryURL = strings.TrimSuffix(op.Issuer, "/") + DiscoveryConfigPath
 		}
 		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(op.DiscoveryURI))
 		metadata, err := op.FetchCustomProviderConfig(discoveryURL)

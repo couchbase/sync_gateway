@@ -112,7 +112,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	// Set state parameter to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
 	if provider.DisableCallbackState != nil && !*provider.DisableCallbackState {
 		state = base.GenerateRandomSecret()
-		setStateCookie(h.response, state)
+		setStateCookie(h.response, state, provider.CallbackStateCookieHTTPOnly)
 	}
 
 	// TODO: Is there a use case where we need to support direct pass-through of access_type and prompt from the caller?
@@ -157,11 +157,7 @@ func (h *handler) handleOIDCCallback() error {
 			base.Warnf("Unexpected error returned from request.Cookie(%s): %v", stateCookieName, err)
 			return ErrReadStateCookie
 		}
-
-		if err != nil {
-			return ErrReadStateCookie
-		}
-		if stateCookie == nil {
+		if err != nil || stateCookie == nil {
 			return ErrNoStateCookie
 		}
 		stateParam := h.rq.URL.Query().Get(requestParamState)
@@ -170,7 +166,7 @@ func (h *handler) handleOIDCCallback() error {
 		}
 
 		// Delete the state cookie on successful validation.
-		deleteStateCookie(h.response)
+		deleteStateCookie(h.response, provider.CallbackStateCookieHTTPOnly)
 	}
 
 	client := provider.GetClient(h.getOIDCCallbackURL)
@@ -313,17 +309,17 @@ func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string
 }
 
 // setStateCookie sets the state cookie.
-func setStateCookie(res http.ResponseWriter, value string) {
+func setStateCookie(res http.ResponseWriter, value string, httpOnly bool) {
 	http.SetCookie(res, &http.Cookie{
 		Name: stateCookieName, Value: value, Path: "/",
-		HttpOnly: true, Expires: time.Now().Add(stateCookieTimeout),
+		HttpOnly: httpOnly, Expires: time.Now().Add(stateCookieTimeout),
 	})
 }
 
 // deleteStateCookie deletes the state cookie.
-func deleteStateCookie(res http.ResponseWriter) {
+func deleteStateCookie(res http.ResponseWriter, httpOnly bool) {
 	http.SetCookie(res, &http.Cookie{
 		Name: stateCookieName, Value: "",
-		Expires: time.Unix(0, 0), Path: "/", HttpOnly: true,
+		Expires: time.Unix(0, 0), Path: "/", HttpOnly: httpOnly,
 	})
 }
