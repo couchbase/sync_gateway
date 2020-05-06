@@ -323,7 +323,7 @@ pipeline {
                 }
 
                 stage('Integration') {
-                    //when { branch 'master' }
+                    //when { branch 'master' } 
                     steps {
                         echo 'Running integration tests for commit ...'
                         gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration', successDescription: 'Integration Tests Passed') {
