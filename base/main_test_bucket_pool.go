@@ -640,6 +640,16 @@ func getBucketSpec(testBucketName tbpBucketName) BucketSpec {
 	return bucketSpec
 }
 
+// NumUsableBuckets returns the total number of buckets in the pool that can be used by a test.
+func (tbp *TestBucketPool) NumUsableBuckets() int {
+	if !tbp.integrationMode {
+		// we can create virtually endless walrus buckets,
+		// so report back 10 to match a fully available CBS bucket pool.
+		return 10
+	}
+	return tbpNumBuckets() - int(atomic.LoadUint32(&tbp.preservedBucketCount))
+}
+
 // tbpNumBuckets returns the configured number of buckets to use in the pool.
 func tbpNumBuckets() int {
 	numBuckets := tbpDefaultBucketPoolSize
