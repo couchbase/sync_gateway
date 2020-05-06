@@ -422,7 +422,6 @@ func TestCallbackState(t *testing.T) {
 
 			if tc.errorExpected {
 				require.Equal(t, http.StatusBadRequest, response.StatusCode)
-				invalidateState = false
 				return
 			}
 			require.Equal(t, http.StatusOK, response.StatusCode)
