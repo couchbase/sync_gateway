@@ -321,7 +321,7 @@ func DirExists(filename string) bool {
 	return info.IsDir()
 }
 
-// getTestKeyNamespace returns a unique doc key namespace that can be prepended in tests.
-func getTestKeyNamespace(t *testing.T) string {
+// GetTestKeyNamespace returns a unique doc key namespace that can be prepended in tests.
+func GetTestKeyNamespace(t *testing.T) string {
 	return t.Name()
 }
