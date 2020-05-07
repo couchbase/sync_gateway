@@ -443,7 +443,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		}
 
 		base.Debugf(base.KeyAuth, "Call GetProviderForIssuer w/ providers: %+v", base.UD(providers))
-		provider := providers.GetProviderForIssuer(issuer, audiences)
+		provider = providers.GetProviderForIssuer(issuer, audiences)
 		base.Debugf(base.KeyAuth, "Provider for issuer: %+v", base.UD(provider))
 	}
 

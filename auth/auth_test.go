@@ -1215,4 +1215,32 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		assert.Nil(t, user, "User shouldn't be created or retrieved")
 		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
 	})
+
+	t.Run("multiple providers with valid token signature verification failure", func(t *testing.T) {
+		providerGoogle := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+		}
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		err = providerGoogle.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccounts,
+			Subject:  "sub0123456789",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		assert.Error(t, err, "Error authenticating with trusted JWT")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+		assert.Nil(t, user, "User shouldn't be returned without signature verification")
+	})
 }
