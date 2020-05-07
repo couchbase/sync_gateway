@@ -522,6 +522,11 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 		}
 	}
 
+	if user == nil && !provider.Register {
+		base.Debugf(base.KeyAuth, "User %q doesn't exist. Enable auto registration to register new user account", base.UD(username))
+		return nil, time.Time{}, errors.New("auto registration should be enabled to register new user accounts")
+	}
+
 	return user, identity.Expiry, nil
 }
 

@@ -10,8 +10,6 @@
 package auth
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
 	"errors"
 	"io"
 	"log"
@@ -27,7 +25,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/square/go-jose.v2"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -363,7 +360,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 
 			var issuer string
 			hf := func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != discoveryConfigPath {
+				if r.URL.Path != DiscoveryConfigPath {
 					http.NotFound(w, r)
 					return
 				}
@@ -378,7 +375,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 			if test.trailingSlash {
 				issuer += "/"
 			}
-			discoveryURL := strings.TrimSuffix(issuer, "/") + discoveryConfigPath
+			discoveryURL := strings.TrimSuffix(issuer, "/") + DiscoveryConfigPath
 			op := &OIDCProvider{Issuer: issuer}
 			metadata, err := op.FetchCustomProviderConfig(discoveryURL)
 			if err != nil {
@@ -398,7 +395,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 func TestGetJWTIssuer(t *testing.T) {
 	wantIssuer := "https://accounts.google.com"
 	wantAudience := jwt.Audience{"aud1", "aud2"}
-	signer, err := GetRSASigner()
+	signer, err := base.GetRSASigner()
 	require.NoError(t, err, "Failed to create RSA signer")
 
 	claims := jwt.Claims{Issuer: wantIssuer, Audience: wantAudience}
@@ -411,21 +408,6 @@ func TestGetJWTIssuer(t *testing.T) {
 	issuer, audiences, err := GetIssuerWithAudience(jwt)
 	assert.Equal(t, wantIssuer, issuer)
 	assert.Equal(t, []string(wantAudience), audiences)
-}
-
-func GetRSASigner() (signer jose.Signer, err error) {
-	rsaPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return signer, err
-	}
-	signingKey := jose.SigningKey{Algorithm: jose.RS256, Key: rsaPrivateKey}
-	var signerOptions = jose.SignerOptions{}
-	signerOptions.WithType("JWT")
-	signer, err = jose.NewSigner(signingKey, &signerOptions)
-	if err != nil {
-		return signer, err
-	}
-	return signer, nil
 }
 
 func TestGetSigningAlgorithms(t *testing.T) {

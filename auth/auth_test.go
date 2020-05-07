@@ -608,7 +608,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	}
 
 	// Make an RSA signer for signing tokens
-	signer, err := GetRSASigner()
+	signer, err := base.GetRSASigner()
 	require.NoError(t, err, "Failed to create RSA signer")
 
 	t.Run("malformed token with bad header no payload", func(t *testing.T) {
@@ -1106,7 +1106,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 	}
 
 	// Make an RSA signer for signing tokens
-	signer, err := GetRSASigner()
+	signer, err := base.GetRSASigner()
 	require.NoError(t, err, "Failed to create RSA signer")
 
 	t.Run("no provider malformed token with bad header no payload", func(t *testing.T) {

@@ -43,7 +43,7 @@ import (
 )
 
 const (
-	discoveryConfigPath = "/.well-known/openid-configuration"
+	DiscoveryConfigPath = "/.well-known/openid-configuration"
 )
 
 var OIDCDiscoveryRetryWait = 500 * time.Millisecond
@@ -241,7 +241,7 @@ func (op *OIDCProvider) DiscoverConfig() (verifier *oidc.IDTokenVerifier, endpoi
 		// If the end-user has opted out for config validation and the discovery URI is not defined
 		// in provider config, construct the discovery URI based on standard issuer-based discovery.
 		if op.DisableConfigValidation && discoveryURL == "" {
-			discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
+			discoveryURL = strings.TrimSuffix(op.Issuer, "/") + DiscoveryConfigPath
 		}
 		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(op.DiscoveryURI))
 		metadata, err := op.FetchCustomProviderConfig(discoveryURL)
