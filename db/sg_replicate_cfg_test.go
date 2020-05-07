@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -20,7 +21,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 	testCfg, err := base.NewCfgSG(bucket)
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(testCfg)
+	manager, err := NewSGReplicateManager(testCfg, "test")
 	require.NoError(t, err)
 
 	replication1_id := "replication1"
@@ -83,7 +84,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 	testCfg, err := base.NewCfgSG(bucket)
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(testCfg)
+	manager, err := NewSGReplicateManager(testCfg, "test")
 	require.NoError(t, err)
 
 	err = manager.RegisterNode("node1")
@@ -137,7 +138,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 
 	testCfg, err := base.NewCfgSG(bucket)
 	require.NoError(t, err)
-	manager, err := NewSGReplicateManager(testCfg)
+	manager, err := NewSGReplicateManager(testCfg, "test")
 	require.NoError(t, err)
 
 	var nodeWg sync.WaitGroup
@@ -180,7 +181,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 
 	testCfg, err := base.NewCfgSG(bucket)
 	require.NoError(t, err)
-	manager, err := NewSGReplicateManager(testCfg)
+	manager, err := NewSGReplicateManager(testCfg, "test")
 	require.NoError(t, err)
 
 	var replicationWg sync.WaitGroup
@@ -212,4 +213,177 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	replications, err = manager.GetReplications()
 	require.NoError(t, err)
 	require.Equal(t, 0, len(replications))
+}
+
+func TestRebalanceReplications(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
+
+	type rebalanceTest struct {
+		name                  string                     // Test name
+		nodes                 map[string]*SGNode         // Initial node set
+		replications          map[string]*ReplicationCfg // Initial replication assignment
+		expectedMinPerNode    int                        // Minimum replications per node after rebalance
+		expectedMaxPerNode    int                        // Maximum replications per node after rebalance
+		expectedTotalAssigned int                        // Expected total number of assigned replications post-rebalance
+	}
+	testCases := []rebalanceTest{
+		{
+			name: "new nodes",
+			nodes: map[string]*SGNode{
+				"n1": {Host: "n1"},
+				"n2": {Host: "n2"},
+				"n3": {Host: "n3"},
+			},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: "n1"},
+				"r2": {ID: "r2", AssignedNode: "n1"},
+				"r3": {ID: "r3", AssignedNode: "n1"},
+			},
+			expectedMinPerNode:    1,
+			expectedMaxPerNode:    1,
+			expectedTotalAssigned: 3,
+		},
+		{
+			name: "new replications",
+			nodes: map[string]*SGNode{
+				"n1": {Host: "n1"},
+				"n2": {Host: "n2"},
+				"n3": {Host: "n3"},
+			},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: ""},
+				"r2": {ID: "r2", AssignedNode: ""},
+				"r3": {ID: "r3", AssignedNode: ""},
+			},
+			expectedMinPerNode:    1,
+			expectedMaxPerNode:    1,
+			expectedTotalAssigned: 3,
+		},
+		{
+			name: "remove nodes",
+			nodes: map[string]*SGNode{
+				"n1": {Host: "n1"},
+				"n2": {Host: "n2"},
+			},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: "n1"},
+				"r2": {ID: "r2", AssignedNode: "n2"},
+				"r3": {ID: "r3", AssignedNode: "n3"},
+				"r4": {ID: "r4", AssignedNode: "n4"},
+			},
+			expectedMinPerNode:    2,
+			expectedMaxPerNode:    2,
+			expectedTotalAssigned: 4,
+		},
+		{
+			name:  "no nodes",
+			nodes: map[string]*SGNode{},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: "n1"},
+				"r2": {ID: "r2", AssignedNode: "n1"},
+				"r3": {ID: "r3", AssignedNode: "n2"},
+			},
+			expectedMinPerNode:    0,
+			expectedMaxPerNode:    0,
+			expectedTotalAssigned: 0,
+		},
+		{
+			name: "unbalanced distribution",
+			nodes: map[string]*SGNode{
+				"n1": {Host: "n1"},
+				"n2": {Host: "n2"},
+			},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: "n1"},
+				"r2": {ID: "r2", AssignedNode: "n1"},
+				"r3": {ID: "r3", AssignedNode: "n1"},
+			},
+			expectedMinPerNode:    1,
+			expectedMaxPerNode:    2,
+			expectedTotalAssigned: 3,
+		},
+		{
+			name: "multiple reassignments new nodes",
+			nodes: map[string]*SGNode{
+				"n1": {Host: "n1"},
+				"n2": {Host: "n2"},
+				"n3": {Host: "n3"},
+			},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: "n1"},
+				"r2": {ID: "r2", AssignedNode: "n1"},
+				"r3": {ID: "r3", AssignedNode: "n1"},
+				"r4": {ID: "r4", AssignedNode: "n1"},
+				"r5": {ID: "r5", AssignedNode: "n1"},
+				"r6": {ID: "r6", AssignedNode: "n1"},
+			},
+			expectedMinPerNode:    2,
+			expectedMaxPerNode:    2,
+			expectedTotalAssigned: 6,
+		},
+		{
+			name: "multiple reassignments new replications",
+			nodes: map[string]*SGNode{
+				"n1": {Host: "n1"},
+				"n2": {Host: "n2"},
+				"n3": {Host: "n3"},
+			},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: ""},
+				"r2": {ID: "r2", AssignedNode: ""},
+				"r3": {ID: "r3", AssignedNode: ""},
+				"r4": {ID: "r4", AssignedNode: ""},
+				"r5": {ID: "r5", AssignedNode: "n1"},
+				"r6": {ID: "r6", AssignedNode: "n2"},
+			},
+			expectedMinPerNode:    2,
+			expectedMaxPerNode:    2,
+			expectedTotalAssigned: 6,
+		},
+		{
+			name: "reassignment from unknown host",
+			nodes: map[string]*SGNode{
+				"n1": {Host: "n1"},
+				"n2": {Host: "n2"},
+			},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: "n3"},
+				"r2": {ID: "r2", AssignedNode: "n3"},
+				"r3": {ID: "r3", AssignedNode: "n3"},
+				"r4": {ID: "r4", AssignedNode: "n3"},
+			},
+			expectedMinPerNode:    2,
+			expectedMaxPerNode:    2,
+			expectedTotalAssigned: 4,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+
+			cluster := NewSGRCluster()
+			cluster.loggingCtx = context.WithValue(context.Background(), base.LogContextKey{},
+				base.LogContext{CorrelationID: sgrClusterMgrContextID + "test"})
+			cluster.Nodes = testCase.nodes
+			cluster.Replications = testCase.replications
+			cluster.RebalanceReplications()
+
+			// Verify post-rebalance distribution
+			for host, _ := range cluster.Nodes {
+				nodeReplications := cluster.GetReplicationIDsForNode(host)
+				assert.True(t, len(nodeReplications) >= testCase.expectedMinPerNode)
+				assert.True(t, len(nodeReplications) <= testCase.expectedMaxPerNode)
+			}
+
+			// Verify replications are all assigned
+			assignedCount := 0
+			for _, replication := range cluster.Replications {
+				if replication.AssignedNode != "" {
+					assignedCount++
+				}
+			}
+			assert.Equal(t, testCase.expectedTotalAssigned, assignedCount)
+		})
+	}
 }
