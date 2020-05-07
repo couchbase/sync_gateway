@@ -3,6 +3,7 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -207,7 +208,7 @@ func TestCallbackState(t *testing.T) {
 		inputRequestURL        string
 		inputChangeStateCookie bool
 		wantUsername           string
-		errorExpected          bool
+		invalidateState        bool
 	}
 	tests := []test{
 		{
@@ -264,7 +265,7 @@ func TestCallbackState(t *testing.T) {
 			},
 			inputDefaultProvider: "google", wantUsername: "google_noah",
 			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-			errorExpected:   true,
+			invalidateState: true,
 		},
 		{
 			name: "callback_state_enabled_with_HttpOnly_invalidateState",
@@ -284,7 +285,7 @@ func TestCallbackState(t *testing.T) {
 			},
 			inputDefaultProvider: "google", wantUsername: "google_noah",
 			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-			errorExpected:   true,
+			invalidateState: true,
 		},
 		{
 			name: "callback_state_disabled_implicitly",
@@ -338,7 +339,7 @@ func TestCallbackState(t *testing.T) {
 			},
 			inputDefaultProvider: "google", wantUsername: "google_noah",
 			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-			errorExpected:   false,
+			invalidateState: false,
 		},
 		{
 			name: "callback_state_disabled_explicitly",
@@ -407,7 +408,7 @@ func TestCallbackState(t *testing.T) {
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
 			mockSyncGatewayURL := mockSyncGateway.URL
-			invalidateState = tc.errorExpected
+			invalidateState = tc.invalidateState
 			defer func() { invalidateState = false }()
 
 			// Initiate OpenID Connect Authorization Code flow.
@@ -419,9 +420,13 @@ func TestCallbackState(t *testing.T) {
 			client := &http.Client{Jar: jar}
 			response, err := client.Do(request)
 			require.NoError(t, err, "Error sending request")
+			defer func() { require.NoError(t, response.Body.Close(), "Error closing response body") }()
 
-			if tc.errorExpected {
-				require.Equal(t, http.StatusBadRequest, response.StatusCode)
+			if tc.invalidateState {
+				bodyBytes, err := ioutil.ReadAll(response.Body)
+				require.NoError(t, err, "error reading response body")
+				assert.Contains(t, string(bodyBytes), "State mismatch")
+				assert.Equal(t, http.StatusBadRequest, response.StatusCode)
 				return
 			}
 			require.Equal(t, http.StatusOK, response.StatusCode)

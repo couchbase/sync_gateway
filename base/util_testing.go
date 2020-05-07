@@ -2,7 +2,7 @@ package base
 
 import (
 	"bytes"
-	random "crypto/rand"
+	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"fmt"
 	"io/ioutil"
@@ -331,7 +331,7 @@ func getTestKeyNamespace(t *testing.T) string {
 }
 
 func GetRSASigner() (signer jose.Signer, err error) {
-	rsaPrivateKey, err := rsa.GenerateKey(random.Reader, 2048)
+	rsaPrivateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
 	if err != nil {
 		return signer, err
 	}
