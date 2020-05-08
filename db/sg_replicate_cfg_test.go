@@ -25,7 +25,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 	require.NoError(t, err)
 
 	replication1_id := "replication1"
-	err = manager.AddReplication(&ReplicationCfg{ID: replication1_id})
+	err = manager.AddReplication(testReplicationCfg(replication1_id, ""))
 
 	r, err := manager.GetReplication(replication1_id)
 	require.NoError(t, err)
@@ -36,12 +36,12 @@ func TestReplicateManagerReplications(t *testing.T) {
 	require.Error(t, err, base.ErrNotFound)
 
 	// Attempt to add existing replication
-	err = manager.AddReplication(&ReplicationCfg{ID: replication1_id})
+	err = manager.AddReplication(testReplicationCfg(replication1_id, ""))
 	require.Error(t, err, base.ErrAlreadyExists)
 
 	// Add a second replication
 	replication2_id := "replication2"
-	err = manager.AddReplication(&ReplicationCfg{ID: replication2_id})
+	err = manager.AddReplication(testReplicationCfg(replication2_id, ""))
 	require.NoError(t, err)
 
 	r, err = manager.GetReplication(replication1_id)
@@ -190,7 +190,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 		replicationWg.Add(1)
 		go func(i int) {
 			defer replicationWg.Done()
-			err := manager.AddReplication(&ReplicationCfg{ID: fmt.Sprintf("r_%d", i)})
+			err := manager.AddReplication(testReplicationCfg(fmt.Sprintf("r_%d", i), ""))
 			assert.NoError(t, err)
 		}(i)
 	}
@@ -215,6 +215,13 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 	require.Equal(t, 0, len(replications))
 }
 
+func testReplicationCfg(id, assignedNode string) *ReplicationCfg {
+	return &ReplicationCfg{
+		ReplicationConfig: ReplicationConfig{ID: id},
+		AssignedNode:      assignedNode,
+	}
+}
+
 func TestRebalanceReplications(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
@@ -236,9 +243,9 @@ func TestRebalanceReplications(t *testing.T) {
 				"n3": {Host: "n3"},
 			},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: "n1"},
-				"r2": {ID: "r2", AssignedNode: "n1"},
-				"r3": {ID: "r3", AssignedNode: "n1"},
+				"r1": testReplicationCfg("r1", "n1"),
+				"r2": testReplicationCfg("r2", "n1"),
+				"r3": testReplicationCfg("r3", "n1"),
 			},
 			expectedMinPerNode:    1,
 			expectedMaxPerNode:    1,
@@ -252,9 +259,9 @@ func TestRebalanceReplications(t *testing.T) {
 				"n3": {Host: "n3"},
 			},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: ""},
-				"r2": {ID: "r2", AssignedNode: ""},
-				"r3": {ID: "r3", AssignedNode: ""},
+				"r1": testReplicationCfg("r1", ""),
+				"r2": testReplicationCfg("r2", ""),
+				"r3": testReplicationCfg("r3", ""),
 			},
 			expectedMinPerNode:    1,
 			expectedMaxPerNode:    1,
@@ -267,10 +274,10 @@ func TestRebalanceReplications(t *testing.T) {
 				"n2": {Host: "n2"},
 			},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: "n1"},
-				"r2": {ID: "r2", AssignedNode: "n2"},
-				"r3": {ID: "r3", AssignedNode: "n3"},
-				"r4": {ID: "r4", AssignedNode: "n4"},
+				"r1": testReplicationCfg("r1", "n1"),
+				"r2": testReplicationCfg("r2", "n2"),
+				"r3": testReplicationCfg("r3", "n3"),
+				"r4": testReplicationCfg("r4", "n4"),
 			},
 			expectedMinPerNode:    2,
 			expectedMaxPerNode:    2,
@@ -280,9 +287,9 @@ func TestRebalanceReplications(t *testing.T) {
 			name:  "no nodes",
 			nodes: map[string]*SGNode{},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: "n1"},
-				"r2": {ID: "r2", AssignedNode: "n1"},
-				"r3": {ID: "r3", AssignedNode: "n2"},
+				"r1": testReplicationCfg("r1", "n1"),
+				"r2": testReplicationCfg("r2", "n1"),
+				"r3": testReplicationCfg("r3", "n2"),
 			},
 			expectedMinPerNode:    0,
 			expectedMaxPerNode:    0,
@@ -294,9 +301,9 @@ func TestRebalanceReplications(t *testing.T) {
 				"n1": {Host: "n1"},
 			},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: "n1"},
-				"r2": {ID: "r2", AssignedNode: "n2"},
-				"r3": {ID: "r3", AssignedNode: ""},
+				"r1": testReplicationCfg("r1", "n1"),
+				"r2": testReplicationCfg("r2", "n2"),
+				"r3": testReplicationCfg("r3", ""),
 			},
 			expectedMinPerNode:    3,
 			expectedMaxPerNode:    3,
@@ -309,9 +316,9 @@ func TestRebalanceReplications(t *testing.T) {
 				"n2": {Host: "n2"},
 			},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: "n1"},
-				"r2": {ID: "r2", AssignedNode: "n1"},
-				"r3": {ID: "r3", AssignedNode: "n1"},
+				"r1": testReplicationCfg("r1", "n1"),
+				"r2": testReplicationCfg("r2", "n1"),
+				"r3": testReplicationCfg("r3", "n1"),
 			},
 			expectedMinPerNode:    1,
 			expectedMaxPerNode:    2,
@@ -325,12 +332,12 @@ func TestRebalanceReplications(t *testing.T) {
 				"n3": {Host: "n3"},
 			},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: "n1"},
-				"r2": {ID: "r2", AssignedNode: "n1"},
-				"r3": {ID: "r3", AssignedNode: "n1"},
-				"r4": {ID: "r4", AssignedNode: "n1"},
-				"r5": {ID: "r5", AssignedNode: "n1"},
-				"r6": {ID: "r6", AssignedNode: "n1"},
+				"r1": testReplicationCfg("r1", "n1"),
+				"r2": testReplicationCfg("r2", "n1"),
+				"r3": testReplicationCfg("r3", "n1"),
+				"r4": testReplicationCfg("r4", "n1"),
+				"r5": testReplicationCfg("r5", "n1"),
+				"r6": testReplicationCfg("r6", "n1"),
 			},
 			expectedMinPerNode:    2,
 			expectedMaxPerNode:    2,
@@ -344,12 +351,12 @@ func TestRebalanceReplications(t *testing.T) {
 				"n3": {Host: "n3"},
 			},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: ""},
-				"r2": {ID: "r2", AssignedNode: ""},
-				"r3": {ID: "r3", AssignedNode: ""},
-				"r4": {ID: "r4", AssignedNode: ""},
-				"r5": {ID: "r5", AssignedNode: "n1"},
-				"r6": {ID: "r6", AssignedNode: "n2"},
+				"r1": testReplicationCfg("r1", ""),
+				"r2": testReplicationCfg("r2", ""),
+				"r3": testReplicationCfg("r3", ""),
+				"r4": testReplicationCfg("r4", ""),
+				"r5": testReplicationCfg("r5", "n1"),
+				"r6": testReplicationCfg("r6", "n1"),
 			},
 			expectedMinPerNode:    2,
 			expectedMaxPerNode:    2,
@@ -362,10 +369,10 @@ func TestRebalanceReplications(t *testing.T) {
 				"n2": {Host: "n2"},
 			},
 			replications: map[string]*ReplicationCfg{
-				"r1": {ID: "r1", AssignedNode: "n3"},
-				"r2": {ID: "r2", AssignedNode: "n3"},
-				"r3": {ID: "r3", AssignedNode: "n3"},
-				"r4": {ID: "r4", AssignedNode: "n3"},
+				"r1": testReplicationCfg("r1", "n3"),
+				"r2": testReplicationCfg("r2", "n3"),
+				"r3": testReplicationCfg("r3", "n3"),
+				"r4": testReplicationCfg("r4", "n3"),
 			},
 			expectedMinPerNode:    2,
 			expectedMaxPerNode:    2,

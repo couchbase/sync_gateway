@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/url"
 	"sort"
 
 	"github.com/couchbase/cbgt"
@@ -43,10 +45,93 @@ func NewSGNode(host string) *SGNode {
 	}
 }
 
-// ReplicationCfg represents a replication that has been defined for the cluster.
+type ReplicationConfig struct {
+	ID                     string      `json:"replication_id"`
+	Remote                 string      `json:"remote"`
+	Direction              string      `json:"direction"`
+	ConflictResolutionType string      `json:"conflict_resolution_type,omitempty"`
+	ConflictResolutionFn   string      `json:"custom_conflict_resolver,omitempty"`
+	PurgeOnRemoval         bool        `json:"purge_on_removal,omitempty"`
+	DeltaSyncEnabled       bool        `json:"enable_delta_sync,omitempty"`
+	MaxBackoff             int         `json:"max_backoff_time,omitempty"`
+	State                  string      `json:"state,omitempty"`
+	Continuous             bool        `json:"continuous,omitempty"`
+	Filter                 string      `json:"filter,omitempty"`
+	QueryParams            interface{} `json:"query_params,omitempty"`
+	Cancel                 bool        `json:"cancel,omitempty"`
+}
+
+// ReplicationCfg represents a replication definition as stored in the cluster config.
 type ReplicationCfg struct {
-	ID           string `json:"replication_id"`
-	AssignedNode string // host name of node assigned to this replication
+	ReplicationConfig
+	AssignedNode string `json:"assigned_node"` // host name of node assigned to this replication
+}
+
+func (rc *ReplicationConfig) ValidateNewReplication(fromConfig bool) (err error) {
+
+	//cancel parameter is only supported via the REST API
+	if rc.Cancel {
+		if fromConfig {
+			err = base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
+			return
+		}
+	}
+
+	if rc.Remote == "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "Replication remote must be specified.")
+		return err
+	}
+
+	if rc.Direction == "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "Replication direction must be specified")
+		return err
+	}
+
+	remoteUrl, err := url.Parse(rc.Remote)
+	if err != nil {
+		err = base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v", remoteUrl, err)
+		return err
+	}
+
+	if rc.Filter != "" {
+		if rc.Filter == "sync_gateway/bychannel" {
+			if rc.QueryParams == "" {
+				err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing query_params")
+				return
+			}
+
+			//The Channels may be passed as a JSON array of strings directly
+			//or embedded in a JSON object with the "channels" property and array value
+			var chanarray []interface{}
+
+			if paramsmap, ok := rc.QueryParams.(map[string]interface{}); ok {
+				if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
+					err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing channels property in query_params")
+					return
+				}
+			} else if chanarray, ok = rc.QueryParams.([]interface{}); ok {
+				// query params is an array and chanarray has been set, now drop out of if-then-else for processing
+			} else {
+				err = base.HTTPErrorf(http.StatusBadRequest, "Bad channels array in query_params for sync_gateway/bychannel filter.")
+				return
+			}
+			if len(chanarray) > 0 {
+				channels := make([]string, len(chanarray))
+				for i := range chanarray {
+					if channel, ok := chanarray[i].(string); ok {
+						channels[i] = channel
+					} else {
+						err = base.HTTPErrorf(http.StatusBadRequest, "Bad channel name in query_params for sync_gateway/bychannel filter")
+						return
+					}
+				}
+			}
+		} else {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Unknown replication filter; try sync_gateway/bychannel")
+			return
+		}
+	}
+	return nil
 }
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
@@ -197,6 +282,24 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 	return m.updateCluster(addReplicationCallback)
 }
 
+// PUT _replication/replicationID
+func (m *sgReplicateManager) UpsertReplication(replication *ReplicationCfg) (created bool, err error) {
+
+	created = true
+	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
+		_, exists := cluster.Replications[replication.ID]
+		if exists {
+			created = false
+		}
+		// TODO: CBG-766 support partial upsert instead of full replace.  Need to identify what properties are valid
+		//       for upsert
+		cluster.Replications[replication.ID] = replication
+		cluster.RebalanceReplications()
+		return false, nil
+	}
+	return created, m.updateCluster(addReplicationCallback)
+}
+
 // DELETE _replication
 func (m *sgReplicateManager) DeleteReplication(replicationID string) error {
 	deleteReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
@@ -307,4 +410,67 @@ func (a NodesByReplicationCount) Len() int      { return len(a) }
 func (a NodesByReplicationCount) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a NodesByReplicationCount) Less(i, j int) bool {
 	return len(a[i].assignedReplicationIDs) < len(a[j].assignedReplicationIDs)
+}
+
+// ReplicationStatus is used by the _replicationStatus REST API endpoints
+type ReplicationStatus struct {
+	ID               string     `json:"replication_id"`
+	DocsRead         int64      `json:"docs_read"`
+	DocsWritten      int64      `json:"docs_written"`
+	DocWriteFailures int64      `json:"doc_write_failures"`
+	Status           string     `json:"status"`
+	RejectedRemote   int64      `json:"rejected_by_remote"`
+	RejectedLocal    int64      `json:"rejected_by_local"`
+	LastSeqPull      SequenceID `json:"last_seq_pull,omitempty"`
+	LastSeqPush      SequenceID `json:"last_seq_push,omitempty"`
+	ErrorMessage     string     `json:"error_message,omitempty"`
+}
+
+func (m *sgReplicateManager) GetReplicationStatus(replicationID string) *ReplicationStatus {
+	// TODO: CBG-768
+	return &ReplicationStatus{
+		ID:               replicationID,
+		DocsRead:         100,
+		DocsWritten:      100,
+		DocWriteFailures: 5,
+		Status:           "running",
+		RejectedRemote:   10,
+		RejectedLocal:    7,
+		LastSeqPull:      SequenceID{Seq: 500},
+		ErrorMessage:     "",
+	}
+}
+
+func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) error {
+	// TODO: CBG-768
+	return nil
+}
+
+func (m *sgReplicateManager) GetReplicationStatusAll() []*ReplicationStatus {
+	// TODO: CBG-768
+	return []*ReplicationStatus{
+		{
+			ID:               "sampleReplication1",
+			DocsRead:         100,
+			DocsWritten:      100,
+			DocWriteFailures: 5,
+			Status:           "running",
+			RejectedRemote:   10,
+			RejectedLocal:    7,
+			LastSeqPull:      SequenceID{Seq: 500},
+			ErrorMessage:     "",
+		},
+		{
+			ID:               "sampleReplication2",
+			DocsRead:         150,
+			DocsWritten:      150,
+			DocWriteFailures: 3,
+			Status:           "stopped",
+			RejectedRemote:   10,
+			RejectedLocal:    7,
+			LastSeqPull:      SequenceID{Seq: 50},
+			LastSeqPush:      SequenceID{Seq: 75},
+			ErrorMessage:     "",
+		},
+	}
 }
