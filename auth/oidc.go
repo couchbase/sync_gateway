@@ -88,11 +88,11 @@ type OIDCProvider struct {
 
 	// DisableCallbackState determines whether or not to maintain state between the
 	// Authentication (OAuth 2.0 Authorization) request and the callback. The default
-	// value of DisableCallbackState is true, which means no state is maintained between
-	// the request and the callback. It can be enabled through provider configuration
-	// by setting property "disable_callback_state": false. Enabling callback state is
-	// recommended to mitigate from Cross-Site Request Forgery (CSRF, XSRF).
-	DisableCallbackState *bool `json:"disable_callback_state,omitempty"`
+	// value of DisableCallbackState is false, which means state is maintained between
+	// auth request and the callback. It can be disabled through provider configuration
+	// by setting property "disable_callback_state": false. Disabling callback state is
+	// is vulnerable to Cross-Site Request Forgery (CSRF, XSRF) and NOT recommended.
+	DisableCallbackState bool `json:"disable_callback_state,omitempty"`
 
 	// CallbackStateCookieHTTPOnly determines whether or not to make the callback state
 	// cookie inaccessible to JavaScript's Document.cookie API to mitigate cross-site

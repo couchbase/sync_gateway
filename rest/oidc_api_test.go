@@ -518,7 +518,10 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			requestURL := mockSyncGatewayURL + tc.inputRequestURL
 			request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 			require.NoError(t, err, "Error creating new request")
-			response, err := http.DefaultClient.Do(request)
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err, "Error creating new cookie jar")
+			client := &http.Client{Jar: jar}
+			response, err := client.Do(request)
 			require.NoError(t, err, "Error sending request")
 			defer func() { require.NoError(t, response.Body.Close(), "Error closing response body") }()
 
@@ -572,7 +575,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
 			request.Header.Add("Authorization", receivedToken.IDToken)
-			response, err = http.DefaultClient.Do(request)
+			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
@@ -583,7 +586,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			requestURL = mockSyncGatewayURL + "/db/_oidc_refresh?refresh_token=" + receivedToken.RefreshToken
 			request, err = http.NewRequest(http.MethodGet, requestURL, nil)
 			require.NoError(t, err, "Error creating new request")
-			response, err = http.DefaultClient.Do(request)
+			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request")
 			require.Equal(t, http.StatusOK, response.StatusCode)
 
@@ -605,7 +608,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
 			request.Header.Add("Authorization", receivedToken.IDToken)
-			response, err = http.DefaultClient.Do(request)
+			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
@@ -636,83 +639,7 @@ func TestCallbackState(t *testing.T) {
 	}
 	tests := []test{
 		{
-			name: "callback_state_enabled",
-			inputProviders: auth.OIDCProviderMap{
-				"google": &auth.OIDCProvider{
-					Name:                 "google",
-					Issuer:               issuerGoogle,
-					ClientID:             "foo",
-					UserPrefix:           "google",
-					ValidationKey:        base.StringPointer("bar"),
-					Register:             true,
-					DiscoveryURI:         issuerGoogle + auth.DiscoveryConfigPath,
-					IncludeAccessToken:   true,
-					DisableCallbackState: base.BoolPtr(false),
-				},
-			},
-			inputDefaultProvider: "google", wantUsername: "google_noah",
-			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-		},
-		{
-			name: "callback_state_enabled_with_HttpOnly",
-			inputProviders: auth.OIDCProviderMap{
-				"google": &auth.OIDCProvider{
-					Name:                        "google",
-					Issuer:                      issuerGoogle,
-					ClientID:                    "foo",
-					UserPrefix:                  "google",
-					ValidationKey:               base.StringPointer("bar"),
-					Register:                    true,
-					DiscoveryURI:                issuerGoogle + auth.DiscoveryConfigPath,
-					IncludeAccessToken:          true,
-					DisableCallbackState:        base.BoolPtr(false),
-					CallbackStateCookieHTTPOnly: true,
-				},
-			},
-			inputDefaultProvider: "google", wantUsername: "google_noah",
-			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-		},
-		{
-			name: "callback_state_enabled_with_invalidateState",
-			inputProviders: auth.OIDCProviderMap{
-				"google": &auth.OIDCProvider{
-					Name:                 "google",
-					Issuer:               issuerGoogle,
-					ClientID:             "foo",
-					UserPrefix:           "google",
-					ValidationKey:        base.StringPointer("bar"),
-					Register:             true,
-					DiscoveryURI:         issuerGoogle + auth.DiscoveryConfigPath,
-					IncludeAccessToken:   true,
-					DisableCallbackState: base.BoolPtr(false),
-				},
-			},
-			inputDefaultProvider: "google", wantUsername: "google_noah",
-			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-			invalidateState: true,
-		},
-		{
-			name: "callback_state_enabled_with_HttpOnly_invalidateState",
-			inputProviders: auth.OIDCProviderMap{
-				"google": &auth.OIDCProvider{
-					Name:                        "google",
-					Issuer:                      issuerGoogle,
-					ClientID:                    "foo",
-					UserPrefix:                  "google",
-					ValidationKey:               base.StringPointer("bar"),
-					Register:                    true,
-					DiscoveryURI:                issuerGoogle + auth.DiscoveryConfigPath,
-					IncludeAccessToken:          true,
-					DisableCallbackState:        base.BoolPtr(false),
-					CallbackStateCookieHTTPOnly: true,
-				},
-			},
-			inputDefaultProvider: "google", wantUsername: "google_noah",
-			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-			invalidateState: true,
-		},
-		{
-			name: "callback_state_disabled_implicitly",
+			name: "callback state enabled by default",
 			inputProviders: auth.OIDCProviderMap{
 				"google": &auth.OIDCProvider{
 					Name:               "google",
@@ -729,7 +656,7 @@ func TestCallbackState(t *testing.T) {
 			inputRequestURL: "/db/_oidc?provider=google&offline=true",
 		},
 		{
-			name: "callback_state_disabled_implicitly_with_HttpOnly_cookie",
+			name: "callback state enabled by default with HttpOnly cookie",
 			inputProviders: auth.OIDCProviderMap{
 				"google": &auth.OIDCProvider{
 					Name:                        "google",
@@ -745,28 +672,8 @@ func TestCallbackState(t *testing.T) {
 			},
 			inputDefaultProvider: "google", wantUsername: "google_noah",
 			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-		},
-		{
-			name: "callback_state_disabled_implicitly_with_HttpOnly_cookie_invalidateState",
-			inputProviders: auth.OIDCProviderMap{
-				"google": &auth.OIDCProvider{
-					Name:                        "google",
-					Issuer:                      issuerGoogle,
-					ClientID:                    "foo",
-					UserPrefix:                  "google",
-					ValidationKey:               base.StringPointer("bar"),
-					Register:                    true,
-					DiscoveryURI:                issuerGoogle + auth.DiscoveryConfigPath,
-					IncludeAccessToken:          true,
-					CallbackStateCookieHTTPOnly: true,
-				},
-			},
-			inputDefaultProvider: "google", wantUsername: "google_noah",
-			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-			invalidateState: false,
-		},
-		{
-			name: "callback_state_disabled_explicitly",
+		}, {
+			name: "callback state enabled explicitly",
 			inputProviders: auth.OIDCProviderMap{
 				"google": &auth.OIDCProvider{
 					Name:                 "google",
@@ -777,14 +684,14 @@ func TestCallbackState(t *testing.T) {
 					Register:             true,
 					DiscoveryURI:         issuerGoogle + auth.DiscoveryConfigPath,
 					IncludeAccessToken:   true,
-					DisableCallbackState: base.BoolPtr(true),
+					DisableCallbackState: false,
 				},
 			},
 			inputDefaultProvider: "google", wantUsername: "google_noah",
 			inputRequestURL: "/db/_oidc?provider=google&offline=true",
 		},
 		{
-			name: "callback_state_disabled_explicitly_HttpOnly_cookie",
+			name: "callback state enabled explicitly with HttpOnly cookie",
 			inputProviders: auth.OIDCProviderMap{
 				"google": &auth.OIDCProvider{
 					Name:                        "google",
@@ -795,15 +702,32 @@ func TestCallbackState(t *testing.T) {
 					Register:                    true,
 					DiscoveryURI:                issuerGoogle + auth.DiscoveryConfigPath,
 					IncludeAccessToken:          true,
-					DisableCallbackState:        base.BoolPtr(true),
+					DisableCallbackState:        false,
 					CallbackStateCookieHTTPOnly: true,
 				},
 			},
 			inputDefaultProvider: "google", wantUsername: "google_noah",
 			inputRequestURL: "/db/_oidc?provider=google&offline=true",
-		},
-		{
-			name: "callback_state_disabled_explicitly_HttpOnly_cookie_invalidateState",
+		}, {
+			name: "callback state disabled explicitly",
+			inputProviders: auth.OIDCProviderMap{
+				"google": &auth.OIDCProvider{
+					Name:                 "google",
+					Issuer:               issuerGoogle,
+					ClientID:             "foo",
+					UserPrefix:           "google",
+					ValidationKey:        base.StringPointer("bar"),
+					Register:             true,
+					DiscoveryURI:         issuerGoogle + auth.DiscoveryConfigPath,
+					IncludeAccessToken:   true,
+					DisableCallbackState: true,
+				},
+			},
+			inputDefaultProvider: "google",
+			wantUsername:         "google_noah",
+			inputRequestURL:      "/db/_oidc?provider=google&offline=true",
+		}, {
+			name: "callback state disabled explicitly with HttpOnly cookie",
 			inputProviders: auth.OIDCProviderMap{
 				"google": &auth.OIDCProvider{
 					Name:                        "google",
@@ -814,12 +738,49 @@ func TestCallbackState(t *testing.T) {
 					Register:                    true,
 					DiscoveryURI:                issuerGoogle + auth.DiscoveryConfigPath,
 					IncludeAccessToken:          true,
-					DisableCallbackState:        base.BoolPtr(true),
+					DisableCallbackState:        true,
 					CallbackStateCookieHTTPOnly: true,
 				},
 			},
-			inputDefaultProvider: "google", wantUsername: "google_noah",
-			inputRequestURL: "/db/_oidc?provider=google&offline=true",
+			inputDefaultProvider: "google",
+			wantUsername:         "google_noah",
+			inputRequestURL:      "/db/_oidc?provider=google&offline=true",
+		}, {
+			name: "mitigation from csrf when callback state enabled",
+			inputProviders: auth.OIDCProviderMap{
+				"google": &auth.OIDCProvider{
+					Name:               "google",
+					Issuer:             issuerGoogle,
+					ClientID:           "foo",
+					UserPrefix:         "google",
+					ValidationKey:      base.StringPointer("bar"),
+					Register:           true,
+					DiscoveryURI:       issuerGoogle + auth.DiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			inputDefaultProvider: "google",
+			wantUsername:         "google_noah",
+			inputRequestURL:      "/db/_oidc?provider=google&offline=true",
+			invalidateState:      true,
+		}, {
+			name: "vulnerable to csrf when callback state disabled",
+			inputProviders: auth.OIDCProviderMap{
+				"google": &auth.OIDCProvider{
+					Name:               "google",
+					Issuer:             issuerGoogle,
+					ClientID:           "foo",
+					UserPrefix:         "google",
+					ValidationKey:      base.StringPointer("bar"),
+					Register:           true,
+					DiscoveryURI:       issuerGoogle + auth.DiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			inputDefaultProvider: "google",
+			wantUsername:         "google_noah",
+			inputRequestURL:      "/db/_oidc?provider=google&offline=true",
+			invalidateState:      true,
 		},
 	}
 
@@ -832,7 +793,6 @@ func TestCallbackState(t *testing.T) {
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
 			mockSyncGatewayURL := mockSyncGateway.URL
-
 			if tc.invalidateState {
 				options["invalidateState"] = true
 			}
@@ -874,6 +834,37 @@ func TestCallbackState(t *testing.T) {
 			// Query db endpoint with Bearer token
 			var responseBody map[string]interface{}
 			dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
+			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
+			require.NoError(t, err, "Error creating new request")
+			request.Header.Add("Authorization", receivedToken.IDToken)
+			response, err = client.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
+			require.NoError(t, response.Body.Close(), "Error closing response body")
+			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
+
+			// Initiate OpenID Connect Authorization Code flow.
+			requestURL = mockSyncGatewayURL + "/db/_oidc_refresh?refresh_token=" + receivedToken.RefreshToken
+			request, err = http.NewRequest(http.MethodGet, requestURL, nil)
+			require.NoError(t, err, "Error creating new request")
+			response, err = client.Do(request)
+			require.NoError(t, err, "Error sending request")
+			require.Equal(t, http.StatusOK, response.StatusCode)
+
+			// Validate received refresh token response
+			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&receivedToken))
+			require.NoError(t, response.Body.Close(), "Error closing response body")
+			wantTokenResponse = options["wantTokenResponse"].(OIDCTokenResponse)
+			assert.NotEmpty(t, receivedToken.SessionID, "session_id doesn't exist")
+			assert.Equal(t, tc.wantUsername, receivedToken.Username, "name mismatch")
+			assert.Equal(t, wantTokenResponse.IDToken, receivedToken.IDToken, "id_token mismatch")
+			assert.Equal(t, wantTokenResponse.RefreshToken, receivedToken.RefreshToken, "refresh_token mismatch")
+			assert.Equal(t, wantTokenResponse.AccessToken, receivedToken.AccessToken, "access_token mismatch")
+			assert.Equal(t, wantTokenResponse.TokenType, receivedToken.TokenType, "token_type mismatch")
+			assert.True(t, wantTokenResponse.Expires >= receivedToken.Expires, "expires_in mismatch")
+
+			// Query db endpoint with Bearer token
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
 			request.Header.Add("Authorization", receivedToken.IDToken)

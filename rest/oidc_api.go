@@ -110,7 +110,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	var state string
 
 	// Set state parameter to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
-	if provider.DisableCallbackState != nil && !*provider.DisableCallbackState {
+	if !provider.DisableCallbackState {
 		state = base.GenerateRandomSecret()
 		setStateCookie(h.response, state, provider.CallbackStateCookieHTTPOnly)
 	}
@@ -149,8 +149,8 @@ func (h *handler) handleOIDCCallback() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	// Validate state parameter to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
-	if provider.DisableCallbackState != nil && !*provider.DisableCallbackState {
+	// Validate state parameter to prevent cross-site request forgery (CSRF) when callback state is enabled.
+	if !provider.DisableCallbackState {
 		stateCookie, err := h.rq.Cookie(stateCookieName)
 
 		if err != nil && err != http.ErrNoCookie {
