@@ -435,7 +435,8 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		}
 
 		// Extract issuer and audience(s) from JSON Web Token.
-		issuer, audiences, err := GetIssuerWithAudience(jwt)
+		var audiences []string
+		issuer, audiences, err = GetIssuerWithAudience(jwt)
 		base.Debugf(base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
 		if err != nil {
 			base.Debugf(base.KeyAuth, "Error getting issuer and audience from token: %v", err)
@@ -520,11 +521,6 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 			base.Debugf(base.KeyAuth, "Error registering new user: %v", err)
 			return nil, time.Time{}, err
 		}
-	}
-
-	if user == nil && !provider.Register {
-		base.Debugf(base.KeyAuth, "User %q doesn't exist. Enable auto registration to register new user account", base.UD(username))
-		return nil, time.Time{}, errors.New("auto registration should be enabled to register new user accounts")
 	}
 
 	return user, identity.Expiry, nil

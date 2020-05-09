@@ -213,6 +213,9 @@ func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *au
 	if err != nil {
 		return "", "", err
 	}
+	if user == nil {
+		return "", "", base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+	}
 
 	if !provider.DisableSession {
 		sessionTTL := tokenExpiryTime.Sub(time.Now())
