@@ -114,6 +114,10 @@ func (s *mockAuthServer) Shutdown() {
 // Makes a JSON document available at the path formed by concatenating the string
 // /.well-known/openid-configuration to the Issuer.
 func (s *mockAuthServer) mockDiscoveryHandler(w http.ResponseWriter, r *http.Request) {
+	if s.BoolOption("wantDiscoveryError") {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	issuer := s.StringOption("issuer")
 	metadata := auth.ProviderMetadata{
 		Issuer:                           issuer,
@@ -178,6 +182,10 @@ func (s *mockAuthServer) mockAuthHandler(w http.ResponseWriter, r *http.Request)
 // mockAuthHandler mocks the token handling process performed by the OAuth Authorization Server.
 // It mocks token response and makes it available as JSON document.
 func (s *mockAuthServer) mockTokenHandler(w http.ResponseWriter, r *http.Request) {
+	if s.BoolOption("wantTokenExchangeError") {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	issuer := s.StringOption("issuer")
 	claims := jwt.Claims{ID: "id0123456789", Issuer: issuer,
 		Audience: jwt.Audience{"aud1", "aud2", "aud3", "baz"},
@@ -195,7 +203,7 @@ func (s *mockAuthServer) mockTokenHandler(w http.ResponseWriter, r *http.Request
 	token, err := builder.CompactSerialize()
 	if err != nil {
 		base.Errorf("Error serializing token: %s", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 	response := OIDCTokenResponse{
@@ -204,6 +212,9 @@ func (s *mockAuthServer) mockTokenHandler(w http.ResponseWriter, r *http.Request
 		RefreshToken: "e08c77351221346153d09ff64c123b24fc4c1905",
 		TokenType:    "Bearer",
 		Expires:      time.Now().Add(5 * time.Minute).UTC().Second(),
+	}
+	if s.BoolOption("wantNoIDToken") {
+		response.IDToken = ""
 	}
 	s.SetOption("wantTokenResponse", response)
 	renderJSON(w, r, http.StatusOK, response)
@@ -320,16 +331,22 @@ func TestOpenIDConnectAuth(t *testing.T) {
 	mockAuthServer.SetOption("issuer", issuerFoo)
 
 	type test struct {
-		name               string
-		providers          auth.OIDCProviderMap
-		defaultProvider    string
-		authURL            string
-		register           bool
-		includeAccessToken bool
-		wantUsername       string
-		wantNoCode         bool
-		wantCallbackError  bool
-		wantUntoldProvider bool
+		name                      string
+		providers                 auth.OIDCProviderMap
+		defaultProvider           string
+		authURL                   string
+		register                  bool
+		includeAccessToken        bool
+		notConfiguredProvider     bool
+		wantUsername              string
+		wantNoCode                bool
+		wantCallbackError         bool
+		wantUntoldProvider        bool
+		wantDiscoveryError        bool
+		wantCallbackTokenExgError bool
+		wantRefreshTokenExgError  bool
+		wantCallbackNoIDToken     bool
+		wantRefreshNoIDToken      bool
 	}
 	tests := []test{
 		{
@@ -536,6 +553,145 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			register:           true,
 			includeAccessToken: true,
 			wantUntoldProvider: true,
+		}, {
+			name: "initiate auth request with not configured provider",
+			providers: auth.OIDCProviderMap{
+				"foo": &auth.OIDCProvider{
+					Name:               "foo",
+					Issuer:             issuerFoo,
+					ClientID:           "baz",
+					UserPrefix:         "foo",
+					ValidationKey:      base.StringPointer("qux"),
+					Register:           true,
+					DiscoveryURI:       issuerFoo + auth.OIDCDiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			defaultProvider:       "foo",
+			wantUsername:          "foo_noah",
+			authURL:               "/db/_oidc?provider=fred&offline=true", // Configured provider is 'foo', NOT 'fred'.
+			register:              true,
+			includeAccessToken:    true,
+			notConfiguredProvider: true,
+		}, {
+			name: "auth request with discovery failure from OAuth server",
+			providers: auth.OIDCProviderMap{
+				"foo": &auth.OIDCProvider{
+					Name:               "foo",
+					Issuer:             issuerFoo,
+					ClientID:           "baz",
+					UserPrefix:         "foo",
+					ValidationKey:      base.StringPointer("qux"),
+					Register:           true,
+					DiscoveryURI:       issuerFoo + auth.OIDCDiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			defaultProvider:    "foo",
+			wantUsername:       "foo_noah",
+			authURL:            "/db/_oidc?provider=foo&offline=true",
+			register:           true,
+			includeAccessToken: true,
+			wantDiscoveryError: true,
+		}, {
+			name: "auth request with access type not offline",
+			providers: auth.OIDCProviderMap{
+				"foo": &auth.OIDCProvider{
+					Name:               "foo",
+					Issuer:             issuerFoo,
+					ClientID:           "baz",
+					UserPrefix:         "foo",
+					ValidationKey:      base.StringPointer("qux"),
+					Register:           true,
+					DiscoveryURI:       issuerFoo + auth.OIDCDiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			defaultProvider:    "foo",
+			wantUsername:       "foo_noah",
+			authURL:            "/db/_oidc?provider=foo&offline=false",
+			register:           true,
+			includeAccessToken: true,
+		}, {
+			name: "token exchange error from OAuth server",
+			providers: auth.OIDCProviderMap{
+				"foo": &auth.OIDCProvider{
+					Name:               "foo",
+					Issuer:             issuerFoo,
+					ClientID:           "baz",
+					UserPrefix:         "foo",
+					ValidationKey:      base.StringPointer("qux"),
+					Register:           true,
+					DiscoveryURI:       issuerFoo + auth.OIDCDiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			defaultProvider:           "foo",
+			wantUsername:              "foo_noah",
+			authURL:                   "/db/_oidc?provider=foo&offline=true",
+			register:                  true,
+			includeAccessToken:        true,
+			wantCallbackTokenExgError: true,
+		}, {
+			name: "no ID token received from OAuth server",
+			providers: auth.OIDCProviderMap{
+				"foo": &auth.OIDCProvider{
+					Name:               "foo",
+					Issuer:             issuerFoo,
+					ClientID:           "baz",
+					UserPrefix:         "foo",
+					ValidationKey:      base.StringPointer("qux"),
+					Register:           true,
+					DiscoveryURI:       issuerFoo + auth.OIDCDiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			defaultProvider:       "foo",
+			wantUsername:          "foo_noah",
+			authURL:               "/db/_oidc?provider=foo&offline=true",
+			register:              true,
+			includeAccessToken:    true,
+			wantCallbackNoIDToken: true,
+		}, {
+			name: "token refresh token exchange error from OAuth server",
+			providers: auth.OIDCProviderMap{
+				"foo": &auth.OIDCProvider{
+					Name:               "foo",
+					Issuer:             issuerFoo,
+					ClientID:           "baz",
+					UserPrefix:         "foo",
+					ValidationKey:      base.StringPointer("qux"),
+					Register:           true,
+					DiscoveryURI:       issuerFoo + auth.OIDCDiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			defaultProvider:          "foo",
+			wantUsername:             "foo_noah",
+			authURL:                  "/db/_oidc?provider=foo&offline=true",
+			register:                 true,
+			includeAccessToken:       true,
+			wantRefreshTokenExgError: true,
+		}, {
+			name: "token refresh no ID token received from OAuth server",
+			providers: auth.OIDCProviderMap{
+				"foo": &auth.OIDCProvider{
+					Name:               "foo",
+					Issuer:             issuerFoo,
+					ClientID:           "baz",
+					UserPrefix:         "foo",
+					ValidationKey:      base.StringPointer("qux"),
+					Register:           true,
+					DiscoveryURI:       issuerFoo + auth.OIDCDiscoveryConfigPath,
+					IncludeAccessToken: true,
+				},
+			},
+			defaultProvider:      "foo",
+			wantUsername:         "foo_noah",
+			authURL:              "/db/_oidc?provider=foo&offline=true",
+			register:             true,
+			includeAccessToken:   true,
+			wantRefreshNoIDToken: true,
 		},
 	}
 
@@ -561,6 +717,18 @@ func TestOpenIDConnectAuth(t *testing.T) {
 				mockAuthServer.SetOption("wantUntoldProvider", true)
 				defer mockAuthServer.DeleteOption("wantUntoldProvider")
 			}
+			if tc.wantDiscoveryError {
+				mockAuthServer.SetOption("wantDiscoveryError", true)
+				defer mockAuthServer.DeleteOption("wantDiscoveryError")
+			}
+			if tc.wantCallbackTokenExgError {
+				mockAuthServer.SetOption("wantTokenExchangeError", true)
+				defer mockAuthServer.DeleteOption("wantTokenExchangeError")
+			}
+			if tc.wantCallbackNoIDToken {
+				mockAuthServer.SetOption("wantNoIDToken", true)
+				defer mockAuthServer.DeleteOption("wantNoIDToken")
+			}
 
 			// Initiate OpenID Connect Authorization Code flow.
 			requestURL := mockSyncGatewayURL + tc.authURL
@@ -568,36 +736,40 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			require.NoError(t, err, "Error creating new request")
 			response, err := http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request")
-			defer func() { require.NoError(t, response.Body.Close(), "Error closing response body") }()
 
 			if !tc.register {
-				bodyBytes, err := ioutil.ReadAll(response.Body)
-				require.NoError(t, err, "error reading response body")
-				assert.Contains(t, string(bodyBytes), "Invalid login")
-				assert.Equal(t, http.StatusUnauthorized, response.StatusCode)
+				assertHttpResponse(t, response, http.StatusUnauthorized, "Invalid login")
 				return
 			}
 			if tc.wantNoCode {
-				bodyBytes, err := ioutil.ReadAll(response.Body)
-				require.NoError(t, err, "error reading response body")
-				assert.Contains(t, string(bodyBytes), "Code must be present on oidc callback")
-				assert.Equal(t, http.StatusBadRequest, response.StatusCode)
+				assertHttpResponse(t, response, http.StatusBadRequest, "Code must be present on oidc callback")
 				return
 			}
 			if tc.wantCallbackError {
-				bodyBytes, err := ioutil.ReadAll(response.Body)
-				require.NoError(t, err, "error reading response body")
-				assert.Contains(t, string(bodyBytes), "oidc callback received an error")
-				assert.Equal(t, http.StatusUnauthorized, response.StatusCode)
+				assertHttpResponse(t, response, http.StatusUnauthorized, "oidc callback received an error")
 				return
 			}
 			if tc.wantUntoldProvider {
-				bodyBytes, err := ioutil.ReadAll(response.Body)
-				require.NoError(t, err, "error reading response body")
-				assert.Contains(t, string(bodyBytes), "Unable to identify provider for callback request")
-				assert.Equal(t, http.StatusBadRequest, response.StatusCode)
+				assertHttpResponse(t, response, http.StatusBadRequest, "Unable to identify provider for callback request")
 				return
 			}
+			if tc.notConfiguredProvider {
+				assertHttpResponse(t, response, http.StatusBadRequest, "OpenID Connect not configured for database db")
+				return
+			}
+			if tc.wantDiscoveryError {
+				assertHttpResponse(t, response, http.StatusInternalServerError, "Unable to obtain client for provider")
+				return
+			}
+			if tc.wantCallbackTokenExgError {
+				assertHttpResponse(t, response, http.StatusUnauthorized, "Failed to exchange token")
+				return
+			}
+			if tc.wantCallbackNoIDToken {
+				assertHttpResponse(t, response, http.StatusInternalServerError, "No id_token field in oauth2 token")
+				return
+			}
+
 			// Validate received token response
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			var receivedToken OIDCTokenResponse
@@ -627,12 +799,31 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 
+			// Token refresh workflow
+			if tc.wantRefreshTokenExgError {
+				mockAuthServer.SetOption("wantTokenExchangeError", true)
+				defer mockAuthServer.DeleteOption("wantTokenExchangeError")
+			}
+			if tc.wantRefreshNoIDToken {
+				mockAuthServer.SetOption("wantNoIDToken", true)
+				defer mockAuthServer.DeleteOption("wantNoIDToken")
+			}
+
 			// Refresh auth token using refresh token received earlier from OP.
 			requestURL = mockSyncGatewayURL + "/db/_oidc_refresh?refresh_token=" + receivedToken.RefreshToken
 			request, err = http.NewRequest(http.MethodGet, requestURL, nil)
 			require.NoError(t, err, "Error creating new request")
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request")
+
+			if tc.wantRefreshTokenExgError {
+				assertHttpResponse(t, response, http.StatusUnauthorized, "Unable to refresh token")
+				return
+			}
+			if tc.wantRefreshNoIDToken {
+				assertHttpResponse(t, response, http.StatusInternalServerError, "No id_token field in oauth2 token")
+				return
+			}
 			require.Equal(t, http.StatusOK, response.StatusCode)
 
 			// Validate received token refresh response.
@@ -661,4 +852,14 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 		})
 	}
+}
+
+// The assertHttpResponse asserts the statusCode and bodyText against statusCode and string
+// representation of the body bytes from the HTTP response.
+func assertHttpResponse(t *testing.T, response *http.Response, statusCode int, bodyText string) {
+	defer func() { require.NoError(t, response.Body.Close(), "error closing response body") }()
+	bodyBytes, err := ioutil.ReadAll(response.Body)
+	require.NoError(t, err, "error reading response body")
+	assert.Contains(t, string(bodyBytes), bodyText)
+	assert.Equal(t, statusCode, response.StatusCode)
 }

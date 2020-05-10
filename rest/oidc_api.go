@@ -38,7 +38,7 @@ const (
 )
 
 type OIDCTokenResponse struct {
-	IDToken      string `json:"id_token"`                // ID token, from OP
+	IDToken      string `json:"id_token,omitempty"`      // ID token, from OP
 	RefreshToken string `json:"refresh_token,omitempty"` // Refresh token, from OP
 	SessionID    string `json:"session_id,omitempty"`    // Sync Gateway session ID
 	Username     string `json:"name,omitempty"`          // Sync Gateway user name
