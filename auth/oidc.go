@@ -43,14 +43,23 @@ import (
 )
 
 const (
-	DiscoveryConfigPath = "/.well-known/openid-configuration"
+
+	// OIDCDiscoveryConfigPath represents a predefined string value to be used to construct
+	// the well-known endpoint. The well-known endpoint can always be reached by adding this
+	// string value to the end of OP's issuer URI.
+	OIDCDiscoveryConfigPath = "/.well-known/openid-configuration"
 )
 
-var OIDCDiscoveryRetryWait = 500 * time.Millisecond
+var (
+	// OIDCDiscoveryRetryWait represents the wait time between provider discovery retries.
+	// SG periodically retries a failed provider discovery request with a 500 milliseconds
+	// delay between requests upto max retries of 5 times and back-off after that.
+	OIDCDiscoveryRetryWait = 500 * time.Millisecond
 
-// Request parameter to specify the OpenID Connect provider to be used for authentication,
-// from the list of providers defined in the Sync Gateway configuration.
-var OIDCAuthProvider = "provider"
+	// Request parameter to specify the OpenID Connect provider to be used for authentication,
+	// from the list of providers defined in the Sync Gateway configuration.
+	OIDCAuthProvider = "provider"
+)
 
 // Error code returned by failures to set parameters to URL query string.
 var ErrSetURLQueryParam = errors.New("URL, parameter name and value must not be empty")
@@ -254,7 +263,7 @@ func (op *OIDCProvider) DiscoverConfig() (verifier *oidc.IDTokenVerifier, endpoi
 		// If the end-user has opted out for config validation and the discovery URI is not defined
 		// in provider config, construct the discovery URI based on standard issuer-based discovery.
 		if op.DisableConfigValidation && discoveryURL == "" {
-			discoveryURL = strings.TrimSuffix(op.Issuer, "/") + DiscoveryConfigPath
+			discoveryURL = strings.TrimSuffix(op.Issuer, "/") + OIDCDiscoveryConfigPath
 		}
 		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(op.DiscoveryURI))
 		metadata, err := op.FetchCustomProviderConfig(discoveryURL)

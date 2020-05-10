@@ -360,7 +360,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 
 			var issuer string
 			hf := func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != DiscoveryConfigPath {
+				if r.URL.Path != OIDCDiscoveryConfigPath {
 					http.NotFound(w, r)
 					return
 				}
@@ -375,7 +375,7 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 			if test.trailingSlash {
 				issuer += "/"
 			}
-			discoveryURL := strings.TrimSuffix(issuer, "/") + DiscoveryConfigPath
+			discoveryURL := strings.TrimSuffix(issuer, "/") + OIDCDiscoveryConfigPath
 			op := &OIDCProvider{Issuer: issuer}
 			metadata, err := op.FetchCustomProviderConfig(discoveryURL)
 			if err != nil {
