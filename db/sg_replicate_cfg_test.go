@@ -289,7 +289,7 @@ func TestRebalanceReplications(t *testing.T) {
 			expectedTotalAssigned: 0,
 		},
 		{
-			name:  "single node",
+			name: "single node",
 			nodes: map[string]*SGNode{
 				"n1": {Host: "n1"},
 			},
