@@ -289,6 +289,20 @@ func TestRebalanceReplications(t *testing.T) {
 			expectedTotalAssigned: 0,
 		},
 		{
+			name:  "single node",
+			nodes: map[string]*SGNode{
+				"n1": {Host: "n1"},
+			},
+			replications: map[string]*ReplicationCfg{
+				"r1": {ID: "r1", AssignedNode: "n1"},
+				"r2": {ID: "r2", AssignedNode: "n2"},
+				"r3": {ID: "r3", AssignedNode: ""},
+			},
+			expectedMinPerNode:    3,
+			expectedMaxPerNode:    3,
+			expectedTotalAssigned: 3,
+		},
+		{
 			name: "unbalanced distribution",
 			nodes: map[string]*SGNode{
 				"n1": {Host: "n1"},
