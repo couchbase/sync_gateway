@@ -98,6 +98,7 @@ type DatabaseContext struct {
 	terminator         chan bool                // Signal termination of background goroutines
 	activeChannels     *channels.ActiveChannels // Tracks active replications by channel
 	CfgSG              *base.CfgSG              // Sync Gateway cluster shared config
+	SGReplicateMgr     *sgReplicateManager      // Manages interactions with sg-replicate replications
 }
 
 type DatabaseContextOptions struct {
@@ -286,8 +287,15 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize the tap Listener for notify handling
 	dbContext.mutationListener.Init(bucket.GetName())
 
-	// Initialize sg cluster config if needed
-	err = dbContext.InitCfgSG()
+	// Initialize sg cluster config.  Required even if import and sgreplicate are disabled
+	// on this node, to support replication REST API calls
+	dbContext.CfgSG, err = base.NewCfgSG(dbContext.Bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize sg-replicate manager
+	dbContext.SGReplicateMgr, err = NewSGReplicateManager(dbContext.CfgSG, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -412,30 +420,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	return dbContext, nil
-}
-
-func (context *DatabaseContext) InitCfgSG() (err error) {
-
-	requiresCfg := false
-
-	// Import requires cfg
-	if context.UseXattrs() && context.autoImport {
-		requiresCfg = true
-	}
-
-	// sg-replicate requires cfg
-	// TODO: check for replication definitions
-
-	if requiresCfg {
-		context.CfgSG, err = base.NewCfgSG(context.Bucket)
-		if err != nil {
-			base.Warnf("Error initializing cfg for cluster HA: %v", err)
-			return err
-		}
-	}
-
-	return nil
-
 }
 
 func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {

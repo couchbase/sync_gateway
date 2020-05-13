@@ -92,7 +92,7 @@ type ServerConfig struct {
 	MaxFileDescriptors         *uint64                  `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses          *bool                    `json:",omitempty"`                       // If false, disables compression of HTTP responses
 	Databases                  DbConfigMap              `json:",omitempty"`                       // Pre-configured databases, mapped by name
-	Replications               []*ReplicationConfig     `json:",omitempty"`                       // sg-replicate replication definitions
+	Replications               []*ReplicateV1Config     `json:",omitempty"`                       // sg-replicate replication definitions
 	MaxHeartbeat               uint64                   `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
 	ClusterConfig              *ClusterConfig           `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
 	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`            // Config for unsupported features
@@ -209,7 +209,7 @@ type DeprecatedOptions struct {
 
 type DbConfigMap map[string]*DbConfig
 
-type ReplConfigMap map[string]*ReplicationConfig
+type ReplConfigMap map[string]*ReplicateV1Config
 
 type FacebookConfig struct {
 	Register bool // If true, server will register new user accounts

@@ -195,6 +195,24 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_role/{name}",
 		makeHandler(sc, adminPrivs, (*handler).deleteRole)).Methods("DELETE")
 
+	dbr.Handle("/_replication/",
+		makeHandler(sc, adminPrivs, (*handler).getReplications)).Methods("GET", "HEAD")
+	dbr.Handle("/_replication/",
+		makeHandler(sc, adminPrivs, (*handler).putReplication)).Methods("POST")
+	dbr.Handle("/_replication/{replicationID}",
+		makeHandler(sc, adminPrivs, (*handler).getReplication)).Methods("GET", "HEAD")
+	dbr.Handle("/_replication/{replicationID}",
+		makeHandler(sc, adminPrivs, (*handler).putReplication)).Methods("PUT")
+	dbr.Handle("/_replication/{replicationID}",
+		makeHandler(sc, adminPrivs, (*handler).deleteReplication)).Methods("DELETE")
+
+	dbr.Handle("/_replicationStatus/",
+		makeHandler(sc, adminPrivs, (*handler).getReplicationsStatus)).Methods("GET", "HEAD")
+	dbr.Handle("/_replicationStatus/{replicationID}",
+		makeHandler(sc, adminPrivs, (*handler).getReplicationStatus)).Methods("GET", "HEAD")
+	dbr.Handle("/_replicationStatus/{replicationID}",
+		makeHandler(sc, adminPrivs, (*handler).putReplicationStatus)).Methods("PUT")
+
 	r.Handle("/_logging",
 		makeHandler(sc, adminPrivs, (*handler).handleGetLogging)).Methods("GET")
 	r.Handle("/_logging",
@@ -215,6 +233,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleReplicate)).Methods("POST")
 	r.Handle("/_active_tasks",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleActiveTasks)).Methods("GET")
+
 	r.Handle("/_status",
 		makeHandler(sc, adminPrivs, (*handler).handleGetStatus)).Methods("GET")
 

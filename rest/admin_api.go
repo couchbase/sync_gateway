@@ -147,7 +147,7 @@ func (h *handler) handleReplicate() error {
 		return err
 	}
 
-	params, cancel, _, err := h.readReplicationParametersFromJSON(body)
+	params, cancel, _, err := h.readReplicateV1ParametersFromJSON(body)
 	if err != nil {
 		return err
 	}
@@ -202,7 +202,7 @@ func (h *handler) handleReplicate() error {
 
 }
 
-type ReplicationConfig struct {
+type ReplicateV1Config struct {
 	Source           string      `json:"source"`
 	Target           string      `json:"target"`
 	Continuous       bool        `json:"continuous"`
@@ -217,17 +217,17 @@ type ReplicationConfig struct {
 	ReplicationId    string      `json:"replication_id"`
 }
 
-func (h *handler) readReplicationParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
+func (h *handler) readReplicateV1ParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 
-	var in ReplicationConfig
+	var in ReplicateV1Config
 	if err = base.JSONUnmarshal(jsonData, &in); err != nil {
 		return params, false, localdb, err
 	}
 
-	return validateReplicationParameters(in, false, *h.server.config.AdminInterface)
+	return validateReplicateV1Parameters(in, false, *h.server.config.AdminInterface)
 }
 
-func validateReplicationParameters(requestParams ReplicationConfig, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
+func validateReplicateV1Parameters(requestParams ReplicateV1Config, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 	if requestParams.CreateTarget {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate create_target option is not currently supported.")
 		return
@@ -817,4 +817,85 @@ func (h *handler) handlePurge() error {
 	h.logStatusWithDuration(http.StatusOK, message)
 
 	return nil
+}
+
+// sg-replicate endpoints
+func (h *handler) getReplications() error {
+	replications, err := h.db.SGReplicateMgr.GetReplications()
+	if err != nil {
+		return err
+	}
+	h.writeJSON(replications)
+	return nil
+}
+
+func (h *handler) getReplication() error {
+	replicationID := mux.Vars(h.rq)["replicationID"]
+	replication, err := h.db.SGReplicateMgr.GetReplication(replicationID)
+	if replication == nil {
+		if err == nil {
+			return kNotFoundError
+		}
+		return err
+	}
+
+	h.writeJSON(replication)
+	return nil
+}
+
+func (h *handler) putReplication() error {
+	body, _ := h.readBody()
+	replicationConfig := &db.ReplicationCfg{}
+	if err := base.JSONUnmarshal(body, replicationConfig); err != nil {
+		return err
+	}
+
+	if h.rq.Method == "PUT" {
+		replicationID := mux.Vars(h.rq)["replicationID"]
+		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
+			return base.HTTPErrorf(http.StatusBadRequest, "Replication ID in body %q does not match request URI", replicationConfig.ID)
+		}
+		replicationConfig.ID = replicationID
+	}
+
+	validateErr := replicationConfig.ValidateNewReplication(false)
+	if validateErr != nil {
+		return validateErr
+	}
+	created, err := h.db.SGReplicateMgr.UpsertReplication(replicationConfig)
+	if err != nil {
+		return err
+	}
+	if created {
+		h.writeStatus(http.StatusCreated, "Created")
+	}
+
+	return nil
+}
+
+func (h *handler) deleteReplication() error {
+	replicationID := mux.Vars(h.rq)["replicationID"]
+	return h.db.SGReplicateMgr.DeleteReplication(replicationID)
+}
+
+func (h *handler) getReplicationsStatus() error {
+	h.writeJSON(h.db.SGReplicateMgr.GetReplicationStatusAll())
+	return nil
+}
+
+func (h *handler) getReplicationStatus() error {
+	replicationID := mux.Vars(h.rq)["replicationID"]
+	h.writeJSON(h.db.SGReplicateMgr.GetReplicationStatus(replicationID))
+	return nil
+}
+
+func (h *handler) putReplicationStatus() error {
+	replicationID := mux.Vars(h.rq)["replicationID"]
+
+	action := h.getQuery("action")
+	if action == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Query parameter 'action' must be specified")
+	}
+
+	return h.db.SGReplicateMgr.PutReplicationStatus(replicationID, action)
 }

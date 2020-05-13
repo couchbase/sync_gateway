@@ -110,7 +110,7 @@ func (sc *ServerContext) startReplicators() {
 
 	for _, replicationConfig := range sc.config.Replications {
 
-		params, _, _, err := validateReplicationParameters(*replicationConfig, true, *sc.config.AdminInterface)
+		params, _, _, err := validateReplicateV1Parameters(*replicationConfig, true, *sc.config.AdminInterface)
 		if err != nil {
 			base.Errorf("Error validating replication parameters: %v", err)
 			continue
