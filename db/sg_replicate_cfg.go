@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -47,18 +48,18 @@ func NewSGNode(host string) *SGNode {
 
 type ReplicationConfig struct {
 	ID                     string      `json:"replication_id"`
-	Remote                 string      `json:"remote"`
-	Direction              string      `json:"direction"`
-	ConflictResolutionType string      `json:"conflict_resolution_type,omitempty"`
-	ConflictResolutionFn   string      `json:"custom_conflict_resolver,omitempty"`
-	PurgeOnRemoval         bool        `json:"purge_on_removal,omitempty"`
-	DeltaSyncEnabled       bool        `json:"enable_delta_sync,omitempty"`
-	MaxBackoff             int         `json:"max_backoff_time,omitempty"`
-	State                  string      `json:"state,omitempty"`
-	Continuous             bool        `json:"continuous,omitempty"`
-	Filter                 string      `json:"filter,omitempty"`
+	Remote                 *string     `json:"remote"`
+	Direction              *string     `json:"direction"`
+	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
+	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
+	PurgeOnRemoval         *bool       `json:"purge_on_removal,omitempty"`
+	DeltaSyncEnabled       *bool       `json:"enable_delta_sync,omitempty"`
+	MaxBackoff             *int        `json:"max_backoff_time,omitempty"`
+	State                  *string     `json:"state,omitempty"`
+	Continuous             *bool       `json:"continuous,omitempty"`
+	Filter                 *string     `json:"filter,omitempty"`
 	QueryParams            interface{} `json:"query_params,omitempty"`
-	Cancel                 bool        `json:"cancel,omitempty"`
+	Cancel                 *bool       `json:"cancel,omitempty"`
 }
 
 // ReplicationCfg represents a replication definition as stored in the cluster config.
@@ -70,32 +71,32 @@ type ReplicationCfg struct {
 func (rc *ReplicationConfig) ValidateNewReplication(fromConfig bool) (err error) {
 
 	//cancel parameter is only supported via the REST API
-	if rc.Cancel {
+	if rc.Cancel != nil && *rc.Cancel {
 		if fromConfig {
 			err = base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
 			return
 		}
 	}
 
-	if rc.Remote == "" {
+	if rc.Remote == nil {
 		err = base.HTTPErrorf(http.StatusBadRequest, "Replication remote must be specified.")
 		return err
 	}
 
-	if rc.Direction == "" {
+	if rc.Direction == nil {
 		err = base.HTTPErrorf(http.StatusBadRequest, "Replication direction must be specified")
 		return err
 	}
 
-	remoteUrl, err := url.Parse(rc.Remote)
+	remoteUrl, err := url.Parse(*rc.Remote)
 	if err != nil {
 		err = base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v", remoteUrl, err)
 		return err
 	}
 
-	if rc.Filter != "" {
-		if rc.Filter == "sync_gateway/bychannel" {
-			if rc.QueryParams == "" {
+	if rc.Filter != nil {
+		if *rc.Filter == "sync_gateway/bychannel" {
+			if rc.QueryParams == nil {
 				err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing query_params")
 				return
 			}
@@ -132,6 +133,101 @@ func (rc *ReplicationConfig) ValidateNewReplication(fromConfig bool) (err error)
 		}
 	}
 	return nil
+}
+
+// Upsert updates ReplicationConfig with any non-empty properties specified in the incoming replication config.
+// Note that if the intention is to reset the value to default, empty values must be specified.
+func (rc *ReplicationConfig) Upsert(c *ReplicationConfig) {
+
+	if ok, value := upsertStringPtr(c.Remote); ok {
+		rc.Remote = value
+	}
+
+	if ok, value := upsertStringPtr(c.Direction); ok {
+		rc.Direction = value
+	}
+
+	if ok, value := upsertStringPtr(c.ConflictResolutionType); ok {
+		rc.ConflictResolutionType = value
+	}
+
+	if ok, value := upsertStringPtr(c.ConflictResolutionFn); ok {
+		rc.ConflictResolutionFn = value
+	}
+
+	if c.PurgeOnRemoval != nil {
+		rc.PurgeOnRemoval = base.BoolPtr(*c.PurgeOnRemoval)
+	}
+
+	if c.DeltaSyncEnabled != nil {
+		rc.DeltaSyncEnabled = base.BoolPtr(*c.DeltaSyncEnabled)
+	}
+
+	if c.MaxBackoff != nil {
+		rc.MaxBackoff = base.IntPtr(*c.MaxBackoff)
+	}
+
+	if ok, value := upsertStringPtr(c.State); ok {
+		rc.State = value
+	}
+
+	if c.Continuous != nil {
+		rc.Continuous = base.BoolPtr(*c.Continuous)
+	}
+
+	if ok, value := upsertStringPtr(c.Filter); ok {
+		rc.Filter = value
+	}
+
+	if c.Cancel != nil {
+		rc.Cancel = base.BoolPtr(*c.Cancel)
+	}
+
+	if c.QueryParams != nil {
+		// QueryParams can be either []interface{} or map[string]interface{}, so requires type-specific copying
+		switch qp := c.QueryParams.(type) {
+		case []interface{}:
+			newParams := make([]interface{}, len(qp))
+			copy(newParams, qp)
+			rc.QueryParams = newParams
+		case map[string]interface{}:
+			newParamMap := make(map[string]interface{})
+			for k, v := range qp {
+				newParamMap[k] = v
+			}
+			rc.QueryParams = newParamMap
+		default:
+			// unsupported query params type, don't upsert
+			base.Warnf("Unexpected QueryParams type found during upsert, will be ignored (%T): %v", c.QueryParams, c.QueryParams)
+		}
+	}
+}
+
+// upsertStringPtr returns a copy of the incoming *string, with additional handling to reset the value to nil if
+// if the incoming value is empty string.  Used by replicationConfig.Upsert to support removing entries from a
+// config definition.
+func upsertStringPtr(incoming *string) (ok bool, updated *string) {
+	if incoming == nil {
+		return false, nil
+	}
+	if *incoming == "" {
+		return true, nil
+	}
+	return true, base.StringPtr(*incoming)
+
+}
+
+// Equals is doing a relatively expensive json-based equality computation, so shouldn't be used in performance-sensitive scenarios
+func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, error) {
+	currentBytes, err := base.JSONMarshalCanonical(rc)
+	if err != nil {
+		return false, err
+	}
+	compareToBytes, err := base.JSONMarshalCanonical(compareToCfg)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(currentBytes, compareToBytes), nil
 }
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
@@ -283,17 +379,17 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 }
 
 // PUT _replication/replicationID
-func (m *sgReplicateManager) UpsertReplication(replication *ReplicationCfg) (created bool, err error) {
+func (m *sgReplicateManager) UpsertReplication(replication *ReplicationConfig) (created bool, err error) {
 
 	created = true
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		_, exists := cluster.Replications[replication.ID]
 		if exists {
 			created = false
+			cluster.Replications[replication.ID].Upsert(replication)
+		} else {
+			cluster.Replications[replication.ID] = &ReplicationCfg{ReplicationConfig: *replication}
 		}
-		// TODO: CBG-766 support partial upsert instead of full replace.  Need to identify what properties are valid
-		//       for upsert
-		cluster.Replications[replication.ID] = replication
 		cluster.RebalanceReplications()
 		return false, nil
 	}

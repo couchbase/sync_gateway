@@ -845,7 +845,7 @@ func (h *handler) getReplication() error {
 
 func (h *handler) putReplication() error {
 	body, _ := h.readBody()
-	replicationConfig := &db.ReplicationCfg{}
+	replicationConfig := &db.ReplicationConfig{}
 	if err := base.JSONUnmarshal(body, replicationConfig); err != nil {
 		return err
 	}
