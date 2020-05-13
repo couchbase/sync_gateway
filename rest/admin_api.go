@@ -825,9 +825,8 @@ func (h *handler) getReplications() error {
 	if err != nil {
 		return err
 	}
-	bytes, err := base.JSONMarshal(replications)
-	h.writeRawJSON(bytes)
-	return err
+	h.writeJSON(replications)
+	return nil
 }
 
 func (h *handler) getReplication() error {
@@ -840,17 +839,11 @@ func (h *handler) getReplication() error {
 		return err
 	}
 
-	bytes, err := base.JSONMarshal(replication)
-	h.writeRawJSON(bytes)
-	return err
+	h.writeJSON(replication)
+	return nil
 }
 
 func (h *handler) putReplication() error {
-	replicationID := mux.Vars(h.rq)["replicationID"]
-	return h.upsertReplication(replicationID)
-}
-
-func (h *handler) upsertReplication(replicationID string) error {
 	body, _ := h.readBody()
 	replicationConfig := &db.ReplicationCfg{}
 	if err := base.JSONUnmarshal(body, replicationConfig); err != nil {
@@ -858,6 +851,7 @@ func (h *handler) upsertReplication(replicationID string) error {
 	}
 
 	if h.rq.Method == "PUT" {
+		replicationID := mux.Vars(h.rq)["replicationID"]
 		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
 			return base.HTTPErrorf(http.StatusBadRequest, "Replication ID in body %q does not match request URI", replicationConfig.ID)
 		}
@@ -905,5 +899,3 @@ func (h *handler) putReplicationStatus() error {
 
 	return h.db.SGReplicateMgr.PutReplicationStatus(replicationID, action)
 }
-
-// Delete tests need to cover 'not found'

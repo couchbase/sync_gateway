@@ -64,6 +64,19 @@ func TestReplicationAPI(t *testing.T) {
 	assert.True(t, ok)
 	_, ok = replicationsResponse["replication2"]
 	assert.True(t, ok)
+
+	// DELETE replication
+	response = rt.SendAdminRequest("DELETE", "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusOK)
+
+	// Verify delete was successful
+	response = rt.SendAdminRequest("GET", "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	// DELETE non-existent replication
+	response = rt.SendAdminRequest("DELETE", "/db/_replication/replication3", "")
+	assertStatus(t, response, http.StatusNotFound)
+
 }
 
 func TestValidateReplicationAPI(t *testing.T) {

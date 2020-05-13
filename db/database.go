@@ -422,20 +422,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	return dbContext, nil
 }
 
-// InitCfgSG initializes Sync Gateway cluster config.  Used to manage shared import and sg-replicate config
-// between Sync Gateway nodes.  Required even if import is disabled and sgreplicate_enabled=false
-// to support REST API _replication/_replicationStatus requests.
-func (context *DatabaseContext) InitCfgSG() (err error) {
-
-	context.CfgSG, err = base.NewCfgSG(context.Bucket)
-	if err != nil {
-		base.Warnf("Error initializing cfg for cluster HA: %v", err)
-		return err
-	}
-	return nil
-
-}
-
 func (context *DatabaseContext) GetOIDCProvider(providerName string) (*auth.OIDCProvider, error) {
 
 	// If providerName isn't specified, check whether there's a default provider
