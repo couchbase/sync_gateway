@@ -324,11 +324,6 @@ func DirExists(filename string) bool {
 	return info.IsDir()
 }
 
-// getTestKeyNamespace returns a unique doc key namespace that can be prepended in tests.
-func getTestKeyNamespace(t *testing.T) string {
-	return t.Name()
-}
-
 // GetRSASigner creates a signer of type JWT using RS256
 func GetRSASigner() (signer jose.Signer, err error) {
 	rsaPrivateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
