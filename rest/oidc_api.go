@@ -21,14 +21,9 @@ import (
 )
 
 const (
-	OIDC_AUTH_RESPONSE_TYPE = "response_type"
-	OIDC_AUTH_CLIENT_ID     = "client_id"
-	OIDC_AUTH_SCOPE         = "scope"
-	OIDC_AUTH_REDIRECT_URI  = "redirect_uri"
-	OIDC_AUTH_STATE         = "state"
-
-	OIDC_RESPONSE_TYPE_CODE     = "code"
-	OIDC_RESPONSE_TYPE_IMPLICIT = "id_token%20token"
+	requestParamProvider    = "provider"
+	requestParamState       = "state"
+	requestParamRedirectURI = "redirect_uri"
 )
 
 type OIDCTokenResponse struct {
@@ -204,6 +199,9 @@ func (h *handler) createSessionForTrustedIdToken(idToken string, provider *auth.
 	user, jwt, err := h.db.Authenticator().AuthenticateTrustedJWT(idToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
+	}
+	if user == nil {
+		return "", "", base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 	}
 
 	if !provider.DisableSession {
