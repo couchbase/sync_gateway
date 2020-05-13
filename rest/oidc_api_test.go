@@ -20,15 +20,27 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-// wantErrType represents a specific error type
-// needs to be mocked during test execution.
-type wantErrType int
+// A wantErrKind represents the specific error expected.
+type wantError struct {
+
+	// kind represents the specific kind of wantError expected.
+	kind wantErrKind
+
+	// code represents the expected status code from HTTP response.
+	code int
+
+	// message represents the expected message code from HTTP response.
+	message string
+}
+
+// A wantErrKind represents the specific kind of wantError.
+type wantErrKind int
 
 const (
 
 	// noCodeErr option forces the mock auth server to return the callback URL
 	// with no authorization code.
-	noCodeErr wantErrType = iota + 1
+	noCodeErr wantErrKind = iota + 1
 
 	// callbackErr option forces the mock auth server to return an auth error
 	// in the callback URL with a short error description.
@@ -94,10 +106,8 @@ type mockAuthServer struct {
 	// port on the local loopback interface, for use in end-to-end HTTP tests.
 	server *httptest.Server
 
-	// The options represents a collection of custom options you want to store
-	// on the server in memory and change it's behavior against specific tests.
-	// An empty options struct is allocated with enough space to hold the specified
-	// number of elements when mock auth server is created.
+	// The options represents a set of custom options to be injected on mock auth
+	// server to generate the response on demand.
 	options *options
 }
 
@@ -108,8 +118,8 @@ type options struct {
 	// OpenID Connect  Provider Issuer URL
 	issuer string
 
-	// wantErrType represents a specific error type needs to be mocked during test execution.
-	wantErrType wantErrType
+	// wantError represents a specific error expected by the relying party.
+	wantError wantError
 
 	// grantType refers to the way a relying party gets an access token.
 	grantType grantType
@@ -147,7 +157,7 @@ func (s *mockAuthServer) Shutdown() {
 // Makes a JSON document available at the path formed by concatenating the string
 // /.well-known/openid-configuration to the Issuer.
 func (s *mockAuthServer) mockDiscoveryHandler(w http.ResponseWriter, r *http.Request) {
-	if s.options.wantErrType == discoveryErr {
+	if s.options.wantError.kind == discoveryErr {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -187,20 +197,20 @@ func (s *mockAuthServer) mockAuthHandler(w http.ResponseWriter, r *http.Request)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	if s.options.wantErrType == callbackErr {
+	if s.options.wantError.kind == callbackErr {
 		err := "?error=unsupported_response_type&error_description=response_type%20not%20supported"
 		redirectionURL = fmt.Sprintf("%s?error=%s", redirect, err)
 		http.Redirect(w, r, redirectionURL, http.StatusTemporaryRedirect)
 	}
 	code := base.GenerateRandomSecret()
-	if s.options.wantErrType == noCodeErr {
+	if s.options.wantError.kind == noCodeErr {
 		code = ""
 	}
 	redirectionURL = fmt.Sprintf("%s?code=%s", redirect, code)
 	if state != "" {
 		redirectionURL = fmt.Sprintf("%s&state=%s", redirectionURL, state)
 	}
-	if s.options.wantErrType == untoldProviderErr {
+	if s.options.wantError.kind == untoldProviderErr {
 		uri, err := auth.SetURLQueryParam(redirectionURL, requestParamProvider, "untold")
 		if err != nil {
 			base.Errorf("error setting untold provider in mock callback URL")
@@ -215,8 +225,8 @@ func (s *mockAuthServer) mockAuthHandler(w http.ResponseWriter, r *http.Request)
 // mockAuthHandler mocks the token handling process performed by the OAuth Authorization Server.
 // It mocks token response and makes it available as JSON document.
 func (s *mockAuthServer) mockTokenHandler(w http.ResponseWriter, r *http.Request) {
-	if (s.options.wantErrType == callbackTokenExchangeErr && s.options.grantType == grantTypeAuthCode) ||
-		(s.options.wantErrType == refreshTokenExchangeErr && s.options.grantType == grantTypeRefreshToken) {
+	if (s.options.wantError.kind == callbackTokenExchangeErr && s.options.grantType == grantTypeAuthCode) ||
+		(s.options.wantError.kind == refreshTokenExchangeErr && s.options.grantType == grantTypeRefreshToken) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -247,8 +257,8 @@ func (s *mockAuthServer) mockTokenHandler(w http.ResponseWriter, r *http.Request
 		TokenType:    "Bearer",
 		Expires:      time.Now().Add(5 * time.Minute).UTC().Second(),
 	}
-	if (s.options.grantType == grantTypeAuthCode && s.options.wantErrType == callbackNoIDTokenErr) ||
-		(s.options.grantType == grantTypeRefreshToken && s.options.wantErrType == refreshNoIDTokenErr) {
+	if (s.options.grantType == grantTypeAuthCode && s.options.wantError.kind == callbackNoIDTokenErr) ||
+		(s.options.grantType == grantTypeRefreshToken && s.options.wantError.kind == refreshNoIDTokenErr) {
 		response.IDToken = ""
 	}
 	s.options.tokenResponse = response
@@ -336,14 +346,14 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	}
 }
 
-// Checks End to end OIDC Authorization Code flow.
+// Checks End to end OpenID Connect Authorization Code flow.
 func TestOpenIDConnectAuth(t *testing.T) {
 	type test struct {
 		name            string
 		providers       auth.OIDCProviderMap
 		defaultProvider string
 		authURL         string
-		wantErrType     wantErrType
+		wantError       wantError
 	}
 	tests := []test{
 		{
@@ -378,7 +388,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     noAutoRegistrationErr,
+			wantError: wantError{
+				kind:    noAutoRegistrationErr,
+				code:    http.StatusUnauthorized,
+				message: "Invalid login",
+			},
 		}, {
 			// Make sure user registration in successful when IncludeAccessToken is false in
 			// providers configuration.
@@ -438,7 +452,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     noAutoRegistrationErr,
+			wantError: wantError{
+				kind:    noAutoRegistrationErr,
+				code:    http.StatusUnauthorized,
+				message: "Invalid login",
+			},
 		}, {
 			// Make sure no access token, token type and expiry time are not included in both
 			// authentication response and token refresh response if IncludeAccessToken option
@@ -477,7 +495,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     noCodeErr,
+			wantError: wantError{
+				kind:    noCodeErr,
+				code:    http.StatusBadRequest,
+				message: "Code must be present on oidc callback",
+			},
 		}, {
 			// Force the mock auth server to return a callback error and make sure
 			// authentication is unsuccessful.
@@ -492,7 +514,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     callbackErr,
+			wantError: wantError{
+				kind:    callbackErr,
+				code:    http.StatusUnauthorized,
+				message: "callback received an error",
+			},
 		}, {
 			// Force the mock auth server to return an unknown provider in the callback
 			// URL and make sure the authentication request is unsuccessful.
@@ -507,7 +533,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     untoldProviderErr,
+			wantError: wantError{
+				kind:    untoldProviderErr,
+				code:    http.StatusBadRequest,
+				message: "Unable to identify provider for callback request",
+			},
 		}, {
 			// Make sure authentication is unsuccessful when authenticating against a provider
 			// which is not configured; i.e., specify a different provider in the auth request URL.
@@ -522,7 +552,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=fred&offline=true", // Configured provider is 'foo', NOT 'fred'.
-			wantErrType:     notConfiguredProviderErr,
+			wantError: wantError{
+				kind:    notConfiguredProviderErr,
+				code:    http.StatusBadRequest,
+				message: "OpenID Connect not configured for database",
+			},
 		}, {
 			// Force mock auth server to return an error during provider discovery and make sure
 			// the authentication is unsuccessful.
@@ -537,7 +571,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     discoveryErr,
+			wantError: wantError{
+				kind:    discoveryErr,
+				code:    http.StatusInternalServerError,
+				message: "Unable to obtain client for provider",
+			},
 		}, {
 			// Make sure user registration is successful when access type is offline.
 			name: "successful user registration with access type not offline",
@@ -567,7 +605,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     callbackTokenExchangeErr,
+			wantError: wantError{
+				kind:    callbackTokenExchangeErr,
+				code:    http.StatusInternalServerError,
+				message: "",
+			},
 		}, {
 			// Force mock auth server NOT to return an id_token while exchanging auth code
 			// for a valid token. Make sure authentication is unsuccessful.
@@ -582,7 +624,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     callbackNoIDTokenErr,
+			wantError: wantError{
+				kind:    callbackNoIDTokenErr,
+				code:    http.StatusInternalServerError,
+				message: "",
+			},
 		}, {
 			// Force mock auth server to return a token exchange error during token refresh.
 			// Make sure initial auth request for user registration is successful but subsequent
@@ -600,7 +646,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     refreshTokenExchangeErr,
+			wantError: wantError{
+				kind:    refreshTokenExchangeErr,
+				code:    http.StatusUnauthorized,
+				message: "Unable to refresh token",
+			},
 		}, {
 			// Force mock auth server not to return an id_token during token refresh.
 			// Make sure initial auth request for user registration is successful but subsequent
@@ -618,7 +668,11 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			},
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
-			wantErrType:     refreshNoIDTokenErr,
+			wantError: wantError{
+				kind:    refreshNoIDTokenErr,
+				code:    http.StatusInternalServerError,
+				message: "",
+			},
 		},
 	}
 
@@ -640,7 +694,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
 			mockSyncGatewayURL := mockSyncGateway.URL
-			mockAuthServer.options.wantErrType = tc.wantErrType
+			mockAuthServer.options.wantError = tc.wantError
 
 			// Initiate OpenID Connect Authorization Code flow.
 			requestURL := mockSyncGatewayURL + tc.authURL
@@ -648,7 +702,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			require.NoError(t, err, "Error creating new request")
 			response, err := http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request")
-			if assertWantErrType(t, response, tc.wantErrType, grantTypeAuthCode) {
+			if assertWantError(t, response, tc.wantError, grantTypeAuthCode) {
 				return
 			}
 			// Validate received token response
@@ -688,7 +742,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			require.NoError(t, err, "Error creating new request")
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request")
-			if assertWantErrType(t, response, tc.wantErrType, grantTypeRefreshToken) {
+			if assertWantError(t, response, tc.wantError, grantTypeRefreshToken) {
 				return
 			}
 			require.Equal(t, http.StatusOK, response.StatusCode)
@@ -720,13 +774,12 @@ func TestOpenIDConnectAuth(t *testing.T) {
 	}
 }
 
-// The assertHttpResponse asserts the statusCode and bodyText against statusCode and string
-// representation of the body bytes from the HTTP response.
-func assertHttpResponse(t *testing.T, response *http.Response, statusCode int, bodyText string) {
+// assertHttpResponse asserts the wantError against HTTP response.
+func assertHttpResponse(t *testing.T, response *http.Response, wantError wantError) {
 	bodyBytes, err := ioutil.ReadAll(response.Body)
 	require.NoError(t, err, "error reading response body")
-	assert.Contains(t, string(bodyBytes), bodyText)
-	assert.Equal(t, statusCode, response.StatusCode)
+	assert.Contains(t, string(bodyBytes), wantError.message)
+	assert.Equal(t, wantError.code, response.StatusCode)
 	require.NoError(t, response.Body.Close(), "error closing response body")
 }
 
@@ -739,53 +792,25 @@ func refreshProviderConfig(providers auth.OIDCProviderMap, issuer string) {
 	}
 }
 
-// assertWantErrType assert the given wantErrType on the response object. Return true if the wantErrType matches
-// with the error in response and false otherwise.
-func assertWantErrType(t *testing.T, response *http.Response, wantErrType wantErrType, grantType grantType) (exit bool) {
-	switch wantErrType {
-	case noAutoRegistrationErr:
-		assertHttpResponse(t, response, http.StatusUnauthorized, "Invalid login")
-		exit = true
-	case noCodeErr:
-		assertHttpResponse(t, response, http.StatusBadRequest, "Code must be present on oidc callback")
-		exit = true
-	case callbackErr:
-		assertHttpResponse(t, response, http.StatusUnauthorized, "callback received an error")
-		exit = true
-	case untoldProviderErr:
-		assertHttpResponse(t, response, http.StatusBadRequest, "Unable to identify provider for callback request")
-		exit = true
-	case notConfiguredProviderErr:
-		assertHttpResponse(t, response, http.StatusBadRequest, "OpenID Connect not configured for database db")
-		exit = true
-	case discoveryErr:
-		assertHttpResponse(t, response, http.StatusInternalServerError, "Unable to obtain client for provider")
-		exit = true
-	case callbackTokenExchangeErr:
+// assertWantError asserts the expected error kind, status code and messages against the actual response.
+// Return true if the wantError matches with the error in response and false otherwise.
+func assertWantError(t *testing.T, response *http.Response, wantError wantError, grantType grantType) (exit bool) {
+	switch wantError.kind {
+	case noAutoRegistrationErr, noCodeErr, callbackErr, untoldProviderErr, notConfiguredProviderErr, discoveryErr:
+		assertHttpResponse(t, response, wantError)
+		return true
+	case callbackTokenExchangeErr, callbackNoIDTokenErr:
 		if grantType == grantTypeAuthCode {
-			// assertHttpResponse(t, response, http.StatusUnauthorized, "Failed to exchange token")
-			assertHttpResponse(t, response, http.StatusInternalServerError, "")
-			exit = true
+			assertHttpResponse(t, response, wantError)
+			return true
 		}
-	case callbackNoIDTokenErr:
-		if grantType == grantTypeAuthCode {
-			// assertHttpResponse(t, response, http.StatusUnauthorized, "No id_token field in oauth2 token")
-			assertHttpResponse(t, response, http.StatusInternalServerError, "")
-			exit = true
-		}
-	case refreshTokenExchangeErr:
+	case refreshTokenExchangeErr, refreshNoIDTokenErr:
 		if grantType == grantTypeRefreshToken {
-			assertHttpResponse(t, response, http.StatusUnauthorized, "Unable to refresh token")
-			exit = true
-		}
-	case refreshNoIDTokenErr:
-		if grantType == grantTypeRefreshToken {
-			// assertHttpResponse(t, response, http.StatusUnauthorized, "No id_token field in oauth2 token")
-			assertHttpResponse(t, response, http.StatusInternalServerError, "")
-			exit = true
+			assertHttpResponse(t, response, wantError)
+			return true
 		}
 	default:
-		exit = false
+		return false
 	}
-	return exit
+	return false
 }
