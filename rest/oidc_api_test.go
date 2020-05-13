@@ -719,7 +719,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			if tc.providers["foo"].IncludeAccessToken {
 				assert.Equal(t, wantTokenResponse.AccessToken, receivedToken.AccessToken, "access_token mismatch")
 				assert.Equal(t, wantTokenResponse.TokenType, receivedToken.TokenType, "token_type mismatch")
-				assert.True(t, wantTokenResponse.Expires >= receivedToken.Expires, "expires_in mismatch")
+				assert.Equal(t, wantTokenResponse.Expires, receivedToken.Expires, "expires_in mismatch")
 			}
 
 			// Query db endpoint with Bearer token
@@ -758,7 +758,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			if tc.providers["foo"].IncludeAccessToken {
 				assert.Equal(t, wantTokenResponse.AccessToken, receivedToken.AccessToken, "access_token mismatch")
 				assert.Equal(t, wantTokenResponse.TokenType, receivedToken.TokenType, "token_type mismatch")
-				assert.True(t, wantTokenResponse.Expires >= receivedToken.Expires, "expires_in mismatch")
+				assert.Equal(t, wantTokenResponse.Expires, receivedToken.Expires, "expires_in mismatch")
 			}
 			// Query db endpoint with Bearer token
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
