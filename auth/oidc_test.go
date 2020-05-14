@@ -308,8 +308,8 @@ func TestFetchCustomProviderConfigWithEmptyURL(t *testing.T) {
 func TestFetchCustomProviderConfigWithBadURL(t *testing.T) {
 	provider := OIDCProvider{}
 	_, err := provider.FetchCustomProviderConfig("https://accounts.unknown.com")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "no such host")
+	assert.Error(t, err, "No such host or i/o timeout")
+	assert.Contains(t, err.Error(), "dial tcp")
 }
 
 func TestFetchCustomProviderConfigWithCtrlCharURL(t *testing.T) {
