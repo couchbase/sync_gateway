@@ -69,7 +69,7 @@ func saveX509Files(t *testing.T, ca *caPair, node *nodePair, sg *sgPair) (teardo
 	sg.KeyFilePath = sgKeyFilepath
 
 	return func() {
-		_ = os.RemoveAll(dirName)
+		require.NoError(t, os.RemoveAll(dirName), "unexpected error when trying to clean up cert files")
 	}
 }
 
