@@ -212,8 +212,9 @@ func generateChainCert(t *testing.T, ca *caPair, opts chainCertOpts) (chainCert,
 	return chainCert, chainKey
 }
 
-// connStrURLToRESTAPIURL parses the given connstr and returns a URL which can be used for the Couchbase Server REST API.
-func connStrURLToRESTAPIURL(connstrURL url.URL) url.URL {
+// basicAuthRESTPIURLFromConnstrHost uses the given connstr to return a URL with embedded basic auth creds
+// which can be used for requests against the Couchbase Server REST API.
+func basicAuthRESTPIURLFromConnstrHost(connstrURL url.URL) url.URL {
 	// override the scheme for http only
 	connstrURL.Scheme = "http"
 	// set basic auth creds
@@ -249,7 +250,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *
 	}
 	base.Debugf(base.KeyAll, "copied x509 node pkey.key to integration test server")
 
-	restAPIURL := connStrURLToRESTAPIURL(couchbaseServerURL)
+	restAPIURL := basicAuthRESTPIURLFromConnstrHost(couchbaseServerURL)
 
 	// Upload the CA cert via the REST API
 	resp, err := http.Post(restAPIURL.String()+"/controller/uploadClusterCA", "application/octet-stream", ca.PEM)
@@ -323,7 +324,7 @@ func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
 
 // assertHostnameMatch ensures the hostname using for the test server matches what Couchbase Server's node hostname is.
 func assertHostnameMatch(t *testing.T, couchbaseServerURL *url.URL) {
-	restAPIURL := connStrURLToRESTAPIURL(*couchbaseServerURL)
+	restAPIURL := basicAuthRESTPIURLFromConnstrHost(*couchbaseServerURL)
 
 	nodeHostname, err := couchbaseNodeConfiguredHostname(restAPIURL)
 	require.NoError(t, err)
