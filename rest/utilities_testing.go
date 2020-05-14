@@ -125,10 +125,13 @@ func (rt *RestTester) Bucket() base.Bucket {
 	rt.DatabaseConfig.NumIndexReplicas = &numReplicas
 	un, pw, _ := testBucket.BucketSpec.Auth.GetCredentials()
 	rt.DatabaseConfig.BucketConfig = BucketConfig{
-		Server:   &testBucket.BucketSpec.Server,
-		Bucket:   &testBucket.BucketSpec.BucketName,
-		Username: un,
-		Password: pw,
+		Server:     &testBucket.BucketSpec.Server,
+		Bucket:     &testBucket.BucketSpec.BucketName,
+		Username:   un,
+		Password:   pw,
+		CACertPath: testBucket.BucketSpec.CACertPath,
+		CertPath:   testBucket.BucketSpec.Certpath,
+		KeyPath:    testBucket.BucketSpec.Keypath,
 	}
 	rt.DatabaseConfig.Name = "db"
 	rt.DatabaseConfig.Sync = syncFnPtr
