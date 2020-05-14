@@ -108,7 +108,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		bucketReadierQueue:     make(chan tbpBucketName, numBuckets),
 		bucketReadierWaitGroup: &sync.WaitGroup{},
 		cluster:                cluster,
-		clusterMgr:             cluster.Manager(tbpClusterUsername(), tbpClusterPassword()),
+		clusterMgr:             cluster.Manager(TbpClusterUsername(), TbpClusterPassword()),
 		ctxCancelFunc:          ctxCancelFunc,
 		defaultBucketSpec:      tbpDefaultBucketSpec,
 		preserveBuckets:        preserveBuckets,
@@ -622,8 +622,8 @@ func tbpCluster(server string) *gocb.Cluster {
 	}
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: tbpClusterUsername(),
-		Password: tbpClusterPassword(),
+		Username: TbpClusterUsername(),
+		Password: TbpClusterPassword(),
 	})
 	if err != nil {
 		log.Fatalf("Couldn't authenticate with %q: %v", server, err)
@@ -636,8 +636,8 @@ var tbpDefaultBucketSpec = BucketSpec{
 	Server:          UnitTestUrl(),
 	CouchbaseDriver: GoCBCustomSGTranscoder,
 	Auth: TestAuthenticator{
-		Username: tbpClusterUsername(),
-		Password: tbpClusterPassword(),
+		Username: TbpClusterUsername(),
+		Password: TbpClusterPassword(),
 	},
 	UseXattrs: TestUseXattrs(),
 }
@@ -691,8 +691,8 @@ func tbpVerbose() bool {
 	return verbose
 }
 
-// tbpClusterUsername returns the configured cluster username.
-func tbpClusterUsername() string {
+// TbpClusterUsername returns the configured cluster username.
+func TbpClusterUsername() string {
 	username := tbpDefaultClusterUsername
 	if envClusterUsername := os.Getenv(tbpEnvClusterUsername); envClusterUsername != "" {
 		username = envClusterUsername
@@ -700,8 +700,8 @@ func tbpClusterUsername() string {
 	return username
 }
 
-// tbpClusterPassword returns the configured cluster password.
-func tbpClusterPassword() string {
+// TbpClusterPassword returns the configured cluster password.
+func TbpClusterPassword() string {
 	password := tbpDefaultClusterPassword
 	if envClusterPassword := os.Getenv(tbpEnvClusterPassword); envClusterPassword != "" {
 		password = envClusterPassword
