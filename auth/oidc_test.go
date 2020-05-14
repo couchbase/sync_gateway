@@ -302,16 +302,6 @@ func TestFetchCustomProviderConfigWithEmptyURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "unsupported protocol scheme")
 }
 
-// Check fetching custom provider configuration with bad or unknown provider
-// discovery URL. Fetching  custom provider configuration should fail while
-// sending HTTP request. Error message should contain 'no such host'.
-func TestFetchCustomProviderConfigWithBadURL(t *testing.T) {
-	provider := OIDCProvider{}
-	_, err := provider.FetchCustomProviderConfig("https://accounts.unknown.com")
-	assert.Error(t, err, "No such host or i/o timeout")
-	assert.Contains(t, err.Error(), "dial tcp")
-}
-
 func TestFetchCustomProviderConfigWithCtrlCharURL(t *testing.T) {
 	provider := OIDCProvider{}
 	_, err := provider.FetchCustomProviderConfig(`https://accounts.unknown.com\r\n?param=123`)
