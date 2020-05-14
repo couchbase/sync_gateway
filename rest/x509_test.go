@@ -28,7 +28,7 @@ func TestX509RoundtripForceIP(t *testing.T) {
 	// if the given test URL is a hostname, resolve the IP address, and use that for the cert and SG configuration.
 	couchbaseServerURL, err := url.Parse(base.UnitTestUrl())
 	require.NoError(t, err)
-	serverIPAddr, err := net.ResolveIPAddr("ip", couchbaseServerURL.Hostname())
+	serverIPAddr, err := net.ResolveIPAddr("ip4", couchbaseServerURL.Hostname())
 	require.NoError(t, err)
 
 	caPEM, ca, caPrivKey := generateCACert(t)
@@ -79,12 +79,15 @@ func TestX509RoundtripForceDomain(t *testing.T) {
 		t.Skip("X509 not supported in Walrus")
 	}
 
+	// FIXME: Fails due to CBG-844
+	t.Skip("Fails due to CBG-844")
+
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyCache, base.KeyDCP)()
 
 	// if the given test URL is a hostname, resolve the IP address, and use that for the cert and SG configuration.
 	couchbaseServerURL, err := url.Parse(base.UnitTestUrl())
 	require.NoError(t, err)
-	serverIPAddr, err := net.ResolveIPAddr("ivp4", couchbaseServerURL.Hostname())
+	serverIPAddr, err := net.ResolveIPAddr("ip4", couchbaseServerURL.Hostname())
 	require.NoError(t, err)
 
 	serverDomain := domainForIPAddr(serverIPAddr.IP)

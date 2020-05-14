@@ -206,8 +206,9 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 	}
 	base.Debugf(base.KeyAll, "copied x509 node pkey.key to integration test server")
 
-	// Upload the CA cert via the REST API
 	restAPIURL := connStrURLToRESTAPIURL(couchbaseServerURL)
+
+	// Upload the CA cert via the REST API
 	resp, err := http.Post(restAPIURL.String()+"/controller/uploadClusterCA", "application/octet-stream", caPEM)
 	if err != nil {
 		return err
@@ -218,9 +219,9 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("expected %q status code but got %q: %s", http.StatusOK, resp.StatusCode, respBody)
+		return fmt.Errorf("expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
 	}
-	base.Debugf(base.KeyAll, "uploaded ca.pem to couchbase server")
+	base.Debugf(base.KeyAll, "uploaded ca.pem to Couchbase Server")
 
 	// Make CBS read the newly uploaded certs
 	resp, err = http.Post(restAPIURL.String()+"/node/controller/reloadCertificate", "", nil)
@@ -233,9 +234,41 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("expected %q status code but got %q: %s", http.StatusOK, resp.StatusCode, respBody)
+		return fmt.Errorf("expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
 	}
-	base.Debugf(base.KeyAll, "triggered reload of certificates on couchbase server")
+	base.Debugf(base.KeyAll, "triggered reload of certificates on Couchbase Server")
+
+	if err := enableX509ClientCertsInCouchbaseServer(restAPIURL); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func enableX509ClientCertsInCouchbaseServer(restAPIURL url.URL) error {
+	clientAuthSettings := bytes.NewBufferString(`{
+  "state": "enable",
+  "prefixes": [{
+    "path": "subject.cn",
+    "prefix": "",
+    "delimiter": ""
+}]
+}`)
+
+	// Configure CBS to enable optional X.509 client certs
+	resp, err := http.Post(restAPIURL.String()+"/settings/clientCertAuth", "application/json", clientAuthSettings)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	respBody, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
+	}
+	base.Debugf(base.KeyAll, "enabled X.509 client certs in Couchbase Server")
 
 	return nil
 }
