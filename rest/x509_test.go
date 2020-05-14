@@ -100,7 +100,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 	defer tb.Close()
 
 	// force couchbases:// scheme
-	tb.BucketSpec.Server = "couchbases://" + testURL.Host
+	tb.BucketSpec.Server = "couchbases://" + testURL.Hostname()
 	// use x509 for auth
 	tb.BucketSpec.Auth = base.NoPasswordAuthHandler{Handler: tb.BucketSpec.Auth}
 	tb.BucketSpec.CACertPath = ca.PEMFilepath
