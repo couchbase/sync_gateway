@@ -11,9 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestX509RoundtripForceIP is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
+// TestX509RoundtripUsingIP is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
 // The test enforces SG connects using an IP address which is also present in the node cert.
-func TestX509RoundtripForceIP(t *testing.T) {
+func TestX509RoundtripUsingIP(t *testing.T) {
 
 	if !x509TestsEnabled() {
 		t.Skipf("x509 tests not enabled via %s flag", x509TestFlag)
@@ -23,37 +23,35 @@ func TestX509RoundtripForceIP(t *testing.T) {
 		t.Skip("X509 not supported in Walrus")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyCache, base.KeyDCP)()
-
-	// if the given test URL is a hostname, resolve the IP address, and use that for the cert and SG configuration.
-	couchbaseServerURL, err := url.Parse(base.UnitTestUrl())
+	testURL, err := url.Parse(base.UnitTestUrl())
 	require.NoError(t, err)
-	serverIPAddr, err := net.ResolveIPAddr("ip4", couchbaseServerURL.Hostname())
-	require.NoError(t, err)
+	testIP := net.ParseIP(testURL.Hostname())
+	if testIP == nil {
+		t.Skipf("Test requires %s to be an IP address, but had: %v", base.TestEnvCouchbaseServerUrl, testURL.Hostname())
+	}
+	assertHostnameMatch(t, testURL)
 
-	caPEM, ca, caPrivKey := generateCACert(t)
-	nodePEM, nodeKey := GenerateCBSNodeCert(t, ca, caPrivKey, []net.IP{serverIPAddr.IP}, nil)
-	sgPEM, sgKey := GenerateSGClientCert(t, ca, caPrivKey, base.TbpClusterUsername(), time.Now().Add(time.Hour*24))
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	caPEMFilepath,
-		chainPEMFilepath, pkeyKeyFilepath,
-		sgPEMFilepath, sgKeyFilepath,
-		teardownFn := saveX509Files(t, caPEM, nodePEM, nodeKey, sgPEM, sgKey)
+	ca := generateX509CA(t)
+	nodePair := generateX509Node(t, ca, []net.IP{testIP}, nil)
+	sgPair := generateX509SG(t, ca, base.TbpClusterUsername(), time.Now().Add(time.Hour*24))
+	teardownFn := saveX509Files(t, ca, nodePair, sgPair)
 	defer teardownFn()
 
-	err = loadCertsIntoCouchbaseServer(*couchbaseServerURL, caPEM, chainPEMFilepath, pkeyKeyFilepath)
+	err = loadCertsIntoCouchbaseServer(*testURL, ca, nodePair)
 	require.NoError(t, err)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	// override the server URL we're connecting to to match the IP in the cert
-	tb.BucketSpec.Server = "couchbases://" + serverIPAddr.IP.String()
+	// force couchbases:// scheme
+	tb.BucketSpec.Server = "couchbases://" + testIP.String()
 	// use x509 for auth
 	tb.BucketSpec.Auth = base.NoPasswordAuthHandler{Handler: tb.BucketSpec.Auth}
-	tb.BucketSpec.CACertPath = caPEMFilepath
-	tb.BucketSpec.Certpath = sgPEMFilepath
-	tb.BucketSpec.Keypath = sgKeyFilepath
+	tb.BucketSpec.CACertPath = ca.PEMFilepath
+	tb.BucketSpec.Certpath = sgPair.PEMFilepath
+	tb.BucketSpec.Keypath = sgPair.KeyFilePath
 
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
 	defer rt.Close()
@@ -67,9 +65,9 @@ func TestX509RoundtripForceIP(t *testing.T) {
 	require.NoError(t, err, "error waiting for doc over DCP")
 }
 
-// TestX509RoundtripForceDomain is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
+// TestX509RoundtripUsingDomain is a happy-path roundtrip write test for SG connecting to CBS using valid X.509 certs for authentication.
 // The test enforces SG connects using a domain name which is also present in the node cert.
-func TestX509RoundtripForceDomain(t *testing.T) {
+func TestX509RoundtripUsingDomain(t *testing.T) {
 
 	if !x509TestsEnabled() {
 		t.Skipf("x509 tests not enabled via %s flag", x509TestFlag)
@@ -79,42 +77,35 @@ func TestX509RoundtripForceDomain(t *testing.T) {
 		t.Skip("X509 not supported in Walrus")
 	}
 
-	// FIXME: Fails due to CBG-844
-	t.Skip("Fails due to CBG-844")
-
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyCache, base.KeyDCP)()
-
-	// if the given test URL is a hostname, resolve the IP address, and use that for the cert and SG configuration.
-	couchbaseServerURL, err := url.Parse(base.UnitTestUrl())
+	testURL, err := url.Parse(base.UnitTestUrl())
 	require.NoError(t, err)
-	serverIPAddr, err := net.ResolveIPAddr("ip4", couchbaseServerURL.Hostname())
-	require.NoError(t, err)
+	testIP := net.ParseIP(testURL.Hostname())
+	if testIP != nil {
+		t.Skipf("Test requires %s to be a domain name, but had an IP: %v", base.TestEnvCouchbaseServerUrl, testURL.Hostname())
+	}
+	assertHostnameMatch(t, testURL)
 
-	serverDomain := domainForIPAddr(serverIPAddr.IP)
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP, base.KeyCache, base.KeyDCP)()
 
-	caPEM, ca, caPrivKey := generateCACert(t)
-	nodePEM, nodeKey := GenerateCBSNodeCert(t, ca, caPrivKey, nil, []string{serverDomain})
-	sgPEM, sgKey := GenerateSGClientCert(t, ca, caPrivKey, base.TbpClusterUsername(), time.Now().Add(time.Hour*24))
-
-	caPEMFilepath,
-		chainPEMFilepath, pkeyKeyFilepath,
-		sgPEMFilepath, sgKeyFilepath,
-		teardownFn := saveX509Files(t, caPEM, nodePEM, nodeKey, sgPEM, sgKey)
+	ca := generateX509CA(t)
+	nodePair := generateX509Node(t, ca, nil, []string{testURL.Hostname()})
+	sgPair := generateX509SG(t, ca, base.TbpClusterUsername(), time.Now().Add(time.Hour*24))
+	teardownFn := saveX509Files(t, ca, nodePair, sgPair)
 	defer teardownFn()
 
-	err = loadCertsIntoCouchbaseServer(*couchbaseServerURL, caPEM, chainPEMFilepath, pkeyKeyFilepath)
+	err = loadCertsIntoCouchbaseServer(*testURL, ca, nodePair)
 	require.NoError(t, err)
 
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
-	// override the server URL we're connecting to to match the domain in the cert
-	tb.BucketSpec.Server = "couchbases://" + serverDomain
+	// force couchbases:// scheme
+	tb.BucketSpec.Server = "couchbases://" + testURL.Host
 	// use x509 for auth
 	tb.BucketSpec.Auth = base.NoPasswordAuthHandler{Handler: tb.BucketSpec.Auth}
-	tb.BucketSpec.CACertPath = caPEMFilepath
-	tb.BucketSpec.Certpath = sgPEMFilepath
-	tb.BucketSpec.Keypath = sgKeyFilepath
+	tb.BucketSpec.CACertPath = ca.PEMFilepath
+	tb.BucketSpec.Certpath = sgPair.PEMFilepath
+	tb.BucketSpec.Keypath = sgPair.KeyFilePath
 
 	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
 	defer rt.Close()

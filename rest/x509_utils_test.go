@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io/ioutil"
@@ -40,38 +41,68 @@ func x509TestsEnabled() bool {
 }
 
 // saveX509Files creates temp files for the given certs/keys and returns the full filepaths for each.
-func saveX509Files(t *testing.T, caPEM, chainPEM, pkeyKey, sgPEM, sgKey *bytes.Buffer) (caPEMFilepath, chainPEMFilepath, pkeyKeyFilepath, sgPEMFilepath, sgKeyFilepath string, teardownFn func()) {
+func saveX509Files(t *testing.T, ca *caPair, node *nodePair, sg *sgPair) (teardownFn func()) {
 	dirName, err := ioutil.TempDir("", t.Name())
 	require.NoError(t, err)
 
-	caPEMFilepath = filepath.Join(dirName, "ca.pem")
-	err = ioutil.WriteFile(caPEMFilepath, caPEM.Bytes(), os.FileMode(777))
+	caPEMFilepath := filepath.Join(dirName, "ca.pem")
+	err = ioutil.WriteFile(caPEMFilepath, ca.PEM.Bytes(), os.FileMode(777))
 	require.NoError(t, err)
+	ca.PEMFilepath = caPEMFilepath
 
-	chainPEMFilepath = filepath.Join(dirName, "chain.pem")
-	err = ioutil.WriteFile(chainPEMFilepath, chainPEM.Bytes(), os.FileMode(777))
+	chainPEMFilepath := filepath.Join(dirName, "chain.pem")
+	err = ioutil.WriteFile(chainPEMFilepath, node.PEM.Bytes(), os.FileMode(777))
 	require.NoError(t, err)
-	pkeyKeyFilepath = filepath.Join(dirName, "pkey.key")
-	err = ioutil.WriteFile(pkeyKeyFilepath, pkeyKey.Bytes(), os.FileMode(777))
+	node.PEMFilepath = chainPEMFilepath
+	pkeyKeyFilepath := filepath.Join(dirName, "pkey.key")
+	err = ioutil.WriteFile(pkeyKeyFilepath, node.Key.Bytes(), os.FileMode(777))
 	require.NoError(t, err)
+	node.KeyFilePath = pkeyKeyFilepath
 
-	sgPEMFilepath = filepath.Join(dirName, "sg.pem")
-	err = ioutil.WriteFile(sgPEMFilepath, sgPEM.Bytes(), os.FileMode(777))
+	sgPEMFilepath := filepath.Join(dirName, "sg.pem")
+	err = ioutil.WriteFile(sgPEMFilepath, sg.PEM.Bytes(), os.FileMode(777))
 	require.NoError(t, err)
-	sgKeyFilepath = filepath.Join(dirName, "sg.key")
-	err = ioutil.WriteFile(sgKeyFilepath, sgKey.Bytes(), os.FileMode(777))
+	sg.PEMFilepath = sgPEMFilepath
+	sgKeyFilepath := filepath.Join(dirName, "sg.key")
+	err = ioutil.WriteFile(sgKeyFilepath, sg.Key.Bytes(), os.FileMode(777))
 	require.NoError(t, err)
+	sg.KeyFilePath = sgKeyFilepath
 
-	return caPEMFilepath, chainPEMFilepath, pkeyKeyFilepath, sgPEMFilepath, sgKeyFilepath, func() {
+	return func() {
 		_ = os.RemoveAll(dirName)
 	}
 }
 
-func generateCACert(t *testing.T) (caPEM *bytes.Buffer, ca *x509.Certificate, caPrivKey *rsa.PrivateKey) {
+// A set of types for sets of specific certs/keys so we can provide strongly-typed hints for their use (to prevent mixups)
+type caPair struct {
+	PEM         caCertType
+	PEMFilepath string
+	Cert        *x509.Certificate
+	Key         *rsa.PrivateKey
+}
+type nodePair struct {
+	PEM         nodeCertType
+	PEMFilepath string
+	Key         nodeKeyType
+	KeyFilePath string
+}
+type sgPair struct {
+	PEM         sgCertType
+	PEMFilepath string
+	Key         sgKeyType
+	KeyFilePath string
+}
+type caCertType struct{ *bytes.Buffer }
+type nodeCertType struct{ *bytes.Buffer }
+type nodeKeyType struct{ *bytes.Buffer }
+type sgCertType struct{ *bytes.Buffer }
+type sgKeyType struct{ *bytes.Buffer }
+
+func generateX509CA(t *testing.T) *caPair {
 	caPrivKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	ca = &x509.Certificate{
+	caCert := &x509.Certificate{
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 
@@ -85,17 +116,21 @@ func generateCACert(t *testing.T) (caPEM *bytes.Buffer, ca *x509.Certificate, ca
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 	}
 
-	caBytes, err := x509.CreateCertificate(rand.Reader, ca, ca, &caPrivKey.PublicKey, caPrivKey)
+	caBytes, err := x509.CreateCertificate(rand.Reader, caCert, caCert, &caPrivKey.PublicKey, caPrivKey)
 	require.NoError(t, err)
 
-	caPEM = new(bytes.Buffer)
+	caPEM := new(bytes.Buffer)
 	err = pem.Encode(caPEM, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: caBytes,
 	})
 	require.NoError(t, err)
 
-	return caPEM, ca, caPrivKey
+	return &caPair{
+		PEM:  caCertType{caPEM},
+		Cert: caCert,
+		Key:  caPrivKey,
+	}
 }
 
 type chainCertOpts struct {
@@ -112,23 +147,31 @@ type chainCertOpts struct {
 	sanDNSNames []string
 }
 
-// GenerateSGClientCert generates an client cert for Sync Gateway to authorize with via X.509.
-func GenerateSGClientCert(t *testing.T, ca *x509.Certificate, caPrivKey *rsa.PrivateKey, couchbaseUsername string, expiry time.Time) (clientPEM, clientKey *bytes.Buffer) {
-	return generateChainCert(t, ca, caPrivKey, chainCertOpts{isClientCert: true, commonName: couchbaseUsername, expiryDate: expiry})
+// generateX509SG generates an client cert for Sync Gateway to authorize with via X.509.
+func generateX509SG(t *testing.T, ca *caPair, couchbaseUsername string, expiry time.Time) *sgPair {
+	c, k := generateChainCert(t, ca, chainCertOpts{isClientCert: true, commonName: couchbaseUsername, expiryDate: expiry})
+	return &sgPair{
+		PEM: sgCertType{c},
+		Key: sgKeyType{k},
+	}
 }
 
-// GenerateCBSNodeCert is a convenience wrapper around generateChainCert for generating SG client certs.
-func GenerateCBSNodeCert(t *testing.T, ca *x509.Certificate, caPrivKey *rsa.PrivateKey, sanIPs []net.IP, sanDNSNames []string) (clientPEM, clientKey *bytes.Buffer) {
-	return generateChainCert(t, ca, caPrivKey, chainCertOpts{isClientCert: false, sanIPs: sanIPs, sanDNSNames: sanDNSNames, expiryDate: time.Now().Add(time.Hour * 24 * 365 * 10)})
+// generateX509Node is a convenience wrapper around generateChainCert for generating SG client certs.
+func generateX509Node(t *testing.T, ca *caPair, sanIPs []net.IP, sanDNSNames []string) *nodePair {
+	c, k := generateChainCert(t, ca, chainCertOpts{isClientCert: false, commonName: "cbs-node", sanIPs: sanIPs, sanDNSNames: sanDNSNames, expiryDate: time.Now().Add(time.Hour * 24 * 365 * 10)})
+	return &nodePair{
+		PEM: nodeCertType{c},
+		Key: nodeKeyType{k},
+	}
 }
 
 // generateChainCert will produce a client or server (CBS Node) certificate and key authorised by the given CA with the given options.
-// Use generateCBSNodeCert or generateSGClientCert instead for ease of use.
-func generateChainCert(t *testing.T, ca *x509.Certificate, caPrivKey *rsa.PrivateKey, opts chainCertOpts) (clientPEM, clientKey *bytes.Buffer) {
+// Use generateX509Node or generateX509SG instead for ease of use.
+func generateChainCert(t *testing.T, ca *caPair, opts chainCertOpts) (chainCert, chainKey *bytes.Buffer) {
 	clientPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 
-	clientCertTmpl := &x509.Certificate{
+	chainCertTempl := &x509.Certificate{
 		DNSNames:    opts.sanDNSNames,
 		IPAddresses: opts.sanIPs,
 		Subject:     pkix.Name{CommonName: opts.commonName},
@@ -142,31 +185,31 @@ func generateChainCert(t *testing.T, ca *x509.Certificate, caPrivKey *rsa.Privat
 	}
 
 	if opts.isClientCert {
-		clientCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+		chainCertTempl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
 	} else {
-		clientCertTmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		chainCertTempl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
 	}
 
-	clientCertTmpl.NotAfter = opts.expiryDate
+	chainCertTempl.NotAfter = opts.expiryDate
 
-	clientCertBytes, err := x509.CreateCertificate(rand.Reader, clientCertTmpl, ca, &clientPrivateKey.PublicKey, caPrivKey)
+	clientCertBytes, err := x509.CreateCertificate(rand.Reader, chainCertTempl, ca.Cert, &clientPrivateKey.PublicKey, ca.Key)
 	require.NoError(t, err)
 
-	clientPEM = new(bytes.Buffer)
-	err = pem.Encode(clientPEM, &pem.Block{
+	chainCert = new(bytes.Buffer)
+	err = pem.Encode(chainCert, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: clientCertBytes,
 	})
 	require.NoError(t, err)
 
-	clientKey = new(bytes.Buffer)
-	err = pem.Encode(clientKey, &pem.Block{
+	chainKey = new(bytes.Buffer)
+	err = pem.Encode(chainKey, &pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(clientPrivateKey),
 	})
 	require.NoError(t, err)
 
-	return clientPEM, clientKey
+	return chainCert, chainKey
 }
 
 // connStrURLToRESTAPIURL parses the given connstr and returns a URL which can be used for the Couchbase Server REST API.
@@ -191,16 +234,16 @@ func x509SSHUsername() string {
 }
 
 // loadCertsIntoCouchbaseServer will upload the given certs into Couchbase Server (via SSH and the REST API)
-func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffer, chainPEMFilepath, pkeyKeyFilepath string) error {
+func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *nodePair) error {
 	// Copy node cert and key via SSH
 	sshRemoteHost := x509SSHUsername() + "@" + couchbaseServerURL.Hostname()
-	err := sshCopyFileAsExecutable(chainPEMFilepath, sshRemoteHost, "/opt/couchbase/var/lib/couchbase/inbox")
+	err := sshCopyFileAsExecutable(node.PEMFilepath, sshRemoteHost, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
 	}
 	base.Debugf(base.KeyAll, "copied x509 node chain.pem to integration test server")
 
-	err = sshCopyFileAsExecutable(pkeyKeyFilepath, sshRemoteHost, "/opt/couchbase/var/lib/couchbase/inbox")
+	err = sshCopyFileAsExecutable(node.KeyFilePath, sshRemoteHost, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
 	}
@@ -209,7 +252,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 	restAPIURL := connStrURLToRESTAPIURL(couchbaseServerURL)
 
 	// Upload the CA cert via the REST API
-	resp, err := http.Post(restAPIURL.String()+"/controller/uploadClusterCA", "application/octet-stream", caPEM)
+	resp, err := http.Post(restAPIURL.String()+"/controller/uploadClusterCA", "application/octet-stream", ca.PEM)
 	if err != nil {
 		return err
 	}
@@ -245,14 +288,60 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 	return nil
 }
 
+func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
+	// Configure CBS to enable optional X.509 client certs
+	resp, err := http.Get(restAPIURL.String() + "/pools/default/nodeServices")
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("couldn't get node hostname: %d", resp.StatusCode)
+	}
+
+	type respStruct struct {
+		NodesExt []struct {
+			ThisNode bool   `json:"thisNode"`
+			Hostname string `json:"hostname"`
+		} `json:"nodesExt"`
+	}
+	var respJSON respStruct
+	e := json.NewDecoder(resp.Body)
+	if err := e.Decode(&respJSON); err != nil {
+		return "", err
+	}
+	base.Debugf(base.KeyAll, "enabled X.509 client certs in Couchbase Server")
+
+	for _, n := range respJSON.NodesExt {
+		if n.ThisNode {
+			return n.Hostname, nil
+		}
+	}
+
+	return "", fmt.Errorf("couldn't find 'thisNode' in nodeServices list: %v", respJSON)
+}
+
+// assertHostnameMatch ensures the hostname using for the test server matches what Couchbase Server's node hostname is.
+func assertHostnameMatch(t *testing.T, couchbaseServerURL *url.URL) {
+	restAPIURL := connStrURLToRESTAPIURL(*couchbaseServerURL)
+
+	nodeHostname, err := couchbaseNodeConfiguredHostname(restAPIURL)
+	require.NoError(t, err)
+	if nodeHostname != restAPIURL.Hostname() {
+		t.Fatal("Test requires " + base.TestEnvCouchbaseServerUrl + " to be the same as the Couchbase Server node hostname...\n\n" +
+			"Use `curl -X POST " + restAPIURL.String() + "/node/controller/rename -d hostname=" + restAPIURL.Hostname() + "` before running test")
+	}
+}
+
 func enableX509ClientCertsInCouchbaseServer(restAPIURL url.URL) error {
-	clientAuthSettings := bytes.NewBufferString(`{
+	clientAuthSettings := bytes.NewBufferString(`
+{
   "state": "enable",
   "prefixes": [{
     "path": "subject.cn",
     "prefix": "",
     "delimiter": ""
-}]
+  }]
 }`)
 
 	// Configure CBS to enable optional X.509 client certs
