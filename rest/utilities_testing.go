@@ -67,10 +67,6 @@ func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
 	return &rt
 }
 
-func (rt *RestTester) WithTestBucket(testBucket *base.TestBucket) {
-	rt.testBucket = testBucket
-}
-
 func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.tb == nil {
@@ -147,7 +143,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}
 
-	rt.WithTestBucket(testBucket)
+	rt.testBucket = testBucket
 	rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
 	if !rt.noAdminParty {
