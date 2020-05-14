@@ -213,7 +213,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
@@ -228,7 +228,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
@@ -260,7 +260,7 @@ func enableX509ClientCertsInCouchbaseServer(restAPIURL url.URL) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return err
