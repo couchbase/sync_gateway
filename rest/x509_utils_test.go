@@ -26,9 +26,9 @@ import (
 )
 
 const (
-	x509TestFlag        = "SG_TEST_X509"
-	sshTestFlagUsername = "SG_TEST_SSH_USERNAME"
-	sshDefaultUsername  = "root"
+	x509TestFlag            = "SG_TEST_X509"
+	x509TestFlagSSHUsername = "SG_TEST_X509_SSH_USERNAME"
+	x509SSHDefaultUsername  = "root"
 
 	x509CACommonName = "SG Test Root CA"
 )
@@ -112,12 +112,12 @@ type chainCertOpts struct {
 	sanDNSNames []string
 }
 
-// GenerateSGClientCert is a convenience wrapper around generateChainCert for generating SG client certs.
+// GenerateSGClientCert generates an client cert for Sync Gateway to authorize with via X.509.
 func GenerateSGClientCert(t *testing.T, ca *x509.Certificate, caPrivKey *rsa.PrivateKey, couchbaseUsername string, expiry time.Time) (clientPEM, clientKey *bytes.Buffer) {
 	return generateChainCert(t, ca, caPrivKey, chainCertOpts{isClientCert: true, commonName: couchbaseUsername, expiryDate: expiry})
 }
 
-// GenerateCBSNodeCert is a convenience around generateChainCert for generating SG client certs.
+// GenerateCBSNodeCert is a convenience wrapper around generateChainCert for generating SG client certs.
 func GenerateCBSNodeCert(t *testing.T, ca *x509.Certificate, caPrivKey *rsa.PrivateKey, sanIPs []net.IP, sanDNSNames []string) (clientPEM, clientKey *bytes.Buffer) {
 	return generateChainCert(t, ca, caPrivKey, chainCertOpts{isClientCert: false, sanIPs: sanIPs, sanDNSNames: sanDNSNames, expiryDate: time.Now().Add(time.Hour * 24 * 365 * 10)})
 }
@@ -182,17 +182,18 @@ func connStrURLToRESTAPIURL(connstrURL url.URL) url.URL {
 	return connstrURL
 }
 
-// sshUsername returns the configured SSH username
-func sshUsername() string {
-	if u := os.Getenv(sshTestFlagUsername); u != "" {
+// x509SSHUsername returns the configured SSH username to provision X.509 certs to Couchbase Server
+func x509SSHUsername() string {
+	if u := os.Getenv(x509TestFlagSSHUsername); u != "" {
 		return u
 	}
-	return sshDefaultUsername
+	return x509SSHDefaultUsername
 }
 
 // loadCertsIntoCouchbaseServer will upload the given certs into Couchbase Server (via SSH and the REST API)
 func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffer, chainPEMFilepath, pkeyKeyFilepath string) error {
-	sshRemoteHost := sshUsername() + "@" + couchbaseServerURL.Hostname()
+	// Copy node cert and key via SSH
+	sshRemoteHost := x509SSHUsername() + "@" + couchbaseServerURL.Hostname()
 	err := sshCopyFileAsExecutable(chainPEMFilepath, sshRemoteHost, "/opt/couchbase/var/lib/couchbase/inbox")
 	if err != nil {
 		return err
@@ -205,6 +206,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 	}
 	base.Debugf(base.KeyAll, "copied x509 node pkey.key to integration test server")
 
+	// Upload the CA cert via the REST API
 	restAPIURL := connStrURLToRESTAPIURL(couchbaseServerURL)
 	resp, err := http.Post(restAPIURL.String()+"/controller/uploadClusterCA", "application/octet-stream", caPEM)
 	if err != nil {
@@ -220,6 +222,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 	}
 	base.Debugf(base.KeyAll, "uploaded ca.pem to couchbase server")
 
+	// Make CBS read the newly uploaded certs
 	resp, err = http.Post(restAPIURL.String()+"/node/controller/reloadCertificate", "", nil)
 	if err != nil {
 		return err
@@ -265,4 +268,10 @@ func sshCopyFileAsExecutable(sourceFilepath, sshRemoteHost, destinationDirectory
 	}
 
 	return nil
+}
+
+// domainForIPAddr returns a domain name that publicly resolves to the given IP address.
+func domainForIPAddr(ip net.IP) string {
+	// xip.io is a public DNS that resolves an IP subdomain into the given IP address.
+	return ip.String() + ".xip.io"
 }
