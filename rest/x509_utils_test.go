@@ -217,7 +217,7 @@ func connStrURLToRESTAPIURL(connstrURL url.URL) url.URL {
 	// override the scheme for http only
 	connstrURL.Scheme = "http"
 	// set basic auth creds
-	connstrURL.User = url.UserPassword(base.TbpClusterUsername(), base.TbpClusterPassword())
+	connstrURL.User = url.UserPassword(base.TestClusterUsername(), base.TestClusterPassword())
 	// append the http port if not set (e.g. was couchbase:// with no port)
 	if connstrURL.Port() == "" {
 		connstrURL.Host += ":8091"
@@ -390,10 +390,4 @@ func sshCopyFileAsExecutable(sourceFilepath, sshRemoteHost, destinationDirectory
 	}
 
 	return nil
-}
-
-// domainForIPAddr returns a domain name that publicly resolves to the given IP address.
-func domainForIPAddr(ip net.IP) string {
-	// xip.io is a public DNS that resolves an IP subdomain into the given IP address.
-	return ip.String() + ".xip.io"
 }

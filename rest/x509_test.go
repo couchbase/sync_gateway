@@ -35,7 +35,7 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 
 	ca := generateX509CA(t)
 	nodePair := generateX509Node(t, ca, []net.IP{testIP}, nil)
-	sgPair := generateX509SG(t, ca, base.TbpClusterUsername(), time.Now().Add(time.Hour*24))
+	sgPair := generateX509SG(t, ca, base.TestClusterUsername(), time.Now().Add(time.Hour*24))
 	teardownFn := saveX509Files(t, ca, nodePair, sgPair)
 	defer teardownFn()
 
@@ -89,7 +89,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 
 	ca := generateX509CA(t)
 	nodePair := generateX509Node(t, ca, nil, []string{testURL.Hostname()})
-	sgPair := generateX509SG(t, ca, base.TbpClusterUsername(), time.Now().Add(time.Hour*24))
+	sgPair := generateX509SG(t, ca, base.TestClusterUsername(), time.Now().Add(time.Hour*24))
 	teardownFn := saveX509Files(t, ca, nodePair, sgPair)
 	defer teardownFn()
 

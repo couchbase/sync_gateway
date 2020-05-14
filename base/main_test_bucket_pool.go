@@ -21,10 +21,10 @@ import (
 var GTestBucketPool *TestBucketPool
 
 const (
-	tbpEnvClusterUsername     = "SG_TEST_USERNAME"
-	tbpDefaultClusterUsername = DefaultCouchbaseAdministrator
-	tbpEnvClusterPassword     = "SG_TEST_PASSWORD"
-	tbpDefaultClusterPassword = DefaultCouchbasePassword
+	envTestClusterUsername     = "SG_TEST_USERNAME"
+	DefaultTestClusterUsername = DefaultCouchbaseAdministrator
+	envTestClusterPassword     = "SG_TEST_PASSWORD"
+	DefaultTestClusterPassword = DefaultCouchbasePassword
 
 	tbpBucketNamePrefix = "sg_int_"
 
@@ -108,7 +108,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		bucketReadierQueue:     make(chan tbpBucketName, numBuckets),
 		bucketReadierWaitGroup: &sync.WaitGroup{},
 		cluster:                cluster,
-		clusterMgr:             cluster.Manager(TbpClusterUsername(), TbpClusterPassword()),
+		clusterMgr:             cluster.Manager(TestClusterUsername(), TestClusterPassword()),
 		ctxCancelFunc:          ctxCancelFunc,
 		defaultBucketSpec:      tbpDefaultBucketSpec,
 		preserveBuckets:        preserveBuckets,
@@ -634,8 +634,8 @@ func tbpCluster(server string) *gocb.Cluster {
 	}
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: TbpClusterUsername(),
-		Password: TbpClusterPassword(),
+		Username: TestClusterUsername(),
+		Password: TestClusterPassword(),
 	})
 	if err != nil {
 		log.Fatalf("Couldn't authenticate with %q: %v", server, err)
@@ -648,8 +648,8 @@ var tbpDefaultBucketSpec = BucketSpec{
 	Server:          UnitTestUrl(),
 	CouchbaseDriver: GoCBCustomSGTranscoder,
 	Auth: TestAuthenticator{
-		Username: TbpClusterUsername(),
-		Password: TbpClusterPassword(),
+		Username: TestClusterUsername(),
+		Password: TestClusterPassword(),
 	},
 	UseXattrs: TestUseXattrs(),
 }
@@ -703,19 +703,19 @@ func tbpVerbose() bool {
 	return verbose
 }
 
-// TbpClusterUsername returns the configured cluster username.
-func TbpClusterUsername() string {
-	username := tbpDefaultClusterUsername
-	if envClusterUsername := os.Getenv(tbpEnvClusterUsername); envClusterUsername != "" {
+// TestClusterUsername returns the configured cluster username.
+func TestClusterUsername() string {
+	username := DefaultTestClusterUsername
+	if envClusterUsername := os.Getenv(envTestClusterUsername); envClusterUsername != "" {
 		username = envClusterUsername
 	}
 	return username
 }
 
-// TbpClusterPassword returns the configured cluster password.
-func TbpClusterPassword() string {
-	password := tbpDefaultClusterPassword
-	if envClusterPassword := os.Getenv(tbpEnvClusterPassword); envClusterPassword != "" {
+// TestClusterPassword returns the configured cluster password.
+func TestClusterPassword() string {
+	password := DefaultTestClusterPassword
+	if envClusterPassword := os.Getenv(envTestClusterPassword); envClusterPassword != "" {
 		password = envClusterPassword
 	}
 	return password
