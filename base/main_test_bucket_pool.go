@@ -187,10 +187,16 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 
 		atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 		openedStart := time.Now()
+		bucketClosed := &AtomicBool{}
 		return b, getBucketSpec(tbpBucketName(b.GetName())), func() {
+			if !bucketClosed.CompareAndSwap(false, true) {
+				tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
+				return
+			}
+
+			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
 			atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 			atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
-			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
 			b.Close()
 		}
 	}
@@ -216,10 +222,16 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
+	bucketClosed := &AtomicBool{}
 	return gocbBucket, getBucketSpec(tbpBucketName(gocbBucket.GetName())), func() {
+		if !bucketClosed.CompareAndSwap(false, true) {
+			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
+			return
+		}
+
+		tbp.Logf(ctx, "Teardown called - closing bucket")
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(bucketOpenStart).Nanoseconds())
-		tbp.Logf(ctx, "Teardown called - closing bucket")
 		gocbBucket.Close()
 
 		if tbp.preserveBuckets && t.Failed() {
