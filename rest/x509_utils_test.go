@@ -219,7 +219,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
+		return fmt.Errorf("couldn't uploadClusterCA: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
 	}
 	base.Debugf(base.KeyAll, "uploaded ca.pem to Couchbase Server")
 
@@ -234,7 +234,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, caPEM *bytes.Buffe
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
+		return fmt.Errorf("couldn't reloadCertificate: expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
 	}
 	base.Debugf(base.KeyAll, "triggered reload of certificates on Couchbase Server")
 
@@ -265,8 +265,8 @@ func enableX509ClientCertsInCouchbaseServer(restAPIURL url.URL) error {
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("expected %d status code but got %d: %s", http.StatusOK, resp.StatusCode, respBody)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("couldn't configure clientCertAuth: expected %d or %d status codes but got %d: %s", http.StatusOK, http.StatusAccepted, resp.StatusCode, respBody)
 	}
 	base.Debugf(base.KeyAll, "enabled X.509 client certs in Couchbase Server")
 
