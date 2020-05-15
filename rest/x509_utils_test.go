@@ -289,8 +289,8 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *
 	return nil
 }
 
+// couchbaseNodeConfiguredHostname returns the Couchbase node name for the given URL.
 func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
-	// Configure CBS to enable optional X.509 client certs
 	resp, err := http.Get(restAPIURL.String() + "/pools/default/nodeServices")
 	if err != nil {
 		return "", err
