@@ -21,8 +21,8 @@ func TestReplicationAPI(t *testing.T) {
 
 	replicationConfig := db.ReplicationConfig{
 		ID:        "replication1",
-		Remote:    base.StringPtr("http://remote:4984/db"),
-		Direction: base.StringPtr("Pull"),
+		Remote:    "http://remote:4984/db",
+		Direction: "Pull",
 	}
 
 	// PUT replication
@@ -36,8 +36,8 @@ func TestReplicationAPI(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err)
 	assert.Equal(t, configResponse.ID, "replication1")
-	assert.Equal(t, *configResponse.Remote, "http://remote:4984/db")
-	assert.Equal(t, *configResponse.Direction, "Pull")
+	assert.Equal(t, configResponse.Remote, "http://remote:4984/db")
+	assert.Equal(t, configResponse.Direction, "Pull")
 
 	// POST replication
 	replicationConfig.ID = "replication2"
@@ -52,9 +52,9 @@ func TestReplicationAPI(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, configResponse.ID, "replication2")
 	require.NotNil(t, configResponse.Remote)
-	assert.Equal(t, *configResponse.Remote, "http://remote:4984/db")
+	assert.Equal(t, configResponse.Remote, "http://remote:4984/db")
 	require.NotNil(t, configResponse.Direction)
-	assert.Equal(t, *configResponse.Direction, "Pull")
+	assert.Equal(t, configResponse.Direction, "Pull")
 
 	// GET all replications
 	response = rt.SendAdminRequest("GET", "/db/_replication/", "")
@@ -110,13 +110,13 @@ func TestValidateReplicationAPI(t *testing.T) {
 		},
 		{
 			name:                  "Missing Direction",
-			config:                db.ReplicationConfig{ID: "replication1", Remote: base.StringPtr("http://remote:4985/db")},
+			config:                db.ReplicationConfig{ID: "replication1", Remote: "http://remote:4985/db"},
 			expectedResponseCode:  http.StatusBadRequest,
 			expectedErrorContains: "direction must be specified",
 		},
 		{
 			name:                  "Valid Replication",
-			config:                db.ReplicationConfig{ID: "replication1", Remote: base.StringPtr("http://remote:4985/db"), Direction: base.StringPtr("pull")},
+			config:                db.ReplicationConfig{ID: "replication1", Remote: "http://remote:4985/db", Direction: "pull"},
 			expectedResponseCode:  http.StatusCreated,
 			expectedErrorContains: "",
 		},

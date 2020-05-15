@@ -604,17 +604,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
 		}
 		replicationConfig.ID = replicationID
-		if validateErr := replicationConfig.ValidateNewReplication(true); validateErr != nil {
+		if validateErr := replicationConfig.ValidateReplication(true); validateErr != nil {
 			return nil, validateErr
 		}
 	}
 
-	// Validation was successful, can upsert replications
-	for _, replicationConfig := range config.Replications {
-		_, replicationErr := dbcontext.SGReplicateMgr.UpsertReplication(replicationConfig)
-		if replicationErr != nil {
-			return nil, replicationErr
-		}
+	// Validation was successful, can update replications
+	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications)
+	if replicationErr != nil {
+		return nil, replicationErr
 	}
 
 	dbcontext.ExitChanges = make(chan struct{})

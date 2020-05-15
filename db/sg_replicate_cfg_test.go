@@ -414,60 +414,61 @@ func TestUpsertReplicationConfig(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
 
 	type rebalanceTest struct {
-		name           string             // Test name
-		existingConfig *ReplicationConfig // Initial replication definition
-		updatedConfig  *ReplicationConfig // Initial replication assignment
-		expectedConfig *ReplicationConfig // Minimum replications per node after rebalance
+		name           string                   // Test name
+		existingConfig *ReplicationConfig       // Initial replication definition
+		updatedConfig  *ReplicationUpsertConfig // Initial replication assignment
+		expectedConfig *ReplicationConfig       // Minimum replications per node after rebalance
 	}
 	testCases := []rebalanceTest{
 		{
 			name: "modify string parameter",
 			existingConfig: &ReplicationConfig{
 				ID:        "foo",
-				Remote:    base.StringPtr("remote"),
-				Direction: base.StringPtr("pull"),
+				Remote:    "remote",
+				Direction: "pull",
 			},
-			updatedConfig: &ReplicationConfig{
+			updatedConfig: &ReplicationUpsertConfig{
 				Direction: base.StringPtr("push"),
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:        "foo",
-				Remote:    base.StringPtr("remote"),
-				Direction: base.StringPtr("push"),
+				Remote:    "remote",
+				Direction: "push",
 			},
 		},
 		{
 			name: "remove string parameter",
 			existingConfig: &ReplicationConfig{
 				ID:                   "foo",
-				Remote:               base.StringPtr("remote"),
-				Direction:            base.StringPtr("pull"),
-				ConflictResolutionFn: base.StringPtr("func(){}"),
+				Remote:               "remote",
+				Direction:            "pull",
+				ConflictResolutionFn: "func(){}",
 			},
-			updatedConfig: &ReplicationConfig{
+			updatedConfig: &ReplicationUpsertConfig{
 				ConflictResolutionFn: base.StringPtr(""),
 			},
 			expectedConfig: &ReplicationConfig{
-				ID:        "foo",
-				Remote:    base.StringPtr("remote"),
-				Direction: base.StringPtr("pull"),
+				ID:                   "foo",
+				Remote:               "remote",
+				Direction:            "pull",
+				ConflictResolutionFn: "",
 			},
 		},
 		{
 			name: "switch QueryParams type",
 			existingConfig: &ReplicationConfig{
 				ID:          "foo",
-				Remote:      base.StringPtr("remote"),
-				Direction:   base.StringPtr("pull"),
+				Remote:      "remote",
+				Direction:   "pull",
 				QueryParams: []string{"ABC"},
 			},
-			updatedConfig: &ReplicationConfig{
+			updatedConfig: &ReplicationUpsertConfig{
 				QueryParams: map[string]interface{}{"ABC": true},
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:          "foo",
-				Remote:      base.StringPtr("remote"),
-				Direction:   base.StringPtr("pull"),
+				Remote:      "remote",
+				Direction:   "pull",
 				QueryParams: map[string]interface{}{"ABC": true},
 			},
 		},
@@ -475,20 +476,20 @@ func TestUpsertReplicationConfig(t *testing.T) {
 			name: "modify all",
 			existingConfig: &ReplicationConfig{
 				ID:                     "foo",
-				Remote:                 base.StringPtr("a"),
-				Direction:              base.StringPtr("a"),
-				ConflictResolutionType: base.StringPtr("a"),
-				ConflictResolutionFn:   base.StringPtr("a"),
-				PurgeOnRemoval:         base.BoolPtr(true),
-				DeltaSyncEnabled:       base.BoolPtr(true),
-				MaxBackoff:             base.IntPtr(5),
-				State:                  base.StringPtr("a"),
-				Continuous:             base.BoolPtr(true),
-				Filter:                 base.StringPtr("a"),
+				Remote:                 "a",
+				Direction:              "a",
+				ConflictResolutionType: "a",
+				ConflictResolutionFn:   "a",
+				PurgeOnRemoval:         true,
+				DeltaSyncEnabled:       true,
+				MaxBackoff:             5,
+				State:                  "a",
+				Continuous:             true,
+				Filter:                 "a",
 				QueryParams:            []interface{}{"ABC"},
-				Cancel:                 base.BoolPtr(true),
+				Cancel:                 true,
 			},
-			updatedConfig: &ReplicationConfig{
+			updatedConfig: &ReplicationUpsertConfig{
 				ID:                     "foo",
 				Remote:                 base.StringPtr("b"),
 				Direction:              base.StringPtr("b"),
@@ -505,18 +506,18 @@ func TestUpsertReplicationConfig(t *testing.T) {
 			},
 			expectedConfig: &ReplicationConfig{
 				ID:                     "foo",
-				Remote:                 base.StringPtr("b"),
-				Direction:              base.StringPtr("b"),
-				ConflictResolutionType: base.StringPtr("b"),
-				ConflictResolutionFn:   base.StringPtr("b"),
-				PurgeOnRemoval:         base.BoolPtr(false),
-				DeltaSyncEnabled:       base.BoolPtr(false),
-				MaxBackoff:             base.IntPtr(10),
-				State:                  base.StringPtr("b"),
-				Continuous:             base.BoolPtr(false),
-				Filter:                 base.StringPtr("b"),
+				Remote:                 "b",
+				Direction:              "b",
+				ConflictResolutionType: "b",
+				ConflictResolutionFn:   "b",
+				PurgeOnRemoval:         false,
+				DeltaSyncEnabled:       false,
+				MaxBackoff:             10,
+				State:                  "b",
+				Continuous:             false,
+				Filter:                 "b",
 				QueryParams:            []interface{}{"DEF"},
-				Cancel:                 base.BoolPtr(false),
+				Cancel:                 false,
 			},
 		},
 	}

@@ -845,7 +845,7 @@ func (h *handler) getReplication() error {
 
 func (h *handler) putReplication() error {
 	body, _ := h.readBody()
-	replicationConfig := &db.ReplicationConfig{}
+	replicationConfig := &db.ReplicationUpsertConfig{}
 	if err := base.JSONUnmarshal(body, replicationConfig); err != nil {
 		return err
 	}
@@ -858,10 +858,6 @@ func (h *handler) putReplication() error {
 		replicationConfig.ID = replicationID
 	}
 
-	validateErr := replicationConfig.ValidateNewReplication(false)
-	if validateErr != nil {
-		return validateErr
-	}
 	created, err := h.db.SGReplicateMgr.UpsertReplication(replicationConfig)
 	if err != nil {
 		return err
