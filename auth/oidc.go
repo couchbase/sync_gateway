@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	discoveryConfigPath = "/.well-known/openid-configuration"
+	OIDCDiscoveryConfigPath = "/.well-known/openid-configuration"
 )
 
 var OIDCDiscoveryRetryWait = 500 * time.Millisecond
@@ -226,7 +226,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*oidc.Pr
 
 	// If discovery URL is empty, use the standard discovery URL
 	if discoveryURL == "" {
-		discoveryURL = strings.TrimSuffix(op.Issuer, "/") + discoveryConfigPath
+		discoveryURL = strings.TrimSuffix(op.Issuer, "/") + OIDCDiscoveryConfigPath
 	}
 
 	base.Debugf(base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
