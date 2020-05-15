@@ -448,7 +448,7 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 		couchbase.SetKeyFile(spec.Keypath)
 		// TODO: x.509 not supported for cbgt with cbdatasource until cbAuth supports
 		// a way to use NoPasswordAuthHandler, and custom options.Connect
-		// auth = NoPasswordAuthHandler{handler: spec.Auth}
+		// auth = NoPasswordAuthHandler{Handler: spec.Auth}
 	}
 	if spec.CACertPath != "" {
 		couchbase.SetRootFile(spec.CACertPath)

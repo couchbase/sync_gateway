@@ -198,11 +198,11 @@ func (r *DCPLoggingReceiver) SnapshotStart(vbucketId uint16,
 
 // NoPasswordAuthHandler is used for client cert-based auth by cbdatasource
 type NoPasswordAuthHandler struct {
-	handler AuthHandler
+	Handler AuthHandler
 }
 
 func (nph NoPasswordAuthHandler) GetCredentials() (username string, password string, bucketname string) {
-	_, _, bucketname = nph.handler.GetCredentials()
+	_, _, bucketname = nph.Handler.GetCredentials()
 	return "", "", bucketname
 }
 
@@ -285,7 +285,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	if spec.Certpath != "" && spec.Keypath != "" {
 		couchbase.SetCertFile(spec.Certpath)
 		couchbase.SetKeyFile(spec.Keypath)
-		auth = NoPasswordAuthHandler{handler: spec.Auth}
+		auth = NoPasswordAuthHandler{Handler: spec.Auth}
 	}
 	if spec.CACertPath != "" {
 		couchbase.SetRootFile(spec.CACertPath)
