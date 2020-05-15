@@ -270,22 +270,19 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	}
 	tests := []test{
 		{
-			// When multiple providers are defined, default provider is specified and the current provider is
-			// not default, then current provider should be added to the generated OpenID Connect callback URL.
-			name:         "oidc default provider specified but current provider is not default",
+			// Provider should be included in callback URL when the requested provider is not default.
+			name:         "requested provider is not default",
 			authURL:      "/db/${path}?provider=bar&offline=true",
 			wantProvider: "bar",
 			issuer:       "${path}/bar",
 		}, {
-			// When multiple providers are defined, default provider is specified and the current provider is
-			// default, then current provider should NOT be added to the generated OpenID Connect callback URL.
-			name:    "oidc default provider specified and current provider is default",
+			// Provider should NOT be included in callback URL when the requested provider is not default.
+			name:    "requested provider is default",
 			authURL: "/db/${path}?provider=foo&offline=true",
 			issuer:  "${path}/foo",
 		}, {
-			// When multiple providers are defined, default provider is specified and no current provider is
-			// provided, then provider name should NOT be added to the generated OpenID Connect callback URL.
-			name:    "oidc default provider specified with no current provider",
+			// Provider should NOT be included in callback URL when no provider is requested.
+			name:    "no provider is requested",
 			authURL: "/db/${path}?offline=true",
 			issuer:  "${path}/foo",
 		},
@@ -293,9 +290,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			providers := auth.OIDCProviderMap{
-				"foo": &auth.OIDCProvider{Name: "foo", ClientID: base.StringPointer("baz"), ValidationKey: base.StringPointer("qux")},
-				"bar": &auth.OIDCProvider{Name: "bar", ClientID: base.StringPointer("baz"), ValidationKey: base.StringPointer("qux")}}
+			providers := auth.OIDCProviderMap{"foo": mockProvider("foo"), "bar": mockProvider("bar")}
 			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPointer("foo")}
 			rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &openIDConnectOptions}}
 			rt := NewRestTester(t, &rtConfig)
@@ -373,21 +368,32 @@ func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 	}
 }
 
+// Returns a new OIDCProvider with IncludeAccessToken flags enabled.
+func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:               name,
+		ClientID:           base.StringPointer("baz"),
+		UserPrefix:         name,
+		ValidationKey:      base.StringPointer("qux"),
+		IncludeAccessToken: true,
+	}
+}
+
 // Checks End to end OpenID Connect Authorization Code flow.
 func TestOpenIDConnectAuth(t *testing.T) {
 	type test struct {
-		name              string
-		providers         auth.OIDCProviderMap
-		defaultProvider   string
-		authURL           string
-		forceAuthError    forceError
-		forceRefreshError forceError
+		name                string
+		providers           auth.OIDCProviderMap
+		defaultProvider     string
+		authURL             string
+		forceAuthError      forceError
+		forceRefreshError   forceError
+		requireExistingUser bool
 	}
 	tests := []test{
 		{
-			// Successful new user authentication when auto registration is enabled and a single provider
-			// is configured through providers configuration. Explicitly specified to include access token in
-			// token response.
+			// Successful new user authentication against single provider
+			// with auto registration and access token enabled.
 			name: "successful user registration against single provider",
 			providers: auth.OIDCProviderMap{
 				"foo": mockProviderWithRegisterWithAccessToken("foo"),
@@ -395,9 +401,8 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 		}, {
-			// Unsuccessful new user authentication when auto registration is enabled and a single provider
-			// is configured through providers configuration. Explicitly specified to include access token in
-			// token response.
+			// Unsuccessful new user authentication against single provider with
+			// auto registration disabled.
 			name: "unsuccessful user registration against single provider",
 			providers: auth.OIDCProviderMap{
 				"foo": mockProvider("foo"),
@@ -410,8 +415,8 @@ func TestOpenIDConnectAuth(t *testing.T) {
 				expectedErrorMessage: "Invalid login",
 			},
 		}, {
-			// Make sure user registration in successful when IncludeAccessToken is false in
-			// providers configuration.
+			// Successful new user authentication against single provider with auto
+			// registration enabled but access token NOT.
 			name: "successful user registration against single provider without access token",
 			providers: auth.OIDCProviderMap{
 				"foo": mockProviderWithRegister("foo"),
@@ -419,8 +424,8 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 		}, {
-			// Make sure user registration and authentication is successful when multiple
-			// providers are configured with auto registration enabled.
+			// Successful new user authentication against multiple providers
+			// with auto registration and access token enabled.
 			name: "successful user registration against multiple providers",
 			providers: auth.OIDCProviderMap{
 				"foo": mockProviderWithRegisterWithAccessToken("foo"),
@@ -429,8 +434,8 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			defaultProvider: "foo",
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 		}, {
-			// Make sure user registration is unsuccessful when a new user authenticates
-			// against auto registration option disabled through providers configuration.
+			// Unsuccessful new user authentication against multiple providers with
+			// auto registration disabled.
 			name: "unsuccessful user registration against multiple providers",
 			providers: auth.OIDCProviderMap{
 				"foo": mockProvider("foo"),
@@ -444,10 +449,8 @@ func TestOpenIDConnectAuth(t *testing.T) {
 				expectedErrorMessage: "Invalid login",
 			},
 		}, {
-			// Make sure no access token, token type and expiry time are not included in both
-			// authentication response and token refresh response if IncludeAccessToken option
-			// is not specified in providers configuration. But both authentication refresh token
-			// request should be successful.
+			// Successful new user authentication against multiple providers with auto
+			// registration enabled but access token NOT.
 			name: "successful user registration against multiple provider without access token",
 			providers: auth.OIDCProviderMap{
 				"foo": mockProviderWithRegister("foo"),
@@ -591,6 +594,40 @@ func TestOpenIDConnectAuth(t *testing.T) {
 				expectedErrorCode:    http.StatusInternalServerError,
 				expectedErrorMessage: "",
 			},
+		}, {
+			name: "successful registered user authentication against single provider",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProvider("foo"),
+			},
+			defaultProvider:     "foo",
+			authURL:             "/db/_oidc?provider=foo&offline=true",
+			requireExistingUser: true,
+		}, {
+			name: "successful registered user authentication against single provider with access token enabled",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithAccessToken("foo"),
+			},
+			defaultProvider:     "foo",
+			authURL:             "/db/_oidc?provider=foo&offline=true",
+			requireExistingUser: true,
+		}, {
+			name: "successful registered user authentication against multiple providers",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProvider("foo"),
+				"bar": mockProvider("bar"),
+			},
+			defaultProvider:     "foo",
+			authURL:             "/db/_oidc?provider=foo&offline=true",
+			requireExistingUser: true,
+		}, {
+			name: "successful registered user authentication against multiple providers with access token enabled",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithAccessToken("foo"),
+				"bar": mockProviderWithAccessToken("bar"),
+			},
+			defaultProvider:     "foo",
+			authURL:             "/db/_oidc?provider=foo&offline=true",
+			requireExistingUser: true,
 		},
 	}
 
@@ -607,6 +644,15 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &opts}}
 			restTester := NewRestTester(t, &restTesterConfig)
 			defer restTester.Close()
+
+			// Create the user first if the test requires a registered user.
+			if tc.requireExistingUser {
+				body := `{"name":"foo_noah", "password":"pass", "admin_channels":["foo"]}`
+				userResponse := restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", body)
+				assertStatus(t, userResponse, http.StatusCreated)
+				userResponse = restTester.SendAdminRequest(http.MethodGet, "/db/_user/foo_noah", "")
+				assertStatus(t, userResponse, http.StatusOK)
+			}
 
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
