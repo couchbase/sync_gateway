@@ -8,7 +8,7 @@
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
-  
+
   <default remote="couchbase" revision="master"/>
 
   <!-- Build Scripts (required on CI servers) -->
@@ -19,10 +19,10 @@
     <annotation name="RELEASE" value="@RELEASE@" keep="true"/>
   </project>
 
-  
+
   <!-- Sync Gateway -->
   <project name="sync_gateway" path="godeps/src/github.com/couchbase/sync_gateway" remote="couchbase"/>
-  
+
   <!-- Dependencies for Sync Gateway (and possibly Sync Gateway Accel too) -->
 
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
@@ -42,7 +42,7 @@
 
   <project name="jsonx" path="godeps/src/gopkg.in/couchbaselabs/jsonx.v1" remote="couchbaselabs" revision="5b7baa20429a46a5543ee259664cc86502738cad"/>
 
-  <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="8f9a894d174b836c6362de9af75545cf585fc278"/>
+  <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="3c902e3ed6c25b53d53f6a9d26cc4f7a85c0fcf8"/>
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="db06807997e6f778fe135571140a0c4f1f59723c"/>
 
@@ -80,8 +80,11 @@
 
   <project name="osext" path="godeps/src/github.com/kardianos/osext" remote="couchbasedeps" revision="29ae4ffbc9a6fe9fb2bc5029050ce6996ea1d3bc"/>
 
-  <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="couchbasedeps" revision="5aa9381f6e998aa16cc96b4347d33dcc29792864"/>
+  <!--OpenID Connect Dependencies-->
+  <project name="go-oidc" path="godeps/src/github.com/coreos/go-oidc" remote="couchbasedeps" revision="8d771559cf6e5111c9b9159810d0e4538e7cdc82"/>
+  <project name="oauth2" path="godeps/src/golang.org/x/oauth2" remote="couchbasedeps" revision="bf48bf16ab8d622ce64ec6ce98d2c98f916b6303"/>
   <project name="go-jose" path="godeps/src/gopkg.in/square/go-jose.v2" remote="couchbasedeps" revision="4ef0f1b175ccd65472d154e1207c4d7b8102545f"/>
+  <project name="cachecontrol" path="godeps/src/github.com/pquerna/cachecontrol" remote="couchbasedeps" revision="1555304b9b35fdd2b425bccf1a5613677705e7d0"/>
 
   <project name="go-systemd" path="godeps/src/github.com/coreos/go-systemd" remote="couchbasedeps" revision="1d9051fe7a349daf6dac904c0b277c3520c09368"/>
 

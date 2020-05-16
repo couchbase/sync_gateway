@@ -156,12 +156,12 @@ func (s *mockAuthServer) discoveryHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	issuer := s.options.issuer
-	metadata := auth.OidcProviderConfiguration{
-		Issuer:                  issuer,
-		TokenEndpoint:           issuer + "/token",
-		JwksUri:                 issuer + "/oauth2/v3/certs",
-		AuthEndpoint:            issuer + "/auth",
-		IDTokenSigningAlgValues: []string{"RS256"},
+	metadata := auth.ProviderMetadata{
+		Issuer:                           issuer,
+		TokenEndpoint:                    issuer + "/token",
+		JwksUri:                          issuer + "/oauth2/v3/certs",
+		AuthorizationEndpoint:            issuer + "/auth",
+		IdTokenSigningAlgValuesSupported: []string{"RS256"},
 	}
 	renderJSON(w, r, http.StatusOK, metadata)
 }
@@ -339,7 +339,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 func mockProvider(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ClientID:      base.StringPtr("baz"),
+		ClientID:      "baz",
 		UserPrefix:    name,
 		ValidationKey: base.StringPtr("qux"),
 	}
@@ -349,7 +349,7 @@ func mockProvider(name string) *auth.OIDCProvider {
 func mockProviderWithRegister(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ClientID:      base.StringPtr("baz"),
+		ClientID:      "baz",
 		UserPrefix:    name,
 		ValidationKey: base.StringPtr("qux"),
 		Register:      true,
@@ -360,7 +360,7 @@ func mockProviderWithRegister(name string) *auth.OIDCProvider {
 func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
-		ClientID:           base.StringPtr("baz"),
+		ClientID:           "baz",
 		UserPrefix:         name,
 		ValidationKey:      base.StringPtr("qux"),
 		Register:           true,
@@ -372,7 +372,7 @@ func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
-		ClientID:           base.StringPtr("baz"),
+		ClientID:           "baz",
 		UserPrefix:         name,
 		ValidationKey:      base.StringPtr("qux"),
 		IncludeAccessToken: true,
@@ -547,7 +547,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 			forceAuthError: forceError{
 				errorType:            callbackTokenExchangeErr,
-				expectedErrorCode:    http.StatusInternalServerError,
+				expectedErrorCode:    http.StatusUnauthorized,
 				expectedErrorMessage: "",
 			},
 		}, {
@@ -561,7 +561,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 			forceAuthError: forceError{
 				errorType:            callbackNoIDTokenErr,
-				expectedErrorCode:    http.StatusInternalServerError,
+				expectedErrorCode:    http.StatusUnauthorized,
 				expectedErrorMessage: "",
 			},
 		}, {
@@ -591,7 +591,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 			forceRefreshError: forceError{
 				errorType:            refreshNoIDTokenErr,
-				expectedErrorCode:    http.StatusInternalServerError,
+				expectedErrorCode:    http.StatusUnauthorized,
 				expectedErrorMessage: "",
 			},
 		}, {

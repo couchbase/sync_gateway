@@ -13,28 +13,37 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
-	"strconv"
-
-	"github.com/coreos/go-oidc/jose"
-	"github.com/coreos/go-oidc/key"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"gopkg.in/square/go-jose.v2"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-//This is the private RSA Key that will be used to sign all tokens
+// This is the private RSA Key that will be used to sign all tokens
 const base64EncodedPrivateKey = "MIICXQIBAAKBgQC5HMLzcjKXQhU39ItitqV9EcSgq7SVmt9LRwF+sNgbJOjciJhIJNVYZJZ4tY8aN9lbaMxObuH5gu6B7qlvz5ghy8LD9HRqClu/GSJVW4pQTYffKNAVpuoJIVnjk1DScvSpnL5AM9Qq0MOAM/H9urTIUwMk5JJhD8RXJIvENbJAIQIDAQABAoGAW4PsnY6HlGAHPXKYtmS1y+9M1mINFSlL21tvUcL8E+9bcCvXnVMYZmrUOTkJVlzmCFr3Jo+LCF/CqlnjSnPHMZal1/uObbuH9prumBMK48R6V/0JWxRrtjgw0r/LVwI4BBMhO0BnMCncmuOCbV1xGe8WqwAwiHrSG4zuixJwDkECQQDQO2Yzubfzd3SGdcQVydyUD1cSGd0RvCyUwAJQJyif6MkFrSE2DOduNW1gaknOLIGESBjoGnF+nSF3XcFRloWvAkEA45Ojx0CgkJbHc+m7Gr7hlpgJvLC4iX6vo64lpos0pw9eCW9RCmasjtPR2HtOiU4QssmBYD+8qBPxizgwJD3bLwJAeZO0wE6W0FfWeQsZSX9qgifStobTRB+SB+dzckjqtzK6682BroUqOnaHPdvQ68egdxOBN0L5MOudNoxO6svvkQJBAI+YMNcgqC+Tc/ZnnG+b0au78yjkOQxIq3qT/52+aFKhF6zMWE4/ytG0RcxawYtRfqfRDZk1nkxPiTFXGslDXnECQQCdqQV9HRBPoUXI2sX1zPpaMxLQUS1QqpSAN4fQwybXnxbPsHiPFmkkxLjl6qZaPE+m5HVo2QKAC2EBv5JVw26g"
 
 const (
 	testProviderKeyIdentifier = "sync_gateway_oidc_test_provider" // Identifier for test provider private keys
 	testProviderAud           = "sync_gateway"                    // Audience for test provider
 	defaultIdTokenTTL         = 3600                              // Default ID token expiry
+
+	// Keys to access values from user consent form.
+	formKeyUsername      = "username"
+	formKeyTokenTTL      = "tokenttl"
+	formKeyAuthenticated = "authenticated"
+	formKeyRefreshToken  = "refresh_token"
+
+	// Headers
+	headerLocation = "Location"
 )
 
 type TokenRequestType uint8
@@ -46,12 +55,13 @@ const (
 
 var testProviderAudiences = []string{testProviderAud} // Audiences in array format for test provider validation
 
-//This is the HTML template used to display the testing OP internal authentication form
-const login_html = `
+// This is the HTML template used to display the testing OP internal authentication form
+const loginHtml = `
 <h1>{{.Title}}</h1>
-<div>This OIDC test provider can be used in development or test to simulate an OIDC Provider service.<br>
-This provider is enabled per database by adding the following database proeprties to the Sync Gateway config
-<pre>
+<div>
+   This OIDC test provider can be used in development or test to simulate an OIDC Provider service.<br>
+   This provider is enabled per database by adding the following database properties to the Sync Gateway config
+   <pre>
 "oidc": {
   "default_provider":"sync_gateway",
   "providers": {
@@ -70,15 +80,17 @@ This provider is enabled per database by adding the following database proeprtie
 </pre>
 </div>
 <div>
-To simulate a successful user authentication, enter a username and click "Return a valid authorization code for this user".<br>
-To simulate a failed user authentication, enter a username and click "Return an authorization error for this user".<br><br><br><br>
+   To simulate a successful user authentication, enter a username and click "Return a valid authorization code for this user".<br>
+   To simulate a failed user authentication, enter a username and click "Return an authorization error for this user".<br><br><br><br>
 </div>
 <form action="authenticate?{{.Query}}" method="POST" enctype="multipart/form-data">
-    <div>Username:<input type="text" name="username" cols="80"></div>
-    <div>ID Token TTL (seconds):<input type="text" name="tokenttl" cols="30" value="3600"></div>
-    <div><input type="checkbox" name="offline" value="offlineAccess">Allow Offline Access<div>
-    <div><input type="submit" name="authenticated" value="Return a valid authorization code for this user"></div>
-    <div><input type="submit" name="notauthenticated" value="Return an authorization error for this user"></div>
+   <div>Username:<input type="text" name="username" cols="80"></div>
+   <div>ID Token TTL (seconds):<input type="text" name="tokenttl" cols="30" value="3600"></div>
+   <div>
+   <input type="checkbox" name="offline" value="offlineAccess">Allow Offline Access
+   <div>
+   <div><input type="submit" name="authenticated" value="Return a valid authorization code for this user"></div>
+   <div><input type="submit" name="notauthenticated" value="Return an authorization error for this user"></div>
 </form>
 `
 
@@ -93,7 +105,7 @@ type AuthState struct {
 	Scopes      map[string]struct{}
 }
 
-var authCodeTokenMap map[string]AuthState = make(map[string]AuthState)
+var authCodeTokenMap = make(map[string]AuthState)
 
 /*
  * Returns the OpenID provider configuration info
@@ -106,14 +118,14 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	issuerUrl := issuerUrl(h)
 	base.Debugf(base.KeyAuth, "handleOidcProviderConfiguration issuerURL = %s", issuerUrl)
 
-	config := &auth.OidcProviderConfiguration{
+	config := &auth.ProviderMetadata{
 		Issuer:                            issuerUrl,
-		AuthEndpoint:                      fmt.Sprintf("%s/%s", issuerUrl, "authorize"),
+		AuthorizationEndpoint:             fmt.Sprintf("%s/%s", issuerUrl, "authorize"),
 		TokenEndpoint:                     fmt.Sprintf("%s/%s", issuerUrl, "token"),
 		JwksUri:                           fmt.Sprintf("%s/%s", issuerUrl, "certs"),
 		ResponseTypesSupported:            []string{"code"},
 		SubjectTypesSupported:             []string{"public"},
-		IDTokenSigningAlgValues:           []string{"RS256"},
+		IdTokenSigningAlgValuesSupported:  []string{"RS256"},
 		ScopesSupported:                   []string{"openid", "email", "profile"},
 		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
 		ClaimsSupported:                   []string{"email", "sub", "exp", "iat", "iss", "aud", "nickname"},
@@ -148,7 +160,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	base.Infof(base.KeyAuth, "handleOidcTestProviderAuthorize() raw authorize request raw query params = %v", requestParams)
 
-	scope := h.getQueryValues().Get("scope")
+	scope := h.getQueryValues().Get(requestParamScope)
 	if scope == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "missing scope parameter")
 	}
@@ -160,7 +172,7 @@ func (h *handler) handleOidcTestProviderAuthorize() error {
 
 	p := &Page{Title: "Oidc Test Provider", Query: requestParams}
 	t := template.New("Test Login")
-	if t, err := t.Parse(login_html); err != nil {
+	if t, err := t.Parse(loginHtml); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, err.Error())
 	} else {
 		err := t.Execute(h.response, p)
@@ -208,7 +220,7 @@ func (h *handler) handleOidcTestProviderToken() error {
 
 	base.Infof(base.KeyAuth, "handleOidcTestProviderToken() called")
 
-	//determine the grant_type being requested
+	// determine the grant_type being requested
 	grantType := h.rq.FormValue("grant_type")
 
 	if grantType == "authorization_code" {
@@ -235,21 +247,19 @@ func (h *handler) handleOidcTestProviderCerts() error {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key")
 	}
 
-	oidcPrivateKey := key.PrivateKey{
-		KeyID:      testProviderKeyIdentifier,
-		PrivateKey: privateKey,
+	jwks := &jose.JSONWebKeySet{
+		Keys: []jose.JSONWebKey{
+			{
+				Key:   &privateKey.PublicKey,
+				KeyID: testProviderKeyIdentifier,
+				Use:   "sig",
+			},
+		},
 	}
 
-	jwk := oidcPrivateKey.JWK()
-
-	_, _ = h.response.Write([]byte("{\r\n\"keys\":[\r\n"))
-
-	if bytes, err := jwk.MarshalJSON(); err == nil {
+	if bytes, err := json.Marshal(jwks); err == nil {
 		_, _ = h.response.Write(bytes)
 	}
-
-	_, _ = h.response.Write([]byte("\r\n]\r\n}"))
-
 	return nil
 }
 
@@ -266,50 +276,45 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 	}
 
 	requestParams := h.getQueryValues()
-	username := h.rq.FormValue("username")
-	tokenttl, err := strconv.Atoi(h.rq.FormValue("tokenttl"))
+	username := h.rq.FormValue(formKeyUsername)
+	tokenttl, err := strconv.Atoi(h.rq.FormValue(formKeyTokenTTL))
 	if err != nil {
 		tokenttl = defaultIdTokenTTL
 	}
 
 	tokenDuration := time.Duration(tokenttl) * time.Second
-
-	authenticated := h.rq.FormValue("authenticated")
-
-	redirect_uri := requestParams.Get("redirect_uri")
-
+	authenticated := h.rq.FormValue(formKeyAuthenticated)
+	redirectURI := requestParams.Get(requestParamRedirectURI)
 	base.Debugf(base.KeyAuth, "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
 
 	if username == "" || authenticated == "" {
 		base.Debugf(base.KeyAuth, "user did not enter valid credentials -- username or authenticated is empty")
 		error := "?error=invalid_request&error_description=User failed authentication"
-		h.setHeader("Location", requestParams.Get("redirect_uri")+error)
+		h.setHeader(headerLocation, requestParams.Get(requestParamRedirectURI)+error)
 		h.response.WriteHeader(http.StatusFound)
 		return nil
-
 	}
 
-	scope := requestParams.Get("scope")
+	scope := requestParams.Get(requestParamScope)
 	scopeMap := scopeStringToMap(scope)
 
-	//Generate the return code by base64 encoding the username
+	// Generate the return code by base64 encoding the username
 	code := base64.StdEncoding.EncodeToString([]byte(username))
+	authCodeTokenMap[username] = AuthState{CallbackURL: redirectURI, TokenTTL: tokenDuration, Scopes: scopeMap}
 
-	authCodeTokenMap[username] = AuthState{CallbackURL: redirect_uri, TokenTTL: tokenDuration, Scopes: scopeMap}
-
-	location_url, err := url.Parse(redirect_uri)
+	locationURL, err := url.Parse(redirectURI)
 	if err != nil {
 		return err
 	}
-	query := location_url.Query()
-	query.Set("code", code)
-	query.Set("state", "af0ifjsldkj")
-	location_url.RawQuery = query.Encode()
-	h.setHeader("Location", location_url.String())
+
+	query := locationURL.Query()
+	query.Set(requestParamCode, code)
+	query.Set(requestParamState, "af0ifjsldkj")
+	locationURL.RawQuery = query.Encode()
+	h.setHeader(headerLocation, locationURL.String())
 	h.response.WriteHeader(http.StatusFound)
 
 	return nil
-
 }
 
 func scopeStringToMap(scope string) map[string]struct{} {
@@ -321,59 +326,54 @@ func scopeStringToMap(scope string) map[string]struct{} {
 	return scopesMap
 }
 
-//Creates a signed JWT token for the requesting subject and issuer URL
-func createJWTToken(subject string, issuerUrl string, tokenttl time.Duration, scopesMap map[string]struct{}, unsignedToken bool) (jwt *jose.JWT, err error) {
+// Creates a signed JWT for the requesting subject and issuer URL
+func createJWT(subject string, issuerUrl string, ttl time.Duration, scopesMap map[string]struct{}) (token string,
+	err error) {
 
-	privateKey, err := privateKey()
+	key, err := privateKey()
 	if err != nil {
-		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key")
+		return "", base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key: %v", err)
+	}
+
+	sig, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT"))
+	if err != nil {
+		return "", base.HTTPErrorf(http.StatusInternalServerError, "Error creating signer: %v", err)
 	}
 
 	now := time.Now()
-	expiresIn := tokenttl
-	expiryTime := now.Add(expiresIn)
-
-	cl := jose.Claims{
-		"sub": subject,
-		"iat": now.Unix(),
-		"exp": expiryTime.Unix(),
-		"iss": issuerUrl,
-		"aud": testProviderAud,
+	claims := jwt.Claims{
+		Subject:  subject,
+		Issuer:   issuerUrl,
+		IssuedAt: jwt.NewNumericDate(now),
+		Expiry:   jwt.NewNumericDate(now.Add(ttl)),
+		Audience: jwt.Audience{testProviderAud},
 	}
 
+	var customClaims CustomClaims
+
 	if _, ok := scopesMap["email"]; ok {
-		cl["email"] = subject + "@syncgatewayoidctesting.com"
+		customClaims.Email = subject + "@syncgatewayoidctesting.com"
 	}
 
 	if _, ok := scopesMap["profile"]; ok {
-		cl["nickname"] = "slim jim"
+		customClaims.Nickname = "slim jim"
 	}
 
-	signer := jose.NewSignerRSA(testProviderKeyIdentifier, *privateKey)
-	if !unsignedToken {
-		jwt, err = jose.NewSignedJWT(cl, signer)
-		if err != nil {
-			return nil, err
-		}
-
-	} else {
-
-		header := jose.JOSEHeader{
-			"alg": signer.Alg(),
-			"kid": signer.ID(),
-		}
-		unsignedJWT, err := jose.NewJWT(header, cl)
-		if err != nil {
-			return nil, err
-		}
-		jwt = &unsignedJWT
+	token, err = jwt.Signed(sig).Claims(claims).Claims(customClaims).CompactSerialize()
+	if err != nil {
+		return "", err
 	}
 	return
 }
 
+type CustomClaims struct {
+	Email    string `json:"email,omitempty"`
+	Nickname string `json:"nickname,omitempty"`
+}
+
 //Generates the issuer URL based on the scheme and host in the client request
 //this should ensure that the testing provider works for local clients and
-//clients in front of a load balancer
+//clients in front of a load balancer.
 func issuerUrl(h *handler) string {
 	return issuerUrlForDB(h, h.db.Name)
 }
@@ -387,10 +387,9 @@ func issuerUrlForDB(h *handler, dbname string) string {
 	return fmt.Sprintf("%s://%s/%s/%s", scheme, h.rq.Host, dbname, "_oidc_testing")
 }
 
-//Return the internal test RSA private key, this is decoded from a base64 encoded string
-//stored as a constant above
+// Return the internal test RSA private key, this is decoded from a base64 encoded string
+// stored as a constant above
 func privateKey() (key *rsa.PrivateKey, err error) {
-
 	decodedPrivateKey, err := base64.StdEncoding.DecodeString(base64EncodedPrivateKey)
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error decoding private RSA Key")
@@ -399,15 +398,12 @@ func privateKey() (key *rsa.PrivateKey, err error) {
 	if err != nil {
 		return nil, base.HTTPErrorf(http.StatusInternalServerError, "Error parsing private RSA Key")
 	}
-
 	return
 }
 
 func handleAuthCodeRequest(h *handler) error {
-
-	//Validate the token request
-	code := h.rq.FormValue("code")
-
+	// Validate the token request
+	code := h.rq.FormValue(requestParamCode)
 	subject, err := base64.StdEncoding.DecodeString(code)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
@@ -418,7 +414,6 @@ func handleAuthCodeRequest(h *handler) error {
 	if !ok {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
 	}
-
 	return writeTokenResponse(h, string(subject), issuerUrl(h), authState.TokenTTL, authState.Scopes, TokenRequest_AuthCode)
 }
 
@@ -450,7 +445,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl t
 		refreshToken = base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
 	}
 
-	idToken, err := createJWTToken(subject, issuerUrl, tokenttl, scopesMap, h.db.DatabaseContext.Options.UnsupportedOptions.OidcTestProvider.UnsignedIDToken)
+	idToken, err := createJWT(subject, issuerUrl, tokenttl, scopesMap)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
 	}
@@ -463,7 +458,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl t
 		TokenType:    "Bearer",
 		RefreshToken: refreshToken,
 		ExpiresIn:    int(tokenttl.Seconds()),
-		IdToken:      idToken.Encode(),
+		IdToken:      idToken,
 	}
 
 	if bytes, err := base.JSONMarshal(tokenResponse); err == nil {
@@ -476,18 +471,16 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl t
 func extractSubjectFromRefreshToken(refreshToken string) (string, error) {
 	decodedToken, err := base64.StdEncoding.DecodeString(refreshToken)
 	if err != nil {
+		base.Debugf(base.KeyAuth, "invalid refresh token provided, error: %v", err)
 		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid OIDC Refresh Token")
 	}
 
 	components := strings.Split(string(decodedToken), ":::")
-
 	subject := components[0]
-
 	base.Debugf(base.KeyAuth, "subject extracted from refresh token = %v", subject)
 
 	if len(components) != 2 || subject == "" {
 		return "", base.HTTPErrorf(http.StatusBadRequest, "OIDC Refresh Token does not contain subject")
 	}
-
 	return subject, nil
 }
