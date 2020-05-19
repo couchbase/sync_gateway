@@ -291,7 +291,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			providers := auth.OIDCProviderMap{"foo": mockProvider("foo"), "bar": mockProvider("bar")}
-			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPointer("foo")}
+			openIDConnectOptions := auth.OIDCOptions{Providers: providers, DefaultProvider: base.StringPtr("foo")}
 			rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &openIDConnectOptions}}
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
@@ -339,9 +339,9 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 func mockProvider(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ClientID:      base.StringPointer("baz"),
+		ClientID:      base.StringPtr("baz"),
 		UserPrefix:    name,
-		ValidationKey: base.StringPointer("qux"),
+		ValidationKey: base.StringPtr("qux"),
 	}
 }
 
@@ -349,9 +349,9 @@ func mockProvider(name string) *auth.OIDCProvider {
 func mockProviderWithRegister(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ClientID:      base.StringPointer("baz"),
+		ClientID:      base.StringPtr("baz"),
 		UserPrefix:    name,
-		ValidationKey: base.StringPointer("qux"),
+		ValidationKey: base.StringPtr("qux"),
 		Register:      true,
 	}
 }
@@ -360,9 +360,9 @@ func mockProviderWithRegister(name string) *auth.OIDCProvider {
 func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
-		ClientID:           base.StringPointer("baz"),
+		ClientID:           base.StringPtr("baz"),
 		UserPrefix:         name,
-		ValidationKey:      base.StringPointer("qux"),
+		ValidationKey:      base.StringPtr("qux"),
 		Register:           true,
 		IncludeAccessToken: true,
 	}
@@ -372,9 +372,9 @@ func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
-		ClientID:           base.StringPointer("baz"),
+		ClientID:           base.StringPtr("baz"),
 		UserPrefix:         name,
-		ValidationKey:      base.StringPointer("qux"),
+		ValidationKey:      base.StringPtr("qux"),
 		IncludeAccessToken: true,
 	}
 }
