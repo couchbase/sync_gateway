@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -45,6 +46,7 @@ func NewSGNode(host string) *SGNode {
 	}
 }
 
+// ReplicationConfig is a replication definition as stored in the Sync Gateway config
 type ReplicationConfig struct {
 	ID                     string      `json:"replication_id"`
 	Remote                 string      `json:"remote"`
@@ -67,9 +69,26 @@ type ReplicationCfg struct {
 	AssignedNode string `json:"assigned_node"` // host name of node assigned to this replication
 }
 
-func (rc *ReplicationConfig) ValidateNewReplication(fromConfig bool) (err error) {
+// ReplicationUpsertConfig is used for operations that support upsert of a subset of replication properties.
+type ReplicationUpsertConfig struct {
+	ID                     string      `json:"replication_id"`
+	Remote                 *string     `json:"remote"`
+	Direction              *string     `json:"direction"`
+	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
+	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
+	PurgeOnRemoval         *bool       `json:"purge_on_removal,omitempty"`
+	DeltaSyncEnabled       *bool       `json:"enable_delta_sync,omitempty"`
+	MaxBackoff             *int        `json:"max_backoff_time,omitempty"`
+	State                  *string     `json:"state,omitempty"`
+	Continuous             *bool       `json:"continuous,omitempty"`
+	Filter                 *string     `json:"filter,omitempty"`
+	QueryParams            interface{} `json:"query_params,omitempty"`
+	Cancel                 *bool       `json:"cancel,omitempty"`
+}
 
-	//cancel parameter is only supported via the REST API
+func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
+
+	// Cancel is only supported via the REST API
 	if rc.Cancel {
 		if fromConfig {
 			err = base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
@@ -93,45 +112,120 @@ func (rc *ReplicationConfig) ValidateNewReplication(fromConfig bool) (err error)
 		return err
 	}
 
-	if rc.Filter != "" {
-		if rc.Filter == "sync_gateway/bychannel" {
-			if rc.QueryParams == "" {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing query_params")
-				return
-			}
-
-			//The Channels may be passed as a JSON array of strings directly
-			//or embedded in a JSON object with the "channels" property and array value
-			var chanarray []interface{}
-
-			if paramsmap, ok := rc.QueryParams.(map[string]interface{}); ok {
-				if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
-					err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing channels property in query_params")
-					return
-				}
-			} else if chanarray, ok = rc.QueryParams.([]interface{}); ok {
-				// query params is an array and chanarray has been set, now drop out of if-then-else for processing
-			} else {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Bad channels array in query_params for sync_gateway/bychannel filter.")
-				return
-			}
-			if len(chanarray) > 0 {
-				channels := make([]string, len(chanarray))
-				for i := range chanarray {
-					if channel, ok := chanarray[i].(string); ok {
-						channels[i] = channel
-					} else {
-						err = base.HTTPErrorf(http.StatusBadRequest, "Bad channel name in query_params for sync_gateway/bychannel filter")
-						return
-					}
-				}
-			}
-		} else {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Unknown replication filter; try sync_gateway/bychannel")
+	if rc.Filter == "sync_gateway/bychannel" {
+		if rc.QueryParams == nil {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing query_params")
 			return
 		}
+
+		//The Channels may be passed as a JSON array of strings directly
+		//or embedded in a JSON object with the "channels" property and array value
+		var chanarray []interface{}
+
+		if paramsmap, ok := rc.QueryParams.(map[string]interface{}); ok {
+			if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
+				err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing channels property in query_params")
+				return
+			}
+		} else if chanarray, ok = rc.QueryParams.([]interface{}); ok {
+			// query params is an array and chanarray has been set, now drop out of if-then-else for processing
+		} else {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Bad channels array in query_params for sync_gateway/bychannel filter.")
+			return
+		}
+		if len(chanarray) > 0 {
+			channels := make([]string, len(chanarray))
+			for i := range chanarray {
+				if channel, ok := chanarray[i].(string); ok {
+					channels[i] = channel
+				} else {
+					err = base.HTTPErrorf(http.StatusBadRequest, "Bad channel name in query_params for sync_gateway/bychannel filter")
+					return
+				}
+			}
+		}
+	} else if rc.Filter != "" {
+		err = base.HTTPErrorf(http.StatusBadRequest, "Unknown replication filter; try sync_gateway/bychannel")
+		return
 	}
 	return nil
+}
+
+// Upsert updates ReplicationConfig with any non-empty properties specified in the incoming replication config.
+// Note that if the intention is to reset the value to default, empty values must be specified.
+func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
+
+	if c.Remote != nil {
+		rc.Remote = *c.Remote
+	}
+
+	if c.Direction != nil {
+		rc.Direction = *c.Direction
+	}
+
+	if c.ConflictResolutionType != nil {
+		rc.ConflictResolutionType = *c.ConflictResolutionType
+	}
+	if c.ConflictResolutionFn != nil {
+		rc.ConflictResolutionFn = *c.ConflictResolutionFn
+	}
+	if c.PurgeOnRemoval != nil {
+		rc.PurgeOnRemoval = *c.PurgeOnRemoval
+	}
+	if c.DeltaSyncEnabled != nil {
+		rc.DeltaSyncEnabled = *c.DeltaSyncEnabled
+	}
+	if c.MaxBackoff != nil {
+		rc.MaxBackoff = *c.MaxBackoff
+	}
+	if c.State != nil {
+		rc.State = *c.State
+	}
+	if c.Continuous != nil {
+		rc.Continuous = *c.Continuous
+	}
+	if c.Filter != nil {
+		rc.Filter = *c.Filter
+	}
+	if c.Cancel != nil {
+		rc.Cancel = *c.Cancel
+	}
+	if c.QueryParams != nil {
+		rc.QueryParams = c.QueryParams
+	}
+
+	if c.QueryParams != nil {
+		// QueryParams can be either []interface{} or map[string]interface{}, so requires type-specific copying
+		// avoid later mutating c.QueryParams
+		switch qp := c.QueryParams.(type) {
+		case []interface{}:
+			newParams := make([]interface{}, len(qp))
+			copy(newParams, qp)
+			rc.QueryParams = newParams
+		case map[string]interface{}:
+			newParamMap := make(map[string]interface{})
+			for k, v := range qp {
+				newParamMap[k] = v
+			}
+			rc.QueryParams = newParamMap
+		default:
+			// unsupported query params type, don't upsert
+			base.Warnf("Unexpected QueryParams type found during upsert, will be ignored (%T): %v", c.QueryParams, c.QueryParams)
+		}
+	}
+}
+
+// Equals is doing a relatively expensive json-based equality computation, so shouldn't be used in performance-sensitive scenarios
+func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, error) {
+	currentBytes, err := base.JSONMarshalCanonical(rc)
+	if err != nil {
+		return false, err
+	}
+	compareToBytes, err := base.JSONMarshalCanonical(compareToCfg)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(currentBytes, compareToBytes), nil
 }
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
@@ -282,18 +376,45 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 	return m.updateCluster(addReplicationCallback)
 }
 
+// PutReplications sets the value of one or more replications in the config
+func (m *sgReplicateManager) PutReplications(replications map[string]*ReplicationConfig) error {
+	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
+		if len(replications) == 0 {
+			return true, nil
+		}
+		for replicationID, replication := range replications {
+			existingCfg, exists := cluster.Replications[replicationID]
+			replicationCfg := &ReplicationCfg{}
+			if exists {
+				replicationCfg.AssignedNode = existingCfg.AssignedNode
+			}
+			replicationCfg.ReplicationConfig = *replication
+			cluster.Replications[replicationID] = replicationCfg
+		}
+		cluster.RebalanceReplications()
+		return false, nil
+	}
+	return m.updateCluster(addReplicationCallback)
+}
+
 // PUT _replication/replicationID
-func (m *sgReplicateManager) UpsertReplication(replication *ReplicationCfg) (created bool, err error) {
+func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertConfig) (created bool, err error) {
 
 	created = true
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		_, exists := cluster.Replications[replication.ID]
 		if exists {
 			created = false
+		} else {
+			cluster.Replications[replication.ID] = &ReplicationCfg{ReplicationConfig: ReplicationConfig{ID: replication.ID}}
 		}
-		// TODO: CBG-766 support partial upsert instead of full replace.  Need to identify what properties are valid
-		//       for upsert
-		cluster.Replications[replication.ID] = replication
+		cluster.Replications[replication.ID].Upsert(replication)
+
+		validateErr := cluster.Replications[replication.ID].ValidateReplication(false)
+		if validateErr != nil {
+			return true, validateErr
+		}
+
 		cluster.RebalanceReplications()
 		return false, nil
 	}

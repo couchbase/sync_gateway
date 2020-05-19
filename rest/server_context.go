@@ -596,6 +596,23 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
+	// Validate all replications before updating any
+	for replicationID, replicationConfig := range config.Replications {
+		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
+			return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
+		}
+		replicationConfig.ID = replicationID
+		if validateErr := replicationConfig.ValidateReplication(true); validateErr != nil {
+			return nil, validateErr
+		}
+	}
+
+	// Validation was successful, can update replications
+	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications)
+	if replicationErr != nil {
+		return nil, replicationErr
+	}
+
 	dbcontext.ExitChanges = make(chan struct{})
 
 	// Register it so HTTP handlers can find it:

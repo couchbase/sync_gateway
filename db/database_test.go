@@ -44,11 +44,10 @@ func setupTestDB(t testing.TB) (*Database, *base.TestBucket) {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
-func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, *base.TestBucket) {
+// Sets up test db with the specified database context options.  Note that environment variables can
+// override somedbcOptions properties.
+func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, *base.TestBucket) {
 
-	dbcOptions := DatabaseContextOptions{
-		CacheOptions: &options,
-	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
@@ -58,6 +57,14 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 	return db, tBucket
 }
 
+func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, *base.TestBucket) {
+
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &options,
+	}
+	return setupTestDBWithOptions(t, dbcOptions)
+}
+
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
 // tests against Couchbase Server
 func setupTestDBWithViewsEnabled(t testing.TB) (*Database, *base.TestBucket) {
@@ -65,13 +72,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, *base.TestBucket) {
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
 	}
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
-	tBucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "Couldn't create database 'db'")
-	return db, tBucket
+	return setupTestDBWithOptions(t, dbcOptions)
 }
 
 // Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
@@ -837,12 +838,9 @@ func TestConflictRevLimit(t *testing.T) {
 		AllowConflicts: base.BoolPtr(true),
 	}
 
-	AddOptionsFromEnvironmentVariables(&dbOptions)
-	bucket = base.GetTestBucket(t)
-	context, _ := NewDatabaseContext("db", bucket, false, dbOptions)
-	db, _ = CreateDatabase(context)
+	db, bucket = setupTestDBWithOptions(t, dbOptions)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
-
+	bucket.Close()
 	tearDownTestDB(t, db)
 
 	//Test AllowConflicts false
@@ -850,12 +848,9 @@ func TestConflictRevLimit(t *testing.T) {
 		AllowConflicts: base.BoolPtr(false),
 	}
 
-	AddOptionsFromEnvironmentVariables(&dbOptions)
-	bucket = base.GetTestBucket(t)
-	context, _ = NewDatabaseContext("db", bucket, false, dbOptions)
-	db, _ = CreateDatabase(context)
+	db, bucket = setupTestDBWithOptions(t, dbOptions)
 	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
-
+	bucket.Close()
 	tearDownTestDB(t, db)
 
 }
@@ -1789,14 +1784,10 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 }
 
 func TestGetOIDCProvider(t *testing.T) {
-	mockedOIDCOptions := mockOIDCOptions()
-	options := DatabaseContextOptions{OIDCOptions: mockedOIDCOptions}
-	AddOptionsFromEnvironmentVariables(&options)
-	testBucket := base.GetTestBucket(t)
-
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
-	assert.NotNil(t, context, "Database context should be created")
+	options := DatabaseContextOptions{OIDCOptions: mockOIDCOptions()}
+	context, testBucket := setupTestDBWithOptions(t, options)
+	defer context.Close()
+	defer testBucket.Close()
 
 	// Lookup default provider by empty name, which exists in database context
 	provider, err := context.GetOIDCProvider("")
@@ -1814,7 +1805,6 @@ func TestGetOIDCProvider(t *testing.T) {
 	provider, err = context.GetOIDCProvider("Unknown")
 	assert.Nil(t, provider, "Provider doesn't exists in database context")
 	assert.Contains(t, err.Error(), `No provider found for provider name "Unknown"`)
-	testBucket.Close()
 }
 
 // TestSyncFnMutateBody ensures that any mutations made to the body by the sync function aren't persisted

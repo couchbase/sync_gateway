@@ -715,7 +715,7 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	}
 }
 
-func StringPointer(value string) *string {
+func StringPtr(value string) *string {
 	return &value
 }
 
