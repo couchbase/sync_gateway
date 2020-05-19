@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"strings"
+	"sync"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/go-couchbase"
@@ -25,9 +26,9 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, bucket *CouchbaseBucketGoCB, numPartitions uint16, cfg *CfgSG) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, uuid string, bucket *CouchbaseBucketGoCB, numPartitions uint16, cfg *CfgSG) (*CbgtContext, error) {
 
-	cbgtContext, err := initCBGTManager(bucket, bucket.Spec, cfg)
+	cbgtContext, err := initCBGTManager(bucket, bucket.Spec, cfg, uuid)
 	if err != nil {
 		return nil, err
 	}
@@ -197,14 +198,14 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG *CfgSG) (*CbgtContext, error) {
+func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG *CfgSG, dbUUID string) (*CbgtContext, error) {
 
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
 	// 		 the previous version of that node from the cfg, and assign pindexes to the new one.
 	// 		(note that in a single node scenario, this can result in latency removing previous version of itself
 	//  	on restart, if time between restarts is less than heartbeat expiry time).
-	uuid := cbgt.NewUUID()
+	uuid := dbUUID
 
 	// tags: Every node participating in sharded DCP has feed, janitor, pindex and planner roles
 	//   	"feed": runs dcp feed
@@ -348,52 +349,140 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil {
 		return nil, errors.New("Unable to start heartbeater with nil manager or cfg")
 	}
-	// Initialize handler to use cfg to determine the set of participating nodes
-	nodeListHandler, err := NewCBGTNodeListHandler(cbgtContext.Cfg)
-	if err != nil {
-		return nil, err
-	}
 
 	// Create heartbeater
-	heartbeater, err := NewCouchbaseHeartbeater(bucket, SyncPrefix, cbgtContext.Manager.UUID(), nodeListHandler)
+	heartbeater, err := NewCouchbaseHeartbeater(bucket, SyncPrefix, cbgtContext.Manager.UUID())
 	if err != nil {
 		return nil, errors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()).Redact())
 	}
 
-	// TODO: Allow customization of heartbeat interval
-	intervalSeconds := 1
-	Debugf(KeyDCP, "Sending CBGT node heartbeats at interval: %vs", intervalSeconds)
-	err = heartbeater.StartSendingHeartbeats(intervalSeconds)
+	// Register listener for import, uses cfg and manager to manage set of participating nodes
+	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext.Cfg, cbgtContext.Manager.Version())
+	if err != nil {
+		return nil, err
+	}
+	err = heartbeater.RegisterListener(importHeartbeatListener)
 	if err != nil {
 		return nil, err
 	}
 
-	deadNodeHandler := HeartbeatStoppedHandler{
-		Cfg:     cbgtContext.Cfg,
-		Manager: cbgtContext.Manager,
+	err = heartbeater.Start()
+	if err != nil {
+		return nil, err
 	}
-
-	staleThresholdMs := intervalSeconds * 10 * 1000
-	if err := heartbeater.StartCheckingHeartbeats(staleThresholdMs, deadNodeHandler); err != nil {
-		return nil, errors.Wrapf(err, "Error calling StartCheckingHeartbeats() during startHeartbeater for bucket %s", MD(bucket.GetName).Redact())
-	}
-	Debugf(KeyDCP, "Checking CBGT node heartbeats with stale threshold: %v ms", staleThresholdMs)
+	Debugf(KeyCluster, "Sending CBGT node heartbeats at interval: %v", heartbeater.heartbeatSendInterval)
 
 	return heartbeater, nil
-
 }
 
-// When we detect other nodes have stopped pushing heartbeats, remove from CBGT cfg
-type HeartbeatStoppedHandler struct {
-	Cfg     cbgt.Cfg
-	Manager *cbgt.Manager
+// ImportHeartbeatListener uses cbgt's cfg to manage node list
+type importHeartbeatListener struct {
+	cfg        cbgt.Cfg      // cbgt cfg being used for import
+	mgrVersion string        // cbgt manager version, required for cbgt.UnregisterNodes
+	terminator chan struct{} // close cfg subscription on close
+	nodeIDs    []string      // Set of nodes from the latest retrieval
+	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
-func (h HeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUUID string) {
+func NewImportHeartbeatListener(cfg cbgt.Cfg, mgrVersion string) (*importHeartbeatListener, error) {
 
-	Debugf(KeyDCP, "StaleHeartBeatDetected for node: %v", nodeUUID)
-	err := cbgt.UnregisterNodes(h.Cfg, h.Manager.Version(), []string{nodeUUID})
-	if err != nil {
-		Warnf("base.Warning: attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
+	if cfg == nil {
+		return nil, errors.New("Cfg must not be nil for ImportHeartbeatListener")
 	}
+
+	listener := &importHeartbeatListener{
+		cfg:        cfg,
+		mgrVersion: mgrVersion,
+		terminator: make(chan struct{}),
+	}
+
+	// Initialize the node set
+	err := listener.reloadNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Subscribe to changes to the known node set key
+	err = listener.subscribeNodeChanges()
+	if err != nil {
+		return nil, err
+	}
+
+	return listener, nil
+}
+
+func (l *importHeartbeatListener) Name() string {
+	return "importListener"
+}
+
+// When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
+func (l *importHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
+
+	Debugf(KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
+	err := cbgt.UnregisterNodes(l.cfg, l.mgrVersion, []string{nodeUUID})
+	if err != nil {
+		Warnf("Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
+	}
+}
+
+// subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
+// NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
+func (l *importHeartbeatListener) subscribeNodeChanges() error {
+
+	cfgEvents := make(chan cbgt.CfgEvent)
+	err := l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
+	if err != nil {
+		Debugf(KeyCluster, "Error subscribing node changes: %v", err)
+		return err
+	}
+	go func() {
+		defer FatalPanicHandler()
+		for {
+			select {
+			case <-cfgEvents:
+				err := l.reloadNodes()
+				if err != nil {
+					Warnf("Error while reloading heartbeat node definitions: %v", err)
+				}
+			case <-l.terminator:
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+func (l *importHeartbeatListener) reloadNodes() error {
+
+	nodeSet, _, err := cbgt.CfgGetNodeDefs(l.cfg, cbgt.NODE_DEFS_KNOWN)
+	if err != nil {
+		return err
+	}
+
+	nodeUUIDs := make([]string, 0)
+	if nodeSet != nil {
+		for _, nodeDef := range nodeSet.NodeDefs {
+			nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+		}
+	}
+
+	l.lock.Lock()
+	l.nodeIDs = nodeUUIDs
+	l.lock.Unlock()
+
+	return nil
+}
+
+// GetNodes returns a copy of the in-memory node set
+func (l *importHeartbeatListener) GetNodes() ([]string, error) {
+
+	l.lock.RLock()
+	nodeIDsCopy := make([]string, len(l.nodeIDs))
+	copy(nodeIDsCopy, l.nodeIDs)
+	l.lock.RUnlock()
+	return nodeIDsCopy, nil
+}
+
+func (l *importHeartbeatListener) Stop() {
+	close(l.terminator)
 }
