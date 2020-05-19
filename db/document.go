@@ -335,9 +335,6 @@ func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas
 	if xattrData == nil || len(xattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
 		doc, err = unmarshalDocument(docid, data)
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		doc = NewDocument(docid)
 		err = doc.UnmarshalWithXattr(data, xattrData, unmarshalLevel)

@@ -92,9 +92,10 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 		existingBucketDoc.Xattr = nil
 	} else {
 		existingBucketDoc.Body, existingBucketDoc.Xattr, err = existingDoc.MarshalWithXattr()
-		if err != nil {
-			return nil, err
-		}
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)
