@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,9 +50,7 @@ func TestReplicationAPI(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err)
 	assert.Equal(t, configResponse.ID, "replication2")
-	require.NotNil(t, configResponse.Remote)
 	assert.Equal(t, configResponse.Remote, "http://remote:4984/db")
-	require.NotNil(t, configResponse.Direction)
 	assert.Equal(t, configResponse.Direction, "Pull")
 
 	// GET all replications
@@ -217,7 +214,6 @@ func TestReplicationsFromConfig(t *testing.T) {
 	testCases := []struct {
 		name           string
 		replicationSet []*db.ReplicationConfig
-		expectedError  error
 	}{
 		{
 			name:           "Single replication",
@@ -242,10 +238,6 @@ func TestReplicationsFromConfig(t *testing.T) {
 
 			// Retrieve replications
 			response := rt.SendAdminRequest("GET", "/db/_replication/", "")
-			if test.expectedError != nil {
-				assertStatus(t, response, http.StatusBadRequest)
-				return
-			}
 			assertStatus(t, response, http.StatusOK)
 			var configResponse map[string]*db.ReplicationConfig
 			err := json.Unmarshal(response.BodyBytes(), &configResponse)

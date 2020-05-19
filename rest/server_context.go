@@ -596,9 +596,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
-	// Upsert config-based replications
-
-	// Validate all replications before upserting any
+	// Validate all replications before updating any
 	for replicationID, replicationConfig := range config.Replications {
 		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
 			return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)

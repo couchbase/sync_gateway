@@ -1805,7 +1805,6 @@ func TestGetOIDCProvider(t *testing.T) {
 	provider, err = context.GetOIDCProvider("Unknown")
 	assert.Nil(t, provider, "Provider doesn't exists in database context")
 	assert.Contains(t, err.Error(), `No provider found for provider name "Unknown"`)
-	testBucket.Close()
 }
 
 // TestSyncFnMutateBody ensures that any mutations made to the body by the sync function aren't persisted
