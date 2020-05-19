@@ -1422,7 +1422,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			}
 
 			// Check whether Sync Data originated in body
-			if currentXattr == nil && bytes.Contains(currentValue, []byte(base.SyncPropertyName)) {
+			if currentXattr == nil && bytes.Contains(currentValue, []byte(`"`+base.SyncPropertyName+`":`)) {
 				doc.inlineSyncData = true
 			}
 
