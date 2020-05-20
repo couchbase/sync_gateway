@@ -120,7 +120,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 		{
 			docBody:            rawDocWithSyncMeta(),
 			name:               "rawDocWithSyncMeta",
-			expectedGeneration: 2,
+			expectedGeneration: 1,
 		},
 	}
 
