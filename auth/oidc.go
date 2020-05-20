@@ -64,6 +64,14 @@ var (
 // Error code returned by failures to set parameters to URL query string.
 var ErrSetURLQueryParam = errors.New("URL, parameter name and value must not be empty")
 
+const (
+	// Error message returned by failures to initialize OIDCClient due to nil provider reference.
+	ErrMsgNilProvider = "nil provider"
+
+	// Error message returned by failures to initialize OIDCClient due provider discovery error.
+	ErrMsgUnableToDiscoverConfig = "unable to discover config"
+)
+
 // Options for OpenID Connect
 type OIDCOptions struct {
 	Providers       OIDCProviderMap `json:"providers,omitempty"`        // List of OIDC issuers
@@ -204,7 +212,7 @@ func (op *OIDCProvider) InitUserPrefix() error {
 
 func (op *OIDCProvider) InitOIDCClient() error {
 	if op == nil {
-		return fmt.Errorf("nil provider")
+		return fmt.Errorf(ErrMsgNilProvider)
 	}
 
 	if op.Issuer == "" {
@@ -213,7 +221,7 @@ func (op *OIDCProvider) InitOIDCClient() error {
 
 	verifier, endpoint, err := op.DiscoverConfig()
 	if err != nil || verifier == nil {
-		return pkgerrors.Wrap(err, "unable to discover config")
+		return pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
 	}
 
 	config := oauth2.Config{
