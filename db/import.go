@@ -169,6 +169,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
+		fmt.Println("HERE")
 		if ok || doc.inlineSyncData {
 			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc)
 			if migrateErr != nil {

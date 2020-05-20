@@ -125,7 +125,6 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 			key := fmt.Sprintf("TestImportDocWithStaleDoc%-s", testCase.name)
 			bodyBytes := testCase.docBody
@@ -181,7 +180,76 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 		})
 	}
+}
 
+func TestImportWithStaleBucketDocCorrectExpiryXattr(t *testing.T) {
+
+	valStr := `{
+		"field": "value",
+		"field2": "val2"
+	}`
+
+	xattrStr := `{
+		"rev": "1-ca9ad22802b66f662ff171f226211d5d",
+        "sequence": 1,
+        "recent_sequences": [
+            1
+        ],
+        "history": {
+            "revs": [
+                "1-ca9ad22802b66f662ff171f226211d5d"
+            ],
+            "parents": [
+                -1
+            ],
+            "channels": [
+                null
+            ]
+        },
+        "cas": "",
+        "time_saved": "2017-11-29T12:46:13.456631-08:00"}`
+
+	var db *Database
+	var testBucket *base.TestBucket
+	var existingBucketDoc *sgbucket.BucketDocument
+
+	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{
+		WriteUpdateCallback: func(key string) {
+			// While importing update to force a cas mismatch
+			_, err := testBucket.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, existingBucketDoc, func(doc []byte, xattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+				return []byte(valStr), []byte(xattrStr), false, base.Uint32Ptr(0), nil
+			})
+			fmt.Println("callback")
+			assert.NoError(t, err)
+		},
+	})
+	defer testBucket.Close()
+	defer db.Close()
+
+	key := "A doc"
+	bodyBytes := rawDocWithSyncMeta()
+	body := Body{}
+	err := body.Unmarshal(bodyBytes)
+	assert.NoError(t, err, "Error unmarshalling body")
+
+	// Put a doc with inline sync data via sdk
+	_, err = testBucket.Bucket.Add(key, 0, bodyBytes)
+	assert.NoError(t, err)
+
+	// Get the existing bucket doc
+	_, existingBucketDoc, err = db.GetDocWithXattr(key, DocUnmarshalAll)
+	assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+
+	importD := `{"new":"Val"}`
+	bodyD := Body{}
+	err = bodyD.Unmarshal([]byte(importD))
+	assert.NoError(t, err, "Error unmarshalling body")
+
+	// Trigger import
+	_, err = db.importDoc(key, bodyD, false, existingBucketDoc, ImportOnDemand)
+	assert.NoError(t, err)
+
+	t.Fail()
 }
 
 func rawDocNoMeta() []byte {
