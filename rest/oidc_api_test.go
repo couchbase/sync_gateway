@@ -249,7 +249,7 @@ func (s *mockAuthServer) tokenHandler(w http.ResponseWriter, r *http.Request) {
 		AccessToken:  "7d1d234f5fde713a94454f268833adcd39835fe8",
 		RefreshToken: "e08c77351221346153d09ff64c123b24fc4c1905",
 		TokenType:    "Bearer",
-		Expires:      time.Now().Add(5 * time.Minute).UTC().Second(),
+		Expires:      300, // Expires in 5 minutes from when the response was generated.
 	}
 	if (s.options.grantType == grantTypeAuthCode && s.options.forceError.errorType == callbackNoIDTokenErr) ||
 		(s.options.grantType == grantTypeRefreshToken && s.options.forceError.errorType == refreshNoIDTokenErr) {
@@ -672,19 +672,19 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			}
 			// Validate received token response
 			require.Equal(t, http.StatusOK, response.StatusCode)
-			var receivedToken OIDCTokenResponse
-			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&receivedToken))
+			var authResponseActual OIDCTokenResponse
+			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
 			require.NoError(t, response.Body.Close(), "Error closing response body")
-			assert.NotEmpty(t, receivedToken.SessionID, "session_id doesn't exist")
-			assert.Equal(t, "foo_noah", receivedToken.Username, "name mismatch")
+			assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
+			assert.Equal(t, "foo_noah", authResponseActual.Username, "name mismatch")
 
-			wantTokenResponse := mockAuthServer.options.tokenResponse
-			assert.Equal(t, wantTokenResponse.IDToken, receivedToken.IDToken, "id_token mismatch")
-			assert.Equal(t, wantTokenResponse.RefreshToken, receivedToken.RefreshToken, "refresh_token mismatch")
+			authResponseExpected := mockAuthServer.options.tokenResponse
+			assert.Equal(t, authResponseExpected.IDToken, authResponseActual.IDToken, "id_token mismatch")
+			assert.Equal(t, authResponseExpected.RefreshToken, authResponseActual.RefreshToken, "refresh_token mismatch")
 			if tc.providers["foo"].IncludeAccessToken {
-				assert.Equal(t, wantTokenResponse.AccessToken, receivedToken.AccessToken, "access_token mismatch")
-				assert.Equal(t, wantTokenResponse.TokenType, receivedToken.TokenType, "token_type mismatch")
-				assert.Equal(t, wantTokenResponse.Expires, receivedToken.Expires, "expires_in mismatch")
+				assert.Equal(t, authResponseExpected.AccessToken, authResponseActual.AccessToken, "access_token mismatch")
+				assert.Equal(t, authResponseExpected.TokenType, authResponseActual.TokenType, "token_type mismatch")
+				assert.Equal(t, authResponseExpected.Expires, authResponseActual.Expires, "expires_in mismatch")
 			}
 
 			// Query db endpoint with Bearer token
@@ -692,7 +692,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
-			request.Header.Add("Authorization", receivedToken.IDToken)
+			request.Header.Add("Authorization", authResponseActual.IDToken)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
@@ -703,7 +703,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			// Refresh auth token using the refresh token received from OP.
 			mockAuthServer.options.forceError = tc.forceRefreshError
 			mockAuthServer.options.grantType = grantTypeRefreshToken
-			requestURL = mockSyncGatewayURL + "/db/_oidc_refresh?refresh_token=" + receivedToken.RefreshToken
+			requestURL = mockSyncGatewayURL + "/db/_oidc_refresh?refresh_token=" + authResponseActual.RefreshToken
 			request, err = http.NewRequest(http.MethodGet, requestURL, nil)
 			require.NoError(t, err, "Error creating new request")
 			response, err = http.DefaultClient.Do(request)
@@ -715,22 +715,22 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			require.Equal(t, http.StatusOK, response.StatusCode)
 
 			// Validate received token refresh response.
-			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&receivedToken))
+			var refreshResponseActual OIDCTokenResponse
+			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&refreshResponseActual))
 			require.NoError(t, response.Body.Close(), "Error closing response body")
-			wantTokenResponse = mockAuthServer.options.tokenResponse
-			assert.NotEmpty(t, receivedToken.SessionID, "session_id doesn't exist")
-			assert.Equal(t, "foo_noah", receivedToken.Username, "name mismatch")
-			assert.Equal(t, wantTokenResponse.IDToken, receivedToken.IDToken, "id_token mismatch")
-			assert.Equal(t, wantTokenResponse.RefreshToken, receivedToken.RefreshToken, "refresh_token mismatch")
+			refreshResponseExpected := mockAuthServer.options.tokenResponse
+			assert.NotEmpty(t, refreshResponseActual.SessionID, "session_id doesn't exist")
+			assert.Equal(t, "foo_noah", refreshResponseActual.Username, "name mismatch")
+			assert.Equal(t, refreshResponseExpected.IDToken, refreshResponseActual.IDToken, "id_token mismatch")
 			if tc.providers["foo"].IncludeAccessToken {
-				assert.Equal(t, wantTokenResponse.AccessToken, receivedToken.AccessToken, "access_token mismatch")
-				assert.Equal(t, wantTokenResponse.TokenType, receivedToken.TokenType, "token_type mismatch")
-				assert.Equal(t, wantTokenResponse.Expires, receivedToken.Expires, "expires_in mismatch")
+				assert.Equal(t, refreshResponseExpected.AccessToken, refreshResponseActual.AccessToken, "access_token mismatch")
+				assert.Equal(t, refreshResponseExpected.TokenType, refreshResponseActual.TokenType, "token_type mismatch")
+				assert.Equal(t, refreshResponseExpected.Expires, refreshResponseActual.Expires, "expires_in mismatch")
 			}
 			// Query db endpoint with Bearer token
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
-			request.Header.Add("Authorization", receivedToken.IDToken)
+			request.Header.Add("Authorization", refreshResponseActual.IDToken)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
