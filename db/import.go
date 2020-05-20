@@ -1,7 +1,6 @@
 package db
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"strconv"
@@ -158,15 +157,19 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 					Expiry: expiry,
 				}
 
+				if doc.inlineSyncData {
+					existingDoc.Body, _ = doc.MarshalBodyAndSync()
+				} else {
+					existingDoc.Body, _ = doc.BodyBytes()
+				}
+
 				updatedExpiry = &expiry
 			}
 		}
 
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
-		// Also check for sync data in existingDoc body as some routes end with sync data being extracted from body
-		hasSyncInBody := bytes.Contains(existingDoc.Body, []byte(`"`+base.SyncPropertyName+`":`))
-		if ok || hasSyncInBody {
+		if ok || doc.inlineSyncData {
 			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc)
 			if migrateErr != nil {
 				return nil, nil, updatedExpiry, migrateErr
