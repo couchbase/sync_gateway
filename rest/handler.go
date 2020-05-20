@@ -313,7 +313,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	if context.Options.OIDCOptions != nil {
 		if token := h.getBearerToken(); token != "" {
 			var authJwtErr error
-			h.user, _, authJwtErr = context.Authenticator().AuthenticateUntrustedJWT(token, context.OIDCProviders, h.getOIDCCallbackURL)
+			h.user, authJwtErr = context.Authenticator().AuthenticateUntrustedJWT(token, context.OIDCProviders, h.getOIDCCallbackURL)
 			if h.user == nil || authJwtErr != nil {
 				return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 			}
@@ -329,8 +329,8 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		if context.Options.UnsupportedOptions.OidcTestProvider.Enabled && strings.HasSuffix(h.rq.URL.Path, "/_oidc_testing/token") {
 			if username, password := h.getBasicAuth(); username != "" && password != "" {
 				provider := context.Options.OIDCOptions.Providers.GetProviderForIssuer(issuerUrlForDB(h, context.Name), testProviderAudiences)
-				if provider != nil && provider.ClientID != nil && provider.ValidationKey != nil {
-					if *provider.ClientID == username && *provider.ValidationKey == password {
+				if provider != nil && provider.ValidationKey != nil {
+					if provider.ClientID == username && *provider.ValidationKey == password {
 						return nil
 					}
 				}
@@ -715,7 +715,6 @@ func (h *handler) flush() {
 // writes a CouchDB-style JSON description to the body.
 func (h *handler) writeError(err error) {
 	if err != nil {
-		err = auth.OIDCToHTTPError(err) // Map OIDC/OAuth2 errors to HTTP form
 		status, message := base.ErrorAsHTTPStatus(err)
 		h.writeStatus(status, message)
 		if status >= 500 {

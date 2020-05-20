@@ -11,16 +11,21 @@ package auth
 
 import (
 	"errors"
+	"io"
+	"log"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
-	"strconv"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/coreos/go-oidc/oauth2"
-	"github.com/coreos/go-oidc/oidc"
+	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func TestOIDCProviderMap_GetDefaultProvider(t *testing.T) {
@@ -103,17 +108,17 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 	cbProvider := OIDCProvider{
 		Name:     "Couchbase",
 		Issuer:   "http://127.0.0.1:1234",
-		ClientID: &clientID,
+		ClientID: clientID,
 	}
 	glProvider := OIDCProvider{
 		Name:     "Gügul",
 		Issuer:   "http://127.0.0.1:1235",
-		ClientID: &clientID,
+		ClientID: clientID,
 	}
 	fbProvider := OIDCProvider{
 		Name:     "Fæsbuk",
 		Issuer:   "http://127.0.0.1:1236",
-		ClientID: &clientID,
+		ClientID: clientID,
 	}
 	providerMap := OIDCProviderMap{
 		"gl": &glProvider,
@@ -225,12 +230,12 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 			Provider: &OIDCProvider{
 				Issuer: "http://127.0.0.1:12345/auth",
 			},
-			ErrContains: "unable to discover config",
+			ErrContains: "connection refused",
 		},
 		{
 			Name: "valid provider",
 			Provider: &OIDCProvider{
-				ClientID:    &clientID,
+				ClientID:    clientID,
 				Issuer:      "https://accounts.google.com",
 				CallbackURL: &callbackURL,
 			},
@@ -257,118 +262,190 @@ func TestOIDCProvider_InitOIDCClient(t *testing.T) {
 			if test.Provider != nil {
 				client := test.Provider.GetClient(func(string, bool) string { return "" })
 				if test.ExpectOIDCClient {
-					assert.NotEqual(tt, (*oidc.Client)(nil), client)
+					assert.NotEqual(tt, (*OIDCClient)(nil), client)
 				} else {
-					assert.Equal(tt, (*oidc.Client)(nil), client)
+					assert.Equal(tt, (*OIDCClient)(nil), client)
 				}
 			}
 		})
 	}
-
 }
 
-// This test verifies that common OpenIDConnect providers return configurations that
-// don't cause any errors in the Sync Gateway processing, for example if the URL parsing fails.
-// If any errors are found from provider, these should be dealt with appropriately.  As new
-// OIDC providers are tested and supported, their discovery URL should be added to this list.
-// See https://github.com/couchbase/sync_gateway/issues/3065
 func TestFetchCustomProviderConfig(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skip("This test is only enabled in integration test mode due to remote webserver dependencies")
+	tests := []struct {
+		name            string
+		data            string
+		trailingSlash   bool
+		wantAuthURL     string
+		wantTokenURL    string
+		wantUserInfoURL string
+		wantAlgorithms  []string
+		wantErr         bool
+	}{{
+		name: "basic_case",
+		data: `{
+				"issuer": "${issuer}",
+				"authorization_endpoint": "https://example.com/auth",
+				"token_endpoint": "https://example.com/token",
+				"jwks_uri": "https://example.com/keys",
+				"id_token_signing_alg_values_supported": ["RS256"]
+			}`,
+		wantAuthURL:    "https://example.com/auth",
+		wantTokenURL:   "https://example.com/token",
+		wantAlgorithms: []string{"RS256"},
+	}, {
+		name: "additional_algorithms",
+		data: `{
+				"issuer": "${issuer}",
+				"authorization_endpoint": "https://example.com/auth",
+				"token_endpoint": "https://example.com/token",
+				"jwks_uri": "https://example.com/keys",
+				"id_token_signing_alg_values_supported": ["RS256", "RS384", "ES256"]
+			}`,
+		wantAuthURL:    "https://example.com/auth",
+		wantTokenURL:   "https://example.com/token",
+		wantAlgorithms: []string{"RS256", "RS384", "ES256"},
+	}, {
+		name: "mismatched_issuer",
+		data: `{
+				"issuer": "https://example.com",
+				"authorization_endpoint": "https://example.com/auth",
+				"token_endpoint": "https://example.com/token",
+				"jwks_uri": "https://example.com/keys",
+				"id_token_signing_alg_values_supported": ["RS256"]
+			}`,
+		wantErr: true,
+	}, {
+		name: "issuer_with_trailing_slash",
+		data: `{
+				"issuer": "${issuer}",
+				"authorization_endpoint": "https://example.com/auth",
+				"token_endpoint": "https://example.com/token",
+				"jwks_uri": "https://example.com/keys",
+				"id_token_signing_alg_values_supported": ["RS256"]
+			}`,
+		trailingSlash:  true,
+		wantAuthURL:    "https://example.com/auth",
+		wantTokenURL:   "https://example.com/token",
+		wantAlgorithms: []string{"RS256"},
+	}, {
+		// Test case taken directly from:
+		// https://accounts.google.com/.well-known/openid-configuration
+		name:            "google",
+		wantAuthURL:     "https://accounts.google.com/o/oauth2/v2/auth",
+		wantTokenURL:    "https://oauth2.googleapis.com/token",
+		wantUserInfoURL: "https://openidconnect.googleapis.com/v1/userinfo",
+		wantAlgorithms:  []string{"RS256"},
+		data: `{
+				"issuer": "${issuer}",
+				"authorization_endpoint": "https://accounts.google.com/o/oauth2/v2/auth",
+				"device_authorization_endpoint": "https://oauth2.googleapis.com/device/code",
+				"token_endpoint": "https://oauth2.googleapis.com/token",
+				"userinfo_endpoint": "https://openidconnect.googleapis.com/v1/userinfo",
+				"revocation_endpoint": "https://oauth2.googleapis.com/revoke",
+				"jwks_uri": "https://www.googleapis.com/oauth2/v3/certs",
+				"response_types_supported": ["code","token","id_token","code token","code id_token","token id_token","code token id_token","none"],
+ 				"subject_types_supported": ["public"],
+ 				"id_token_signing_alg_values_supported": ["RS256"],
+ 				"scopes_supported": ["openid","email","profile"],
+ 				"token_endpoint_auth_methods_supported": ["client_secret_post","client_secret_basic"],
+                "claims_supported": ["aud","email","email_verified","exp","family_name","given_name","iat","iss","locale","name","picture","sub"],
+                 "code_challenge_methods_supported": ["plain","S256"],
+                 "grant_types_supported": ["authorization_code","refresh_token","urn:ietf:params:oauth:grant-type:device_code","urn:ietf:params:oauth:grant-type:jwt-bearer"]
+            }`,
+	},
 	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 
-	providerDiscoveryUrls := []string{
-		"https://accounts.google.com/.well-known/openid-configuration",
-		"https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+			var issuer string
+			hf := func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != OIDCDiscoveryConfigPath {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, err := io.WriteString(w, strings.ReplaceAll(test.data, "${issuer}", issuer))
+				require.NoError(t, err)
+			}
+			s := httptest.NewServer(http.HandlerFunc(hf))
+			defer s.Close()
+
+			issuer = s.URL
+			if test.trailingSlash {
+				issuer += "/"
+			}
+			discoveryURL := strings.TrimSuffix(issuer, "/") + OIDCDiscoveryConfigPath
+			op := &OIDCProvider{Issuer: issuer}
+			metadata, err := op.FetchCustomProviderConfig(discoveryURL)
+			if err != nil {
+				assert.True(t, test.wantErr, "Unexpected Error!")
+				return
+			}
+			assert.False(t, test.wantErr, "Expected Error Not Found!")
+			assert.Equal(t, test.wantAuthURL, metadata.AuthorizationEndpoint)
+			assert.Equal(t, test.wantTokenURL, metadata.TokenEndpoint)
+			assert.Equal(t, test.wantUserInfoURL, metadata.UserInfoEndpoint)
+			log.Printf("wantAlgorithms: %v, IdTokenSigningAlgValuesSupported: %v", test.wantAlgorithms, metadata.IdTokenSigningAlgValuesSupported)
+			assert.True(t, reflect.DeepEqual(test.wantAlgorithms, metadata.IdTokenSigningAlgValuesSupported))
+		})
 	}
-
-	for _, discoveryUrl := range providerDiscoveryUrls {
-		oidcProvider := OIDCProvider{}
-		_, err := oidcProvider.FetchCustomProviderConfig(discoveryUrl)
-		assert.NoError(t, err)
-	}
-
 }
 
-// Check fetching custom provider configuration with blank or empty provider
-// discovery URL. If discovery URL is empty, it must use the standard discovery
-// URL. Fetching  custom provider configuration should fail while sending HTTP
-// request. Error message should contain 'unsupported protocol scheme'.
-func TestFetchCustomProviderConfigWithEmptyURL(t *testing.T) {
-	provider := OIDCProvider{}
-	_, err := provider.FetchCustomProviderConfig("")
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported protocol scheme")
+func TestGetJWTIssuer(t *testing.T) {
+	wantIssuer := "https://accounts.google.com"
+	wantAudience := jwt.Audience{"aud1", "aud2"}
+	signer, err := base.GetRSASigner()
+	require.NoError(t, err, "Failed to create RSA signer")
+
+	claims := jwt.Claims{Issuer: wantIssuer, Audience: wantAudience}
+	builder := jwt.Signed(signer).Claims(claims)
+	token, err := builder.CompactSerialize()
+	require.NoError(t, err, "Failed to serialize JSON Web Token")
+
+	jwt, err := jwt.ParseSigned(token)
+	require.NoError(t, err, "Failed to decode raw JSON Web Token")
+	issuer, audiences, err := GetIssuerWithAudience(jwt)
+	assert.Equal(t, wantIssuer, issuer)
+	assert.Equal(t, []string(wantAudience), audiences)
 }
 
-func TestFetchCustomProviderConfigWithCtrlCharURL(t *testing.T) {
-	provider := OIDCProvider{}
-	_, err := provider.FetchCustomProviderConfig(`https://accounts.unknown.com\r\n?param=123`)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid character")
-}
-
-func TestDiscoverConfig(t *testing.T) {
-	provider := OIDCProvider{
-		Name:         "Some_Provider",
-		Issuer:       "http://accounts.google.com",
-		DiscoveryURI: "https://accounts.google.com/.well-known/openid-configuration",
+func TestGetSigningAlgorithms(t *testing.T) {
+	tests := []struct {
+		name                      string
+		inputAlgorithms           []string
+		wantSupportedAlgorithms   []string
+		wantUnsupportedAlgorithms []string
+	}{{
+		name:                      "Identity Provider supports single algorithm supported by OpenID Connect Library",
+		inputAlgorithms:           []string{oidc.RS256},
+		wantSupportedAlgorithms:   []string{oidc.RS256},
+		wantUnsupportedAlgorithms: nil,
+	}, {
+		name:                      "OpenID Connect Library supports all signing algorithms supported by Identity Provider",
+		inputAlgorithms:           []string{oidc.RS256, oidc.RS384, oidc.RS512, oidc.ES256, oidc.ES384, oidc.ES512, oidc.PS256, oidc.PS384, oidc.PS512},
+		wantSupportedAlgorithms:   []string{oidc.RS256, oidc.RS384, oidc.RS512, oidc.ES256, oidc.ES384, oidc.ES512, oidc.PS256, oidc.PS384, oidc.PS512},
+		wantUnsupportedAlgorithms: nil,
+	}, {
+		name:                      "None of the signing algorithms supported by Identity Provider are supported by OpenID Connect Library",
+		inputAlgorithms:           []string{"HS256", "HS512", "SHA256", "SHA512"},
+		wantSupportedAlgorithms:   nil,
+		wantUnsupportedAlgorithms: []string{"HS256", "HS512", "SHA256", "SHA512"},
+	}, {
+		name:                      "Few of the signing algorithms supported by Identity Provider are supported by OpenID Connect Library",
+		inputAlgorithms:           []string{oidc.RS256, oidc.RS384, oidc.RS512, "HS256", "HS512", "SHA256", "SHA512"},
+		wantSupportedAlgorithms:   []string{oidc.RS256, oidc.RS384, oidc.RS512},
+		wantUnsupportedAlgorithms: []string{"HS256", "HS512", "SHA256", "SHA512"},
+	}}
+	for _, test := range tests {
+		provider := OIDCProvider{}
+		t.Run(test.name, func(t *testing.T) {
+			metadata := &ProviderMetadata{IdTokenSigningAlgValuesSupported: test.inputAlgorithms}
+			signingAlgorithms := provider.GetSigningAlgorithms(metadata)
+			assert.Equal(t, test.wantSupportedAlgorithms, signingAlgorithms.supportedAlgorithms)
+			assert.Equal(t, test.wantUnsupportedAlgorithms, signingAlgorithms.unsupportedAlgorithms)
+		})
 	}
-	conf, sync, err := provider.DiscoverConfig()
-	assert.NotNil(t, conf)
-	assert.NotNil(t, sync)
-	assert.NoError(t, err)
-}
-
-func TestOIDCToHTTPError(t *testing.T) {
-	oauth2Err := oauth2.NewError(oauth2.ErrorAccessDenied)
-	oauth2Err.Description = "The Authorization Server requires End-User authentication!"
-	httpErr := OIDCToHTTPError(oauth2Err)
-	assert.Error(t, httpErr)
-	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
-
-	oauth2Err = oauth2.NewError(oauth2.ErrorUnauthorizedClient)
-	oauth2Err.Description = "Hey, you stop right there! Authentication required."
-	httpErr = OIDCToHTTPError(oauth2Err)
-	assert.Error(t, httpErr)
-	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
-
-	oauth2Err = oauth2.NewError(oauth2.ErrorInvalidClient)
-	oauth2Err.Description = "Oh no! there's not much left here for you;-)"
-	httpErr = OIDCToHTTPError(oauth2Err)
-	assert.Error(t, httpErr)
-	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
-
-	oauth2Err = oauth2.NewError(oauth2.ErrorInvalidGrant)
-	oauth2Err.Description = "Hmm...that doesn't look good!"
-	httpErr = OIDCToHTTPError(oauth2Err)
-	assert.Error(t, httpErr)
-	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
-
-	oauth2Err = oauth2.NewError(oauth2.ErrorInvalidRequest)
-	oauth2Err.Description = "You lost in space!"
-	httpErr = OIDCToHTTPError(oauth2Err)
-	assert.Error(t, httpErr)
-	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusUnauthorized))
-
-	oauth2Err = oauth2.NewError(oauth2.ErrorServerError)
-	oauth2Err.Description = "Even the things we love break sometimes!"
-	httpErr = OIDCToHTTPError(oauth2Err)
-	assert.Error(t, httpErr)
-	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusBadGateway))
-
-	oauth2Err = oauth2.NewError(oauth2.ErrorUnsupportedGrantType)
-	oauth2Err.Description = "Yikes, looks like this link is pretty broken! Sorry about that."
-	httpErr = OIDCToHTTPError(oauth2Err)
-	assert.Error(t, httpErr)
-	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusBadRequest))
-
-	oauth2Err = oauth2.NewError(oauth2.ErrorUnsupportedResponseType)
-	oauth2Err.Description = "We're coming soon!"
-	httpErr = OIDCToHTTPError(oauth2Err)
-	assert.Error(t, httpErr)
-	assert.Contains(t, httpErr.Error(), strconv.Itoa(http.StatusBadRequest))
 }
 
 func TestSetURLQueryParam(t *testing.T) {

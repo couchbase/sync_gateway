@@ -13,8 +13,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"log"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -22,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func canSeeAllChannels(princ Principal, channels base.Set) bool {
@@ -257,7 +260,6 @@ func TestGetGuestUser(t *testing.T) {
 	user, err := auth.GetUser("")
 	assert.Equal(t, nil, err)
 	goassert.DeepEquals(t, user, auth.defaultGuestUser())
-
 }
 
 func TestSaveUsers(t *testing.T) {
@@ -275,6 +277,7 @@ func TestSaveUsers(t *testing.T) {
 }
 
 func TestSaveRoles(t *testing.T) {
+
 	gTestBucket := base.GetTestBucket(t)
 	defer gTestBucket.Close()
 	auth := NewAuthenticator(gTestBucket.Bucket, nil)
@@ -591,88 +594,423 @@ func TestConcurrentUserWrites(t *testing.T) {
 	assert.Equal(t, cost, bcryptDefaultCost)
 }
 
-func TestAuthenticateTrustedJWTWithBadToken(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
-
-	clientID := "comcast"
-	callbackURL := "http://comcast:4984/_callback"
-
-	provider := &OIDCProvider{
-		ClientID:    &clientID,
-		Issuer:      "https://accounts.google.com",
-		CallbackURL: &callbackURL,
-	}
-
-	user, jws, err := auth.AuthenticateTrustedJWT("bad.bearer.token", provider, nil)
-	assert.Error(t, err)
-	assert.Nil(t, user)
-	assert.NotNil(t, jws)
-}
-
-func TestAuthenticateTrustedJWTWithBadClaim(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
-
-	clientID := "comcast"
-	callbackURL := "http://comcast:4984/_callback"
-
-	provider := &OIDCProvider{
-		ClientID:    &clientID,
-		Issuer:      "https://accounts.google.com",
-		CallbackURL: &callbackURL,
-	}
-
-	token := mockTokenWithBadIssURL(t)
-	user, jws, err := auth.AuthenticateTrustedJWT(token.Encode(), provider, nil)
-	log.Printf("%v", err.Error())
-	assert.Error(t, err)
-	assert.Nil(t, user)
-	assert.NotNil(t, jws)
-}
-
 func TestAuthenticateTrustedJWT(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
 
-	clientID := "comcast"
-	callbackURL := "http://comcast:4984/_callback"
-
-	provider := &OIDCProvider{
-		ClientID:    &clientID,
-		Issuer:      "https://accounts.google.com",
-		CallbackURL: &callbackURL,
+	callbackURL := base.StringPtr("http://comcast:4984/_callback")
+	providerGoogle := &OIDCProvider{
+		Name:        "Google",
+		ClientID:    "aud1",
+		Issuer:      issuerGoogleAccounts,
+		CallbackURL: callbackURL,
 	}
 
-	token := mockTokenAsString(t)
-	user, jws, err := auth.AuthenticateTrustedJWT(token, provider, nil)
+	// Make an RSA signer for signing tokens
+	signer, err := base.GetRSASigner()
+	require.NoError(t, err, "Failed to create RSA signer")
 
-	assert.NoError(t, err)
-	assert.Nil(t, user)
-	assert.NotNil(t, jws)
-}
+	t.Run("malformed token with bad header no payload", func(t *testing.T) {
+		user, expiry, err := auth.AuthenticateTrustedJWT("DmBb9C5", providerGoogle)
+		assert.Error(t, err, "Error parsing malformed token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
 
-func TestAuthenticateJWTWithNoClaim(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+	t.Run("malformed token with bad header bad payload", func(t *testing.T) {
+		user, expiry, err := auth.AuthenticateTrustedJWT("DmBb9C5.C#m7G#7", providerGoogle)
+		assert.Error(t, err, "Error parsing malformed token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
 
-	jwt := mockTokenWithNoClaims(t)
-	clientID := "comcast"
-	callbackURL := "http://comcast:4984/_callback"
+	t.Run("malformed token with bad header bad base64 payload", func(t *testing.T) {
+		token := "DmBb9C5." + ToBase64String(`{"unknown":"value"}`)
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, providerGoogle)
+		assert.Error(t, err, "Error parsing malformed token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
 
-	provider := &OIDCProvider{
-		ClientID:    &clientID,
-		Issuer:      "https://accounts.google.com",
-		CallbackURL: &callbackURL,
-	}
-	usr, jwtNew, err := auth.authenticateJWT(jwt, provider)
-	assert.Error(t, err)
-	assert.Nil(t, usr)
-	assert.Equal(t, jwt, jwtNew)
+	t.Run("token with issuer but no clientID config", func(t *testing.T) {
+		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts})
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		provider := &OIDCProvider{
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			CallbackURL: providerGoogle.CallbackURL}
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.Error(t, err, "Error checking clientID config")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
+
+	t.Run("issuer mismatch google provider valid token", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccountsNoScheme, // Different issuer returned from Google OP but it is valid.
+			Subject:  "sub0123456789",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+		wantUsername := GetOIDCUsername(provider, claims.Subject)
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.NoError(t, err, "Error authenticating with trusted JWT")
+		assert.Equal(t, wantUsername, user.Name())
+		assert.Equal(t, claims.Expiry.Time(), expiry)
+	})
+
+	t.Run("issuer mismatch google provider invalid token", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   "invalid.issuer.google.com",
+			Subject:  "sub0123456789",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.Error(t, err, "Error verifying issuer claim from token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
+
+	t.Run("token with audience mismatch", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud4",
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   "invalid.issuer.google.com",
+			Subject:  "sub0123456789",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"}, // aud4 doesn't exist in claims
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.Error(t, err, "Error verifying audience claim from token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
+
+	t.Run("token with no audience claim", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud4",
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   "invalid.issuer.google.com",
+			Subject:  "sub0123456789",
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.Error(t, err, "Error verifying audience claim from token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
+
+	t.Run("authenticate with expired token", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccounts,
+			Subject:  "sub0123456789",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(-1 * time.Minute)),
+		}
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.Error(t, err, "Can't authenticate with expired token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
+
+	t.Run("token with nbf (not before) claim", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:        "id0123456789",
+			Issuer:    issuerGoogleAccounts,
+			Subject:   "sub0123456789",
+			Audience:  jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Expiry:    jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
+		}
+		wantUsername := GetOIDCUsername(provider, claims.Subject)
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.NoError(t, err, "Error authenticating with trusted token")
+		assert.Equal(t, wantUsername, user.Name())
+		assert.Equal(t, claims.Expiry.Time(), expiry)
+	})
+
+	t.Run("token with expired nbf (not before) claim", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:        "id0123456789",
+			Issuer:    issuerGoogleAccounts,
+			Subject:   "sub0123456789",
+			Audience:  jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Expiry:    jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
+			NotBefore: jwt.NewNumericDate(time.Now().Add(2 * time.Minute)),
+		}
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.Error(t, err, "Token with expired nbf (not before) time")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
+
+	t.Run("token with no subject claim", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccounts,
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.Error(t, err, "Token must contain valid subject claim")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+		assert.Equal(t, time.Time{}, expiry, "Expiry should be zero time instant")
+	})
+
+	t.Run("registered user with valid token and new email", func(t *testing.T) {
+		wantUsername := strings.ToLower(providerGoogle.Name) + "_layla"
+		wantUserEmail := "layla@example.com"
+		wantUser, err := auth.RegisterNewUser(wantUsername, wantUserEmail)
+		require.NoError(t, err, "User registration failure")
+		assert.Equal(t, wantUsername, wantUser.Name())
+		assert.Equal(t, wantUserEmail, wantUser.Email())
+
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+			UserPrefix:  strings.ToLower(providerGoogle.Name),
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccounts,
+			Subject:  "layla",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+
+		wantUserEmail = "layla@couchbase.com"
+		claimEmail := map[string]interface{}{"email": wantUserEmail}
+		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.NoError(t, err, "Error authenticating with trusted JWT")
+		assert.Equal(t, wantUsername, user.Name())
+		assert.Equal(t, claims.Expiry.Time(), expiry)
+		assert.Equal(t, wantUserEmail, user.Email())
+	})
+
+	t.Run("registered user with valid token and same email", func(t *testing.T) {
+		wantUsername := strings.ToLower(providerGoogle.Name) + "_noah"
+		wantUserEmail := "noah@example.com"
+		wantUser, err := auth.RegisterNewUser(wantUsername, wantUserEmail)
+		require.NoError(t, err, "User registration failure")
+		assert.Equal(t, wantUsername, wantUser.Name())
+		assert.Equal(t, wantUserEmail, wantUser.Email())
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+			UserPrefix:  strings.ToLower(providerGoogle.Name),
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccounts,
+			Subject:  "noah",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+
+		claimEmail := map[string]interface{}{"email": wantUserEmail}
+		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.NoError(t, err, "Error authenticating with trusted JWT")
+		assert.Equal(t, wantUsername, user.Name())
+		assert.Equal(t, claims.Expiry.Time(), expiry)
+		assert.Equal(t, wantUserEmail, user.Email())
+	})
+
+	t.Run("registered user with valid token and invalid email", func(t *testing.T) {
+		wantUsername := strings.ToLower(providerGoogle.Name) + "_emily"
+		wantUserEmail := "emily@example.com"
+		wantUser, err := auth.RegisterNewUser(wantUsername, wantUserEmail)
+		require.NoError(t, err, "User registration failure")
+		assert.Equal(t, wantUsername, wantUser.Name())
+		assert.Equal(t, wantUserEmail, wantUser.Email())
+
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+			UserPrefix:  strings.ToLower(providerGoogle.Name),
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccounts,
+			Subject:  "emily",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+
+		claimEmail := map[string]interface{}{"email": "emily@"}
+		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.NoError(t, err, "Error authenticating with trusted JWT")
+		assert.Equal(t, wantUsername, user.Name())
+		assert.Equal(t, claims.Expiry.Time(), expiry)
+		assert.Equal(t, wantUserEmail, user.Email())
+	})
+
+	t.Run("new user with valid token and invalid email", func(t *testing.T) {
+		wantUsername := strings.ToLower(providerGoogle.Name) + "_layla"
+		provider := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+			UserPrefix:  strings.ToLower(providerGoogle.Name),
+		}
+		err = provider.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccounts,
+			Subject:  "layla",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+
+		claimEmail := map[string]interface{}{"email": "layla@"}
+		builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, expiry, err := auth.AuthenticateTrustedJWT(token, provider)
+		assert.NoError(t, err, "Error authenticating with trusted JWT")
+		assert.Equal(t, wantUsername, user.Name())
+		assert.Empty(t, "", user.Email(), "Should skip updating invalid email from token")
+		assert.Equal(t, claims.Expiry.Time(), expiry)
+	})
+
 }
 
 func TestGetPrincipal(t *testing.T) {
@@ -745,128 +1083,152 @@ func ToBase64String(key string) string {
 	return base64.StdEncoding.EncodeToString([]byte(key))
 }
 
-// Check untrusted JWT authentication method with a bad bearer token.
-// The step which parse JWT (needed to determine issuer/provider) should fail.
-func TestAuthenticateUnTrustedJWTWithBadToken(t *testing.T) {
+func TestAuthenticateUntrustedJWT(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
 
-	googleClientID := "google"
-	googleCallbackURL := "https://accounts.google.com/_callback"
-
-	const (
-		googleName   = "Google LLC"
-		googleIssuer = "https://accounts.google.com"
-	)
-
+	issuerFacebookAccounts := "https://accounts.facebook.com"
+	issuerAmazonAccounts := "https://accounts.amazon.com"
+	callbackURL := base.StringPtr("http://comcast:4984/_callback")
+	var callbackURLFunc OIDCCallbackURLFunc
 	providerGoogle := &OIDCProvider{
-		Name:        googleName,
-		ClientID:    &googleClientID,
-		Issuer:      googleIssuer,
-		CallbackURL: &googleCallbackURL,
+		Name:        "Google",
+		ClientID:    "aud1",
+		Issuer:      issuerGoogleAccounts,
+		CallbackURL: callbackURL,
+	}
+	providerFacebook := &OIDCProvider{
+		Name:        "Facebook",
+		ClientID:    "aud1",
+		Issuer:      issuerFacebookAccounts,
+		CallbackURL: callbackURL,
 	}
 
-	providers := map[string]*OIDCProvider{
-		googleName: providerGoogle,
-	}
+	// Make an RSA signer for signing tokens
+	signer, err := base.GetRSASigner()
+	require.NoError(t, err, "Failed to create RSA signer")
 
-	user, jws, err := auth.AuthenticateUntrustedJWT("bad.bearer.token", providers, nil)
-	assert.Error(t, err)
-	assert.Nil(t, user)
-	assert.NotNil(t, jws)
-}
+	t.Run("no provider malformed token with bad header no payload", func(t *testing.T) {
+		var providers OIDCProviderMap
+		user, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, callbackURLFunc)
+		assert.Error(t, err, "No provider found to authenticate token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-func TestAuthenticateUnTrustedJWTWithNoIssAud(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+	t.Run("single provider malformed token with bad header no payload", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle}
+		user, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, callbackURLFunc)
+		assert.Error(t, err, "Error parsing malformed token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	googleClientID := "google"
-	googleCallbackURL := "https://accounts.google.com/_callback"
+	t.Run("multiple providers malformed token with bad header no payload", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		user, err := auth.AuthenticateUntrustedJWT("DmBb9C5", providers, callbackURLFunc)
+		assert.Error(t, err, "Error parsing malformed token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	const (
-		googleName   = "Google LLC"
-		googleIssuer = "https://accounts.google.com"
-	)
+	t.Run("multiple providers malformed token with bad header bad payload", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		user, err := auth.AuthenticateUntrustedJWT("DmBb9C5.C#m7G#7", providers, callbackURLFunc)
+		assert.Error(t, err, "Error parsing malformed token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	providerGoogle := &OIDCProvider{
-		Name:        googleName,
-		ClientID:    &googleClientID,
-		Issuer:      googleIssuer,
-		CallbackURL: &googleCallbackURL,
-	}
+	t.Run("multiple providers malformed token with bad header bad base64 payload", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		token := "DmBb9C5." + ToBase64String(`{"unknown":"value"}`)
+		user, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		assert.Error(t, err, "Error parsing malformed token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	providers := map[string]*OIDCProvider{
-		googleName: providerGoogle,
-	}
+	t.Run("multiple providers token with no issuer no audience", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		builder := jwt.Signed(signer).Claims(jwt.Claims{})
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		require.Error(t, err, "Error getting issuer and audience from token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	token := mockTokenWithNoIss(t)
-	user, jws, err := auth.AuthenticateUntrustedJWT(token.Encode(), providers, nil)
-	assert.Error(t, err)
-	assert.Nil(t, user)
-	assert.NotNil(t, jws)
-}
+	t.Run("multiple providers token with issuer no audience", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts})
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		require.Error(t, err, "Error getting issuer and audience from token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-func TestAuthenticateUnTrustedJWTNoProviderForIssuer(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+	t.Run("multiple providers token with issuer empty audience", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts, Audience: jwt.Audience{}})
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		require.Error(t, err, "Error getting issuer and audience from token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	// Different clientID from token; "aud": ["ebay", "comcast", "linkedin"]
-	clientID := "google"
-	callbackURL := "https://accounts.google.com/_callback"
+	t.Run("multiple providers token with audience no issuer", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		builder := jwt.Signed(signer).Claims(jwt.Claims{Audience: jwt.Audience{"aud1", "aud2", "aud3"}})
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		require.Error(t, err, "Error getting issuer and audience from token")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	const (
-		googleName   = "Google LLC"
-		googleIssuer = "https://accounts.google.com"
-	)
+	t.Run("multiple providers token with issuer mismatch", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerAmazonAccounts, Audience: jwt.Audience{"aud1"}})
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		require.Error(t, err, "No provider found against the configured issuer")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	providerGoogle := &OIDCProvider{
-		Name:        googleName,
-		ClientID:    &clientID,
-		Issuer:      googleIssuer,
-		CallbackURL: &callbackURL,
-	}
+	t.Run("multiple providers token with audience mismatch", func(t *testing.T) {
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		builder := jwt.Signed(signer).Claims(jwt.Claims{Issuer: issuerGoogleAccounts, Audience: jwt.Audience{"aud2"}})
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		require.Error(t, err, "No provider found against the configured issuer")
+		assert.Nil(t, user, "User shouldn't be created or retrieved")
+	})
 
-	providers := map[string]*OIDCProvider{
-		googleName: providerGoogle,
-	}
-
-	token := mockTokenAsString(t)
-	user, jws, err := auth.AuthenticateUntrustedJWT(token, providers, nil)
-	assert.Error(t, err)
-	assert.Nil(t, user)
-	assert.NotNil(t, jws)
-}
-
-func TestAuthenticateUnTrustedJWTWithNoClient(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
-
-	clientID := "comcast"
-	callbackURL := "https://accounts.google.com/_callback"
-
-	const (
-		googleName   = "Google LLC"
-		googleIssuer = "https://accounts.google.com"
-	)
-
-	providerGoogle := &OIDCProvider{
-		Name:        googleName,
-		ClientID:    &clientID,
-		Issuer:      googleIssuer,
-		CallbackURL: &callbackURL,
-	}
-
-	providers := map[string]*OIDCProvider{
-		googleName: providerGoogle,
-	}
-
-	token := mockTokenAsString(t)
-	user, jws, err := auth.AuthenticateUntrustedJWT(token, providers, nil)
-	assert.Error(t, err)
-	assert.Nil(t, user)
-	assert.NotNil(t, jws)
+	t.Run("multiple providers with valid token signature verification failure", func(t *testing.T) {
+		providerGoogle := &OIDCProvider{
+			Register:    true,
+			CallbackURL: providerGoogle.CallbackURL,
+			Name:        providerGoogle.Name,
+			Issuer:      issuerGoogleAccounts,
+			ClientID:    "aud1",
+		}
+		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
+		err = providerGoogle.InitUserPrefix()
+		assert.NoError(t, err, "Error initializing user prefix")
+		claims := jwt.Claims{
+			ID:       "id0123456789",
+			Issuer:   issuerGoogleAccounts,
+			Subject:  "sub0123456789",
+			Audience: jwt.Audience{"aud1", "aud2", "aud3"},
+			IssuedAt: jwt.NewNumericDate(time.Now()),
+			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		}
+		builder := jwt.Signed(signer).Claims(claims)
+		token, err := builder.CompactSerialize()
+		require.NoError(t, err, "Error serializing token using compact serialization format")
+		user, err := auth.AuthenticateUntrustedJWT(token, providers, callbackURLFunc)
+		assert.Error(t, err, "Error authenticating with trusted JWT")
+		assert.Nil(t, user, "User shouldn't be returned without signature verification")
+	})
 }

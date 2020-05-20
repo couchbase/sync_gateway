@@ -156,12 +156,12 @@ func (s *mockAuthServer) discoveryHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	issuer := s.options.issuer
-	metadata := auth.OidcProviderConfiguration{
-		Issuer:                  issuer,
-		TokenEndpoint:           issuer + "/token",
-		JwksUri:                 issuer + "/oauth2/v3/certs",
-		AuthEndpoint:            issuer + "/auth",
-		IDTokenSigningAlgValues: []string{"RS256"},
+	metadata := auth.ProviderMetadata{
+		Issuer:                           issuer,
+		TokenEndpoint:                    issuer + "/token",
+		JwksUri:                          issuer + "/oauth2/v3/certs",
+		AuthorizationEndpoint:            issuer + "/auth",
+		IdTokenSigningAlgValuesSupported: []string{"RS256"},
 	}
 	renderJSON(w, r, http.StatusOK, metadata)
 }
@@ -339,7 +339,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 func mockProvider(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ClientID:      base.StringPtr("baz"),
+		ClientID:      "baz",
 		UserPrefix:    name,
 		ValidationKey: base.StringPtr("qux"),
 	}
@@ -349,7 +349,7 @@ func mockProvider(name string) *auth.OIDCProvider {
 func mockProviderWithRegister(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
-		ClientID:      base.StringPtr("baz"),
+		ClientID:      "baz",
 		UserPrefix:    name,
 		ValidationKey: base.StringPtr("qux"),
 		Register:      true,
@@ -360,7 +360,7 @@ func mockProviderWithRegister(name string) *auth.OIDCProvider {
 func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
-		ClientID:           base.StringPtr("baz"),
+		ClientID:           "baz",
 		UserPrefix:         name,
 		ValidationKey:      base.StringPtr("qux"),
 		Register:           true,
@@ -372,7 +372,7 @@ func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
-		ClientID:           base.StringPtr("baz"),
+		ClientID:           "baz",
 		UserPrefix:         name,
 		ValidationKey:      base.StringPtr("qux"),
 		IncludeAccessToken: true,
@@ -576,7 +576,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 			forceRefreshError: forceError{
 				errorType:            refreshTokenExchangeErr,
-				expectedErrorCode:    http.StatusUnauthorized,
+				expectedErrorCode:    http.StatusInternalServerError,
 				expectedErrorMessage: "Unable to refresh token",
 			},
 		}, {
@@ -684,7 +684,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			if tc.providers["foo"].IncludeAccessToken {
 				assert.Equal(t, authResponseExpected.AccessToken, authResponseActual.AccessToken, "access_token mismatch")
 				assert.Equal(t, authResponseExpected.TokenType, authResponseActual.TokenType, "token_type mismatch")
-				assert.Equal(t, authResponseExpected.Expires, authResponseActual.Expires, "expires_in mismatch")
+				assert.True(t, (authResponseExpected.Expires-authResponseActual.Expires) <= 5, "expiry is not within 5 seconds of the expected value")
 			}
 
 			// Query db endpoint with Bearer token
@@ -725,7 +725,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			if tc.providers["foo"].IncludeAccessToken {
 				assert.Equal(t, refreshResponseExpected.AccessToken, refreshResponseActual.AccessToken, "access_token mismatch")
 				assert.Equal(t, refreshResponseExpected.TokenType, refreshResponseActual.TokenType, "token_type mismatch")
-				assert.Equal(t, refreshResponseExpected.Expires, refreshResponseActual.Expires, "expires_in mismatch")
+				assert.True(t, (refreshResponseExpected.Expires-refreshResponseActual.Expires) <= 5, "expiry is not within 5 seconds of the expected value")
 			}
 			// Query db endpoint with Bearer token
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
