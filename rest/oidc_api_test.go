@@ -547,7 +547,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 			forceAuthError: forceError{
 				errorType:            callbackTokenExchangeErr,
-				expectedErrorCode:    http.StatusUnauthorized,
+				expectedErrorCode:    http.StatusInternalServerError,
 				expectedErrorMessage: "",
 			},
 		}, {
@@ -576,7 +576,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 			forceRefreshError: forceError{
 				errorType:            refreshTokenExchangeErr,
-				expectedErrorCode:    http.StatusUnauthorized,
+				expectedErrorCode:    http.StatusInternalServerError,
 				expectedErrorMessage: "Unable to refresh token",
 			},
 		}, {

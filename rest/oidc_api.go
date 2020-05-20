@@ -126,7 +126,7 @@ func (h *handler) handleOIDCCallback() error {
 	// Converts the authorization code into a token.
 	token, err := client.Config.Exchange(context.Background(), code)
 	if err != nil {
-		return base.HTTPErrorf(http.StatusUnauthorized, "Failed to exchange token: "+err.Error())
+		return base.HTTPErrorf(http.StatusInternalServerError, "Failed to exchange token: "+err.Error())
 	}
 
 	rawIDToken, ok := token.Extra("id_token").(string)
@@ -178,7 +178,7 @@ func (h *handler) handleOIDCRefresh() error {
 	token, err := client.Config.TokenSource(context.Background(), &oauth2.Token{RefreshToken: refreshToken}).Token()
 	if err != nil {
 		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
-		return base.HTTPErrorf(http.StatusUnauthorized, "Unable to refresh token.")
+		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to refresh token.")
 	}
 
 	rawIDToken, ok := token.Extra(keyIDToken).(string)
