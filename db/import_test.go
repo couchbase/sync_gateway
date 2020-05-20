@@ -1,8 +1,10 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -125,7 +127,6 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-
 		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
 			key := fmt.Sprintf("TestImportDocWithStaleDoc%-s", testCase.name)
 			bodyBytes := testCase.docBody
@@ -181,7 +182,76 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 		})
 	}
+}
 
+func TestImportWithStaleBucketDocCorrectExpiryXattr(t *testing.T) {
+	db, testBucket := setupTestDB(t)
+	defer testBucket.Close()
+	defer db.Close()
+
+	valStr := `{
+		"field": "value",
+		"field2": "val2"
+	}`
+
+	val := make(map[string]interface{})
+	err := json.Unmarshal([]byte(valStr), &val)
+	assert.NoError(t, err)
+
+	xattrStr := `{
+		"rev": "1-ca9ad22802b66f662ff171f226211d5c",
+        "sequence": 1,
+        "recent_sequences": [
+            1
+        ],
+        "history": {
+            "revs": [
+                "1-ca9ad22802b66f662ff171f226211d5c"
+            ],
+            "parents": [
+                -1
+            ],
+            "channels": [
+                null
+            ]
+        },
+        "cas": "",
+        "time_saved": "2017-11-29T12:46:13.456631-08:00"}`
+
+	xattrVal := make(map[string]interface{})
+	err = json.Unmarshal([]byte(xattrStr), &xattrVal)
+	assert.NoError(t, err)
+
+	key := "A doc"
+	bodyBytes := rawDocWithSyncMeta()
+	body := Body{}
+	err = body.Unmarshal(bodyBytes)
+	assert.NoError(t, err, "Error unmarshalling body")
+
+	// Put a doc with inline sync data via sdk
+	_, err = testBucket.Bucket.Add(key, 0, bodyBytes)
+	assert.NoError(t, err)
+
+	// Get the existing bucket doc
+	_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
+	assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	// Trigger import
+	go func() {
+		_, err = db.importDoc(key, body, false, existingBucketDoc, ImportOnDemand)
+		assert.NoError(t, err)
+		wg.Done()
+	}()
+
+	// While importing update to force a cas mismatch
+	_, err = testBucket.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, existingBucketDoc, func(doc []byte, xattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+		return []byte(valStr), []byte(xattrStr), false, base.Uint32Ptr(0), nil
+	})
+	assert.NoError(t, err)
+
+	wg.Wait()
 }
 
 func rawDocNoMeta() []byte {
