@@ -599,7 +599,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 	defer testBucket.Close()
 	auth := NewAuthenticator(testBucket.Bucket, nil)
 
-	callbackURL := base.StringPointer("http://comcast:4984/_callback")
+	callbackURL := base.StringPtr("http://comcast:4984/_callback")
 	providerGoogle := &OIDCProvider{
 		Name:        "Google",
 		ClientID:    "aud1",
@@ -1090,7 +1090,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 
 	issuerFacebookAccounts := "https://accounts.facebook.com"
 	issuerAmazonAccounts := "https://accounts.amazon.com"
-	callbackURL := base.StringPointer("http://comcast:4984/_callback")
+	callbackURL := base.StringPtr("http://comcast:4984/_callback")
 	var callbackURLFunc OIDCCallbackURLFunc
 	providerGoogle := &OIDCProvider{
 		Name:        "Google",
