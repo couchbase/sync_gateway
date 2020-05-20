@@ -131,7 +131,7 @@ func (h *handler) handleOIDCCallback() error {
 
 	rawIDToken, ok := token.Extra("id_token").(string)
 	if !ok {
-		return base.HTTPErrorf(http.StatusUnauthorized, "No id_token field in oauth2 token.")
+		return base.HTTPErrorf(http.StatusInternalServerError, "No id_token field in oauth2 token.")
 	}
 	base.Infof(base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
 
@@ -183,7 +183,7 @@ func (h *handler) handleOIDCRefresh() error {
 
 	rawIDToken, ok := token.Extra(keyIDToken).(string)
 	if !ok {
-		return base.HTTPErrorf(http.StatusUnauthorized, "No id_token field in oauth2 token.")
+		return base.HTTPErrorf(http.StatusInternalServerError, "No id_token field in oauth2 token.")
 	}
 	base.Infof(base.KeyAuth, "Obtained token from Authorization Server: %v", rawIDToken)
 

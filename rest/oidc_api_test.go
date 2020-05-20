@@ -561,7 +561,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 			forceAuthError: forceError{
 				errorType:            callbackNoIDTokenErr,
-				expectedErrorCode:    http.StatusUnauthorized,
+				expectedErrorCode:    http.StatusInternalServerError,
 				expectedErrorMessage: "",
 			},
 		}, {
@@ -591,7 +591,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			authURL:         "/db/_oidc?provider=foo&offline=true",
 			forceRefreshError: forceError{
 				errorType:            refreshNoIDTokenErr,
-				expectedErrorCode:    http.StatusUnauthorized,
+				expectedErrorCode:    http.StatusInternalServerError,
 				expectedErrorMessage: "",
 			},
 		}, {
@@ -684,7 +684,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			if tc.providers["foo"].IncludeAccessToken {
 				assert.Equal(t, authResponseExpected.AccessToken, authResponseActual.AccessToken, "access_token mismatch")
 				assert.Equal(t, authResponseExpected.TokenType, authResponseActual.TokenType, "token_type mismatch")
-				assert.Equal(t, authResponseExpected.Expires, authResponseActual.Expires, "expires_in mismatch")
+				assert.True(t, authResponseExpected.Expires >= authResponseActual.Expires, "expires_in mismatch")
 			}
 
 			// Query db endpoint with Bearer token
@@ -725,7 +725,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			if tc.providers["foo"].IncludeAccessToken {
 				assert.Equal(t, refreshResponseExpected.AccessToken, refreshResponseActual.AccessToken, "access_token mismatch")
 				assert.Equal(t, refreshResponseExpected.TokenType, refreshResponseActual.TokenType, "token_type mismatch")
-				assert.Equal(t, refreshResponseExpected.Expires, refreshResponseActual.Expires, "expires_in mismatch")
+				assert.True(t, refreshResponseExpected.Expires >= refreshResponseActual.Expires, "expires_in mismatch")
 			}
 			// Query db endpoint with Bearer token
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
