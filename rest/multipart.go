@@ -54,7 +54,6 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 	err := decoder.Decode(into)
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
-		base.Warnf("Couldn't parse JSON in HTTP request: %v", err)
 		if errors.Cause(err) == base.ErrUnknownField {
 			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
 		} else {
