@@ -31,6 +31,31 @@ const (
 	requestParamState        = "state"
 	requestParamScope        = "scope"
 	requestParamRedirectURI  = "redirect_uri"
+
+	// stateCookieName is the name of state cookie to prevent cross-site request forgery (CSRF).
+	stateCookieName = "sg-oidc-state"
+
+	// stateCookieTimeout represents the duration of state cookie; state
+	// cookie expires within 5 minutes.
+	stateCookieTimeout = time.Minute * 5
+)
+
+var (
+	// ErrNoStateCookie is returned by handler's handleOIDCCallback method when
+	// the state cookie is not found during OpenID Connect Auth callback.
+	ErrNoStateCookie = base.HTTPErrorf(http.StatusBadRequest,
+		"OIDC Auth Failure: No state cookie found; possible request forgery")
+
+	// ErrStateMismatch is returned by handler's handleOIDCCallback method when
+	// the state cookie value doesn't match with state param in the callback URL
+	// during OpenID Connect Auth callback.
+	ErrStateMismatch = base.HTTPErrorf(http.StatusBadRequest,
+		"OIDC Auth Failure: State mismatch; possible request forgery")
+
+	// ErrReadStateCookie is returned by handler's handleOIDCCallback method when
+	// there is failure reading state cookie value during OpenID Connect Auth callback.
+	ErrReadStateCookie = base.HTTPErrorf(http.StatusBadRequest,
+		"OIDC Auth Failure: Couldn't read state; possible request forgery")
 )
 
 const (
@@ -82,7 +107,13 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	}
 
 	var redirectURL *url.URL
-	state := ""
+	var state string
+
+	// Set state parameter to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
+	if !provider.DisableCallbackState {
+		state = base.GenerateRandomSecret()
+		setStateCookie(h.response, state, provider.CallbackStateCookieHTTPOnly)
+	}
 
 	// TODO: Is there a use case where we need to support direct pass-through of access_type and prompt from the caller?
 	offline := h.getBoolQuery(requestParamOffline)
@@ -116,6 +147,26 @@ func (h *handler) handleOIDCCallback() error {
 	provider, err := h.getOIDCProvider(providerName)
 	if err != nil || provider == nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
+	}
+
+	// Validate state parameter to prevent cross-site request forgery (CSRF) when callback state is enabled.
+	if !provider.DisableCallbackState {
+		stateCookie, err := h.rq.Cookie(stateCookieName)
+
+		if err != nil && err != http.ErrNoCookie {
+			base.Warnf("Unexpected error returned from request.Cookie(%s): %v", stateCookieName, err)
+			return ErrReadStateCookie
+		}
+		if err != nil || stateCookie == nil {
+			return ErrNoStateCookie
+		}
+		stateParam := h.rq.URL.Query().Get(requestParamState)
+		if stateParam != stateCookie.Value {
+			return ErrStateMismatch
+		}
+
+		// Delete the state cookie on successful validation.
+		deleteStateCookie(h.response, provider.CallbackStateCookieHTTPOnly)
 	}
 
 	client := provider.GetClient(h.getOIDCCallbackURL)
@@ -258,4 +309,20 @@ func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string
 		base.Warnf("Failed to add provider %q to OIDC callback URL (%s): %v", base.UD(providerName), callbackURL, err)
 	}
 	return callbackURL
+}
+
+// setStateCookie sets the state cookie.
+func setStateCookie(res http.ResponseWriter, value string, httpOnly bool) {
+	http.SetCookie(res, &http.Cookie{
+		Name: stateCookieName, Value: value, Path: "/",
+		HttpOnly: httpOnly, Expires: time.Now().Add(stateCookieTimeout),
+	})
+}
+
+// deleteStateCookie deletes the state cookie.
+func deleteStateCookie(res http.ResponseWriter, httpOnly bool) {
+	http.SetCookie(res, &http.Cookie{
+		Name: stateCookieName, Value: "",
+		Expires: time.Unix(0, 0), Path: "/", HttpOnly: httpOnly,
+	})
 }
