@@ -911,7 +911,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			sessionCookie := getCookie(response.Cookies(), auth.DefaultCookieName)
 			require.NotNil(t, sessionCookie, "No session cookie found")
 			sessionExpiry := int(sessionCookie.Expires.Sub(time.Now()).Seconds())
-			assert.True(t, 86395 <= sessionExpiry && 86400 >= sessionExpiry, "session expiry is not within 24 hours")
+			assert.True(t, 86395 <= sessionExpiry && 86400 >= sessionExpiry, "session expiry is not within 5 seconds of 24 hours")
 			require.NoError(t, response.Body.Close(), "error closing response body")
 		})
 	}
