@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -17,6 +19,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/square/go-jose.v2"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -86,6 +89,10 @@ const (
 	grantTypeRefreshToken
 )
 
+// BearerToken represents a Bearer token type; predominant type of
+// access token used with OAuth 2.0.
+const BearerToken = "Bearer"
+
 // The mockAuthServer represents a mock OAuth2 server for verifying OpenID Connect client code.
 // It is not intended to be used as an actual OAuth 2 server. It lacks many features that would
 // be required in a classic implementation. See https://tools.ietf.org/html/rfc6749 to know more
@@ -103,6 +110,13 @@ type mockAuthServer struct {
 	// The options represents a set of custom options to be injected on mock auth
 	// server to generate the response on demand.
 	options *options
+
+	// signer represents a signer which takes a payload and produces a signed JWS object.
+	signer jose.Signer
+
+	// keys represents set of a public keys in JWK format that enable clients to validate
+	// a JSON Web Token (JWT) issued by this OpenID Connect Provider.
+	keys []jose.JSONWebKey
 }
 
 // options represents a set of settings to be configured on mock auth server
@@ -124,10 +138,32 @@ type options struct {
 
 // The newMockAuthServer returns a new mock OAuth Server but doesn't start it.
 // The caller should call Start when needed, to start it up.
-func newMockAuthServer() *mockAuthServer {
+func newMockAuthServer() (*mockAuthServer, error) {
 	server := new(mockAuthServer)
+	if err := server.setupSignerWithKeys(); err != nil {
+		return nil, err
+	}
 	server.options = new(options)
-	return server
+	return server, nil
+}
+
+// setupSignerWithKeys sets up an RSA signer to sign the token and a set of public keys in JWK format
+// that enable clients to validate a JSON Web Token (JWT) issued by this OpenID Connect Provider.
+// Returns an error if there is any failure in generating RSA key pairs or creating a new RSA signer.
+func (s *mockAuthServer) setupSignerWithKeys() error {
+	rsaPrivateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+	signingKey := jose.SigningKey{Algorithm: jose.RS256, Key: rsaPrivateKey}
+	var signerOptions = jose.SignerOptions{}
+	signerOptions.WithType("JWT")
+	s.signer, err = jose.NewSigner(signingKey, &signerOptions)
+	if err != nil {
+		return err
+	}
+	s.keys = []jose.JSONWebKey{{Key: &rsaPrivateKey.PublicKey, KeyID: "kid", Use: "sig"}}
+	return nil
 }
 
 // Start registers mock handlers and starts the mock OAuth server.
@@ -137,6 +173,7 @@ func (s *mockAuthServer) Start() {
 	router.HandleFunc("/{provider}"+auth.OIDCDiscoveryConfigPath, s.discoveryHandler).Methods(http.MethodGet)
 	router.HandleFunc("/{provider}/auth", s.authHandler).Methods(http.MethodGet, http.MethodPost)
 	router.HandleFunc("/{provider}/token", s.tokenHandler).Methods(http.MethodPost)
+	router.HandleFunc("/{provider}/keys", s.keysHandler).Methods(http.MethodGet)
 	s.server = httptest.NewServer(router)
 	s.URL = s.server.URL
 }
@@ -159,7 +196,7 @@ func (s *mockAuthServer) discoveryHandler(w http.ResponseWriter, r *http.Request
 	metadata := auth.ProviderMetadata{
 		Issuer:                           issuer,
 		TokenEndpoint:                    issuer + "/token",
-		JwksUri:                          issuer + "/oauth2/v3/certs",
+		JwksUri:                          issuer + "/keys",
 		AuthorizationEndpoint:            issuer + "/auth",
 		IdTokenSigningAlgValuesSupported: []string{"RS256"},
 	}
@@ -224,23 +261,8 @@ func (s *mockAuthServer) tokenHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	issuer := s.options.issuer
-	claims := jwt.Claims{ID: "id0123456789", Issuer: issuer,
-		Audience: jwt.Audience{"aud1", "aud2", "aud3", "baz"},
-		IssuedAt: jwt.NewNumericDate(time.Now()), Subject: "noah",
-		Expiry: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-	}
-	signer, err := base.GetRSASigner()
-	if err != nil {
-		base.Errorf("Error creating RSA signer: %s", err)
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-	claimEmail := map[string]interface{}{"email": "noah@foo.com"}
-	builder := jwt.Signed(signer).Claims(claims).Claims(claimEmail)
-	token, err := builder.CompactSerialize()
-	if err != nil {
-		base.Errorf("Error serializing token: %s", err)
+	token, err := s.makeToken()
+	if err != nil || token == "" {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
@@ -248,7 +270,7 @@ func (s *mockAuthServer) tokenHandler(w http.ResponseWriter, r *http.Request) {
 		IDToken:      token,
 		AccessToken:  "7d1d234f5fde713a94454f268833adcd39835fe8",
 		RefreshToken: "e08c77351221346153d09ff64c123b24fc4c1905",
-		TokenType:    "Bearer",
+		TokenType:    BearerToken,
 		Expires:      300, // Expires in 5 minutes from when the response was generated.
 	}
 	if (s.options.grantType == grantTypeAuthCode && s.options.forceError.errorType == callbackNoIDTokenErr) ||
@@ -257,6 +279,30 @@ func (s *mockAuthServer) tokenHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	s.options.tokenResponse = response
 	renderJSON(w, r, http.StatusOK, response)
+}
+
+// makeToken creates a default token with an expiry of 5 minutes.
+func (s *mockAuthServer) makeToken() (string, error) {
+	issuer := s.options.issuer
+	claims := jwt.Claims{ID: "id0123456789", Issuer: issuer,
+		Audience: jwt.Audience{"aud1", "aud2", "aud3", "baz"},
+		IssuedAt: jwt.NewNumericDate(time.Now()), Subject: "noah",
+		Expiry: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+	}
+	claimEmail := map[string]interface{}{"email": "noah@foo.com"}
+	builder := jwt.Signed(s.signer).Claims(claims).Claims(claimEmail)
+	token, err := builder.CompactSerialize()
+	if err != nil {
+		base.Errorf("Error serializing token: %s", err)
+		return "", err
+	}
+	return token, nil
+}
+
+// keysHandler exposes a set of of a public keys in JWK format that enable clients
+// to validate a JSON Web Token (JWT) issued by this OpenID Connect Provider.
+func (s *mockAuthServer) keysHandler(w http.ResponseWriter, r *http.Request) {
+	renderJSON(w, r, http.StatusOK, jose.JSONWebKeySet{Keys: s.keys})
 }
 
 // Verifies OpenID Connect callback URL in redirect link is returned in the Location
@@ -296,7 +342,8 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
 
-			mockAuthServer := newMockAuthServer()
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
 			mockAuthServer.Start()
 			defer mockAuthServer.Shutdown()
 			refreshProviderConfig(providers, mockAuthServer.URL)
@@ -379,8 +426,8 @@ func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 	}
 }
 
-// Checks End to end OpenID Connect Authorization Code flow.
-func TestOpenIDConnectAuth(t *testing.T) {
+// E2E test that checks OpenID Connect Authorization Code Flow.
+func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 	type test struct {
 		name                string
 		providers           auth.OIDCProviderMap
@@ -633,7 +680,8 @@ func TestOpenIDConnectAuth(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mockAuthServer := newMockAuthServer()
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
 			mockAuthServer.Start()
 			defer mockAuthServer.Shutdown()
 
@@ -692,7 +740,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
-			request.Header.Add("Authorization", authResponseActual.IDToken)
+			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
@@ -730,7 +778,7 @@ func TestOpenIDConnectAuth(t *testing.T) {
 			// Query db endpoint with Bearer token
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
-			request.Header.Add("Authorization", refreshResponseActual.IDToken)
+			request.Header.Add("Authorization", BearerToken+" "+refreshResponseActual.IDToken)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
@@ -756,5 +804,115 @@ func refreshProviderConfig(providers auth.OIDCProviderMap, issuer string) {
 	for name, provider := range providers {
 		provider.Issuer = issuer + "/" + name
 		provider.DiscoveryURI = provider.Issuer + auth.OIDCDiscoveryConfigPath
+	}
+}
+
+// getCookie returns the specified cookie by name if it exists in the given
+// set of cookies and nil otherwise.
+func getCookie(cookies []*http.Cookie, name string) *http.Cookie {
+	for i := 0; i < len(cookies); i++ {
+		if cookies[i].Name == name {
+			return cookies[i]
+		}
+	}
+	return nil
+}
+
+// E2E test that checks OpenID Connect Implicit Flow.
+func TestOpenIDConnectImplicitFlow(t *testing.T) {
+	type test struct {
+		name                string
+		providers           auth.OIDCProviderMap
+		defaultProvider     string
+		authURL             string
+		expectedError       forceError
+		requireExistingUser bool
+	}
+	tests := []test{
+		{
+			// Successful new user authentication against single provider
+			// when auto registration is enabled.
+			name: "successful user registration against single provider",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithRegister("foo"),
+			},
+			defaultProvider: "foo",
+			authURL:         "/db/_oidc?provider=foo&offline=true",
+		}, {
+			// Unsuccessful new user authentication against single provider
+			// when auto registration is NOT enabled.
+			name: "unsuccessful user registration against single provider",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProvider("foo"),
+			},
+			defaultProvider: "foo",
+			authURL:         "/db/_oidc?provider=foo&offline=true",
+			expectedError: forceError{
+				expectedErrorCode:    http.StatusUnauthorized,
+				expectedErrorMessage: "Invalid login",
+			},
+		}, {
+			name: "successful registered user authentication against single provider",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProvider("foo"),
+			},
+			defaultProvider:     "foo",
+			authURL:             "/db/_oidc?provider=foo&offline=true",
+			requireExistingUser: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
+			mockAuthServer.Start()
+			defer mockAuthServer.Shutdown()
+			mockAuthServer.options.issuer = mockAuthServer.URL + "/" + tc.defaultProvider
+			refreshProviderConfig(tc.providers, mockAuthServer.URL)
+
+			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
+			restTesterConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &opts}}
+			restTester := NewRestTester(t, &restTesterConfig)
+			defer restTester.Close()
+
+			// Create the user first if the test requires a registered user.
+			if tc.requireExistingUser {
+				body := `{"name":"foo_noah", "password":"pass", "admin_channels":["foo"]}`
+				userResponse := restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", body)
+				assertStatus(t, userResponse, http.StatusCreated)
+				userResponse = restTester.SendAdminRequest(http.MethodGet, "/db/_user/foo_noah", "")
+				assertStatus(t, userResponse, http.StatusOK)
+			}
+
+			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+			defer mockSyncGateway.Close()
+			mockSyncGatewayURL := mockSyncGateway.URL
+
+			token, err := mockAuthServer.makeToken()
+			require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+			require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+			sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
+
+			request, err := http.NewRequest(http.MethodPost, sessionEndpoint, strings.NewReader(`{}`))
+			require.NoError(t, err, "Error creating new request")
+			request.Header.Add("Authorization", BearerToken+" "+token)
+			response, err := http.DefaultClient.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+
+			if (forceError{}) != tc.expectedError {
+				assertHttpResponse(t, response, tc.expectedError)
+				return
+			}
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			assert.Equal(t, "application/json", response.Header.Get("Content-Type"))
+
+			var responseBody map[string]interface{}
+			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
+			sessionCookie := getCookie(response.Cookies(), auth.DefaultCookieName)
+			require.NotNil(t, sessionCookie, "No session cookie found")
+			sessionExpiry := int(sessionCookie.Expires.Sub(time.Now()).Seconds())
+			assert.True(t, 86395 <= sessionExpiry && 86400 >= sessionExpiry, "session expiry is not within 24 hours")
+			require.NoError(t, response.Body.Close(), "error closing response body")
+		})
 	}
 }

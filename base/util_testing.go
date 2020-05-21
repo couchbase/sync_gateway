@@ -2,8 +2,6 @@ package base
 
 import (
 	"bytes"
-	cryptorand "crypto/rand"
-	"crypto/rsa"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,7 +14,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/square/go-jose.v2"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -322,20 +319,4 @@ func DirExists(filename string) bool {
 		return false
 	}
 	return info.IsDir()
-}
-
-// GetRSASigner creates a signer of type JWT using RS256
-func GetRSASigner() (signer jose.Signer, err error) {
-	rsaPrivateKey, err := rsa.GenerateKey(cryptorand.Reader, 2048)
-	if err != nil {
-		return signer, err
-	}
-	signingKey := jose.SigningKey{Algorithm: jose.RS256, Key: rsaPrivateKey}
-	var signerOptions = jose.SignerOptions{}
-	signerOptions.WithType("JWT")
-	signer, err = jose.NewSigner(signingKey, &signerOptions)
-	if err != nil {
-		return signer, err
-	}
-	return signer, nil
 }
