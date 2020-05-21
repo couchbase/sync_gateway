@@ -183,50 +183,11 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 }
 
 func TestImportWithStaleBucketDocCorrectExpiryXattr(t *testing.T) {
-
-	valStr := `{
-		"field": "value",
-		"field2": "val2"
-	}`
-
-	xattrStr := `{
-		"rev": "1-ca9ad22802b66f662ff171f226211d5d",
-        "sequence": 1,
-        "recent_sequences": [
-            1
-        ],
-        "history": {
-            "revs": [
-                "1-ca9ad22802b66f662ff171f226211d5d"
-            ],
-            "parents": [
-                -1
-            ],
-            "channels": [
-                null
-            ]
-        },
-        "cas": "",
-        "time_saved": "2017-11-29T12:46:13.456631-08:00"}`
-
 	var db *Database
 	var testBucket *base.TestBucket
 	var existingBucketDoc *sgbucket.BucketDocument
-	var callback bool
 
-	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{
-		WriteUpdateCallback: func(key string) {
-			if callback {
-				callback = false
-				// While importing update to force a cas mismatch
-				_, err := testBucket.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, existingBucketDoc, func(doc []byte, xattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
-					return []byte(valStr), []byte(xattrStr), false, base.Uint32Ptr(0), nil
-				})
-				fmt.Println("callback")
-				assert.NoError(t, err)
-			}
-		},
-	})
+	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{})
 	defer testBucket.Close()
 	defer db.Close()
 
@@ -249,11 +210,21 @@ func TestImportWithStaleBucketDocCorrectExpiryXattr(t *testing.T) {
 	err = bodyD.Unmarshal([]byte(importD))
 	assert.NoError(t, err, "Error unmarshalling body")
 
-	callback = true
+	// callback = true
 
 	// Trigger import
 	_, err = db.importDoc(key, bodyD, false, existingBucketDoc, ImportOnDemand)
 	assert.NoError(t, err)
+
+	// Check document has the rev and new body
+	var bodyOut map[string]interface{}
+	var xattrOut map[string]interface{}
+
+	_, err = testBucket.Bucket.GetWithXattr(key, base.SyncXattrName, &bodyOut, &xattrOut)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "2-abc", xattrOut["rev"])
+	assert.Equal(t, "val2", bodyOut["field2"])
 
 	t.Fail()
 }
