@@ -212,15 +212,19 @@ func TestImportWithStaleBucketDocCorrectExpiryXattr(t *testing.T) {
 	var db *Database
 	var testBucket *base.TestBucket
 	var existingBucketDoc *sgbucket.BucketDocument
+	var callback bool
 
 	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{
 		WriteUpdateCallback: func(key string) {
-			// While importing update to force a cas mismatch
-			_, err := testBucket.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, existingBucketDoc, func(doc []byte, xattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
-				return []byte(valStr), []byte(xattrStr), false, base.Uint32Ptr(0), nil
-			})
-			fmt.Println("callback")
-			assert.NoError(t, err)
+			if callback {
+				callback = false
+				// While importing update to force a cas mismatch
+				_, err := testBucket.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, existingBucketDoc, func(doc []byte, xattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+					return []byte(valStr), []byte(xattrStr), false, base.Uint32Ptr(0), nil
+				})
+				fmt.Println("callback")
+				assert.NoError(t, err)
+			}
 		},
 	})
 	defer testBucket.Close()
@@ -244,6 +248,8 @@ func TestImportWithStaleBucketDocCorrectExpiryXattr(t *testing.T) {
 	bodyD := Body{}
 	err = bodyD.Unmarshal([]byte(importD))
 	assert.NoError(t, err, "Error unmarshalling body")
+
+	callback = true
 
 	// Trigger import
 	_, err = db.importDoc(key, bodyD, false, existingBucketDoc, ImportOnDemand)
