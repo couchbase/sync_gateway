@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/replicator"
 	"golang.org/x/net/websocket"
 )
 
@@ -27,10 +28,6 @@ const (
 	// Blip default vals
 	BlipDefaultBatchSize = uint64(200)
 	BlipMinimumBatchSize = uint64(10) // Not in the replication spec - is this required?
-
-	// The AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
-	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
-	BlipCBMobileReplication = "CBMobile_2"
 )
 
 var (
@@ -151,15 +148,12 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	// Create a BLIP context:
-	blipContext := blip.NewContext(BlipCBMobileReplication)
-	blipContext.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
-	blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
+	blipContext := replicator.NewSGBlipContext(h.db.Ctx, "")
 
 	// Overwrite the existing logging context with the blip context ID
 	h.db.Ctx = context.WithValue(h.db.Ctx, base.LogContextKey{},
 		base.LogContext{CorrelationID: base.FormatBlipContextID(blipContext.ID)},
 	)
-	blipContext.Logger = DefaultBlipLogger(h.db.Ctx)
 
 	// Create a BLIP-sync context and register handlers:
 	ctx := blipSyncContext{
@@ -191,7 +185,7 @@ func (h *handler) handleBLIPSync() error {
 	server := blipContext.WebSocketServer()
 	defaultHandler := server.Handler
 	server.Handler = func(conn *websocket.Conn) {
-		h.logStatus(101, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol%s", blipContext.ID, h.formattedEffectiveUserName()))
+		h.logStatus(http.StatusSwitchingProtocols, fmt.Sprintf("[%s] Upgraded to BLIP+WebSocket protocol%s", blipContext.ID, h.formattedEffectiveUserName()))
 		defer func() {
 			_ = conn.Close() // in case it wasn't closed already
 			base.InfofCtx(ctx.blipContextDb.Ctx, base.KeyHTTP, "%s:    --> BLIP+WebSocket connection closed", h.formatSerialNumber())
