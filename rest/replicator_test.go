@@ -5,7 +5,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/replicator"
@@ -42,9 +41,8 @@ func TestSGR2Pull(t *testing.T) {
 		TargetDB:  targetDB,
 	})
 	require.NoError(t, err)
+	defer bar.Close()
 
 	require.NoError(t, bar.Connect())
 	require.NoError(t, bar.Start())
-
-	time.Sleep(time.Second)
 }
