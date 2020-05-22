@@ -505,7 +505,7 @@ func mockProviderWithCallbackStateDisabledWithNoRegister(name string) *auth.OIDC
 	}
 }
 
-// Checks End to end OpenID Connect Authorization Code flow.
+// E2E test that checks OpenID Connect Authorization Code Flow.
 func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 	type test struct {
 		name                string
