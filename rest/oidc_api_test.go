@@ -89,8 +89,8 @@ const (
 	grantTypeRefreshToken
 )
 
-// BearerToken represents a Bearer token type; predominant type of
-// access token used with OAuth 2.0.
+// BearerToken is used for setting JWT token type as well as the
+// prefix for the Authorization HTTP header.
 const BearerToken = "Bearer"
 
 // The mockAuthServer represents a mock OAuth2 server for verifying OpenID Connect client code.
@@ -261,7 +261,7 @@ func (s *mockAuthServer) tokenHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	token, err := s.makeToken()
+	token, err := s.makeToken(claimsAuthentic())
 	if err != nil || token == "" {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -281,22 +281,43 @@ func (s *mockAuthServer) tokenHandler(w http.ResponseWriter, r *http.Request) {
 	renderJSON(w, r, http.StatusOK, response)
 }
 
+// claimSet represents a set of public and private claim values.
+type claimSet struct {
+	primaryClaims   jwt.Claims             // primaryClaims represents public claim values.
+	secondaryClaims map[string]interface{} // secondaryClaims represents private claim values.
+}
+
 // makeToken creates a default token with an expiry of 5 minutes.
-func (s *mockAuthServer) makeToken() (string, error) {
-	issuer := s.options.issuer
-	claims := jwt.Claims{ID: "id0123456789", Issuer: issuer,
-		Audience: jwt.Audience{"aud1", "aud2", "aud3", "baz"},
-		IssuedAt: jwt.NewNumericDate(time.Now()), Subject: "noah",
-		Expiry: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+func (s *mockAuthServer) makeToken(claimSet claimSet) (string, error) {
+	primaryClaims := claimSet.primaryClaims
+	secondaryClaims := claimSet.secondaryClaims
+	if primaryClaims.Issuer == "" {
+		primaryClaims.Issuer = s.options.issuer
 	}
-	claimEmail := map[string]interface{}{"email": "noah@foo.com"}
-	builder := jwt.Signed(s.signer).Claims(claims).Claims(claimEmail)
+	builder := jwt.Signed(s.signer).Claims(primaryClaims).Claims(secondaryClaims)
 	token, err := builder.CompactSerialize()
 	if err != nil {
 		base.Errorf("Error serializing token: %s", err)
 		return "", err
 	}
 	return token, nil
+}
+
+// claimsAuthentic returns an authentic claim set that contains both primary
+// and secondary claims.
+func claimsAuthentic() claimSet {
+	primaryClaims := jwt.Claims{
+		ID:       "id0123456789",
+		Subject:  "noah",
+		Audience: jwt.Audience{"aud1", "aud2", "aud3", "baz"},
+		IssuedAt: jwt.NewNumericDate(time.Now()),
+		Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+	}
+	secondaryClaims := map[string]interface{}{"email": "noah@foo.com"}
+	return claimSet{
+		primaryClaims:   primaryClaims,
+		secondaryClaims: secondaryClaims,
+	}
 }
 
 // keysHandler exposes a set of of a public keys in JWK format that enable clients
@@ -691,17 +712,13 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &opts}}
 			restTester := NewRestTester(t, &restTesterConfig)
+			restTester.SetAdminParty(false)
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
 			if tc.requireExistingUser {
-				body := `{"name":"foo_noah", "password":"pass", "admin_channels":["foo"]}`
-				userResponse := restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", body)
-				assertStatus(t, userResponse, http.StatusCreated)
-				userResponse = restTester.SendAdminRequest(http.MethodGet, "/db/_user/foo_noah", "")
-				assertStatus(t, userResponse, http.StatusOK)
+				createUser(t, restTester, "foo_noah")
 			}
-
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
 			mockSyncGatewayURL := mockSyncGateway.URL
@@ -744,7 +761,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
-			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
 			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 
@@ -782,7 +799,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
-			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
 			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
 		})
@@ -810,12 +827,31 @@ func refreshProviderConfig(providers auth.OIDCProviderMap, issuer string) {
 // getCookie returns the specified cookie by name if it exists in the given
 // set of cookies and nil otherwise.
 func getCookie(cookies []*http.Cookie, name string) *http.Cookie {
-	for i := 0; i < len(cookies); i++ {
-		if cookies[i].Name == name {
-			return cookies[i]
+	for _, cookie := range cookies {
+		if cookie.Name == name {
+			return cookie
 		}
 	}
 	return nil
+}
+
+// createUser creates a user with the specified name.
+func createUser(t *testing.T, restTester *RestTester, name string) {
+	body := fmt.Sprintf(`{"name":"%s", "password":"pass", "email":"%s@couchbase.com"}`, name, name)
+	userEndpoint := fmt.Sprintf("/db/_user/%s", name)
+	response := restTester.SendAdminRequest(http.MethodPut, userEndpoint, body)
+	assertStatus(t, response, http.StatusCreated)
+	response = restTester.SendAdminRequest(http.MethodGet, userEndpoint, "")
+	assertStatus(t, response, http.StatusOK)
+}
+
+// deleteUser deletes the specified user.
+func deleteUser(t *testing.T, restTester *RestTester, name string) {
+	userEndpoint := fmt.Sprintf("/db/_user/%s", name)
+	response := restTester.SendAdminRequest(http.MethodDelete, userEndpoint, "")
+	assertStatus(t, response, http.StatusOK)
+	response = restTester.SendAdminRequest(http.MethodGet, userEndpoint, "")
+	assertStatus(t, response, http.StatusNotFound)
 }
 
 // E2E test that checks OpenID Connect Implicit Flow.
@@ -824,7 +860,6 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 		name                string
 		providers           auth.OIDCProviderMap
 		defaultProvider     string
-		authURL             string
 		expectedError       forceError
 		requireExistingUser bool
 	}
@@ -837,7 +872,6 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 				"foo": mockProviderWithRegister("foo"),
 			},
 			defaultProvider: "foo",
-			authURL:         "/db/_oidc?provider=foo&offline=true",
 		}, {
 			// Unsuccessful new user authentication against single provider
 			// when auto registration is NOT enabled.
@@ -846,7 +880,6 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 				"foo": mockProvider("foo"),
 			},
 			defaultProvider: "foo",
-			authURL:         "/db/_oidc?provider=foo&offline=true",
 			expectedError: forceError{
 				expectedErrorCode:    http.StatusUnauthorized,
 				expectedErrorMessage: "Invalid login",
@@ -857,7 +890,6 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 				"foo": mockProvider("foo"),
 			},
 			defaultProvider:     "foo",
-			authURL:             "/db/_oidc?provider=foo&offline=true",
 			requireExistingUser: true,
 		},
 	}
@@ -873,22 +905,19 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
 			restTesterConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &opts}}
 			restTester := NewRestTester(t, &restTesterConfig)
+			restTester.SetAdminParty(false)
 			defer restTester.Close()
 
 			// Create the user first if the test requires a registered user.
 			if tc.requireExistingUser {
-				body := `{"name":"foo_noah", "password":"pass", "admin_channels":["foo"]}`
-				userResponse := restTester.SendAdminRequest(http.MethodPut, "/db/_user/foo_noah", body)
-				assertStatus(t, userResponse, http.StatusCreated)
-				userResponse = restTester.SendAdminRequest(http.MethodGet, "/db/_user/foo_noah", "")
-				assertStatus(t, userResponse, http.StatusOK)
+				createUser(t, restTester, "foo_noah")
 			}
 
 			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 			defer mockSyncGateway.Close()
 			mockSyncGatewayURL := mockSyncGateway.URL
 
-			token, err := mockAuthServer.makeToken()
+			token, err := mockAuthServer.makeToken(claimsAuthentic())
 			require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 			require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 			sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
@@ -903,16 +932,222 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 				assertHttpResponse(t, response, tc.expectedError)
 				return
 			}
-			require.Equal(t, http.StatusOK, response.StatusCode)
-			assert.Equal(t, "application/json", response.Header.Get("Content-Type"))
-
-			var responseBody map[string]interface{}
-			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&responseBody))
-			sessionCookie := getCookie(response.Cookies(), auth.DefaultCookieName)
-			require.NotNil(t, sessionCookie, "No session cookie found")
-			sessionExpiry := int(sessionCookie.Expires.Sub(time.Now()).Seconds())
-			assert.True(t, 86395 <= sessionExpiry && 86400 >= sessionExpiry, "session expiry is not within 5 seconds of 24 hours")
-			require.NoError(t, response.Body.Close(), "error closing response body")
+			checkGoodAuthResponse(t, response)
 		})
 	}
+}
+
+// checkGoodAuthResponse asserts expected session response values against the given response.
+func checkGoodAuthResponse(t *testing.T, response *http.Response) {
+	require.Equal(t, http.StatusOK, response.StatusCode)
+	assert.Equal(t, "application/json", response.Header.Get("Content-Type"))
+	var responseBodyActual map[string]interface{}
+	require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBodyActual))
+	sessionCookie := getCookie(response.Cookies(), auth.DefaultCookieName)
+	require.NotNil(t, sessionCookie, "No session cookie found")
+	require.NoError(t, response.Body.Close(), "error closing response body")
+	responseBodyExpected := map[string]interface{}{
+		"authentication_handlers": []interface{}{
+			"default", "cookie",
+		},
+		"ok": true,
+		"userCtx": map[string]interface{}{
+			"channels": map[string]interface{}{"!": float64(1)},
+			"name":     "foo_noah",
+		},
+	}
+	assert.Equal(t, responseBodyExpected, responseBodyActual, "Session response mismatch")
+}
+
+// E2E test that checks OpenID Connect Implicit Flow edge cases.
+func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
+	providers := auth.OIDCProviderMap{
+		"foo": mockProviderWithRegister("foo"),
+	}
+	defaultProvider := "foo"
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+	refreshProviderConfig(providers, mockAuthServer.URL)
+
+	opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
+	restTesterConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &opts}}
+	restTester := NewRestTester(t, &restTesterConfig)
+	restTester.SetAdminParty(false)
+	defer restTester.Close()
+
+	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+	defer mockSyncGateway.Close()
+	mockSyncGatewayURL := mockSyncGateway.URL
+
+	sendAuthRequest := func(claimSet claimSet) (*http.Response, error) {
+		token, err := mockAuthServer.makeToken(claimSet)
+		require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+		require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+		sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
+		request, err := http.NewRequest(http.MethodPost, sessionEndpoint, strings.NewReader(`{}`))
+		require.NoError(t, err, "Error creating new request")
+		request.Header.Add("Authorization", BearerToken+" "+token)
+		return http.DefaultClient.Do(request)
+	}
+
+	runBadAuthTest := func(claimSet claimSet) {
+		response, err := sendAuthRequest(claimSet)
+		require.NoError(t, err, "Error sending request with bearer token")
+		expectedAuthError := forceError{
+			expectedErrorCode:    http.StatusUnauthorized,
+			expectedErrorMessage: "Invalid login",
+		}
+		assertHttpResponse(t, response, expectedAuthError)
+	}
+
+	runGoodAuthTest := func(claimSet claimSet) {
+		response, err := sendAuthRequest(claimSet)
+		require.NoError(t, err, "Error sending request with bearer token")
+		checkGoodAuthResponse(t, response)
+	}
+
+	t.Run("new user authentication with an expired token", func(t *testing.T) {
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.Expiry = jwt.NewNumericDate(time.Now().Add(-5 * time.Minute))
+		runBadAuthTest(claimSet)
+	})
+
+	t.Run("registered user authentication with an expired token", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.Expiry = jwt.NewNumericDate(time.Now().Add(-5 * time.Minute))
+		runBadAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("new user authentication with invalid audience claim", func(t *testing.T) {
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.Audience = jwt.Audience{"aud1", "aud2", "aud3", "qux"}
+		runBadAuthTest(claimSet)
+	})
+
+	t.Run("registered user authentication with invalid audience claim", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.Audience = jwt.Audience{"aud1", "aud2", "aud3", "qux"}
+		runBadAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("new user authentication with no subject claim", func(t *testing.T) {
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.Subject = ""
+		runBadAuthTest(claimSet)
+	})
+
+	t.Run("registered user authentication with no subject claim", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.Subject = ""
+		runBadAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("new user authentication with a bad email claim", func(t *testing.T) {
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims["email"] = "foo_noah@"
+		runGoodAuthTest(claimSet)
+
+		// Bad email shouldn't not be saved on successful authentication.
+		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser("foo_noah")
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, "foo_noah", user.Name())
+		assert.Empty(t, user.Email(), "Bad email shouldn't be saved")
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("registered user authentication with a bad email claim", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims["email"] = "foo_noah@"
+		runGoodAuthTest(claimSet)
+
+		// Bad email shouldn't not be saved on successful authentication.
+		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser("foo_noah")
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, "foo_noah", user.Name())
+		assert.Equal(t, "foo_noah@couchbase.com", user.Email(), "Bad email shouldn't be saved")
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("registered user authentication with a good email claim", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims["email"] = "foo_noah@example.com"
+		runGoodAuthTest(claimSet)
+
+		// Good email should be updated on successful authentication.
+		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser("foo_noah")
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, "foo_noah", user.Name())
+		assert.Equal(t, "foo_noah@example.com", user.Email(), "Email is not updated")
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("new user authentication with bad issuer claim", func(t *testing.T) {
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.Issuer = "https://login.unknownissuer.com"
+		runBadAuthTest(claimSet)
+	})
+
+	t.Run("registered user authentication with bad issuer claim", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.Issuer = "https://login.unknownissuer.com"
+		runBadAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("new user authentication with future time nbf claim", func(t *testing.T) {
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
+		runBadAuthTest(claimSet)
+	})
+
+	t.Run("new user authentication with current time nbf claim", func(t *testing.T) {
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now())
+		runGoodAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("new user authentication with past time nbf claim", func(t *testing.T) {
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(-1 * time.Minute))
+		runGoodAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("registered user authentication with future time nbf claim", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
+		runBadAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("registered user authentication with current time nbf claim", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now())
+		runGoodAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
+	t.Run("registered user authentication with past time nbf claim", func(t *testing.T) {
+		createUser(t, restTester, "foo_noah")
+		claimSet := claimsAuthentic()
+		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(-1 * time.Minute))
+		runGoodAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_noah")
+	})
+
 }
