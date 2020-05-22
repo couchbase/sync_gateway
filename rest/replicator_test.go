@@ -17,7 +17,6 @@ import (
 func TestActiveReplicatorBlipsync(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg, base.KeyReplicate)()
 
-	// 2 single-node clusters:
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
