@@ -2,7 +2,6 @@ package base
 
 import (
 	"errors"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -142,6 +141,7 @@ func (h *couchbaseHeartBeater) startSendingHeartbeats() error {
 				return
 			case <-ticker.C:
 				if err := h.sendHeartbeat(); err != nil {
+					Warnf("Unexpected error sending heartbeat - will be retried: %v", err)
 				}
 			}
 		}
@@ -211,13 +211,13 @@ func (h *couchbaseHeartBeater) UnregisterListener(handlerName string) {
 
 // getAllNodes returns all nodes from all registered listeners as a map from nodeUUID to the listeners
 // registered for that node
-func (h *couchbaseHeartBeater) getNodeListenerMap() (map[string][]HeartbeatListener, error) {
+func (h *couchbaseHeartBeater) getNodeListenerMap() map[string][]HeartbeatListener {
 	nodeToListenerMap := make(map[string][]HeartbeatListener)
 	h.heartbeatListenersMutex.RLock()
 	for _, listener := range h.heartbeatListeners {
 		listenerNodes, err := listener.GetNodes()
 		if err != nil {
-			return nil, err
+			Warnf("Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
 		}
 		for _, nodeUUID := range listenerNodes {
 			_, ok := nodeToListenerMap[nodeUUID]
@@ -228,16 +228,13 @@ func (h *couchbaseHeartBeater) getNodeListenerMap() (map[string][]HeartbeatListe
 		}
 	}
 	h.heartbeatListenersMutex.RUnlock()
-	return nodeToListenerMap, nil
+	return nodeToListenerMap
 }
 
 func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 
 	// Build set of all nodes
-	nodeListenerMap, err := h.getNodeListenerMap()
-	if err != nil {
-		return err
-	}
+	nodeListenerMap := h.getNodeListenerMap()
 	Debugf(KeyCluster, "Checking heartbeats for node set: %v", nodeListenerMap)
 
 	for heartbeatNodeUUID, listeners := range nodeListenerMap {
@@ -413,7 +410,7 @@ func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) err
 			dh.nodeIDs = append(dh.nodeIDs, nodeID)
 		}
 
-		log.Printf("Writing nodeList document (%s): %v", dh.nodeListKey, dh.nodeIDs)
+		Tracef(KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
 
 		casOut, err := dh.bucket.WriteCas(dh.nodeListKey, 0, 0, dh.cas, dh.nodeIDs, 0)
 
