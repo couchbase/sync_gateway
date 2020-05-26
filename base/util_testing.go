@@ -320,3 +320,16 @@ func DirExists(filename string) bool {
 	}
 	return info.IsDir()
 }
+
+// WaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
+func WaitForStat(getStatFunc func() int64, expected int64) (int64, bool) {
+	workerFunc := func() (shouldRetry bool, err error, val interface{}) {
+		val = getStatFunc()
+		return val != expected, nil, val
+	}
+	// wait for up to 20 seconds for the stat to meet the expected value
+	err, val := RetryLoop("waitForStat retry loop", workerFunc, CreateSleeperFunc(200, 100))
+	valInt64, ok := val.(int64)
+
+	return valInt64, err == nil && ok
+}

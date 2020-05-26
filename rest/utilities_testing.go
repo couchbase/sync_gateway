@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/replicator"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/websocket"
@@ -732,15 +733,7 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 	u.Scheme = "ws"
 
 	// Make BLIP/Websocket connection
-	bt.blipContext = blip.NewContext(BlipCBMobileReplication)
-	bt.blipContext.Logger = DefaultBlipLogger(
-		context.WithValue(context.Background(), base.LogContextKey{},
-			base.LogContext{CorrelationID: base.FormatBlipContextID(bt.blipContext.ID)},
-		),
-	)
-
-	bt.blipContext.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
-	bt.blipContext.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
+	bt.blipContext = replicator.NewSGBlipContext(context.Background(), "")
 
 	origin := "http://localhost" // TODO: what should be used here?
 
