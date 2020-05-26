@@ -1541,6 +1541,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			goassert.True(t, expiry > 0)
 			log.Printf("expiry: %v", expiry)
 			goassert.True(t, expiry == uint32(syncMetaExpiry.Unix()))
+
 		})
 	}
 

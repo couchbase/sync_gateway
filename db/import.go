@@ -78,7 +78,6 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
-
 	existingBucketDoc := &sgbucket.BucketDocument{
 		Cas:    existingDoc.Cas,
 		Expiry: *expiry,
@@ -310,8 +309,6 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	return docOut, nil
 }
 
-var runOnce bool
-
 // Migrates document metadata from document body to system xattr.  On CAS failure, retrieves current doc body and retries
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
 func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *Document, requiresImport bool, err error) {
@@ -341,56 +338,10 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 		return nil, false, marshalErr
 	}
 
-	// TODO: Could refactor migrateMetadata to use WriteUpdateWithXattr for both CAS retry and general write handling, and avoid cast to CouchbaseBucketGoCB
-	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
-	if !ok {
-		return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
-	}
-
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	isDelete := doc.hasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
-
-	if !runOnce {
-		runOnce = true
-		var body map[string]interface{}
-		var xattr map[string]interface{}
-
-		valStr := `{
-		"field": "value",
-		"field2": "val2"
-	}`
-
-		xattrStr := `{
-		"rev": "2-abc",
-        "sequence": 1,
-        "recent_sequences": [
-            1
-        ],
-        "history": {
-            "revs": [
-				"2-abc",
-                "1-abc"
-            ],
-            "parents": [
-                -1,
-				0
-            ],
-            "channels": [
-                null,
-				null
-            ]
-        },
-        "cas": "",
-        "time_saved": "2017-11-29T12:46:13.456631-08:00"}`
-
-		key := docid
-
-		cas, _ := gocbBucket.GetWithXattr(key, base.SyncXattrName, &body, &xattr)
-		gocbBucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, []byte(valStr), []byte(xattrStr))
-	}
-
-	casOut, writeErr := gocbBucket.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
+	casOut, writeErr := db.Bucket.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.Infof(base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))

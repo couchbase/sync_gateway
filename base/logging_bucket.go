@@ -105,6 +105,12 @@ func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp uint32, ca
 	defer b.log(time.Now(), k, xattr, exp, cas)
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
 }
+
+func (b *LoggingBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
+	defer b.log(time.Now(), k, xattrKey, exp, cas, value, xattrValue, isDelete, deleteBody)
+	return b.bucket.WriteWithXattr(k, xattrKey, exp, cas, value, xattrValue, isDelete, deleteBody)
+}
+
 func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	defer b.log(time.Now(), k, xattr, exp)
 	return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, callback)
