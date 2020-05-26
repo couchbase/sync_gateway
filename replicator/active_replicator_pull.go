@@ -13,7 +13,6 @@ type ActivePullReplicator struct {
 	blipSender  *blip.Sender
 }
 
-// Compile-time interface check.
 var _ ActiveReplicator = &ActivePullReplicator{}
 
 func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
@@ -26,12 +25,11 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 // Connects to the target via BLIP and sets.
 func (apr *ActivePullReplicator) Connect() error {
 	if apr == nil {
-		// noop
-		return nil
+		return fmt.Errorf("nil ActivePullReplicator, can't connect")
 	}
 
 	if apr.blipSender != nil {
-		return fmt.Errorf("replicator already has a blipSender ... can't connect twice")
+		return fmt.Errorf("replicator already has a blipSender, can't connect twice")
 	}
 
 	s, err := blipSync(*apr.config.TargetDB, apr.blipContext)
@@ -59,8 +57,7 @@ func (apr *ActivePullReplicator) Close() error {
 
 func (apr *ActivePullReplicator) Start() error {
 	if apr == nil {
-		// noop
-		return nil
+		return fmt.Errorf("nil ActivePullReplicator, can't start")
 	}
 
 	if apr.blipSender == nil {

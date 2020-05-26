@@ -27,15 +27,10 @@ type BidirectionalActiveReplicator struct {
 	pull *ActivePullReplicator
 }
 
-// Compile-time interface check.
 var _ ActiveReplicator = &BidirectionalActiveReplicator{}
 
 // NewBidirectionalActiveReplicator returns a bidirectional active replicator for the given config.
 func NewBidirectionalActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*BidirectionalActiveReplicator, error) {
-	if errs := config.Validate(); len(errs) > 0 {
-		return nil, fmt.Errorf("%v", errs)
-	}
-
 	bar := &BidirectionalActiveReplicator{}
 
 	// if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
