@@ -44,7 +44,30 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	assert.NoError(t, bar.Connect())
+	startNumReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
+	startNumReplicationsActive := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive))
+
+	// Start the replicator (implicit connect)
 	assert.NoError(t, bar.Start())
+
+	// Check total stat
+	numReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
+	assert.Equal(t, startNumReplicationsTotal+1, numReplicationsTotal)
+
+	// Check active stat
+	assert.Equal(t, startNumReplicationsActive+1, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive)))
+
+	// Close the replicator (implicit disconnect)
 	assert.NoError(t, bar.Close())
+
+	// Wait for active stat to drop to original value
+	numReplicationsActive, ok := base.WaitForStat(func() int64 {
+		return base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive))
+	}, startNumReplicationsActive)
+	assert.True(t, ok)
+	assert.Equal(t, startNumReplicationsActive, numReplicationsActive)
+
+	// Verify total stat has not been decremented
+	numReplicationsTotal = base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
+	assert.Equal(t, startNumReplicationsTotal+1, numReplicationsTotal)
 }

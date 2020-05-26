@@ -13,9 +13,7 @@ import (
 
 // ActiveReplicator is a common interface used for the Bidirectional, Push, and Pull active replicators.
 type ActiveReplicator interface {
-	// Connect initiates a connection to the target, but does not send any replication instructions.
-	Connect() error
-	// Start will trigger the replicator to start its replication for the connection.
+	// Start will trigger the replicator to connect to the target, and start replication.
 	Start() error
 	// Close stops and closes any ongoing replications and connections.
 	Close() error
@@ -42,22 +40,6 @@ func NewBidirectionalActiveReplicator(ctx context.Context, config *ActiveReplica
 	}
 
 	return bar, nil
-}
-
-func (bar *BidirectionalActiveReplicator) Connect() error {
-	// if bar.push != nil {
-	// 	if err := bar.push.Connect(); err != nil {
-	// 		return err
-	// 	}
-	// }
-
-	if bar.pull != nil {
-		if err := bar.pull.Connect(); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (bar *BidirectionalActiveReplicator) Start() error {

@@ -22,8 +22,7 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 	}
 }
 
-// Connects to the target via BLIP and sets.
-func (apr *ActivePullReplicator) Connect() error {
+func (apr *ActivePullReplicator) connect() error {
 	if apr == nil {
 		return fmt.Errorf("nil ActivePullReplicator, can't connect")
 	}
@@ -60,8 +59,8 @@ func (apr *ActivePullReplicator) Start() error {
 		return fmt.Errorf("nil ActivePullReplicator, can't start")
 	}
 
-	if apr.blipSender == nil {
-		return fmt.Errorf("ActiveReplicator not connected, call Connect() before starting replicator")
+	if err := apr.connect(); err != nil {
+		return err
 	}
 
 	return nil
