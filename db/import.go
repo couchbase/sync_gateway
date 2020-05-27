@@ -157,9 +157,13 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 				}
 
 				if doc.inlineSyncData {
-					existingDoc.Body, _ = doc.MarshalBodyAndSync()
+					existingDoc.Body, err = doc.MarshalBodyAndSync()
 				} else {
-					existingDoc.Body, _ = doc.BodyBytes()
+					existingDoc.Body, err = doc.BodyBytes()
+				}
+
+				if err != nil {
+					return nil, nil, nil, err
 				}
 
 				updatedExpiry = &expiry
