@@ -43,19 +43,16 @@ const (
 var (
 	// ErrNoStateCookie is returned by handler's handleOIDCCallback method when
 	// the state cookie is not found during OpenID Connect Auth callback.
-	ErrNoStateCookie = base.HTTPErrorf(http.StatusBadRequest,
-		"OIDC Auth Failure: No state cookie found; possible request forgery")
+	ErrNoStateCookie = base.HTTPErrorf(http.StatusBadRequest, "OIDC Auth Failure: No state cookie found")
 
 	// ErrStateMismatch is returned by handler's handleOIDCCallback method when
 	// the state cookie value doesn't match with state param in the callback URL
 	// during OpenID Connect Auth callback.
-	ErrStateMismatch = base.HTTPErrorf(http.StatusBadRequest,
-		"OIDC Auth Failure: State mismatch; possible request forgery")
+	ErrStateMismatch = base.HTTPErrorf(http.StatusBadRequest, "OIDC Auth Failure: State mismatch")
 
 	// ErrReadStateCookie is returned by handler's handleOIDCCallback method when
 	// there is failure reading state cookie value during OpenID Connect Auth callback.
-	ErrReadStateCookie = base.HTTPErrorf(http.StatusBadRequest,
-		"OIDC Auth Failure: Couldn't read state; possible request forgery")
+	ErrReadStateCookie = base.HTTPErrorf(http.StatusBadRequest, "OIDC Auth Failure: Couldn't read state")
 )
 
 const (
@@ -107,12 +104,12 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	}
 
 	var redirectURL *url.URL
-	var state string
+	state := ""
 
 	// Set state parameter to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
 	if !provider.DisableCallbackState {
 		state = base.GenerateRandomSecret()
-		setStateCookie(h.response, state, provider.CallbackStateCookieHTTPOnly)
+		h.setStateCookie(state)
 	}
 
 	// TODO: Is there a use case where we need to support direct pass-through of access_type and prompt from the caller?
@@ -153,20 +150,22 @@ func (h *handler) handleOIDCCallback() error {
 	if !provider.DisableCallbackState {
 		stateCookie, err := h.rq.Cookie(stateCookieName)
 
-		if err != nil && err != http.ErrNoCookie {
-			base.Warnf("Unexpected error returned from request.Cookie(%s): %v", stateCookieName, err)
-			return ErrReadStateCookie
-		}
-		if err != nil || stateCookie == nil {
+		if err == http.ErrNoCookie || stateCookie == nil {
 			return ErrNoStateCookie
 		}
+
+		if err != nil {
+			base.Warnf("Unexpected error attempting to read OIDC state cookie: %v", err)
+			return ErrReadStateCookie
+		}
+
 		stateParam := h.rq.URL.Query().Get(requestParamState)
 		if stateParam != stateCookie.Value {
 			return ErrStateMismatch
 		}
 
 		// Delete the state cookie on successful validation.
-		deleteStateCookie(h.response, provider.CallbackStateCookieHTTPOnly)
+		h.deleteStateCookie(stateCookie)
 	}
 
 	client := provider.GetClient(h.getOIDCCallbackURL)
@@ -312,17 +311,22 @@ func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string
 }
 
 // setStateCookie sets the state cookie.
-func setStateCookie(res http.ResponseWriter, value string, httpOnly bool) {
-	http.SetCookie(res, &http.Cookie{
-		Name: stateCookieName, Value: value, Path: "/",
-		HttpOnly: httpOnly, Expires: time.Now().Add(stateCookieTimeout),
-	})
+func (h *handler) setStateCookie(value string) {
+	cookie := &http.Cookie{
+		Name:     stateCookieName,
+		Value:    value,
+		HttpOnly: true,
+		Expires:  time.Now().Add(stateCookieTimeout),
+	}
+	if h.rq.TLS != nil {
+		cookie.Secure = true
+	}
+	base.AddDbPathToCookie(h.rq, cookie)
+	http.SetCookie(h.response, cookie)
 }
 
 // deleteStateCookie deletes the state cookie.
-func deleteStateCookie(res http.ResponseWriter, httpOnly bool) {
-	http.SetCookie(res, &http.Cookie{
-		Name: stateCookieName, Value: "",
-		Expires: time.Unix(0, 0), Path: "/", HttpOnly: httpOnly,
-	})
+func (h *handler) deleteStateCookie(cookie *http.Cookie) {
+	cookie.Expires = time.Unix(0, 0)
+	http.SetCookie(h.response, cookie)
 }

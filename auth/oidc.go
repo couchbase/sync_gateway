@@ -103,18 +103,12 @@ type OIDCProvider struct {
 	DiscoveryURI            string   `json:"discovery_url,omitempty"`          // Non-standard discovery endpoints
 	DisableConfigValidation bool     `json:"disable_cfg_validation,omitempty"` // Bypasses config validation based on the OIDC spec.  Required for some OPs that don't strictly adhere to spec (eg. Yahoo)
 
-	// DisableCallbackState determines whether or not to maintain state between the
-	// Authentication (OAuth 2.0 Authorization) request and the callback. The default
-	// value of DisableCallbackState is false, which means state is maintained between
-	// auth request and the callback. It can be disabled through provider configuration
-	// by setting property "disable_callback_state": false. Disabling callback state is
-	// is vulnerable to Cross-Site Request Forgery (CSRF, XSRF) and NOT recommended.
+	// DisableCallbackState determines whether or not to maintain state between the "/_oidc" and
+	// "/_oidc_callback" endpoints. The default value of DisableCallbackState is false, which means
+	// state is maintained between auth request and the callback. It can be disabled through provider
+	// configuration by setting property "disable_callback_state": true. Disabling callback state is
+	// vulnerable to Cross-Site Request Forgery (CSRF, XSRF) and NOT recommended.
 	DisableCallbackState bool `json:"disable_callback_state,omitempty"`
-
-	// CallbackStateCookieHTTPOnly determines whether or not to make the callback state
-	// cookie inaccessible to JavaScript's Document.cookie API to mitigate cross-site
-	// scripting (XSS) attacks.
-	CallbackStateCookieHTTPOnly bool `json:"callback_state_cookie_http_only"`
 
 	// client represents client configurations to authenticate end-users
 	// with an OpenID Connect provider. It must not be accessed directly,

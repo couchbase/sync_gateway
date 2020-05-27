@@ -455,31 +455,6 @@ func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 	}
 }
 
-// Returns a new OIDCProvider with CallbackStateCookieHTTPOnly flag enabled.
-func mockProviderWithCallbackStateCookieHTTPOnly(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:                        name,
-		ClientID:                    "baz",
-		UserPrefix:                  name,
-		ValidationKey:               base.StringPtr("qux"),
-		Register:                    true,
-		IncludeAccessToken:          true,
-		CallbackStateCookieHTTPOnly: true,
-	}
-}
-
-// Returns a new OIDCProvider with CallbackStateCookieHTTPOnly flag enabled and Register flag disabled.
-func mockProviderWithCallbackStateCookieHTTPOnlyWithNoRegister(name string) *auth.OIDCProvider {
-	return &auth.OIDCProvider{
-		Name:                        name,
-		ClientID:                    "baz",
-		UserPrefix:                  name,
-		ValidationKey:               base.StringPtr("qux"),
-		IncludeAccessToken:          true,
-		CallbackStateCookieHTTPOnly: true,
-	}
-}
-
 // Returns a new OIDCProvider with callback state disabled
 func mockProviderWithCallbackStateDisabled(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
@@ -755,13 +730,6 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			authURL:             "/db/_oidc?provider=foo&offline=true",
 			requireExistingUser: true,
 		}, {
-			name: "successful new user authentication with HttpOnly cookie enabled",
-			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithCallbackStateCookieHTTPOnly("foo"),
-			},
-			defaultProvider: "foo",
-			authURL:         "/db/_oidc?provider=foo&offline=true",
-		}, {
 			name: "successful new user authentication with callback state disabled",
 			providers: auth.OIDCProviderMap{
 				"foo": mockProviderWithCallbackStateDisabled("foo"),
@@ -780,14 +748,6 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 				expectedErrorCode:    http.StatusBadRequest,
 				expectedErrorMessage: "State mismatch",
 			},
-		}, {
-			name: "successful registered user authentication with HttpOnly cookie enabled",
-			providers: auth.OIDCProviderMap{
-				"foo": mockProviderWithCallbackStateCookieHTTPOnlyWithNoRegister("foo"),
-			},
-			defaultProvider:     "foo",
-			authURL:             "/db/_oidc?provider=foo&offline=true",
-			requireExistingUser: true,
 		}, {
 			name: "successful registered user authentication with callback state disabled",
 			providers: auth.OIDCProviderMap{
