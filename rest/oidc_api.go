@@ -106,10 +106,11 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	var redirectURL *url.URL
 	state := ""
 
-	// Set state parameter to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
+	// Set state to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
 	if !provider.DisableCallbackState {
 		state = base.GenerateRandomSecret()
-		h.setStateCookie(state)
+		stateCookie := h.makeStateCookie(state, time.Now().Add(stateCookieTimeout))
+		http.SetCookie(h.response, stateCookie)
 	}
 
 	// TODO: Is there a use case where we need to support direct pass-through of access_type and prompt from the caller?
@@ -165,7 +166,8 @@ func (h *handler) handleOIDCCallback() error {
 		}
 
 		// Delete the state cookie on successful validation.
-		h.deleteStateCookie(stateCookie)
+		stateCookie = h.makeStateCookie("", time.Unix(0, 0))
+		http.SetCookie(h.response, stateCookie)
 	}
 
 	client := provider.GetClient(h.getOIDCCallbackURL)
@@ -310,23 +312,17 @@ func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string
 	return callbackURL
 }
 
-// setStateCookie sets the state cookie.
-func (h *handler) setStateCookie(value string) {
+// makeStateCookie returns a new state cookie with the value and expiry provided.
+func (h *handler) makeStateCookie(value string, expiry time.Time) *http.Cookie {
 	cookie := &http.Cookie{
 		Name:     stateCookieName,
 		Value:    value,
 		HttpOnly: true,
-		Expires:  time.Now().Add(stateCookieTimeout),
+		Expires:  expiry,
 	}
 	if h.rq.TLS != nil {
 		cookie.Secure = true
 	}
 	base.AddDbPathToCookie(h.rq, cookie)
-	http.SetCookie(h.response, cookie)
-}
-
-// deleteStateCookie deletes the state cookie.
-func (h *handler) deleteStateCookie(cookie *http.Cookie) {
-	cookie.Expires = time.Unix(0, 0)
-	http.SetCookie(h.response, cookie)
+	return cookie
 }
