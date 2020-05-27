@@ -123,8 +123,7 @@ type DatabaseContextOptions struct {
 }
 
 type OidcTestProviderOptions struct {
-	Enabled         bool `json:"enabled,omitempty"`           // Whether the oidc_test_provider endpoints should be exposed on the public API
-	UnsignedIDToken bool `json:"unsigned_id_token,omitempty"` // Whether the internal test provider returns a signed ID token on a refresh request.  Used to simulate Azure behaviour
+	Enabled bool `json:"enabled,omitempty"` // Whether the oidc_test_provider endpoints should be exposed on the public API
 }
 
 type UserViewsOptions struct {
