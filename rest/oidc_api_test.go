@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
@@ -74,6 +75,10 @@ const (
 	// notConfiguredProviderErr forces SG to return an authentication error when the
 	// user initiate an auth request with a provider which is not configured.
 	notConfiguredProviderErr
+
+	// invalidStateErr forces the /auth API to return an invalid state token in the
+	// callback URL.
+	invalidStateErr
 )
 
 // grantType refers to the way a relying party gets an access token.
@@ -222,6 +227,9 @@ func renderJSON(w http.ResponseWriter, r *http.Request, statusCode int, data int
 func (s *mockAuthServer) authHandler(w http.ResponseWriter, r *http.Request) {
 	var redirectionURL string
 	state := r.URL.Query().Get(requestParamState)
+	if s.options.forceError.errorType == invalidStateErr {
+		state = "aW52YWxpZCBzdGF0ZQo=" // Invalid state to simulate CSRF
+	}
 	redirect := r.URL.Query().Get(requestParamRedirectURI)
 	if redirect == "" {
 		base.Errorf("No redirect URL found in auth request")
@@ -436,7 +444,7 @@ func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 	}
 }
 
-// Returns a new OIDCProvider with IncludeAccessToken flags enabled.
+// Returns a new OIDCProvider with IncludeAccessToken flag enabled.
 func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
@@ -444,6 +452,31 @@ func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 		UserPrefix:         name,
 		ValidationKey:      base.StringPtr("qux"),
 		IncludeAccessToken: true,
+	}
+}
+
+// Returns a new OIDCProvider with callback state disabled
+func mockProviderWithCallbackStateDisabled(name string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:                 name,
+		ClientID:             "baz",
+		UserPrefix:           name,
+		ValidationKey:        base.StringPtr("qux"),
+		Register:             true,
+		IncludeAccessToken:   true,
+		DisableCallbackState: true,
+	}
+}
+
+// Returns a new OIDCProvider with callback state disabled with no Register flag.
+func mockProviderWithCallbackStateDisabledWithNoRegister(name string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:                 name,
+		ClientID:             "baz",
+		UserPrefix:           name,
+		ValidationKey:        base.StringPtr("qux"),
+		IncludeAccessToken:   true,
+		DisableCallbackState: true,
 	}
 }
 
@@ -696,6 +729,46 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			defaultProvider:     "foo",
 			authURL:             "/db/_oidc?provider=foo&offline=true",
 			requireExistingUser: true,
+		}, {
+			name: "successful new user authentication with callback state disabled",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithCallbackStateDisabled("foo"),
+			},
+			defaultProvider: "foo",
+			authURL:         "/db/_oidc?provider=foo&offline=true",
+		}, {
+			name: "unsuccessful new user authentication against csrf attack",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithRegisterWithAccessToken("foo"),
+			},
+			defaultProvider: "foo",
+			authURL:         "/db/_oidc?provider=foo&offline=true",
+			forceAuthError: forceError{
+				errorType:            invalidStateErr,
+				expectedErrorCode:    http.StatusBadRequest,
+				expectedErrorMessage: "State mismatch",
+			},
+		}, {
+			name: "successful registered user authentication with callback state disabled",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithCallbackStateDisabledWithNoRegister("foo"),
+			},
+			defaultProvider:     "foo",
+			authURL:             "/db/_oidc?provider=foo&offline=true",
+			requireExistingUser: true,
+		}, {
+			name: "unsuccessful registered user authentication against csrf attack",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithAccessToken("foo"),
+			},
+			defaultProvider: "foo",
+			authURL:         "/db/_oidc?provider=foo&offline=true",
+			forceAuthError: forceError{
+				errorType:            invalidStateErr,
+				expectedErrorCode:    http.StatusBadRequest,
+				expectedErrorMessage: "State mismatch",
+			},
+			requireExistingUser: true,
 		},
 	}
 
@@ -729,7 +802,10 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			requestURL := mockSyncGatewayURL + tc.authURL
 			request, err := http.NewRequest(http.MethodGet, requestURL, nil)
 			require.NoError(t, err, "Error creating new request")
-			response, err := http.DefaultClient.Do(request)
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err, "Error creating new cookie jar")
+			client := &http.Client{Jar: jar}
+			response, err := client.Do(request)
 			require.NoError(t, err, "Error sending request")
 			if (forceError{}) != tc.forceAuthError {
 				assertHttpResponse(t, response, tc.forceAuthError)
@@ -758,7 +834,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
 			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
-			response, err = http.DefaultClient.Do(request)
+			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
@@ -771,7 +847,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			requestURL = mockSyncGatewayURL + "/db/_oidc_refresh?refresh_token=" + authResponseActual.RefreshToken
 			request, err = http.NewRequest(http.MethodGet, requestURL, nil)
 			require.NoError(t, err, "Error creating new request")
-			response, err = http.DefaultClient.Do(request)
+			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request")
 			if (forceError{}) != tc.forceRefreshError {
 				assertHttpResponse(t, response, tc.forceRefreshError)
@@ -796,7 +872,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
 			require.NoError(t, err, "Error creating new request")
 			request.Header.Add("Authorization", BearerToken+" "+refreshResponseActual.IDToken)
-			response, err = http.DefaultClient.Do(request)
+			response, err = client.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 			require.Equal(t, http.StatusOK, response.StatusCode)
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
