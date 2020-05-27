@@ -356,6 +356,12 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 		return nil, errors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()).Redact())
 	}
 
+	err = heartbeater.Start()
+	if err != nil {
+		return nil, err
+	}
+	Debugf(KeyCluster, "Sending CBGT node heartbeats at interval: %v", heartbeater.heartbeatSendInterval)
+
 	// Register listener for import, uses cfg and manager to manage set of participating nodes
 	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext.Cfg, cbgtContext.Manager.Version())
 	if err != nil {
@@ -365,12 +371,6 @@ func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, err
 	if err != nil {
 		return nil, err
 	}
-
-	err = heartbeater.Start()
-	if err != nil {
-		return nil, err
-	}
-	Debugf(KeyCluster, "Sending CBGT node heartbeats at interval: %v", heartbeater.heartbeatSendInterval)
 
 	return heartbeater, nil
 }
