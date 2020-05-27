@@ -3,148 +3,111 @@ package base
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
-
-	"github.com/couchbase/cbgt"
-
-	sgbucket "github.com/couchbase/sg-bucket"
 )
 
 const (
-	docTypeHeartbeat        = "heartbeat"
-	docTypeHeartbeatTimeout = "heartbeat_timeout"
+	defaultHeartbeatSendInterval  = 1 * time.Second
+	defaultHeartbeatExpirySeconds = 10
+	defaultHeartbeatPollInterval  = 2 * time.Second
 )
 
-// A Heartbeater is something that can both send and check for heartbeats that
-// are stored as documents in a Couchbase bucket
+// Heartbeater defines the interface for heartbeat management
 type Heartbeater interface {
-	HeartbeatChecker
-	HeartbeatSender
+	RegisterListener(listener HeartbeatListener) error
+	UnregisterListener(name string)
+	Start() error
 	Stop()
 }
 
-// A HeartbeatChecker checks _other_ nodes in the cluster for stale heartbeats
-// and reacts by calling back the HeartbeatsStoppedHandler
-type HeartbeatChecker interface {
-	StartCheckingHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error
-	StopCheckingHeartbeats()
-}
-
-// A HeartbeatSender sends heartbeats
-type HeartbeatSender interface {
-	StartSendingHeartbeats(intervalSeconds int) error
-	StopSendingHeartbeats()
-}
-
-// This is the callback interface that clients of this library
-// need to pass in to be notified when other nodes have appeared to have
-// stopped sending heartbeats.
-type HeartbeatsStoppedHandler interface {
-	StaleHeartBeatDetected(nodeUuid string)
-}
-
-// HeartbeatNodeSetHandler defines the interface to manage the list of nodes
-// participating in heartbeat processing.  This list is used by CouchbaseHeartbeater
-// instances to determine which heartbeat docs are monitored.
-// CouchbaseHeartbeater has an internal implementation (DocumentBackedNodeListHandler), but
-// accepts custom implementations.
-type HeartbeatNodeSetHandler interface {
-	AddNode(nodeID string) error
-	RemoveNode(nodeID string) error
-	GetNodes() ([]string, error)
+// A HeartbeatListener defines the set of nodes it wants to monitor, and a callback when one of those nodes stops
+// sending heartbeats.
+type HeartbeatListener interface {
+	Name() string
+	GetNodes() (nodeUUIDs []string, err error)
+	StaleHeartbeatDetected(nodeUUID string)
 	Stop()
 }
 
-type heartbeatMeta struct {
-	Type     string `json:"type"`
-	NodeUUID string `json:"node_uuid"`
-}
-
-type heartbeatTimeout struct {
-	Type     string `json:"type"`
-	NodeUUID string `json:"node_uuid"`
-}
-
+// couchbaseHeartBeater is a Heartbeater implementation that uses Couchbase document expiry for heartbeat detection.
+// Each active node maintains a heartbeat document with expiry = heartbeatExpirySeconds, and performs a touch to refresh
+// the expiry on that document every heartbeatSendInterval.  Heartbeater polls for existence of other nodes' heartbeats
+// every heartbeatPollInterval.  The set of nodes to poll is the union of nodes returned by GetNodes call on all
+// heartbeatListeners.
+//
+// The default timing intervals are defined to balance the following:
+//
+//    Network latency tolerance = heartbeatExpirySeconds - heartbeatSendInterval   (default = 10-1= 9s)
+//       Network latency tolerance is the minimum amount of time before this node may be flagged as offline
+//       by another node. Must be large enough to avoid triggering false positives during network load spikes on this node.
+//
+//    Rebalance latency = heartbeatExpirySeconds + heartbeatPollInterval   (default = 10+2 = 12s)
+//       The maximum amount of time between a node going offline, and rebalance being triggered for that node.
+//
+//    Heartbeat ops/second/cluster = n/heartbeatSendInterval + (n^2)/heartbeatPollInterval (default = n + (n^2)/2)
+//       Number of heartbeat ops/second for a cluster of n nodes - one heartbeat touch per node per heartbeatSendInterval,
+//       n heartbeat reads per node per heartbeatPollInterval
+//       e.g  Default for a 4 node cluster: 12 ops/second
 type couchbaseHeartBeater struct {
-	bucket               Bucket
-	nodeUuid             string
-	heartbeatHandler     HeartbeatNodeSetHandler
-	keyPrefix            string
-	heartbeatSendCloser  chan struct{} // break out of heartbeat sender goroutine
-	heartbeatCheckCloser chan struct{} // break out of heartbeat checker goroutine
-	sendCount            int           // Monitoring stat - number of heartbeats sent
-	checkCount           int           // Monitoring stat - number of checks issued
-	sendActive           AtomicBool    // Monitoring state of send goroutine
-	checkActive          AtomicBool    // Monitoring state of check goroutine
+	bucket                  Bucket
+	nodeUuid                string
+	keyPrefix               string
+	heartbeatSendInterval   time.Duration                // Heartbeat send interval
+	heartbeatExpirySeconds  uint32                       // Heartbeat expiry time (seconds)
+	heartbeatPollInterval   time.Duration                // Frequency of polling for other nodes' heartbeat documents
+	terminator              chan struct{}                // terminator for send and check goroutines
+	heartbeatListeners      map[string]HeartbeatListener // Handlers to be notified when dropped nodes are detected
+	heartbeatListenersMutex sync.RWMutex                 // mutex for heartbeatsStoppedHandlers
+	sendCount               int                          // Monitoring stat - number of heartbeats sent
+	checkCount              int                          // Monitoring stat - number of checks issued
+	sendActive              AtomicBool                   // Monitoring state of send goroutine
+	checkActive             AtomicBool                   // Monitoring state of check goroutine
 }
 
 // Create a new CouchbaseHeartbeater, passing in an authenticated bucket connection,
 // the keyPrefix which will be prepended to the heartbeat doc keys,
 // and the nodeUuid, which is an opaque identifier for the "thing" that is using this
-// library.  You can think of nodeUuid as a generic token, so put whatever you want there
-// as long as it is unique to the node where this is running.  (eg, an ip address could work)
-func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUuid string, handler HeartbeatNodeSetHandler) (heartbeater *couchbaseHeartBeater, err error) {
+// library.  nodeUuid will be passed to listeners on stale node detection.
+func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUuid string) (heartbeater *couchbaseHeartBeater, err error) {
 
 	heartbeater = &couchbaseHeartBeater{
-		bucket:               bucket,
-		nodeUuid:             nodeUuid,
-		heartbeatHandler:     handler,
-		keyPrefix:            keyPrefix,
-		heartbeatSendCloser:  make(chan struct{}),
-		heartbeatCheckCloser: make(chan struct{}),
-	}
-
-	// If custom handler not specified, default to document-based handler
-	if handler == nil {
-		heartbeater.heartbeatHandler, err = NewDocumentBackedNodeListHandler(bucket, keyPrefix)
+		bucket:                 bucket,
+		nodeUuid:               nodeUuid,
+		keyPrefix:              keyPrefix,
+		terminator:             make(chan struct{}),
+		heartbeatListeners:     make(map[string]HeartbeatListener),
+		heartbeatSendInterval:  defaultHeartbeatSendInterval,
+		heartbeatExpirySeconds: defaultHeartbeatExpirySeconds,
+		heartbeatPollInterval:  defaultHeartbeatPollInterval,
 	}
 
 	return heartbeater, err
 
 }
 
-// Kick off the heartbeat sender with the given interval, in milliseconds.
-// This method will BLOCK until the first heartbeat is sent, and the rest
-// will happen asynchronously.
-func (h *couchbaseHeartBeater) StartSendingHeartbeats(intervalSeconds int) error {
+// Start the heartbeater.  Underlying methods performs the first heartbeat send and check synchronously, then
+// starts scheduled goroutines for ongoing processing.
+func (h *couchbaseHeartBeater) Start() error {
 
-	err := h.heartbeatHandler.AddNode(h.nodeUuid)
-	if err != nil {
+	if err := h.startSendingHeartbeats(); err != nil {
 		return err
 	}
 
-	// send the first heartbeat in the current goroutine and return
-	// an error if it fails
-	if err := h.sendHeartbeat(intervalSeconds); err != nil {
+	if err := h.startCheckingHeartbeats(); err != nil {
 		return err
 	}
 
-	ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
-
-	go func() {
-		defer FatalPanicHandler()
-		defer func() { h.sendActive.Set(false) }()
-		h.sendActive.Set(true)
-		for {
-			select {
-			case _ = <-h.heartbeatSendCloser:
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				if err := h.sendHeartbeat(intervalSeconds); err != nil {
-				}
-			}
-		}
-	}()
 	return nil
 
 }
 
 // Stop terminates the send and check goroutines, and blocks for up to 1s
-// until goroutines are actually terminated
+// until goroutines are actually terminated.
 func (h *couchbaseHeartBeater) Stop() {
-	h.StopSendingHeartbeats()
-	h.StopCheckingHeartbeats()
+
+	// Stop send and check goroutines
+	close(h.terminator)
 
 	maxWaitTimeMs := 1000
 	waitTimeMs := 0
@@ -159,21 +122,41 @@ func (h *couchbaseHeartBeater) Stop() {
 	}
 }
 
-// Stop sending heartbeats
-func (h *couchbaseHeartBeater) StopSendingHeartbeats() {
-	close(h.heartbeatSendCloser)
+// Send initial heartbeat, and start goroutine to schedule sendHeartbeat invocation
+func (h *couchbaseHeartBeater) startSendingHeartbeats() error {
+	if err := h.sendHeartbeat(); err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(h.heartbeatSendInterval)
+
+	go func() {
+		defer FatalPanicHandler()
+		defer func() { h.sendActive.Set(false) }()
+		h.sendActive.Set(true)
+		for {
+			select {
+			case _ = <-h.terminator:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				if err := h.sendHeartbeat(); err != nil {
+					Warnf("Unexpected error sending heartbeat - will be retried: %v", err)
+				}
+			}
+		}
+	}()
+	return nil
 }
 
-// Kick off the heartbeat checker and pass in the amount of time in milliseconds before
-// a node has been considered to stop sending heartbeats.  Also pass in the handler which
-// will be called back in that case (and passed the opaque node uuid)
-func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error {
+// Perform initial heartbeat check, then start goroutine to schedule check for stale heartbeats
+func (h *couchbaseHeartBeater) startCheckingHeartbeats() error {
 
-	if err := h.checkStaleHeartbeats(staleThresholdMs, handler); err != nil {
+	if err := h.checkStaleHeartbeats(); err != nil {
 		Warnf("Error checking for stale heartbeats: %v", err)
 	}
 
-	ticker := time.NewTicker(time.Duration(staleThresholdMs) * time.Millisecond)
+	ticker := time.NewTicker(h.heartbeatPollInterval)
 
 	go func() {
 		defer FatalPanicHandler()
@@ -181,12 +164,11 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 		h.checkActive.Set(true)
 		for {
 			select {
-			case _ = <-h.heartbeatCheckCloser:
+			case _ = <-h.terminator:
 				ticker.Stop()
-				h.heartbeatHandler.Stop()
 				return
 			case <-ticker.C:
-				if err := h.checkStaleHeartbeats(staleThresholdMs, handler); err != nil {
+				if err := h.checkStaleHeartbeats(); err != nil {
 					Warnf("Error checking for stale heartbeats: %v", err)
 				}
 			}
@@ -196,21 +178,66 @@ func (h *couchbaseHeartBeater) StartCheckingHeartbeats(staleThresholdMs int, han
 
 }
 
-// Stop the heartbeat checker
-func (h *couchbaseHeartBeater) StopCheckingHeartbeats() {
-	close(h.heartbeatCheckCloser)
+// Register a new HeartbeatListener.  Listeners must be registered after the heartbeater has been started,
+// to avoid the situation where a new node triggers immediate removal/rebalance because it hasn't started sending
+// heartbeats yet
+func (h *couchbaseHeartBeater) RegisterListener(handler HeartbeatListener) error {
+
+	if !h.sendActive.IsTrue() {
+		return errors.New("Heartbeater must be started before registering listeners, to avoid node removal")
+	}
+
+	h.heartbeatListenersMutex.Lock()
+	defer h.heartbeatListenersMutex.Unlock()
+	_, exists := h.heartbeatListeners[handler.Name()]
+	if exists {
+		return ErrAlreadyExists
+	}
+	h.heartbeatListeners[handler.Name()] = handler
+	return nil
 }
 
-func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handler HeartbeatsStoppedHandler) error {
-
-	// Get node set
-	heartbeatNodes, err := h.heartbeatHandler.GetNodes()
-	if err != nil {
-		return err
+// Unregister a HeartbeatListener, if a matching listener is found
+func (h *couchbaseHeartBeater) UnregisterListener(handlerName string) {
+	h.heartbeatListenersMutex.Lock()
+	defer h.heartbeatListenersMutex.Unlock()
+	_, exists := h.heartbeatListeners[handlerName]
+	if !exists {
+		return
 	}
-	Debugf(KeyDCP, "Checking heartbeats for nodes: %v", heartbeatNodes)
+	delete(h.heartbeatListeners, handlerName)
+	return
+}
 
-	for _, heartbeatNodeUUID := range heartbeatNodes {
+// getAllNodes returns all nodes from all registered listeners as a map from nodeUUID to the listeners
+// registered for that node
+func (h *couchbaseHeartBeater) getNodeListenerMap() map[string][]HeartbeatListener {
+	nodeToListenerMap := make(map[string][]HeartbeatListener)
+	h.heartbeatListenersMutex.RLock()
+	for _, listener := range h.heartbeatListeners {
+		listenerNodes, err := listener.GetNodes()
+		if err != nil {
+			Warnf("Error obtaining node set for listener %s - will be omitted for this heartbeat iteration.  Error: %v", listener.Name(), err)
+		}
+		for _, nodeUUID := range listenerNodes {
+			_, ok := nodeToListenerMap[nodeUUID]
+			if !ok {
+				nodeToListenerMap[nodeUUID] = make([]HeartbeatListener, 0)
+			}
+			nodeToListenerMap[nodeUUID] = append(nodeToListenerMap[nodeUUID], listener)
+		}
+	}
+	h.heartbeatListenersMutex.RUnlock()
+	return nodeToListenerMap
+}
+
+func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
+
+	// Build set of all nodes
+	nodeListenerMap := h.getNodeListenerMap()
+	Debugf(KeyCluster, "Checking heartbeats for node set: %v", nodeListenerMap)
+
+	for heartbeatNodeUUID, listeners := range nodeListenerMap {
 		if heartbeatNodeUUID == h.nodeUuid {
 			// that's us, and we don't care about ourselves
 			continue
@@ -228,17 +255,11 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats(staleThresholdMs int, handle
 			}
 
 			// doc not found, which means the heartbeat doc expired.
-			// call back the handler.
-			handler.StaleHeartBeatDetected(heartbeatNodeUUID)
-
-			// delete the heartbeat doc itself so we don't have unwanted
-			// repeated callbacks to the stale heartbeat handler
-			err := h.heartbeatHandler.RemoveNode(heartbeatNodeUUID)
-			if err != nil {
-				Infof(KeyImport, "Failed to remove node for node ID:%v err: %v", heartbeatNodeUUID, err)
+			// Notify listeners for this node
+			for _, listener := range listeners {
+				listener.StaleHeartbeatDetected(heartbeatNodeUUID)
 			}
 		}
-
 	}
 	h.checkCount++
 	return nil
@@ -248,104 +269,113 @@ func heartbeatTimeoutDocId(nodeUuid, keyPrefix string) string {
 	return keyPrefix + "heartbeat_timeout:" + nodeUuid
 }
 
-func heartbeatDocId(nodeUuid, keyPrefix string) string {
-	return keyPrefix + "heartbeat:" + nodeUuid
-}
-
-func (h *couchbaseHeartBeater) sendHeartbeat(intervalSeconds int) error {
-
-	if err := h.upsertHeartbeatTimeoutDoc(intervalSeconds); err != nil {
-		return err
-	}
-	h.sendCount++
-	return nil
-}
-
-func (h *couchbaseHeartBeater) upsertHeartbeatDoc() error {
-
-	heartbeatDoc := heartbeatMeta{
-		Type:     docTypeHeartbeat,
-		NodeUUID: h.nodeUuid,
-	}
-	docId := heartbeatDocId(h.nodeUuid, h.keyPrefix)
-
-	if err := h.bucket.Set(docId, 0, heartbeatDoc); err != nil {
-		return err
-	}
-	return nil
-
-}
-
-func (h *couchbaseHeartBeater) upsertHeartbeatTimeoutDoc(intervalSeconds int) error {
+func (h *couchbaseHeartBeater) sendHeartbeat() error {
 
 	docId := heartbeatTimeoutDocId(h.nodeUuid, h.keyPrefix)
 
-	// make the expire time double the touch interval time, to ensure there is
-	// always a heartbeat timeout document present under normal operation
-	expireTimeSeconds := intervalSeconds * 2
-
-	_, touchErr := h.bucket.Touch(docId, uint32(expireTimeSeconds))
+	_, touchErr := h.bucket.Touch(docId, h.heartbeatExpirySeconds)
 	if touchErr == nil {
+		h.sendCount++
 		return nil
 	}
 
 	// On KeyNotFound, recreate heartbeat timeout doc
 	if IsKeyNotFoundError(h.bucket, touchErr) {
-
 		heartbeatDocBody := []byte(h.nodeUuid)
-
-		setErr := h.bucket.SetRaw(docId, uint32(expireTimeSeconds), heartbeatDocBody)
+		setErr := h.bucket.SetRaw(docId, h.heartbeatExpirySeconds, heartbeatDocBody)
 		if setErr != nil {
 			return setErr
 		}
+		h.sendCount++
 		return nil
 	} else {
 		return touchErr
 	}
-
 }
 
-// documentBackedNodeListHandler tracks nodes in a single node list document
-type documentBackedNodeListHandler struct {
-	nodeListKey string     // key for the tracking document
-	bucket      Bucket     // bucket used for document storage
-	nodeIDs     []string   // Set of nodes from the latest retrieval
-	cas         uint64     // CAS from latest retrieval of tracking document
-	lock        sync.Mutex // lock for nodes access
+// Accessors to modify heartbeatSendInterval, heartbeatPollInterval, heartbeatExpirySeconds must be invoked prior to Start().
+// No consistency checking is done across values, callers that don't use default values must validate that their
+// combination is valid (e.g. sendInterval is more frequent than expiry)
+func (h *couchbaseHeartBeater) SetSendInterval(duration time.Duration) error {
+	if h.sendActive.IsTrue() || h.checkActive.IsTrue() {
+		return errors.New("Cannot modify send interval while heartbeater is running - must be set prior to calling Start()")
+	}
+	h.heartbeatSendInterval = duration
+	return nil
 }
 
-func NewDocumentBackedNodeListHandler(bucket Bucket, keyPrefix string) (*documentBackedNodeListHandler, error) {
+func (h *couchbaseHeartBeater) SetPollInterval(duration time.Duration) error {
+	if h.sendActive.IsTrue() || h.checkActive.IsTrue() {
+		return errors.New("Cannot modify polling interval while heartbeater is running - must be set prior to calling Start()")
+	}
+	h.heartbeatPollInterval = duration
+	return nil
+}
 
-	handler := &documentBackedNodeListHandler{
-		nodeListKey: keyPrefix + "HeartbeatNodeList",
+func (h *couchbaseHeartBeater) SetExpirySeconds(expiry uint32) error {
+	if h.sendActive.IsTrue() || h.checkActive.IsTrue() {
+		return errors.New("Cannot modify heartbeat expiry value while heartbeater is running - must be set prior to calling Start()")
+	}
+	h.heartbeatExpirySeconds = expiry
+	return nil
+}
+
+// documentBackedListener stores set of nodes in a single node list document.  On stale notification,
+// removes node from the list.  Primarily intended for test usage.
+type documentBackedListener struct {
+	nodeListKey            string     // key for the tracking document
+	bucket                 Bucket     // bucket used for document storage
+	nodeIDs                []string   // Set of nodes from the latest retrieval
+	cas                    uint64     // CAS from latest retrieval of tracking document
+	lock                   sync.Mutex // lock for nodes access
+	staleNotificationCount uint64     // stats - counter for stale heartbeat notifications
+}
+
+func NewDocumentBackedListener(bucket Bucket, keyPrefix string) (*documentBackedListener, error) {
+
+	handler := &documentBackedListener{
+		nodeListKey: keyPrefix + ":HeartbeatNodeList",
 		bucket:      bucket,
 	}
 	return handler, nil
 }
 
-// Adds the node to the tracking document
-func (dh *documentBackedNodeListHandler) AddNode(nodeID string) error {
-	return dh.updateNodeList(nodeID, false)
+func (dh *documentBackedListener) Name() string {
+	return dh.nodeListKey
 }
 
-// Removes the node to the tracking document
-func (dh *documentBackedNodeListHandler) RemoveNode(nodeID string) error {
-	return dh.updateNodeList(nodeID, true)
-}
-
-func (dh *documentBackedNodeListHandler) GetNodes() ([]string, error) {
+func (dh *documentBackedListener) GetNodes() ([]string, error) {
 	dh.lock.Lock()
 	err := dh.loadNodeIDs()
 	dh.lock.Unlock()
 	return dh.nodeIDs, err
 }
 
-func (dh *documentBackedNodeListHandler) Stop() {
+func (dh *documentBackedListener) Stop() {
 	return
 }
 
+func (dh *documentBackedListener) StaleHeartbeatDetected(nodeUUID string) {
+	_ = dh.RemoveNode(nodeUUID)
+	atomic.AddUint64(&dh.staleNotificationCount, 1)
+}
+
+func (dh *documentBackedListener) StaleNotificationCount() uint64 {
+	return atomic.LoadUint64(&dh.staleNotificationCount)
+}
+
+// Adds the node to the tracking document
+func (dh *documentBackedListener) AddNode(nodeID string) error {
+	return dh.updateNodeList(nodeID, false)
+}
+
+// Removes the node to the tracking document
+func (dh *documentBackedListener) RemoveNode(nodeID string) error {
+	return dh.updateNodeList(nodeID, true)
+}
+
 // Adds or removes a nodeID from the node list document
-func (dh *documentBackedNodeListHandler) updateNodeList(nodeID string, remove bool) error {
+func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) error {
 
 	dh.lock.Lock()
 	defer dh.lock.Unlock()
@@ -380,6 +410,8 @@ func (dh *documentBackedNodeListHandler) updateNodeList(nodeID string, remove bo
 			dh.nodeIDs = append(dh.nodeIDs, nodeID)
 		}
 
+		Tracef(KeyCluster, "Updating nodeList document (%s) with node IDs: %v", dh.nodeListKey, dh.nodeIDs)
+
 		casOut, err := dh.bucket.WriteCas(dh.nodeListKey, 0, 0, dh.cas, dh.nodeIDs, 0)
 
 		if err == nil { // Successful update
@@ -397,7 +429,7 @@ func (dh *documentBackedNodeListHandler) updateNodeList(nodeID string, remove bo
 
 }
 
-func (dh *documentBackedNodeListHandler) loadNodeIDs() error {
+func (dh *documentBackedListener) loadNodeIDs() error {
 
 	docBytes, cas, err := dh.bucket.GetRaw(dh.nodeListKey)
 	if err != nil {
@@ -421,201 +453,4 @@ func (dh *documentBackedNodeListHandler) loadNodeIDs() error {
 
 	return nil
 
-}
-
-// viewBackedNodeListHandler tracks nodes as individual documents, and uses a view query to
-// identify the full set of documents
-// TODO: Currently being used to validate pluggable node handlers.  Can be removed to when this functionality
-//       has test coverage with a cbgt-based handler
-type viewBackedNodeListHandler struct {
-	keyPrefix string
-	bucket    Bucket
-}
-
-func NewViewBackedNodeListHandler(bucket Bucket, keyPrefix string) (*viewBackedNodeListHandler, error) {
-
-	handler := &viewBackedNodeListHandler{
-		keyPrefix: keyPrefix,
-		bucket:    bucket,
-	}
-	err := handler.addHeartbeatCheckView(bucket)
-	return handler, err
-}
-
-// Writes the heartbeat doc used to register the node
-func (vh *viewBackedNodeListHandler) AddNode(nodeID string) error {
-
-	heartbeatDoc := heartbeatMeta{
-		Type:     docTypeHeartbeat,
-		NodeUUID: nodeID,
-	}
-	docId := heartbeatDocId(nodeID, vh.keyPrefix)
-
-	if err := vh.bucket.Set(docId, 0, heartbeatDoc); err != nil {
-		return err
-	}
-	return nil
-
-}
-
-// Deletes the heartbeat doc used to register the node
-func (vh *viewBackedNodeListHandler) RemoveNode(nodeID string) error {
-	docId := heartbeatDocId(nodeID, vh.keyPrefix)
-	return vh.bucket.Delete(docId)
-}
-
-// Issues a view query to identify the node set
-func (vh *viewBackedNodeListHandler) GetNodes() ([]string, error) {
-	return vh.viewQueryHeartbeatDocs()
-}
-
-func (vh *viewBackedNodeListHandler) addHeartbeatCheckView(bucket Bucket) error {
-
-	heartbeatsMap := `function (doc, meta) { if (doc.type == 'heartbeat') { emit(meta.id, doc.node_uuid); }}`
-
-	designDoc := sgbucket.DesignDoc{
-		Views: sgbucket.ViewMap{
-			"heartbeats": sgbucket.ViewDef{Map: heartbeatsMap},
-		},
-	}
-
-	return vh.bucket.PutDDoc("cbgt", designDoc)
-}
-
-func (vh *viewBackedNodeListHandler) viewQueryHeartbeatDocs() ([]string, error) {
-
-	viewRes := struct {
-		Rows []struct {
-			Id    string
-			Value string
-		}
-		Errors []sgbucket.ViewError
-	}{}
-
-	err := vh.bucket.ViewCustom("cbgt", "heartbeats",
-		map[string]interface{}{
-			"stale": false,
-		}, &viewRes)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeIDs := []string{}
-	for _, row := range viewRes.Rows {
-		nodeIDs = append(nodeIDs, row.Value)
-	}
-
-	return nodeIDs, nil
-
-}
-
-func (vh *viewBackedNodeListHandler) Stop() {
-	return
-}
-
-// cbgtNodeListHandler uses cbgt's cfg to manage node list
-// TODO: should this build a superset of KNOWN and WANTED?
-type cbgtNodeListHandler struct {
-	cfg        cbgt.Cfg      // cbgt Config
-	terminator chan struct{} // close cfg subscription on close
-	nodeIDs    []string      // Set of nodes from the latest retrieval
-	lock       sync.RWMutex  // lock for nodeIDs access
-}
-
-func NewCBGTNodeListHandler(cfg cbgt.Cfg) (*cbgtNodeListHandler, error) {
-
-	if cfg == nil {
-		return nil, errors.New("Manager Cfg must not be nil for CBGTNodeListHandler")
-	}
-
-	handler := &cbgtNodeListHandler{
-		cfg:        cfg,
-		terminator: make(chan struct{}),
-	}
-
-	// Initialize the node set
-	err := handler.reloadNodes()
-	if err != nil {
-		return nil, err
-	}
-
-	// Subscribe to changes to the known node set key
-	err = handler.subscribeNodeChanges()
-	if err != nil {
-		return nil, err
-	}
-
-	return handler, nil
-}
-
-// subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
-// NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
-func (ch *cbgtNodeListHandler) subscribeNodeChanges() error {
-
-	cfgEvents := make(chan cbgt.CfgEvent)
-	err := ch.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
-	if err != nil {
-		Debugf(KeyDCP, "Error subscribing node changes: %v", err)
-		return err
-	}
-	go func() {
-		defer FatalPanicHandler()
-		for {
-			select {
-			case <-cfgEvents:
-				err := ch.reloadNodes()
-				if err != nil {
-					Warnf("Error while reloading heartbeat node definitions: %v", err)
-				}
-			case <-ch.terminator:
-				return
-			}
-		}
-	}()
-	return nil
-}
-
-func (ch *cbgtNodeListHandler) reloadNodes() error {
-
-	nodeSet, _, err := cbgt.CfgGetNodeDefs(ch.cfg, cbgt.NODE_DEFS_KNOWN)
-	if err != nil {
-		return err
-	}
-
-	nodeUUIDs := make([]string, 0)
-	if nodeSet != nil {
-		for _, nodeDef := range nodeSet.NodeDefs {
-			nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
-		}
-	}
-
-	ch.lock.Lock()
-	ch.nodeIDs = nodeUUIDs
-	ch.lock.Unlock()
-
-	return nil
-}
-
-// AddNode is a no-op for cbgtNodeListHandler.  Nodes self-register with the cfg on startup
-func (ch *cbgtNodeListHandler) AddNode(nodeID string) error {
-	return nil
-}
-
-// RemoveNode is a no-op for cbgtNodeListHandler.  cbgt manages removal via the associated HeartbeatsStoppedHandler
-func (ch *cbgtNodeListHandler) RemoveNode(nodeID string) error {
-	return nil
-}
-
-// GetNodes returns a copy of the in-memory node set
-func (ch *cbgtNodeListHandler) GetNodes() ([]string, error) {
-
-	ch.lock.RLock()
-	nodeIDsCopy := make([]string, len(ch.nodeIDs))
-	copy(nodeIDsCopy, ch.nodeIDs)
-	ch.lock.RUnlock()
-	return nodeIDsCopy, nil
-}
-
-func (ch *cbgtNodeListHandler) Stop() {
-	close(ch.terminator)
 }

@@ -26,6 +26,7 @@ const (
 	KeyBucket
 	KeyCache
 	KeyChanges
+	KeyCluster
 	KeyCRUD
 	KeyDCP
 	KeyEvents
@@ -56,6 +57,7 @@ var (
 		KeyBucket:         "Bucket",
 		KeyCache:          "Cache",
 		KeyChanges:        "Changes",
+		KeyCluster:        "SGCluster",
 		KeyCRUD:           "CRUD",
 		KeyDCP:            "DCP",
 		KeyEvents:         "Events",

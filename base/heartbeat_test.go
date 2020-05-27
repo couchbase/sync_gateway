@@ -3,6 +3,7 @@ package base
 import (
 	"fmt"
 	"log"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -12,19 +13,75 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type TestHeartbeatStoppedHandler struct {
-	handlerID        string
+// TestHeartbeatListener uses a shared node store, and maintains a count of stale notifications
+type TestHeartbeatListener struct {
+	name             string
+	nodeStore        *TestHeartbeatNodeStore // shared definition of nodes
+	nodeUUIDs        map[string]struct{}
 	staleDetectCount uint32
 }
 
-func (th *TestHeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUuid string) {
-	log.Printf("Handler %s detected stale heartbeat for %v, will be removed", th.handlerID, nodeUuid)
+type TestHeartbeatNodeStore struct {
+	nodes map[string]struct{}
+	lock  sync.Mutex
+}
+
+func NewTestHeartbeatNodeStore() *TestHeartbeatNodeStore {
+	return &TestHeartbeatNodeStore{
+		nodes: make(map[string]struct{}),
+	}
+}
+
+func (ns *TestHeartbeatNodeStore) GetNodes() []string {
+	nodeSet := make([]string, 0)
+	ns.lock.Lock()
+	for uuid, _ := range ns.nodes {
+		nodeSet = append(nodeSet, uuid)
+	}
+	ns.lock.Unlock()
+	return nodeSet
+
+}
+func (ns *TestHeartbeatNodeStore) AddNode(nodeUUID string) {
+	ns.lock.Lock()
+	ns.nodes[nodeUUID] = struct{}{}
+	ns.lock.Unlock()
+}
+
+func (ns *TestHeartbeatNodeStore) RemoveNode(nodeUUID string) {
+	ns.lock.Lock()
+	_, ok := ns.nodes[nodeUUID]
+	if ok {
+		delete(ns.nodes, nodeUUID)
+	}
+	ns.lock.Unlock()
+}
+
+func NewTestHeartbeatListener(handlerID string, nodeStore *TestHeartbeatNodeStore) *TestHeartbeatListener {
+	testListener := &TestHeartbeatListener{
+		name:      handlerID,
+		nodeStore: nodeStore,
+	}
+	return testListener
+}
+
+func (th *TestHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
+	log.Printf("Handler %s detected stale heartbeat for %v, will be removed", th.name, nodeUUID)
+	th.nodeStore.RemoveNode(nodeUUID)
 	atomic.AddUint32(&th.staleDetectCount, 1)
 }
 
-// TestNewCouchbaseHeartbeater simulates three nodes.  The minimum time window for failed node
-// detection is 2 seconds, based on Couchbase Server's minimum document expiry TTL of
-// one second, so retry polling is required.
+func (th *TestHeartbeatListener) GetNodes() (nodeUUIDs []string, err error) {
+	nodeSet := th.nodeStore.GetNodes()
+	return nodeSet, nil
+}
+
+func (th *TestHeartbeatListener) Stop() {
+	return
+}
+
+// TestNewCouchbaseHeartbeater starts three heartbeaters (simulating three nodes), then stops a node
+// and validates the node triggers heartbeat-based removal on one of the remaining nodes.
 func TestCouchbaseHeartbeaters(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {
@@ -35,102 +92,78 @@ func TestCouchbaseHeartbeaters(t *testing.T) {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
 
-	keyprefix := "hbtest"
+	defer SetUpTestLogging(LevelDebug, KeyDCP)()
 
-	heartbeaters := []struct {
-		name                      string
-		nodeSetHandlerConstructor func(bucket Bucket) HeartbeatNodeSetHandler
-	}{
-		{
-			"documentBackedNodeListHandler",
-			func(bucket Bucket) HeartbeatNodeSetHandler {
-				handler, _ := NewDocumentBackedNodeListHandler(bucket, keyprefix)
-				return handler
-			},
-		},
-		{
-			"viewBackedNodeListHandler",
-			func(bucket Bucket) HeartbeatNodeSetHandler {
-				handler, _ := NewViewBackedNodeListHandler(bucket, keyprefix)
-				return handler
-			},
-		},
-	}
-	for _, h := range heartbeaters {
-		t.Run(h.name, func(t *testing.T) {
-			testBucket := GetTestBucket(t)
-			defer testBucket.Close()
+	keyprefix := SyncPrefix + t.Name()
 
-			// Create three heartbeaters (representing three nodes)
-			handler1 := h.nodeSetHandlerConstructor(testBucket)
-			assert.NotNil(t, handler1)
-			node1, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node1", handler1)
-			assert.NoError(t, err)
-			handler2 := h.nodeSetHandlerConstructor(testBucket)
-			assert.NotNil(t, handler2)
-			node2, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node2", handler2)
-			assert.NoError(t, err)
-			handler3 := h.nodeSetHandlerConstructor(testBucket)
-			assert.NotNil(t, handler3)
-			node3, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node3", handler3)
-			assert.NoError(t, err)
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
 
-			assert.NoError(t, node1.StartSendingHeartbeats(1))
-			assert.NoError(t, node2.StartSendingHeartbeats(1))
-			assert.NoError(t, node3.StartSendingHeartbeats(1))
+	// Setup heartbeaters and listeners
+	nodeCount := 3
+	nodes := make([]*couchbaseHeartBeater, nodeCount)
+	listeners := make([]*documentBackedListener, nodeCount)
+	for i := 0; i < nodeCount; i++ {
+		nodeUUID := fmt.Sprintf("node%d", i)
+		node, err := NewCouchbaseHeartbeater(testBucket, keyprefix, nodeUUID)
+		assert.NoError(t, err)
 
-			heartbeatStoppedHandler1 := &TestHeartbeatStoppedHandler{handlerID: "handler1"}
-			heartbeatStoppedHandler2 := &TestHeartbeatStoppedHandler{handlerID: "handler2"}
-			heartbeatStoppedHandler3 := &TestHeartbeatStoppedHandler{handlerID: "handler3"}
+		// Lower heartbeat expiry to avoid long-running test
+		assert.NoError(t, node.SetExpirySeconds(2))
 
-			assert.NoError(t, node1.StartCheckingHeartbeats(1000, heartbeatStoppedHandler1))
-			assert.NoError(t, node2.StartCheckingHeartbeats(1000, heartbeatStoppedHandler2))
-			assert.NoError(t, node3.StartCheckingHeartbeats(1000, heartbeatStoppedHandler3))
+		// Start node
+		assert.NoError(t, node.Start())
 
-			// Wait for node1 to start running (and persist initial heartbeat docs) before stopping
-			retryUntilFunc := func() bool {
-				return node1.checkCount > 0 && node1.sendCount > 0
-			}
-			testRetryUntilTrue(t, retryUntilFunc)
-			assert.True(t, node1.checkCount > 0)
-			assert.True(t, node1.sendCount > 0)
+		// Create and register listener.
+		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
+		listener, err := NewDocumentBackedListener(testBucket, keyprefix)
+		require.NoError(t, err)
+		assert.NoError(t, listener.AddNode(nodeUUID))
+		assert.NoError(t, node.RegisterListener(listener))
 
-			// Stop node 1
-			node1.Stop()
-
-			// Wait for another node to detect node1 has stopped sending heartbeats
-			retryUntilFunc = func() bool {
-				return atomic.LoadUint32(&heartbeatStoppedHandler2.staleDetectCount) >= 1 ||
-					atomic.LoadUint32(&heartbeatStoppedHandler3.staleDetectCount) >= 1
-			}
-			testRetryUntilTrue(t, retryUntilFunc)
-
-			// Validate that at least one node detected the stopped node 1
-			h2staleDetectCount := atomic.LoadUint32(&heartbeatStoppedHandler2.staleDetectCount)
-			h3staleDetectCount := atomic.LoadUint32(&heartbeatStoppedHandler3.staleDetectCount)
-			assert.True(t, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
-				fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
-
-			// Validate current node list
-			activeNodes, err := handler2.GetNodes()
-			require.NoError(t, err, "Error getting node list")
-			require.Len(t, activeNodes, 2)
-			assert.NotContains(t, activeNodes, "node1")
-			assert.Contains(t, activeNodes, "node2")
-			assert.Contains(t, activeNodes, "node3")
-
-			// Stop heartbeaters
-			node2.Stop()
-			node3.Stop()
-		})
+		nodes[i] = node
+		listeners[i] = listener
 	}
 
+	// Wait for node0 to start running (and persist initial heartbeat docs) before stopping
+	retryUntilFunc := func() bool {
+		return nodes[0].checkCount > 0 && nodes[0].sendCount > 0
+	}
+	testRetryUntilTrue(t, retryUntilFunc)
+	assert.True(t, nodes[0].checkCount > 0)
+	assert.True(t, nodes[0].sendCount > 0)
+
+	// Stop node 0
+	nodes[0].Stop()
+
+	// Wait for another node to detect node0 has stopped sending heartbeats
+	retryUntilFunc = func() bool {
+		return listeners[1].StaleNotificationCount() >= 1 ||
+			listeners[2].StaleNotificationCount() >= 1
+	}
+	testRetryUntilTrue(t, retryUntilFunc)
+
+	// Validate that at least one node detected the stopped node 0
+	h2staleDetectCount := listeners[1].StaleNotificationCount()
+	h3staleDetectCount := listeners[2].StaleNotificationCount()
+	assert.True(t, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
+		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
+
+	// Validate current node list
+	activeNodes, err := listeners[0].GetNodes()
+	require.NoError(t, err, "Error getting node list")
+	require.Len(t, activeNodes, 2)
+	assert.NotContains(t, activeNodes, "node0")
+	assert.Contains(t, activeNodes, "node1")
+	assert.Contains(t, activeNodes, "node2")
+
+	// Stop heartbeaters
+	nodes[1].Stop()
+	nodes[2].Stop()
 }
 
-// TestNewCouchbaseHeartbeater simulates three nodes.  The minimum time window for failed node
-// detection is 2 seconds, based on Couchbase Server's minimum document expiry TTL of
-// one second, so retry polling is required.
-func TestCBGTManagerHeartbeater(t *testing.T) {
+// TestNewCouchbaseHeartbeater simulates three nodes, with two services (listeners).
+func TestCouchbaseHeartbeatersMultipleListeners(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test won't work under walrus - no expiry, required for heartbeats")
@@ -140,7 +173,115 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 		t.Skip("Skipping heartbeattest in short mode")
 	}
 
-	keyprefix := "hbtest"
+	keyprefix := SyncPrefix + t.Name()
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
+
+	// Setup heartbeaters and listeners
+	nodeCount := 3
+	nodes := make([]*couchbaseHeartBeater, nodeCount)
+	importListeners := make([]*documentBackedListener, nodeCount)
+	sgrListeners := make([]*documentBackedListener, nodeCount)
+	for i := 0; i < nodeCount; i++ {
+		nodeUUID := fmt.Sprintf("node%d", i)
+		node, err := NewCouchbaseHeartbeater(testBucket, keyprefix, nodeUUID)
+		assert.NoError(t, err)
+
+		// Lower heartbeat expiry to avoid long-running test
+		assert.NoError(t, node.SetExpirySeconds(2))
+
+		// Start node
+		assert.NoError(t, node.Start())
+
+		// Create and register import listener on all nodes.
+		// Simulates service starting on node, and self-registering the nodeUUID to that listener's node set
+		importListener, err := NewDocumentBackedListener(testBucket, keyprefix+":import")
+		require.NoError(t, err)
+		assert.NoError(t, importListener.AddNode(nodeUUID))
+		assert.NoError(t, node.RegisterListener(importListener))
+		importListeners[i] = importListener
+
+		//Create and register sgr listener on two nodes
+		if i < 2 {
+			sgrListener, err := NewDocumentBackedListener(testBucket, keyprefix+":sgr")
+			require.NoError(t, err)
+			assert.NoError(t, sgrListener.AddNode(nodeUUID))
+			assert.NoError(t, node.RegisterListener(sgrListener))
+			sgrListeners[i] = sgrListener
+		}
+
+		nodes[i] = node
+	}
+
+	// Wait for node1 to start running (and persist initial heartbeat docs) before stopping
+	retryUntilFunc := func() bool {
+		return nodes[0].checkCount > 0 && nodes[0].sendCount > 0
+	}
+	testRetryUntilTrue(t, retryUntilFunc)
+	assert.True(t, nodes[0].checkCount > 0)
+	assert.True(t, nodes[0].sendCount > 0)
+
+	// Stop node 1
+	nodes[0].Stop()
+
+	// Wait for both listener types node to detect node1 has stopped sending heartbeats
+	retryUntilFunc = func() bool {
+		return importListeners[1].StaleNotificationCount() >= 1 ||
+			importListeners[2].StaleNotificationCount() >= 1
+	}
+	testRetryUntilTrue(t, retryUntilFunc)
+
+	retryUntilFunc = func() bool {
+		return sgrListeners[1].StaleNotificationCount() >= 1
+	}
+	testRetryUntilTrue(t, retryUntilFunc)
+
+	log.Printf("checking for dropped node detection")
+	// Validate that at least one node detected the stopped node 1
+	h2staleDetectCount := importListeners[1].StaleNotificationCount()
+	h3staleDetectCount := importListeners[2].StaleNotificationCount()
+	assert.True(t, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
+		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
+
+	// Validate current node list for import with one of the import listeners
+	activeImportNodes, err := importListeners[1].GetNodes()
+	log.Printf("import listener nodes: %+v", activeImportNodes)
+	require.NoError(t, err, "Error getting node list")
+	require.Len(t, activeImportNodes, 2)
+	assert.NotContains(t, activeImportNodes, "node0")
+	assert.Contains(t, activeImportNodes, "node1")
+	assert.Contains(t, activeImportNodes, "node2")
+
+	// Validate current node list for sgr with one of the sgr listeners
+	activeReplicateNodes, err := sgrListeners[1].GetNodes()
+	log.Printf("replicate listener nodes: %+v", activeReplicateNodes)
+	require.NoError(t, err, "Error getting node list")
+	require.Len(t, activeReplicateNodes, 1)
+	assert.NotContains(t, activeReplicateNodes, "node0")
+	assert.Contains(t, activeReplicateNodes, "node1")
+	assert.NotContains(t, activeReplicateNodes, "node2")
+
+	// Stop heartbeaters
+	nodes[1].Stop()
+	nodes[2].Stop()
+}
+
+// TestNewCouchbaseHeartbeater simulates three nodes.  The minimum time window for failed node
+// detection is 2 seconds, based on Couchbase Server's minimum document expiry TTL of
+// one second, so retry polling is required.
+func TestCBGTManagerHeartbeater(t *testing.T) {
+
+	defer SetUpTestLogging(LevelDebug, KeyDCP)()
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("This test won't work under walrus - no expiry, required for heartbeats")
+	}
+
+	if testing.Short() {
+		t.Skip("Skipping heartbeattest in short mode")
+	}
+
+	keyprefix := SyncPrefix + t.Name()
 
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
@@ -157,30 +298,34 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create three heartbeaters (representing three nodes)
-	handler1, err := NewCBGTNodeListHandler(cfgCB)
+	node1, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node1")
 	assert.NoError(t, err)
-	node1, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node1", handler1)
+	node2, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node2")
 	assert.NoError(t, err)
-	handler2, err := NewCBGTNodeListHandler(cfgCB)
-	assert.NoError(t, err)
-	node2, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node2", handler2)
-	assert.NoError(t, err)
-	handler3, err := NewCBGTNodeListHandler(cfgCB)
-	assert.NoError(t, err)
-	node3, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node3", handler3)
+	node3, err := NewCouchbaseHeartbeater(testBucket, keyprefix, "node3")
 	assert.NoError(t, err)
 
-	assert.NoError(t, node1.StartSendingHeartbeats(1))
-	assert.NoError(t, node2.StartSendingHeartbeats(1))
-	assert.NoError(t, node3.StartSendingHeartbeats(1))
+	assert.NoError(t, node1.SetExpirySeconds(2))
+	assert.NoError(t, node2.SetExpirySeconds(2))
+	assert.NoError(t, node3.SetExpirySeconds(2))
 
-	heartbeatStoppedHandler1 := &TestCfgHeartbeatStoppedHandler{handlerID: "handler1", cfg: cfgCB}
-	heartbeatStoppedHandler2 := &TestCfgHeartbeatStoppedHandler{handlerID: "handler2", cfg: cfgCB}
-	heartbeatStoppedHandler3 := &TestCfgHeartbeatStoppedHandler{handlerID: "handler3", cfg: cfgCB}
+	assert.NoError(t, node1.Start())
+	assert.NoError(t, node2.Start())
+	assert.NoError(t, node3.Start())
 
-	assert.NoError(t, node1.StartCheckingHeartbeats(1000, heartbeatStoppedHandler1))
-	assert.NoError(t, node2.StartCheckingHeartbeats(1000, heartbeatStoppedHandler2))
-	assert.NoError(t, node3.StartCheckingHeartbeats(1000, heartbeatStoppedHandler3))
+	// Create three heartbeat listeners, associate one with each node
+	testManagerVersion := ""
+	listener1, err := NewImportHeartbeatListener(cfgCB, testManagerVersion)
+	assert.NoError(t, err)
+	assert.NoError(t, node1.RegisterListener(listener1))
+
+	listener2, err := NewImportHeartbeatListener(cfgCB, testManagerVersion)
+	assert.NoError(t, err)
+	assert.NoError(t, node2.RegisterListener(listener2))
+
+	listener3, err := NewImportHeartbeatListener(cfgCB, testManagerVersion)
+	assert.NoError(t, err)
+	assert.NoError(t, node3.RegisterListener(listener3))
 
 	// Wait for node1 to start running (and persist initial heartbeat docs) before stopping
 	retryUntilFunc := func() bool {
@@ -195,19 +340,17 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 
 	// Wait for another node to detect node1 has stopped sending heartbeats
 	retryUntilFunc = func() bool {
-		return atomic.LoadUint32(&heartbeatStoppedHandler2.staleDetectCount) >= 1 ||
-			atomic.LoadUint32(&heartbeatStoppedHandler3.staleDetectCount) >= 1
+		nodeSet, err := listener2.GetNodes()
+		if err != nil {
+			log.Printf("getNodes error: %v", err)
+			return false
+		}
+		return len(nodeSet) < 3
 	}
 	testRetryUntilTrue(t, retryUntilFunc)
 
-	// Validate that at least one node detected the stopped node 1
-	h2staleDetectCount := atomic.LoadUint32(&heartbeatStoppedHandler2.staleDetectCount)
-	h3staleDetectCount := atomic.LoadUint32(&heartbeatStoppedHandler3.staleDetectCount)
-	assert.True(t, h2staleDetectCount >= 1 || h3staleDetectCount >= 1,
-		fmt.Sprintf("Expected stale detection counts (1) not found in either handler2 (%d) or handler3 (%d)", h2staleDetectCount, h3staleDetectCount))
-
 	// Validate current node list
-	activeNodes, err := handler2.GetNodes()
+	activeNodes, err := listener2.GetNodes()
 	require.NoError(t, err, "Error getting node list")
 	require.Len(t, activeNodes, 2)
 	assert.NotContains(t, activeNodes, "node1")
@@ -217,19 +360,4 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	// Stop heartbeaters
 	node2.Stop()
 	node3.Stop()
-}
-
-type TestCfgHeartbeatStoppedHandler struct {
-	handlerID        string
-	cfg              cbgt.Cfg
-	staleDetectCount uint32
-}
-
-func (tch *TestCfgHeartbeatStoppedHandler) StaleHeartBeatDetected(nodeUUID string) {
-	log.Printf("Handler %s detected stale heartbeat for %v, will be removed from config", tch.handlerID, nodeUUID)
-	err := cbgt.UnregisterNodes(tch.cfg, "1.0.0", []string{nodeUUID})
-	if err != nil {
-		log.Printf("Error removing node %s from config: %v", nodeUUID, err)
-	}
-	atomic.AddUint32(&tch.staleDetectCount, 1)
 }

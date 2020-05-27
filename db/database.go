@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/cbgt"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -72,6 +73,7 @@ const (
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
 	Name               string                   // Database name
+	UUID               string                   // UUID for this database instance. Used by cbgt and sgr
 	Bucket             base.Bucket              // Storage
 	BucketSpec         base.BucketSpec          // The BucketSpec
 	BucketLock         sync.RWMutex             // Control Access to the underlying bucket object
@@ -231,6 +233,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,
+		UUID:       cbgt.NewUUID(),
 		Bucket:     bucket,
 		StartTime:  time.Now(),
 		autoImport: autoImport,
