@@ -1194,7 +1194,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	defer rt.Close()
 	bucket := rt.Bucket()
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyCache)()
 
 	// Write doc in SG format (doc + xattr) directly to the bucket
 	key := "TestCheckForUpgrade"
