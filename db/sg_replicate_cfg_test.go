@@ -87,14 +87,14 @@ func TestReplicateManagerNodes(t *testing.T) {
 	manager, err := NewSGReplicateManager(testCfg, "test")
 	require.NoError(t, err)
 
-	err = manager.RegisterNode("node1")
+	err = manager.RegisterNode("node1", "host1")
 	require.NoError(t, err)
 
 	nodes, err := manager.getNodes()
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(nodes))
 
-	err = manager.RegisterNode("node2")
+	err = manager.RegisterNode("node2", "host2")
 	require.NoError(t, err)
 
 	nodes, err = manager.getNodes()
@@ -102,7 +102,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 	assert.Equal(t, 2, len(nodes))
 
 	// re-adding an existing node is a no-op
-	err = manager.RegisterNode("node1")
+	err = manager.RegisterNode("node1", "host1")
 	require.NoError(t, err)
 
 	nodes, err = manager.getNodes()
@@ -118,7 +118,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 	require.Equal(t, 1, len(nodes))
 	node2, ok := nodes["node2"]
 	require.True(t, ok)
-	require.Equal(t, node2.Host, "node2")
+	require.Equal(t, node2.UUID, "node2")
 
 	// Removing an already removed node is a no-op
 	err = manager.RemoveNode("node1")
@@ -147,7 +147,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 		nodeWg.Add(1)
 		go func(i int) {
 			defer nodeWg.Done()
-			err := manager.RegisterNode(fmt.Sprintf("node_%d", i))
+			err := manager.RegisterNode(fmt.Sprintf("node_%d", i), fmt.Sprintf("host_%d", i))
 			assert.NoError(t, err)
 		}(i)
 	}
@@ -238,9 +238,9 @@ func TestRebalanceReplications(t *testing.T) {
 		{
 			name: "new nodes",
 			nodes: map[string]*SGNode{
-				"n1": {Host: "n1"},
-				"n2": {Host: "n2"},
-				"n3": {Host: "n3"},
+				"n1": {UUID: "n1"},
+				"n2": {UUID: "n2"},
+				"n3": {UUID: "n3"},
 			},
 			replications: map[string]*ReplicationCfg{
 				"r1": testReplicationCfg("r1", "n1"),
@@ -254,9 +254,9 @@ func TestRebalanceReplications(t *testing.T) {
 		{
 			name: "new replications",
 			nodes: map[string]*SGNode{
-				"n1": {Host: "n1"},
-				"n2": {Host: "n2"},
-				"n3": {Host: "n3"},
+				"n1": {UUID: "n1"},
+				"n2": {UUID: "n2"},
+				"n3": {UUID: "n3"},
 			},
 			replications: map[string]*ReplicationCfg{
 				"r1": testReplicationCfg("r1", ""),
@@ -270,8 +270,8 @@ func TestRebalanceReplications(t *testing.T) {
 		{
 			name: "remove nodes",
 			nodes: map[string]*SGNode{
-				"n1": {Host: "n1"},
-				"n2": {Host: "n2"},
+				"n1": {UUID: "n1"},
+				"n2": {UUID: "n2"},
 			},
 			replications: map[string]*ReplicationCfg{
 				"r1": testReplicationCfg("r1", "n1"),
@@ -298,7 +298,7 @@ func TestRebalanceReplications(t *testing.T) {
 		{
 			name: "single node",
 			nodes: map[string]*SGNode{
-				"n1": {Host: "n1"},
+				"n1": {UUID: "n1"},
 			},
 			replications: map[string]*ReplicationCfg{
 				"r1": testReplicationCfg("r1", "n1"),
@@ -312,8 +312,8 @@ func TestRebalanceReplications(t *testing.T) {
 		{
 			name: "unbalanced distribution",
 			nodes: map[string]*SGNode{
-				"n1": {Host: "n1"},
-				"n2": {Host: "n2"},
+				"n1": {UUID: "n1"},
+				"n2": {UUID: "n2"},
 			},
 			replications: map[string]*ReplicationCfg{
 				"r1": testReplicationCfg("r1", "n1"),
@@ -327,9 +327,9 @@ func TestRebalanceReplications(t *testing.T) {
 		{
 			name: "multiple reassignments new nodes",
 			nodes: map[string]*SGNode{
-				"n1": {Host: "n1"},
-				"n2": {Host: "n2"},
-				"n3": {Host: "n3"},
+				"n1": {UUID: "n1"},
+				"n2": {UUID: "n2"},
+				"n3": {UUID: "n3"},
 			},
 			replications: map[string]*ReplicationCfg{
 				"r1": testReplicationCfg("r1", "n1"),
@@ -346,9 +346,9 @@ func TestRebalanceReplications(t *testing.T) {
 		{
 			name: "multiple reassignments new replications",
 			nodes: map[string]*SGNode{
-				"n1": {Host: "n1"},
-				"n2": {Host: "n2"},
-				"n3": {Host: "n3"},
+				"n1": {UUID: "n1"},
+				"n2": {UUID: "n2"},
+				"n3": {UUID: "n3"},
 			},
 			replications: map[string]*ReplicationCfg{
 				"r1": testReplicationCfg("r1", ""),
@@ -365,8 +365,8 @@ func TestRebalanceReplications(t *testing.T) {
 		{
 			name: "reassignment from unknown host",
 			nodes: map[string]*SGNode{
-				"n1": {Host: "n1"},
-				"n2": {Host: "n2"},
+				"n1": {UUID: "n1"},
+				"n2": {UUID: "n2"},
 			},
 			replications: map[string]*ReplicationCfg{
 				"r1": testReplicationCfg("r1", "n3"),

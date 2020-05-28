@@ -142,6 +142,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig.AllowConflicts = &boolVal
 	}
 
+	rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(false)
+
 	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 	if err != nil {
 		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)

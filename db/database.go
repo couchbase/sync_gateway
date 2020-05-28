@@ -26,6 +26,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -53,7 +54,7 @@ const (
 	DefaultRevsLimitNoConflicts = 50
 	DefaultRevsLimitConflicts   = 100
 	DefaultPurgeInterval        = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
-
+	DefaultSGReplicateEnabled   = true
 )
 
 // Default values for delta sync
@@ -101,6 +102,7 @@ type DatabaseContext struct {
 	activeChannels     *channels.ActiveChannels // Tracks active replications by channel
 	CfgSG              *base.CfgSG              // Sync Gateway cluster shared config
 	SGReplicateMgr     *sgReplicateManager      // Manages interactions with sg-replicate replications
+	Heartbeater        base.Heartbeater         // Node heartbeater for SG cluster awareness
 }
 
 type DatabaseContextOptions struct {
@@ -122,6 +124,7 @@ type DatabaseContextOptions struct {
 	UseViews                  bool             // Force use of views
 	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
 	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
+	SgReplicateEnabled        bool             // Whether this node can be assigned sg-replicate replications
 }
 
 type OidcTestProviderOptions struct {
@@ -302,11 +305,36 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
+	importEnabled := dbContext.UseXattrs() && dbContext.autoImport
+	sgReplicateEnabled := dbContext.Options.SgReplicateEnabled
+
+	// Initialize node heartbeater if sg-replicate or import enabled on the node
+	if importEnabled || sgReplicateEnabled {
+		// Create heartbeater
+		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, base.SyncPrefix, dbContext.UUID)
+		if err != nil {
+			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
+		}
+		err = heartbeater.Start()
+		if err != nil {
+			return nil, err
+		}
+		dbContext.Heartbeater = heartbeater
+	}
+
 	// If this is an xattr import node, start import feed
-	if dbContext.UseXattrs() && dbContext.autoImport {
+	if importEnabled {
 		dbContext.ImportListener = NewImportListener()
 		if importFeedErr := dbContext.ImportListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
 			return nil, importFeedErr
+		}
+	}
+
+	// If sgreplicate is enabled on this node, register this node to accept notifications
+	if sgReplicateEnabled {
+		registerNodeErr := dbContext.SGReplicateMgr.StartLocalNode(dbContext.UUID, dbContext.Heartbeater)
+		if registerNodeErr != nil {
+			return nil, registerNodeErr
 		}
 	}
 
@@ -492,6 +520,9 @@ func (context *DatabaseContext) Close() {
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
 	context.ImportListener.Stop()
+	if context.Heartbeater != nil {
+		context.Heartbeater.Stop()
+	}
 	context.Bucket.Close()
 	context.Bucket = nil
 

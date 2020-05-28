@@ -197,6 +197,7 @@ type DbConfig struct {
 	BucketOpTimeoutMs         *uint32                          `json:"bucket_op_timeout_ms,omitempty"`         // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
 	DeltaSync                 *DeltaSyncConfig                 `json:"delta_sync,omitempty"`                   // Config for delta sync
 	CompactIntervalDays       *float32                         `json:"compact_interval_days,omitempty"`        // Interval between scheduled compaction runs (in days) - 0 means don't run
+	SGReplicateEnabled        *bool                            `json:"sgreplicate_enabled,omitempty"`          // When false, node will not be assigned replications
 	Replications              map[string]*db.ReplicationConfig `json:"replications,omitempty"`                 // sg-replicate replication definitions
 }
 

@@ -51,7 +51,7 @@ type HeartbeatListener interface {
 //       e.g  Default for a 4 node cluster: 12 ops/second
 type couchbaseHeartBeater struct {
 	bucket                  Bucket
-	nodeUuid                string
+	nodeUUID                string
 	keyPrefix               string
 	heartbeatSendInterval   time.Duration                // Heartbeat send interval
 	heartbeatExpirySeconds  uint32                       // Heartbeat expiry time (seconds)
@@ -67,13 +67,13 @@ type couchbaseHeartBeater struct {
 
 // Create a new CouchbaseHeartbeater, passing in an authenticated bucket connection,
 // the keyPrefix which will be prepended to the heartbeat doc keys,
-// and the nodeUuid, which is an opaque identifier for the "thing" that is using this
-// library.  nodeUuid will be passed to listeners on stale node detection.
-func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUuid string) (heartbeater *couchbaseHeartBeater, err error) {
+// and the nodeUUID, which is an opaque identifier for the "thing" that is using this
+// library.  nodeUUID will be passed to listeners on stale node detection.
+func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string) (heartbeater *couchbaseHeartBeater, err error) {
 
 	heartbeater = &couchbaseHeartBeater{
 		bucket:                 bucket,
-		nodeUuid:               nodeUuid,
+		nodeUUID:               nodeUUID,
 		keyPrefix:              keyPrefix,
 		terminator:             make(chan struct{}),
 		heartbeatListeners:     make(map[string]HeartbeatListener),
@@ -98,6 +98,8 @@ func (h *couchbaseHeartBeater) Start() error {
 		return err
 	}
 
+	Debugf(KeyCluster, "Sending node heartbeats at interval: %v", h.heartbeatSendInterval)
+
 	return nil
 
 }
@@ -106,6 +108,9 @@ func (h *couchbaseHeartBeater) Start() error {
 // until goroutines are actually terminated.
 func (h *couchbaseHeartBeater) Stop() {
 
+	if h == nil {
+		return
+	}
 	// Stop send and check goroutines
 	close(h.terminator)
 
@@ -129,14 +134,14 @@ func (h *couchbaseHeartBeater) startSendingHeartbeats() error {
 	}
 
 	ticker := time.NewTicker(h.heartbeatSendInterval)
-
 	go func() {
 		defer FatalPanicHandler()
-		defer func() { h.sendActive.Set(false) }()
-		h.sendActive.Set(true)
+		defer func() {
+			h.sendActive.Set(false)
+		}()
 		for {
 			select {
-			case _ = <-h.terminator:
+			case <-h.terminator:
 				ticker.Stop()
 				return
 			case <-ticker.C:
@@ -146,6 +151,7 @@ func (h *couchbaseHeartBeater) startSendingHeartbeats() error {
 			}
 		}
 	}()
+	h.sendActive.Set(true)
 	return nil
 }
 
@@ -157,14 +163,12 @@ func (h *couchbaseHeartBeater) startCheckingHeartbeats() error {
 	}
 
 	ticker := time.NewTicker(h.heartbeatPollInterval)
-
 	go func() {
 		defer FatalPanicHandler()
 		defer func() { h.checkActive.Set(false) }()
-		h.checkActive.Set(true)
 		for {
 			select {
-			case _ = <-h.terminator:
+			case <-h.terminator:
 				ticker.Stop()
 				return
 			case <-ticker.C:
@@ -174,6 +178,7 @@ func (h *couchbaseHeartBeater) startCheckingHeartbeats() error {
 			}
 		}
 	}()
+	h.checkActive.Set(true)
 	return nil
 
 }
@@ -206,7 +211,6 @@ func (h *couchbaseHeartBeater) UnregisterListener(handlerName string) {
 		return
 	}
 	delete(h.heartbeatListeners, handlerName)
-	return
 }
 
 // getAllNodes returns all nodes from all registered listeners as a map from nodeUUID to the listeners
@@ -238,7 +242,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 	Debugf(KeyCluster, "Checking heartbeats for node set: %v", nodeListenerMap)
 
 	for heartbeatNodeUUID, listeners := range nodeListenerMap {
-		if heartbeatNodeUUID == h.nodeUuid {
+		if heartbeatNodeUUID == h.nodeUUID {
 			// that's us, and we don't care about ourselves
 			continue
 		}
@@ -246,8 +250,8 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 			continue
 		}
 
-		timeoutDocId := heartbeatTimeoutDocId(heartbeatNodeUUID, h.keyPrefix)
-		_, _, err := h.bucket.GetRaw(timeoutDocId)
+		timeoutDocID := heartbeatTimeoutDocID(heartbeatNodeUUID, h.keyPrefix)
+		_, _, err := h.bucket.GetRaw(timeoutDocID)
 		if err != nil {
 			if !IsKeyNotFoundError(h.bucket, err) {
 				// unexpected error
@@ -265,15 +269,15 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 	return nil
 }
 
-func heartbeatTimeoutDocId(nodeUuid, keyPrefix string) string {
+func heartbeatTimeoutDocID(nodeUuid, keyPrefix string) string {
 	return keyPrefix + "heartbeat_timeout:" + nodeUuid
 }
 
 func (h *couchbaseHeartBeater) sendHeartbeat() error {
 
-	docId := heartbeatTimeoutDocId(h.nodeUuid, h.keyPrefix)
+	docID := heartbeatTimeoutDocID(h.nodeUUID, h.keyPrefix)
 
-	_, touchErr := h.bucket.Touch(docId, h.heartbeatExpirySeconds)
+	_, touchErr := h.bucket.Touch(docID, h.heartbeatExpirySeconds)
 	if touchErr == nil {
 		h.sendCount++
 		return nil
@@ -281,8 +285,8 @@ func (h *couchbaseHeartBeater) sendHeartbeat() error {
 
 	// On KeyNotFound, recreate heartbeat timeout doc
 	if IsKeyNotFoundError(h.bucket, touchErr) {
-		heartbeatDocBody := []byte(h.nodeUuid)
-		setErr := h.bucket.SetRaw(docId, h.heartbeatExpirySeconds, heartbeatDocBody)
+		heartbeatDocBody := []byte(h.nodeUUID)
+		setErr := h.bucket.SetRaw(docID, h.heartbeatExpirySeconds, heartbeatDocBody)
 		if setErr != nil {
 			return setErr
 		}

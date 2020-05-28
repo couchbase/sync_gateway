@@ -522,6 +522,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		secureCookieOverride = sc.config.SSLCert != nil
 	}
 
+	sgReplicateEnabled := db.DefaultSGReplicateEnabled
+	if config.SGReplicateEnabled != nil {
+		sgReplicateEnabled = *config.SGReplicateEnabled
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
@@ -541,6 +546,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		UseViews:                  useViews,
 		DeltaSyncOptions:          deltaSyncOptions,
 		CompactInterval:           compactIntervalSecs,
+		SgReplicateEnabled:        sgReplicateEnabled,
 	}
 
 	// Create the DB Context
