@@ -120,7 +120,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 		{
 			docBody:            rawDocWithSyncMeta(),
 			name:               "rawDocWithSyncMeta",
-			expectedGeneration: 2,
+			expectedGeneration: 1,
 		},
 	}
 
@@ -181,7 +181,155 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 		})
 	}
+}
 
+func TestImportWithCasFailureUpdate(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() || !base.TestUseXattrs() {
+		t.Skip("Test only works with a Couchbase server and XATTRS")
+	}
+
+	var db *Database
+	var testBucket *base.TestBucket
+	var existingBucketDoc *sgbucket.BucketDocument
+	var runOnce bool
+
+	type testcase struct {
+		callback func(key string)
+		docname  string
+	}
+
+	syncDataInBodyCallback := func(key string) {
+		if runOnce {
+			var body map[string]interface{}
+
+			runOnce = false
+			valStr := `{
+				"field": "value",
+				"field2": "val2",
+				"_sync": {
+					"rev": "2-abc",
+					"sequence": 1,
+					"recent_sequences": [
+						1
+					],
+					"history": {
+						"revs": [
+							"2-abc",
+							"1-abc"
+						],
+						"parents": [
+							-1,
+							0
+						],
+						"channels": [
+							null,
+							null
+						]
+					},
+					"cas": "",
+					"time_saved": "2017-11-29T12:46:13.456631-08:00"
+				}
+			}`
+
+			cas, _ := testBucket.Get(key, &body)
+			_, err := testBucket.WriteCas(key, 0, 0, cas, []byte(valStr), sgbucket.Raw)
+			assert.NoError(t, err)
+		}
+	}
+
+	syncDataInXattrCallback := func(key string) {
+		if runOnce {
+			var body map[string]interface{}
+			var xattr map[string]interface{}
+
+			runOnce = false
+			valStr := `{
+				"field": "value",
+				"field2": "val2"
+			}`
+
+			xattrStr := `{
+				"rev": "2-abc",
+				"sequence": 1,
+				"recent_sequences": [
+					1
+				],
+				"history": {
+					"revs": [
+						"2-abc",
+						"1-abc"
+					],
+					"parents": [
+						-1,
+						0
+					],
+					"channels": [
+						null,
+						null
+					]
+				},
+				"cas": "",
+				"time_saved": "2017-11-29T12:46:13.456631-08:00"
+			}`
+
+			cas, _ := testBucket.GetWithXattr(key, base.SyncXattrName, &body, &xattr)
+			_, err := testBucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, []byte(valStr), []byte(xattrStr))
+			assert.NoError(t, err)
+		}
+	}
+
+	testcases := []testcase{
+		{
+			callback: syncDataInBodyCallback,
+			docname:  "syncDataInBody",
+		},
+		{
+			callback: syncDataInXattrCallback,
+			docname:  "syncDataInXattr",
+		},
+	}
+
+	for _, testcase := range testcases {
+		t.Run(fmt.Sprintf("%s", testcase.docname), func(t *testing.T) {
+			db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
+			bodyBytes := rawDocWithSyncMeta()
+			body := Body{}
+			err := body.Unmarshal(bodyBytes)
+			assert.NoError(t, err, "Error unmarshalling body")
+
+			// Put a doc with inline sync data via sdk
+			_, err = testBucket.Bucket.Add(testcase.docname, 0, bodyBytes)
+			assert.NoError(t, err)
+
+			// Get the existing bucket doc
+			_, existingBucketDoc, err = db.GetDocWithXattr(testcase.docname, DocUnmarshalAll)
+			assert.NoError(t, err, fmt.Sprintf("Error retrieving doc w/ xattr: %v", err))
+
+			importD := `{"new":"Val"}`
+			bodyD := Body{}
+			err = bodyD.Unmarshal([]byte(importD))
+			assert.NoError(t, err, "Error unmarshalling body")
+
+			runOnce = true
+
+			// Trigger import
+			_, err = db.importDoc(testcase.docname, bodyD, false, existingBucketDoc, ImportOnDemand)
+			assert.NoError(t, err)
+
+			// Check document has the rev and new body
+			var bodyOut map[string]interface{}
+			var xattrOut map[string]interface{}
+
+			_, err = testBucket.Bucket.GetWithXattr(testcase.docname, base.SyncXattrName, &bodyOut, &xattrOut)
+			assert.NoError(t, err)
+
+			assert.Equal(t, "2-abc", xattrOut["rev"])
+			assert.Equal(t, "val2", bodyOut["field2"])
+
+			testBucket.Close()
+			db.Close()
+		})
+	}
 }
 
 func rawDocNoMeta() []byte {

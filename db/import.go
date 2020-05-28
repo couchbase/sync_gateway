@@ -78,15 +78,22 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
-	rawValue, rawXattr, err := existingDoc.MarshalWithXattr()
-	if err != nil {
-		return nil, err
-	}
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Body:   rawValue,
-		Xattr:  rawXattr,
 		Cas:    existingDoc.Cas,
 		Expiry: *expiry,
+	}
+
+	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
+	// in the body so we can detect this and perform the migrate
+	if existingDoc.inlineSyncData {
+		existingBucketDoc.Body, err = existingDoc.MarshalJSON()
+		existingBucketDoc.Xattr = nil
+	} else {
+		existingBucketDoc.Body, existingBucketDoc.Xattr, err = existingDoc.MarshalWithXattr()
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return db.importDoc(docid, existingDoc.Body(), isDelete, existingBucketDoc, mode)
@@ -149,13 +156,23 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 					Expiry: expiry,
 				}
 
+				if doc.inlineSyncData {
+					existingDoc.Body, err = doc.MarshalBodyAndSync()
+				} else {
+					existingDoc.Body, err = doc.BodyBytes()
+				}
+
+				if err != nil {
+					return nil, nil, nil, err
+				}
+
 				updatedExpiry = &expiry
 			}
 		}
 
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
-		if ok {
+		if ok || doc.inlineSyncData {
 			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc)
 			if migrateErr != nil {
 				return nil, nil, updatedExpiry, migrateErr
@@ -302,7 +319,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 
 	// Unmarshal the existing doc in legacy SG format
 	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
-	if err != nil {
+	if unmarshalErr != nil {
 		return nil, false, unmarshalErr
 	}
 	doc.Cas = existingDoc.Cas
@@ -325,16 +342,10 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 		return nil, false, marshalErr
 	}
 
-	// TODO: Could refactor migrateMetadata to use WriteUpdateWithXattr for both CAS retry and general write handling, and avoid cast to CouchbaseBucketGoCB
-	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
-	if !ok {
-		return nil, false, fmt.Errorf("Metadata migration requires gocb bucket (%T)", db.Bucket)
-	}
-
 	// Use WriteWithXattr to handle both normal migration and tombstone migration (xattr creation, body delete)
 	isDelete := doc.hasFlag(channels.Deleted)
 	deleteBody := isDelete && len(existingDoc.Body) > 0
-	casOut, writeErr := gocbBucket.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
+	casOut, writeErr := db.Bucket.WriteWithXattr(docid, base.SyncXattrName, existingDoc.Expiry, existingDoc.Cas, value, xattrValue, isDelete, deleteBody)
 	if writeErr == nil {
 		doc.Cas = casOut
 		base.Infof(base.KeyMigrate, "Successfully migrated doc %q", base.UD(docid))

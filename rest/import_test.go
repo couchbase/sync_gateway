@@ -1501,7 +1501,7 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 		{
 			onDemandCallback:      triggerOnDemandViaWrite,
 			name:                  "triggerOnDemandViaWrite",
-			expectedRevGeneration: 2,
+			expectedRevGeneration: 1,
 		},
 	}
 

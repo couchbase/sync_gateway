@@ -160,6 +160,7 @@ type Document struct {
 	DocExpiry      uint32
 	RevID          string
 	DocAttachments AttachmentsMeta
+	inlineSyncData bool
 }
 
 type revOnlySyncData struct {

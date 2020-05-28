@@ -51,6 +51,9 @@ type LeakyBucketConfig struct {
 	// tests to trigger CAS retry handling by modifying the underlying document in a WriteUpdateCallback implementation.
 	WriteUpdateCallback func(key string)
 
+	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
+	WriteWithXattrCallback func(key string)
+
 	// IncrCallback issues a callback during incr.  Used for sequence allocation race tests
 	IncrCallback func()
 }
@@ -212,6 +215,13 @@ func (b *LeakyBucket) Refresh() error {
 
 func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
+}
+
+func (b *LeakyBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
+	if b.config.WriteWithXattrCallback != nil {
+		b.config.WriteWithXattrCallback(k)
+	}
+	return b.bucket.WriteWithXattr(k, xattrKey, exp, cas, value, xattrValue, isDelete, deleteBody)
 }
 
 func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
