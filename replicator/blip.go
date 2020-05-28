@@ -2,9 +2,11 @@ package replicator
 
 import (
 	"context"
+	"strings"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 const (
@@ -40,4 +42,37 @@ func defaultBlipLogger(ctx context.Context) blip.LogFn {
 			base.InfofCtx(ctx, base.KeyWebSocket, format, params...)
 		}
 	}
+}
+
+// blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
+func blipRevMessageProperties(revisionHistory []string, deleted bool, seq db.SequenceID) blip.Properties {
+	properties := make(blip.Properties)
+
+	// TODO: Assert? db.SequenceID.MarshalJSON can never error
+	seqJSON, _ := base.JSONMarshal(seq)
+	properties[RevMessageSequence] = string(seqJSON)
+
+	if len(revisionHistory) > 0 {
+		properties[RevMessageHistory] = strings.Join(revisionHistory, ",")
+	}
+
+	if deleted {
+		properties[RevMessageDeleted] = "1"
+	}
+
+	return properties
+}
+
+// Returns true if this attachment is worth trying to compress.
+func isCompressible(filename string, meta map[string]interface{}) bool {
+	if meta["encoding"] != nil {
+		return false
+	} else if kBadFilenames.MatchString(filename) {
+		return false
+	} else if mimeType, ok := meta["content_type"].(string); ok && mimeType != "" {
+		return !kCompressedTypes.MatchString(mimeType) &&
+			(kGoodTypes.MatchString(mimeType) ||
+				!kBadTypes.MatchString(mimeType))
+	}
+	return true // be optimistic by default
 }

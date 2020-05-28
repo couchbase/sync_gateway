@@ -1,4 +1,4 @@
-package rest
+package replicator
 
 import (
 	"bytes"
@@ -15,95 +15,95 @@ import (
 
 // Message types
 const (
-	messageSetCheckpoint   = "setCheckpoint"
-	messageGetCheckpoint   = "getCheckpoint"
-	messageSubChanges      = "subChanges"
-	messageChanges         = "changes"
-	messageRev             = "rev"
-	messageNoRev           = "norev"
-	messageGetAttachment   = "getAttachment"
-	messageProposeChanges  = "proposeChanges"
-	messageProveAttachment = "proveAttachment"
+	MessageSetCheckpoint   = "setCheckpoint"
+	MessageGetCheckpoint   = "getCheckpoint"
+	MessageSubChanges      = "subChanges"
+	MessageChanges         = "changes"
+	MessageRev             = "rev"
+	MessageNoRev           = "norev"
+	MessageGetAttachment   = "getAttachment"
+	MessageProposeChanges  = "proposeChanges"
+	MessageProveAttachment = "proveAttachment"
 )
 
 // Message properties
 const (
 
 	// Common message properties
-	blipClient   = "client"
-	blipCompress = "compress"
-	blipProfile  = "Profile"
+	BlipClient   = "client"
+	BlipCompress = "compress"
+	BlipProfile  = "Profile"
 
 	// setCheckpoint message properties
-	setCheckpointRev = "rev"
+	SetCheckpointRev = "rev"
 
 	// getCheckpoint message properties
-	getCheckpointResponseRev = "rev"
+	GetCheckpointResponseRev = "rev"
 
 	// subChanges message properties
-	subChangesActiveOnly = "activeOnly"
-	subChangesFilter     = "filter"
-	subChangesChannels   = "channels"
-	subChangesSince      = "since"
-	subChangesContinuous = "continuous"
+	SubChangesActiveOnly = "activeOnly"
+	SubChangesFilter     = "filter"
+	SubChangesChannels   = "channels"
+	SubChangesSince      = "since"
+	SubChangesContinuous = "continuous"
 
 	// rev message properties
-	revMessageId          = "id"
-	revMessageRev         = "rev"
-	revMessageDeleted     = "deleted"
-	revMessageSequence    = "sequence"
-	revMessageHistory     = "history"
-	revMessageNoConflicts = "noconflicts"
-	revMessageDeltaSrc    = "deltaSrc"
+	RevMessageId          = "id"
+	RevMessageRev         = "rev"
+	RevMessageDeleted     = "deleted"
+	RevMessageSequence    = "sequence"
+	RevMessageHistory     = "history"
+	RevMessageNoConflicts = "noconflicts"
+	RevMessageDeltaSrc    = "deltaSrc"
 
 	// norev message properties
-	norevMessageId     = "id"
-	norevMessageRev    = "rev"
-	norevMessageError  = "error"
-	norevMessageReason = "reason"
+	NorevMessageId     = "id"
+	NorevMessageRev    = "rev"
+	NorevMessageError  = "error"
+	NorevMessageReason = "reason"
 
 	// changes message properties
-	changesResponseMaxHistory = "maxHistory"
-	changesResponseDeltas     = "deltas"
+	ChangesResponseMaxHistory = "maxHistory"
+	ChangesResponseDeltas     = "deltas"
 
 	// proposeChanges message properties
-	proposeChangesResponseDeltas = "deltas"
+	ProposeChangesResponseDeltas = "deltas"
 
 	// getAttachment message properties
-	getAttachmentDigest = "digest"
+	GetAttachmentDigest = "digest"
 
 	// proveAttachment
-	proveAttachmentDigest = "digest"
+	ProveAttachmentDigest = "digest"
 
 	// Sync Gateway specific properties (used for testing)
-	sgShowHandler = "sgShowHandler" // Used to request a response with sgHandler
-	sgHandler     = "sgHandler"     // Used to show which handler processed the message
+	SGShowHandler = "sgShowHandler" // Used to request a response with sgHandler
+	SGHandler     = "sgHandler"     // Used to show which handler processed the message
 )
 
 // Function signature for something that parses a sequence id from a string
 type SequenceIDParser func(since string) (db.SequenceID, error)
 
 // Helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
-type subChangesParams struct {
+type SubChangesParams struct {
 	rq      *blip.Message // The underlying BLIP message
 	_since  db.SequenceID // Since value on the incoming request
 	_docIDs []string      // Document ID filter specified on the incoming request
 }
 
-type subChangesBody struct {
+type SubChangesBody struct {
 	DocIDs []string `json:"docIDs"`
 }
 
 // Create a new subChanges helper
-func newSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) (*subChangesParams, error) {
+func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) (*SubChangesParams, error) {
 
-	params := &subChangesParams{
+	params := &SubChangesParams{
 		rq: rq,
 	}
 
 	// Determine incoming since and docIDs once, since there is some overhead associated with their calculation
 	sinceSequenceId := zeroSeq
-	if sinceStr, found := rq.Properties[subChangesSince]; found {
+	if sinceStr, found := rq.Properties[SubChangesSince]; found {
 		var err error
 		if sinceSequenceId, err = sequenceIDParser(base.ConvertJSONString(sinceStr)); err != nil {
 			base.InfofCtx(logCtx, base.KeySync, "%s: Invalid sequence ID in 'since': %s", rq, sinceStr)
@@ -123,11 +123,11 @@ func newSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq db.Se
 	return params, nil
 }
 
-func (s *subChangesParams) since() db.SequenceID {
+func (s *SubChangesParams) Since() db.SequenceID {
 	return s._since
 }
 
-func (s *subChangesParams) docIDs() []string {
+func (s *SubChangesParams) docIDs() []string {
 	return s._docIDs
 }
 
@@ -140,7 +140,7 @@ func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
 
 	// If there's a non-empty body, unmarshal to get the docIDs
 	if len(rawBody) > 0 {
-		var body subChangesBody
+		var body SubChangesBody
 		unmarshalErr := base.JSONUnmarshal(rawBody, &body)
 		if unmarshalErr != nil {
 			return nil, err
@@ -152,33 +152,33 @@ func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
 
 }
 
-func (s *subChangesParams) batchSize() int {
+func (s *SubChangesParams) batchSize() int {
 	return int(base.GetRestrictedIntFromString(s.rq.Properties["batch"], BlipDefaultBatchSize, BlipMinimumBatchSize, math.MaxUint64, true))
 }
 
-func (s *subChangesParams) continuous() bool {
+func (s *SubChangesParams) continuous() bool {
 	continuous := false
-	if val, found := s.rq.Properties[subChangesContinuous]; found && val != "false" {
+	if val, found := s.rq.Properties[SubChangesContinuous]; found && val != "false" {
 		continuous = true
 	}
 	return continuous
 }
 
-func (s *subChangesParams) activeOnly() bool {
-	return (s.rq.Properties[subChangesActiveOnly] == "true")
+func (s *SubChangesParams) activeOnly() bool {
+	return (s.rq.Properties[SubChangesActiveOnly] == "true")
 }
 
-func (s *subChangesParams) filter() string {
-	return s.rq.Properties[subChangesFilter]
+func (s *SubChangesParams) filter() string {
+	return s.rq.Properties[SubChangesFilter]
 }
 
-func (s *subChangesParams) channels() (channels string, found bool) {
-	channels, found = s.rq.Properties[subChangesChannels]
+func (s *SubChangesParams) channels() (channels string, found bool) {
+	channels, found = s.rq.Properties[SubChangesChannels]
 	return channels, found
 }
 
-func (s *subChangesParams) channelsExpandedSet() (resultChannels base.Set, err error) {
-	channelsParam, found := s.rq.Properties[subChangesChannels]
+func (s *SubChangesParams) channelsExpandedSet() (resultChannels base.Set, err error) {
+	channelsParam, found := s.rq.Properties[SubChangesChannels]
 	if !found {
 		return nil, fmt.Errorf("Missing 'channels' filter parameter")
 	}
@@ -187,10 +187,10 @@ func (s *subChangesParams) channelsExpandedSet() (resultChannels base.Set, err e
 }
 
 // Satisfy fmt.Stringer interface for dumping attributes of this subChanges request to logs
-func (s *subChangesParams) String() string {
+func (s *SubChangesParams) String() string {
 
 	buffer := bytes.NewBufferString("")
-	buffer.WriteString(fmt.Sprintf("Since:%v ", s.since()))
+	buffer.WriteString(fmt.Sprintf("Since:%v ", s.Since()))
 
 	continuous := s.continuous()
 	if continuous {
@@ -230,24 +230,24 @@ type SetCheckpointMessage struct {
 
 func NewSetCheckpointMessage() *SetCheckpointMessage {
 	scm := &SetCheckpointMessage{blip.NewRequest()}
-	scm.SetProfile(messageSetCheckpoint)
+	scm.SetProfile(MessageSetCheckpoint)
 	return scm
 }
 
 func (scm *SetCheckpointMessage) client() string {
-	return scm.Properties[blipClient]
+	return scm.Properties[BlipClient]
 }
 
-func (scm *SetCheckpointMessage) setClient(client string) {
-	scm.Properties[blipClient] = client
+func (scm *SetCheckpointMessage) SetClient(client string) {
+	scm.Properties[BlipClient] = client
 }
 
 func (scm *SetCheckpointMessage) rev() string {
-	return scm.Properties[setCheckpointRev]
+	return scm.Properties[SetCheckpointRev]
 }
 
-func (scm *SetCheckpointMessage) setRev(rev string) {
-	scm.Properties[setCheckpointRev] = rev
+func (scm *SetCheckpointMessage) SetRev(rev string) {
+	scm.Properties[SetCheckpointRev] = rev
 }
 
 func (scm *SetCheckpointMessage) String() string {
@@ -270,93 +270,93 @@ type SetCheckpointResponse struct {
 }
 
 func (scr *SetCheckpointResponse) Rev() (rev string) {
-	return scr.Properties[setCheckpointRev]
+	return scr.Properties[SetCheckpointRev]
 }
 
 func (scr *SetCheckpointResponse) setRev(rev string) {
-	scr.Properties[setCheckpointRev] = rev
+	scr.Properties[SetCheckpointRev] = rev
 }
 
 // Rev message
-type revMessage struct {
+type RevMessage struct {
 	*blip.Message
 }
 
-func NewRevMessage() *revMessage {
-	rm := &revMessage{blip.NewRequest()}
-	rm.SetProfile(messageRev)
+func NewRevMessage() *RevMessage {
+	rm := &RevMessage{blip.NewRequest()}
+	rm.SetProfile(MessageRev)
 	return rm
 }
 
-func (rm *revMessage) id() (id string, found bool) {
-	id, found = rm.Properties[revMessageId]
+func (rm *RevMessage) ID() (id string, found bool) {
+	id, found = rm.Properties[RevMessageId]
 	return id, found
 }
 
-func (rm *revMessage) rev() (rev string, found bool) {
-	rev, found = rm.Properties[revMessageRev]
+func (rm *RevMessage) Rev() (rev string, found bool) {
+	rev, found = rm.Properties[RevMessageRev]
 	return rev, found
 }
 
-func (rm *revMessage) deleted() bool {
-	deleted, found := rm.Properties[revMessageDeleted]
+func (rm *RevMessage) Deleted() bool {
+	deleted, found := rm.Properties[RevMessageDeleted]
 	if !found {
 		return false
 	}
 	return deleted != "0" && deleted != "false"
 }
 
-func (rm *revMessage) deltaSrc() (deltaSrc string, found bool) {
-	deltaSrc, found = rm.Properties[revMessageDeltaSrc]
+func (rm *RevMessage) DeltaSrc() (deltaSrc string, found bool) {
+	deltaSrc, found = rm.Properties[RevMessageDeltaSrc]
 	return deltaSrc, found
 }
 
-func (rm *revMessage) hasDeletedProperty() bool {
-	_, found := rm.Properties[revMessageDeleted]
+func (rm *RevMessage) HasDeletedProperty() bool {
+	_, found := rm.Properties[RevMessageDeleted]
 	return found
 }
 
-func (rm *revMessage) sequence() (sequence string, found bool) {
-	sequence, found = rm.Properties[revMessageSequence]
+func (rm *RevMessage) Sequence() (sequence string, found bool) {
+	sequence, found = rm.Properties[RevMessageSequence]
 	return sequence, found
 }
 
-func (rm *revMessage) setId(id string) {
-	rm.Properties[revMessageId] = id
+func (rm *RevMessage) SetID(id string) {
+	rm.Properties[RevMessageId] = id
 }
 
-func (rm *revMessage) setRev(rev string) {
-	rm.Properties[revMessageRev] = rev
+func (rm *RevMessage) SetRev(rev string) {
+	rm.Properties[RevMessageRev] = rev
 }
 
 // setProperties will add the given properties to the blip message, overwriting any that already exist.
-func (rm *revMessage) setProperties(properties blip.Properties) {
+func (rm *RevMessage) SetProperties(properties blip.Properties) {
 	for k, v := range properties {
 		rm.Properties[k] = v
 	}
 }
 
-func (rm *revMessage) String() string {
+func (rm *RevMessage) String() string {
 
 	buffer := bytes.NewBufferString("")
 
-	if id, foundId := rm.id(); foundId {
+	if id, foundId := rm.ID(); foundId {
 		buffer.WriteString(fmt.Sprintf("Id:%v ", base.UD(id).Redact()))
 	}
 
-	if rev, foundRev := rm.rev(); foundRev {
+	if rev, foundRev := rm.Rev(); foundRev {
 		buffer.WriteString(fmt.Sprintf("Rev:%v ", rev))
 	}
 
-	if rm.hasDeletedProperty() {
-		buffer.WriteString(fmt.Sprintf("Deleted:%v ", rm.deleted()))
+	if rm.HasDeletedProperty() {
+		buffer.WriteString(fmt.Sprintf("Deleted:%v ", rm.Deleted()))
 	}
 
-	if deltaSrc, isDelta := rm.deltaSrc(); isDelta {
+	if deltaSrc, isDelta := rm.DeltaSrc(); isDelta {
 		buffer.WriteString(fmt.Sprintf("DeltaSrc:%v ", deltaSrc))
 	}
 
-	if sequence, foundSequence := rm.sequence(); foundSequence == true {
+	if sequence, foundSequence := rm.Sequence(); foundSequence == true {
 		buffer.WriteString(fmt.Sprintf("Sequence:%v ", sequence))
 	}
 
@@ -371,23 +371,23 @@ type noRevMessage struct {
 
 func NewNoRevMessage() *noRevMessage {
 	nrm := &noRevMessage{blip.NewRequest()}
-	nrm.SetProfile(messageNoRev)
+	nrm.SetProfile(MessageNoRev)
 	return nrm
 }
-func (nrm *noRevMessage) setId(id string) {
-	nrm.Properties[norevMessageId] = id
+func (nrm *noRevMessage) SetId(id string) {
+	nrm.Properties[NorevMessageId] = id
 }
 
-func (nrm *noRevMessage) setRev(rev string) {
-	nrm.Properties[norevMessageRev] = rev
+func (nrm *noRevMessage) SetRev(rev string) {
+	nrm.Properties[NorevMessageRev] = rev
 }
 
-func (nrm *noRevMessage) setReason(reason string) {
-	nrm.Properties[norevMessageReason] = reason
+func (nrm *noRevMessage) SetReason(reason string) {
+	nrm.Properties[NorevMessageReason] = reason
 }
 
-func (nrm *noRevMessage) setError(message string) {
-	nrm.Properties[norevMessageError] = message
+func (nrm *noRevMessage) SetError(message string) {
+	nrm.Properties[NorevMessageError] = message
 }
 
 type getAttachmentParams struct {
@@ -401,7 +401,7 @@ func newGetAttachmentParams(rq *blip.Message) *getAttachmentParams {
 }
 
 func (g *getAttachmentParams) digest() string {
-	return g.rq.Properties[getAttachmentDigest]
+	return g.rq.Properties[GetAttachmentDigest]
 }
 
 func (g *getAttachmentParams) String() string {

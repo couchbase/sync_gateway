@@ -12,6 +12,7 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/replicator"
 	"github.com/google/uuid"
 )
 
@@ -61,7 +62,7 @@ func (btr *BlipTesterReplicator) Close() {
 }
 
 func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
-	btr.bt.blipContext.HandlerForProfile[messageProveAttachment] = func(msg *blip.Message) {
+	btr.bt.blipContext.HandlerForProfile[replicator.MessageProveAttachment] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
 		nonce, err := msg.Body()
@@ -73,7 +74,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			panic("no nonce sent with proveAttachment")
 		}
 
-		digest, ok := msg.Properties[proveAttachmentDigest]
+		digest, ok := msg.Properties[replicator.ProveAttachmentDigest]
 		if !ok {
 			panic("no digest sent with proveAttachment")
 		}
@@ -89,7 +90,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		resp.SetBody([]byte(proof))
 	}
 
-	btr.bt.blipContext.HandlerForProfile[messageChanges] = func(msg *blip.Message) {
+	btr.bt.blipContext.HandlerForProfile[replicator.MessageChanges] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
 		// Exit early when there's nothing to do
@@ -166,23 +167,23 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		response.SetBody(b)
 	}
 
-	btr.bt.blipContext.HandlerForProfile[messageProposeChanges] = func(msg *blip.Message) {
+	btr.bt.blipContext.HandlerForProfile[replicator.MessageProposeChanges] = func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
 	}
 
-	btr.bt.blipContext.HandlerForProfile[messageRev] = func(msg *blip.Message) {
+	btr.bt.blipContext.HandlerForProfile[replicator.MessageRev] = func(msg *blip.Message) {
 		btc.pullReplication.storeMessage(msg)
 
-		docID := msg.Properties[revMessageId]
-		revID := msg.Properties[revMessageRev]
-		deltaSrc := msg.Properties[revMessageDeltaSrc]
+		docID := msg.Properties[replicator.RevMessageId]
+		revID := msg.Properties[replicator.RevMessageRev]
+		deltaSrc := msg.Properties[replicator.RevMessageDeltaSrc]
 
 		body, err := msg.Body()
 		if err != nil {
 			panic(err)
 		}
 
-		if msg.Properties[revMessageDeleted] == "1" {
+		if msg.Properties[replicator.RevMessageDeleted] == "1" {
 			btc.docsLock.Lock()
 			if _, ok := btc.docs[docID]; ok {
 				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
@@ -262,8 +263,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 				for _, digest := range missingDigests {
 					outrq := blip.NewRequest()
-					outrq.SetProfile(messageGetAttachment)
-					outrq.Properties[getAttachmentDigest] = digest
+					outrq.SetProfile(replicator.MessageGetAttachment)
+					outrq.Properties[replicator.GetAttachmentDigest] = digest
 
 					err := btc.pullReplication.sendMsg(outrq)
 					if err != nil {
@@ -319,10 +320,10 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 	}
 
-	btr.bt.blipContext.HandlerForProfile[messageGetAttachment] = func(msg *blip.Message) {
+	btr.bt.blipContext.HandlerForProfile[replicator.MessageGetAttachment] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
-		digest, ok := msg.Properties[getAttachmentDigest]
+		digest, ok := msg.Properties[replicator.GetAttachmentDigest]
 		if !ok {
 			base.Panicf("couldn't find digest in getAttachment message properties")
 		}
@@ -465,17 +466,17 @@ func (btc *BlipTesterClient) StartOneshotPull() (err error) {
 // StartPullSince will begin a pull replication between the client and server with the given params.
 func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string) (err error) {
 	getCheckpointRequest := blip.NewRequest()
-	getCheckpointRequest.SetProfile(messageGetCheckpoint)
-	getCheckpointRequest.Properties[blipClient] = btc.pullReplication.id
+	getCheckpointRequest.SetProfile(replicator.MessageGetCheckpoint)
+	getCheckpointRequest.Properties[replicator.BlipClient] = btc.pullReplication.id
 	if err := btc.pullReplication.sendMsg(getCheckpointRequest); err != nil {
 		return err
 	}
 
 	subChangesRequest := blip.NewRequest()
-	subChangesRequest.SetProfile(messageSubChanges)
-	subChangesRequest.Properties[subChangesContinuous] = continuous
-	subChangesRequest.Properties[subChangesSince] = since
-	subChangesRequest.Properties[subChangesActiveOnly] = activeOnly
+	subChangesRequest.SetProfile(replicator.MessageSubChanges)
+	subChangesRequest.Properties[replicator.SubChangesContinuous] = continuous
+	subChangesRequest.Properties[replicator.SubChangesSince] = since
+	subChangesRequest.Properties[replicator.SubChangesActiveOnly] = activeOnly
 	subChangesRequest.SetNoReply(true)
 	if err := btc.pullReplication.sendMsg(subChangesRequest); err != nil {
 		return err
@@ -590,7 +591,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 
 	// send msg proposeChanges with rev
 	proposeChangesRequest := blip.NewRequest()
-	proposeChangesRequest.SetProfile(messageProposeChanges)
+	proposeChangesRequest.SetProfile(replicator.MessageProposeChanges)
 	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s","%s"]]`, docID, newRevID, parentRev)))
 	if err := btc.pushReplication.sendMsg(proposeChangesRequest); err != nil {
 		return "", err
@@ -604,12 +605,12 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 
 	// send msg rev with new doc
 	revRequest := blip.NewRequest()
-	revRequest.SetProfile(messageRev)
-	revRequest.Properties[revMessageId] = docID
-	revRequest.Properties[revMessageRev] = newRevID
-	revRequest.Properties[revMessageHistory] = parentRev
+	revRequest.SetProfile(replicator.MessageRev)
+	revRequest.Properties[replicator.RevMessageId] = docID
+	revRequest.Properties[replicator.RevMessageRev] = newRevID
+	revRequest.Properties[replicator.RevMessageHistory] = parentRev
 
-	if btc.ClientDeltas && proposeChangesResponse.Properties[proposeChangesResponseDeltas] == "true" {
+	if btc.ClientDeltas && proposeChangesResponse.Properties[replicator.ProposeChangesResponseDeltas] == "true" {
 		base.Debugf(base.KeySync, "TEST: sending deltas from test client")
 		var parentDocJSON, newDocJSON db.Body
 		err := parentDocJSON.Unmarshal(parentDocBody)
@@ -626,7 +627,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 		if err != nil {
 			return "", err
 		}
-		revRequest.Properties[revMessageDeltaSrc] = parentRev
+		revRequest.Properties[replicator.RevMessageDeltaSrc] = parentRev
 		body = delta
 	} else {
 		base.Debugf(base.KeySync, "TEST: not sending deltas from client")

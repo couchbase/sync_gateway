@@ -759,12 +759,12 @@ func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, err
 
 }
 
-func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []byte) (sent bool, req *SetCheckpointMessage, res *SetCheckpointResponse, err error) {
+func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []byte) (sent bool, req *replicator.SetCheckpointMessage, res *replicator.SetCheckpointResponse, err error) {
 
-	scm := NewSetCheckpointMessage()
+	scm := replicator.NewSetCheckpointMessage()
 	scm.SetCompressed(true)
-	scm.setClient(client)
-	scm.setRev(checkpointRev)
+	scm.SetClient(client)
+	scm.SetRev(checkpointRev)
 	scm.SetBody(body)
 
 	sent = bt.sender.Send(scm.Message)
@@ -772,7 +772,7 @@ func (bt *BlipTester) SetCheckpoint(client string, checkpointRev string, body []
 		return sent, scm, nil, fmt.Errorf("Failed to send setCheckpoint for client: %v", client)
 	}
 
-	scr := &SetCheckpointResponse{scm.Response()}
+	scr := &replicator.SetCheckpointResponse{Message: scm.Response()}
 	return true, scm, scr, nil
 
 }
