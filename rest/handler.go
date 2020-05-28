@@ -425,7 +425,7 @@ func (h *handler) getOptBoolQuery(query string, defaultValue bool) (result, isSe
 
 // Returns the integer value of a URL query, defaulting to 0 if unparseable
 func (h *handler) getIntQuery(query string, defaultValue uint64) (value uint64) {
-	return getRestrictedIntQuery(h.getQueryValues(), query, defaultValue, 0, 0, false)
+	return base.GetRestrictedIntQuery(h.getQueryValues(), query, defaultValue, 0, 0, false)
 }
 
 func (h *handler) getJSONQuery(query string) (value interface{}, err error) {
@@ -849,63 +849,6 @@ func parseHTTPRangeHeader(rangeStr string, contentLength uint64) (status int, st
 	// OK, it's a subrange:
 	status = http.StatusPartialContent
 	return
-}
-
-// Returns the integer value of a URL query, restricted to a min and max value,
-// but returning 0 if missing or unparseable.  If allowZero is true, values coming in
-// as zero will stay zero, instead of being set to the minValue.
-func getRestrictedIntQuery(values url.Values, query string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
-	return getRestrictedIntFromString(
-		values.Get(query),
-		defaultValue,
-		minValue,
-		maxValue,
-		allowZero,
-	)
-}
-
-func getRestrictedIntFromString(rawValue string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
-	var value *uint64
-	if rawValue != "" {
-		intValue, err := strconv.ParseUint(rawValue, 10, 64)
-		if err != nil {
-			value = nil
-		} else {
-			value = &intValue
-		}
-	}
-
-	return getRestrictedInt(
-		value,
-		defaultValue,
-		minValue,
-		maxValue,
-		allowZero,
-	)
-}
-
-func getRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
-
-	var value uint64
-
-	// Only use the defaultValue if rawValue isn't specified.
-	if rawValue == nil {
-		value = defaultValue
-	} else {
-		value = *rawValue
-	}
-
-	// If value is zero and allowZero=true, leave value at zero rather than forcing it to the minimum value
-	validZero := (value == 0 && allowZero)
-	if value < minValue && !validZero {
-		value = minValue
-	}
-
-	if value > maxValue && maxValue > 0 {
-		value = maxValue
-	}
-
-	return value
 }
 
 // formatSerialNumber returns the formatted serial number

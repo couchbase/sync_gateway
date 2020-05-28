@@ -132,7 +132,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["heartbeat"]; ok {
-		options.HeartbeatMs = getRestrictedIntQuery(
+		options.HeartbeatMs = base.GetRestrictedIntQuery(
 			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
@@ -143,7 +143,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["timeout"]; ok {
-		options.TimeoutMs = getRestrictedIntQuery(
+		options.TimeoutMs = base.GetRestrictedIntQuery(
 			h.getQueryValues(),
 			"timeout",
 			kDefaultTimeoutMS,
@@ -198,7 +198,7 @@ func (h *handler) handleChanges() error {
 			}
 		}
 
-		options.HeartbeatMs = getRestrictedIntQuery(
+		options.HeartbeatMs = base.GetRestrictedIntQuery(
 			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
@@ -206,7 +206,7 @@ func (h *handler) handleChanges() error {
 			h.server.config.MaxHeartbeat*1000,
 			true,
 		)
-		options.TimeoutMs = getRestrictedIntQuery(
+		options.TimeoutMs = base.GetRestrictedIntQuery(
 			h.getQueryValues(),
 			"timeout",
 			kDefaultTimeoutMS,
@@ -763,7 +763,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 
 	docIdsArray = input.DocIds
 
-	options.HeartbeatMs = getRestrictedInt(
+	options.HeartbeatMs = base.GetRestrictedInt(
 		input.HeartbeatMs,
 		kDefaultHeartbeatMS,
 		kMinHeartbeatMS,
@@ -771,7 +771,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		true,
 	)
 
-	options.TimeoutMs = getRestrictedInt(
+	options.TimeoutMs = base.GetRestrictedInt(
 		input.TimeoutMs,
 		kDefaultTimeoutMS,
 		0,
