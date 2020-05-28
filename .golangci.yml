@@ -51,3 +51,10 @@ linters:
     - unused # (megacheck) Checks Go code for unused constants, variables, functions and types
     - whitespace # Tool for detection of leading and trailing whitespace
     - wsl # Whitespace Linter - Forces you to use empty lines!
+
+# Disable goconst in test files, often we have duplicated strings across tests, but don't make sense as constants.
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - goconst
