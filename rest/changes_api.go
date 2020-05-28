@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -436,8 +437,13 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := generateChanges(h.db, inChannels, options, nil, h, send)
-	h.logStatus(http.StatusOK, "OK (continuous feed closed)")
+	err, forceClose := generateChanges(h.rq.Context(), h.db, inChannels, options, nil, send)
+	if err != nil {
+		h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
+		return nil, forceClose // error is probably because the client closed the connection
+	} else {
+		h.logStatus(http.StatusOK, "OK (continuous feed closed)")
+	}
 	return err, forceClose
 }
 
@@ -446,7 +452,7 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose = generateChanges(database, inChannels, options, docIDFilter, nil, send)
+	err, forceClose = generateChanges(context.Background(), database, inChannels, options, docIDFilter, send)
 
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
 	// is done by MultiChangesFeed prior to going into Wait mode)
@@ -458,8 +464,8 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
-// method on `handler`. (In the BLIP case the `h` parameter will be nil.)
-func generateChanges(database *db.Database, inChannels base.Set, options db.ChangesOptions, docIDFilter []string, h *handler, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
+// method on `handler`.
+func generateChanges(cancelCtx context.Context, database *db.Database, inChannels base.Set, options db.ChangesOptions, docIDFilter []string, send func([]*db.ChangeEntry) error) (err error, forceClose bool) {
 	// Set up heartbeat/timeout
 	var timeoutInterval time.Duration
 	var timer *time.Timer
@@ -488,16 +494,6 @@ func generateChanges(database *db.Database, inChannels base.Set, options db.Chan
 	var lastSeq db.SequenceID
 	var feed <-chan *db.ChangeEntry
 	var timeout <-chan time.Time
-
-	var closeNotify <-chan bool
-	if h != nil {
-		cn, ok := h.response.(http.CloseNotifier)
-		if ok {
-			closeNotify = cn.CloseNotify()
-		} else {
-			base.InfofCtx(database.Ctx, base.KeyChanges, "continuous changes cannot get Close Notifier from ResponseWriter")
-		}
-	}
 
 	// feedStarted identifies whether at least one MultiChangesFeed has been started.  Used to identify when a one-shot changes is done.
 	feedStarted := false
@@ -590,13 +586,11 @@ loop:
 			}
 		case <-heartbeat:
 			err = send(nil)
-			if h != nil {
-				base.DebugfCtx(database.Ctx, base.KeyChanges, "heartbeat written to _changes feed for request received")
-			}
+			base.DebugfCtx(database.Ctx, base.KeyChanges, "heartbeat written to _changes feed for request received")
 		case <-timeout:
 			forceClose = true
 			break loop
-		case <-closeNotify:
+		case <-cancelCtx.Done():
 			base.DebugfCtx(database.Ctx, base.KeyChanges, "Client connection lost")
 			forceClose = true
 			break loop
@@ -608,10 +602,7 @@ loop:
 			break loop
 		}
 		if err != nil {
-			if h != nil {
-				h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
-			}
-			return nil, forceClose // error is probably because the client closed the connection
+			return err, forceClose
 		}
 	}
 
