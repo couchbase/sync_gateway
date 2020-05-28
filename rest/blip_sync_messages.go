@@ -153,7 +153,7 @@ func readDocIDsFromRequest(rq *blip.Message) (docIDs []string, err error) {
 }
 
 func (s *subChangesParams) batchSize() int {
-	return int(getRestrictedIntFromString(s.rq.Properties["batch"], BlipDefaultBatchSize, BlipMinimumBatchSize, math.MaxUint64, true))
+	return int(base.GetRestrictedIntFromString(s.rq.Properties["batch"], BlipDefaultBatchSize, BlipMinimumBatchSize, math.MaxUint64, true))
 }
 
 func (s *subChangesParams) continuous() bool {

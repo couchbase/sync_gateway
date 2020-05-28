@@ -488,7 +488,7 @@ func (h *handler) handleSetLogging() error {
 		setLogLevel = true
 	} else if level := h.getIntQuery("level", 0); level != 0 {
 		base.Warnf("Using deprecated query parameter: %q. Use %q instead.", "level", "logLevel")
-		switch getRestrictedInt(&level, 0, 1, 3, false) {
+		switch base.GetRestrictedInt(&level, 0, 1, 3, false) {
 		case 1:
 			newLogLevel = base.LevelInfo
 		case 2:

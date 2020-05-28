@@ -1310,3 +1310,60 @@ func MinInt(x, y int) int {
 	}
 	return y
 }
+
+// GetRestrictedIntQuery returns the integer value of a URL query, restricted to a min and max value,
+// but returning 0 if missing or unparseable.  If allowZero is true, values coming in
+// as zero will stay zero, instead of being set to the minValue.
+func GetRestrictedIntQuery(values url.Values, query string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
+	return GetRestrictedIntFromString(
+		values.Get(query),
+		defaultValue,
+		minValue,
+		maxValue,
+		allowZero,
+	)
+}
+
+func GetRestrictedIntFromString(rawValue string, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
+	var value *uint64
+	if rawValue != "" {
+		intValue, err := strconv.ParseUint(rawValue, 10, 64)
+		if err != nil {
+			value = nil
+		} else {
+			value = &intValue
+		}
+	}
+
+	return GetRestrictedInt(
+		value,
+		defaultValue,
+		minValue,
+		maxValue,
+		allowZero,
+	)
+}
+
+func GetRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64, allowZero bool) uint64 {
+
+	var value uint64
+
+	// Only use the defaultValue if rawValue isn't specified.
+	if rawValue == nil {
+		value = defaultValue
+	} else {
+		value = *rawValue
+	}
+
+	// If value is zero and allowZero=true, leave value at zero rather than forcing it to the minimum value
+	validZero := (value == 0 && allowZero)
+	if value < minValue && !validZero {
+		value = minValue
+	}
+
+	if value > maxValue && maxValue > 0 {
+		value = maxValue
+	}
+
+	return value
+}
