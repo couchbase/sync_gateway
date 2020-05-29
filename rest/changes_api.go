@@ -452,7 +452,8 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 
 	// Store one-shot here to protect
 	isOneShot := !options.Continuous
-	err, forceClose = generateChanges(context.Background(), database, inChannels, options, docIDFilter, send)
+	// TODO: We should add context support to blipSyncContext to make use of the request cancellation in the same way the REST API propagates h.rq.Context()
+	err, forceClose = generateChanges(context.TODO(), database, inChannels, options, docIDFilter, send)
 
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
 	// is done by MultiChangesFeed prior to going into Wait mode)
