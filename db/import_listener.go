@@ -20,11 +20,9 @@ type importListener struct {
 }
 
 func NewImportListener() *importListener {
-
 	importListener := &importListener{
 		terminator: make(chan bool),
 	}
-
 	return importListener
 }
 
@@ -60,7 +58,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 		// Non-gocb bucket or CE, start a non-sharded feed
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap)
 	} else {
-		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.UUID, gocbBucket, dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.UUID, dbContext.Heartbeater, gocbBucket, dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
 	}
 
@@ -144,10 +142,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 func (il *importListener) Stop() {
 	if il != nil {
 		if il.cbgtContext != nil {
-
-			if il.cbgtContext.Heartbeater != nil {
-				il.cbgtContext.Heartbeater.Stop()
-			}
+			il.cbgtContext.StopHeartbeatListener()
 
 			// Close open PIndexes before stopping the manager.
 			_, pindexes := il.cbgtContext.Manager.CurrentMaps()

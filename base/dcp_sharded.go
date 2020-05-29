@@ -18,15 +18,16 @@ const DefaultImportPartitions = 16
 
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
-	Manager     *cbgt.Manager   // Manager is main entry point for initialization, registering indexes
-	Cfg         *CfgSG          // Cfg manages storage of the current pindex set and node assignment
-	Heartbeater Heartbeater     // Detects failed nodes when running in multi-node configuration
-	loggingCtx  context.Context // Context for cbgt logging
+	Manager           *cbgt.Manager            // Manager is main entry point for initialization, registering indexes
+	Cfg               *CfgSG                   // Cfg manages storage of the current pindex set and node assignment
+	heartbeater       Heartbeater              // Heartbeater used for failed node detection
+	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
+	loggingCtx        context.Context          // Context for cbgt logging
 }
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, uuid string, bucket *CouchbaseBucketGoCB, numPartitions uint16, cfg *CfgSG) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bucket *CouchbaseBucketGoCB, numPartitions uint16, cfg *CfgSG) (*CbgtContext, error) {
 
 	cbgtContext, err := initCBGTManager(bucket, bucket.Spec, cfg, uuid)
 	if err != nil {
@@ -44,12 +45,15 @@ func StartShardedDCPFeed(dbName string, uuid string, bucket *CouchbaseBucketGoCB
 		return nil, err
 	}
 
-	// Start heartbeater.  Sends heartbeats for this SG node, and triggers removal from cfg when
+	// Register heartbeat listener to trigger removal from cfg when
 	// other SG nodes stop sending heartbeats.
-	cbgtContext.Heartbeater, err = startHeartbeater(bucket, cbgtContext)
+	listener, err := registerHeartbeatListener(heartbeater, cbgtContext)
 	if err != nil {
 		return nil, err
 	}
+
+	cbgtContext.heartbeater = heartbeater
+	cbgtContext.heartbeatListener = listener
 
 	return cbgtContext, nil
 }
@@ -314,6 +318,15 @@ func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec
 	return nil
 }
 
+// StopHeartbeatListener unregisters the listener from the heartbeater, and stops it.
+func (c *CbgtContext) StopHeartbeatListener() {
+
+	if c.heartbeatListener != nil {
+		c.heartbeater.UnregisterListener(c.heartbeatListener.Name())
+		c.heartbeatListener.Stop()
+	}
+}
+
 func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
 
 	// cfg: Implementation of cbgt.Cfg interface.  Responsible for configuration management
@@ -344,35 +357,24 @@ func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
 	return cfgCB, nil
 }
 
-func startHeartbeater(bucket Bucket, cbgtContext *CbgtContext) (Heartbeater, error) {
+func registerHeartbeatListener(heartbeater Heartbeater, cbgtContext *CbgtContext) (*importHeartbeatListener, error) {
 
-	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil {
-		return nil, errors.New("Unable to start heartbeater with nil manager or cfg")
+	if cbgtContext == nil || cbgtContext.Manager == nil || cbgtContext.Cfg == nil || heartbeater == nil {
+		return nil, errors.New("Unable to register import heartbeat listener with nil manager, cfg or heartbeater")
 	}
-
-	// Create heartbeater
-	heartbeater, err := NewCouchbaseHeartbeater(bucket, SyncPrefix, cbgtContext.Manager.UUID())
-	if err != nil {
-		return nil, errors.Wrapf(err, "Error starting heartbeater for bucket %s", MD(bucket.GetName()).Redact())
-	}
-
-	err = heartbeater.Start()
-	if err != nil {
-		return nil, err
-	}
-	Debugf(KeyCluster, "Sending CBGT node heartbeats at interval: %v", heartbeater.heartbeatSendInterval)
 
 	// Register listener for import, uses cfg and manager to manage set of participating nodes
 	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext.Cfg, cbgtContext.Manager.Version())
 	if err != nil {
 		return nil, err
 	}
+
 	err = heartbeater.RegisterListener(importHeartbeatListener)
 	if err != nil {
 		return nil, err
 	}
 
-	return heartbeater, nil
+	return importHeartbeatListener, nil
 }
 
 // ImportHeartbeatListener uses cbgt's cfg to manage node list

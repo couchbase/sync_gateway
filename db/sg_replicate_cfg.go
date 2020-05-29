@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
+	"sync"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
@@ -37,11 +39,13 @@ func NewSGRCluster() *SGRCluster {
 
 // SGNode represents a single Sync Gateway node in the cluster
 type SGNode struct {
+	UUID string `json:"uuid"` // Node UUID
 	Host string `json:"host"` // Host name
 }
 
-func NewSGNode(host string) *SGNode {
+func NewSGNode(uuid string, host string) *SGNode {
 	return &SGNode{
+		UUID: uuid,
 		Host: host,
 	}
 }
@@ -66,7 +70,7 @@ type ReplicationConfig struct {
 // ReplicationCfg represents a replication definition as stored in the cluster config.
 type ReplicationCfg struct {
 	ReplicationConfig
-	AssignedNode string `json:"assigned_node"` // host name of node assigned to this replication
+	AssignedNode string `json:"assigned_node"` // UUID of node assigned to this replication
 }
 
 // ReplicationUpsertConfig is used for operations that support upsert of a subset of replication properties.
@@ -106,9 +110,9 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return err
 	}
 
-	remoteUrl, err := url.Parse(rc.Remote)
+	remoteURL, err := url.Parse(rc.Remote)
 	if err != nil {
-		err = base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v", remoteUrl, err)
+		err = base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v", remoteURL, err)
 		return err
 	}
 
@@ -230,8 +234,9 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
 type sgReplicateManager struct {
-	cfg        cbgt.Cfg        // Key-value store implementation
-	loggingCtx context.Context // logging context for manager operations
+	cfg               cbgt.Cfg                      // Key-value store implementation
+	loggingCtx        context.Context               // logging context for manager operations
+	heartbeatListener *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
 }
 
 func NewSGReplicateManager(cfg cbgt.Cfg, dbName string) (*sgReplicateManager, error) {
@@ -245,6 +250,28 @@ func NewSGReplicateManager(cfg cbgt.Cfg, dbName string) (*sgReplicateManager, er
 			base.LogContext{CorrelationID: sgrClusterMgrContextID + dbName}),
 	}, nil
 
+}
+
+// StartLocalNode registers the local node into the replication config, and registers an
+// sg-replicate heartbeat listener with the provided heartbeater
+func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.Heartbeater) error {
+
+	hostName, hostErr := os.Hostname()
+	if hostErr != nil {
+		base.Infof(base.KeyCluster, "Unable to retrieve hostname, registering node for sgreplicate without host specified.  Error: %v", hostErr)
+	}
+
+	err := m.RegisterNode(nodeUUID, hostName)
+	if err != nil {
+		return err
+	}
+
+	m.heartbeatListener, err = NewReplicationHeartbeatListener(m)
+	if err != nil {
+		return err
+	}
+
+	return heartbeater.RegisterListener(m.heartbeatListener)
 }
 
 // Loads the SGReplicate config from the config store
@@ -273,6 +300,9 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
 	for i := 1; i <= maxSGRClusterCasRetries; i++ {
 		sgrCluster, cas, err := m.loadSGRCluster()
+		if err != nil {
+			return err
+		}
 		cancel, callbackError := callback(sgrCluster)
 		if callbackError != nil {
 			return callbackError
@@ -302,13 +332,13 @@ func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
 
 // Register node adds a node to the cluster config, then triggers replication rebalance.
 // Retries on CAS failure, is no-op if node already exists in config
-func (m *sgReplicateManager) RegisterNode(host string) error {
+func (m *sgReplicateManager) RegisterNode(nodeUUID string, host string) error {
 	registerNodeCallback := func(cluster *SGRCluster) (cancel bool, err error) {
-		_, exists := cluster.Nodes[host]
+		_, exists := cluster.Nodes[nodeUUID]
 		if exists {
 			return true, nil
 		}
-		cluster.Nodes[host] = NewSGNode(host)
+		cluster.Nodes[nodeUUID] = NewSGNode(nodeUUID, host)
 		cluster.RebalanceReplications()
 		return false, nil
 	}
@@ -317,13 +347,13 @@ func (m *sgReplicateManager) RegisterNode(host string) error {
 
 // RemoveNode removes a node from the cluster config, then triggers replication rebalance.
 // Retries on CAS failure, is no-op if node doesn't exist in config
-func (m *sgReplicateManager) RemoveNode(host string) error {
+func (m *sgReplicateManager) RemoveNode(nodeUUID string) error {
 	removeNodeCallback := func(cluster *SGRCluster) (cancel bool, err error) {
-		_, exists := cluster.Nodes[host]
+		_, exists := cluster.Nodes[nodeUUID]
 		if !exists {
 			return true, nil
 		}
-		delete(cluster.Nodes, host)
+		delete(cluster.Nodes, nodeUUID)
 		cluster.RebalanceReplications()
 		return false, nil
 	}
@@ -345,11 +375,10 @@ func (m *sgReplicateManager) GetReplication(replicationID string) (*ReplicationC
 		return nil, err
 	}
 	replication, exists := sgrCluster.Replications[replicationID]
-	if exists {
-		return replication, nil
-	} else {
+	if !exists {
 		return nil, base.ErrNotFound
 	}
+	return replication, nil
 }
 
 // GET _replication
@@ -435,10 +464,10 @@ func (m *sgReplicateManager) DeleteReplication(replicationID string) error {
 	return m.updateCluster(deleteReplicationCallback)
 }
 
-func (c *SGRCluster) GetReplicationIDsForNode(host string) (replicationIDs []string) {
+func (c *SGRCluster) GetReplicationIDsForNode(nodeUUID string) (replicationIDs []string) {
 	replicationIDs = make([]string, 0)
 	for id, replication := range c.Replications {
-		if replication.AssignedNode == host {
+		if replication.AssignedNode == nodeUUID {
 			replicationIDs = append(replicationIDs, id)
 		}
 	}
@@ -476,7 +505,7 @@ func (c *SGRCluster) RebalanceReplications() {
 
 	// Construct a slice of sortableSGNodes, for sorting nodes by the number of assigned replications
 	nodesByReplicationCount := make(NodesByReplicationCount, 0)
-	for host, _ := range c.Nodes {
+	for host := range c.Nodes {
 		sortableNode := &sortableSGNode{
 			host:                   host,
 			assignedReplicationIDs: c.GetReplicationIDsForNode(host),
@@ -594,4 +623,115 @@ func (m *sgReplicateManager) GetReplicationStatusAll() []*ReplicationStatus {
 			ErrorMessage:     "",
 		},
 	}
+}
+
+// ImportHeartbeatListener uses replication cfg to manage node list
+type ReplicationHeartbeatListener struct {
+	mgr        *sgReplicateManager
+	terminator chan struct{} // close manager subscription on close
+	nodeIDs    []string      // Set of nodes from the latest retrieval
+	lock       sync.RWMutex  // lock for nodeIDs access
+}
+
+func NewReplicationHeartbeatListener(mgr *sgReplicateManager) (*ReplicationHeartbeatListener, error) {
+
+	if mgr == nil {
+		return nil, errors.New("sgReplicateManager must not be nil for ReplicationHeartbeatListener")
+	}
+
+	listener := &ReplicationHeartbeatListener{
+		mgr:        mgr,
+		terminator: make(chan struct{}),
+	}
+
+	// Initialize the node set
+	err := listener.reloadNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Subscribe to changes to the known node set key
+	err = listener.subscribeNodeChanges()
+	if err != nil {
+		return nil, err
+	}
+
+	return listener, nil
+}
+
+func (l *ReplicationHeartbeatListener) Name() string {
+	return "sgReplicateListener"
+}
+
+// When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
+func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
+
+	base.Debugf(base.KeyCluster, "StaleHeartbeatDetected by sg-replicate listener for node: %v", nodeUUID)
+	err := l.mgr.RemoveNode(nodeUUID)
+	if err != nil {
+		base.Warnf("Attempt to remove node %v from sg-replicate cfg got error: %v", nodeUUID, err)
+	}
+}
+
+// subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
+// NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
+func (l *ReplicationHeartbeatListener) subscribeNodeChanges() error {
+
+	cfgEvents := make(chan cbgt.CfgEvent)
+
+	err := l.mgr.cfg.Subscribe(cfgKeySGRCluster, cfgEvents)
+	if err != nil {
+		base.Debugf(base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
+		return err
+	}
+	go func() {
+		defer base.FatalPanicHandler()
+		for {
+			select {
+			case <-cfgEvents:
+				err := l.reloadNodes()
+				if err != nil {
+					base.Warnf("Error while reloading heartbeat node definitions: %v", err)
+				}
+			case <-l.terminator:
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+func (l *ReplicationHeartbeatListener) reloadNodes() error {
+
+	nodeSet, err := l.mgr.getNodes()
+	if err != nil {
+		return err
+	}
+
+	nodeUUIDs := make([]string, 0)
+	if nodeSet != nil {
+		for _, nodeDef := range nodeSet {
+			nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+		}
+	}
+
+	l.lock.Lock()
+	l.nodeIDs = nodeUUIDs
+	l.lock.Unlock()
+
+	return nil
+}
+
+// GetNodes returns a copy of the in-memory node set
+func (l *ReplicationHeartbeatListener) GetNodes() ([]string, error) {
+
+	l.lock.RLock()
+	nodeIDsCopy := make([]string, len(l.nodeIDs))
+	copy(nodeIDsCopy, l.nodeIDs)
+	l.lock.RUnlock()
+	return nodeIDsCopy, nil
+}
+
+func (l *ReplicationHeartbeatListener) Stop() {
+	close(l.terminator)
 }
