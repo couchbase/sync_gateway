@@ -38,7 +38,7 @@ var (
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
-func NewBlipSyncContext(bc *blip.Context, db *db.Database, httpRequestSerialNumber string) *BlipSyncContext {
+func NewBlipSyncContext(bc *blip.Context, db *db.Database, contextID string) *BlipSyncContext {
 	bsc := &BlipSyncContext{
 		blipContext:      bc,
 		blipContextDb:    db,
@@ -54,7 +54,7 @@ func NewBlipSyncContext(bc *blip.Context, db *db.Database, httpRequestSerialNumb
 	// Register default handlers
 	bc.DefaultHandler = bsc.NotFoundHandler
 	bc.FatalErrorHandler = func(err error) {
-		base.InfofCtx(db.Ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", httpRequestSerialNumber, err)
+		base.InfofCtx(db.Ctx, base.KeyHTTP, "%s:     --> BLIP+WebSocket connection error: %v", contextID, err)
 	}
 
 	// Register 2.x replicator handlers
