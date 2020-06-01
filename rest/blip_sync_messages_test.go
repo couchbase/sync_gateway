@@ -6,6 +6,7 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/couchbase/sync_gateway/replicator"
 	goassert "github.com/couchbaselabs/go.assert"
 )
 
@@ -51,10 +52,10 @@ func TestAddRevision(t *testing.T) {
 		if testCase.deletedPropertyValue != "nil" {
 			blipMessage.Properties["deleted"] = testCase.deletedPropertyValue
 		}
-		revMessage := &revMessage{
+		revMessage := &replicator.RevMessage{
 			Message: &blipMessage,
 		}
-		goassert.Equals(t, revMessage.deleted(), testCase.expectedDeletedVal)
+		goassert.Equals(t, revMessage.Deleted(), testCase.expectedDeletedVal)
 	}
 
 }
@@ -73,10 +74,10 @@ func TestSubChangesSince(t *testing.T) {
 
 	zeroSinceVal := db.SequenceID{}
 
-	subChangesParams, err := newSubChangesParams(context.TODO(), rq, zeroSinceVal, testDb.ParseSequenceID)
+	subChangesParams, err := replicator.NewSubChangesParams(context.TODO(), rq, zeroSinceVal, testDb.ParseSequenceID)
 	goassert.True(t, err == nil)
 
-	seqId := subChangesParams.since()
+	seqId := subChangesParams.Since()
 	goassert.True(t, seqId.Seq == 1)
 
 }
