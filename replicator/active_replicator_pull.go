@@ -8,9 +8,10 @@ import (
 
 // ActivePullReplicator is a unidirectional pull active replicator.
 type ActivePullReplicator struct {
-	config      *ActiveReplicatorConfig
-	blipContext *blip.Context
-	blipSender  *blip.Sender
+	config          *ActiveReplicatorConfig
+	blipContext     *blip.Context
+	blipSyncContext *BlipSyncContext
+	blipSender      *blip.Sender
 }
 
 var _ ActiveReplicator = &ActivePullReplicator{}
@@ -31,12 +32,15 @@ func (apr *ActivePullReplicator) connect() error {
 		return fmt.Errorf("replicator already has a blipSender, can't connect twice")
 	}
 
-	s, err := blipSync(*apr.config.TargetDB, apr.blipContext)
+	s, err := blipSync(*apr.config.PassiveDB, apr.blipContext)
 	if err != nil {
 		return err
 	}
-
 	apr.blipSender = s
+
+	bsc := NewBlipSyncContext(apr.blipContext, apr.config.ActiveDB, "??")
+	apr.blipSyncContext = bsc
+
 	return nil
 }
 
@@ -51,6 +55,11 @@ func (apr *ActivePullReplicator) Close() error {
 		apr.blipSender = nil
 	}
 
+	if apr.blipSyncContext != nil {
+		apr.blipSyncContext.Close()
+		apr.blipSyncContext = nil
+	}
+
 	return nil
 }
 
@@ -60,6 +69,17 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 
 	if err := apr.connect(); err != nil {
+		return err
+	}
+
+	subChangesRequest := SubChangesRequest{
+		Continuous: apr.config.Continuous,
+		Batch:      apr.config.ChangesBatchSize,
+		Since:      apr.config.Since,
+		Filter:     apr.config.Filter,
+	}
+
+	if err := subChangesRequest.Send(apr.blipSender); err != nil {
 		return err
 	}
 
