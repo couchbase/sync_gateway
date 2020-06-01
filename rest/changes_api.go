@@ -438,8 +438,8 @@ func (h *handler) generateContinuousChanges(inChannels base.Set, options db.Chan
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
 	err, forceClose := generateChanges(h.rq.Context(), h.db, inChannels, options, nil, send)
-	if err != nil {
-		h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", err))
+	if sendErr, ok := err.(*changesSendErr); ok {
+		h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", sendErr))
 		return nil, forceClose // error is probably because the client closed the connection
 	} else {
 		h.logStatus(http.StatusOK, "OK (continuous feed closed)")
@@ -455,6 +455,10 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 	// TODO: We should add context support to blipSyncContext to make use of the request cancellation in the same way the REST API propagates h.rq.Context()
 	err, forceClose = generateChanges(context.TODO(), database, inChannels, options, docIDFilter, send)
 
+	if _, ok := err.(*changesSendErr); ok {
+		return nil, forceClose // error is probably because the client closed the connection
+	}
+
 	// For one-shot changes, invoke the callback w/ nil to trigger the 'caught up' changes message.  (For continuous changes, this
 	// is done by MultiChangesFeed prior to going into Wait mode)
 	if isOneShot {
@@ -462,6 +466,9 @@ func generateBlipSyncChanges(database *db.Database, inChannels base.Set, options
 	}
 	return err, forceClose
 }
+
+// changesSendErr is a typed error returned from generateChanges when send fails
+type changesSendErr struct{ error }
 
 // Shell of the continuous changes feed -- calls out to a `send` function to deliver the change.
 // This is called from BLIP connections as well as HTTP handlers, which is why this is not a
@@ -516,13 +523,14 @@ loop:
 				forceClose = true
 				break loop
 			}
+			var changesFeedErr error
 			if len(docIDFilter) > 0 {
-				feed, err = database.DocIDChangesFeed(inChannels, docIDFilter, options)
+				feed, changesFeedErr = database.DocIDChangesFeed(inChannels, docIDFilter, options)
 			} else {
-				feed, err = database.MultiChangesFeed(inChannels, options)
+				feed, changesFeedErr = database.MultiChangesFeed(inChannels, options)
 			}
-			if err != nil || feed == nil {
-				return err, forceClose
+			if changesFeedErr != nil || feed == nil {
+				return changesFeedErr, forceClose
 			}
 			feedStarted = true
 		}
@@ -533,13 +541,15 @@ loop:
 			timeout = timer.C
 		}
 
+		var sendErr error
+
 		// Wait for either a new change, a heartbeat, or a timeout:
 		select {
 		case entry, ok := <-feed:
 			if !ok {
 				feed = nil
 			} else if entry == nil {
-				err = send(nil)
+				sendErr = send(nil)
 			} else if entry.Err != nil {
 				break loop // error returned by feed - end changes
 			} else {
@@ -565,10 +575,10 @@ loop:
 					}
 				}
 				base.TracefCtx(database.Ctx, base.KeyChanges, "sending %d change(s)", len(entries))
-				err = send(entries)
+				sendErr = send(entries)
 
 				if err == nil && waiting {
-					err = send(nil)
+					sendErr = send(nil)
 				}
 
 				lastSeq = entries[len(entries)-1].Seq
@@ -586,8 +596,8 @@ loop:
 				timer = nil
 			}
 		case <-heartbeat:
-			err = send(nil)
-			base.DebugfCtx(database.Ctx, base.KeyChanges, "heartbeat written to _changes feed for request received")
+			sendErr = send(nil)
+			base.DebugfCtx(database.Ctx, base.KeyChanges, "heartbeat written to _changes feed - err: %v", err)
 		case <-timeout:
 			forceClose = true
 			break loop
@@ -602,8 +612,8 @@ loop:
 			forceClose = true
 			break loop
 		}
-		if err != nil {
-			return err, forceClose
+		if sendErr != nil {
+			return &changesSendErr{sendErr}, forceClose
 		}
 	}
 
