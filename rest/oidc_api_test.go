@@ -175,7 +175,7 @@ func (s *mockAuthServer) setupSignerWithKeys() error {
 // The caller should call Shutdown when finished, to shut it down.
 func (s *mockAuthServer) Start() {
 	router := mux.NewRouter()
-	router.HandleFunc("/{provider}"+auth.OIDCDiscoveryConfigPath, s.discoveryHandler).Methods(http.MethodGet)
+	router.HandleFunc(auth.GetStandardDiscoveryEndpoint("/{provider}"), s.discoveryHandler).Methods(http.MethodGet)
 	router.HandleFunc("/{provider}/auth", s.authHandler).Methods(http.MethodGet, http.MethodPost)
 	router.HandleFunc("/{provider}/token", s.tokenHandler).Methods(http.MethodPost)
 	router.HandleFunc("/{provider}/keys", s.keysHandler).Methods(http.MethodGet)
@@ -896,7 +896,7 @@ func assertHttpResponse(t *testing.T, response *http.Response, forceError forceE
 func refreshProviderConfig(providers auth.OIDCProviderMap, issuer string) {
 	for name, provider := range providers {
 		provider.Issuer = issuer + "/" + name
-		provider.DiscoveryURI = provider.Issuer + auth.OIDCDiscoveryConfigPath
+		provider.DiscoveryURI = auth.GetStandardDiscoveryEndpoint(provider.Issuer)
 	}
 }
 

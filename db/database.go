@@ -528,6 +528,7 @@ func (context *DatabaseContext) Close() {
 	context.BucketLock.Lock()
 	defer context.BucketLock.Unlock()
 
+	context.OIDCProviders.Stop()
 	close(context.terminator)
 	context.sequences.Stop()
 	context.mutationListener.Stop()

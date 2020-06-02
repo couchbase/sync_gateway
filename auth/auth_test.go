@@ -655,7 +655,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -665,7 +665,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			IssuedAt: jwt.NewNumericDate(time.Now()),
 			Expiry:   jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
 		}
-		wantUsername := GetOIDCUsername(provider, claims.Subject)
+		wantUsername := getOIDCUsername(provider, claims.Subject)
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
@@ -683,7 +683,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -710,7 +710,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud4",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -737,7 +737,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud4",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -763,7 +763,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -790,7 +790,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:        "id0123456789",
@@ -801,7 +801,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Expiry:    jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
 			NotBefore: jwt.NewNumericDate(time.Now().Add(1 * time.Minute)),
 		}
-		wantUsername := GetOIDCUsername(provider, claims.Subject)
+		wantUsername := getOIDCUsername(provider, claims.Subject)
 		builder := jwt.Signed(signer).Claims(claims)
 		token, err := builder.CompactSerialize()
 		require.NoError(t, err, "Error serializing token using compact serialization format")
@@ -819,7 +819,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:        "id0123456789",
@@ -847,7 +847,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			Issuer:      issuerGoogleAccounts,
 			ClientID:    "aud1",
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -881,7 +881,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			ClientID:    "aud1",
 			UserPrefix:  strings.ToLower(providerGoogle.Name),
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -919,7 +919,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			ClientID:    "aud1",
 			UserPrefix:  strings.ToLower(providerGoogle.Name),
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -957,7 +957,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			ClientID:    "aud1",
 			UserPrefix:  strings.ToLower(providerGoogle.Name),
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -989,7 +989,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 			ClientID:    "aud1",
 			UserPrefix:  strings.ToLower(providerGoogle.Name),
 		}
-		err = provider.InitUserPrefix()
+		err = provider.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",
@@ -1214,7 +1214,7 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 			ClientID:    "aud1",
 		}
 		providers := OIDCProviderMap{providerGoogle.Name: providerGoogle, providerFacebook.Name: providerFacebook}
-		err = providerGoogle.InitUserPrefix()
+		err = providerGoogle.initUserPrefix()
 		assert.NoError(t, err, "Error initializing user prefix")
 		claims := jwt.Claims{
 			ID:       "id0123456789",

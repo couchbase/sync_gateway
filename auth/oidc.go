@@ -27,10 +27,14 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,26 +47,38 @@ import (
 )
 
 const (
-
 	// OIDCDiscoveryConfigPath represents a predefined string value to be used to construct
 	// the well-known endpoint. The well-known endpoint can always be reached by adding this
 	// string value to the end of OP's issuer URI.
 	OIDCDiscoveryConfigPath = "/.well-known/openid-configuration"
-)
-
-var (
-	// OIDCDiscoveryRetryWait represents the wait time between provider discovery retries.
-	// SG periodically retries a failed provider discovery request with a 500 milliseconds
-	// delay between requests upto max retries of 5 times and back-off after that.
-	OIDCDiscoveryRetryWait = 500 * time.Millisecond
 
 	// Request parameter to specify the OpenID Connect provider to be used for authentication,
 	// from the list of providers defined in the Sync Gateway configuration.
 	OIDCAuthProvider = "provider"
+
+	// MaxProviderConfigSyncInterval is used as the duration between now and next provider
+	// metadata sync time when the metadata expiry is zero or half of the duration between
+	// provider metadata expiry and now is grater than 24 hours.
+	MaxProviderConfigSyncInterval = 24 * time.Hour
+
+	// MinProviderConfigSyncInterval is used as the duration between now and next provider
+	// metadata sync time when half of the duration between provider metadata expiry and now is
+	// grater than 1 minute.
+	MinProviderConfigSyncInterval = time.Minute
 )
 
-// Error code returned by failures to set parameters to URL query string.
-var ErrSetURLQueryParam = errors.New("URL, parameter name and value must not be empty")
+// OIDCDiscoveryRetryWait represents the wait time between provider discovery retries.
+// SG periodically retries a failed provider discovery request with a 500 milliseconds
+// delay between requests upto max retries of 5 times and back-off after that.
+var OIDCDiscoveryRetryWait = 500 * time.Millisecond
+
+var (
+	// Error code returned by failures to set parameters to URL query string.
+	ErrSetURLQueryParam = errors.New("URL, parameter name and value must not be empty")
+
+	// ErrEmptyDiscoveryURL error is returned if the discovery URL is empty during non-standard discovery.
+	ErrEmptyDiscoveryURL = errors.New("URL must not be empty for custom identity provider discovery")
+)
 
 const (
 	// Error message returned by failures to initialize OIDCClient due to nil provider reference.
@@ -70,6 +86,9 @@ const (
 
 	// Error message returned by failures to initialize OIDCClient due provider discovery error.
 	ErrMsgUnableToDiscoverConfig = "unable to discover config"
+
+	// Error message returned by failures to initialize OIDCClient due error generating ID token verifier.
+	ErrMsgUnableToGenerateVerifier = "unable to generate id token verifier"
 )
 
 // Options for OpenID Connect
@@ -82,12 +101,38 @@ type OIDCOptions struct {
 // with an OpenID Connect provider.
 type OIDCClient struct {
 
+	// mutex prevents the ID token verifier and OAuth2 configurations from resetting
+	// while there is an active ID token verification. It is held for read during ID
+	// token verification and exclusively during provider metadata discovery sync.
+	mutex sync.RWMutex
+
 	// Config describes a typical OAuth2 flow, with both the client
 	// application information and the server's endpoint URLs.
-	Config oauth2.Config
+	config *oauth2.Config
 
-	// Verifier provides verification for ID Tokens.
-	Verifier *oidc.IDTokenVerifier
+	// verifier provides verification for ID Tokens.
+	verifier *oidc.IDTokenVerifier
+}
+
+// Config returns the OAuth2 configurations.
+func (client *OIDCClient) Config() *oauth2.Config {
+	client.mutex.RLock()
+	defer client.mutex.RUnlock()
+	return client.config
+}
+
+// SetConfig sets the ID Token verifier and token endpoint URLs on OIDCClient
+func (client *OIDCClient) SetConfig(verifier *oidc.IDTokenVerifier, endpoint oauth2.Endpoint) {
+	client.mutex.Lock()
+	client.verifier = verifier
+	client.config = &oauth2.Config{
+		ClientID:     client.config.ClientID,
+		ClientSecret: client.config.ClientSecret,
+		Endpoint:     endpoint,
+		RedirectURL:  client.config.RedirectURL,
+		Scopes:       client.config.Scopes,
+	}
+	client.mutex.Unlock()
 }
 
 type OIDCProvider struct {
@@ -127,6 +172,13 @@ type OIDCProvider struct {
 	// Name represents the name of this OpenID Connect provider.
 	Name string
 
+	// terminator ensures termination of async goroutines for provider
+	// metadata sync. Closed during DatabaseContext.close().
+	terminator chan struct{}
+
+	// metadata describes the configuration of an OpenID Connect Provider.
+	metadata ProviderMetadata
+
 	// InsecureSkipVerify determines whether the TLS certificate verification
 	// should be disabled for this provider. TLS certificate verification is
 	// enabled by default.
@@ -137,6 +189,7 @@ type OIDCProviderMap map[string]*OIDCProvider
 
 type OIDCCallbackURLFunc func(string, bool) string
 
+// GetDefaultProvider returns the default OpenID Connect provider.
 func (opm OIDCProviderMap) GetDefaultProvider() *OIDCProvider {
 	for _, provider := range opm {
 		if provider.IsDefault {
@@ -175,8 +228,15 @@ func (opm OIDCProviderMap) GetProviderForIssuer(issuer string, audiences []strin
 	return nil
 }
 
+// Stop stops all the provider discovery sync task by terminating the async goroutines.
+func (opm OIDCProviderMap) Stop() {
+	for _, provider := range opm {
+		provider.stopDiscoverySync()
+	}
+}
+
 func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OIDCClient {
-	// Initialize the client on first request.  If the callback URL isn't defined for the provider,
+	// Initialize the client on first request. If the callback URL isn't defined for the provider,
 	// uses buildCallbackURLFunc to construct (based on current request)
 	op.clientOnce.Do(func() {
 		var err error
@@ -188,7 +248,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OID
 				op.CallbackURL = &callbackURL
 			}
 		}
-		if err = op.InitOIDCClient(); err != nil {
+		if err = op.initOIDCClient(); err != nil {
 			base.Errorf("Unable to initialize OIDC client: %v", err)
 		}
 	})
@@ -198,7 +258,7 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OID
 
 // To support multiple providers referencing the same issuer, the user prefix used to build the SG usernames for
 // a provider is based on the issuer
-func (op *OIDCProvider) InitUserPrefix() error {
+func (op *OIDCProvider) initUserPrefix() error {
 
 	// If the user prefix has been explicitly defined, skip calculation
 	if op.UserPrefix != "" {
@@ -216,13 +276,14 @@ func (op *OIDCProvider) InitUserPrefix() error {
 	// If the prefix contains forward slash or underscore, it's not valid as-is for a username: forward slash
 	// breaks the REST API, underscore breaks uniqueness of "[prefix]_[sub]".  URL encode the prefix to cover
 	// this scenario
-
 	op.UserPrefix = url.QueryEscape(op.UserPrefix)
 
 	return nil
 }
 
-func (op *OIDCProvider) InitOIDCClient() error {
+// initOIDCClient initializes the OpenID Connect client with the specified configurations by performing
+// an initial provider metadata discovery and initiates the discovery sync in the background.
+func (op *OIDCProvider) initOIDCClient() error {
 	if op == nil {
 		return fmt.Errorf(ErrMsgNilProvider)
 	}
@@ -231,14 +292,8 @@ func (op *OIDCProvider) InitOIDCClient() error {
 		return base.RedactErrorf("Issuer not defined for OpenID Connect provider %+v", base.UD(op))
 	}
 
-	verifier, endpoint, err := op.DiscoverConfig()
-	if err != nil || verifier == nil {
-		return pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
-	}
-
 	config := oauth2.Config{
 		ClientID:    op.ClientID,
-		Endpoint:    *endpoint,
 		RedirectURL: *op.CallbackURL,
 	}
 
@@ -253,94 +308,193 @@ func (op *OIDCProvider) InitOIDCClient() error {
 	}
 
 	// Initialize the prefix for users created for this provider
-	if err = op.InitUserPrefix(); err != nil {
+	if err := op.initUserPrefix(); err != nil {
 		return err
 	}
 
-	op.client = &OIDCClient{Config: config, Verifier: verifier}
+	metadata, verifier, err := op.discoverConfig()
+	if err != nil {
+		return pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
+	}
+
+	verifier = op.generateVerifier(&metadata, context.Background())
+	if verifier == nil {
+		return pkgerrors.Wrap(err, ErrMsgUnableToGenerateVerifier)
+	}
+
+	op.client = &OIDCClient{config: &config}
+	op.client.SetConfig(verifier, metadata.endpoint())
+	op.metadata = metadata
+
+	discoveryURL := op.getDiscoveryEndpoint()
+	if err := op.startDiscoverySync(discoveryURL); err != nil {
+		base.Errorf("failed to start OpenID Connect discovery sync: %v", err)
+	}
 
 	return nil
 }
 
-func (op *OIDCProvider) DiscoverConfig() (verifier *oidc.IDTokenVerifier, endpoint *oauth2.Endpoint, err error) {
-	// If discovery URI is explicitly defined, use it instead of the standard issuer-based discovery.
+// isStandardDiscovery returns true if both discovery_url and disable_cfg_validation
+// options are not defined in provider configuration and false otherwise.
+func (op *OIDCProvider) isStandardDiscovery() bool {
 	if op.DiscoveryURI != "" || op.DisableConfigValidation {
-		discoveryURL := op.DiscoveryURI
-
-		// If the end-user has opted out for config validation and the discovery URI is not defined
-		// in provider config, construct the discovery URI based on standard issuer-based discovery.
-		if op.DisableConfigValidation && discoveryURL == "" {
-			discoveryURL = strings.TrimSuffix(op.Issuer, "/") + OIDCDiscoveryConfigPath
-		}
-		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(op.DiscoveryURI))
-		metadata, err := op.FetchCustomProviderConfig(discoveryURL)
-		if err != nil {
-			return nil, nil, err
-		}
-		verifier = op.GenerateVerifier(metadata, GetOIDCClientContext(op.InsecureSkipVerify))
-		endpoint = &oauth2.Endpoint{AuthURL: metadata.AuthorizationEndpoint, TokenURL: metadata.TokenEndpoint}
-	} else {
-		base.Infof(base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint, issuer: %s", base.UD(op.Issuer))
-		var provider *oidc.Provider
-		maxRetryAttempts := 5
-		for i := 1; i <= maxRetryAttempts; i++ {
-			provider, err = oidc.NewProvider(GetOIDCClientContext(op.InsecureSkipVerify), op.Issuer)
-			if err == nil && provider != nil {
-				providerEndpoint := provider.Endpoint()
-				endpoint = &providerEndpoint
-				verifier = provider.Verifier(&oidc.Config{ClientID: op.ClientID})
-				break
-			}
-			base.Debugf(base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v", base.UD(op.Issuer), i, maxRetryAttempts, err)
-			time.Sleep(OIDCDiscoveryRetryWait)
-		}
+		return false
 	}
-
-	return verifier, endpoint, err
+	return true
 }
 
-func GetOIDCUsername(provider *OIDCProvider, subject string) string {
+// getDiscoveryEndpoint returns the OpenID Connect provider metadata discovery endpoint.
+// If the end-user has opted out for config validation and the discovery URI is not defined
+// in provider config, constructs the discovery URI based on standard issuer-based discovery.
+func (op *OIDCProvider) getDiscoveryEndpoint() string {
+	if !op.isStandardDiscovery() {
+		if op.DisableConfigValidation && op.DiscoveryURI == "" {
+			return GetStandardDiscoveryEndpoint(op.Issuer)
+		}
+		return op.DiscoveryURI
+	}
+	return GetStandardDiscoveryEndpoint(op.Issuer)
+}
+
+// GetStandardDiscoveryEndpoint returns the standard issuer based provider metadata discovery
+// endpoint by concatenating the string /.well-known/openid-configuration to the issuer.
+func GetStandardDiscoveryEndpoint(issuer string) string {
+	return strings.TrimSuffix(issuer, "/") + OIDCDiscoveryConfigPath
+}
+
+// discoverConfig initiates the initial metadata provider discovery while initializing the OpenID Connect client.
+func (op *OIDCProvider) discoverConfig() (metadata ProviderMetadata, verifier *oidc.IDTokenVerifier, err error) {
+	discoveryURL := op.getDiscoveryEndpoint()
+	if !op.isStandardDiscovery() {
+		base.Infof(base.KeyAuth, "Fetching provider config from explicitly defined discovery endpoint: %s", base.UD(discoveryURL))
+		metadata, _, _, err = op.fetchCustomProviderConfig(discoveryURL)
+		if err != nil {
+			return ProviderMetadata{}, nil, err
+		}
+		verifier = op.generateVerifier(&metadata, GetOIDCClientContext(op.InsecureSkipVerify))
+	} else {
+		metadata, verifier, err = op.standardDiscovery(discoveryURL)
+	}
+	return metadata, verifier, err
+}
+
+// standardDiscovery uses the standard OIDC discovery endpoint (issuer + /.well-known/openid-configuration) to
+// look up the OIDC provider configuration and returns provider metadata and ID token verifier. Provided discoveryURL
+// must not be empty.
+func (op *OIDCProvider) standardDiscovery(discoveryURL string) (metadata ProviderMetadata, verifier *oidc.IDTokenVerifier, err error) {
+	base.Infof(base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint: %s", base.UD(discoveryURL))
+	var provider *oidc.Provider
+	maxRetryAttempts := 5
+	for i := 1; i <= maxRetryAttempts; i++ {
+		provider, err = oidc.NewProvider(GetOIDCClientContext(op.InsecureSkipVerify), op.Issuer)
+		if err == nil && provider != nil {
+			verifier = provider.Verifier(&oidc.Config{ClientID: op.ClientID})
+			if err = provider.Claims(&metadata); err != nil {
+				base.Errorf("Error caching metadata from standard issuer-based discovery endpoint: %s", base.UD(discoveryURL))
+			}
+			break
+		}
+		base.Debugf(base.KeyAuth, "Unable to fetch provider config from discovery endpoint for %s (attempt %v/%v): %v", base.UD(op.Issuer), i, maxRetryAttempts, err)
+		time.Sleep(OIDCDiscoveryRetryWait)
+	}
+	return metadata, verifier, err
+}
+
+func getOIDCUsername(provider *OIDCProvider, subject string) string {
 	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
 }
 
-func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*ProviderMetadata, error) {
+// fetchCustomProviderConfig collects the provider configuration from the given discovery endpoint and determines
+// whether the cached configuration needs to be refreshed by comparing the new metadata with the cached value
+func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata ProviderMetadata, ttl time.Duration, refresh bool, err error) {
 	if discoveryURL == "" {
-		return nil, errors.New("URL must not be empty for custom identity provider discovery")
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, ErrEmptyDiscoveryURL
 	}
-
 	base.Debugf(base.KeyAuth, "Fetching custom provider config from %s", base.UD(discoveryURL))
 	req, err := http.NewRequest(http.MethodGet, discoveryURL, nil)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
-		return nil, err
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 	client := base.GetHttpClient(op.InsecureSkipVerify)
 	resp, err := client.Do(req)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
-		return nil, err
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: %s", resp.Status, resp.Body)
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, fmt.Errorf("unsuccessful response: %v", err)
 	}
-	var metadata ProviderMetadata
-	if err := base.JSONDecoder(resp.Body).Decode(&metadata); err != nil {
-		base.Debugf(base.KeyAuth, "Error parsing body %s: %v", base.UD(discoveryURL), err)
-		return nil, err
+
+	ttl, _, err = cacheable(resp.Header)
+	if err != nil {
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
+	}
+
+	// If the metadata expiry is zero or greater than 24 hours, the next sync should start in 24 hours.
+	if ttl == 0 || ttl > MaxProviderConfigSyncInterval {
+		ttl = MaxProviderConfigSyncInterval
+	}
+	// If the expiry is less than 1 minute, the next sync should start in the next minute.
+	if ttl < MinProviderConfigSyncInterval {
+		ttl = MinProviderConfigSyncInterval
+	}
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
+	}
+
+	if err := base.JSONUnmarshal(bodyBytes, &metadata); err != nil {
+		base.Debugf(base.KeyAuth, "Error parsing body during discovery sync: %v", err)
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
+	}
+
+	if reflect.DeepEqual(op.metadata, metadata) {
+		base.Debugf(base.KeyAuth, "No change in discovery config detected at this time, next sync will be after %v", ttl)
+		return metadata, ttl, false, nil
 	}
 
 	if metadata.Issuer != op.Issuer {
-		return nil, fmt.Errorf("oidc: issuer did not match the issuer returned by provider, expected %q got %q", op.Issuer, metadata.Issuer)
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, fmt.Errorf("oidc: issuer did not match the issuer returned by provider, expected %q got %q", op.Issuer, metadata.Issuer)
 	}
 
 	base.Debugf(base.KeyAuth, "Returning config: %v", base.UD(metadata))
-	return &metadata, nil
+	return metadata, ttl, true, nil
 }
 
-// GenerateVerifier returns a verifier manually constructed from a key set and issuer URL.
-func (op *OIDCProvider) GenerateVerifier(metadata *ProviderMetadata, ctx context.Context) *oidc.IDTokenVerifier {
-	signingAlgorithms := op.GetSigningAlgorithms(metadata)
+// runDiscoverySync runs the discovery sync by fetching the provider metadata by calling
+// fetchCustomProviderConfig. If fetchCustomProviderConfig detects any change in provider
+// config, it sets the verifier, OAuth endpoints and returns the time interval between now
+// and next discovery sync.
+func (op *OIDCProvider) runDiscoverySync(discoveryURL string) (time.Duration, error) {
+	metadata, ttl, refresh, err := op.fetchCustomProviderConfig(discoveryURL)
+	if !refresh || err != nil {
+		return ttl, err
+	}
+	if refresh && !op.isStandardDiscovery() {
+		verifier := op.generateVerifier(&metadata, context.Background())
+		op.client.SetConfig(verifier, metadata.endpoint())
+		op.metadata = metadata
+	}
+	if refresh && op.isStandardDiscovery() {
+		metadata, verifier, err := op.standardDiscovery(discoveryURL)
+		if err != nil || verifier == nil {
+			return 0, pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
+		}
+		op.client.SetConfig(verifier, metadata.endpoint())
+		op.metadata = metadata
+	}
+	return ttl, nil
+}
+
+// generateVerifier returns a verifier manually constructed from a key set and issuer URL.
+func (op *OIDCProvider) generateVerifier(metadata *ProviderMetadata, ctx context.Context) *oidc.IDTokenVerifier {
+	signingAlgorithms := op.getSigningAlgorithms(metadata)
 	if len(signingAlgorithms.unsupportedAlgorithms) > 0 {
 		base.Infof(base.KeyAuth, "Found algorithms not supported by underlying OpenID Connect library: %v", signingAlgorithms.unsupportedAlgorithms)
 	}
@@ -358,8 +512,8 @@ type SigningAlgorithms struct {
 	unsupportedAlgorithms []string
 }
 
-// GetSigningAlgorithms returns the list of supported and unsupported signing algorithms.
-func (op *OIDCProvider) GetSigningAlgorithms(metadata *ProviderMetadata) (signingAlgorithms SigningAlgorithms) {
+// getSigningAlgorithms returns the list of supported and unsupported signing algorithms.
+func (op *OIDCProvider) getSigningAlgorithms(metadata *ProviderMetadata) (signingAlgorithms SigningAlgorithms) {
 	for _, algorithm := range metadata.IdTokenSigningAlgValuesSupported {
 		if supportedAlgorithms[algorithm] {
 			signingAlgorithms.supportedAlgorithms = append(signingAlgorithms.supportedAlgorithms, algorithm)
@@ -406,9 +560,17 @@ type ProviderMetadata struct {
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported,omitempty"`
 }
 
-// GetIssuerWithAudience returns "issuer" and "audiences" claims from the given JSON Web Token.
+// endpoint returns the OAuth2 auth and token endpoints for the given provider.
+func (metadata *ProviderMetadata) endpoint() oauth2.Endpoint {
+	return oauth2.Endpoint{
+		AuthURL:  metadata.AuthorizationEndpoint,
+		TokenURL: metadata.TokenEndpoint,
+	}
+}
+
+// getIssuerWithAudience returns "issuer" and "audiences" claims from the given JSON Web Token.
 // Returns malformed oidc token error when issuer/audience doesn't exist in token.
-func GetIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []string, err error) {
+func getIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []string, err error) {
 	claims := &jwt.Claims{}
 	err = token.UnsafeClaimsWithoutVerification(claims)
 	if err != nil {
@@ -423,10 +585,12 @@ func GetIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []
 	return claims.Issuer, claims.Audience, err
 }
 
-// VerifyJWT parses a raw ID Token, verifies it's been signed by the provider
+// verifyJWT parses a raw ID Token, verifies it's been signed by the provider
 // and returns the payload. It uses the ID Token Verifier to verify the token.
-func (client *OIDCClient) VerifyJWT(token string) (*oidc.IDToken, error) {
-	return client.Verifier.Verify(context.Background(), token)
+func (client *OIDCClient) verifyJWT(token string) (*oidc.IDToken, error) {
+	client.mutex.RLock()
+	defer client.mutex.RUnlock()
+	return client.verifier.Verify(context.Background(), token)
 }
 
 func SetURLQueryParam(strURL, name, value string) (string, error) {
@@ -444,6 +608,119 @@ func SetURLQueryParam(strURL, name, value string) (string, error) {
 	rawQuery.Set(name, value)
 	uri.RawQuery = rawQuery.Encode()
 	return uri.String(), nil
+}
+
+// startDiscoverySync starts the provider metadata discovery sync task in background.
+func (op *OIDCProvider) startDiscoverySync(discoveryURL string) error {
+	op.terminator = make(chan struct{})
+	duration, err := op.runDiscoverySync(discoveryURL)
+	if err != nil {
+		return err
+	}
+	go func() {
+		for {
+			select {
+			case <-time.After(duration):
+				duration, err = op.runDiscoverySync(discoveryURL)
+				if err != nil {
+					base.Warnf("OpenID Connect provider discovery sync ends up in error: %v, next retry in %v", err, duration)
+				}
+			case <-op.terminator:
+				base.Debugf(base.KeyAll, "Terminating OpenID Connect provider discovery sync")
+				return
+			}
+		}
+	}()
+	return nil
+}
+
+// stopDiscoverySync stops the currently running metadata discovery sync of this provider.
+func (op *OIDCProvider) stopDiscoverySync() {
+	if op.terminator != nil {
+		close(op.terminator)
+	}
+}
+
+// Returns the value of max-age directive from the Cache-Control HTTP header, i.e. the maximum
+// amount of time in seconds that the fetched responses are allowed to be used again (from the
+// time when a request is made). The second value (ok) is true if max-age exists, and false if not.
+func cacheControlMaxAge(header http.Header) (maxAge time.Duration, ok bool, err error) {
+	for _, field := range strings.Split(header.Get("Cache-Control"), ",") {
+		parts := strings.SplitN(strings.TrimSpace(field), "=", 2)
+		k := strings.ToLower(strings.TrimSpace(parts[0]))
+		if k != "max-age" {
+			continue
+		}
+		if len(parts) == 1 {
+			return 0, false, errors.New("max-age has no value")
+		}
+		v := strings.TrimSpace(parts[1])
+		if v == "" {
+			return 0, false, errors.New("max-age has empty value")
+		}
+		age, err := strconv.Atoi(v)
+		if err != nil {
+			return 0, false, err
+		}
+		if age <= 0 {
+			return 0, false, nil
+		}
+		return time.Duration(age) * time.Second, true, nil
+	}
+	return 0, false, nil
+}
+
+// getExpiration calculates the freshness lifetime by computing the number of seconds difference
+// between the Expires value and the Date value on the response header. The second value (ok) is
+// true if the calculated freshness lifetime is greater than zero and false if not. The getExpiration
+// is used when the response doesn't contain a Cache-Control: max-age header.
+func getExpiration(header http.Header) (ttl time.Duration, ok bool, err error) {
+	date := header.Get("Date")
+	if date == "" {
+		return 0, false, nil
+	}
+	expires := header.Get("Expires")
+	if expires == "" {
+		return 0, false, nil
+	}
+	te, err := time.Parse(time.RFC1123, expires)
+	if err != nil {
+		return 0, false, err
+	}
+	td, err := time.Parse(time.RFC1123, date)
+	if err != nil {
+		return 0, false, err
+	}
+	ttl = te.Sub(td)
+	if ttl <= 0 {
+		return 0, false, nil
+	}
+	return ttl, true, nil
+}
+
+// cacheable determines whether the provider discovery response can be cached.
+// Returns the invalidate interval with a value true when the response is cacheable
+// and zero interval with a value false otherwise.
+func cacheable(header http.Header) (ttl time.Duration, ok bool, err error) {
+	ttl, ok, err = cacheControlMaxAge(header)
+	if err != nil || ok {
+		return ttl, ok, err
+	}
+	return getExpiration(header)
+}
+
+// GetHttpClient returns a new HTTP client with TLS certificate verification
+// disabled when insecureSkipVerify is true and enabled otherwise.
+func GetHttpClient(insecureSkipVerify bool) *http.Client {
+	if insecureSkipVerify {
+		transport := base.DefaultHTTPTransport()
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = new(tls.Config)
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true
+		return &http.Client{Transport: transport}
+	}
+	return http.DefaultClient
 }
 
 // GetOIDCClientContext returns a new Context that carries the provided HTTP client
