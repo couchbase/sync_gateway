@@ -14,12 +14,15 @@ type ActivePullReplicator struct {
 }
 
 func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
+	blipContext := blip.NewContextCustomID(config.ID+"-pull", blipCBMobileReplication)
+	bsc := NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID)
 	return &ActivePullReplicator{
-		config: config,
+		config:          config,
+		blipSyncContext: bsc,
 	}
 }
 
-func (apr *ActivePullReplicator) connect() error {
+func (apr *ActivePullReplicator) connect() (err error) {
 	if apr == nil {
 		return fmt.Errorf("nil ActivePullReplicator, can't connect")
 	}
@@ -32,11 +35,10 @@ func (apr *ActivePullReplicator) connect() error {
 	bsc := NewBlipSyncContext(blipContext, apr.config.ActiveDB, blipContext.ID)
 	apr.blipSyncContext = bsc
 
-	s, err := blipSync(*apr.config.PassiveDBURL, apr.blipSyncContext.blipContext)
+	apr.blipSender, err = blipSync(*apr.config.PassiveDBURL, apr.blipSyncContext.blipContext)
 	if err != nil {
 		return err
 	}
-	apr.blipSender = s
 
 	return nil
 }
@@ -69,10 +71,31 @@ func (apr *ActivePullReplicator) Start() error {
 		return err
 	}
 
+	rq := GetSGR2CheckpointRequest{
+		// TODO: apr.config.CheckpointHash() ?
+		Client: apr.blipSyncContext.blipContext.ID,
+	}
+
+	if err := rq.Send(apr.blipSender); err != nil {
+		return err
+	}
+
+	resp, err := rq.Response()
+	if err != nil {
+		return err
+	}
+
+	// TODO: Send String version via subChanges, or safeseq??
+	since := apr.config.Since
+	if resp != nil {
+		// since = resp.Checkpoint.LastSequence
+		since = resp.Checkpoint.LastSequence
+	}
+
 	subChangesRequest := SubChangesRequest{
 		Continuous:     apr.config.Continuous,
 		Batch:          apr.config.ChangesBatchSize,
-		Since:          apr.config.Since,
+		Since:          since,
 		Filter:         apr.config.Filter,
 		FilterChannels: apr.config.FilterChannels,
 		DocIDs:         apr.config.DocIDs,

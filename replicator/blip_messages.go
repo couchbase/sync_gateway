@@ -10,7 +10,7 @@ import (
 )
 
 type BLIPMessageSender interface {
-	Send(s *blip.Sender) error
+	Send(s *blip.Sender) (err error)
 }
 
 // SubChangesRequest is a strongly typed 'subChanges' request.
@@ -26,30 +26,151 @@ type SubChangesRequest struct {
 
 var _ BLIPMessageSender = &SubChangesRequest{}
 
-func (scr *SubChangesRequest) Send(s *blip.Sender) error {
-	if ok := s.Send(scr.marshalBLIPRequest()); !ok {
+func (rq *SubChangesRequest) Send(s *blip.Sender) error {
+	if ok := s.Send(rq.marshalBLIPRequest()); !ok {
 		return fmt.Errorf("closed blip sender")
 	}
 
 	return nil
 }
 
-func (scr *SubChangesRequest) marshalBLIPRequest() *blip.Message {
+func (rq *SubChangesRequest) marshalBLIPRequest() *blip.Message {
 	msg := blip.NewRequest()
-	msg.SetProfile("subChanges")
+	msg.SetProfile(MessageSubChanges)
 
-	setOptionalProperty(msg.Properties, "continuous", scr.Continuous)
-	setOptionalProperty(msg.Properties, "batch", scr.Batch)
-	setOptionalProperty(msg.Properties, "since", scr.Since)
-	setOptionalProperty(msg.Properties, "filter", scr.Filter)
-	setOptionalProperty(msg.Properties, "channels", strings.Join(scr.FilterChannels, ","))
+	setOptionalProperty(msg.Properties, SubChangesContinuous, rq.Continuous)
+	setOptionalProperty(msg.Properties, SubChangesBatch, rq.Batch)
+	setOptionalProperty(msg.Properties, SubChangesSince, rq.Since)
+	setOptionalProperty(msg.Properties, SubChangesFilter, rq.Filter)
+	setOptionalProperty(msg.Properties, SubChangesChannels, strings.Join(rq.FilterChannels, ","))
 
 	if err := msg.SetJSONBody(map[string]interface{}{
-		"docIDs": scr.DocIDs,
+		"docIDs": rq.DocIDs,
 	}); err != nil {
 		base.Errorf("error marshalling docIDs slice into subChanges request: %v", err)
 		return nil
 	}
 
 	return msg
+}
+
+// TODO: Checkpoint format? Local/Remote?
+type SGR2Checkpoint struct {
+	LastSequence db.SequenceID `json:"last_sequence,omitempty"`
+}
+
+// SetSGR2CheckpointRequest is a strongly typed 'setCheckpoint' request for SG-Replicate 2.
+type SetSGR2CheckpointRequest struct {
+	Client     string         // Client is the unique ID of client checkpoint to retrieve
+	RevID      *string        // RevID of the previous checkpoint, if known.
+	Checkpoint SGR2Checkpoint // Checkpoint is the actual checkpoint we're sending.
+
+	msg *blip.Message
+}
+
+var _ BLIPMessageSender = &SetSGR2CheckpointRequest{}
+
+func (rq *SetSGR2CheckpointRequest) Send(s *blip.Sender) error {
+	msg := rq.marshalBLIPRequest()
+
+	if ok := s.Send(msg); !ok {
+		return fmt.Errorf("closed blip sender")
+	}
+
+	rq.msg = msg
+
+	return nil
+}
+
+func (rq *SetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
+	msg := blip.NewRequest()
+	msg.SetProfile(MessageSetCheckpoint)
+
+	setProperty(msg.Properties, SetCheckpointClient, rq.Client)
+	setOptionalProperty(msg.Properties, SetCheckpointRev, rq.Client)
+
+	return msg
+}
+
+type SetSGR2CheckpointResponse struct {
+	RevID string // The RevID of the sent checkpoint.
+}
+
+func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, error) {
+	if rq.msg == nil {
+		return nil, fmt.Errorf("SetCheckpointRequest has not been sent")
+	}
+
+	respMsg := rq.msg.Response()
+
+	if respMsg.Type() != blip.ResponseType {
+		return nil, fmt.Errorf("unknown response type: %v", respMsg.Type())
+	}
+
+	return &SetSGR2CheckpointResponse{
+		RevID: respMsg.Properties[SetCheckpointResponseRev],
+	}, nil
+}
+
+// GetSGR2CheckpointRequest is a strongly typed 'getCheckpoint' request for SG-Replicate 2.
+type GetSGR2CheckpointRequest struct {
+	Client string // Client is the unique ID of client checkpoint to retrieve
+
+	msg *blip.Message
+}
+
+var _ BLIPMessageSender = &GetSGR2CheckpointRequest{}
+
+func (rq *GetSGR2CheckpointRequest) Send(s *blip.Sender) error {
+	msg := rq.marshalBLIPRequest()
+
+	if ok := s.Send(msg); !ok {
+		return fmt.Errorf("closed blip sender")
+	}
+
+	rq.msg = msg
+
+	return nil
+}
+
+func (rq *GetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
+	msg := blip.NewRequest()
+	msg.SetProfile(MessageGetCheckpoint)
+
+	setProperty(msg.Properties, GetCheckpointClient, rq.Client)
+
+	return msg
+}
+
+type GetSGR2CheckpointResponse struct {
+	RevID      string         // The RevID of the checkpoint.
+	Checkpoint SGR2Checkpoint // Checkpoint is the actual checkpoint.
+}
+
+func (rq *GetSGR2CheckpointRequest) Response() (*GetSGR2CheckpointResponse, error) {
+	if rq.msg == nil {
+		return nil, fmt.Errorf("GetCheckpointRequest has not been sent")
+	}
+
+	respMsg := rq.msg.Response()
+
+	if respMsg.Type() != blip.ResponseType {
+		if respMsg.Type() == blip.ErrorType &&
+			respMsg.Properties["Error-Domain"] == "HTTP" &&
+			respMsg.Properties["Error-Code"] == "404" {
+			// no checkpoint found
+			return nil, nil
+		}
+		return nil, fmt.Errorf("unknown response type: %v", respMsg.Type())
+	}
+
+	var c SGR2Checkpoint
+	if err := respMsg.ReadJSONBody(&c); err != nil {
+		return nil, err
+	}
+
+	return &GetSGR2CheckpointResponse{
+		RevID:      respMsg.Properties[GetCheckpointResponseRev],
+		Checkpoint: c,
+	}, nil
 }

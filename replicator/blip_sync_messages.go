@@ -35,10 +35,13 @@ const (
 	BlipProfile  = "Profile"
 
 	// setCheckpoint message properties
-	SetCheckpointRev = "rev"
+	SetCheckpointRev         = "rev"
+	SetCheckpointClient      = "client"
+	SetCheckpointResponseRev = "rev"
 
 	// getCheckpoint message properties
 	GetCheckpointResponseRev = "rev"
+	GetCheckpointClient      = "client"
 
 	// subChanges message properties
 	SubChangesActiveOnly = "activeOnly"
@@ -46,6 +49,7 @@ const (
 	SubChangesChannels   = "channels"
 	SubChangesSince      = "since"
 	SubChangesContinuous = "continuous"
+	SubChangesBatch      = "batch"
 
 	// rev message properties
 	RevMessageId          = "id"
