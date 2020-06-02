@@ -87,6 +87,8 @@ type BlipSyncContext struct {
 	userChangeWaiter    *db.ChangeWaiter  // Tracks whether the users/roles associated with the replication have changed
 	userName            string            // Avoid contention on db.user during userChangeWaiter user lookup
 	dbStats             *db.DatabaseStats // Direct stats access to support reloading db while stats are being updated
+
+	postHandleRevCallback func() // postHandleRevCallback is called after successfully handling an incoming rev message
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.

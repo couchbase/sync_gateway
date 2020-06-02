@@ -71,7 +71,10 @@ type SetSGR2CheckpointRequest struct {
 var _ BLIPMessageSender = &SetSGR2CheckpointRequest{}
 
 func (rq *SetSGR2CheckpointRequest) Send(s *blip.Sender) error {
-	msg := rq.marshalBLIPRequest()
+	msg, err := rq.marshalBLIPRequest()
+	if err != nil {
+		return err
+	}
 
 	if ok := s.Send(msg); !ok {
 		return fmt.Errorf("closed blip sender")
@@ -82,14 +85,18 @@ func (rq *SetSGR2CheckpointRequest) Send(s *blip.Sender) error {
 	return nil
 }
 
-func (rq *SetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
+func (rq *SetSGR2CheckpointRequest) marshalBLIPRequest() (*blip.Message, error) {
 	msg := blip.NewRequest()
 	msg.SetProfile(MessageSetCheckpoint)
 
 	setProperty(msg.Properties, SetCheckpointClient, rq.Client)
-	setOptionalProperty(msg.Properties, SetCheckpointRev, rq.Client)
+	setOptionalProperty(msg.Properties, SetCheckpointRev, rq.RevID)
 
-	return msg
+	if err := msg.SetJSONBody(rq.Checkpoint); err != nil {
+		return nil, err
+	}
+
+	return msg, nil
 }
 
 type SetSGR2CheckpointResponse struct {
@@ -104,7 +111,8 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 	respMsg := rq.msg.Response()
 
 	if respMsg.Type() != blip.ResponseType {
-		return nil, fmt.Errorf("unknown response type: %v", respMsg.Type())
+		respBody, _ := respMsg.Body()
+		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
 	}
 
 	return &SetSGR2CheckpointResponse{
@@ -161,7 +169,8 @@ func (rq *GetSGR2CheckpointRequest) Response() (*GetSGR2CheckpointResponse, erro
 			// no checkpoint found
 			return nil, nil
 		}
-		return nil, fmt.Errorf("unknown response type: %v", respMsg.Type())
+		respBody, _ := respMsg.Body()
+		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
 	}
 
 	var c SGR2Checkpoint

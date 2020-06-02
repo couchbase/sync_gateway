@@ -30,6 +30,8 @@ type ActiveReplicatorConfig struct {
 	Since db.SequenceID
 	// ChangesBatchSize controls how many revisions may be batched per changes message.
 	ChangesBatchSize uint16
+	// CheckpointInterval controls how often checkpoints are set by number of revisions processed.
+	CheckpointInterval uint16
 	// Direction, otherwise known as the type of replication: PushAndPull, Push, or Pull.
 	Direction ActiveReplicatorDirection
 	// Continuous specifies whether the replication should be continuous or one-shot.

@@ -28,6 +28,10 @@ func setProperty(p blip.Properties, k string, v interface{}) {
 // setOptionalProperty will set the given property value, if v is non-zero.
 func setOptionalProperty(p blip.Properties, k string, v interface{}) {
 	switch val := v.(type) {
+	case *string:
+		if val != nil {
+			p[k] = *val
+		}
 	case string:
 		if val != "" {
 			p[k] = val

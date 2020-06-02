@@ -624,8 +624,15 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	bh.dbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
 
 	_, _, err = bh.db.PutExistingRev(newDoc, history, noConflicts)
+	if err != nil {
+		return err
+	}
 
-	return err
+	if bh.postHandleRevCallback != nil {
+		bh.postHandleRevCallback()
+	}
+
+	return nil
 }
 
 //////// ATTACHMENTS:
