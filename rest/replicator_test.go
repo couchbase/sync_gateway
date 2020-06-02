@@ -132,8 +132,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		ChangesBatchSize:   200,
-		CheckpointInterval: 200,
+		ChangesBatchSize: 200,
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, bar.Close()) }()
