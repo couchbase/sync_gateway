@@ -86,22 +86,8 @@ type OIDCClient struct {
 	// application information and the server's endpoint URLs.
 	Config oauth2.Config
 
-	verifierLock sync.RWMutex
-
-	// verifier provides verification for ID Tokens.
-	verifier *oidc.IDTokenVerifier
-}
-
-func (client *OIDCClient) SetVerifier(verifier *oidc.IDTokenVerifier) {
-	client.verifierLock.Lock()
-	defer client.verifierLock.Unlock()
-	client.verifier = verifier
-}
-
-func (client *OIDCClient) Verifier() *oidc.IDTokenVerifier {
-	client.verifierLock.RLock()
-	defer client.verifierLock.RUnlock()
-	return client.verifier
+	// Verifier provides verification for ID Tokens.
+	Verifier *oidc.IDTokenVerifier
 }
 
 type OIDCProvider struct {
@@ -266,12 +252,7 @@ func (op *OIDCProvider) InitOIDCClient() error {
 		return err
 	}
 
-	op.client = &OIDCClient{Config: config}
-	op.client.SetVerifier(verifier)
-
-	worker := newProviderConfigSyncer()
-	worker.config = op
-	worker.Run()
+	op.client = &OIDCClient{Config: config, Verifier: verifier}
 
 	return nil
 }
@@ -417,8 +398,6 @@ type ProviderMetadata struct {
 	ScopesSupported                   []string `json:"scopes_supported,omitempty"`
 	ClaimsSupported                   []string `json:"claims_supported,omitempty"`
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported,omitempty"`
-
-	ExpiresAt time.Time
 }
 
 // GetIssuerWithAudience returns "issuer" and "audiences" claims from the given JSON Web Token.
@@ -441,7 +420,7 @@ func GetIssuerWithAudience(token *jwt.JSONWebToken) (issuer string, audiences []
 // VerifyJWT parses a raw ID Token, verifies it's been signed by the provider
 // and returns the payload. It uses the ID Token Verifier to verify the token.
 func (client *OIDCClient) VerifyJWT(token string) (*oidc.IDToken, error) {
-	return client.Verifier().Verify(context.Background(), token)
+	return client.Verifier.Verify(context.Background(), token)
 }
 
 func SetURLQueryParam(strURL, name, value string) (string, error) {
