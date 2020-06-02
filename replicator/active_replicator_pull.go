@@ -9,7 +9,6 @@ import (
 // ActivePullReplicator is a unidirectional pull active replicator.
 type ActivePullReplicator struct {
 	config          *ActiveReplicatorConfig
-	blipContext     *blip.Context
 	blipSyncContext *BlipSyncContext
 	blipSender      *blip.Sender
 }
@@ -18,8 +17,7 @@ var _ ActiveReplicator = &ActivePullReplicator{}
 
 func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 	return &ActivePullReplicator{
-		config:      config,
-		blipContext: blip.NewContextCustomID(config.ID+"-pull", blipCBMobileReplication),
+		config: config,
 	}
 }
 
@@ -32,14 +30,15 @@ func (apr *ActivePullReplicator) connect() error {
 		return fmt.Errorf("replicator already has a blipSender, can't connect twice")
 	}
 
-	s, err := blipSync(*apr.config.PassiveDB, apr.blipContext)
+	blipContext := blip.NewContextCustomID(apr.config.ID+"-pull", blipCBMobileReplication)
+	bsc := NewBlipSyncContext(blipContext, apr.config.ActiveDB, blipContext.ID)
+	apr.blipSyncContext = bsc
+
+	s, err := blipSync(*apr.config.PassiveDB, apr.blipSyncContext.blipContext)
 	if err != nil {
 		return err
 	}
 	apr.blipSender = s
-
-	bsc := NewBlipSyncContext(apr.blipContext, apr.config.ActiveDB, apr.blipContext.ID)
-	apr.blipSyncContext = bsc
 
 	return nil
 }
