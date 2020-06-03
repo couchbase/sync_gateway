@@ -13,8 +13,6 @@ type ActivePullReplicator struct {
 	blipSender      *blip.Sender
 }
 
-var _ ActiveReplicator = &ActivePullReplicator{}
-
 func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 	return &ActivePullReplicator{
 		config: config,
@@ -72,10 +70,13 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 
 	subChangesRequest := SubChangesRequest{
-		Continuous: apr.config.Continuous,
-		Batch:      apr.config.ChangesBatchSize,
-		Since:      apr.config.Since,
-		Filter:     apr.config.Filter,
+		Continuous:     apr.config.Continuous,
+		Batch:          apr.config.ChangesBatchSize,
+		Since:          apr.config.Since,
+		Filter:         apr.config.Filter,
+		FilterChannels: apr.config.FilterChannels,
+		DocIDs:         apr.config.DocIDs,
+		ActiveOnly:     apr.config.ActiveOnly,
 	}
 
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {

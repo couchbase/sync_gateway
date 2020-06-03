@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestActiveReplicatorBlipsync starts a RestTester, and publishes the REST API on a httptest server, which the ActiveReplicator can call blipsync on.
+// TestActiveReplicatorBlipsync uses an ActiveReplicator with another RestTester instance to connect and cleanly disconnect.
 func TestActiveReplicatorBlipsync(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DbConfig{
@@ -38,7 +38,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	// Add basic auth creds to target db URL
 	targetDB.User = url.UserPassword("alice", "pass")
 
-	bar, err := replicator.NewBidirectionalActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
+	bar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
 		ID:        t.Name(),
 		Direction: replicator.ActiveReplicatorTypePushAndPull,
 		ActiveDB:  &db.Database{DatabaseContext: rt.GetDatabase()},
@@ -85,7 +85,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -125,7 +125,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	bar, err := replicator.NewBidirectionalActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
+	bar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
 		ID:        t.Name(),
 		Direction: replicator.ActiveReplicatorTypePull,
 		PassiveDB: passiveDB,

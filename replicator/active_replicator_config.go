@@ -17,8 +17,15 @@ const (
 // ActiveReplicatorConfig controls the behaviour of the active replicator.
 // TODO: This might be replaced with ReplicatorConfig in the future.
 type ActiveReplicatorConfig struct {
-	ID     string
+	ID string
+	// Filter is a predetermined filter name (e.g. sync_gateway/bychannel)
 	Filter string
+	// FilterChannels are a set of channels to be used by the sync_gateway/bychannel filter.
+	FilterChannels []string
+	// DocIDs limits the changes to only those doc IDs specified.
+	DocIDs []string
+	// ActiveOnly when true prevents changes being sent for tombstones on the initial replication.
+	ActiveOnly bool
 	// Since represents the sequence we're going to perform the replication from.
 	Since db.SequenceID
 	// ChangesBatchSize controls how many revisions may be batched per changes message.
