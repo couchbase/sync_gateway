@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/couchbase/go-blip"
+	"github.com/couchbase/sync_gateway/db"
 )
 
 type BLIPMessageSender interface {
@@ -12,10 +13,10 @@ type BLIPMessageSender interface {
 
 // SubChangesRequest is a strongly typed 'subChanges' request.
 type SubChangesRequest struct {
-	Continuous bool   // Continuous can be set to true if the requester wants change notifications to be sent indefinitely (optional)
-	Batch      uint16 // Batch controls the maximum number of changes to send in a single change message (optional)
-	Since      uint64 // Since represents the latest sequence ID already known to the requester (optional) // TODO: Need a more complex sequence number type
-	Filter     string // Filter is the name of a filter function known to the recipient (optional)
+	Continuous bool          // Continuous can be set to true if the requester wants change notifications to be sent indefinitely (optional)
+	Batch      uint16        // Batch controls the maximum number of changes to send in a single change message (optional)
+	Since      db.SequenceID // Since represents the latest sequence ID already known to the requester (optional)
+	Filter     string        // Filter is the name of a filter function known to the recipient (optional)
 }
 
 var _ BLIPMessageSender = &SubChangesRequest{}

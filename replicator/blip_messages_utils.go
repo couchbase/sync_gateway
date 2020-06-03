@@ -18,6 +18,8 @@ func setProperty(p blip.Properties, k string, v interface{}) {
 		p[k] = strconv.FormatUint(val, 10)
 	case uint16:
 		p[k] = strconv.FormatUint(uint64(val), 10)
+	case fmt.Stringer:
+		p[k] = val.String()
 	default:
 		panic(fmt.Sprintf("unknown setProperty value type: %T", val))
 	}
@@ -42,6 +44,8 @@ func setOptionalProperty(p blip.Properties, k string, v interface{}) {
 		if val != 0 {
 			p[k] = strconv.FormatUint(uint64(val), 10)
 		}
+	case fmt.Stringer:
+		p[k] = val.String()
 	default:
 		panic(fmt.Sprintf("unknown setOptionalProperty value type: %T", val))
 	}

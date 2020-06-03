@@ -20,7 +20,7 @@ type ActiveReplicatorConfig struct {
 	ID     string
 	Filter string
 	// Since represents the sequence we're going to perform the replication from.
-	Since uint64
+	Since db.SequenceID
 	// ChangesBatchSize controls how many revisions may be batched per changes message.
 	ChangesBatchSize uint16
 	// Direction, otherwise known as the type of replication: PushAndPull, Push, or Pull.
