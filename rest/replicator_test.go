@@ -32,17 +32,17 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	srv := httptest.NewServer(rt.TestPublicHandler())
 	defer srv.Close()
 
-	targetDB, err := url.Parse(srv.URL + "/db")
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
 
 	// Add basic auth creds to target db URL
-	targetDB.User = url.UserPassword("alice", "pass")
+	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	bar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
+	ar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    replicator.ActiveReplicatorTypePushAndPull,
 		ActiveDB:     &db.Database{DatabaseContext: rt.GetDatabase()},
-		PassiveDBURL: targetDB,
+		PassiveDBURL: passiveDBURL,
 	})
 	require.NoError(t, err)
 
@@ -50,7 +50,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	startNumReplicationsActive := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive))
 
 	// Start the replicator (implicit connect)
-	assert.NoError(t, bar.Start())
+	assert.NoError(t, ar.Start())
 
 	// Check total stat
 	numReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
@@ -60,7 +60,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	assert.Equal(t, startNumReplicationsActive+1, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive)))
 
 	// Close the replicator (implicit disconnect)
-	assert.NoError(t, bar.Close())
+	assert.NoError(t, ar.Close())
 
 	// Wait for active stat to drop to original value
 	numReplicationsActive, ok := base.WaitForStat(func() int64 {
@@ -112,11 +112,11 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
 
-	passiveDB, err := url.Parse(srv.URL + "/db")
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
 
 	// Add basic auth creds to target db URL
-	passiveDB.User = url.UserPassword("alice", "pass")
+	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
 	tb1 := base.GetTestBucket(t)
@@ -125,20 +125,20 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	bar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
+	ar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    replicator.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDB,
+		PassiveDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize: 200,
 	})
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, bar.Close()) }()
+	defer func() { assert.NoError(t, ar.Close()) }()
 
 	// Start the replicator (implicit connect)
-	assert.NoError(t, bar.Start())
+	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt2 to arrive at rt1
 	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
