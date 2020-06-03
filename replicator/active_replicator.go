@@ -11,25 +11,15 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-// ActiveReplicator is a common interface used for the Bidirectional, Push, and Pull active replicators.
-type ActiveReplicator interface {
-	// Start will trigger the replicator to connect to the target, and start replication.
-	Start() error
-	// Close stops and closes any ongoing replications and connections.
-	Close() error
-}
-
-// BidirectionalActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
-type BidirectionalActiveReplicator struct {
+// ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
+type ActiveReplicator struct {
 	// push *ActivePushReplicator // TODO: CBG-784
 	pull *ActivePullReplicator
 }
 
-var _ ActiveReplicator = &BidirectionalActiveReplicator{}
-
-// NewBidirectionalActiveReplicator returns a bidirectional active replicator for the given config.
-func NewBidirectionalActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*BidirectionalActiveReplicator, error) {
-	bar := &BidirectionalActiveReplicator{}
+// NewActiveReplicator returns a bidirectional active replicator for the given config.
+func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActiveReplicator, error) {
+	bar := &ActiveReplicator{}
 
 	// if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 	// 	bar.Push = NewPushReplicator(config)
@@ -42,7 +32,7 @@ func NewBidirectionalActiveReplicator(ctx context.Context, config *ActiveReplica
 	return bar, nil
 }
 
-func (bar *BidirectionalActiveReplicator) Start() error {
+func (bar *ActiveReplicator) Start() error {
 	// if bar.push != nil {
 	// 	if err := bar.push.Start(); err != nil {
 	// 		return err
@@ -58,7 +48,7 @@ func (bar *BidirectionalActiveReplicator) Start() error {
 	return nil
 }
 
-func (bar *BidirectionalActiveReplicator) Close() error {
+func (bar *ActiveReplicator) Close() error {
 	// if bar.push != nil {
 	// 	if err := bar.push.Close(); err != nil {
 	// 		return err
