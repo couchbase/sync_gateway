@@ -32,7 +32,7 @@ func (apr *ActivePullReplicator) connect() error {
 	bsc := NewBlipSyncContext(blipContext, apr.config.ActiveDB, blipContext.ID)
 	apr.blipSyncContext = bsc
 
-	s, err := blipSync(*apr.config.PassiveDB, apr.blipSyncContext.blipContext)
+	s, err := blipSync(*apr.config.PassiveDBURL, apr.blipSyncContext.blipContext)
 	if err != nil {
 		return err
 	}

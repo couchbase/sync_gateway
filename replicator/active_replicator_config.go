@@ -34,8 +34,8 @@ type ActiveReplicatorConfig struct {
 	Direction ActiveReplicatorDirection
 	// Continuous specifies whether the replication should be continuous or one-shot.
 	Continuous bool
-	// PassiveDB represents the full Sync Gateway URL, including database path, and basic auth credentials of the target.
-	PassiveDB *url.URL
+	// PassiveDBURL represents the full Sync Gateway URL, including database path, and basic auth credentials of the target.
+	PassiveDBURL *url.URL
 
 	// ActiveDB is a reference to the active database context.
 	ActiveDB *db.Database

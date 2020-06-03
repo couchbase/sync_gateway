@@ -39,10 +39,10 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	targetDB.User = url.UserPassword("alice", "pass")
 
 	bar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
-		ID:        t.Name(),
-		Direction: replicator.ActiveReplicatorTypePushAndPull,
-		ActiveDB:  &db.Database{DatabaseContext: rt.GetDatabase()},
-		PassiveDB: targetDB,
+		ID:           t.Name(),
+		Direction:    replicator.ActiveReplicatorTypePushAndPull,
+		ActiveDB:     &db.Database{DatabaseContext: rt.GetDatabase()},
+		PassiveDBURL: targetDB,
 	})
 	require.NoError(t, err)
 
@@ -126,9 +126,9 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	defer rt1.Close()
 
 	bar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
-		ID:        t.Name(),
-		Direction: replicator.ActiveReplicatorTypePull,
-		PassiveDB: passiveDB,
+		ID:           t.Name(),
+		Direction:    replicator.ActiveReplicatorTypePull,
+		PassiveDBURL: passiveDB,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
