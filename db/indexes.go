@@ -360,8 +360,8 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 // Retries indefinitely on timeout, backoff retry on all other errors.
 func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryStatement string) error {
 
-	// For non-timeout errors, backoff retry up to ~2.5h, to handle large initial indexing times
-	retrySleeper := base.CreateMaxDoublingSleeperFunc(1800, 100, 5000)
+	// For non-timeout errors, backoff retry up to ~15m, to handle large initial indexing times
+	retrySleeper := base.CreateMaxDoublingSleeperFunc(180, 100, 5000)
 	retryCount := 0
 	for {
 		_, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
