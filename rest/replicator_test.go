@@ -81,9 +81,6 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullBasic(t *testing.T) {
 
-	// FIXME: disabled due to race condition on dbContext.Close()/bucket=nil and handleRev go-blip goroutine
-	t.Skipf("disabled due to race condition")
-
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
