@@ -356,24 +356,30 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 	return nil
 }
 
-// Issues adhoc consistency=request_plus query to determine if specified is ready.  Retries indefinitely on timeout, backoff retry on indexer error.
+// Issues adhoc consistency=request_plus query to determine if specified index is ready.
+// Retries indefinitely on timeout, backoff retry on all other errors.
 func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryStatement string) error {
 
+	// For non-timeout errors, backoff retry up to ~15m, to handle large initial indexing times
+	retrySleeper := base.CreateMaxDoublingSleeperFunc(180, 100, 5000)
+	retryCount := 0
 	for {
 		_, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
-		// Retry on timeout error, otherwise return
 		if err == nil {
 			return nil
 		}
 		if err == base.ErrViewTimeoutError {
 			base.Infof(base.KeyAll, "Timeout waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
-		} else if isIndexerError(err) {
-			base.Infof(base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
 		} else {
-			return err
+			base.Infof(base.KeyAll, "Error waiting for index %q to be ready for bucket %q - retrying...", base.MD(indexName), base.MD(bucket.GetName()))
+			retryCount++
+			shouldContinue, sleepMs := retrySleeper(retryCount)
+			if !shouldContinue {
+				return err
+			}
+			time.Sleep(time.Millisecond * time.Duration(sleepMs))
 		}
 	}
-
 }
 
 // Return true if the string representation of the error contains
