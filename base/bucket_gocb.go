@@ -1981,7 +1981,7 @@ func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocumen
 		}
 		err = resp.Body.Close()
 		if err != nil {
-			Fatalf("Failed to close socket (%s)", err)
+			Warnf("Failed to close socket: %v", err)
 		}
 		return fmt.Errorf("Client error: %s", string(data))
 	}
