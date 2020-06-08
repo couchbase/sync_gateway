@@ -3,7 +3,6 @@ package base
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -89,7 +88,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 
 	_, err := SetMaxFileDescriptors(5000)
 	if err != nil {
-		panic(err)
+		Fatalf("couldn't set max file descriptors: %v", err)
 	}
 
 	numBuckets := tbpNumBuckets()
@@ -125,14 +124,14 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	if removeOldBuckets {
 		err := tbp.removeOldTestBuckets()
 		if err != nil {
-			log.Fatalf("Couldn't remove old test buckets: %v", err)
+			Fatalf("Couldn't remove old test buckets: %v", err)
 		}
 	}
 
 	// Make sure the test buckets are created and put into the readier worker queue
 	start := time.Now()
 	if err := tbp.createTestBuckets(numBuckets, tbpBucketQuotaMB(), bucketInitFunc); err != nil {
-		log.Fatalf("Couldn't create test buckets: %v", err)
+		Fatalf("Couldn't create test buckets: %v", err)
 	}
 	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, int32(numBuckets))
 	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(start).Nanoseconds())
@@ -165,8 +164,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
 		if !UnitTestUrlIsWalrus() {
-			tbp.Logf(ctx, "nil TestBucketPool, but not using a Walrus test URL")
-			os.Exit(1)
+			FatalfCtx(ctx, "nil TestBucketPool, but not using a Walrus test URL")
 		}
 
 		walrusBucket := walrus.NewBucket(tbpBucketNamePrefix + "walrus_" + GenerateRandomID())
@@ -180,7 +178,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		initFuncStart := time.Now()
 		err := tbp.bucketInitFunc(ctx, b, tbp)
 		if err != nil {
-			panic(err)
+			FatalfCtx(ctx, "couldn't run bucket init func: %v", err)
 		}
 		atomic.AddInt32(&tbp.stats.TotalBucketInitCount, 1)
 		atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(initFuncStart).Nanoseconds())
@@ -412,15 +410,13 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 					Replicas:      0,
 				})
 				if err != nil {
-					tbp.Logf(ctx, "Couldn't create test bucket: %v", err)
-					os.Exit(1)
+					FatalfCtx(ctx, "Couldn't create test bucket: %v", err)
 				}
 			}
 
 			b, err := tbp.openTestBucket(tbpBucketName(testBucketName), CreateSleeperFunc(5*numBuckets, 1000))
 			if err != nil {
-				tbp.Logf(ctx, "Timed out trying to open new bucket: %v", err)
-				os.Exit(1)
+				FatalfCtx(ctx, "Timed out trying to open new bucket: %v", err)
 			}
 			openBuckets[i] = b
 
@@ -448,8 +444,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			}
 			return false, nil, nil
 		}, CreateSleeperFunc(5, 1000)); err != nil {
-			tbp.Logf(ctx, "Couldn't init bucket, got error: %v - Aborting", err)
-			os.Exit(1)
+			FatalfCtx(ctx, "Couldn't init bucket, got error: %v - Aborting", err)
 		}
 
 		b.Close()
@@ -625,12 +620,12 @@ func tbpCluster(server string) *gocb.Cluster {
 
 	connStr, err := spec.GetGoCBConnString()
 	if err != nil {
-		log.Fatalf("error getting connection string: %v", err)
+		Fatalf("error getting connection string: %v", err)
 	}
 
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		log.Fatalf("Couldn't connect to %q: %v", server, err)
+		Fatalf("Couldn't connect to %q: %v", server, err)
 	}
 
 	err = cluster.Authenticate(gocb.PasswordAuthenticator{
@@ -638,7 +633,7 @@ func tbpCluster(server string) *gocb.Cluster {
 		Password: TestClusterPassword(),
 	})
 	if err != nil {
-		log.Fatalf("Couldn't authenticate with %q: %v", server, err)
+		Fatalf("Couldn't authenticate with %q: %v", server, err)
 	}
 
 	return cluster
@@ -678,7 +673,7 @@ func tbpNumBuckets() int {
 		var err error
 		numBuckets, err = strconv.Atoi(envPoolSize)
 		if err != nil {
-			log.Fatalf("Couldn't parse %s: %v", tbpEnvPoolSize, err)
+			Fatalf("Couldn't parse %s: %v", tbpEnvPoolSize, err)
 		}
 	}
 	return numBuckets
@@ -691,7 +686,7 @@ func tbpBucketQuotaMB() int {
 		var err error
 		bucketQuota, err = strconv.Atoi(envBucketQuotaMB)
 		if err != nil {
-			log.Fatalf("Couldn't parse %s: %v", tbpEnvBucketQuotaMB, err)
+			Fatalf("Couldn't parse %s: %v", tbpEnvBucketQuotaMB, err)
 		}
 	}
 	return bucketQuota
