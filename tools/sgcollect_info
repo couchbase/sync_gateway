@@ -335,6 +335,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
                         sg_tasks.append(task)
                     else:
                         task = add_file_task(sourcefile_path=log_file_item_path)
+                        task.no_header = True
                         sg_tasks.append(task)
 
                 # Track which log file paths have been added so far
