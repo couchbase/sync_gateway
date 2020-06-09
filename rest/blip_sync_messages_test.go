@@ -7,7 +7,8 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/couchbase/sync_gateway/replicator"
-	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAddRevision(t *testing.T) {
@@ -55,7 +56,7 @@ func TestAddRevision(t *testing.T) {
 		revMessage := &replicator.RevMessage{
 			Message: &blipMessage,
 		}
-		goassert.Equals(t, revMessage.Deleted(), testCase.expectedDeletedVal)
+		assert.Equal(t, testCase.expectedDeletedVal, revMessage.Deleted())
 	}
 
 }
@@ -72,12 +73,10 @@ func TestSubChangesSince(t *testing.T) {
 	rq := blip.NewRequest()
 	rq.Properties["since"] = `"1"`
 
-	zeroSinceVal := db.SequenceID{}
+	subChangesParams, err := replicator.NewSubChangesParams(context.TODO(), rq, db.SequenceID{}, testDb.ParseSequenceID)
+	require.NoError(t, err)
 
-	subChangesParams, err := replicator.NewSubChangesParams(context.TODO(), rq, zeroSinceVal, testDb.ParseSequenceID)
-	goassert.True(t, err == nil)
-
-	seqId := subChangesParams.Since()
-	goassert.True(t, seqId.Seq == 1)
+	seqID := subChangesParams.Since()
+	assert.Equal(t, uint64(1), seqID.Seq)
 
 }
