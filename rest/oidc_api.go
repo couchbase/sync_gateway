@@ -43,7 +43,7 @@ const (
 var (
 	// ErrNoStateCookie is returned by handler's handleOIDCCallback method when
 	// the state cookie is not found during OpenID Connect Auth callback.
-	ErrNoStateCookie = base.HTTPErrorf(http.StatusBadRequest, "OIDC Auth Failure: No state cookie found")
+	ErrNoStateCookie = base.HTTPErrorf(http.StatusBadRequest, "OIDC Auth Failure: No state cookie found, client needs to support cookies when OIDC callback state is enabled")
 
 	// ErrStateMismatch is returned by handler's handleOIDCCallback method when
 	// the state cookie value doesn't match with state param in the callback URL
