@@ -6,7 +6,7 @@ Redacts sensitive data in config files
 
 import unittest
 import json
-from urlparse import urlparse
+from urllib.parse import urlparse
 import traceback
 
 
@@ -43,7 +43,7 @@ def tag_userdata_in_server_config(json_text, log_json_parsing_exceptions=True):
 
     except Exception as e:
         if log_json_parsing_exceptions:
-            print("Exception trying to tag config user data in {0}.  Exception: {1}".format(json_text, e))
+            print(("Exception trying to tag config user data in {0}.  Exception: {1}".format(json_text, e)))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to tag config user data.  See logs for details"}'
 
@@ -79,7 +79,7 @@ def tag_userdata_in_db_config(json_text, log_json_parsing_exceptions=True):
 
     except Exception as e:
         if log_json_parsing_exceptions:
-            print("Exception trying to tag db config user data in {0}.  Exception: {1}".format(json_text, e))
+            print(("Exception trying to tag db config user data in {0}.  Exception: {1}".format(json_text, e)))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to tag db config user data.  See logs for details"}'
 
@@ -108,7 +108,7 @@ def tag_userdata_in_db_json(db):
                     for i, _ in enumerate(admin_roles):
                         admin_roles[i] = UD(admin_roles[i])
             # Tag dict keys. Can't be done in the above loop.
-            for i, _ in users.items():
+            for i, _ in list(users.items()):
                 users[UD(i)] = users.pop(i)
 
         if "roles" in db:
@@ -120,7 +120,7 @@ def tag_userdata_in_db_json(db):
                     for i, _ in enumerate(admin_channels):
                         admin_channels[i] = UD(admin_channels[i])
             # Tag dict keys. Can't be done in the above loop.
-            for i, _ in roles.items():
+            for i, _ in list(roles.items()):
                 roles[UD(i)] = roles.pop(i)
 
 
@@ -147,7 +147,7 @@ def remove_passwords_from_config(config_fragment):
     if "password" in config_fragment:
         config_fragment["password"] = "******"
 
-    for key, item in config_fragment.items():
+    for key, item in list(config_fragment.items()):
         if isinstance(item, dict):
             remove_passwords_from_config(item)
 
@@ -175,7 +175,7 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
 
     except Exception as e:
         if log_json_parsing_exceptions:
-            print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
+            print(("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e)))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
 
@@ -188,7 +188,7 @@ def pretty_print_json(json_text):
     try:
         json_text = json.dumps(json.loads(json_text), indent=4)
     except Exception as e:
-        print("Exception trying to parse JSON {0}.  Exception: {1}".format(json_text, e))
+        print(("Exception trying to parse JSON {0}.  Exception: {1}".format(json_text, e)))
     return json_text + "\n"
 
 
@@ -249,6 +249,11 @@ def convert_to_valid_json(invalid_json):
     state = STATE_OUTSIDE_BACKTICK
     output = []
     sync_function_buffer = []
+
+    try:
+        invalid_json = invalid_json.decode('utf-8')
+    except (UnicodeDecodeError, AttributeError):
+        pass
 
     # Strip newlines
     invalid_json = invalid_json.replace('\n', '')
@@ -492,7 +497,7 @@ class TestConvertToValidJSON(unittest.TestCase):
             json.dumps(parsed_json, indent=4)
             got_exception = False
         except Exception as e:
-            print("Exception: {0}".format(e))
+            print(("Exception: {0}".format(e)))
 
         assert got_exception is False, "Failed to convert to valid JSON"
 
@@ -558,7 +563,7 @@ class TestConvertToValidJSON(unittest.TestCase):
             json.dumps(parsed_json, indent=4)
             got_exception = False
         except Exception as e:
-            print("Exception: {0}".format(e))
+            print(("Exception: {0}".format(e)))
 
         assert got_exception is False, "Failed to convert to valid JSON"
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- python -*-
-import StringIO
+import io
 import os
 import sys
 import tempfile
@@ -14,10 +14,10 @@ import threading
 import optparse
 import atexit
 import signal
-import urllib
+import urllib.request, urllib.parse, urllib.error
 import shutil
-import urlparse
-import urllib2
+import urllib.parse
+import urllib.request, urllib.error, urllib.parse
 import base64
 import mmap
 import hashlib
@@ -61,8 +61,7 @@ class CouchbaseLogProcessor:
 
     def do(self, line):
         if "RedactLevel" in line:
-            return 'RedactLevel:partial,HashOfSalt:%s\n' \
-                % hashlib.sha1(self.salt).hexdigest()
+            return f'RedactLevel:partial,HashOfSalt: {hashlib.sha1(self.salt.encode()).hexdigest()}\n'
         else:
             return line
 
@@ -73,7 +72,7 @@ class RegularLogProcessor:
         self.rex = re.compile('(<ud>)(.+?)(</ud>)')
 
     def _hash(self, match):
-        h = hashlib.sha1(self.salt + match.group(2)).hexdigest()
+        h = hashlib.sha1((self.salt + match.group(2)).encode()).hexdigest()
         return match.group(1) + h + match.group(3)
 
     def do(self, line):
@@ -135,7 +134,7 @@ class Task(object):
         import subprocess
         use_shell = not isinstance(self.command, list)
         if "literal" in self.__dict__:
-            print >> fp, self.literal
+            print(self.literal, file=fp)
             return 0
 
         env = None
@@ -155,7 +154,7 @@ class Task(object):
             # setting non-zero status code. It's might also
             # automatically handle things like "failed to fork due
             # to some system limit".
-            print >> fp, "Failed to execute %s: %s" % (self.command, e)
+            print("Failed to execute %s: %s" % (self.command, e), file=fp)
             return 127
         p.stdin.close()
 
@@ -188,7 +187,7 @@ class Task(object):
                 # timer is fired; that would result in a spurious timeout
                 # message
                 if timer_fired.isSet():
-                    print >> fp, "`%s` timed out after %s seconds" % (self.command, self.timeout)
+                    print("`%s` timed out after %s seconds" % (self.command, self.timeout), file=fp)
 
         return p.wait()
 
@@ -217,14 +216,17 @@ class PythonTask(object):
 
     def execute(self, fp):
         """Run the task"""
-        print("log_file: {0}. ".format(self.log_file))
+        print(("log_file: {0}. ".format(self.log_file)))
         try:
             result = self.callable()
-            fp.write(result)
+            try:
+                fp.write(result.encode())
+            except (UnicodeEncodeError, AttributeError):
+                fp.write(result)
             return 0
         except Exception as e:
             if self.log_exception:
-                print("Exception executing python task: {0}".format(e))
+                print(("Exception executing python task: {0}".format(e)))
             return 1
 
     def will_run(self):
@@ -250,7 +252,7 @@ class TaskRunner(object):
         try:
             self.tmpdir = tempfile.mkdtemp(dir=tmp_dir)
         except OSError as e:
-            print "Could not use temporary dir {0}: {1}".format(tmp_dir, e)
+            print("Could not use temporary dir {0}: {1}".format(tmp_dir, e))
             sys.exit(1)
 
         # If a dir wasn't passed by --tmp-dir, check if the env var was set and if we were able to use it
@@ -262,7 +264,7 @@ class TaskRunner(object):
 
     def finalize(self):
         try:
-            for fp in self.files.iteritems():
+            for fp in self.files.items():
                 fp.close()
         except Exception:
             pass
@@ -284,18 +286,15 @@ class TaskRunner(object):
         if filename in self.files:
             fp = self.files[filename]
         else:
-            fp = open(os.path.join(self.tmpdir, filename), 'w+')
+            fp = open(os.path.join(self.tmpdir, filename), 'wb+')
             self.files[filename] = fp
 
         return fp
 
     def header(self, fp, title, subtitle):
         separator = '=' * 78
-        print >> fp, separator
-        print >> fp, title
-        print >> fp, subtitle
-        print >> fp, separator
-        fp.flush()
+        message = f"{separator}\n{title}\n{subtitle}\n{separator}\n"
+        fp.write(message.encode())
 
     def log_result(self, result):
         if result == 0:
@@ -340,7 +339,7 @@ class TaskRunner(object):
         files = []
         redactor = LogRedactor(salt, self.tmpdir)
 
-        for name, fp in self.files.iteritems():
+        for name, fp in self.files.items():
             if not (".gz" in name or
                     "expvars.json" in name or
                     os.path.basename(name) == "sync_gateway"):
@@ -353,14 +352,14 @@ class TaskRunner(object):
 
     def zip(self, filename, log_type, node):
         files = []
-        for name, fp in self.files.iteritems():
+        for name, fp in self.files.items():
             files.append(fp.name)
 
         prefix = "%s_%s_%s" % (log_type, node, self.start_time)
         self._zip_helper(prefix, filename, files)
 
     def close_all_files(self):
-        for name, fp in self.files.iteritems():
+        for name, fp in self.files.items():
             fp.close()
 
     def _zip_helper(self, prefix, filename, files):
@@ -453,11 +452,11 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
 
     """
     def python_curl_task():
-        r = urllib2.Request(url=url)
+        r = urllib.request.Request(url=url)
         if len(user) > 0:
             base64string = base64.encodestring('%s:%s' % (user, password)).replace('\n', '')
             r.add_header("Authorization", "Basic %s" % base64string)
-        response_file_handle = urllib2.urlopen(r, timeout=timeout)
+        response_file_handle = urllib.request.urlopen(r, timeout=timeout)
         response_string = response_file_handle.read()
         for content_postprocessor in content_postprocessors:
             response_string = content_postprocessor(response_string)
@@ -479,15 +478,15 @@ def add_gzip_file_task(sourcefile_path, salt, content_postprocessors=[]):
     """
     def python_add_file_task():
         with gzip.open(sourcefile_path, 'r') as infile:
-            contents = infile.read()
+            contents = infile.read().decode('utf-8')
             for content_postprocessor in content_postprocessors:
                 contents = content_postprocessor(contents)
             redactor = LogRedactor(salt, tempfile.mkdtemp())
             contents = redactor.redact_string(contents)
 
-        out = StringIO.StringIO()
+        out = io.BytesIO()
         with gzip.GzipFile(fileobj=out, mode="w") as f:
-            f.write(contents)
+            f.write(contents.encode())
         return out.getvalue()
 
     log_file = os.path.basename(sourcefile_path)
@@ -511,7 +510,7 @@ def add_file_task(sourcefile_path, content_postprocessors=[]):
     The content_postprocessors is a list of functions -- see make_curl_task
     """
     def python_add_file_task():
-        with open(sourcefile_path, 'r') as infile:
+        with open(sourcefile_path, 'br') as infile:
             contents = infile.read()
             for content_postprocessor in content_postprocessors:
                 contents = content_postprocessor(contents)
@@ -528,7 +527,7 @@ def add_file_task(sourcefile_path, content_postprocessors=[]):
 
 
 def make_query_task(statement, user, password, port):
-    url = "http://127.0.0.1:%s/query/service?statement=%s" % (port, urllib.quote(statement))
+    url = "http://127.0.0.1:%s/query/service?statement=%s" % (port, urllib.parse.quote(statement))
 
     return make_curl_task(name="Result of query statement \'%s\'" % statement,
                           user=user, password=password, url=url)
@@ -974,7 +973,7 @@ def get_server_guts(initargs_path):
     args = [escript, dump_guts_path, "--initargs-path", initargs_path]
     if extra_args:
         args = args + extra_args.split(";")
-    print("Checking for server guts in %s..." % initargs_path)
+    print(("Checking for server guts in %s..." % initargs_path))
     p = subprocess.Popen(args, stdout=subprocess.PIPE)
     output = p.stdout.read()
     p.wait()
@@ -1006,7 +1005,7 @@ def dump_utilities(*args, **kwargs):
                           LinuxTask: 'Linux',
                           WindowsTask: 'Windows',
                           MacOSXTask: 'Mac OS X'}
-    platform_utils = dict((name, set()) for name in specific_platforms.values())
+    platform_utils = dict((name, set()) for name in list(specific_platforms.values()))
 
     class FakeOptions(object):
         def __getattr__(self, name):
@@ -1019,17 +1018,17 @@ def dump_utilities(*args, **kwargs):
         if utility is None:
             continue
 
-        for (platform, name) in specific_platforms.items():
+        for (platform, name) in list(specific_platforms.items()):
             if isinstance(task, platform):
                 platform_utils[name].add(utility)
 
     print("This is an autogenerated, possibly incomplete and flawed list of utilites used by cbcollect_info")
 
-    for (name, utilities) in sorted(platform_utils.items(), key=lambda x: x[0]):
-        print("\n%s:" % name)
+    for (name, utilities) in sorted(list(platform_utils.items()), key=lambda x: x[0]):
+        print(("\n%s:" % name))
 
         for utility in sorted(utilities):
-            print("        - %s" % utility)
+            print(("        - %s" % utility))
 
     sys.exit(0)
 
@@ -1065,13 +1064,13 @@ def do_upload_and_exit(path, url, proxy):
     filedata = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
     # Get proxies from environment/system
-    proxy_handler = urllib2.ProxyHandler(urllib.getproxies())
+    proxy_handler = urllib.request.ProxyHandler(urllib.getproxies())
     if proxy != "":
         # unless a proxy is explicitly passed, then use that instead
-        proxy_handler = urllib2.ProxyHandler({'https': proxy, 'http': proxy})
+        proxy_handler = urllib.request.ProxyHandler({'https': proxy, 'http': proxy})
 
-    opener = urllib2.build_opener(proxy_handler)
-    request = urllib2.Request(url.encode('utf-8'), data=filedata)
+    opener = urllib.request.build_opener(proxy_handler)
+    request = urllib.request.Request(url.encode('utf-8'), data=filedata)
     request.add_header(str('Content-Type'), str('application/zip'))
     request.get_method = lambda: str('PUT')
 
@@ -1093,9 +1092,9 @@ def do_upload_and_exit(path, url, proxy):
 
 
 def parse_host(host):
-    url = urlparse.urlsplit(host)
+    url = urllib.parse.urlsplit(host)
     if not url.scheme:
-        url = urlparse.urlsplit('https://' + host)
+        url = urllib.parse.urlsplit('https://' + host)
 
     return url.scheme, url.netloc, url.path
 
@@ -1108,14 +1107,14 @@ def generate_upload_url(parser, options, zip_filename):
 
         scheme, netloc, path = parse_host(options.upload_host)
 
-        customer = urllib.quote(options.upload_customer)
-        fname = urllib.quote(os.path.basename(zip_filename))
+        customer = urllib.parse.quote(options.upload_customer)
+        fname = urllib.parse.quote(os.path.basename(zip_filename))
         if options.upload_ticket:
             full_path = '%s/%s/%d/%s' % (path, customer, options.upload_ticket, fname)
         else:
             full_path = '%s/%s/%s' % (path, customer, fname)
 
-        upload_url = urlparse.urlunsplit((scheme, netloc, full_path, '', ''))
+        upload_url = urllib.parse.urlunsplit((scheme, netloc, full_path, '', ''))
         log("Will upload collected .zip file into %s" % upload_url)
     return upload_url
 
