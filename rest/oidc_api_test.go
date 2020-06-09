@@ -1225,5 +1225,77 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		runGoodAuthTest(claimSet)
 		deleteUser(t, restTester, "foo_noah")
 	})
+}
 
+// Checks callback state cookie persistence across requests.
+func TestCallbackStateClientCookies(t *testing.T) {
+	providers := auth.OIDCProviderMap{
+		"foo": mockProviderWithRegister("foo"),
+	}
+	authURL := "/db/_oidc?provider=foo&offline=true"
+	defaultProvider := "foo"
+	mockAuthServer, err := newMockAuthServer()
+	require.NoError(t, err, "Error creating mock oauth2 server")
+	mockAuthServer.Start()
+	defer mockAuthServer.Shutdown()
+	mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+	refreshProviderConfig(providers, mockAuthServer.URL)
+
+	opts := auth.OIDCOptions{
+		Providers:       providers,
+		DefaultProvider: &defaultProvider,
+	}
+	restTesterConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			OIDCConfig: &opts,
+		},
+	}
+	restTester := NewRestTester(t, &restTesterConfig)
+	restTester.SetAdminParty(false)
+	defer restTester.Close()
+
+	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+	defer mockSyncGateway.Close()
+	mockSyncGatewayURL := mockSyncGateway.URL
+
+	requestURL := mockSyncGatewayURL + authURL
+	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	require.NoError(t, err, "Error creating new request")
+
+	t.Run("unsuccessful auth when callback state enabled with no cookies support from client", func(t *testing.T) {
+		response, err := http.DefaultClient.Do(request)
+		require.NoError(t, err, "Error sending request")
+		expectedAuthError := forceError{
+			expectedErrorCode:    http.StatusBadRequest,
+			expectedErrorMessage: ErrNoStateCookie.Message,
+		}
+		assertHttpResponse(t, response, expectedAuthError)
+	})
+
+	t.Run("successful auth when callback state enabled with cookies support from client", func(t *testing.T) {
+		jar, err := cookiejar.New(nil)
+		require.NoError(t, err, "Error creating new cookie jar")
+		client := &http.Client{Jar: jar}
+		response, err := client.Do(request)
+		require.NoError(t, err, "Error sending request")
+		require.Equal(t, http.StatusOK, response.StatusCode)
+		var authResponseActual OIDCTokenResponse
+		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
+		require.NoError(t, response.Body.Close(), "Error closing response body")
+		assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
+		assert.Equal(t, "foo_noah", authResponseActual.Username, "name mismatch")
+	})
+
+	t.Run("successful auth when callback state disabled with no cookies support from client", func(t *testing.T) {
+		restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider().DisableCallbackState = true
+		response, err := http.DefaultClient.Do(request)
+		require.NoError(t, err, "Error sending request")
+		require.Equal(t, http.StatusOK, response.StatusCode)
+
+		var authResponseActual OIDCTokenResponse
+		require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
+		require.NoError(t, response.Body.Close(), "Error closing response body")
+		assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
+		assert.Equal(t, "foo_noah", authResponseActual.Username, "name mismatch")
+	})
 }
