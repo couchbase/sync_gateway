@@ -449,6 +449,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		}
 	}
 
+	dbContext.ExitChanges = make(chan struct{})
+
 	return dbContext, nil
 }
 

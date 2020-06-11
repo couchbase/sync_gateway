@@ -651,7 +651,7 @@ func NewReplicationHeartbeatListener(mgr *sgReplicateManager) (*ReplicationHeart
 	}
 
 	// Subscribe to changes to the known node set key
-	err = listener.subscribeNodeChanges()
+	err = listener.subscribeNodeSetChanges()
 	if err != nil {
 		return nil, err
 	}
@@ -674,8 +674,8 @@ func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 }
 
 // subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
-// NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
-func (l *ReplicationHeartbeatListener) subscribeNodeChanges() error {
+// cfgKeySGRCluster key.  When notified, refreshes the handlers nodeIDs.
+func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 
 	cfgEvents := make(chan cbgt.CfgEvent)
 

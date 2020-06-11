@@ -139,7 +139,7 @@ var (
 	}
 
 	// Default warning thresholds
-	DefaultWarnThresholdXattrSize      = 0.9 * float64(couchbaseMaxSystemXattrSize)
+	DefaultWarnThresholdXattrSize      = uint32(0.9 * float64(couchbaseMaxSystemXattrSize))
 	DefaultWarnThresholdChannelsPerDoc = uint32(50)
 	DefaultWarnThresholdGrantsPerDoc   = uint32(50)
 
