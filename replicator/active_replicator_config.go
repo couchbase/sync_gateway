@@ -1,7 +1,11 @@
 package replicator
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/db"
@@ -44,4 +48,42 @@ type ActiveReplicatorConfig struct {
 
 	// ActiveDB is a reference to the active database context.
 	ActiveDB *db.Database
+}
+
+// CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.
+// TODO: Might be a way of caching this value? But need to be sure no config values wil change without clearing the cached hash.
+func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
+	hash := sha1.New()
+
+	// For each field in the config that affects replication result, append its value to the hasher.
+
+	// Probably a neater way of doing this using struct tags and a type switch,
+	// but the ActiveReplicatorConfig might end up being replaced with the existing replicator config.
+	if _, err := hash.Write([]byte(arc.Filter)); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(strings.Join(arc.FilterChannels, ","))); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(strings.Join(arc.DocIDs, ","))); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(strconv.FormatBool(arc.ActiveOnly))); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(strconv.FormatUint(uint64(arc.Direction), 10))); err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(arc.PassiveDBURL.String())); err != nil {
+		return "", err
+	}
+	bucketUUID, err := arc.ActiveDB.Bucket.UUID()
+	if err != nil {
+		return "", err
+	}
+	if _, err := hash.Write([]byte(bucketUUID)); err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }

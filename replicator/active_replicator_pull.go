@@ -33,6 +33,15 @@ func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) *Act
 	}
 }
 
+// CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
+func (apr *ActivePullReplicator) CheckpointID() (string, error) {
+	checkpointHash, err := apr.config.CheckpointHash()
+	if err != nil {
+		return "", err
+	}
+	return "sgr2cp:pull:" + checkpointHash, nil
+}
+
 func (apr *ActivePullReplicator) connect() (err error) {
 	if apr == nil {
 		return fmt.Errorf("nil ActivePullReplicator, can't connect")
@@ -78,8 +87,11 @@ func (apr *ActivePullReplicator) Close() error {
 // getCheckpoint tries to fetch a since value for the given replication by requesting a checkpoint.
 // If this fails, the function returns a zero value.
 func (apr *ActivePullReplicator) getCheckpoint() GetSGR2CheckpointResponse {
-	// TODO: apr.config.CheckpointHash() ?
-	client := apr.blipSyncContext.blipContext.ID
+	client, err := apr.CheckpointID()
+	if err != nil {
+		base.Warnf("couldn't generate CheckpointID for config, starting from 0: %v", err)
+		return GetSGR2CheckpointResponse{}
+	}
 
 	rq := GetSGR2CheckpointRequest{
 		Client: client,
@@ -96,6 +108,7 @@ func (apr *ActivePullReplicator) getCheckpoint() GetSGR2CheckpointResponse {
 		return GetSGR2CheckpointResponse{}
 	}
 
+	// checkpoint wasn't found (404)
 	if resp == nil {
 		base.Debugf(base.KeyReplicate, "couldn't find existing checkpoint for client %q, starting from 0", client)
 		apr.Stats.Add(ActiveReplicatorStatsKeyGetCheckpointMissTotal, 1)
@@ -108,9 +121,14 @@ func (apr *ActivePullReplicator) getCheckpoint() GetSGR2CheckpointResponse {
 }
 
 func (apr *ActivePullReplicator) setCheckpoint(seq db.SequenceID) {
+	client, err := apr.CheckpointID()
+	if err != nil {
+		base.Warnf("couldn't generate CheckpointID for config to send checkpoint: %v", err)
+		return
+	}
+
 	rq := SetSGR2CheckpointRequest{
-		// TODO: apr.config.CheckpointHash() ?
-		Client: apr.blipSyncContext.blipContext.ID,
+		Client: client,
 		Checkpoint: SGR2Checkpoint{
 			LastSequence: seq,
 		},
