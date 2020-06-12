@@ -298,7 +298,11 @@ func (apr *ActivePullReplicator) startCheckpointer() error {
 	// Start a time-based checkpointer goroutine
 	go func() {
 		var exit bool
-		ticker := time.NewTicker(apr.config.CheckpointInterval)
+		checkpointInterval := defaultCheckpointInterval
+		if apr.config.CheckpointInterval > 0 {
+			checkpointInterval = apr.config.CheckpointInterval
+		}
+		ticker := time.NewTicker(checkpointInterval)
 		defer ticker.Stop()
 		for {
 			select {

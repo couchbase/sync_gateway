@@ -19,6 +19,10 @@ const (
 	ActiveReplicatorTypePull
 )
 
+const (
+	defaultCheckpointInterval = time.Second * 30
+)
+
 // ActiveReplicatorConfig controls the behaviour of the active replicator.
 // TODO: This might be replaced with ReplicatorConfig in the future.
 type ActiveReplicatorConfig struct {
