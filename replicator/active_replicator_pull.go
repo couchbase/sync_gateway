@@ -102,7 +102,7 @@ func (apr *ActivePullReplicator) CheckpointNow() {
 		var lowSeq string
 
 		// iterates over each (ordered) expected sequence and stops when we find the first sequence we've yet to receive a rev message for
-		var maxI *int
+		maxI := -1
 		for i, seq := range apr.Checkpointer.expectedSeqs {
 			if _, ok := apr.Checkpointer.receivedSeqs[seq]; !ok {
 				base.Tracef(base.KeyReplicate, "checkpointer: couldn't find %v in receivedSeqs", seq)
@@ -110,22 +110,22 @@ func (apr *ActivePullReplicator) CheckpointNow() {
 			}
 
 			delete(apr.Checkpointer.receivedSeqs, seq)
-			maxI = &i
+			maxI = i
 		}
 
 		// the first seq we expected hasn't arrived yet, so can't checkpoint anything
-		if maxI == nil {
+		if maxI < 0 {
 			return
 		}
 
-		lowSeq = apr.Checkpointer.expectedSeqs[*maxI]
+		lowSeq = apr.Checkpointer.expectedSeqs[maxI]
 
-		if len(apr.Checkpointer.expectedSeqs)-1 == *maxI {
+		if len(apr.Checkpointer.expectedSeqs)-1 == maxI {
 			// received full set, empty list
 			apr.Checkpointer.expectedSeqs = apr.Checkpointer.expectedSeqs[0:0]
 		} else {
 			// trim sequence list for partially received set
-			apr.Checkpointer.expectedSeqs = apr.Checkpointer.expectedSeqs[*maxI+1:]
+			apr.Checkpointer.expectedSeqs = apr.Checkpointer.expectedSeqs[maxI+1:]
 		}
 
 		base.Tracef(base.KeyReplicate, "checkpointer: got lowSeq: %v", lowSeq)
