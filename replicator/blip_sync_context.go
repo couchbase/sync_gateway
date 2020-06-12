@@ -88,7 +88,8 @@ type BlipSyncContext struct {
 	userName            string            // Avoid contention on db.user during userChangeWaiter user lookup
 	dbStats             *db.DatabaseStats // Direct stats access to support reloading db while stats are being updated
 
-	postHandleRevCallback func() // postHandleRevCallback is called after successfully handling an incoming rev message
+	postHandleRevCallback     func(remoteSeq db.SequenceID)      // postHandleRevCallback is called after successfully handling an incoming rev message
+	postHandleChangesCallback func(expectedSeqs []db.SequenceID) // postHandleChangesCallback is called after successfully handling an incoming changes message
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.

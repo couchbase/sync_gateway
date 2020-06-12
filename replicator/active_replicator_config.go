@@ -2,6 +2,7 @@ package replicator
 
 import (
 	"net/url"
+	"time"
 
 	"github.com/couchbase/sync_gateway/db"
 )
@@ -26,12 +27,14 @@ type ActiveReplicatorConfig struct {
 	DocIDs []string
 	// ActiveOnly when true prevents changes being sent for tombstones on the initial replication.
 	ActiveOnly bool
-	// Since represents the sequence we're going to perform the replication from.
-	Since db.SequenceID
 	// ChangesBatchSize controls how many revisions may be batched per changes message.
 	ChangesBatchSize uint16
-	// CheckpointInterval controls how often checkpoints are set by number of revisions processed.
-	CheckpointInterval uint16
+	// CheckpointMinInterval throttles checkpointing to be at most, once this often.
+	CheckpointMinInterval time.Duration
+	// CheckpointMaxInterval limits the maximum time to go between setting a checkpoint.
+	CheckpointMaxInterval time.Duration
+	// CheckpointRevCount controls how many revs to store before attempting to save a checkpoint.
+	CheckpointRevCount uint16
 	// Direction, otherwise known as the type of replication: PushAndPull, Push, or Pull.
 	Direction ActiveReplicatorDirection
 	// Continuous specifies whether the replication should be continuous or one-shot.

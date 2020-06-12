@@ -354,6 +354,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
 	}()
 
+	expectedSeqs := make([]db.SequenceID, 0)
+
 	for _, change := range changeList {
 		docID := change[1].(string)
 		revID := change[2].(string)
@@ -362,13 +364,33 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			output.Write([]byte(","))
 		}
 		if missing == nil {
+			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
-		} else if len(possible) == 0 {
-			output.Write([]byte("[]"))
 		} else {
-			err := jsonOutput.Encode(possible)
-			if err != nil {
-				base.InfofCtx(bh.blipContextDb.Ctx, base.KeyAll, "Error encoding json: %v", err)
+			// we want this rev, send possible ancestors to the peer
+			if len(possible) == 0 {
+				output.Write([]byte("[]"))
+			} else {
+				err := jsonOutput.Encode(possible)
+				if err != nil {
+					base.InfofCtx(bh.blipContextDb.Ctx, base.KeyAll, "Error encoding json: %v", err)
+				}
+			}
+
+			// skip parsing seqno if we're not going to use it (no callback defined)
+			if bh.postHandleChangesCallback != nil {
+				var seqStr string
+				switch seq := change[0].(type) {
+				case string:
+					seqStr = seq
+				case json.Number:
+					seqStr = seq.String()
+				}
+				seq, err := bh.db.DatabaseContext.ParseSequenceID(seqStr)
+				if err != nil {
+					return base.HTTPErrorf(http.StatusBadRequest, "invalid sequence number %q for rev: %s / %s", seqStr, docID, revID)
+				}
+				expectedSeqs = append(expectedSeqs, seq)
 			}
 		}
 		nWritten++
@@ -377,6 +399,11 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	response := rq.Response()
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
+
+	if bh.postHandleChangesCallback != nil {
+		bh.postHandleChangesCallback(expectedSeqs)
+	}
+
 	return nil
 }
 
@@ -629,7 +656,11 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	if bh.postHandleRevCallback != nil {
-		bh.postHandleRevCallback()
+		remoteSeq, err := bh.db.ParseSequenceID(rq.Properties[RevMessageSequence])
+		if err != nil {
+			return err
+		}
+		bh.postHandleRevCallback(remoteSeq)
 	}
 
 	return nil
