@@ -11,10 +11,19 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+const (
+	// TODO: Not aligned these to any stats in the PRD yet, these are used for test assertions.
+	ActiveReplicatorStatsKeyGetCheckpointHitTotal    = "get_checkpoint_hit_total"
+	ActiveReplicatorStatsKeyGetCheckpointMissTotal   = "get_checkpoint_miss_total"
+	ActiveReplicatorStatsKeySetCheckpointTotal       = "set_checkpoint_total"
+	ActiveReplicatorStatsKeyRevsReceivedTotal        = "revs_received_total"
+	ActiveReplicatorStatsKeyChangesRevsReceivedTotal = "changes_revs_received_total"
+)
+
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
 	// push *ActivePushReplicator // TODO: CBG-784
-	pull *ActivePullReplicator
+	Pull *ActivePullReplicator
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
@@ -26,7 +35,7 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*
 	// }
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
-		bar.pull = NewPullReplicator(config)
+		bar.Pull = NewPullReplicator(ctx, config)
 	}
 
 	return bar, nil
@@ -39,8 +48,8 @@ func (bar *ActiveReplicator) Start() error {
 	// 	}
 	// }
 
-	if bar.pull != nil {
-		if err := bar.pull.Start(); err != nil {
+	if bar.Pull != nil {
+		if err := bar.Pull.Start(); err != nil {
 			return err
 		}
 	}
@@ -55,8 +64,8 @@ func (bar *ActiveReplicator) Close() error {
 	// 	}
 	// }
 
-	if bar.pull != nil {
-		if err := bar.pull.Close(); err != nil {
+	if bar.Pull != nil {
+		if err := bar.Pull.Close(); err != nil {
 			return err
 		}
 	}
