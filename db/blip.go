@@ -1,4 +1,4 @@
-package replicator
+package db
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 )
 
 const (
@@ -45,7 +44,7 @@ func defaultBlipLogger(ctx context.Context) blip.LogFn {
 }
 
 // blipRevMessageProperties returns a set of BLIP message properties for the given parameters.
-func blipRevMessageProperties(revisionHistory []string, deleted bool, seq db.SequenceID) blip.Properties {
+func blipRevMessageProperties(revisionHistory []string, deleted bool, seq SequenceID) blip.Properties {
 	properties := make(blip.Properties)
 
 	// TODO: Assert? db.SequenceID.MarshalJSON can never error

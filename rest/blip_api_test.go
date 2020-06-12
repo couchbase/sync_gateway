@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/sync_gateway/replicator"
 	"github.com/stretchr/testify/require"
 
 	"github.com/couchbase/go-blip"
@@ -549,7 +548,7 @@ func TestBlipSubChangesDocIDFilter(t *testing.T) {
 	subChangesRequest.Properties["batch"] = "10" // default batch size is 200, lower this to 5 to make sure we get multiple batches
 	subChangesRequest.SetCompressed(false)
 
-	body := replicator.SubChangesBody{DocIDs: docIDsExpected}
+	body := db.SubChangesBody{DocIDs: docIDsExpected}
 	bodyBytes, err := base.JSONMarshal(body)
 	assert.NoError(t, err, "Error marshalling subChanges body.")
 
@@ -980,7 +979,7 @@ function(doc, oldDoc) {
 			panic(fmt.Sprintf("Unexpected err: %v", err))
 		}
 		_, isRemoved := doc[db.BodyRemoved]
-		assert.False(t, isRemoved, fmt.Sprintf("Document %v shouldn't be removed", request.Properties[replicator.RevMessageId]))
+		assert.False(t, isRemoved, fmt.Sprintf("Document %v shouldn't be removed", request.Properties[db.RevMessageId]))
 
 	}
 
@@ -2008,7 +2007,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	// Check EE is delta, and CE is full-body replication
 	if base.IsEnterpriseEdition() {
 		// Check the request was sent with the correct deltaSrc property
-		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[replicator.RevMessageDeltaSrc])
+		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was the actual delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
@@ -2016,7 +2015,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		assert.Equal(t, deltaSentCount+1, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent)))
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
-		assert.Equal(t, "", msg.Properties[replicator.RevMessageDeltaSrc])
+		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was NOT the delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
@@ -2128,7 +2127,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
 	assert.Equal(t, `{}`, string(msgBody))
-	assert.Equal(t, "1", msg.Properties[replicator.RevMessageDeleted])
+	assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted])
 
 	deltaCacheHitsEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
 	deltaCacheMissesEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheMisses))
@@ -2221,13 +2220,13 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok := client1.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac") // docid, revid to get the message
 	assert.True(t, ok)
-	assert.Equal(t, replicator.MessageRev, msg.Profile(), "unexpected profile for message %v in %v",
+	assert.Equal(t, db.MessageRev, msg.Profile(), "unexpected profile for message %v in %v",
 		msg.SerialNumber(), client1.pullReplication.GetMessages())
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
 	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v",
 		msg.SerialNumber(), client1.pullReplication.GetMessages())
-	assert.Equal(t, "1", msg.Properties[replicator.RevMessageDeleted], "unexpected deleted property for message %v in %v",
+	assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted], "unexpected deleted property for message %v in %v",
 		msg.SerialNumber(), client1.pullReplication.GetMessages())
 
 	// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
@@ -2240,13 +2239,13 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok = client2.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
-	assert.Equal(t, replicator.MessageRev, msg.Profile(), "unexpected profile for message %v in %v",
+	assert.Equal(t, db.MessageRev, msg.Profile(), "unexpected profile for message %v in %v",
 		msg.SerialNumber(), client2.pullReplication.GetMessages())
 	msgBody, err = msg.Body()
 	assert.NoError(t, err)
 	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v",
 		msg.SerialNumber(), client2.pullReplication.GetMessages())
-	assert.Equal(t, "1", msg.Properties[replicator.RevMessageDeleted], "unexpected deleted property for message %v in %v",
+	assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted], "unexpected deleted property for message %v in %v",
 		msg.SerialNumber(), client2.pullReplication.GetMessages())
 
 	deltaCacheHitsEnd := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltaCacheHits))
@@ -2303,7 +2302,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 
 	msg, ok := client.pullReplication.WaitForMessage(5)
 	assert.True(t, ok)
-	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[replicator.RevMessageHistory])
+	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[db.RevMessageHistory])
 }
 
 // TestBlipDeltaSyncPullRevCache tests that a simple pull replication uses deltas in EE,
@@ -2363,7 +2362,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	// Check EE is delta
 	// Check the request was sent with the correct deltaSrc property
-	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[replicator.RevMessageDeltaSrc])
+	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[db.RevMessageDeltaSrc])
 	// Check the request body was the actual delta
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
@@ -2381,7 +2380,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	assert.True(t, ok)
 
 	// Check the request was sent with the correct deltaSrc property
-	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg2.Properties[replicator.RevMessageDeltaSrc])
+	assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg2.Properties[db.RevMessageDeltaSrc])
 	// Check the request body was the actual delta
 	msgBody2, err := msg2.Body()
 	assert.NoError(t, err)
@@ -2432,7 +2431,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 	if base.IsEnterpriseEdition() {
 		// Check the request was sent with the correct deltaSrc property
-		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[replicator.RevMessageDeltaSrc])
+		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was the actual delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
@@ -2444,7 +2443,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.NotContains(t, docRev.BodyBytes, "bob")
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
-		assert.Equal(t, "", msg.Properties[replicator.RevMessageDeltaSrc])
+		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was NOT the delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
@@ -2527,7 +2526,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	assert.True(t, ok)
 
 	// Check the request was NOT sent with a deltaSrc property
-	assert.Equal(t, "", msg.Properties[replicator.RevMessageDeltaSrc])
+	assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
 	// Check the request body was NOT the delta
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
@@ -2596,14 +2595,14 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 
 	if base.IsEnterpriseEdition() {
 		// Check the request was sent with the correct deltaSrc property
-		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[replicator.RevMessageDeltaSrc])
+		assert.Equal(t, "1-0335a345b6ffed05707ccc4cbc1b67f4", msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was the actual delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
 		assert.Equal(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
-		assert.Equal(t, "", msg.Properties[replicator.RevMessageDeltaSrc])
+		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was NOT the delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
@@ -2680,7 +2679,7 @@ func TestBlipNorev(t *testing.T) {
 	require.NoError(t, err)
 	defer btc.Close()
 
-	norevMsg := replicator.NewNoRevMessage()
+	norevMsg := db.NewNoRevMessage()
 	norevMsg.SetId("docid")
 	norevMsg.SetRev("1-a")
 	norevMsg.SetError("404")
@@ -2691,14 +2690,14 @@ func TestBlipNorev(t *testing.T) {
 	norevMsg.SetNoReply(false)
 
 	// Request that the handler used to process the message is sent back in the response
-	norevMsg.Properties[replicator.SGShowHandler] = "true"
+	norevMsg.Properties[db.SGShowHandler] = "true"
 
 	assert.NoError(t, btc.pushReplication.sendMsg(norevMsg.Message))
 
 	// Check that the response we got back was processed by the norev handler
 	resp := norevMsg.Response()
 	assert.NotNil(t, resp)
-	assert.Equal(t, "handleNoRev", resp.Properties[replicator.SGHandler])
+	assert.Equal(t, "handleNoRev", resp.Properties[db.SGHandler])
 }
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.

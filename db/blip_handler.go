@@ -1,4 +1,4 @@
-package replicator
+package db
 
 import (
 	"bytes"
@@ -14,7 +14,6 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/db"
 )
 
 // kHandlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
@@ -31,8 +30,8 @@ var kHandlersByProfile = map[string]blipHandlerFunc{
 
 type blipHandler struct {
 	*BlipSyncContext
-	db           *db.Database // Handler-specific copy of the BlipSyncContext's blipContextDb
-	serialNumber uint64       // This blip handler's serial number to differentiate logs w/ other handlers
+	db           *Database // Handler-specific copy of the BlipSyncContext's blipContextDb
+	serialNumber uint64    // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
 type blipHandlerFunc func(*blipHandler, *blip.Message) error
@@ -102,9 +101,9 @@ func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 	if value == nil {
 		return base.HTTPErrorf(http.StatusNotFound, http.StatusText(http.StatusNotFound))
 	}
-	response.Properties[GetCheckpointResponseRev] = value[db.BodyRev].(string)
-	delete(value, db.BodyRev)
-	delete(value, db.BodyId)
+	response.Properties[GetCheckpointResponseRev] = value[BodyRev].(string)
+	delete(value, BodyRev)
+	delete(value, BodyId)
 	// TODO: Marshaling here when we could use raw bytes all the way from the bucket
 	_ = response.SetJSONBody(value)
 	return nil
@@ -118,12 +117,12 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 
 	docID := fmt.Sprintf("checkpoint/%s", checkpointMessage.client())
 
-	var checkpoint db.Body
+	var checkpoint Body
 	if err := checkpointMessage.ReadJSONBody(&checkpoint); err != nil {
 		return err
 	}
 	if revID := checkpointMessage.rev(); revID != "" {
-		checkpoint[db.BodyRev] = revID
+		checkpoint[BodyRev] = revID
 	}
 	revID, err := bh.db.PutSpecial("local", docID, checkpoint)
 	if err != nil {
@@ -215,7 +214,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *SubChangesParams
 
 	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sending changes since %v", params.Since())
 
-	options := db.ChangesOptions{
+	options := ChangesOptions{
 		Since:        params.Since(),
 		Conflicts:    false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
 		Continuous:   bh.continuous,
@@ -245,7 +244,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *SubChangesParams
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
 	changesDb := bh.copyContextDatabase()
-	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, params.docIDs(), func(changes []*db.ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, params.docIDs(), func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 
@@ -305,7 +304,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		}
 
 		// Spawn a goroutine to await the client's response:
-		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *db.Database) {
+		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				base.ErrorfCtx(bh.blipContextDb.Ctx, "Error from bh.handleChangesResponse: %v", err)
 			}
@@ -318,7 +317,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	}
 
 	if len(changeArray) > 0 {
-		sequence := changeArray[0][0].(db.SequenceID)
+		sequence := changeArray[0][0].(SequenceID)
 		base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sent %d changes to client, from seq %s", len(changeArray), sequence.String())
 	} else {
 		base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sent all changes to client")
@@ -457,12 +456,12 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 //////// DOCUMENTS:
 
-func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *db.Database) error {
+func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
 
 	bsc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
 
 	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(docID, deltaSrcRevID, revID)
-	if err == db.ErrForbidden {
+	if err == ErrForbidden {
 		return err
 	} else if base.IsDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
@@ -536,7 +535,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
 	}
 
-	newDoc := &db.Document{
+	newDoc := &Document{
 		ID:    docID,
 		RevID: revID,
 	}
@@ -575,7 +574,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {
-			deltaSrcBody[db.BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
+			deltaSrcBody[BodyAttachments] = map[string]interface{}(deltaSrcRev.Attachments)
 			injectedAttachmentsForDelta = true
 		}
 
@@ -593,7 +592,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	// Handle and pull out expiry
-	if bytes.Contains(bodyBytes, []byte(db.BodyExpiry)) {
+	if bytes.Contains(bodyBytes, []byte(BodyExpiry)) {
 		body := newDoc.Body()
 		expiry, err := body.ExtractExpiry()
 		if err != nil {
@@ -624,12 +623,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	// Look at attachments with revpos > the last common ancestor's
 	minRevpos := 1
 	if len(history) > 0 {
-		minRevpos, _ := db.ParseRevID(history[len(history)-1])
+		minRevpos, _ := ParseRevID(history[len(history)-1])
 		minRevpos++
 	}
 
 	// Pull out attachments
-	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(db.BodyAttachments)) {
+	if injectedAttachmentsForDelta || bytes.Contains(bodyBytes, []byte(BodyAttachments)) {
 		body := newDoc.Body()
 
 		// Check for any attachments I don't have yet, and request them:
@@ -638,8 +637,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 			return err
 		}
 
-		newDoc.DocAttachments = db.GetBodyAttachments(body)
-		delete(body, db.BodyAttachments)
+		newDoc.DocAttachments = GetBodyAttachments(body)
+		delete(body, BodyAttachments)
 		newDoc.UpdateBody(body)
 	}
 
@@ -673,7 +672,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	if !bh.isAttachmentAllowed(digest) {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
 	}
-	attachment, err := bh.db.GetAttachment(db.AttachmentKey(digest))
+	attachment, err := bh.db.GetAttachment(AttachmentKey(digest))
 	if err != nil {
 		return err
 
@@ -690,7 +689,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
-func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.Body, minRevpos int, docID string) error {
+func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string) error {
 	return bh.db.ForEachStubAttachment(body, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			if knownData != nil {
@@ -699,7 +698,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 				// it knew the digest it could acquire the data by uploading a document with the
 				// claimed attachment, then downloading it.
 				base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
-				nonce, proof := db.GenerateProofOfAttachment(knownData)
+				nonce, proof := GenerateProofOfAttachment(knownData)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{BlipProfile: MessageProveAttachment, ProveAttachmentDigest: digest}
 				outrq.SetBody(nonce)
@@ -739,7 +738,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body db.
 				}
 
 				// Verify that the attachment we received matches the metadata stored in the document
-				if !metaLengthOK || len(attBody) != int(metaLength) || db.Sha1DigestKey(attBody) != digest {
+				if !metaLengthOK || len(attBody) != int(metaLength) || Sha1DigestKey(attBody) != digest {
 					return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s", digest)
 				}
 

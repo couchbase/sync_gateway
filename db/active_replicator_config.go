@@ -1,4 +1,4 @@
-package replicator
+package db
 
 import (
 	"crypto/sha1"
@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/couchbase/sync_gateway/db"
 )
 
 type ActiveReplicatorDirection uint8
@@ -47,7 +45,7 @@ type ActiveReplicatorConfig struct {
 	PassiveDBURL *url.URL
 
 	// ActiveDB is a reference to the active database context.
-	ActiveDB *db.Database
+	ActiveDB *Database
 }
 
 // CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.

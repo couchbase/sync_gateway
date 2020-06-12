@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/couchbase/sync_gateway/db"
+
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/replicator"
 	"golang.org/x/net/websocket"
 )
 
@@ -23,7 +24,7 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	// Create a BLIP context:
-	blipContext := replicator.NewSGBlipContext(h.db.Ctx, "")
+	blipContext := db.NewSGBlipContext(h.db.Ctx, "")
 
 	// Overwrite the existing logging context with the blip context ID
 	h.db.Ctx = context.WithValue(h.db.Ctx, base.LogContextKey{},
@@ -31,7 +32,7 @@ func (h *handler) handleBLIPSync() error {
 	)
 
 	// Create a new BlipSyncContext attached to the given blipContext.
-	ctx := replicator.NewBlipSyncContext(blipContext, h.db, h.formatSerialNumber())
+	ctx := db.NewBlipSyncContext(blipContext, h.db, h.formatSerialNumber())
 	defer ctx.Close()
 
 	// Create a BLIP WebSocket handler and have it handle the request:
