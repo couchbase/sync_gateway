@@ -300,7 +300,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Initialize sg-replicate manager
-	dbContext.SGReplicateMgr, err = NewSGReplicateManager(dbContext.CfgSG, dbName)
+	dbContext.SGReplicateMgr, err = NewSGReplicateManager(dbContext, dbContext.CfgSG)
 	if err != nil {
 		return nil, err
 	}

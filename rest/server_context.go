@@ -110,7 +110,10 @@ func (sc *ServerContext) PostStartup() {
 	time.Sleep(5 * time.Second)
 	sc.lock.RLock()
 	for _, dbContext := range sc.databases_ {
-		dbContext.SGReplicateMgr.StartReplications()
+		err := dbContext.SGReplicateMgr.StartReplications()
+		if err != nil {
+			base.Errorf("Error starting sg-replicate replications: %v", err)
+		}
 	}
 	sc.lock.RUnlock()
 
@@ -375,7 +378,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Process unsupported config options
 	if config.Unsupported.WarningThresholds.XattrSize == nil {
-		config.Unsupported.WarningThresholds.XattrSize = &base.DefaultWarnThresholdXattrSize
+		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
 	} else {
 		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
 		upperLimit := 1 * 1024 * 1024   // 1 MB

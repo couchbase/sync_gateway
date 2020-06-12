@@ -116,6 +116,9 @@ const (
 
 	SyncPropertyName = "_sync"
 	SyncXattrName    = "_sync"
+
+	// Replication filter constants
+	ByChannelFilter = "sync_gateway/bychannel"
 )
 
 const (
@@ -139,7 +142,7 @@ var (
 	}
 
 	// Default warning thresholds
-	DefaultWarnThresholdXattrSize      = uint32(0.9 * float64(couchbaseMaxSystemXattrSize))
+	DefaultWarnThresholdXattrSize      = 0.9 * float64(couchbaseMaxSystemXattrSize)
 	DefaultWarnThresholdChannelsPerDoc = uint32(50)
 	DefaultWarnThresholdGrantsPerDoc   = uint32(50)
 

@@ -293,38 +293,15 @@ func validateReplicateV1Parameters(requestParams ReplicateV1Config, paramsFromCo
 	}
 
 	if requestParams.Filter != "" {
-		if requestParams.Filter == "sync_gateway/bychannel" {
+		if requestParams.Filter == base.ByChannelFilter {
 			if requestParams.QueryParams == "" {
 				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Missing query_params")
 				return
 			}
 
-			//The Channels may be passed as a JSON array of strings directly
-			//or embedded in a JSON object with the "channels" property and array value
-			var chanarray []interface{}
-
-			if paramsmap, ok := requestParams.QueryParams.(map[string]interface{}); ok {
-				if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
-					err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; query_params missing channels property")
-					return
-				}
-			} else if chanarray, ok = requestParams.QueryParams.([]interface{}); ok {
-				// query params is an array and chanarray has been set, now drop out of if-then-else for processing
-			} else {
-				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channels array")
-				return
-			}
-			if len(chanarray) > 0 {
-				channels := make([]string, len(chanarray))
-				for i := range chanarray {
-					if channel, ok := chanarray[i].(string); ok {
-						channels[i] = channel
-					} else {
-						err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Bad channel name")
-						return
-					}
-				}
-				params.Channels = channels
+			params.Channels, err = db.ChannelsFromQueryParams(requestParams.QueryParams)
+			if err != nil {
+				return params, cancel, localdb, base.HTTPErrorf(http.StatusBadRequest, "/_replicate "+err.Error())
 			}
 		} else {
 			err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate Unknown filter; try sync_gateway/bychannel")

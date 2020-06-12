@@ -1607,10 +1607,10 @@ func TestReplicateErrorConditions(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"filter":"somefilter"}`), 400)
 
 	//Send JSON Object containing filter 'sync_gateway/bychannel' with non array query_params property
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"filter":"sync_gateway/bychannel", "query_params":{"someproperty":"somevalue"}}`), 400)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"filter":"`+base.ByChannelFilter+`", "query_params":{"someproperty":"somevalue"}}`), 400)
 
 	//Send JSON Object containing filter 'sync_gateway/bychannel' with non string array query_params property
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"filter":"sync_gateway/bychannel", "query_params":["someproperty",false]}`), 400)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"filter":"`+base.ByChannelFilter+`", "query_params":["someproperty",false]}`), 400)
 
 	//Send JSON Object containing proxy property
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"proxy":"http://myproxy/"}`), 400)
@@ -1665,22 +1665,22 @@ func TestDocumentChangeReplicate(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db", "target":"http://myhost:4985/db", "continuous":true}`), 200)
 
 	//Initiate synchronous one shot replication with channel filter and JSON array of channel names
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db2", "target":"http://myhost:4985/db2", "filter":"sync_gateway/bychannel", "query_params":["A"]}`), 500)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db2", "target":"http://myhost:4985/db2", "filter":"`+base.ByChannelFilter+`", "query_params":["A"]}`), 500)
 
 	//Initiate synchronous one shot replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db3", "target":"http://myhost:4985/db3", "filter":"sync_gateway/bychannel", "query_params":{"channels":["A"]}}`), 500)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db3", "target":"http://myhost:4985/db3", "filter":"`+base.ByChannelFilter+`", "query_params":{"channels":["A"]}}`), 500)
 
 	//Initiate synchronous one shot replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names and custom changes_feed_limit
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db4", "target":"http://myhost:4985/db4", "filter":"sync_gateway/bychannel", "query_params":{"channels":["B"]}, "changes_feed_limit":10}`), 500)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db4", "target":"http://myhost:4985/db4", "filter":"`+base.ByChannelFilter+`", "query_params":{"channels":["B"]}, "changes_feed_limit":10}`), 500)
 
 	//Initiate continuous replication with channel filter and JSON array of channel names
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db2", "target":"http://myhost:4985/db2", "filter":"sync_gateway/bychannel", "query_params":["A"], "continuous":true}`), 200)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db2", "target":"http://myhost:4985/db2", "filter":"`+base.ByChannelFilter+`", "query_params":["A"], "continuous":true}`), 200)
 
 	//Initiate continuous replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db3", "target":"http://myhost:4985/db3", "filter":"sync_gateway/bychannel", "query_params":{"channels":["A"]}, "continuous":true}`), 200)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db3", "target":"http://myhost:4985/db3", "filter":"`+base.ByChannelFilter+`", "query_params":{"channels":["A"]}, "continuous":true}`), 200)
 
 	//Initiate continuous replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names and custom changes_feed_limit
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db4", "target":"http://myhost:4985/db4", "filter":"sync_gateway/bychannel", "query_params":{"channels":["B"]}, "changes_feed_limit":10, "continuous":true}`), 200)
+	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db4", "target":"http://myhost:4985/db4", "filter":"`+base.ByChannelFilter+`", "query_params":{"channels":["B"]}, "changes_feed_limit":10, "continuous":true}`), 200)
 
 	//Send JSON Object containing source and target as absolute URL and a replication_id
 	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"http://myhost:4985/mytargetdb", "replication_id":"myreplicationid"}`), 500)

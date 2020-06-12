@@ -167,7 +167,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	bh.continuous = subChangesParams.continuous()
 	bh.activeOnly = subChangesParams.activeOnly()
 
-	if filter := subChangesParams.filter(); filter == "sync_gateway/bychannel" {
+	if filter := subChangesParams.filter(); filter == base.ByChannelFilter {
 		var err error
 
 		bh.channels, err = subChangesParams.channelsExpandedSet()

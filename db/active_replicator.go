@@ -28,28 +28,28 @@ type ActiveReplicator struct {
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActiveReplicator, error) {
-	bar := &ActiveReplicator{}
+	ar := &ActiveReplicator{}
 
 	// if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
-	// 	bar.Push = NewPushReplicator(config)
+	// 	ar.Push = NewPushReplicator(config)
 	// }
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
-		bar.Pull = NewPullReplicator(ctx, config)
+		ar.Pull = NewPullReplicator(ctx, config)
 	}
 
-	return bar, nil
+	return ar, nil
 }
 
-func (bar *ActiveReplicator) Start() error {
-	// if bar.push != nil {
-	// 	if err := bar.push.Start(); err != nil {
+func (ar *ActiveReplicator) Start() error {
+	// if ar.push != nil {
+	// 	if err := ar.push.Start(); err != nil {
 	// 		return err
 	// 	}
 	// }
 
-	if bar.Pull != nil {
-		if err := bar.Pull.Start(); err != nil {
+	if ar.Pull != nil {
+		if err := ar.Pull.Start(); err != nil {
 			return err
 		}
 	}
@@ -57,15 +57,15 @@ func (bar *ActiveReplicator) Start() error {
 	return nil
 }
 
-func (bar *ActiveReplicator) Close() error {
-	// if bar.push != nil {
-	// 	if err := bar.push.Close(); err != nil {
+func (ar *ActiveReplicator) Close() error {
+	// if ar.push != nil {
+	// 	if err := ar.push.Close(); err != nil {
 	// 		return err
 	// 	}
 	// }
 
-	if bar.Pull != nil {
-		if err := bar.Pull.Close(); err != nil {
+	if ar.Pull != nil {
+		if err := ar.Pull.Close(); err != nil {
 			return err
 		}
 	}

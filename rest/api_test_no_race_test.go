@@ -126,7 +126,7 @@ func TestChangesNotifyChannelFilter(t *testing.T) {
 					 "feed":"longpoll", 
 					 "limit":50, 
 					 "since":"%s",
-					 "filter":"sync_gateway/bychannel",
+					 "filter":"` + base.ByChannelFilter + `",
 					 "channels":"ABC,PBS"}`
 	sinceZeroJSON := fmt.Sprintf(changesJSON, "0")
 	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", sinceZeroJSON, "bernard"))

@@ -437,7 +437,7 @@ func postChangesChannelFilter(t *testing.T, rt *RestTester) {
 		Last_Seq interface{}
 	}
 
-	changesJSON := `{"filter":"sync_gateway/bychannel", "channels":"PBS"}`
+	changesJSON := `{"filter":"` + base.ByChannelFilter + `", "channels":"PBS"}`
 	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)

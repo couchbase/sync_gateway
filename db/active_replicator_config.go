@@ -9,13 +9,22 @@ import (
 	"time"
 )
 
-type ActiveReplicatorDirection uint8
+type ActiveReplicatorDirection string
 
 const (
-	ActiveReplicatorTypePushAndPull ActiveReplicatorDirection = iota
-	ActiveReplicatorTypePush
-	ActiveReplicatorTypePull
+	ActiveReplicatorTypePushAndPull ActiveReplicatorDirection = "pushAndPull"
+	ActiveReplicatorTypePush                                  = "push"
+	ActiveReplicatorTypePull                                  = "pull"
 )
+
+func (d ActiveReplicatorDirection) IsValid() bool {
+	switch d {
+	case ActiveReplicatorTypePushAndPull, ActiveReplicatorTypePush, ActiveReplicatorTypePull:
+		return true
+	default:
+		return false
+	}
+}
 
 const (
 	defaultCheckpointInterval = time.Second * 30
@@ -69,7 +78,7 @@ func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 	if _, err := hash.Write([]byte(strconv.FormatBool(arc.ActiveOnly))); err != nil {
 		return "", err
 	}
-	if _, err := hash.Write([]byte(strconv.FormatUint(uint64(arc.Direction), 10))); err != nil {
+	if _, err := hash.Write([]byte(arc.Direction)); err != nil {
 		return "", err
 	}
 	if _, err := hash.Write([]byte(arc.PassiveDBURL.String())); err != nil {

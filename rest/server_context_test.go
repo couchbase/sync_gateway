@@ -208,21 +208,23 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Error(t, err, "It should throw 400 Illegal database name")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
+	// Get or add database from config with duplicate database name and useExisting as false.
+	server := "walrus:"
+	bucketName := "imbucket"
+	databaseName := "imdb"
+
 	// Get or add database from config with unrecognized value for import_docs.
 	dbConfig = &DbConfig{
 		Name:                "imdb",
 		OldRevExpirySeconds: &oldRevExpirySeconds,
 		LocalDocExpirySecs:  &localDocExpirySecs,
-		AutoImport:          "Unknown"}
+		AutoImport:          "Unknown",
+		BucketConfig:        BucketConfig{Server: &server, Bucket: &bucketName},
+	}
 
 	dbContext, err = serverContext._getOrAddDatabaseFromConfig(dbConfig, false)
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
-
-	// Get or add database from config with duplicate database name and useExisting as false.
-	server := "walrus:"
-	bucketName := "imbucket"
-	databaseName := "imdb"
 
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
 	dbConfig = &DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: true}

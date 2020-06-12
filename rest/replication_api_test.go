@@ -184,7 +184,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 		"delta_sync_enabled":true,
 		"max_backoff":100,
 		"state":"stopped",
-		"filter":"sync_gateway/bychannel",
+		"filter":"` + base.ByChannelFilter + `",
 		"query_params":["ABC"],
 		"cancel":false
 	}`
@@ -199,7 +199,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 		"delta_sync_enabled":true,
 		"max_backoff":100,
 		"state":"stopped",
-		"filter":"sync_gateway/bychannel",
+		"filter":"` + base.ByChannelFilter + `",
 		"query_params":["ABC"],
 		"cancel":false
 	}`
