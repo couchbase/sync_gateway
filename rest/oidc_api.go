@@ -35,9 +35,9 @@ const (
 	// stateCookieName is the name of state cookie to prevent cross-site request forgery (CSRF).
 	stateCookieName = "sg-oidc-state"
 
-	// stateCookieTimeout represents the duration of state cookie; state
-	// cookie expires within 5 minutes.
-	stateCookieTimeout = time.Minute * 5
+	// stateCookieMaxAge represents the number of seconds until the cookie expires.
+	// The state cookie expires in 5 minutes from when the response was generated.
+	stateCookieMaxAge = 300
 )
 
 var (
@@ -109,7 +109,7 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	// Set state to prevent cross-site request forgery (CSRF) when DisableCallbackState is not enabled.
 	if !provider.DisableCallbackState {
 		state = base.GenerateRandomSecret()
-		stateCookie := h.makeStateCookie(state, time.Now().Add(stateCookieTimeout))
+		stateCookie := h.makeStateCookie(state, stateCookieMaxAge)
 		http.SetCookie(h.response, stateCookie)
 	}
 
@@ -166,7 +166,7 @@ func (h *handler) handleOIDCCallback() error {
 		}
 
 		// Delete the state cookie on successful validation.
-		stateCookie = h.makeStateCookie("", time.Unix(0, 0))
+		stateCookie = h.makeStateCookie("", -1)
 		http.SetCookie(h.response, stateCookie)
 	}
 
@@ -312,16 +312,21 @@ func (h *handler) getOIDCCallbackURL(providerName string, isDefault bool) string
 	return callbackURL
 }
 
-// makeStateCookie returns a new state cookie with the value and expiry provided.
-func (h *handler) makeStateCookie(value string, expiry time.Time) *http.Cookie {
+// makeStateCookie creates a new state cookie with the specified value and Max-Age.
+// Max-Age has precedence whilst determining the state cookie expiration even though
+// both Expires and Max-Age are set.
+func (h *handler) makeStateCookie(value string, maxAge int) *http.Cookie {
 	cookie := &http.Cookie{
 		Name:     stateCookieName,
 		Value:    value,
 		HttpOnly: true,
-		Expires:  expiry,
+		MaxAge:   maxAge,
 	}
 	if h.rq.TLS != nil {
 		cookie.Secure = true
+	}
+	if maxAge > 0 {
+		cookie.Expires = time.Now().Add(time.Duration(maxAge) * time.Second)
 	}
 	base.AddDbPathToCookie(h.rq, cookie)
 	return cookie
