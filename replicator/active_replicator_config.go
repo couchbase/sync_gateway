@@ -33,13 +33,9 @@ type ActiveReplicatorConfig struct {
 	ActiveOnly bool
 	// ChangesBatchSize controls how many revisions may be batched per changes message.
 	ChangesBatchSize uint16
-	// CheckpointMinInterval throttles checkpointing to be at most, once this often.
-	CheckpointMinInterval time.Duration
-	// CheckpointMaxInterval limits the maximum time to go between setting a checkpoint.
-	CheckpointMaxInterval time.Duration
+	// CheckpointInterval triggers a checkpoint to be set this often.
+	CheckpointInterval time.Duration
 	// CheckpointRevCount controls how many revs to store before attempting to save a checkpoint.
-	CheckpointRevCount uint16
-	// Direction, otherwise known as the type of replication: PushAndPull, Push, or Pull.
 	Direction ActiveReplicatorDirection
 	// Continuous specifies whether the replication should be continuous or one-shot.
 	Continuous bool

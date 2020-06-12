@@ -223,13 +223,12 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:         false,
-		ChangesBatchSize:   changesBatchSize,
-		CheckpointRevCount: checkpointRevCount,
+		Continuous:       false,
+		ChangesBatchSize: changesBatchSize,
 		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing
-		CheckpointMinInterval: time.Minute,
-		CheckpointMaxInterval: time.Minute,
+		// to keep testing simple, bumped these up for deterministic checkpointing via Close
+		// TODO: Might be useful to add a replicator.CheckpointNow() method, to force checkpointing from certain points in a test.
+		CheckpointInterval: time.Minute * 5,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -271,9 +270,10 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// checkpoint assertions
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyGetCheckpointHitTotal)))
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyGetCheckpointMissTotal)))
-	// The number of checkpoints set is non-deterministic, as more revs can arrive between the time checkpointing was started, and whilst waiting for checkpointing to run
-	// Make sure we set at least one checkpoint for the initial set of revs
-	assert.True(t, 1 <= base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	ar.Pull.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
 
 	assert.NoError(t, ar.Close())
 
@@ -321,5 +321,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// assert the second active replicator stats
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyGetCheckpointHitTotal)))
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyGetCheckpointMissTotal)))
-	assert.True(t, int64(1) <= base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	ar.Pull.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
 }

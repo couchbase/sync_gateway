@@ -68,28 +68,27 @@ func NewBlipSyncContext(bc *blip.Context, db *db.Database, contextID string) *Bl
 // BlipSyncContext represents one BLIP connection (socket) opened by a client.
 // This connection remains open until the client closes it, and can receive any number of requests.
 type BlipSyncContext struct {
-	blipContext         *blip.Context
-	blipContextDb       *db.Database // 'master' database instance for the replication, used as source when creating handler-specific databases
-	dbUserLock          sync.RWMutex // Must be held when refreshing the db user
-	batchSize           int
-	gotSubChanges       bool
-	continuous          bool
-	activeOnly          bool
-	channels            base.Set
-	lock                sync.Mutex
-	allowedAttachments  map[string]int
-	handlerSerialNumber uint64            // Each handler within a context gets a unique serial number for logging
-	terminatorOnce      sync.Once         // Used to ensure the terminator channel below is only ever closed once.
-	terminator          chan bool         // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
-	activeSubChanges    base.AtomicBool   // Flag for whether there is a subChanges subscription currently active.  Atomic access
-	useDeltas           bool              // Whether deltas can be used for this connection - This should be set via setUseDeltas()
-	sgCanUseDeltas      bool              // Whether deltas can be used by Sync Gateway for this connection
-	userChangeWaiter    *db.ChangeWaiter  // Tracks whether the users/roles associated with the replication have changed
-	userName            string            // Avoid contention on db.user during userChangeWaiter user lookup
-	dbStats             *db.DatabaseStats // Direct stats access to support reloading db while stats are being updated
-
-	postHandleRevCallback     func(remoteSeq db.SequenceID)      // postHandleRevCallback is called after successfully handling an incoming rev message
-	postHandleChangesCallback func(expectedSeqs []db.SequenceID) // postHandleChangesCallback is called after successfully handling an incoming changes message
+	blipContext               *blip.Context
+	blipContextDb             *db.Database // 'master' database instance for the replication, used as source when creating handler-specific databases
+	dbUserLock                sync.RWMutex // Must be held when refreshing the db user
+	batchSize                 int
+	gotSubChanges             bool
+	continuous                bool
+	activeOnly                bool
+	channels                  base.Set
+	lock                      sync.Mutex
+	allowedAttachments        map[string]int
+	handlerSerialNumber       uint64                      // Each handler within a context gets a unique serial number for logging
+	terminatorOnce            sync.Once                   // Used to ensure the terminator channel below is only ever closed once.
+	terminator                chan bool                   // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
+	activeSubChanges          base.AtomicBool             // Flag for whether there is a subChanges subscription currently active.  Atomic access
+	useDeltas                 bool                        // Whether deltas can be used for this connection - This should be set via setUseDeltas()
+	sgCanUseDeltas            bool                        // Whether deltas can be used by Sync Gateway for this connection
+	userChangeWaiter          *db.ChangeWaiter            // Tracks whether the users/roles associated with the replication have changed
+	userName                  string                      // Avoid contention on db.user during userChangeWaiter user lookup
+	dbStats                   *db.DatabaseStats           // Direct stats access to support reloading db while stats are being updated
+	postHandleRevCallback     func(remoteSeq string)      // postHandleRevCallback is called after successfully handling an incoming rev message
+	postHandleChangesCallback func(expectedSeqs []string) // postHandleChangesCallback is called after successfully handling an incoming changes message
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.

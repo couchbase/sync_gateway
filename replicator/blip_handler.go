@@ -354,7 +354,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
 	}()
 
-	expectedSeqs := make([]db.SequenceID, 0)
+	expectedSeqs := make([]string, 0)
 
 	for _, change := range changeList {
 		docID := change[1].(string)
@@ -386,11 +386,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 				case json.Number:
 					seqStr = seq.String()
 				}
-				seq, err := bh.db.DatabaseContext.ParseSequenceID(seqStr)
-				if err != nil {
-					return base.HTTPErrorf(http.StatusBadRequest, "invalid sequence number %q for rev: %s / %s", seqStr, docID, revID)
-				}
-				expectedSeqs = append(expectedSeqs, seq)
+				expectedSeqs = append(expectedSeqs, seqStr)
 			}
 		}
 		nWritten++
@@ -656,11 +652,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) error {
 	}
 
 	if bh.postHandleRevCallback != nil {
-		remoteSeq, err := bh.db.ParseSequenceID(rq.Properties[RevMessageSequence])
-		if err != nil {
-			return err
-		}
-		bh.postHandleRevCallback(remoteSeq)
+		bh.postHandleRevCallback(rq.Properties[RevMessageSequence])
 	}
 
 	return nil
