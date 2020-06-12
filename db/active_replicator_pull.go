@@ -1,4 +1,4 @@
-package replicator
+package db
 
 import (
 	"context"

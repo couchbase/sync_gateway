@@ -11,7 +11,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/couchbase/sync_gateway/replicator"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,9 +39,9 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
 		ID:           t.Name(),
-		Direction:    replicator.ActiveReplicatorTypePushAndPull,
+		Direction:    db.ActiveReplicatorTypePushAndPull,
 		ActiveDB:     &db.Database{DatabaseContext: rt.GetDatabase()},
 		PassiveDBURL: passiveDBURL,
 	})
@@ -129,9 +128,9 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	ar, err := replicator.NewActiveReplicator(context.Background(), &replicator.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
 		ID:           t.Name(),
-		Direction:    replicator.ActiveReplicatorTypePull,
+		Direction:    db.ActiveReplicatorTypePull,
 		PassiveDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
@@ -216,9 +215,9 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	arConfig := replicator.ActiveReplicatorConfig{
+	arConfig := db.ActiveReplicatorConfig{
 		ID:           t.Name(),
-		Direction:    replicator.ActiveReplicatorTypePull,
+		Direction:    db.ActiveReplicatorTypePull,
 		PassiveDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
@@ -232,7 +231,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar, err := replicator.NewActiveReplicator(context.Background(), &arConfig)
+	ar, err := db.NewActiveReplicator(context.Background(), &arConfig)
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
@@ -264,16 +263,16 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// rev assertions
 	numRevsSentTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
 	assert.Equal(t, startNumRevsSentTotal+numRT2DocsInitial, numRevsSentTotal)
-	assert.Equal(t, int64(numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyRevsReceivedTotal)))
-	assert.Equal(t, int64(numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyChangesRevsReceivedTotal)))
+	assert.Equal(t, int64(numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyRevsReceivedTotal)))
+	assert.Equal(t, int64(numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyChangesRevsReceivedTotal)))
 
 	// checkpoint assertions
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyGetCheckpointHitTotal)))
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyGetCheckpointMissTotal)))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyGetCheckpointHitTotal)))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyGetCheckpointMissTotal)))
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
 	ar.Pull.CheckpointNow()
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
 
 	assert.NoError(t, ar.Close())
 
@@ -284,7 +283,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar, err = replicator.NewActiveReplicator(context.Background(), &arConfig)
+	ar, err = db.NewActiveReplicator(context.Background(), &arConfig)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Close()) }()
 	assert.NoError(t, ar.Start())
@@ -315,13 +314,13 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
 	numRevsSentTotal = base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
 	assert.Equal(t, startNumRevsSentTotal+numRT2DocsTotal, numRevsSentTotal)
-	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyRevsReceivedTotal)))
-	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyChangesRevsReceivedTotal)))
+	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyRevsReceivedTotal)))
+	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyChangesRevsReceivedTotal)))
 
 	// assert the second active replicator stats
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyGetCheckpointHitTotal)))
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeyGetCheckpointMissTotal)))
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyGetCheckpointHitTotal)))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyGetCheckpointMissTotal)))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
 	ar.Pull.CheckpointNow()
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(replicator.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
 }

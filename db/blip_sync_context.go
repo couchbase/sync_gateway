@@ -1,4 +1,4 @@
-package replicator
+package db
 
 import (
 	"errors"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 )
 
 const (
@@ -38,7 +37,7 @@ var (
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
-func NewBlipSyncContext(bc *blip.Context, db *db.Database, contextID string) *BlipSyncContext {
+func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string) *BlipSyncContext {
 	bsc := &BlipSyncContext{
 		blipContext:      bc,
 		blipContextDb:    db,
@@ -69,7 +68,7 @@ func NewBlipSyncContext(bc *blip.Context, db *db.Database, contextID string) *Bl
 // This connection remains open until the client closes it, and can receive any number of requests.
 type BlipSyncContext struct {
 	blipContext               *blip.Context
-	blipContextDb             *db.Database // 'master' database instance for the replication, used as source when creating handler-specific databases
+	blipContextDb             *Database    // 'master' database instance for the replication, used as source when creating handler-specific databases
 	dbUserLock                sync.RWMutex // Must be held when refreshing the db user
 	batchSize                 int
 	gotSubChanges             bool
@@ -84,9 +83,9 @@ type BlipSyncContext struct {
 	activeSubChanges          base.AtomicBool             // Flag for whether there is a subChanges subscription currently active.  Atomic access
 	useDeltas                 bool                        // Whether deltas can be used for this connection - This should be set via setUseDeltas()
 	sgCanUseDeltas            bool                        // Whether deltas can be used by Sync Gateway for this connection
-	userChangeWaiter          *db.ChangeWaiter            // Tracks whether the users/roles associated with the replication have changed
+	userChangeWaiter          *ChangeWaiter               // Tracks whether the users/roles associated with the replication have changed
 	userName                  string                      // Avoid contention on db.user during userChangeWaiter user lookup
-	dbStats                   *db.DatabaseStats           // Direct stats access to support reloading db while stats are being updated
+	dbStats                   *DatabaseStats              // Direct stats access to support reloading db while stats are being updated
 	postHandleRevCallback     func(remoteSeq string)      // postHandleRevCallback is called after successfully handling an incoming rev message
 	postHandleChangesCallback func(expectedSeqs []string) // postHandleChangesCallback is called after successfully handling an incoming changes message
 }
@@ -160,21 +159,21 @@ func (bsc *BlipSyncContext) NotFoundHandler(rq *blip.Message) {
 	blip.Unhandled(rq)
 }
 
-func (bsc *BlipSyncContext) copyContextDatabase() *db.Database {
+func (bsc *BlipSyncContext) copyContextDatabase() *Database {
 	bsc.dbUserLock.RLock()
 	databaseCopy := bsc._copyContextDatabase()
 	bsc.dbUserLock.RUnlock()
 	return databaseCopy
 }
 
-func (bsc *BlipSyncContext) _copyContextDatabase() *db.Database {
-	databaseCopy, _ := db.GetDatabase(bsc.blipContextDb.DatabaseContext, bsc.blipContextDb.User())
+func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
+	databaseCopy, _ := GetDatabase(bsc.blipContextDb.DatabaseContext, bsc.blipContextDb.User())
 	databaseCopy.Ctx = bsc.blipContextDb.Ctx
 	return databaseCopy
 }
 
 // Handles the response to a pushed "changes" message, i.e. the list of revisions the client wants
-func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *db.Database) error {
+func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *Database) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warnf("[%s] PANIC handling 'changes' response: %v\n%s", bsc.blipContext.ID, panicked, debug.Stack())
@@ -223,7 +222,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	var revSendCount int64
 	for i, knownRevsArray := range answer {
 		if knownRevsArray, ok := knownRevsArray.([]interface{}); ok {
-			seq := changeArray[i][0].(db.SequenceID)
+			seq := changeArray[i][0].(SequenceID)
 			docID := changeArray[i][1].(string)
 			revID := changeArray[i][2].(string)
 			deltaSrcRevID := ""
@@ -371,7 +370,7 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	}
 }
 
-func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID string, revDelta *db.RevisionDelta, seq db.SequenceID) error {
+func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID) error {
 
 	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
@@ -412,7 +411,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq db.SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *db.Database) error {
+func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
 	rev, err := handleChangesResponseDb.GetRev(docID, revID, true, nil)
 	if err != nil {
 		return bsc.sendNoRev(sender, docID, revID, err)
@@ -423,7 +422,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
-			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: db.BodyAttachments, Val: rev.Attachments})
+			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
 			if err != nil {
 				return err
 			}
@@ -438,7 +437,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
-			body[db.BodyAttachments] = rev.Attachments
+			body[BodyAttachments] = rev.Attachments
 		}
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
@@ -449,12 +448,12 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
-	attDigests := db.AttachmentDigests(rev.Attachments)
+	attDigests := AttachmentDigests(rev.Attachments)
 	base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), attDigests)
 	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties)
 }
 
-func toHistory(revisions db.Revisions, knownRevs map[string]bool, maxHistory int) []string {
+func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) []string {
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := revisions.ParseRevisions()[1:]
 	for i, rev := range history {

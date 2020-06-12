@@ -1,4 +1,4 @@
-package replicator
+package db
 
 import (
 	"bytes"
@@ -10,7 +10,6 @@ import (
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"github.com/couchbase/sync_gateway/db"
 )
 
 // Message types
@@ -85,12 +84,12 @@ const (
 )
 
 // Function signature for something that parses a sequence id from a string
-type SequenceIDParser func(since string) (db.SequenceID, error)
+type SequenceIDParser func(since string) (SequenceID, error)
 
 // Helper for handling BLIP subChanges requests.  Supports Stringer() interface to log aspects of the request.
 type SubChangesParams struct {
 	rq      *blip.Message // The underlying BLIP message
-	_since  db.SequenceID // Since value on the incoming request
+	_since  SequenceID    // Since value on the incoming request
 	_docIDs []string      // Document ID filter specified on the incoming request
 }
 
@@ -99,7 +98,7 @@ type SubChangesBody struct {
 }
 
 // Create a new subChanges helper
-func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq db.SequenceID, sequenceIDParser SequenceIDParser) (*SubChangesParams, error) {
+func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq SequenceID, sequenceIDParser SequenceIDParser) (*SubChangesParams, error) {
 
 	params := &SubChangesParams{
 		rq: rq,
@@ -127,7 +126,7 @@ func NewSubChangesParams(logCtx context.Context, rq *blip.Message, zeroSeq db.Se
 	return params, nil
 }
 
-func (s *SubChangesParams) Since() db.SequenceID {
+func (s *SubChangesParams) Since() SequenceID {
 	return s._since
 }
 

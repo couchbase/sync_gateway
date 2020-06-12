@@ -1,11 +1,10 @@
-package replicator
+package db
 
 import (
 	"context"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -38,8 +37,8 @@ func TestBlipSyncContextSetUseDeltas(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{
-				dbStats:        db.NewDatabaseStats(),
-				blipContextDb:  &db.Database{Ctx: context.TODO()},
+				dbStats:        NewDatabaseStats(),
+				blipContextDb:  &Database{Ctx: context.TODO()},
 				useDeltas:      tt.startingCtxDeltas,
 				sgCanUseDeltas: tt.sgCanUseDeltas,
 			}
@@ -79,8 +78,8 @@ func BenchmarkBlipSyncContextSetUseDeltas(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
 			ctx := &BlipSyncContext{
-				dbStats:       db.NewDatabaseStats(),
-				blipContextDb: &db.Database{Ctx: context.TODO()},
+				dbStats:       NewDatabaseStats(),
+				blipContextDb: &Database{Ctx: context.TODO()},
 			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

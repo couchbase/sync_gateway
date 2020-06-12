@@ -19,12 +19,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/sync_gateway/replicator"
-	"golang.org/x/net/websocket"
-
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
+	"golang.org/x/net/websocket"
 )
 
 // Minimum value of _changes?heartbeat property
@@ -437,9 +435,9 @@ func (h *handler) sendSimpleChanges(channels base.Set, options db.ChangesOptions
 func (h *handler) generateContinuousChanges(inChannels base.Set, options db.ChangesOptions, send func([]*db.ChangeEntry) error) (error, bool) {
 	// Ensure continuous is set, since generateChanges now supports both continuous and one-shot
 	options.Continuous = true
-	err, forceClose := replicator.GenerateChanges(h.rq.Context(), h.db, inChannels, options, nil, send)
-	if sendErr, ok := err.(*replicator.ChangesSendErr); ok {
-		h.logStatus(http.StatusOK, fmt.Sprintf("Write error: %v", sendErr))
+	err, forceClose := db.GenerateChanges(h.rq.Context(), h.db, inChannels, options, nil, send)
+	if sendErr, ok := err.(*db.ChangesSendErr); ok {
+		h.logStatus(http.StatusOK, fmt.Sprintf("0Write error: %v", sendErr))
 		return nil, forceClose // error is probably because the client closed the connection
 	} else {
 		h.logStatus(http.StatusOK, "OK (continuous feed closed)")
