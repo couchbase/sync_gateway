@@ -43,7 +43,7 @@ else:
     alldocsPath = jsonRoot + "/all_docs.json"
     allDocs = open(alldocsPath) 
 
-print(('Getting ' + alldocsPath))
+print('Getting ' + alldocsPath)
 
 parser = ijson.parse(allDocs)
 all_seqs = []
@@ -83,7 +83,7 @@ else:
     changesPath = jsonRoot + "/changes.json"
     jsonFile = open(changesPath)
 
-print(('Getting ' + changesPath))
+print('Getting ' + changesPath)
 
 parser = ijson.parse(jsonFile)
 changes_seqs = []
@@ -120,34 +120,34 @@ for prefix, event, value in parser:
 changes_seqs.sort()
 deletes.sort()
 
-print(('\r\n_all_docs returned ' + str(len(all_seqs)) + ' rows')) 
-print(('_changes  returned ' + str(len(all_seqs)) + ' results')) 
+print('\r\n_all_docs returned ' + str(len(all_seqs)) + ' rows')
+print('_changes  returned ' + str(len(all_seqs)) + ' results')
 
 for value in all_seqs:
     if not value in changes_seqs:
-        print(('all_docs seq #'  + str(value) + 'not found in _changes'))
+        print('all_docs seq #'  + str(value) + 'not found in _changes')
 
 for value in changes_seqs:
     if not value in deletes and not value in user_docs and not value in all_seqs:
-        print(('_changes seq #' + str(value) + ' not found in all_docs'))
+        print('_changes seq #' + str(value) + ' not found in all_docs')
 
-print(('\r\nupdate_seq: ' + update_seq))
-print(('last_seq:   ' + last_seq))
+print('\r\nupdate_seq: ' + update_seq)
+print('last_seq:   ' + last_seq)
 
 print('\r\nall_docs channel counts:')
 for key in sorted(all_channels.keys()):
     if (key == "unassigned"):
         print('')
-    print((' ' + key + ': ' + str(all_channels[key])))
+    print(' ' + key + ': ' + str(all_channels[key]))
 
 delCount = len(deletes)
 
 print('\r\nchanges channel counts:')
 for key in sorted(changes_channels.keys()):
     if (key == "unassigned"):
-        print(('\r\n ' + key + ': ' + str(changes_channels[key] - delCount))) #+ '(' + str() + ')')
+        print('\r\n ' + key + ': ' + str(changes_channels[key] - delCount)) #+ '(' + str() + ')')
     else:
-        print((' ' + key + ': ' + str(changes_channels[key])))
+        print(' ' + key + ': ' + str(changes_channels[key]))
 
-print(('\r\ntotal user doc sequences: ' + str(len(user_docs))))
-print(('total tombstones: ' + str(delCount) + '\r\n'))
+print('\r\ntotal user doc sequences: ' + str(len(user_docs)))
+print('total tombstones: ' + str(delCount) + '\r\n')
