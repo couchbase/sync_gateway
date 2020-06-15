@@ -216,7 +216,7 @@ class PythonTask(object):
 
     def execute(self, fp):
         """Run the task"""
-        print(("log_file: {0}. ".format(self.log_file)))
+        print("log_file: {0}. ".format(self.log_file))
         try:
             result = self.callable()
             try:
