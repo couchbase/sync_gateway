@@ -69,7 +69,7 @@ const (
 	activeOnlyFilter = "$$activeOnlyFilter"
 
 	// Filter expression to be used in channel query to select only active documents.
-	activeOnlyFilterExpression = "AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)"
+	activeOnlyFilterExpression = "AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false) "
 )
 
 var QueryChannels = SGQuery{
@@ -86,7 +86,7 @@ var QueryChannels = SGQuery{
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op "+
 			"WHERE ([op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]  "+
 			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
-			"%s "+
+			"%s"+
 			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]",
 		base.BucketQueryToken, base.BucketQueryToken, activeOnlyFilter),
 	adhoc: false,
