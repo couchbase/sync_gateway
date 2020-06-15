@@ -674,6 +674,7 @@ def make_os_tasks(processes):
         UnixTask("couchbase user definition", "getent passwd couchbase"),
         UnixTask("couchbase user limits", "su couchbase -c \"ulimit -a\"",
                  privileged=True),
+        UnixTask("sync_gateway user definition", "getent passwd sync_gateway"),
         UnixTask("sync_gateway user limits", "su sync_gateway -c \"ulimit -a\"",
                  privileged=True),
         UnixTask("Interrupt status", "intrstat 1 10"),
