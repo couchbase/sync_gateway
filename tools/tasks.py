@@ -1064,15 +1064,14 @@ def do_upload_and_exit(path, url, proxy):
     filedata = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
 
     # Get proxies from environment/system
-    proxy_handler = urllib.request.ProxyHandler(urllib.getproxies())
+    proxy_handler = urllib.request.ProxyHandler(urllib.request.getproxies())
     if proxy != "":
         # unless a proxy is explicitly passed, then use that instead
         proxy_handler = urllib.request.ProxyHandler({'https': proxy, 'http': proxy})
 
     opener = urllib.request.build_opener(proxy_handler)
-    request = urllib.request.Request(url.encode('utf-8'), data=filedata)
+    request = urllib.request.Request(url, data=filedata.read(), method='PUT')
     request.add_header(str('Content-Type'), str('application/zip'))
-    request.get_method = lambda: str('PUT')
 
     exit_code = 0
     try:
