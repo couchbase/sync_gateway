@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -28,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -663,12 +665,12 @@ func (h *handler) addJSON(value interface{}) error {
 	encoder := base.JSONEncoderCanonical(h.response)
 	err := encoder.Encode(value)
 	if err != nil {
-		clientConnectionError := strings.Contains(err.Error(), "write: broken pipe")
-		if clientConnectionError {
+		// If we get a broken pipe error
+		if errors.Is(err, syscall.EPIPE) {
 			base.Debugf(base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
 			return err
 		} else {
-			base.Warnf("Couldn't serialize JSON for %v : %s", base.UD(value), err)
+			base.Warnf("Couldn't serialize JSON for %s", err)
 			h.writeStatus(http.StatusInternalServerError, "Couldn't serialize document body")
 		}
 	}
