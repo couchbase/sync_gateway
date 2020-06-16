@@ -7,6 +7,7 @@
             "production": true,
             "interval": 30,
             "go_version": "1.13.4",
+            "trigger_blackduck": true,
             "start_build": 1
         },
         "manifest/1.4.0.xml": {
@@ -186,6 +187,7 @@
             "production": true,
             "interval": 120,
             "go_version": "1.13.4",
+            "trigger_blackduck": true,
             "start_build": 1
         },
         "manifest/2.7/2.7.3.xml": {
