@@ -666,7 +666,7 @@ func (h *handler) addJSON(value interface{}) error {
 	err := encoder.Encode(value)
 	if err != nil {
 		// If we get a broken pipe error
-		if errors.Is(err, syscall.EPIPE) {
+		if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
 			base.Debugf(base.KeyCRUD, "Couldn't serialize document body, HTTP client closed connection")
 			return err
 		} else {
