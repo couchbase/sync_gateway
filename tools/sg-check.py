@@ -22,7 +22,7 @@
 #
 import ijson # `pip install ijson` if you cannot load this module.
 import sys
-from urllib2 import urlopen
+from urllib.request import urlopen
 
 previous = 0
 current = 0
@@ -120,8 +120,8 @@ for prefix, event, value in parser:
 changes_seqs.sort()
 deletes.sort()
 
-print('\r\n_all_docs returned ' + str(len(all_seqs)) + ' rows') 
-print('_changes  returned ' + str(len(all_seqs)) + ' results') 
+print('\r\n_all_docs returned ' + str(len(all_seqs)) + ' rows')
+print('_changes  returned ' + str(len(all_seqs)) + ' results')
 
 for value in all_seqs:
     if not value in changes_seqs:

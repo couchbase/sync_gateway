@@ -1,37 +1,35 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- python -*-
-import os
-import sys
-import tempfile
-import subprocess
-import re
-import platform
 import glob
-import optparse
-import urllib2
-import shutil
 import json
+import optparse
+import os
+import platform
+import re
+import ssl
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
-
 from sys import platform as _platform
 
-from tasks import CbcollectInfoOptions
-from tasks import dump_utilities
-from tasks import generate_upload_url
-from tasks import TaskRunner
-from tasks import make_os_tasks
-from tasks import log
+import password_remover
 from tasks import AllOsTask
-from tasks import make_curl_task
-from tasks import flatten
-from tasks import do_upload_and_exit
+from tasks import CbcollectInfoOptions
+from tasks import TaskRunner
 from tasks import add_file_task
 from tasks import add_gzip_file_task
+from tasks import do_upload_and_exit
+from tasks import dump_utilities
+from tasks import flatten
+from tasks import generate_upload_url
+from tasks import log
+from tasks import make_curl_task
+from tasks import make_os_tasks
 from tasks import setup_stdin_watcher
 
-import password_remover
-
-import ssl
 try:
     # Don't validate HTTPS by default.
     _create_unverified_https_context = ssl._create_unverified_context
@@ -150,7 +148,7 @@ def make_http_client_pprof_tasks(sg_url):
 
 def to_lower_case_keys_dict(original_dict):
     result = {}
-    for k, v in original_dict.items():
+    for k, v in list(original_dict.items()):
         result[k.lower()] = v
     return result
 
@@ -230,11 +228,11 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
     if sg_url:
         config_url = "{0}/_config".format(sg_url)
         try:
-            response = urllib2.urlopen(config_url)
-        except urllib2.URLError:
+            response = urllib.request.urlopen(config_url)
+        except urllib.error.URLError:
             config_str = ""
         else:
-            config_str = str(response.read())
+            config_str = response.read().decode('utf-8')
     else:
         config_str = ""
 
@@ -251,7 +249,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
 
     sg_tasks = []
 
-    for _, path in sg_log_files.iteritems():
+    for _, path in sg_log_files.items():
         for os_home_dir in os_home_dirs:
             sg_log_file_path = os.path.join(os_home_dir, path)
 
@@ -352,9 +350,9 @@ def get_db_list(sg_url):
 
     # get content and parse into json
     try:
-        response = urllib2.urlopen(all_dbs_url)
+        response = urllib.request.urlopen(all_dbs_url)
         data = json.load(response)
-    except urllib2.URLError as e:
+    except urllib.error.URLError as e:
         print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
 
     # return list of dbs
@@ -430,9 +428,9 @@ def get_paths_from_expvars(sg_url):
     # get content and parse into json
     if sg_url:
         try:
-            response = urllib2.urlopen(expvar_url(sg_url))
+            response = urllib.request.urlopen(expvar_url(sg_url))
             data = json.load(response)
-        except urllib2.URLError as e:
+        except urllib.error.URLError as e:
             print("WARNING: Unable to connect to Sync Gateway: {0}".format(e))
 
     if data is not None and "cmdline" in data:
@@ -580,16 +578,16 @@ def main():
         print("Trying Sync Gateway URL: {0}".format(sg_url_http))
 
         try:
-            response = urllib2.urlopen(sg_url_http)
+            response = urllib.request.urlopen(sg_url_http)
             json.load(response)
-        except Exception, e:
+        except Exception as e:
             print("Failed to communicate with: {} {}".format(sg_url_http, e))
             sg_url_https = "https://" + root_url
             print("Trying Sync Gateway URL: {0}".format(sg_url_https))
             try:
-                response = urllib2.urlopen(sg_url_https)
+                response = urllib.request.urlopen(sg_url_https)
                 json.load(response)
-            except Exception, e:
+            except Exception as e:
                 print("Failed to communicate with Sync Gateway using url {}. "
                       "Check that Sync Gateway is running and reachable. "
                       "Will attempt to continue anyway.".format(e))
@@ -687,7 +685,7 @@ def main():
     # Echo the command line args used to run sgcollect_info
     cmd_line_args_task = AllOsTask(
         "Echo sgcollect_info cmd line args",
-        "echo options: {0} args: {1}".format({k: ud(v, should_redact) for k, v in options.__dict__.items()}, args),
+        "echo options: {0} args: {1}".format({k: ud(v, should_redact) for k, v in list(options.__dict__.items())}, args),
         log_file="sgcollect_info_options.log",
     )
     runner.run(cmd_line_args_task)

@@ -4,10 +4,10 @@ Redacts sensitive data in config files
 """
 
 
-import unittest
 import json
-from urlparse import urlparse
 import traceback
+import unittest
+from urllib.parse import urlparse
 
 
 def is_valid_json(invalid_json):
@@ -108,7 +108,7 @@ def tag_userdata_in_db_json(db):
                     for i, _ in enumerate(admin_roles):
                         admin_roles[i] = UD(admin_roles[i])
             # Tag dict keys. Can't be done in the above loop.
-            for i, _ in users.items():
+            for i, _ in list(users.items()):
                 users[UD(i)] = users.pop(i)
 
         if "roles" in db:
@@ -120,7 +120,7 @@ def tag_userdata_in_db_json(db):
                     for i, _ in enumerate(admin_channels):
                         admin_channels[i] = UD(admin_channels[i])
             # Tag dict keys. Can't be done in the above loop.
-            for i, _ in roles.items():
+            for i, _ in list(roles.items()):
                 roles[UD(i)] = roles.pop(i)
 
 
@@ -147,7 +147,7 @@ def remove_passwords_from_config(config_fragment):
     if "password" in config_fragment:
         config_fragment["password"] = "******"
 
-    for key, item in config_fragment.items():
+    for key, item in list(config_fragment.items()):
         if isinstance(item, dict):
             remove_passwords_from_config(item)
 
@@ -249,6 +249,11 @@ def convert_to_valid_json(invalid_json):
     state = STATE_OUTSIDE_BACKTICK
     output = []
     sync_function_buffer = []
+
+    try:
+        invalid_json = invalid_json.decode('utf-8')
+    except (UnicodeDecodeError, AttributeError):
+        pass
 
     # Strip newlines
     invalid_json = invalid_json.replace('\n', '')
