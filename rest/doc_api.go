@@ -140,7 +140,10 @@ func (h *handler) handleGetDoc() error {
 				}
 				_, _ = h.response.Write(separator)
 				separator = []byte(",")
-				_ = h.addJSON(revBody)
+				err = h.addJSON(revBody)
+				if err != nil {
+					return err
+				}
 			}
 			_, _ = h.response.Write([]byte(`]`))
 			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)

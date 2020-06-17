@@ -58,7 +58,10 @@ func (h *handler) handleRevsDiff() error {
 			}
 			first = false
 			_, _ = h.response.Write([]byte(fmt.Sprintf("%q:", docid)))
-			_ = h.addJSON(docOutput)
+			err = h.addJSON(docOutput)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	_, _ = h.response.Write([]byte("}"))
