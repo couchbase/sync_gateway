@@ -376,14 +376,20 @@ func IsIndexerRetryIndexError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "will be retried in background")
+	if strings.Contains(err.Error(), "will retry") || strings.Contains(err.Error(), "will be retried") {
+		return true
+	}
+	return false
 }
 
 func IsIndexerRetryBuildError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "will retry building in the background")
+	if strings.Contains(err.Error(), "will retry") || strings.Contains(err.Error(), "will be retried") {
+		return true
+	}
+	return false
 }
 
 // Check for transient indexer errors (can be retried)
