@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -116,7 +117,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return err
 	}
 
-	if rc.Filter == "sync_gateway/bychannel" {
+	if rc.Filter == base.ByChannelFilter {
 		if rc.QueryParams == nil {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing query_params")
 			return
@@ -234,12 +235,17 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
 type sgReplicateManager struct {
-	cfg               cbgt.Cfg                      // Key-value store implementation
-	loggingCtx        context.Context               // logging context for manager operations
-	heartbeatListener *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
+	cfg                    cbgt.Cfg                      // Key-value store implementation
+	loggingCtx             context.Context               // logging context for manager operations
+	heartbeatListener      *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
+	localNodeUUID          string                        // nodeUUID for this SG node
+	activeReplications     map[string]*ActiveReplicator  // currently active replications
+	activeReplicationsLock sync.RWMutex                  // Mutex for activeReplications
+	terminator             chan struct{}
+	dbContext              *DatabaseContext
 }
 
-func NewSGReplicateManager(cfg cbgt.Cfg, dbName string) (*sgReplicateManager, error) {
+func NewSGReplicateManager(dbContext *DatabaseContext, cfg *base.CfgSG) (*sgReplicateManager, error) {
 	if cfg == nil {
 		return nil, errors.New("Cfg must be provided for SGReplicateManager")
 	}
@@ -247,7 +253,10 @@ func NewSGReplicateManager(cfg cbgt.Cfg, dbName string) (*sgReplicateManager, er
 	return &sgReplicateManager{
 		cfg: cfg,
 		loggingCtx: context.WithValue(context.Background(), base.LogContextKey{},
-			base.LogContext{CorrelationID: sgrClusterMgrContextID + dbName}),
+			base.LogContext{CorrelationID: sgrClusterMgrContextID + dbContext.Name}),
+		terminator:         make(chan struct{}),
+		dbContext:          dbContext,
+		activeReplications: make(map[string]*ActiveReplicator),
 	}, nil
 
 }
@@ -266,12 +275,157 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 		return err
 	}
 
+	m.localNodeUUID = nodeUUID
+
 	m.heartbeatListener, err = NewReplicationHeartbeatListener(m)
 	if err != nil {
 		return err
 	}
 
 	return heartbeater.RegisterListener(m.heartbeatListener)
+}
+
+// StartReplications performs an initial retrieval of the cluster config, starts any replications
+// assigned to this node, and starts the process to monitor future changes to the cluster config.
+func (m *sgReplicateManager) StartReplications() error {
+
+	replications, err := m.GetReplications()
+	if err != nil {
+		return err
+	}
+
+	for replicationID, replication := range replications {
+		if replication.AssignedNode == m.localNodeUUID {
+			// TODO: retain replication reference for status
+			_, err := m.StartReplication(replication)
+			if err != nil {
+				return err
+			}
+			base.Infof(base.KeyReplicate, "Started replication %s", base.UD(replicationID))
+		}
+	}
+
+	return m.SubscribeCfgChanges()
+}
+
+func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicator *ActiveReplicator, err error) {
+	// TODO: the following properties on ActiveReplicator aren't currently supported in ReplicationCfg.  Some could be taken
+	//    out until they are implemented?
+	//    - docIDs  (future enhancement)
+	//    - activeOnly (P1)
+	//    - changesBatchSize (to be added only based on perf testing)
+	//    - checkpointInterval (not externally configurable)
+
+	base.Infof(base.KeyReplicate, "Starting replication %v (placeholder)", config.ID)
+
+	rc := &ActiveReplicatorConfig{
+		ID:         config.ID,
+		Continuous: config.Continuous,
+		ActiveDB:   &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
+	}
+
+	if config.Filter == base.ByChannelFilter {
+		rc.Filter = base.ByChannelFilter
+		rc.FilterChannels, err = ChannelsFromQueryParams(config.QueryParams)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("Unknown replication filter: %v", config.Filter)
+	}
+
+	rc.Direction = ActiveReplicatorDirection(config.Direction)
+	if !rc.Direction.IsValid() {
+		return nil, fmt.Errorf("Unknown replication direction: %v", config.Direction)
+	}
+
+	if config.Remote == "" {
+		return nil, fmt.Errorf("Replication remote must not be empty")
+	}
+
+	rc.PassiveDBURL, err = url.Parse(config.Remote)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: review whether there's a more appropriate context to use here
+	replicator, err = NewActiveReplicator(context.Background(), rc)
+	if err != nil {
+		return nil, err
+	}
+
+	startErr := replicator.Start()
+	if startErr != nil {
+		return nil, err
+	}
+
+	return replicator, nil
+}
+
+func (m *sgReplicateManager) Stop() {
+	close(m.terminator)
+}
+
+// RefreshReplicationCfg is called when the cfg changes.  Checks whether replications
+// have been added to or removed from this node
+func (m *sgReplicateManager) RefreshReplicationCfg() error {
+	configReplications, err := m.GetReplications()
+	if err != nil {
+		return err
+	}
+
+	// check for active replications that should be stopped
+	m.activeReplicationsLock.Lock()
+	defer m.activeReplicationsLock.Unlock()
+	for replicationID, activeReplication := range m.activeReplications {
+		replicationCfg, ok := configReplications[replicationID]
+		if !ok || replicationCfg.AssignedNode != m.localNodeUUID {
+			err := activeReplication.Close()
+			if err != nil {
+				base.Warnf("Unable to gracefully close active replication: %v", err)
+			}
+			delete(m.activeReplications, replicationID)
+		}
+	}
+
+	// Check for replications assigned to this node that need to be started
+	for replicationID, replicationCfg := range configReplications {
+		if replicationCfg.AssignedNode == m.localNodeUUID {
+			_, exists := m.activeReplications[replicationID]
+			if !exists {
+				m.activeReplications[replicationID], err = m.StartReplication(replicationCfg)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (m *sgReplicateManager) SubscribeCfgChanges() error {
+	cfgEvents := make(chan cbgt.CfgEvent)
+
+	err := m.cfg.Subscribe(cfgKeySGRCluster, cfgEvents)
+	if err != nil {
+		base.Debugf(base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
+		return err
+	}
+	go func() {
+		defer base.FatalPanicHandler()
+		for {
+			select {
+			case <-cfgEvents:
+				err := m.RefreshReplicationCfg()
+				if err != nil {
+					base.Warnf("Error while updating replications based on latest cfg: %v", err)
+				}
+			case <-m.terminator:
+				return
+			}
+		}
+	}()
+	return nil
 }
 
 // Loads the SGReplicate config from the config store
@@ -651,7 +805,7 @@ func NewReplicationHeartbeatListener(mgr *sgReplicateManager) (*ReplicationHeart
 	}
 
 	// Subscribe to changes to the known node set key
-	err = listener.subscribeNodeChanges()
+	err = listener.subscribeNodeSetChanges()
 	if err != nil {
 		return nil, err
 	}
@@ -674,8 +828,8 @@ func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 }
 
 // subscribeNodeChanges registers with the manager's cfg implementation for notifications on changes to the
-// NODE_DEFS_KNOWN key.  When notified, refreshes the handlers nodeIDs.
-func (l *ReplicationHeartbeatListener) subscribeNodeChanges() error {
+// cfgKeySGRCluster key.  When notified, refreshes the handlers nodeIDs.
+func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 
 	cfgEvents := make(chan cbgt.CfgEvent)
 

@@ -116,6 +116,9 @@ const (
 
 	SyncPropertyName = "_sync"
 	SyncXattrName    = "_sync"
+
+	// Replication filter constants
+	ByChannelFilter = "sync_gateway/bychannel"
 )
 
 const (

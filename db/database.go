@@ -300,7 +300,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Initialize sg-replicate manager
-	dbContext.SGReplicateMgr, err = NewSGReplicateManager(dbContext.CfgSG, dbName)
+	dbContext.SGReplicateMgr, err = NewSGReplicateManager(dbContext, dbContext.CfgSG)
 	if err != nil {
 		return nil, err
 	}
@@ -448,6 +448,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			return nil, fmt.Errorf("Backing Couchbase Server bucket has a non-zero MaxTTL value: %d.  Please set MaxTTL to 0 in Couchbase Server Admin UI and try again.", maxTTL)
 		}
 	}
+
+	dbContext.ExitChanges = make(chan struct{})
 
 	return dbContext, nil
 }

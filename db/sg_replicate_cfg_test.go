@@ -21,7 +21,7 @@ func TestReplicateManagerReplications(t *testing.T) {
 	testCfg, err := base.NewCfgSG(bucket)
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(testCfg, "test")
+	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 
 	replication1_id := "replication1"
@@ -84,7 +84,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 	testCfg, err := base.NewCfgSG(bucket)
 	require.NoError(t, err)
 
-	manager, err := NewSGReplicateManager(testCfg, "test")
+	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 
 	err = manager.RegisterNode("node1", "host1")
@@ -138,7 +138,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 
 	testCfg, err := base.NewCfgSG(bucket)
 	require.NoError(t, err)
-	manager, err := NewSGReplicateManager(testCfg, "test")
+	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 
 	var nodeWg sync.WaitGroup
@@ -181,7 +181,7 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 
 	testCfg, err := base.NewCfgSG(bucket)
 	require.NoError(t, err)
-	manager, err := NewSGReplicateManager(testCfg, "test")
+	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 
 	var replicationWg sync.WaitGroup

@@ -95,13 +95,27 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
+
+	// Start sg-replicate 1.x replications.
 	// Introduce a minor delay if there are any replications
 	// (sc.startReplicators() might rely on SG being fully started)
 	if len(sc.config.Replications) > 0 {
 		time.Sleep(time.Second)
 	}
-
 	sc.startReplicators()
+
+	// Start sg-replicate2 replications per-database.  sg-replicate2 replications aren't
+	// started until at least 5 seconds after SG node start, to avoid replication reassignment churn
+	// when a Sync Gateway Cluster is being initialized
+	time.Sleep(5 * time.Second)
+	sc.lock.RLock()
+	for _, dbContext := range sc.databases_ {
+		err := dbContext.SGReplicateMgr.StartReplications()
+		if err != nil {
+			base.Errorf("Error starting sg-replicate replications: %v", err)
+		}
+	}
+	sc.lock.RUnlock()
 
 }
 
@@ -300,9 +314,7 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 // existing DatabaseContext or an error based on the useExisting flag.
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (context *db.DatabaseContext, err error) {
 
-	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
-
-	// Connect to the bucket and add the database:
+	// Generate bucket spec and validate whether db already exists
 	spec, err := GetBucketSpec(config)
 	if err != nil {
 		return nil, err
@@ -311,15 +323,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbName := config.Name
 	if dbName == "" {
 		dbName = spec.BucketName
-	}
-
-	if config.OldRevExpirySeconds != nil {
-		oldRevExpirySeconds = *config.OldRevExpirySeconds
-	}
-
-	localDocExpirySecs := base.DefaultLocalDocExpirySecs
-	if config.LocalDocExpirySecs != nil {
-		localDocExpirySecs = *config.LocalDocExpirySecs
 	}
 
 	if sc.databases_[dbName] != nil {
@@ -331,11 +334,77 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
-	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
-		base.MD(dbName), base.MD(spec.BucketName), base.SD(spec.PoolName), base.SD(spec.Server))
-
 	if err := db.ValidateDatabaseName(dbName); err != nil {
 		return nil, err
+	}
+
+	// Connect to bucket
+	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
+		base.MD(dbName), base.MD(spec.BucketName), base.SD(spec.PoolName), base.SD(spec.Server))
+	bucket, err := db.ConnectToBucket(spec)
+	if err != nil {
+		return nil, err
+	}
+
+	// If using a walrus bucket, force use of views
+	useViews := config.UseViews
+	if !useViews && spec.IsWalrusBucket() {
+		base.Warnf("Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
+		useViews = true
+	}
+
+	// Initialize Views or GSI indexes for the bucket
+	if !useViews {
+		gsiSupported := bucket.IsSupported(sgbucket.BucketFeatureN1ql)
+		if !gsiSupported {
+			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
+		}
+
+		numReplicas := DefaultNumIndexReplicas
+		if config.NumIndexReplicas != nil {
+			numReplicas = *config.NumIndexReplicas
+		}
+
+		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas)
+		if indexErr != nil {
+			return nil, indexErr
+		}
+	} else {
+		viewErr := db.InitializeViews(bucket)
+		if viewErr != nil {
+			return nil, viewErr
+		}
+	}
+
+	// Process unsupported config options
+	if config.Unsupported.WarningThresholds.XattrSize == nil {
+		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
+	} else {
+		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
+		upperLimit := 1 * 1024 * 1024   // 1 MB
+		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
+			return nil, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
+		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
+			return nil, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
+		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
+	} else {
+		lowerLimit := 5
+		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
+			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		}
+	}
+
+	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
+		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
+	} else {
+		lowerLimit := 5
+		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
+			return nil, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
+		}
 	}
 
 	autoImport, err := config.AutoImportEnabled()
@@ -343,6 +412,104 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
+	// Generate database context options from config and server context
+	contextOptions, err := dbcOptionsFromConfig(sc, config, dbName)
+	if err != nil {
+		return nil, err
+	}
+	contextOptions.UseViews = useViews
+
+	// Create the DB Context
+	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
+	if err != nil {
+		return nil, err
+	}
+	dbcontext.BucketSpec = spec
+
+	syncFn := ""
+	if config.Sync != nil {
+		syncFn = *config.Sync
+	}
+	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
+		return nil, err
+	}
+
+	if config.RevsLimit != nil {
+		dbcontext.RevsLimit = *config.RevsLimit
+		if dbcontext.AllowConflicts() {
+			if dbcontext.RevsLimit < 20 {
+				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", dbcontext.RevsLimit)
+			}
+
+			if dbcontext.RevsLimit < db.DefaultRevsLimitConflicts {
+				base.Warnf("Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
+			}
+		} else {
+			if dbcontext.RevsLimit <= 0 {
+				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", dbcontext.RevsLimit)
+			}
+		}
+	}
+
+	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
+
+	if dbcontext.ChannelMapper == nil {
+		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
+	}
+
+	// Create default users & roles:
+	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
+		return nil, err
+	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
+		return nil, err
+	}
+
+	// Initialize event handlers
+	if err := sc.initEventHandlers(dbcontext, config); err != nil {
+		return nil, err
+	}
+
+	// Validate replications
+	for replicationID, replicationConfig := range config.Replications {
+		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
+			return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
+		}
+		replicationConfig.ID = replicationID
+		if validateErr := replicationConfig.ValidateReplication(true); validateErr != nil {
+			return nil, validateErr
+		}
+	}
+
+	// Upsert replications
+	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications)
+	if replicationErr != nil {
+		return nil, replicationErr
+	}
+
+	// Register it so HTTP handlers can find it:
+	sc.databases_[dbcontext.Name] = dbcontext
+
+	// Save the config
+	sc.config.Databases[dbName] = config
+
+	if config.StartOffline {
+		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
+		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
+		}
+	} else {
+		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
+		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
+			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
+		}
+	}
+
+	return dbcontext, nil
+}
+
+func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (db.DatabaseContextOptions, error) {
+
+	// Identify import options
 	importOptions := db.ImportOptions{}
 	if config.ImportFilter != nil {
 		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
@@ -360,7 +527,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	for _, warnLog := range warnings {
 		base.Warnf(warnLog)
 	}
-
 	// Set cache properties, if present
 	cacheOptions := db.DefaultCacheOptions()
 	revCacheOptions := db.DefaultRevisionCacheOptions()
@@ -412,47 +578,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
-	bucket, err := db.ConnectToBucket(spec)
-	if err != nil {
-		return nil, err
-	}
-
-	// If using a walrus bucket, force use of views
-	useViews := config.UseViews
-	if !useViews && spec.IsWalrusBucket() {
-		base.Warnf("Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
-		useViews = true
-	}
-
-	// Initialize Views or GSI indexes
-	if !useViews {
-
-		gsiSupported := bucket.IsSupported(sgbucket.BucketFeatureN1ql)
-
-		if !gsiSupported {
-			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
-		}
-
-		numReplicas := DefaultNumIndexReplicas
-		if config.NumIndexReplicas != nil {
-			numReplicas = *config.NumIndexReplicas
-		}
-
-		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas)
-		if indexErr != nil {
-			return nil, indexErr
-		}
-	} else {
-		viewErr := db.InitializeViews(bucket)
-		if viewErr != nil {
-			return nil, viewErr
-		}
-	}
-
 	// Create a callback function that will be invoked if the database goes offline and comes
 	// back online again
 	dbOnlineCallback := func(dbContext *db.DatabaseContext) {
 		sc.TakeDbOnline(dbContext)
+	}
+
+	oldRevExpirySeconds := base.DefaultOldRevExpirySeconds
+	if config.OldRevExpirySeconds != nil {
+		oldRevExpirySeconds = *config.OldRevExpirySeconds
 	}
 
 	deltaSyncOptions := db.DeltaSyncOptions{
@@ -469,62 +603,31 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 			if *revMaxAge == 0 {
 				// a setting of zero will fall back to the non-delta handling of revision body backups
 			} else if *revMaxAge < oldRevExpirySeconds {
-				return nil, fmt.Errorf("delta_sync.rev_max_age_seconds: %d must not be less than the configured old_rev_expiry_seconds: %d", *revMaxAge, oldRevExpirySeconds)
+				return db.DatabaseContextOptions{}, fmt.Errorf("delta_sync.rev_max_age_seconds: %d must not be less than the configured old_rev_expiry_seconds: %d", *revMaxAge, oldRevExpirySeconds)
 			}
 			deltaSyncOptions.RevMaxAgeSeconds = *revMaxAge
 		}
 	}
 	base.Infof(base.KeyAll, "delta_sync enabled=%t with rev_max_age_seconds=%d for database %s", deltaSyncOptions.Enabled, deltaSyncOptions.RevMaxAgeSeconds, dbName)
 
-	if config.Unsupported.WarningThresholds.XattrSize == nil {
-		val := uint32(base.DefaultWarnThresholdXattrSize)
-		config.Unsupported.WarningThresholds.XattrSize = &val
-	} else {
-		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
-		upperLimit := 1 * 1024 * 1024   // 1 MB
-		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
-			return nil, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
-		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
-			return nil, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
-		}
+	compactIntervalSecs := db.DefaultCompactInterval
+	if config.CompactIntervalDays != nil {
+		compactIntervalSecs = uint32(*config.CompactIntervalDays * 60 * 60 * 24)
 	}
 
-	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
-		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
-	} else {
-		lowerLimit := 5
-		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
-			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
-		}
-	}
-
-	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
-		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
-	} else {
-		lowerLimit := 5
-		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
-			return nil, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
-		}
-	}
-
-	compactIntervalDays := config.CompactIntervalDays
-	var compactIntervalSecs uint32
-	if compactIntervalDays == nil {
-		compactIntervalSecs = db.DefaultCompactInterval
-	} else {
-		compactIntervalSecs = uint32(*compactIntervalDays * 60 * 60 * 24)
-	}
-
-	var secureCookieOverride bool
+	secureCookieOverride := sc.config.SSLCert != nil
 	if config.SecureCookieOverride != nil {
 		secureCookieOverride = *config.SecureCookieOverride
-	} else {
-		secureCookieOverride = sc.config.SSLCert != nil
 	}
 
 	sgReplicateEnabled := db.DefaultSGReplicateEnabled
 	if config.SGReplicateEnabled != nil {
 		sgReplicateEnabled = *config.SGReplicateEnabled
+	}
+
+	localDocExpirySecs := base.DefaultLocalDocExpirySecs
+	if config.LocalDocExpirySecs != nil {
+		localDocExpirySecs = *config.LocalDocExpirySecs
 	}
 
 	contextOptions := db.DatabaseContextOptions{
@@ -543,103 +646,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		SessionCookieHttpOnly:     config.SessionCookieHTTPOnly,
 		AllowConflicts:            config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
-		UseViews:                  useViews,
 		DeltaSyncOptions:          deltaSyncOptions,
 		CompactInterval:           compactIntervalSecs,
 		SgReplicateEnabled:        sgReplicateEnabled,
 	}
-
-	// Create the DB Context
-	dbcontext, err := db.NewDatabaseContext(dbName, bucket, autoImport, contextOptions)
-	if err != nil {
-		return nil, err
-	}
-	dbcontext.BucketSpec = spec
-
-	syncFn := ""
-	if config.Sync != nil {
-		syncFn = *config.Sync
-	}
-	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
-		return nil, err
-	}
-
-	if config.RevsLimit != nil {
-		dbcontext.RevsLimit = *config.RevsLimit
-		if dbcontext.AllowConflicts() {
-			if dbcontext.RevsLimit < 20 {
-				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", dbcontext.RevsLimit)
-			}
-
-			if dbcontext.RevsLimit < db.DefaultRevsLimitConflicts {
-				base.Warnf("Setting the revs_limit (%v) to less than %d, whilst having allow_conflicts set to true, may have unwanted results when documents are frequently updated. Please see documentation for details.", dbcontext.RevsLimit, db.DefaultRevsLimitConflicts)
-			}
-		} else {
-			if dbcontext.RevsLimit <= 0 {
-				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration must be greater than zero.", dbcontext.RevsLimit)
-			}
-		}
-	}
-
-	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
-
-	if dbcontext.ChannelMapper == nil {
-		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
-	}
-
-	// Create default users & roles:
-	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
-		return nil, err
-	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
-		return nil, err
-	}
-
-	// Note: disabling access-related warnings, because they potentially block startup during view reindexing trying to query the principals view, which outweighs the usability benefit
-	//emitAccessRelatedWarnings(config, dbcontext)
-
-	// Initialize event handlers
-	if err := sc.initEventHandlers(dbcontext, config); err != nil {
-		return nil, err
-	}
-
-	// Validate all replications before updating any
-	for replicationID, replicationConfig := range config.Replications {
-		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
-			return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
-		}
-		replicationConfig.ID = replicationID
-		if validateErr := replicationConfig.ValidateReplication(true); validateErr != nil {
-			return nil, validateErr
-		}
-	}
-
-	// Validation was successful, can update replications
-	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications)
-	if replicationErr != nil {
-		return nil, replicationErr
-	}
-
-	dbcontext.ExitChanges = make(chan struct{})
-
-	// Register it so HTTP handlers can find it:
-	sc.databases_[dbcontext.Name] = dbcontext
-
-	// Save the config
-	sc.config.Databases[dbName] = config
-
-	if config.StartOffline {
-		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
-		}
-	} else {
-		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
-		}
-	}
-
-	return dbcontext, nil
+	return contextOptions, nil
 }
 
 func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {

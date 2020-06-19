@@ -252,7 +252,7 @@ func (h *handler) handleChanges() error {
 	// The default is all channels the user can access.
 	userChannels := base.SetOf(ch.AllChannelWildcard)
 	if filter != "" {
-		if filter == "sync_gateway/bychannel" {
+		if filter == base.ByChannelFilter {
 			if channelsArray == nil {
 				return base.HTTPErrorf(http.StatusBadRequest, "Missing 'channels' filter parameter")
 			}
