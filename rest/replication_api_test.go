@@ -131,19 +131,41 @@ func TestValidateReplicationAPI(t *testing.T) {
 
 }
 
-// TODO: Pending CBG-768, test should be updated to validate response data
 func TestReplicationStatusAPI(t *testing.T) {
 
 	var rt = NewRestTester(t, nil)
 	defer rt.Close()
 
-	// GET replication status for replication ID
+	// GET replication status for non-existent replication ID
 	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	replicationConfig := db.ReplicationConfig{
+		ID:        "replication1",
+		Remote:    "http://remote:4984/db",
+		Direction: "Pull",
+	}
+
+	// PUT replication1
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, replicationConfig))
+	assertStatus(t, response, http.StatusCreated)
+
+	// GET replication status for replication1
+	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
 	assertStatus(t, response, http.StatusOK)
 	var statusResponse db.ReplicationStatus
 	err := json.Unmarshal(response.BodyBytes(), &statusResponse)
 	require.NoError(t, err)
 	assert.Equal(t, statusResponse.ID, "replication1")
+
+	// PUT replication2
+	replication2Config := db.ReplicationConfig{
+		ID:        "replication2",
+		Remote:    "http://remote:4984/db",
+		Direction: "Pull",
+	}
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, replication2Config))
+	assertStatus(t, response, http.StatusCreated)
 
 	// GET replication status for all replications
 	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
@@ -151,8 +173,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 	var allStatusResponse []*db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
-	assert.Equal(t, allStatusResponse[0].ID, "sampleReplication1")
-	assert.Equal(t, allStatusResponse[1].ID, "sampleReplication2")
+	assert.Equal(t, len(allStatusResponse), 2)
 
 	// PUT replication status, no action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1", "")

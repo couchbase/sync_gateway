@@ -24,6 +24,8 @@ type ActivePullReplicator struct {
 type PullCheckpointer struct {
 	// lastCheckpointRevID is the last known checkpoint RevID.
 	lastCheckpointRevID string
+	// lastCheckpointSeq is the last checkpointed sequence
+	lastCheckpointSeq string
 	// runNow can be sent signals to run a checkpoint (useful for testing)
 	runNow chan struct{}
 	// wg is used to block close until a checkpoint has finished
@@ -222,6 +224,7 @@ func (apr *ActivePullReplicator) setCheckpoint(seq string) {
 	apr.Stats.Add(ActiveReplicatorStatsKeySetCheckpointTotal, 1)
 
 	apr.Checkpointer.lastCheckpointRevID = resp.RevID
+	apr.Checkpointer.lastCheckpointSeq = seq
 }
 
 func (apr *ActivePullReplicator) Start() error {
@@ -235,6 +238,7 @@ func (apr *ActivePullReplicator) Start() error {
 
 	checkpoint := apr.getCheckpoint()
 	apr.Checkpointer.lastCheckpointRevID = checkpoint.RevID
+	apr.Checkpointer.lastCheckpointSeq = checkpoint.Checkpoint.LastSequence
 
 	subChangesRequest := SubChangesRequest{
 		Continuous:     apr.config.Continuous,
