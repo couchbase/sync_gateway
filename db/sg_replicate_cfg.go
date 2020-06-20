@@ -282,6 +282,7 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 		return err
 	}
 
+	base.Infof(base.KeyCluster, "Started local node for sg-replicate as %s", nodeUUID)
 	return heartbeater.RegisterListener(m.heartbeatListener)
 }
 
@@ -295,13 +296,16 @@ func (m *sgReplicateManager) StartReplications() error {
 	}
 
 	for replicationID, replication := range replications {
+		base.Debugf(base.KeyCluster, "Replication %s is assigned to node %s (local node is %s)", replicationID, replication.AssignedNode, m.localNodeUUID)
 		if replication.AssignedNode == m.localNodeUUID {
-			// TODO: retain replication reference for status
-			_, err := m.StartReplication(replication)
+			r, err := m.StartReplication(replication)
 			if err != nil {
+				base.Warnf("Unable to start replication %s: %v", replicationID, err)
 				return err
 			}
-			base.Infof(base.KeyReplicate, "Started replication %s", base.UD(replicationID))
+			m.activeReplicationsLock.Lock()
+			m.activeReplications[replicationID] = r
+			m.activeReplicationsLock.Unlock()
 		}
 	}
 
@@ -356,7 +360,7 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 
 	startErr := replicator.Start()
 	if startErr != nil {
-		return nil, err
+		return nil, startErr
 	}
 
 	return replicator, nil
@@ -369,6 +373,8 @@ func (m *sgReplicateManager) Stop() {
 // RefreshReplicationCfg is called when the cfg changes.  Checks whether replications
 // have been added to or removed from this node
 func (m *sgReplicateManager) RefreshReplicationCfg() error {
+
+	base.Infof(base.KeyCluster, "Replication definitions changed - refreshing...")
 	configReplications, err := m.GetReplications()
 	if err != nil {
 		return err
@@ -380,6 +386,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 	for replicationID, activeReplication := range m.activeReplications {
 		replicationCfg, ok := configReplications[replicationID]
 		if !ok || replicationCfg.AssignedNode != m.localNodeUUID {
+			base.Infof(base.KeyCluster, "Stopping reassigned replication %s", replicationID)
 			err := activeReplication.Close()
 			if err != nil {
 				base.Warnf("Unable to gracefully close active replication: %v", err)
@@ -393,6 +400,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 		if replicationCfg.AssignedNode == m.localNodeUUID {
 			_, exists := m.activeReplications[replicationID]
 			if !exists {
+				base.Infof(base.KeyCluster, "Starting local replication %s", replicationID)
 				m.activeReplications[replicationID], err = m.StartReplication(replicationCfg)
 				if err != nil {
 					return err
