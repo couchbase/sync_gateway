@@ -21,7 +21,7 @@ func TestReplicationAPI(t *testing.T) {
 	replicationConfig := db.ReplicationConfig{
 		ID:        "replication1",
 		Remote:    "http://remote:4984/db",
-		Direction: "Pull",
+		Direction: "pull",
 	}
 
 	// PUT replication
@@ -33,10 +33,11 @@ func TestReplicationAPI(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	var configResponse db.ReplicationConfig
 	err := json.Unmarshal(response.BodyBytes(), &configResponse)
+	log.Printf("configResponse direction type: %T", configResponse.Direction)
 	require.NoError(t, err)
-	assert.Equal(t, configResponse.ID, "replication1")
-	assert.Equal(t, configResponse.Remote, "http://remote:4984/db")
-	assert.Equal(t, configResponse.Direction, "Pull")
+	assert.Equal(t, "replication1", configResponse.ID)
+	assert.Equal(t, "http://remote:4984/db", configResponse.Remote)
+	assert.Equal(t, db.ActiveReplicatorTypePull, configResponse.Direction)
 
 	// POST replication
 	replicationConfig.ID = "replication2"
@@ -49,9 +50,9 @@ func TestReplicationAPI(t *testing.T) {
 	configResponse = db.ReplicationConfig{}
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err)
-	assert.Equal(t, configResponse.ID, "replication2")
-	assert.Equal(t, configResponse.Remote, "http://remote:4984/db")
-	assert.Equal(t, configResponse.Direction, "Pull")
+	assert.Equal(t, "replication2", configResponse.ID)
+	assert.Equal(t, "http://remote:4984/db", configResponse.Remote)
+	assert.Equal(t, db.ActiveReplicatorTypePull, configResponse.Direction)
 
 	// GET all replications
 	response = rt.SendAdminRequest("GET", "/db/_replication/", "")
@@ -191,7 +192,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 	replicationConfig2String := `{
 		"replication_id": "replication2",
 		"remote": "http://remote:4985/db",
-		"direction":"Pull",
+		"direction":"pull",
 		"continuous":true,
 		"conflict_resolution_type":"foo",
 		"conflict_resolution_fn":"func()",

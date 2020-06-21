@@ -53,19 +53,19 @@ func NewSGNode(uuid string, host string) *SGNode {
 
 // ReplicationConfig is a replication definition as stored in the Sync Gateway config
 type ReplicationConfig struct {
-	ID                     string      `json:"replication_id"`
-	Remote                 string      `json:"remote"`
-	Direction              string      `json:"direction"`
-	ConflictResolutionType string      `json:"conflict_resolution_type,omitempty"`
-	ConflictResolutionFn   string      `json:"custom_conflict_resolver,omitempty"`
-	PurgeOnRemoval         bool        `json:"purge_on_removal,omitempty"`
-	DeltaSyncEnabled       bool        `json:"enable_delta_sync,omitempty"`
-	MaxBackoff             int         `json:"max_backoff_time,omitempty"`
-	State                  string      `json:"state,omitempty"`
-	Continuous             bool        `json:"continuous,omitempty"`
-	Filter                 string      `json:"filter,omitempty"`
-	QueryParams            interface{} `json:"query_params,omitempty"`
-	Cancel                 bool        `json:"cancel,omitempty"`
+	ID                     string                    `json:"replication_id"`
+	Remote                 string                    `json:"remote"`
+	Direction              ActiveReplicatorDirection `json:"direction"`
+	ConflictResolutionType ConflictResolverType      `json:"conflict_resolution_type,omitempty"`
+	ConflictResolutionFn   string                    `json:"custom_conflict_resolver,omitempty"`
+	PurgeOnRemoval         bool                      `json:"purge_on_removal,omitempty"`
+	DeltaSyncEnabled       bool                      `json:"enable_delta_sync,omitempty"`
+	MaxBackoff             int                       `json:"max_backoff_time,omitempty"`
+	State                  string                    `json:"state,omitempty"`
+	Continuous             bool                      `json:"continuous,omitempty"`
+	Filter                 string                    `json:"filter,omitempty"`
+	QueryParams            interface{}               `json:"query_params,omitempty"`
+	Cancel                 bool                      `json:"cancel,omitempty"`
 }
 
 // ReplicationCfg represents a replication definition as stored in the cluster config.
@@ -165,11 +165,11 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 	}
 
 	if c.Direction != nil {
-		rc.Direction = *c.Direction
+		rc.Direction = ActiveReplicatorDirection(*c.Direction)
 	}
 
 	if c.ConflictResolutionType != nil {
-		rc.ConflictResolutionType = *c.ConflictResolutionType
+		rc.ConflictResolutionType = ConflictResolverType(*c.ConflictResolutionType)
 	}
 	if c.ConflictResolutionFn != nil {
 		rc.ConflictResolutionFn = *c.ConflictResolutionFn
