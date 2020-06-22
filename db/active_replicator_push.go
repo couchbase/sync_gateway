@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/couchbase/go-blip"
@@ -12,6 +13,15 @@ type ActivePushReplicator struct {
 	config          *ActiveReplicatorConfig
 	blipSyncContext *BlipSyncContext
 	blipSender      *blip.Sender
+}
+
+func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActivePushReplicator {
+	blipContext := blip.NewContextCustomID(config.ID+"-push", blipCBMobileReplication)
+	bsc := NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID)
+	return &ActivePushReplicator{
+		config:          config,
+		blipSyncContext: bsc,
+	}
 }
 
 // CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
