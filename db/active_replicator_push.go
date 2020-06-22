@@ -95,11 +95,6 @@ func (apr *ActivePushReplicator) Start() error {
 		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
-	// TODO: set bh.channels and these other options via sendChanges parameters (CBG-915)
-	bh.continuous = apr.config.Continuous
-	bh.batchSize = int(apr.config.ChangesBatchSize)
-	bh.activeOnly = apr.config.ActiveOnly
-
 	seq, err := apr.config.ActiveDB.ParseSequenceID(checkpoint.Checkpoint.LastSequence)
 	if err != nil {
 		base.Warnf("couldn't parse checkpointed sequence ID, starting push from seq:0")
