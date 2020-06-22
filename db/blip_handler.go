@@ -177,6 +177,9 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
 
+	continuous := subChangesParams.continuous()
+	// used for stats tracking
+	bh.continuous = continuous
 	// Start asynchronous changes goroutine
 	go func() {
 		// Pull replication stats by type - Active stats decremented in Close()
@@ -196,7 +199,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		bh.sendChanges(rq.Sender, &sendChangesOptions{
 			docIDs:     subChangesParams.docIDs(),
 			since:      subChangesParams.Since(),
-			continuous: subChangesParams.continuous(),
+			continuous: continuous,
 			activeOnly: subChangesParams.activeOnly(),
 			batchSize:  subChangesParams.batchSize(),
 			channels:   channels,
@@ -242,13 +245,13 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	}
 
 	caughtUp := false
-	pendingChanges := make([][]interface{}, 0, bh.batchSize)
+	pendingChanges := make([][]interface{}, 0, opts.batchSize)
 	sendPendingChangesAt := func(minChanges int) error {
 		if len(pendingChanges) >= minChanges {
 			if err := bh.sendBatchOfChanges(sender, pendingChanges); err != nil {
 				return err
 			}
-			pendingChanges = make([][]interface{}, 0, bh.batchSize)
+			pendingChanges = make([][]interface{}, 0, opts.batchSize)
 		}
 		return nil
 	}
@@ -267,7 +270,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						changeRow = changeRow[0:3]
 					}
 					pendingChanges = append(pendingChanges, changeRow)
-					if err := sendPendingChangesAt(bh.batchSize); err != nil {
+					if err := sendPendingChangesAt(opts.batchSize); err != nil {
 						return err
 					}
 				}
