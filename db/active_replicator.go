@@ -22,7 +22,7 @@ const (
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	// push *ActivePushReplicator // TODO: CBG-784
+	Push *ActivePushReplicator
 	Pull *ActivePullReplicator
 }
 
@@ -30,9 +30,9 @@ type ActiveReplicator struct {
 func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActiveReplicator, error) {
 	ar := &ActiveReplicator{}
 
-	// if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
-	// 	ar.Push = NewPushReplicator(config)
-	// }
+	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
+		ar.Push = NewPushReplicator(ctx, config)
+	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
 		ar.Pull = NewPullReplicator(ctx, config)
@@ -42,11 +42,11 @@ func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*
 }
 
 func (ar *ActiveReplicator) Start() error {
-	// if ar.push != nil {
-	// 	if err := ar.push.Start(); err != nil {
-	// 		return err
-	// 	}
-	// }
+	if ar.Push != nil {
+		if err := ar.Push.Start(); err != nil {
+			return err
+		}
+	}
 
 	if ar.Pull != nil {
 		if err := ar.Pull.Start(); err != nil {
@@ -58,11 +58,11 @@ func (ar *ActiveReplicator) Start() error {
 }
 
 func (ar *ActiveReplicator) Close() error {
-	// if ar.push != nil {
-	// 	if err := ar.push.Close(); err != nil {
-	// 		return err
-	// 	}
-	// }
+	if ar.Push != nil {
+		if err := ar.Push.Close(); err != nil {
+			return err
+		}
+	}
 
 	if ar.Pull != nil {
 		if err := ar.Pull.Close(); err != nil {
@@ -86,12 +86,13 @@ func (ar *ActiveReplicator) GetStatus(replicationID string) *ReplicationStatus {
 		status.LastSeqPull = ar.Pull.Checkpointer.lastCheckpointSeq
 	}
 
+	// TODO: Push stats
 	/*
 		if ar.Push != nil {
 			pushStats := ar.Push.blipSyncContext.replicationStats
-			status.DocsWritten = pullStats.SendRevCount.Value()
-			status.DocWriteFailures = pullStats.SendRevErrorCount.Value()
-			status.RejectedRemote = pullStats.SendRevSyncFunctionErrorCount.Value()
+			status.DocsWritten = pushStats.SendRevCount.Value()
+			status.DocWriteFailures = pushStats.SendRevErrorCount.Value()
+			status.RejectedRemote = pushStats.SendRevSyncFunctionErrorCount.Value()
 		}
 	*/
 
