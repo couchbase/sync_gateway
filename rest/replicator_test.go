@@ -55,10 +55,10 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	// Check total stat
 	numReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
-	assert.Equal(t, startNumReplicationsTotal+1, numReplicationsTotal)
+	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 
 	// Check active stat
-	assert.Equal(t, startNumReplicationsActive+1, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive)))
+	assert.Equal(t, startNumReplicationsActive+2, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive)))
 
 	// Close the replicator (implicit disconnect)
 	assert.NoError(t, ar.Close())
@@ -72,7 +72,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	// Verify total stat has not been decremented
 	numReplicationsTotal = base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
-	assert.Equal(t, startNumReplicationsTotal+1, numReplicationsTotal)
+	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 }
 
 // TestActiveReplicatorPullBasic:
@@ -323,4 +323,85 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
 	ar.Pull.CheckpointNow()
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
+}
+
+// TestActiveReplicatorPushBasic:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a document on rt1 which can be pushed by the replicator.
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for push to start pushing changes to rt2.
+func TestActiveReplicatorPushBasic(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	docID := t.Name() + "rt1doc1"
+	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePush,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize: 200,
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Close()) }()
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start())
+
+	// wait for the document originally written to rt1 to arrive at rt2
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, revID, doc.SyncData.CurrentRev)
+	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 }
