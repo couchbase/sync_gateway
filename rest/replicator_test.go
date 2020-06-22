@@ -55,10 +55,10 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	// Check total stat
 	numReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
-	assert.Equal(t, startNumReplicationsTotal+1, numReplicationsTotal)
+	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 
 	// Check active stat
-	assert.Equal(t, startNumReplicationsActive+1, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive)))
+	assert.Equal(t, startNumReplicationsActive+2, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive)))
 
 	// Close the replicator (implicit disconnect)
 	assert.NoError(t, ar.Close())
@@ -72,7 +72,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 	// Verify total stat has not been decremented
 	numReplicationsTotal = base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
-	assert.Equal(t, startNumReplicationsTotal+1, numReplicationsTotal)
+	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 }
 
 // TestActiveReplicatorPullBasic:
