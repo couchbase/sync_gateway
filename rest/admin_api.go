@@ -852,13 +852,22 @@ func (h *handler) deleteReplication() error {
 }
 
 func (h *handler) getReplicationsStatus() error {
-	h.writeJSON(h.db.SGReplicateMgr.GetReplicationStatusAll())
+	replicationsStatus, err := h.db.SGReplicateMgr.GetReplicationStatusAll()
+	if err != nil {
+		return err
+	}
+	h.writeJSON(replicationsStatus)
 	return nil
+
 }
 
 func (h *handler) getReplicationStatus() error {
 	replicationID := mux.Vars(h.rq)["replicationID"]
-	h.writeJSON(h.db.SGReplicateMgr.GetReplicationStatus(replicationID))
+	status, err := h.db.SGReplicateMgr.GetReplicationStatus(replicationID)
+	if err != nil {
+		return err
+	}
+	h.writeJSON(status)
 	return nil
 }
 

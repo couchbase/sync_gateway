@@ -73,6 +73,31 @@ func (ar *ActiveReplicator) Close() error {
 	return nil
 }
 
+func (ar *ActiveReplicator) GetStatus(replicationID string) *ReplicationStatus {
+
+	status := &ReplicationStatus{
+		ID:     replicationID,
+		Status: "running",
+	}
+	if ar.Pull != nil {
+		pullStats := ar.Pull.blipSyncContext.replicationStats
+		status.DocsRead = pullStats.HandleRevCount.Value()
+		status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
+		status.LastSeqPull = ar.Pull.Checkpointer.lastCheckpointSeq
+	}
+
+	/*
+		if ar.Push != nil {
+			pushStats := ar.Push.blipSyncContext.replicationStats
+			status.DocsWritten = pullStats.SendRevCount.Value()
+			status.DocWriteFailures = pullStats.SendRevErrorCount.Value()
+			status.RejectedRemote = pullStats.SendRevSyncFunctionErrorCount.Value()
+		}
+	*/
+
+	return status
+}
+
 // blipSync opens a connection to the target, and returns a blip.Sender to send messages over.
 func blipSync(target url.URL, blipContext *blip.Context) (*blip.Sender, error) {
 	// GET target database endpoint to see if reachable for exit-early/clearer error message

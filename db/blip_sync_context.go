@@ -45,6 +45,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string) *BlipS
 		userChangeWaiter: db.NewUserWaiter(),
 		dbStats:          db.DatabaseContext.DbStats,
 		sgCanUseDeltas:   db.DeltaSyncEnabled(),
+		replicationStats: NewBlipSyncStats(),
 	}
 	if u := db.User(); u != nil {
 		bsc.userName = u.Name()
@@ -88,6 +89,7 @@ type BlipSyncContext struct {
 	dbStats                   *DatabaseStats              // Direct stats access to support reloading db while stats are being updated
 	postHandleRevCallback     func(remoteSeq string)      // postHandleRevCallback is called after successfully handling an incoming rev message
 	postHandleChangesCallback func(expectedSeqs []string) // postHandleChangesCallback is called after successfully handling an incoming changes message
+	replicationStats          *BlipSyncStats              // Replication stats
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.
@@ -292,6 +294,9 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	bsc.dbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
 
 	base.Tracef(base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attDigests)
+
+	// TODO: When CBG-881 is implemented, update this stat and SendRevCountError based on sendRev response
+	bsc.replicationStats.SendRevCount.Add(1)
 
 	if len(attDigests) > 0 {
 		// Allow client to download attachments in 'atts', but only while pulling this rev

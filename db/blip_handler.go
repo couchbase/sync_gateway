@@ -508,10 +508,15 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body
-func (bh *blipHandler) handleRev(rq *blip.Message) error {
+func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	startTime := time.Now()
 	defer func() {
 		bh.dbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+		if err == nil {
+			bh.BlipSyncContext.replicationStats.HandleRevCount.Add(1)
+		} else {
+			bh.BlipSyncContext.replicationStats.HandleRevErrorCount.Add(1)
+		}
 	}()
 
 	//addRevisionParams := newAddRevisionParams(rq)

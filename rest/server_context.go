@@ -108,8 +108,10 @@ func (sc *ServerContext) PostStartup() {
 	// started until at least 5 seconds after SG node start, to avoid replication reassignment churn
 	// when a Sync Gateway Cluster is being initialized
 	time.Sleep(5 * time.Second)
+
 	sc.lock.RLock()
 	for _, dbContext := range sc.databases_ {
+		base.Infof(base.KeyReplicate, "Starting sg-replicate replications...")
 		err := dbContext.SGReplicateMgr.StartReplications()
 		if err != nil {
 			base.Errorf("Error starting sg-replicate replications: %v", err)

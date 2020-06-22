@@ -282,6 +282,7 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 		return err
 	}
 
+	base.Infof(base.KeyCluster, "Started local node for sg-replicate as %s", nodeUUID)
 	return heartbeater.RegisterListener(m.heartbeatListener)
 }
 
@@ -295,13 +296,16 @@ func (m *sgReplicateManager) StartReplications() error {
 	}
 
 	for replicationID, replication := range replications {
+		base.Debugf(base.KeyCluster, "Replication %s is assigned to node %s (local node is %s)", replicationID, replication.AssignedNode, m.localNodeUUID)
 		if replication.AssignedNode == m.localNodeUUID {
-			// TODO: retain replication reference for status
-			_, err := m.StartReplication(replication)
+			r, err := m.StartReplication(replication)
 			if err != nil {
+				base.Warnf("Unable to start replication %s: %v", replicationID, err)
 				return err
 			}
-			base.Infof(base.KeyReplicate, "Started replication %s", base.UD(replicationID))
+			m.activeReplicationsLock.Lock()
+			m.activeReplications[replicationID] = r
+			m.activeReplicationsLock.Unlock()
 		}
 	}
 
@@ -356,7 +360,7 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 
 	startErr := replicator.Start()
 	if startErr != nil {
-		return nil, err
+		return nil, startErr
 	}
 
 	return replicator, nil
@@ -369,6 +373,8 @@ func (m *sgReplicateManager) Stop() {
 // RefreshReplicationCfg is called when the cfg changes.  Checks whether replications
 // have been added to or removed from this node
 func (m *sgReplicateManager) RefreshReplicationCfg() error {
+
+	base.Infof(base.KeyCluster, "Replication definitions changed - refreshing...")
 	configReplications, err := m.GetReplications()
 	if err != nil {
 		return err
@@ -380,6 +386,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 	for replicationID, activeReplication := range m.activeReplications {
 		replicationCfg, ok := configReplications[replicationID]
 		if !ok || replicationCfg.AssignedNode != m.localNodeUUID {
+			base.Infof(base.KeyCluster, "Stopping reassigned replication %s", replicationID)
 			err := activeReplication.Close()
 			if err != nil {
 				base.Warnf("Unable to gracefully close active replication: %v", err)
@@ -393,6 +400,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 		if replicationCfg.AssignedNode == m.localNodeUUID {
 			_, exists := m.activeReplications[replicationID]
 			if !exists {
+				base.Infof(base.KeyCluster, "Starting local replication %s", replicationID)
 				m.activeReplications[replicationID], err = m.StartReplication(replicationCfg)
 				if err != nil {
 					return err
@@ -718,65 +726,65 @@ func (a NodesByReplicationCount) Less(i, j int) bool {
 
 // ReplicationStatus is used by the _replicationStatus REST API endpoints
 type ReplicationStatus struct {
-	ID               string     `json:"replication_id"`
-	DocsRead         int64      `json:"docs_read"`
-	DocsWritten      int64      `json:"docs_written"`
-	DocWriteFailures int64      `json:"doc_write_failures"`
-	Status           string     `json:"status"`
-	RejectedRemote   int64      `json:"rejected_by_remote"`
-	RejectedLocal    int64      `json:"rejected_by_local"`
-	LastSeqPull      SequenceID `json:"last_seq_pull,omitempty"`
-	LastSeqPush      SequenceID `json:"last_seq_push,omitempty"`
-	ErrorMessage     string     `json:"error_message,omitempty"`
+	ID               string `json:"replication_id"`
+	DocsRead         int64  `json:"docs_read"`
+	DocsWritten      int64  `json:"docs_written"`
+	DocWriteFailures int64  `json:"doc_write_failures"`
+	Status           string `json:"status"`
+	RejectedRemote   int64  `json:"rejected_by_remote"`
+	RejectedLocal    int64  `json:"rejected_by_local"`
+	LastSeqPull      string `json:"last_seq_pull,omitempty"`
+	LastSeqPush      string `json:"last_seq_push,omitempty"`
+	ErrorMessage     string `json:"error_message,omitempty"`
 }
 
-func (m *sgReplicateManager) GetReplicationStatus(replicationID string) *ReplicationStatus {
-	// TODO: CBG-768
-	return &ReplicationStatus{
-		ID:               replicationID,
-		DocsRead:         100,
-		DocsWritten:      100,
-		DocWriteFailures: 5,
-		Status:           "running",
-		RejectedRemote:   10,
-		RejectedLocal:    7,
-		LastSeqPull:      SequenceID{Seq: 500},
-		ErrorMessage:     "",
+func (m *sgReplicateManager) GetReplicationStatus(replicationID string) (*ReplicationStatus, error) {
+
+	// Check if replication is active locally
+	replication, ok := m.activeReplications[replicationID]
+	if ok {
+		return replication.GetStatus(replicationID), nil
 	}
+
+	// Check if replication is remote
+	replicationCfg, err := m.GetReplication(replicationID)
+	if err != nil {
+		return nil, err
+	}
+	// TODO: generation of remote status pending CBG-909
+	return &ReplicationStatus{
+		ID:     replicationID,
+		Status: fmt.Sprintf("running on %s", replicationCfg.AssignedNode),
+	}, nil
+
 }
 
 func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) error {
-	// TODO: CBG-768
+	// TODO: CBG-911
 	return nil
 }
 
-func (m *sgReplicateManager) GetReplicationStatusAll() []*ReplicationStatus {
-	// TODO: CBG-768
-	return []*ReplicationStatus{
-		{
-			ID:               "sampleReplication1",
-			DocsRead:         100,
-			DocsWritten:      100,
-			DocWriteFailures: 5,
-			Status:           "running",
-			RejectedRemote:   10,
-			RejectedLocal:    7,
-			LastSeqPull:      SequenceID{Seq: 500},
-			ErrorMessage:     "",
-		},
-		{
-			ID:               "sampleReplication2",
-			DocsRead:         150,
-			DocsWritten:      150,
-			DocWriteFailures: 3,
-			Status:           "stopped",
-			RejectedRemote:   10,
-			RejectedLocal:    7,
-			LastSeqPull:      SequenceID{Seq: 50},
-			LastSeqPush:      SequenceID{Seq: 75},
-			ErrorMessage:     "",
-		},
+func (m *sgReplicateManager) GetReplicationStatusAll() ([]*ReplicationStatus, error) {
+
+	statuses := make([]*ReplicationStatus, 0)
+
+	// Include persisted replications
+	persistedReplications, err := m.GetReplications()
+	if err != nil {
+		return nil, err
 	}
+
+	for replicationID, _ := range persistedReplications {
+		status, err := m.GetReplicationStatus(replicationID)
+		if err != nil {
+			base.Warnf("Unable to retrieve replication status for replication %s", replicationID)
+		}
+		statuses = append(statuses, status)
+	}
+
+	// TODO: include adhoc replications
+
+	return statuses, nil
 }
 
 // ImportHeartbeatListener uses replication cfg to manage node list
