@@ -33,27 +33,6 @@ func (apr *ActivePushReplicator) CheckpointID() (string, error) {
 	return "sgr2cp:push:" + checkpointHash, nil
 }
 
-func (apr *ActivePushReplicator) connect() (err error) {
-	if apr == nil {
-		return fmt.Errorf("nil ActivePushReplicator, can't connect")
-	}
-
-	if apr.blipSender != nil {
-		return fmt.Errorf("replicator already has a blipSender, can't connect twice")
-	}
-
-	blipContext := blip.NewContextCustomID(apr.config.ID+"-push", blipCBMobileReplication)
-	bsc := NewBlipSyncContext(blipContext, apr.config.ActiveDB, blipContext.ID)
-	apr.blipSyncContext = bsc
-
-	apr.blipSender, err = blipSync(*apr.config.PassiveDBURL, apr.blipSyncContext.blipContext)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // CheckpointNow forces the checkpointer to send a checkpoint, and blocks until it has finished.
 func (apr *ActivePushReplicator) CheckpointNow() {
 	// TODO: Implement push checkpointing (CBG-916)
@@ -98,7 +77,9 @@ func (apr *ActivePushReplicator) Start() error {
 		return fmt.Errorf("nil ActivePushReplicator, can't start")
 	}
 
-	if err := apr.connect(); err != nil {
+	var err error
+	apr.blipSender, apr.blipSyncContext, err = connect("-push", apr.config)
+	if err != nil {
 		return err
 	}
 

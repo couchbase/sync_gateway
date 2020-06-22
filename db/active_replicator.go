@@ -99,6 +99,19 @@ func (ar *ActiveReplicator) GetStatus(replicationID string) *ReplicationStatus {
 	return status
 }
 
+func connect(idSuffix string, config *ActiveReplicatorConfig) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
+
+	blipContext := blip.NewContextCustomID(config.ID+idSuffix, blipCBMobileReplication)
+	bsc = NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID)
+
+	blipSender, err = blipSync(*config.PassiveDBURL, blipContext)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return blipSender, bsc, nil
+}
+
 // blipSync opens a connection to the target, and returns a blip.Sender to send messages over.
 func blipSync(target url.URL, blipContext *blip.Context) (*blip.Sender, error) {
 	// GET target database endpoint to see if reachable for exit-early/clearer error message

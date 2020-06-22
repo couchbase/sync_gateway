@@ -232,7 +232,9 @@ func (apr *ActivePullReplicator) Start() error {
 		return fmt.Errorf("nil ActivePullReplicator, can't start")
 	}
 
-	if err := apr.connect(); err != nil {
+	var err error
+	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config)
+	if err != nil {
 		return err
 	}
 
