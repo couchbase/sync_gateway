@@ -13,8 +13,8 @@ type ActiveReplicatorDirection string
 
 const (
 	ActiveReplicatorTypePushAndPull ActiveReplicatorDirection = "pushAndPull"
-	ActiveReplicatorTypePush                                  = "push"
-	ActiveReplicatorTypePull                                  = "pull"
+	ActiveReplicatorTypePush        ActiveReplicatorDirection = "push"
+	ActiveReplicatorTypePull        ActiveReplicatorDirection = "pull"
 )
 
 func (d ActiveReplicatorDirection) IsValid() bool {
