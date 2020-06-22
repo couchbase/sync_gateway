@@ -162,18 +162,14 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
 
-	// TODO: Do we need to store the changes-specific parameters on the blip sync context?  Seems like they only need to be passed in to sendChanges
-	bh.batchSize = subChangesParams.batchSize()
-	bh.continuous = subChangesParams.continuous()
-	bh.activeOnly = subChangesParams.activeOnly()
-
+	var channels base.Set
 	if filter := subChangesParams.filter(); filter == base.ByChannelFilter {
 		var err error
 
-		bh.channels, err = subChangesParams.channelsExpandedSet()
+		channels, err = subChangesParams.channelsExpandedSet()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
-		} else if len(bh.channels) == 0 {
+		} else if len(channels) == 0 {
 			return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
 
 		}
@@ -197,34 +193,50 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
-		bh.sendChanges(rq.Sender, subChangesParams)
+		bh.sendChanges(rq.Sender, &sendChangesOptions{
+			docIDs:     subChangesParams.docIDs(),
+			since:      subChangesParams.Since(),
+			continuous: subChangesParams.continuous(),
+			activeOnly: subChangesParams.activeOnly(),
+			batchSize:  subChangesParams.batchSize(),
+			channels:   channels,
+		})
 		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
 	return nil
 }
 
+type sendChangesOptions struct {
+	docIDs     []string
+	since      SequenceID
+	continuous bool
+	activeOnly bool
+	batchSize  int
+	channels   base.Set
+}
+
 // Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(sender *blip.Sender, params *SubChangesParams) {
+func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warnf("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
-	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sending changes since %v", params.Since())
+	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sending changes since %v", opts.since)
 
 	options := ChangesOptions{
-		Since:        params.Since(),
+		Since:        opts.since,
 		Conflicts:    false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
-		Continuous:   bh.continuous,
-		ActiveOnly:   bh.activeOnly,
+		Continuous:   opts.continuous,
+		ActiveOnly:   opts.activeOnly,
 		Terminator:   bh.BlipSyncContext.terminator,
 		Ctx:          bh.db.Ctx,
 		ClientIsCBL2: true,
 	}
 
-	channelSet := bh.channels
+	channelSet := opts.channels
 	if channelSet == nil {
 		channelSet = base.SetOf(channels.AllChannelWildcard)
 	}
@@ -244,7 +256,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *SubChangesParams
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
 	changesDb := bh.copyContextDatabase()
-	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, params.docIDs(), func(changes []*ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 

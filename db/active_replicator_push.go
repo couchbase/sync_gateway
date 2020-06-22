@@ -105,10 +105,18 @@ func (apr *ActivePushReplicator) Start() error {
 		base.Warnf("couldn't parse checkpointed sequence ID, starting push from seq:0")
 	}
 
-	go bh.sendChanges(apr.blipSender, &SubChangesParams{
-		rq:      nil,
-		_since:  seq,
-		_docIDs: apr.config.DocIDs,
+	var channels base.Set
+	if apr.config.FilterChannels != nil {
+		channels = base.SetFromArray(apr.config.FilterChannels)
+	}
+
+	go bh.sendChanges(apr.blipSender, &sendChangesOptions{
+		docIDs:     apr.config.DocIDs,
+		since:      seq,
+		continuous: apr.config.Continuous,
+		activeOnly: apr.config.ActiveOnly,
+		batchSize:  int(apr.config.ChangesBatchSize),
+		channels:   channels,
 	})
 
 	return nil
