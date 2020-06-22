@@ -177,6 +177,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
 
+	clientType := clientTypeCBL2
+	if rq.Properties["client_sgr2"] == "true" {
+		clientType = clientTypeSGR2
+	}
+
 	continuous := subChangesParams.continuous()
 	// used for stats tracking
 	bh.continuous = continuous
@@ -203,12 +208,20 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			activeOnly: subChangesParams.activeOnly(),
 			batchSize:  subChangesParams.batchSize(),
 			channels:   channels,
+			clientType: clientType,
 		})
 		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
 	return nil
 }
+
+type clientType uint8
+
+const (
+	clientTypeCBL2 clientType = iota
+	clientTypeSGR2
+)
 
 type sendChangesOptions struct {
 	docIDs     []string
@@ -217,6 +230,7 @@ type sendChangesOptions struct {
 	activeOnly bool
 	batchSize  int
 	channels   base.Set
+	clientType clientType
 }
 
 // Sends all changes since the given sequence
@@ -230,13 +244,13 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sending changes since %v", opts.since)
 
 	options := ChangesOptions{
-		Since:        opts.since,
-		Conflicts:    false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
-		Continuous:   opts.continuous,
-		ActiveOnly:   opts.activeOnly,
-		Terminator:   bh.BlipSyncContext.terminator,
-		Ctx:          bh.db.Ctx,
-		ClientIsCBL2: true,
+		Since:      opts.since,
+		Conflicts:  false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
+		Continuous: opts.continuous,
+		ActiveOnly: opts.activeOnly,
+		Terminator: bh.BlipSyncContext.terminator,
+		Ctx:        bh.db.Ctx,
+		clientType: opts.clientType,
 	}
 
 	channelSet := opts.channels

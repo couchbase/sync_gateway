@@ -112,6 +112,7 @@ func (apr *ActivePushReplicator) Start() error {
 		activeOnly: apr.config.ActiveOnly,
 		batchSize:  int(apr.config.ChangesBatchSize),
 		channels:   channels,
+		clientType: clientTypeSGR2,
 	})
 
 	return nil

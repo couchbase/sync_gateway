@@ -250,6 +250,7 @@ func (apr *ActivePullReplicator) Start() error {
 		FilterChannels: apr.config.FilterChannels,
 		DocIDs:         apr.config.DocIDs,
 		ActiveOnly:     apr.config.ActiveOnly,
+		clientType:     clientTypeSGR2,
 	}
 
 	if err := apr.startCheckpointer(); err != nil {
