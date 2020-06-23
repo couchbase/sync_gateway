@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Wrapper around *expvars.Map for database stats that provide:
@@ -149,6 +150,14 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(0))
 		d.statsCacheMap = result
+
+		c := &base.Collector{
+			Info:   map[string]base.StatComponents{base.StatKeyRevisionCacheHits: {ValueType: prometheus.CounterValue}},
+			VarMap: d.statsCacheMap,
+		}
+
+		prometheus.MustRegister(c)
+
 	case base.StatsGroupKeyDatabase:
 		result.Set(base.StatKeySequenceGetCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeySequenceReservedCount, base.ExpvarIntVal(0))
