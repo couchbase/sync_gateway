@@ -1688,13 +1688,13 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 	if db.ChannelMapper != nil {
 		// Call the ChannelMapper:
 		startTime := time.Now()
-		db.DbStats.CblReplicationPush().Add(base.StatKeySyncFunctionCount, 1)
+		db.DbStats.StatsCblReplicationPush().Add(base.StatKeySyncFunctionCount, 1)
 
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
 			makeUserCtx(db.user))
 
-		db.DbStats.CblReplicationPush().Add(base.StatKeySyncFunctionTime, time.Since(startTime).Nanoseconds())
+		db.DbStats.StatsCblReplicationPush().Add(base.StatKeySyncFunctionTime, time.Since(startTime).Nanoseconds())
 
 		if err == nil {
 			result = output.Channels

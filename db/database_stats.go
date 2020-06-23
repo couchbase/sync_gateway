@@ -69,14 +69,14 @@ func (d *DatabaseStats) StatsDeltaSync() (stats *expvar.Map) {
 	return d.statsDeltaSyncMap
 }
 
-func (d *DatabaseStats) SharedBucketImport() (stats *expvar.Map) {
+func (d *DatabaseStats) StatsSharedBucketImport() (stats *expvar.Map) {
 	d.sharedBucketImportMapSync.Do(func() {
 		d.StatsByKey(base.StatsGroupKeySharedBucketImport)
 	})
 	return d.sharedBucketImportMap
 }
 
-func (d *DatabaseStats) CblReplicationPush() (stats *expvar.Map) {
+func (d *DatabaseStats) StatsCblReplicationPush() (stats *expvar.Map) {
 	d.cblReplicationPushSync.Do(func() {
 		d.StatsByKey(base.StatsGroupKeyCblReplicationPush)
 	})
