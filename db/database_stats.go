@@ -152,7 +152,9 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.statsCacheMap = result
 
 		c := &base.Collector{
-			Info:   map[string]base.StatComponents{base.StatKeyRevisionCacheHits: {ValueType: prometheus.CounterValue}},
+			Info: map[string]base.StatComponents{
+				base.StatKeyRevisionCacheHits: {ValueType: prometheus.CounterValue},
+			},
 			VarMap: d.statsCacheMap,
 		}
 
