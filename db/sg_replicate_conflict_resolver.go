@@ -102,7 +102,7 @@ type ConflictResolverJSServer struct {
 }
 
 func NewConflictResolverJSServer(fnSource string) *ConflictResolverJSServer {
-	base.Debugf(base.KeyImport, "Creating new ConflictResolverFunction")
+	base.Debugf(base.KeyReplicate, "Creating new ConflictResolverFunction")
 	return &ConflictResolverJSServer{
 		JSServer: sgbucket.NewJSServer(fnSource, kTaskCacheSize, newConflictResolverRunner),
 	}
@@ -131,7 +131,7 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 	}
 }
 
-// Compiles a JavaScript event function to a jsImportFilterRunner object.
+// Compiles a JavaScript event function to a conflictResolverRunner object.
 func newConflictResolverRunner(funcSource string) (sgbucket.JSServerTask, error) {
 	conflictResolverRunner := &sgbucket.JSRunner{}
 	err := conflictResolverRunner.InitWithLogging(funcSource,
