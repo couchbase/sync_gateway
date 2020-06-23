@@ -152,12 +152,34 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.statsCacheMap = result
 
 		c := &base.Collector{
+			Subsystem: "cache",
 			Info: map[string]base.StatComponents{
-				base.StatKeyRevisionCacheHits: {ValueType: prometheus.CounterValue},
+				base.StatKeyRevisionCacheHits:                   {ValueType: prometheus.CounterValue},
+				base.StatKeyRevisionCacheMisses:                 {ValueType: prometheus.CounterValue},
+				base.StatKeyRevisionCacheBypass:                 {ValueType: prometheus.GaugeValue},
+				base.StatKeyChannelCacheHits:                    {ValueType: prometheus.CounterValue},
+				base.StatKeyChannelCacheMisses:                  {ValueType: prometheus.CounterValue},
+				base.StatKeyChannelCacheRevsActive:              {ValueType: prometheus.GaugeValue},
+				base.StatKeyChannelCacheRevsTombstone:           {ValueType: prometheus.GaugeValue},
+				base.StatKeyChannelCacheRevsRemoval:             {ValueType: prometheus.GaugeValue},
+				base.StatKeyChannelCacheNumChannels:             {ValueType: prometheus.GaugeValue},
+				base.StatKeyChannelCacheMaxEntries:              {ValueType: prometheus.GaugeValue},
+				base.StatKeyChannelCachePendingQueries:          {ValueType: prometheus.GaugeValue},
+				base.StatKeyChannelCacheChannelsAdded:           {ValueType: prometheus.CounterValue},
+				base.StatKeyChannelCacheChannelsEvictedInactive: {ValueType: prometheus.CounterValue},
+				base.StatKeyChannelCacheChannelsEvictedNRU:      {ValueType: prometheus.CounterValue},
+				base.StatKeyChannelCacheCompactCount:            {ValueType: prometheus.CounterValue},
+				base.StatKeyChannelCacheBypassCount:             {ValueType: prometheus.CounterValue},
+				base.StatKeyActiveChannels:                      {ValueType: prometheus.GaugeValue},
+				base.StatKeyNumSkippedSeqs:                      {ValueType: prometheus.CounterValue},
+				base.StatKeyAbandonedSeqs:                       {ValueType: prometheus.CounterValue},
+				base.StatKeyHighSeqCached:                       {ValueType: prometheus.CounterValue},
+				base.StatKeyHighSeqStable:                       {ValueType: prometheus.CounterValue},
+				base.StatKeySkippedSeqLen:                       {ValueType: prometheus.GaugeValue},
+				base.StatKeyPendingSeqLen:                       {ValueType: prometheus.GaugeValue},
 			},
 			VarMap: d.statsCacheMap,
 		}
-
 		prometheus.MustRegister(c)
 
 	case base.StatsGroupKeyDatabase:
@@ -186,6 +208,38 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyImportDcpStats, new(expvar.Map).Init())
 		result.Set(base.StatKeyHighSeqFeed, new(base.IntMax))
 		d.statsDatabaseMap = result
+
+		c := &base.Collector{
+			Subsystem: "database",
+			Info: map[string]base.StatComponents{
+				base.StatKeySequenceGetCount:        {ValueType: prometheus.CounterValue},
+				base.StatKeySequenceReservedCount:   {ValueType: prometheus.CounterValue},
+				base.StatKeySequenceReleasedCount:   {ValueType: prometheus.CounterValue},
+				base.StatKeyAbandonedSeqs:           {ValueType: prometheus.CounterValue},
+				base.StatKeyCrc32cMatchCount:        {ValueType: prometheus.GaugeValue},
+				base.StatKeyNumReplicationsActive:   {ValueType: prometheus.GaugeValue},
+				base.StatKeyNumReplicationsTotal:    {ValueType: prometheus.CounterValue},
+				base.StatKeyNumDocWrites:            {ValueType: prometheus.CounterValue},
+				base.StatKeyDocWritesBytes:          {ValueType: prometheus.CounterValue},
+				base.StatKeyDocWritesXattrBytes:     {ValueType: prometheus.CounterValue},
+				base.StatKeyNumDocReadsRest:         {ValueType: prometheus.CounterValue},
+				base.StatKeyNumDocReadsBlip:         {ValueType: prometheus.CounterValue},
+				base.StatKeyDocWritesBytesBlip:      {ValueType: prometheus.CounterValue},
+				base.StatKeyDocReadsBytesBlip:       {ValueType: prometheus.CounterValue},
+				base.StatKeyWarnXattrSizeCount:      {ValueType: prometheus.CounterValue},
+				base.StatKeyWarnChannelsPerDocCount: {ValueType: prometheus.CounterValue},
+				base.StatKeyWarnGrantsPerDocCount:   {ValueType: prometheus.CounterValue},
+				base.StatKeyDcpCachingCount:         {ValueType: prometheus.GaugeValue},
+				base.StatKeyDcpCachingTime:          {ValueType: prometheus.GaugeValue},
+				base.StatKeyDcpReceivedCount:        {ValueType: prometheus.GaugeValue},
+				base.StatKeyDcpReceivedTime:         {ValueType: prometheus.GaugeValue},
+				base.StatKeyCachingDcpStats:         {ValueType: prometheus.GaugeValue},
+				base.StatKeyHighSeqFeed:             {ValueType: prometheus.CounterValue},
+			},
+			VarMap: d.statsDatabaseMap,
+		}
+		prometheus.MustRegister(c)
+
 	case base.StatsGroupKeyDeltaSync:
 		result.Set(base.StatKeyDeltasRequested, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltasSent, base.ExpvarIntVal(0))
@@ -194,6 +248,21 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyDeltaCacheMisses, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltaPushDocCount, base.ExpvarIntVal(0))
 		d.statsDeltaSyncMap = result
+
+		c := &base.Collector{
+			Subsystem: "delta_sync",
+			Info: map[string]base.StatComponents{
+				base.StatKeyDeltasRequested:           {ValueType: prometheus.CounterValue},
+				base.StatKeyDeltasSent:                {ValueType: prometheus.CounterValue},
+				base.StatKeyDeltaPullReplicationCount: {ValueType: prometheus.CounterValue},
+				base.StatKeyDeltaCacheHits:            {ValueType: prometheus.CounterValue},
+				base.StatKeyDeltaCacheMisses:          {ValueType: prometheus.CounterValue},
+				base.StatKeyDeltaPushDocCount:         {ValueType: prometheus.CounterValue},
+			},
+			VarMap: d.statsDeltaSyncMap,
+		}
+		prometheus.MustRegister(c)
+
 	case base.StatsGroupKeySharedBucketImport:
 		result.Set(base.StatKeyImportCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyImportCancelCAS, base.ExpvarIntVal(0))
@@ -202,6 +271,21 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyImportHighSeq, base.ExpvarUInt64Val(0))
 		result.Set(base.StatKeyImportPartitions, base.ExpvarIntVal(0))
 		d.sharedBucketImportMap = result
+
+		c := &base.Collector{
+			Subsystem: "shared_bucket_import",
+			Info: map[string]base.StatComponents{
+				base.StatKeyImportCount:          {ValueType: prometheus.CounterValue},
+				base.StatKeyImportCancelCAS:      {ValueType: prometheus.CounterValue},
+				base.StatKeyImportErrorCount:     {ValueType: prometheus.CounterValue},
+				base.StatKeyImportProcessingTime: {ValueType: prometheus.GaugeValue},
+				base.StatKeyImportHighSeq:        {ValueType: prometheus.CounterValue},
+				base.StatKeyImportPartitions:     {ValueType: prometheus.GaugeValue},
+			},
+			VarMap: d.sharedBucketImportMap,
+		}
+		prometheus.MustRegister(c)
+
 	case base.StatsGroupKeyCblReplicationPush:
 		result.Set(base.StatKeyDocPushCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyWriteProcessingTime, base.ExpvarIntVal(0))
@@ -213,6 +297,24 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyAttachmentPushBytes, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyConflictWriteCount, base.ExpvarIntVal(0))
 		d.cblReplicationPush = result
+
+		c := &base.Collector{
+			Subsystem: "replication_push",
+			Info: map[string]base.StatComponents{
+				base.StatKeyDocPushCount:        {ValueType: prometheus.GaugeValue},
+				base.StatKeyWriteProcessingTime: {ValueType: prometheus.GaugeValue},
+				base.StatKeySyncFunctionCount:   {ValueType: prometheus.CounterValue},
+				base.StatKeySyncFunctionTime:    {ValueType: prometheus.CounterValue},
+				base.StatKeyProposeChangeCount:  {ValueType: prometheus.CounterValue},
+				base.StatKeyProposeChangeTime:   {ValueType: prometheus.CounterValue},
+				base.StatKeyAttachmentPushCount: {ValueType: prometheus.CounterValue},
+				base.StatKeyAttachmentPushBytes: {ValueType: prometheus.CounterValue},
+				base.StatKeyConflictWriteCount:  {ValueType: prometheus.CounterValue},
+			},
+			VarMap: d.cblReplicationPush,
+		}
+		prometheus.MustRegister(c)
+
 	case base.StatsGroupKeyCblReplicationPull:
 		result.Set(base.StatKeyPullReplicationsActiveContinuous, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyPullReplicationsActiveOneShot, base.ExpvarIntVal(0))
@@ -229,6 +331,29 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyAttachmentPullCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyAttachmentPullBytes, base.ExpvarIntVal(0))
 		d.cblReplicationPull = result
+
+		c := &base.Collector{
+			Subsystem: "replication_pull",
+			Info: map[string]base.StatComponents{
+				base.StatKeyPullReplicationsActiveContinuous: {ValueType: prometheus.GaugeValue},
+				base.StatKeyPullReplicationsActiveOneShot:    {ValueType: prometheus.GaugeValue},
+				base.StatKeyPullReplicationsTotalContinuous:  {ValueType: prometheus.GaugeValue},
+				base.StatKeyPullReplicationsTotalOneShot:     {ValueType: prometheus.GaugeValue},
+				base.StatKeyPullReplicationsSinceZero:        {ValueType: prometheus.CounterValue},
+				base.StatKeyPullReplicationsCaughtUp:         {ValueType: prometheus.GaugeValue},
+				base.StatKeyRequestChangesCount:              {ValueType: prometheus.CounterValue},
+				base.StatKeyRequestChangesTime:               {ValueType: prometheus.CounterValue},
+				base.StatKeyRevSendCount:                     {ValueType: prometheus.CounterValue},
+				base.StatKeyRevSendLatency:                   {ValueType: prometheus.CounterValue},
+				base.StatKeyRevProcessingTime:                {ValueType: prometheus.GaugeValue},
+				base.StatKeyMaxPending:                       {ValueType: prometheus.GaugeValue},
+				base.StatKeyAttachmentPullCount:              {ValueType: prometheus.CounterValue},
+				base.StatKeyAttachmentPullBytes:              {ValueType: prometheus.CounterValue},
+			},
+			VarMap: d.cblReplicationPull,
+		}
+		prometheus.MustRegister(c)
+
 	case base.StatsGroupKeySecurity:
 		result.Set(base.StatKeyNumDocsRejected, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyNumAccessErrors, base.ExpvarIntVal(0))
@@ -236,6 +361,20 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyAuthFailedCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyTotalAuthTime, base.ExpvarIntVal(0))
 		d.statsSecurity = result
+
+		c := &base.Collector{
+			Subsystem: "security",
+			Info: map[string]base.StatComponents{
+				base.StatKeyNumDocsRejected:  {ValueType: prometheus.CounterValue},
+				base.StatKeyNumAccessErrors:  {ValueType: prometheus.CounterValue},
+				base.StatKeyAuthSuccessCount: {ValueType: prometheus.CounterValue},
+				base.StatKeyAuthFailedCount:  {ValueType: prometheus.CounterValue},
+				base.StatKeyTotalAuthTime:    {ValueType: prometheus.GaugeValue},
+			},
+			VarMap: d.statsSecurity,
+		}
+		prometheus.MustRegister(c)
+
 	case base.StatsGroupKeyGsiViews:
 		// GsiView stat keys are dynamically generated based on query names - see query.go
 		d.statsGsiViews = result

@@ -17,7 +17,6 @@ import (
 
 	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Regexes that match database or doc ID component of a path.
@@ -311,12 +310,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, (*handler).handleCompact)).Methods("POST")
 
 	return r
-}
-
-func (h *handler) handleMetrics() error {
-	promhttp.Handler().ServeHTTP(h.response, h.rq)
-
-	return nil
 }
 
 // Returns a top-level HTTP handler for a Router. This adds behavior for URLs that don't

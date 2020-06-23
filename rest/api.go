@@ -24,6 +24,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/felixge/fgprof"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var mutexProfileRunning uint32
@@ -425,6 +426,12 @@ func (h *handler) handlePprofMutex() error {
 	httpprof.Handler("mutex").ServeHTTP(h.response, h.rq)
 	runtime.SetMutexProfileFraction(0)
 	atomic.StoreUint32(&mutexProfileRunning, profileStopped)
+	return nil
+}
+
+func (h *handler) handleMetrics() error {
+	promhttp.Handler().ServeHTTP(h.response, h.rq)
+
 	return nil
 }
 
