@@ -2,6 +2,7 @@ package db
 
 import (
 	"expvar"
+	"fmt"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -14,6 +15,7 @@ import (
 //    - Initialize all stats in a stat group to their zero values
 //
 type DatabaseStats struct {
+	dbName string
 
 	// The expvars map the stats for this db will be stored in
 	storage *expvar.Map
@@ -37,8 +39,9 @@ type DatabaseStats struct {
 	statsGsiViews *expvar.Map
 }
 
-func NewDatabaseStats() *DatabaseStats {
+func NewDatabaseStats(dbName string) *DatabaseStats {
 	dbStats := DatabaseStats{
+		dbName:  dbName,
 		storage: new(expvar.Map).Init(),
 	}
 	return &dbStats
@@ -116,6 +119,8 @@ func (d *DatabaseStats) StatsByKey(key string) (stats *expvar.Map) {
 		subStatsMap = subStatsVar.(*expvar.Map)
 	}
 
+	fmt.Println(subStatsMap)
+
 	return subStatsMap
 }
 
@@ -152,6 +157,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.statsCacheMap = result
 
 		c := &base.Collector{
+			DBName:    d.dbName,
 			Subsystem: "cache",
 			Info: map[string]base.StatComponents{
 				base.StatKeyRevisionCacheHits:                   {ValueType: prometheus.CounterValue},
@@ -210,6 +216,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.statsDatabaseMap = result
 
 		c := &base.Collector{
+			DBName:    d.dbName,
 			Subsystem: "database",
 			Info: map[string]base.StatComponents{
 				base.StatKeySequenceGetCount:        {ValueType: prometheus.CounterValue},
@@ -250,6 +257,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.statsDeltaSyncMap = result
 
 		c := &base.Collector{
+			DBName:    d.dbName,
 			Subsystem: "delta_sync",
 			Info: map[string]base.StatComponents{
 				base.StatKeyDeltasRequested:           {ValueType: prometheus.CounterValue},
@@ -273,6 +281,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.sharedBucketImportMap = result
 
 		c := &base.Collector{
+			DBName:    d.dbName,
 			Subsystem: "shared_bucket_import",
 			Info: map[string]base.StatComponents{
 				base.StatKeyImportCount:          {ValueType: prometheus.CounterValue},
@@ -299,6 +308,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.cblReplicationPush = result
 
 		c := &base.Collector{
+			DBName:    d.dbName,
 			Subsystem: "replication_push",
 			Info: map[string]base.StatComponents{
 				base.StatKeyDocPushCount:        {ValueType: prometheus.GaugeValue},
@@ -333,6 +343,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.cblReplicationPull = result
 
 		c := &base.Collector{
+			DBName:    d.dbName,
 			Subsystem: "replication_pull",
 			Info: map[string]base.StatComponents{
 				base.StatKeyPullReplicationsActiveContinuous: {ValueType: prometheus.GaugeValue},
@@ -363,6 +374,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		d.statsSecurity = result
 
 		c := &base.Collector{
+			DBName:    d.dbName,
 			Subsystem: "security",
 			Info: map[string]base.StatComponents{
 				base.StatKeyNumDocsRejected:  {ValueType: prometheus.CounterValue},
@@ -378,6 +390,8 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 	case base.StatsGroupKeyGsiViews:
 		// GsiView stat keys are dynamically generated based on query names - see query.go
 		d.statsGsiViews = result
+
+		// TODO: Probably will need to show all possibilities here into prometheus.
 	}
 
 	return result

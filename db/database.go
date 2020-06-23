@@ -238,7 +238,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	dbStats := NewDatabaseStats()
+	dbStats := NewDatabaseStats(dbName)
 
 	base.PerDbStats.Set(dbName, dbStats.ExpvarMap())
 
