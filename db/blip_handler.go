@@ -162,18 +162,14 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	bh.logEndpointEntry(rq.Profile(), subChangesParams.String())
 
-	// TODO: Do we need to store the changes-specific parameters on the blip sync context?  Seems like they only need to be passed in to sendChanges
-	bh.batchSize = subChangesParams.batchSize()
-	bh.continuous = subChangesParams.continuous()
-	bh.activeOnly = subChangesParams.activeOnly()
-
+	var channels base.Set
 	if filter := subChangesParams.filter(); filter == base.ByChannelFilter {
 		var err error
 
-		bh.channels, err = subChangesParams.channelsExpandedSet()
+		channels, err = subChangesParams.channelsExpandedSet()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "%s", err)
-		} else if len(bh.channels) == 0 {
+		} else if len(channels) == 0 {
 			return base.HTTPErrorf(http.StatusBadRequest, "Empty channel list")
 
 		}
@@ -181,6 +177,14 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
 
+	clientType := clientTypeCBL2
+	if rq.Properties["client_sgr2"] == "true" {
+		clientType = clientTypeSGR2
+	}
+
+	continuous := subChangesParams.continuous()
+	// used for stats tracking
+	bh.continuous = continuous
 	// Start asynchronous changes goroutine
 	go func() {
 		// Pull replication stats by type - Active stats decremented in Close()
@@ -197,46 +201,71 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
-		bh.sendChanges(rq.Sender, subChangesParams)
+		bh.sendChanges(rq.Sender, &sendChangesOptions{
+			docIDs:     subChangesParams.docIDs(),
+			since:      subChangesParams.Since(),
+			continuous: continuous,
+			activeOnly: subChangesParams.activeOnly(),
+			batchSize:  subChangesParams.batchSize(),
+			channels:   channels,
+			clientType: clientType,
+		})
 		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
 	return nil
 }
 
+type clientType uint8
+
+const (
+	clientTypeCBL2 clientType = iota
+	clientTypeSGR2
+)
+
+type sendChangesOptions struct {
+	docIDs     []string
+	since      SequenceID
+	continuous bool
+	activeOnly bool
+	batchSize  int
+	channels   base.Set
+	clientType clientType
+}
+
 // Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(sender *blip.Sender, params *SubChangesParams) {
+func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warnf("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
 		}
 	}()
 
-	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sending changes since %v", params.Since())
+	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sending changes since %v", opts.since)
 
 	options := ChangesOptions{
-		Since:        params.Since(),
-		Conflicts:    false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
-		Continuous:   bh.continuous,
-		ActiveOnly:   bh.activeOnly,
-		Terminator:   bh.BlipSyncContext.terminator,
-		Ctx:          bh.db.Ctx,
-		ClientIsCBL2: true,
+		Since:      opts.since,
+		Conflicts:  false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
+		Continuous: opts.continuous,
+		ActiveOnly: opts.activeOnly,
+		Terminator: bh.BlipSyncContext.terminator,
+		Ctx:        bh.db.Ctx,
+		clientType: opts.clientType,
 	}
 
-	channelSet := bh.channels
+	channelSet := opts.channels
 	if channelSet == nil {
 		channelSet = base.SetOf(channels.AllChannelWildcard)
 	}
 
 	caughtUp := false
-	pendingChanges := make([][]interface{}, 0, bh.batchSize)
+	pendingChanges := make([][]interface{}, 0, opts.batchSize)
 	sendPendingChangesAt := func(minChanges int) error {
 		if len(pendingChanges) >= minChanges {
 			if err := bh.sendBatchOfChanges(sender, pendingChanges); err != nil {
 				return err
 			}
-			pendingChanges = make([][]interface{}, 0, bh.batchSize)
+			pendingChanges = make([][]interface{}, 0, opts.batchSize)
 		}
 		return nil
 	}
@@ -244,7 +273,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *SubChangesParams
 	// Create a distinct database instance for changes, to avoid races between reloadUser invocation in changes.go
 	// and BlipSyncContext user access.
 	changesDb := bh.copyContextDatabase()
-	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, params.docIDs(), func(changes []*ChangeEntry) error {
+	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 
@@ -255,7 +284,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, params *SubChangesParams
 						changeRow = changeRow[0:3]
 					}
 					pendingChanges = append(pendingChanges, changeRow)
-					if err := sendPendingChangesAt(bh.batchSize); err != nil {
+					if err := sendPendingChangesAt(opts.batchSize); err != nil {
 						return err
 					}
 				}
