@@ -176,7 +176,6 @@ func newConflictResolverRunner(funcSource string) (sgbucket.JSServerTask, error)
 			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Error converting default winner to javascript value.  Error:%w", err))
 		}
 		return ottoDefaultWinner
-
 	})
 
 	conflictResolverRunner.After = func(result otto.Value, err error) (interface{}, error) {
