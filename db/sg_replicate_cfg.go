@@ -66,6 +66,7 @@ type ReplicationConfig struct {
 	Filter                 string                    `json:"filter,omitempty"`
 	QueryParams            interface{}               `json:"query_params,omitempty"`
 	Cancel                 bool                      `json:"cancel,omitempty"`
+	Adhoc                  bool                      `json:"adhoc,omitempty"`
 }
 
 // ReplicationCfg represents a replication definition as stored in the cluster config.
@@ -89,6 +90,7 @@ type ReplicationUpsertConfig struct {
 	Filter                 *string     `json:"filter,omitempty"`
 	QueryParams            interface{} `json:"query_params,omitempty"`
 	Cancel                 *bool       `json:"cancel,omitempty"`
+	Adhoc                  *bool       `json:"adhoc,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -97,6 +99,14 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 	if rc.Cancel {
 		if fromConfig {
 			err = base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
+			return
+		}
+	}
+
+	// Cancel is only supported via the REST API
+	if rc.Adhoc {
+		if fromConfig {
+			err = base.HTTPErrorf(http.StatusBadRequest, "adhoc=true is invalid for replication in Sync Gateway configuration")
 			return
 		}
 	}
@@ -194,6 +204,9 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 	}
 	if c.Cancel != nil {
 		rc.Cancel = *c.Cancel
+	}
+	if c.Adhoc != nil {
+		rc.Adhoc = *c.Adhoc
 	}
 	if c.QueryParams != nil {
 		rc.QueryParams = c.QueryParams

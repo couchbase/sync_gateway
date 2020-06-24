@@ -22,6 +22,7 @@ func TestReplicationAPI(t *testing.T) {
 		ID:        "replication1",
 		Remote:    "http://remote:4984/db",
 		Direction: "pull",
+		Adhoc:     true,
 	}
 
 	// PUT replication
@@ -37,6 +38,7 @@ func TestReplicationAPI(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "replication1", configResponse.ID)
 	assert.Equal(t, "http://remote:4984/db", configResponse.Remote)
+	assert.Equal(t, true, configResponse.Adhoc)
 	assert.Equal(t, db.ActiveReplicatorTypePull, configResponse.Direction)
 
 	// POST replication
