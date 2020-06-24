@@ -18,6 +18,8 @@ const (
 	ActiveReplicatorStatsKeySetCheckpointTotal       = "set_checkpoint_total"
 	ActiveReplicatorStatsKeyRevsReceivedTotal        = "revs_received_total"
 	ActiveReplicatorStatsKeyChangesRevsReceivedTotal = "changes_revs_received_total"
+	ActiveReplicatorStatsKeyRevsSentTotal            = "revs_sent_total"
+	ActiveReplicatorStatsKeyRevsRequestedTotal       = "revs_requested_total"
 )
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.

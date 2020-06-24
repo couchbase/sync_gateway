@@ -86,6 +86,8 @@ type BlipSyncContext struct {
 	dbStats                   *DatabaseStats              // Direct stats access to support reloading db while stats are being updated
 	postHandleRevCallback     func(remoteSeq string)      // postHandleRevCallback is called after successfully handling an incoming rev message
 	postHandleChangesCallback func(expectedSeqs []string) // postHandleChangesCallback is called after successfully handling an incoming changes message
+	preSendRevisionCallback   func(remoteSeq string)      // preSendRevisionCallback is called when a client requests a specific sequence to be sent
+	postSendRevisionCallback  func(remoteSeq string)      // postSendRevisionCallback is called after successfully sending an outgoing rev message
 	replicationStats          *BlipSyncStats              // Replication stats
 }
 
@@ -222,6 +224,10 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	for i, knownRevsArray := range answer {
 		if knownRevsArray, ok := knownRevsArray.([]interface{}); ok {
 			seq := changeArray[i][0].(SequenceID)
+			if bsc.preSendRevisionCallback != nil {
+				bsc.preSendRevisionCallback(seq.String())
+			}
+
 			docID := changeArray[i][1].(string)
 			revID := changeArray[i][2].(string)
 			deltaSrcRevID := ""
@@ -260,6 +266,11 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
 			revSendCount++
+
+			// TODO: Await a successful response before calling postSendRevisionCallback
+			if bsc.postSendRevisionCallback != nil {
+				bsc.postSendRevisionCallback(seq.String())
+			}
 		}
 	}
 
