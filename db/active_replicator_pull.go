@@ -28,21 +28,33 @@ func NewPullReplicator(ctx context.Context, config *ActiveReplicatorConfig) *Act
 	}
 }
 
-func (apr *ActivePullReplicator) connect() (err error) {
+func (apr *ActivePullReplicator) Start() error {
 	if apr == nil {
-		return fmt.Errorf("nil ActivePullReplicator, can't connect")
+		return fmt.Errorf("nil ActivePullReplicator, can't start")
 	}
 
-	if apr.blipSender != nil {
-		return fmt.Errorf("replicator already has a blipSender, can't connect twice")
-	}
-
-	blipContext := blip.NewContextCustomID(apr.config.ID+"-pull", blipCBMobileReplication)
-	bsc := NewBlipSyncContext(blipContext, apr.config.ActiveDB, blipContext.ID)
-	apr.blipSyncContext = bsc
-
-	apr.blipSender, err = blipSync(*apr.config.PassiveDBURL, apr.blipSyncContext.blipContext)
+	var err error
+	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config)
 	if err != nil {
+		return err
+	}
+
+	if err := apr.initCheckpointer(); err != nil {
+		return err
+	}
+
+	subChangesRequest := SubChangesRequest{
+		Continuous:     apr.config.Continuous,
+		Batch:          apr.config.ChangesBatchSize,
+		Since:          apr.Checkpointer.lastCheckpointSeq,
+		Filter:         apr.config.Filter,
+		FilterChannels: apr.config.FilterChannels,
+		DocIDs:         apr.config.DocIDs,
+		ActiveOnly:     apr.config.ActiveOnly,
+		clientType:     clientTypeSGR2,
+	}
+
+	if err := subChangesRequest.Send(apr.blipSender); err != nil {
 		return err
 	}
 
@@ -88,39 +100,6 @@ func (apr *ActivePullReplicator) initCheckpointer() error {
 	return nil
 }
 
-func (apr *ActivePullReplicator) Start() error {
-	if apr == nil {
-		return fmt.Errorf("nil ActivePullReplicator, can't start")
-	}
-
-	var err error
-	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config)
-	if err != nil {
-		return err
-	}
-
-	if err := apr.initCheckpointer(); err != nil {
-		return err
-	}
-
-	subChangesRequest := SubChangesRequest{
-		Continuous:     apr.config.Continuous,
-		Batch:          apr.config.ChangesBatchSize,
-		Since:          apr.Checkpointer.lastCheckpointSeq,
-		Filter:         apr.config.Filter,
-		FilterChannels: apr.config.FilterChannels,
-		DocIDs:         apr.config.DocIDs,
-		ActiveOnly:     apr.config.ActiveOnly,
-		clientType:     clientTypeSGR2,
-	}
-
-	if err := subChangesRequest.Send(apr.blipSender); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
 func (apr *ActivePullReplicator) CheckpointID() (string, error) {
 	checkpointHash, err := apr.config.CheckpointHash()
@@ -134,37 +113,12 @@ func (apr *ActivePullReplicator) CheckpointID() (string, error) {
 func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 	apr.blipSyncContext.postHandleChangesCallback = func(changesSeqs []string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyChangesRevsReceivedTotal, int64(len(changesSeqs)))
-
-		if len(changesSeqs) == 0 {
-			// nothing to do
-			return
-		}
-
-		select {
-		case <-apr.ctx.Done():
-			// replicator already closed, bail out of checkpointing work
-			return
-		default:
-		}
-
-		apr.Checkpointer.lock.Lock()
-		apr.Checkpointer.expectedSeqs = append(apr.Checkpointer.expectedSeqs, changesSeqs...)
-		apr.Checkpointer.lock.Unlock()
+		apr.Checkpointer.AddExpectedSeq(changesSeqs...)
 	}
 
 	// TODO: Check whether we need to add a handleNoRev callback to remove expected sequences.
 	apr.blipSyncContext.postHandleRevCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsReceivedTotal, 1)
-
-		select {
-		case <-apr.ctx.Done():
-			// replicator already closed, bail out of checkpointing work
-			return
-		default:
-		}
-
-		apr.Checkpointer.lock.Lock()
-		apr.Checkpointer.processedSeqs[remoteSeq] = struct{}{}
-		apr.Checkpointer.lock.Unlock()
+		apr.Checkpointer.ProcessedSeq(remoteSeq)
 	}
 }

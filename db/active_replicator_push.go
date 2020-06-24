@@ -29,124 +29,6 @@ func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) *Act
 	}
 }
 
-// CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
-func (apr *ActivePushReplicator) CheckpointID() (string, error) {
-	checkpointHash, err := apr.config.CheckpointHash()
-	if err != nil {
-		return "", err
-	}
-	return "sgr2cp:push:" + checkpointHash, nil
-}
-
-func (apr *ActivePushReplicator) Close() error {
-	if apr == nil {
-		// noop
-		return nil
-	}
-
-	apr.Checkpointer.CheckpointNow()
-
-	if apr.blipSender != nil {
-		apr.blipSender.Close()
-		apr.blipSender = nil
-	}
-
-	if apr.blipSyncContext != nil {
-		apr.blipSyncContext.Close()
-		apr.blipSyncContext = nil
-	}
-
-	return nil
-}
-
-// getCheckpoint tries to fetch a since value for the given replication by requesting a checkpoint.
-// If this fails, the function returns a zero value.
-func (apr *ActivePushReplicator) getCheckpoint() GetSGR2CheckpointResponse {
-	client, err := apr.CheckpointID()
-	if err != nil {
-		base.Warnf("couldn't generate CheckpointID for config, starting from 0: %v", err)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	rq := GetSGR2CheckpointRequest{
-		Client: client,
-	}
-
-	if err := rq.Send(apr.blipSender); err != nil {
-		base.Warnf("couldn't send GetCheckpoint request, starting from 0: %v", err)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	resp, err := rq.Response()
-	if err != nil {
-		base.Warnf("couldn't get response for GetCheckpoint request, starting from 0: %v", err)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	// checkpoint wasn't found (404)
-	if resp == nil {
-		base.Debugf(base.KeyReplicate, "couldn't find existing checkpoint for client %q, starting from 0", client)
-		apr.Stats.Add(ActiveReplicatorStatsKeyGetCheckpointMissTotal, 1)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	apr.Stats.Add(ActiveReplicatorStatsKeyGetCheckpointHitTotal, 1)
-
-	return *resp
-}
-
-func (apr *ActivePushReplicator) setCheckpoint(seq string) {
-	client, err := apr.CheckpointID()
-	if err != nil {
-		base.Warnf("couldn't generate CheckpointID for config to send checkpoint: %v", err)
-		return
-	}
-
-	rq := SetSGR2CheckpointRequest{
-		Client: client,
-		Checkpoint: SGR2Checkpoint{
-			LastSequence: seq,
-		},
-	}
-	if apr.Checkpointer.lastCheckpointRevID != "" {
-		rq.RevID = &apr.Checkpointer.lastCheckpointRevID
-	}
-
-	if err := rq.Send(apr.blipSender); err != nil {
-		base.Warnf("couldn't send SetCheckpoint request: %v", err)
-		return
-	}
-
-	resp, err := rq.Response()
-	if err != nil {
-		base.Warnf("couldn't get response for SetCheckpoint request: %v", err)
-		return
-	}
-
-	apr.Stats.Add(ActiveReplicatorStatsKeySetCheckpointTotal, 1)
-
-	apr.Checkpointer.lastCheckpointRevID = resp.RevID
-	apr.Checkpointer.lastCheckpointSeq = seq
-}
-
-func (apr *ActivePushReplicator) initCheckpointer() error {
-	checkpointID, err := apr.CheckpointID()
-	if err != nil {
-		return err
-	}
-
-	apr.Checkpointer = NewCheckpointer(apr.ctx, checkpointID, apr.blipSender, apr.config.CheckpointInterval)
-
-	checkpoint := apr.Checkpointer.GetCheckpoint()
-	apr.Checkpointer.lastCheckpointRevID = checkpoint.RevID
-	apr.Checkpointer.lastCheckpointSeq = checkpoint.Checkpoint.LastSequence
-
-	apr.registerCheckpointerCallbacks()
-	apr.Checkpointer.Start()
-
-	return nil
-}
-
 func (apr *ActivePushReplicator) Start() error {
 	if apr == nil {
 		return fmt.Errorf("nil ActivePushReplicator, can't start")
@@ -191,35 +73,63 @@ func (apr *ActivePushReplicator) Start() error {
 	return nil
 }
 
+func (apr *ActivePushReplicator) Close() error {
+	if apr == nil {
+		// noop
+		return nil
+	}
+
+	apr.Checkpointer.CheckpointNow()
+
+	if apr.blipSender != nil {
+		apr.blipSender.Close()
+		apr.blipSender = nil
+	}
+
+	if apr.blipSyncContext != nil {
+		apr.blipSyncContext.Close()
+		apr.blipSyncContext = nil
+	}
+
+	return nil
+}
+
+func (apr *ActivePushReplicator) initCheckpointer() error {
+	checkpointID, err := apr.CheckpointID()
+	if err != nil {
+		return err
+	}
+
+	apr.Checkpointer = NewCheckpointer(apr.ctx, checkpointID, apr.blipSender, apr.config.CheckpointInterval)
+
+	checkpoint := apr.Checkpointer.GetCheckpoint()
+	apr.Checkpointer.lastCheckpointRevID = checkpoint.RevID
+	apr.Checkpointer.lastCheckpointSeq = checkpoint.Checkpoint.LastSequence
+
+	apr.registerCheckpointerCallbacks()
+	apr.Checkpointer.Start()
+
+	return nil
+}
+
+// CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
+func (apr *ActivePushReplicator) CheckpointID() (string, error) {
+	checkpointHash, err := apr.config.CheckpointHash()
+	if err != nil {
+		return "", err
+	}
+	return "sgr2cp:push:" + checkpointHash, nil
+}
+
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 	apr.blipSyncContext.preSendRevisionCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsRequestedTotal, 1)
-
-		select {
-		case <-apr.ctx.Done():
-			// replicator already closed, bail out of checkpointing work
-			return
-		default:
-		}
-
-		apr.Checkpointer.lock.Lock()
-		apr.Checkpointer.processedSeqs[remoteSeq] = struct{}{}
-		apr.Checkpointer.lock.Unlock()
+		apr.Checkpointer.AddExpectedSeq(remoteSeq)
 	}
 
 	apr.blipSyncContext.postSendRevisionCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsSentTotal, 1)
-
-		select {
-		case <-apr.ctx.Done():
-			// replicator already closed, bail out of checkpointing work
-			return
-		default:
-		}
-
-		apr.Checkpointer.lock.Lock()
-		apr.Checkpointer.expectedSeqs = append(apr.Checkpointer.expectedSeqs, remoteSeq)
-		apr.Checkpointer.lock.Unlock()
+		apr.Checkpointer.ProcessedSeq(remoteSeq)
 	}
 }

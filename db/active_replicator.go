@@ -17,9 +17,6 @@ import (
 
 const (
 	// TODO: Not aligned these to any stats in the PRD yet, these are used for test assertions.
-	ActiveReplicatorStatsKeyGetCheckpointHitTotal    = "get_checkpoint_hit_total"
-	ActiveReplicatorStatsKeyGetCheckpointMissTotal   = "get_checkpoint_miss_total"
-	ActiveReplicatorStatsKeySetCheckpointTotal       = "set_checkpoint_total"
 	ActiveReplicatorStatsKeyRevsReceivedTotal        = "revs_received_total"
 	ActiveReplicatorStatsKeyChangesRevsReceivedTotal = "changes_revs_received_total"
 	ActiveReplicatorStatsKeyRevsSentTotal            = "revs_sent_total"
@@ -142,6 +139,37 @@ func NewCheckpointer(ctx context.Context, clientID string, blipSender *blip.Send
 		StatGetCheckpointHitTotal:  &expvar.Int{},
 		StatGetCheckpointMissTotal: &expvar.Int{},
 	}
+}
+
+func (c *Checkpointer) ProcessedSeq(seq string) {
+	select {
+	case <-c.ctx.Done():
+		// replicator already closed, bail out of checkpointing work
+		return
+	default:
+	}
+
+	c.lock.Lock()
+	c.processedSeqs[seq] = struct{}{}
+	c.lock.Unlock()
+}
+
+func (c *Checkpointer) AddExpectedSeq(seq ...string) {
+	if len(seq) == 0 {
+		// nothing to do
+		return
+	}
+
+	select {
+	case <-c.ctx.Done():
+		// replicator already closed, bail out of checkpointing work
+		return
+	default:
+	}
+
+	c.lock.Lock()
+	c.expectedSeqs = append(c.expectedSeqs, seq...)
+	c.lock.Unlock()
 }
 
 // GetCheckpoint tries to fetch a since value for the given replication by requesting a checkpoint.
