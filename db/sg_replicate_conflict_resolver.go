@@ -44,6 +44,7 @@ type ConflictResolverFunc func(conflict Conflict) (winner Body, err error)
 
 // DefaultConflictResolver uses the same logic as revTree.WinningRevision:
 // the revision whose (!deleted, generation, hash) tuple compares the highest.
+// Returns error to satisfy ConflictResolverFunc signature
 func DefaultConflictResolver(conflict Conflict) (result Body, err error) {
 	localDeleted, _ := conflict.LocalDocument[BodyDeleted].(bool)
 	remoteDeleted, _ := conflict.RemoteDocument[BodyDeleted].(bool)
@@ -110,7 +111,6 @@ func NewConflictResolverJSServer(fnSource string) *ConflictResolverJSServer {
 
 // EvaluateFunction executes the conflict resolver with the provided conflict and returns the result.
 func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, error) {
-
 	docID, _ := conflict.LocalDocument[BodyId].(string)
 	localRevID, _ := conflict.LocalDocument[BodyRev].(string)
 	remoteRevID, _ := conflict.RemoteDocument[BodyRev].(string)
@@ -120,11 +120,20 @@ func (i *ConflictResolverJSServer) EvaluateFunction(conflict Conflict) (Body, er
 			base.UD(docID), base.UD(localRevID), base.UD(remoteRevID), err)
 		return nil, err
 	}
+
+	// A null value returned by the conflict resolver should be treated as a delete
+	if result == nil {
+		return Body{BodyDeleted: true}, nil
+	}
+
 	switch result := result.(type) {
 	case Body:
 		return result, nil
 	case map[string]interface{}:
 		return result, nil
+	case error:
+		base.Warnf("conflictResolverRunner: " + result.Error())
+		return nil, result
 	default:
 		base.Warnf("Custom conflict resolution function returned non-document result %v Type: %T", result, result)
 		return nil, errors.New("Custom conflict resolution function returned non-document value.")
@@ -141,10 +150,47 @@ func newConflictResolverRunner(funcSource string) (sgbucket.JSServerTask, error)
 		return nil, err
 	}
 
+	// Implementation of the 'defaultPolicy(conflict)' callback:
+	conflictResolverRunner.DefineNativeFunction("defaultPolicy", func(call otto.FunctionCall) otto.Value {
+		if len(call.ArgumentList) == 0 {
+			return ErrorToOttoValue(conflictResolverRunner, errors.New("No conflict parameter specified when calling defaultPolicy()"))
+		}
+		rawConflict, exportErr := call.Argument(0).Export()
+		if exportErr != nil {
+			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Unable to export conflict parameter for defaultPolicy(): %v Error: %s", call.Argument(0), exportErr))
+		}
+
+		// Called defaultPolicy with null/undefined value - return
+		if rawConflict == nil || call.Argument(0).IsUndefined() {
+			return ErrorToOttoValue(conflictResolverRunner, errors.New("Null or undefined value passed to defaultPolicy()"))
+		}
+
+		conflict, ok := rawConflict.(Conflict)
+		if !ok {
+			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Invalid value passed to defaultPolicy().  Value was type %T, expected type Conflict", rawConflict))
+		}
+
+		defaultWinner, _ := DefaultConflictResolver(conflict)
+		ottoDefaultWinner, err := conflictResolverRunner.ToValue(defaultWinner)
+		if err != nil {
+			return ErrorToOttoValue(conflictResolverRunner, fmt.Errorf("Error converting default winner to javascript value.  Error:%w", err))
+		}
+		return ottoDefaultWinner
+	})
+
 	conflictResolverRunner.After = func(result otto.Value, err error) (interface{}, error) {
 		nativeValue, _ := result.Export()
 		return nativeValue, err
 	}
 
 	return conflictResolverRunner, nil
+}
+
+// Converts an error to an otto value, to support native functions returning errors.
+func ErrorToOttoValue(runner *sgbucket.JSRunner, err error) otto.Value {
+	errorValue, convertErr := runner.ToValue(err)
+	if convertErr != nil {
+		base.Warnf("Unable to convert error to otto value: %v", convertErr)
+	}
+	return errorValue
 }
