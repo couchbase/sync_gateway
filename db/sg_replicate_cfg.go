@@ -739,19 +739,16 @@ func (a NodesByReplicationCount) Less(i, j int) bool {
 
 // ReplicationStatus is used by the _replicationStatus REST API endpoints
 type ReplicationStatus struct {
-	ID                     string `json:"replication_id"`
-	DocsRead               int64  `json:"docs_read"`
-	DocsWritten            int64  `json:"docs_written"`
-	DocWriteFailures       int64  `json:"doc_write_failures"`
-	Status                 string `json:"status"`
-	RejectedRemote         int64  `json:"rejected_by_remote"`
-	RejectedLocal          int64  `json:"rejected_by_local"`
-	LastSeqPull            string `json:"last_seq_pull,omitempty"`
-	LastSeqPush            string `json:"last_seq_push,omitempty"`
-	ErrorMessage           string `json:"error_message,omitempty"`
-	CheckpointsWritten     int64  `json:"checkpoints_written,omitempty"`
-	CheckpointsRead        int64  `json:"checkpoints_written,omitempty"`
-	CheckpointsReadMissing int64  `json:"checkpoints_written,omitempty"`
+	ID               string `json:"replication_id"`
+	DocsRead         int64  `json:"docs_read"`
+	DocsWritten      int64  `json:"docs_written"`
+	DocWriteFailures int64  `json:"doc_write_failures"`
+	Status           string `json:"status"`
+	RejectedRemote   int64  `json:"rejected_by_remote"`
+	RejectedLocal    int64  `json:"rejected_by_local"`
+	LastSeqPull      string `json:"last_seq_pull,omitempty"`
+	LastSeqPush      string `json:"last_seq_push,omitempty"`
+	ErrorMessage     string `json:"error_message,omitempty"`
 }
 
 func (m *sgReplicateManager) GetReplicationStatus(replicationID string) (*ReplicationStatus, error) {
