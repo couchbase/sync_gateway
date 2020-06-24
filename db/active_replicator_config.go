@@ -66,6 +66,11 @@ func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 
 	// Probably a neater way of doing this using struct tags and a type switch,
 	// but the ActiveReplicatorConfig might end up being replaced with the existing replicator config.
+
+	if _, err := hash.Write([]byte(arc.ID)); err != nil {
+		return "", err
+	}
+
 	if _, err := hash.Write([]byte(arc.Filter)); err != nil {
 		return "", err
 	}
