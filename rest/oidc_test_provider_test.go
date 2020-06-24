@@ -123,10 +123,9 @@ func TestInsecureOpenIDConnectAuth(t *testing.T) {
 
 // parseAuthURL returns the authentication URL extracted from user consent form.
 func parseAuthURL(html string) string {
-	re := regexp.MustCompile(`<form action=".*?(.*)" method`)
-	submatch := re.FindAllStringSubmatch(html, -1)
-	for _, element := range submatch {
-		return element[1]
+	re := regexp.MustCompile(`<form action="(.+)" method`)
+	if submatch := re.FindStringSubmatch(html); submatch != nil {
+		return submatch[1]
 	}
 	return ""
 }

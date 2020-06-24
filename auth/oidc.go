@@ -278,14 +278,14 @@ func (op *OIDCProvider) DiscoverConfig() (verifier *oidc.IDTokenVerifier, endpoi
 		if err != nil {
 			return nil, nil, err
 		}
-		verifier = op.GenerateVerifier(metadata, GetClientContext(op.InsecureSkipVerify))
+		verifier = op.GenerateVerifier(metadata, GetOIDCClientContext(op.InsecureSkipVerify))
 		endpoint = &oauth2.Endpoint{AuthURL: metadata.AuthorizationEndpoint, TokenURL: metadata.TokenEndpoint}
 	} else {
 		base.Infof(base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint, issuer: %s", base.UD(op.Issuer))
 		var provider *oidc.Provider
 		maxRetryAttempts := 5
 		for i := 1; i <= maxRetryAttempts; i++ {
-			provider, err = oidc.NewProvider(GetClientContext(op.InsecureSkipVerify), op.Issuer)
+			provider, err = oidc.NewProvider(GetOIDCClientContext(op.InsecureSkipVerify), op.Issuer)
 			if err == nil && provider != nil {
 				providerEndpoint := provider.Endpoint()
 				endpoint = &providerEndpoint
@@ -451,18 +451,17 @@ func SetURLQueryParam(strURL, name, value string) (string, error) {
 // disabled when insecureSkipVerify is true and enabled otherwise.
 func GetHttpClient(insecureSkipVerify bool) *http.Client {
 	if insecureSkipVerify {
-		transport := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		}
+		transport := base.DefaultHTTPTransport()
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		return &http.Client{Transport: transport}
 	}
-	return &http.Client{}
+	return http.DefaultClient
 }
 
-// GetClientContext returns a new Context that carries the provided HTTP client
+// GetOIDCClientContext returns a new Context that carries the provided HTTP client
 // with TLS certificate verification disabled when insecureSkipVerify is true and
 // enabled otherwise.
-func GetClientContext(insecureSkipVerify bool) context.Context {
+func GetOIDCClientContext(insecureSkipVerify bool) context.Context {
 	client := GetHttpClient(insecureSkipVerify)
 	return oidc.ClientContext(context.Background(), client)
 }

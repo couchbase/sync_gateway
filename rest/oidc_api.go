@@ -175,7 +175,7 @@ func (h *handler) handleOIDCCallback() error {
 	}
 
 	// Converts the authorization code into a token.
-	context := auth.GetClientContext(h.db.Options.UnsupportedOptions.OidcTlsSkipVerify)
+	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)
 	token, err := client.Config.Exchange(context, code)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Failed to exchange token: "+err.Error())
@@ -227,7 +227,7 @@ func (h *handler) handleOIDCRefresh() error {
 		return err
 	}
 
-	context := auth.GetClientContext(h.db.Options.UnsupportedOptions.OidcTlsSkipVerify)
+	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)
 	token, err := client.Config.TokenSource(context, &oauth2.Token{RefreshToken: refreshToken}).Token()
 	if err != nil {
 		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
