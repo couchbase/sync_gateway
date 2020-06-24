@@ -4,8 +4,6 @@ import (
 	"context"
 	"expvar"
 	"fmt"
-	"sync"
-	"time"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -17,34 +15,8 @@ type ActivePushReplicator struct {
 	blipSyncContext *BlipSyncContext
 	blipSender      *blip.Sender
 	ctx             context.Context // closes checkpointer goroutine on cancel (can be a context passed from a parent DB)
-	Checkpointer    *PushCheckpointer
+	Checkpointer    *Checkpointer
 	Stats           expvar.Map
-}
-
-type PushCheckpointer struct {
-	// lastCheckpointRevID is the last known checkpoint RevID.
-	lastCheckpointRevID string
-	// lastCheckpointSeq is the last checkpointed sequence
-	lastCheckpointSeq string
-	// runNow can be sent signals to run a checkpoint (useful for testing)
-	runNow chan struct{}
-	// wg is used to block close until a checkpoint has finished
-	wg sync.WaitGroup
-	// lock guards the expectedSeqs slice, and sentSeqs map
-	lock sync.Mutex
-	// expectedSeqs is an ordered list of sequence IDs we expect to receive revs for
-	expectedSeqs []string
-	// sentSeqs is a map of sequence IDs we've sent revs for
-	sentSeqs map[string]struct{}
-}
-
-func NewPushCheckpointer() *PushCheckpointer {
-	return &PushCheckpointer{
-		lock:         sync.Mutex{},
-		expectedSeqs: make([]string, 0),
-		sentSeqs:     make(map[string]struct{}),
-		runNow:       make(chan struct{}),
-	}
 }
 
 func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActivePushReplicator {
@@ -54,7 +26,6 @@ func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) *Act
 		config:          config,
 		blipSyncContext: bsc,
 		ctx:             ctx,
-		Checkpointer:    NewPushCheckpointer(),
 	}
 }
 
@@ -67,61 +38,13 @@ func (apr *ActivePushReplicator) CheckpointID() (string, error) {
 	return "sgr2cp:push:" + checkpointHash, nil
 }
 
-// CheckpointNow forces the checkpointer to send a checkpoint, and blocks until it has finished.
-func (apr *ActivePushReplicator) CheckpointNow() {
-	if apr.Checkpointer == nil {
-		return
-	}
-
-	apr.Checkpointer.lock.Lock()
-	defer apr.Checkpointer.lock.Unlock()
-
-	base.Tracef(base.KeyReplicate, "checkpointer: running")
-
-	// find the highest contiguous sequence we've received
-	if len(apr.Checkpointer.expectedSeqs) > 0 {
-		var lowSeq string
-
-		// iterates over each (ordered) expected sequence and stops when we find the first sequence we've yet to receive a rev message for
-		maxI := -1
-		for i, seq := range apr.Checkpointer.expectedSeqs {
-			if _, ok := apr.Checkpointer.sentSeqs[seq]; !ok {
-				base.Tracef(base.KeyReplicate, "checkpointer: couldn't find %v in receivedSeqs", seq)
-				break
-			}
-
-			delete(apr.Checkpointer.sentSeqs, seq)
-			maxI = i
-		}
-
-		// the first seq we expected hasn't arrived yet, so can't checkpoint anything
-		if maxI < 0 {
-			return
-		}
-
-		lowSeq = apr.Checkpointer.expectedSeqs[maxI]
-
-		if len(apr.Checkpointer.expectedSeqs)-1 == maxI {
-			// received full set, empty list
-			apr.Checkpointer.expectedSeqs = apr.Checkpointer.expectedSeqs[0:0]
-		} else {
-			// trim sequence list for partially received set
-			apr.Checkpointer.expectedSeqs = apr.Checkpointer.expectedSeqs[maxI+1:]
-		}
-
-		base.Tracef(base.KeyReplicate, "checkpointer: got lowSeq: %v", lowSeq)
-		apr.setCheckpoint(lowSeq)
-	}
-
-}
-
 func (apr *ActivePushReplicator) Close() error {
 	if apr == nil {
 		// noop
 		return nil
 	}
 
-	apr.CheckpointNow()
+	apr.Checkpointer.CheckpointNow()
 
 	if apr.blipSender != nil {
 		apr.blipSender.Close()
@@ -206,6 +129,24 @@ func (apr *ActivePushReplicator) setCheckpoint(seq string) {
 	apr.Checkpointer.lastCheckpointSeq = seq
 }
 
+func (apr *ActivePushReplicator) initCheckpointer() error {
+	checkpointID, err := apr.CheckpointID()
+	if err != nil {
+		return err
+	}
+
+	apr.Checkpointer = NewCheckpointer(apr.ctx, checkpointID, apr.blipSender, apr.config.CheckpointInterval)
+
+	checkpoint := apr.Checkpointer.GetCheckpoint()
+	apr.Checkpointer.lastCheckpointRevID = checkpoint.RevID
+	apr.Checkpointer.lastCheckpointSeq = checkpoint.Checkpoint.LastSequence
+
+	apr.registerCheckpointerCallbacks()
+	apr.Checkpointer.Start()
+
+	return nil
+}
+
 func (apr *ActivePushReplicator) Start() error {
 	if apr == nil {
 		return fmt.Errorf("nil ActivePushReplicator, can't start")
@@ -217,11 +158,7 @@ func (apr *ActivePushReplicator) Start() error {
 		return err
 	}
 
-	checkpoint := apr.getCheckpoint()
-	apr.Checkpointer.lastCheckpointRevID = checkpoint.RevID
-	apr.Checkpointer.lastCheckpointSeq = checkpoint.Checkpoint.LastSequence
-
-	if err := apr.startCheckpointer(); err != nil {
+	if err := apr.initCheckpointer(); err != nil {
 		return err
 	}
 
@@ -231,7 +168,7 @@ func (apr *ActivePushReplicator) Start() error {
 		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
-	seq, err := apr.config.ActiveDB.ParseSequenceID(checkpoint.Checkpoint.LastSequence)
+	seq, err := apr.config.ActiveDB.ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
 	if err != nil {
 		base.Warnf("couldn't parse checkpointed sequence ID, starting push from seq:0")
 	}
@@ -254,8 +191,8 @@ func (apr *ActivePushReplicator) Start() error {
 	return nil
 }
 
-// startCheckpointer registers appropriate callback functions for checkpointing, and starts a time-based checkpointer goroutine.
-func (apr *ActivePushReplicator) startCheckpointer() error {
+// registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
+func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 	apr.blipSyncContext.preSendRevisionCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsRequestedTotal, 1)
 
@@ -267,7 +204,7 @@ func (apr *ActivePushReplicator) startCheckpointer() error {
 		}
 
 		apr.Checkpointer.lock.Lock()
-		apr.Checkpointer.sentSeqs[remoteSeq] = struct{}{}
+		apr.Checkpointer.processedSeqs[remoteSeq] = struct{}{}
 		apr.Checkpointer.lock.Unlock()
 	}
 
@@ -285,32 +222,4 @@ func (apr *ActivePushReplicator) startCheckpointer() error {
 		apr.Checkpointer.expectedSeqs = append(apr.Checkpointer.expectedSeqs, remoteSeq)
 		apr.Checkpointer.lock.Unlock()
 	}
-
-	// Start a time-based checkpointer goroutine
-	go func() {
-		var exit bool
-		checkpointInterval := defaultCheckpointInterval
-		if apr.config.CheckpointInterval > 0 {
-			checkpointInterval = apr.config.CheckpointInterval
-		}
-		ticker := time.NewTicker(checkpointInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-			case <-apr.ctx.Done():
-				exit = true
-				// parent context stopped stopped, set a final checkpoint before stopping this goroutine
-			}
-
-			apr.CheckpointNow()
-
-			if exit {
-				base.Debugf(base.KeyReplicate, "checkpointer goroutine stopped")
-				return
-			}
-		}
-	}()
-
-	return nil
 }
