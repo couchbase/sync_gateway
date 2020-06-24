@@ -159,6 +159,7 @@ type UnsupportedOptions struct {
 	APIEndpoints             APIEndpoints            `json:"api_endpoints,omitempty"`               // Config settings for API endpoints
 	WarningThresholds        WarningThresholds       `json:"warning_thresholds,omitempty"`          // Warning thresholds related to _sync size
 	DisableCleanSkippedQuery bool                    `json:"disable_clean_skipped_query,omitempty"` // Clean skipped sequence processing bypasses final check
+	OidcTlsSkipVerify        bool                    `json:"oidc_tls_skip_verify"`                  // Config option to enable self-signed certs for OIDC testing.
 }
 
 type WarningThresholds struct {
@@ -390,6 +391,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			if (options.OIDCOptions.DefaultProvider != nil && name == *options.OIDCOptions.DefaultProvider) || len(options.OIDCOptions.Providers) == 1 {
 				provider.IsDefault = true
 			}
+
+			provider.InsecureSkipVerify = options.UnsupportedOptions.OidcTlsSkipVerify
 
 			// If this isn't the default provider, add the provider to the callback URL (needed to identify provider to _oidc_callback)
 			if !provider.IsDefault && provider.CallbackURL != nil {
