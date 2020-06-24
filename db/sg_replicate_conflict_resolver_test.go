@@ -54,7 +54,7 @@ func TestDefaultConflictResolver(t *testing.T) {
 				RemoteDocument: test.remoteDocument,
 			}
 			result, err := DefaultConflictResolver(conflict)
-			assert.NoError(tt, err)
+			assert.NoError(t, err)
 			assert.Equal(tt, test.expectedWinner, result)
 		})
 	}
@@ -68,6 +68,7 @@ func TestCustomConflictResolver(t *testing.T) {
 		localDocument  Body
 		remoteDocument Body
 		expectedWinner Body
+		expectError    bool
 	}{
 		{
 			name:           "localWins",
@@ -94,6 +95,51 @@ func TestCustomConflictResolver(t *testing.T) {
 			remoteDocument: Body{"_rev": "1-abc", "prop": "bar"},
 			expectedWinner: Body{"prop": "foobar"},
 		},
+		{
+			name: "mergeDelete",
+			resolverSource: `function(conflict) { 
+				return null;
+			}`,
+			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
+			remoteDocument: Body{"_rev": "1-abc", "prop": "bar"},
+			expectedWinner: Body{BodyDeleted: true},
+		},
+		{
+			name: "invokeDefault",
+			resolverSource: `function(conflict) { 
+				return defaultPolicy(conflict);
+			}`,
+			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
+			remoteDocument: Body{"_rev": "1-abc", "prop": "bar"},
+			expectedWinner: Body{"_rev": "2-abc", "prop": "foo"},
+		},
+		{
+			name: "invokeDefaultWithInvalidValue",
+			resolverSource: `function(conflict) { 
+				return defaultPolicy(conflict.LocalDocument);
+			}`,
+			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
+			remoteDocument: Body{"_rev": "1-abc", "prop": "bar"},
+			expectError:    true,
+		},
+		{
+			name: "invokeDefaultWithNoValue",
+			resolverSource: `function(conflict) { 
+				return defaultPolicy();
+			}`,
+			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
+			remoteDocument: Body{"_rev": "1-abc", "prop": "bar"},
+			expectError:    true,
+		},
+		{
+			name: "invokeDefaultWithNullValue",
+			resolverSource: `function(conflict) { 
+				return defaultPolicy(null);
+			}`,
+			localDocument:  Body{"_rev": "2-abc", "prop": "foo"},
+			remoteDocument: Body{"_rev": "1-abc", "prop": "bar"},
+			expectError:    true,
+		},
 	}
 
 	for _, test := range defaultConflictResolverTests {
@@ -105,6 +151,10 @@ func TestCustomConflictResolver(t *testing.T) {
 			customConflictResolverFunc, err := NewCustomConflictResolver(test.resolverSource)
 			require.NoError(tt, err)
 			result, err := customConflictResolverFunc(conflict)
+			if test.expectError {
+				assert.Error(t, err)
+				return
+			}
 			assert.NoError(tt, err)
 			assert.Equal(tt, test.expectedWinner, result)
 		})
