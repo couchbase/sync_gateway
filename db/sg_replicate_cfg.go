@@ -103,7 +103,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		}
 	}
 
-	// Cancel is only supported via the REST API
+	// Adhoc is only supported via the REST API
 	if rc.Adhoc {
 		if fromConfig {
 			err = base.HTTPErrorf(http.StatusBadRequest, "adhoc=true is invalid for replication in Sync Gateway configuration")
