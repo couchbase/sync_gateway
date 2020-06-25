@@ -1060,19 +1060,9 @@ func ExpvarVar2Int(expvarVar expvar.Var) int64 {
 
 // DefaultHTTPTransport returns a new HTTP Transport that copies values from http.DefaultTransport
 func DefaultHTTPTransport() *http.Transport {
-
 	// This type assertion will panic if http.DefaultTransport ever changes to not be a http.Transport
 	// We'll catch this in development/unit testing pretty quickly if it does happen.
-	defaultTransport := http.DefaultTransport.(*http.Transport)
-
-	return &http.Transport{
-		Proxy:                 defaultTransport.Proxy,
-		DialContext:           defaultTransport.DialContext,
-		MaxIdleConns:          defaultTransport.MaxIdleConns,
-		IdleConnTimeout:       defaultTransport.IdleConnTimeout,
-		TLSHandshakeTimeout:   defaultTransport.TLSHandshakeTimeout,
-		ExpectContinueTimeout: defaultTransport.ExpectContinueTimeout,
-	}
+	return http.DefaultTransport.(*http.Transport).Clone()
 }
 
 func ContainsString(s []string, e string) bool {
