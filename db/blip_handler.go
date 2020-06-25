@@ -583,7 +583,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			if err := bh.db.Purge(docID); err != nil {
 				return err
 			}
-			// TODO: Stat? Not in PRD/Tech Spec, but seems useful to know.
+			bh.replicationStats.DocsPurgedCount.Add(1)
 			if bh.postHandleRevCallback != nil {
 				bh.postHandleRevCallback(rq.Properties[RevMessageSequence])
 			}

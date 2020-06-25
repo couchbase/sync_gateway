@@ -26,13 +26,16 @@ const (
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
+	ID   string
 	Push *ActivePushReplicator
 	Pull *ActivePullReplicator
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActiveReplicator, error) {
-	ar := &ActiveReplicator{}
+	ar := &ActiveReplicator{
+		ID: config.ID,
+	}
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		ar.Push = NewPushReplicator(ctx, config)
@@ -77,15 +80,16 @@ func (ar *ActiveReplicator) Close() error {
 	return nil
 }
 
-func (ar *ActiveReplicator) GetStatus(replicationID string) *ReplicationStatus {
+func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 
 	status := &ReplicationStatus{
-		ID:     replicationID,
+		ID:     ar.ID,
 		Status: "running",
 	}
 	if ar.Pull != nil {
 		pullStats := ar.Pull.blipSyncContext.replicationStats
 		status.DocsRead = pullStats.HandleRevCount.Value()
+		status.DocsPurged = pullStats.DocsPurgedCount.Value()
 		status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
 		status.LastSeqPull = ar.Pull.Checkpointer.lastCheckpointSeq
 	}

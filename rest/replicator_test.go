@@ -757,15 +757,14 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+revID, `{"source":"rt2","channels":["bob"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 
-	// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed.
-	err, val := base.RetryLoop("wait for purge", func() (shouldRetry bool, err error, value interface{}) {
-		doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-		if base.IsDocNotFoundError(err) {
-			return false, err, doc
-		}
-		return true, err, doc
-	}, base.CreateMaxDoublingSleeperFunc(30, 100, 500))
+	// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed. But we can monitor the associated stat.
+	base.WaitForStat(func() int64 {
+		stats := ar.GetStatus()
+		return stats.DocsPurged
+	}, 1)
+
+	doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err), "Error returned wasn't a DocNotFound error")
-	assert.Nil(t, val)
+	assert.Nil(t, doc)
 }
