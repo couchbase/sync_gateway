@@ -123,12 +123,12 @@ func (apr *ActivePushReplicator) CheckpointID() (string, error) {
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
-	apr.blipSyncContext.preSendRevisionCallback = func(remoteSeq string) {
+	apr.blipSyncContext.preSendRevisionResponseCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsRequestedTotal, 1)
 		apr.Checkpointer.AddExpectedSeq(remoteSeq)
 	}
 
-	apr.blipSyncContext.postSendRevisionCallback = func(remoteSeq string) {
+	apr.blipSyncContext.postSendRevisionResponseCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsSentTotal, 1)
 		apr.Checkpointer.ProcessedSeq(remoteSeq)
 	}
