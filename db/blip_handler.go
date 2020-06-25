@@ -583,7 +583,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			if err := bh.db.Purge(docID); err != nil {
 				return err
 			}
-			// TODO: Stat?
+			// TODO: Stat? Not in PRD/Tech Spec, but seems useful to know.
+			if bh.postHandleRevCallback != nil {
+				bh.postHandleRevCallback(rq.Properties[RevMessageSequence])
+			}
 			return nil
 		}
 	}
