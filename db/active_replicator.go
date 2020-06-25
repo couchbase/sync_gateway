@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/couchbase/go-blip"
 	"golang.org/x/net/websocket"
@@ -13,11 +14,14 @@ import (
 
 const (
 	// TODO: Not aligned these to any stats in the PRD yet, these are used for test assertions.
-	ActiveReplicatorStatsKeyGetCheckpointHitTotal    = "get_checkpoint_hit_total"
-	ActiveReplicatorStatsKeyGetCheckpointMissTotal   = "get_checkpoint_miss_total"
-	ActiveReplicatorStatsKeySetCheckpointTotal       = "set_checkpoint_total"
 	ActiveReplicatorStatsKeyRevsReceivedTotal        = "revs_received_total"
 	ActiveReplicatorStatsKeyChangesRevsReceivedTotal = "changes_revs_received_total"
+	ActiveReplicatorStatsKeyRevsSentTotal            = "revs_sent_total"
+	ActiveReplicatorStatsKeyRevsRequestedTotal       = "revs_requested_total"
+)
+
+const (
+	defaultCheckpointInterval = time.Second * 30
 )
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
@@ -86,15 +90,13 @@ func (ar *ActiveReplicator) GetStatus(replicationID string) *ReplicationStatus {
 		status.LastSeqPull = ar.Pull.Checkpointer.lastCheckpointSeq
 	}
 
-	// TODO: Push stats
-	/*
-		if ar.Push != nil {
-			pushStats := ar.Push.blipSyncContext.replicationStats
-			status.DocsWritten = pushStats.SendRevCount.Value()
-			status.DocWriteFailures = pushStats.SendRevErrorCount.Value()
-			status.RejectedRemote = pushStats.SendRevSyncFunctionErrorCount.Value()
-		}
-	*/
+	if ar.Push != nil {
+		pushStats := ar.Push.blipSyncContext.replicationStats
+		status.DocsWritten = pushStats.SendRevCount.Value()
+		status.DocWriteFailures = pushStats.SendRevErrorCount.Value()
+		// TODO: This is another scenario where we need to send a rev without noreply set to get the returned error
+		// status.RejectedRemote = pushStats.SendRevSyncFunctionErrorCount.Value()
+	}
 
 	return status
 }

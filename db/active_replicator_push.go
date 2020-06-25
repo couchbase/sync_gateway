@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"expvar"
 	"fmt"
 
 	"github.com/couchbase/go-blip"
@@ -13,6 +14,9 @@ type ActivePushReplicator struct {
 	config          *ActiveReplicatorConfig
 	blipSyncContext *BlipSyncContext
 	blipSender      *blip.Sender
+	ctx             context.Context // closes checkpointer goroutine on cancel (can be a context passed from a parent DB)
+	Checkpointer    *Checkpointer
+	Stats           expvar.Map
 }
 
 func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActivePushReplicator {
@@ -21,55 +25,8 @@ func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) *Act
 	return &ActivePushReplicator{
 		config:          config,
 		blipSyncContext: bsc,
+		ctx:             ctx,
 	}
-}
-
-// CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
-func (apr *ActivePushReplicator) CheckpointID() (string, error) {
-	checkpointHash, err := apr.config.CheckpointHash()
-	if err != nil {
-		return "", err
-	}
-	return "sgr2cp:push:" + checkpointHash, nil
-}
-
-// CheckpointNow forces the checkpointer to send a checkpoint, and blocks until it has finished.
-func (apr *ActivePushReplicator) CheckpointNow() {
-	// TODO: Implement push checkpointing (CBG-916)
-	return
-}
-
-func (apr *ActivePushReplicator) Close() error {
-	if apr == nil {
-		// noop
-		return nil
-	}
-
-	apr.CheckpointNow()
-
-	if apr.blipSender != nil {
-		apr.blipSender.Close()
-		apr.blipSender = nil
-	}
-
-	if apr.blipSyncContext != nil {
-		apr.blipSyncContext.Close()
-		apr.blipSyncContext = nil
-	}
-
-	return nil
-}
-
-// getCheckpoint tries to fetch a since value for the given replication by requesting a checkpoint.
-// If this fails, the function returns a zero value.
-func (apr *ActivePushReplicator) getCheckpoint() GetSGR2CheckpointResponse {
-	// TODO: Implement push checkpointing (CBG-916)
-	return GetSGR2CheckpointResponse{}
-}
-
-func (apr *ActivePushReplicator) setCheckpoint(seq string) {
-	// TODO: Implement push checkpointing (CBG-916)
-	return
 }
 
 func (apr *ActivePushReplicator) Start() error {
@@ -83,9 +40,7 @@ func (apr *ActivePushReplicator) Start() error {
 		return err
 	}
 
-	checkpoint := apr.getCheckpoint()
-
-	if err := apr.startCheckpointer(); err != nil {
+	if err := apr.initCheckpointer(); err != nil {
 		return err
 	}
 
@@ -95,7 +50,7 @@ func (apr *ActivePushReplicator) Start() error {
 		serialNumber:    apr.blipSyncContext.incrementSerialNumber(),
 	}
 
-	seq, err := apr.config.ActiveDB.ParseSequenceID(checkpoint.Checkpoint.LastSequence)
+	seq, err := apr.config.ActiveDB.ParseSequenceID(apr.Checkpointer.lastCheckpointSeq)
 	if err != nil {
 		base.Warnf("couldn't parse checkpointed sequence ID, starting push from seq:0")
 	}
@@ -118,8 +73,63 @@ func (apr *ActivePushReplicator) Start() error {
 	return nil
 }
 
-// startCheckpointer registers appropriate callback functions for checkpointing, and starts a time-based checkpointer goroutine.
-func (apr *ActivePushReplicator) startCheckpointer() error {
-	// TODO: Implement push checkpointing (CBG-916)
+func (apr *ActivePushReplicator) Close() error {
+	if apr == nil {
+		// noop
+		return nil
+	}
+
+	apr.Checkpointer.CheckpointNow()
+
+	if apr.blipSender != nil {
+		apr.blipSender.Close()
+		apr.blipSender = nil
+	}
+
+	if apr.blipSyncContext != nil {
+		apr.blipSyncContext.Close()
+		apr.blipSyncContext = nil
+	}
+
 	return nil
+}
+
+func (apr *ActivePushReplicator) initCheckpointer() error {
+	checkpointID, err := apr.CheckpointID()
+	if err != nil {
+		return err
+	}
+
+	apr.Checkpointer = NewCheckpointer(apr.ctx, checkpointID, apr.blipSender, apr.config.CheckpointInterval)
+
+	checkpoint := apr.Checkpointer.GetCheckpoint()
+	apr.Checkpointer.lastCheckpointRevID = checkpoint.RevID
+	apr.Checkpointer.lastCheckpointSeq = checkpoint.Checkpoint.LastSequence
+
+	apr.registerCheckpointerCallbacks()
+	apr.Checkpointer.Start()
+
+	return nil
+}
+
+// CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
+func (apr *ActivePushReplicator) CheckpointID() (string, error) {
+	checkpointHash, err := apr.config.CheckpointHash()
+	if err != nil {
+		return "", err
+	}
+	return "sgr2cp:push:" + checkpointHash, nil
+}
+
+// registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
+func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
+	apr.blipSyncContext.preSendRevisionResponseCallback = func(remoteSeq string) {
+		apr.Stats.Add(ActiveReplicatorStatsKeyRevsRequestedTotal, 1)
+		apr.Checkpointer.AddExpectedSeq(remoteSeq)
+	}
+
+	apr.blipSyncContext.postSendRevisionResponseCallback = func(remoteSeq string) {
+		apr.Stats.Add(ActiveReplicatorStatsKeyRevsSentTotal, 1)
+		apr.Checkpointer.ProcessedSeq(remoteSeq)
+	}
 }

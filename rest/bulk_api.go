@@ -447,7 +447,7 @@ func (h *handler) handleBulkDocs() error {
 
 	startTime := time.Now()
 	defer func() {
-		h.db.DbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+		h.db.DbStats.StatsCblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
 	}()
 
 	body, err := h.readJSON()

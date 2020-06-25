@@ -377,9 +377,9 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
 	startTime := time.Now()
-	bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
 	defer func() {
-		bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
+		bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
 	}()
 
 	expectedSeqs := make([]string, 0)
@@ -447,9 +447,9 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	// proposeChanges stats
 	startTime := time.Now()
-	bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
 	defer func() {
-		bh.dbStats.CblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
+		bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
 	}()
 
 	for i, change := range changeList {
@@ -540,7 +540,7 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	startTime := time.Now()
 	defer func() {
-		bh.dbStats.CblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+		bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
 		if err == nil {
 			bh.BlipSyncContext.replicationStats.HandleRevCount.Add(1)
 		} else {
@@ -677,7 +677,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	}
 
 	// Finally, save the revision (with the new attachments inline)
-	bh.dbStats.CblReplicationPush().Add(base.StatKeyDocPushCount, 1)
+	bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyDocPushCount, 1)
 
 	_, _, err = bh.db.PutExistingRev(newDoc, history, noConflicts)
 	if err != nil {

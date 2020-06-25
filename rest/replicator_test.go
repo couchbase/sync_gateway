@@ -170,10 +170,9 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	const (
-		checkpointRevCount = 5
-		changesBatchSize   = 10
-		numRT2DocsInitial  = 13 // 2 batches of changes
-		numRT2DocsTotal    = 24 // 2 more batches
+		changesBatchSize  = 10
+		numRT2DocsInitial = 13 // 2 batches of changes
+		numRT2DocsTotal   = 24 // 2 more batches
 	)
 
 	// Passive
@@ -225,8 +224,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		Continuous:       false,
 		ChangesBatchSize: changesBatchSize,
 		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via Close
-		// TODO: Might be useful to add a replicator.CheckpointNow() method, to force checkpointing from certain points in a test.
+		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval: time.Minute * 5,
 	}
 
@@ -267,12 +265,12 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyChangesRevsReceivedTotal)))
 
 	// checkpoint assertions
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyGetCheckpointHitTotal)))
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyGetCheckpointMissTotal)))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatGetCheckpointHitTotal))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatGetCheckpointMissTotal))
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
-	ar.Pull.CheckpointNow()
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+	ar.Pull.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
 
 	assert.NoError(t, ar.Close())
 
@@ -318,11 +316,11 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyChangesRevsReceivedTotal)))
 
 	// assert the second active replicator stats
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyGetCheckpointHitTotal)))
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyGetCheckpointMissTotal)))
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
-	ar.Pull.CheckpointNow()
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeySetCheckpointTotal)))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatGetCheckpointHitTotal))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatGetCheckpointMissTotal))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+	ar.Pull.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
 }
 
 // TestActiveReplicatorPushBasic:
@@ -404,4 +402,170 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+}
+
+// TestActiveReplicatorPushFromCheckpoint:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates enough documents on rt1 which can be pushed by a replicator running in rt1 to start setting checkpoints.
+//   - Insert the second batch of docs into rt1.
+//   - Starts the push replication again and asserts that the checkpoint is used.
+func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	const (
+		changesBatchSize  = 10
+		numRT1DocsInitial = 13 // 2 batches of changes
+		numRT1DocsTotal   = 24 // 2 more batches
+	)
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	// Create first batch of docs
+	docIDPrefix := t.Name() + "rt2doc"
+	for i := 0; i < numRT1DocsInitial; i++ {
+		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
+		assertStatus(t, resp, http.StatusCreated)
+	}
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	arConfig := db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePush,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:       false,
+		ChangesBatchSize: changesBatchSize,
+		// test isn't long running enough to worry about time-based checkpoints,
+		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
+		CheckpointInterval: time.Minute * 5,
+	}
+
+	// Create the first active replicator to pull from seq:0
+	ar, err := db.NewActiveReplicator(context.Background(), &arConfig)
+	require.NoError(t, err)
+
+	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	startNumRevsSentTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+
+	assert.NoError(t, ar.Start())
+
+	// wait for all of the documents originally written to rt1 to arrive at rt2
+	changesResults, err := rt2.WaitForChanges(numRT1DocsInitial, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, numRT1DocsInitial)
+	docIDsSeen := make(map[string]bool, numRT1DocsInitial)
+	for _, result := range changesResults.Results {
+		docIDsSeen[result.ID] = true
+	}
+	for i := 0; i < numRT1DocsInitial; i++ {
+		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+		assert.True(t, docIDsSeen[docID])
+
+		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+		assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+	}
+
+	// one _changes from seq:0 with initial number of docs sent
+	numChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+
+	// rev assertions
+	numRevsSentTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	assert.Equal(t, startNumRevsSentTotal+numRT1DocsInitial, numRevsSentTotal)
+	assert.Equal(t, int64(numRT1DocsInitial), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyRevsSentTotal)))
+	assert.Equal(t, int64(numRT1DocsInitial), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyRevsRequestedTotal)))
+
+	// checkpoint assertions
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatGetCheckpointHitTotal))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatGetCheckpointMissTotal))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
+	ar.Push.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
+
+	assert.NoError(t, ar.Close())
+
+	// Second batch of docs
+	for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
+		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
+		assertStatus(t, resp, http.StatusCreated)
+	}
+
+	// Create a new replicator using the same config, which should use the checkpoint set from the first.
+	ar, err = db.NewActiveReplicator(context.Background(), &arConfig)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Close()) }()
+	assert.NoError(t, ar.Start())
+
+	// wait for all of the documents originally written to rt1 to arrive at rt2
+	changesResults, err = rt2.WaitForChanges(numRT1DocsTotal, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, numRT1DocsTotal)
+
+	docIDsSeen = make(map[string]bool, numRT1DocsTotal)
+	for _, result := range changesResults.Results {
+		docIDsSeen[result.ID] = true
+	}
+
+	for i := 0; i < numRT1DocsTotal; i++ {
+		docID := fmt.Sprintf("%s%d", docIDPrefix, i)
+		assert.True(t, docIDsSeen[docID])
+
+		doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+		assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+	}
+
+	// Make sure we've not started any more since:0 replications on rt1 since the first one
+	endNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
+
+	// make sure rt1 thinks it has sent all of the revs via a 2.x replicator
+	numRevsSentTotal = base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	assert.Equal(t, startNumRevsSentTotal+numRT1DocsTotal, numRevsSentTotal)
+	assert.Equal(t, int64(numRT1DocsTotal-numRT1DocsInitial), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyRevsSentTotal)))
+	assert.Equal(t, int64(numRT1DocsTotal-numRT1DocsInitial), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyRevsRequestedTotal)))
+
+	// assert the second active replicator stats
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatGetCheckpointHitTotal))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatGetCheckpointMissTotal))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
+	ar.Push.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
 }
