@@ -263,6 +263,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, (*handler).handlePprofMutex)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/trace",
 		makeHandler(sc, adminPrivs, (*handler).handlePprofTrace)).Methods("GET", "POST")
+	r.Handle("/_debug/fgprof",
+		makeHandler(sc, adminPrivs, (*handler).handleFgprof)).Methods("GET", "POST")
+
 	r.Handle("/_post_upgrade",
 		makeHandler(sc, adminPrivs, (*handler).handlePostUpgrade)).Methods("POST")
 

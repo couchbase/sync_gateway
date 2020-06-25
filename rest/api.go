@@ -23,6 +23,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/felixge/fgprof"
 )
 
 var mutexProfileRunning uint32
@@ -375,6 +376,19 @@ func (h *handler) handlePprofHeap() error {
 func (h *handler) handlePprofProfile() error {
 	httpprof.Profile(h.response, h.rq)
 	return nil
+}
+
+func (h *handler) handleFgprof() error {
+	sec, err := strconv.ParseInt(h.rq.FormValue("seconds"), 10, 64)
+	if sec <= 0 || err != nil {
+		sec = 30
+	}
+	stopFn := fgprof.Start(h.response, fgprof.FormatPprof)
+	select {
+	case <-time.After(time.Duration(sec) * time.Second):
+	case <-h.rq.Context().Done():
+	}
+	return stopFn()
 }
 
 func (h *handler) handlePprofBlock() error {

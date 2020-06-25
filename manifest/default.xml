@@ -132,5 +132,8 @@
 
   <project name="gopsutil" path="godeps/src/github.com/shirou/gopsutil" remote="couchbasedeps" revision="cce2d16538b41615132a07ec08d5bdc91c1851e3"/>
 
+  <project name="fgprof" path="godeps/src/github.com/felixge/fgprof" remote="couchbasedeps" revision="033348e0f0e4a38fea34ec259398ee3d336c716a"/>
+  <project name="pprof" path="godeps/src/github.com/google/pprof" remote="couchbasedeps" revision="03e1cf38a040dd596c700aa260c3eddc2bf38987"/>
+
 
 </manifest>
