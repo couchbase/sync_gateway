@@ -659,7 +659,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	revID = respRevID(t, resp)
 
 	// wait for the tombstone written to rt2 to arrive at rt1
-	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
