@@ -379,8 +379,16 @@ func (h *handler) handlePprofProfile() error {
 }
 
 func (h *handler) handleFgprof() error {
-	fgprof.Handler().ServeHTTP(h.response, h.rq)
-	return nil
+	sec, err := strconv.ParseInt(h.rq.FormValue("seconds"), 10, 64)
+	if sec <= 0 || err != nil {
+		sec = 30
+	}
+	stopFn := fgprof.Start(h.response, fgprof.FormatPprof)
+	select {
+	case <-time.After(time.Duration(sec) * time.Second):
+	case <-h.rq.Context().Done():
+	}
+	return stopFn()
 }
 
 func (h *handler) handlePprofBlock() error {
