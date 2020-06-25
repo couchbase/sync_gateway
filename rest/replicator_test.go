@@ -2,6 +2,7 @@ package rest
 
 import (
 	"context"
+	"expvar"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -74,6 +75,57 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	// Verify total stat has not been decremented
 	numReplicationsTotal = base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
 	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
+}
+
+// TestActiveReplicatorHeartbeats uses an ActiveReplicator with another RestTester instance to connect, and waits for several websocket ping/pongs.
+func TestActiveReplicatorHeartbeats(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyWebSocket, base.KeyWebSocketFrame)()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {Password: base.StringPtr("pass")},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt.Close()
+
+	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
+	srv := httptest.NewServer(rt.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+		ID:                    t.Name(),
+		Direction:             db.ActiveReplicatorTypePush,
+		ActiveDB:              &db.Database{DatabaseContext: rt.GetDatabase()},
+		PassiveDBURL:          passiveDBURL,
+		WebsocketPingInterval: time.Millisecond * 10,
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count")))
+
+	assert.NoError(t, ar.Start())
+
+	time.Sleep(time.Millisecond * 50)
+
+	pingGoroutines := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
+	assert.Equal(t, int64(1), pingGoroutines)
+
+	pingCount := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count"))
+	assert.Truef(t, pingCount > 0, "Expected ping count to be >0")
+
+	assert.NoError(t, ar.Close())
+
+	pingGoroutines = base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
+	assert.Equal(t, int64(0), pingGoroutines)
 }
 
 // TestActiveReplicatorPullBasic:

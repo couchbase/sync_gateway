@@ -652,6 +652,13 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		CompactInterval:           compactIntervalSecs,
 		SgReplicateEnabled:        sgReplicateEnabled,
 	}
+
+	if sc.config.ActiveReplicatorPingInterval != nil {
+		contextOptions.ActiveReplicatorPingInterval = time.Duration(*sc.config.ActiveReplicatorPingInterval) * time.Second
+	} else {
+		contextOptions.ActiveReplicatorPingInterval = DefaultActiveReplicatorPingInterval
+	}
+
 	return contextOptions, nil
 }
 

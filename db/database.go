@@ -106,25 +106,26 @@ type DatabaseContext struct {
 }
 
 type DatabaseContextOptions struct {
-	CacheOptions              *CacheOptions
-	RevisionCacheOptions      *RevisionCacheOptions
-	OldRevExpirySeconds       uint32
-	AdminInterface            *string
-	UnsupportedOptions        UnsupportedOptions
-	OIDCOptions               *auth.OIDCOptions
-	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
-	ImportOptions             ImportOptions
-	EnableXattr               bool             // Use xattr for _sync
-	LocalDocExpirySecs        uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride      bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName         string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly     bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	AllowConflicts            *bool            // False forbids creating conflicts
-	SendWWWAuthenticateHeader *bool            // False disables setting of 'WWW-Authenticate' header
-	UseViews                  bool             // Force use of views
-	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
-	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
-	SgReplicateEnabled        bool             // Whether this node can be assigned sg-replicate replications
+	CacheOptions                 *CacheOptions
+	RevisionCacheOptions         *RevisionCacheOptions
+	OldRevExpirySeconds          uint32
+	AdminInterface               *string
+	UnsupportedOptions           UnsupportedOptions
+	OIDCOptions                  *auth.OIDCOptions
+	DBOnlineCallback             DBOnlineCallback // Callback function to take the DB back online
+	ImportOptions                ImportOptions
+	EnableXattr                  bool             // Use xattr for _sync
+	LocalDocExpirySecs           uint32           // The _local doc expiry time in seconds
+	SecureCookieOverride         bool             // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName            string           // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly        bool             // Pass-through DbConfig.SessionCookieHTTPOnly
+	AllowConflicts               *bool            // False forbids creating conflicts
+	SendWWWAuthenticateHeader    *bool            // False disables setting of 'WWW-Authenticate' header
+	UseViews                     bool             // Force use of views
+	DeltaSyncOptions             DeltaSyncOptions // Delta Sync Options
+	CompactInterval              uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
+	SgReplicateEnabled           bool             // Whether this node can be assigned sg-replicate replications
+	ActiveReplicatorPingInterval time.Duration    // BLIP Websocket Ping interval (for active replicators)
 }
 
 type OidcTestProviderOptions struct {
