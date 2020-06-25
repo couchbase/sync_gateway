@@ -670,3 +670,102 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	assert.True(t, doc.IsDeleted())
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 }
+
+// TestActiveReplicatorPullPurgeOnRemoval:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a document on rt2 which can be pulled by the replicator running in rt1.
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
+//   - Drops the document out of the channel so the replicator in rt1 pulls a _removed revision.
+func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyReplicate)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	docID := t.Name() + "rt2doc1"
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize: 200,
+		Continuous:       true,
+		PurgeOnRemoval:   true,
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Close()) }()
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start())
+
+	// wait for the document originally written to rt2 to arrive at rt1
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, revID, doc.SyncData.CurrentRev)
+	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+revID, `{"source":"rt2","channels":["bob"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// wait for the channel removal written to rt2 to arrive at rt1 - we can't monitor _changes, because we've purged, not removed.
+	err, val := base.RetryLoop("wait for purge", func() (shouldRetry bool, err error, value interface{}) {
+		doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		if base.IsDocNotFoundError(err) {
+			return false, err, doc
+		}
+		return true, err, doc
+	}, base.CreateMaxDoublingSleeperFunc(30, 100, 500))
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err), "Error returned wasn't a DocNotFound error")
+	assert.Nil(t, val)
+}

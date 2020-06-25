@@ -48,7 +48,8 @@ type ActiveReplicatorConfig struct {
 	Continuous bool
 	// PassiveDBURL represents the full Sync Gateway URL, including database path, and basic auth credentials of the target.
 	PassiveDBURL *url.URL
-
+	// PurgeOnRemoval will purge the document on the active side if we pull a removal from the remote.
+	PurgeOnRemoval bool
 	// ActiveDB is a reference to the active database context.
 	ActiveDB *Database
 }

@@ -89,6 +89,7 @@ type BlipSyncContext struct {
 	preSendRevisionResponseCallback  func(remoteSeq string)      // preSendRevisionResponseCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
 	postSendRevisionResponseCallback func(remoteSeq string)      // postSendRevisionResponseCallback is called after receiving acknowledgement of a sent revision
 	replicationStats                 *BlipSyncStats              // Replication stats
+	purgeOnRemoval                   bool                        // Purges the document when we pull a _removed:true revision.
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.

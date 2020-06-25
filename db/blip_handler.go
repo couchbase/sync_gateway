@@ -536,6 +536,10 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	return nil
 }
 
+type removalDocument struct {
+	Removed bool `json:"_removed"`
+}
+
 // Received a "rev" request, i.e. client is pushing a revision body
 func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	startTime := time.Now()
@@ -567,6 +571,21 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	revID, rfound := revMessage.Rev()
 	if !found || !rfound {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing docID or revID")
+	}
+
+	if bh.BlipSyncContext.purgeOnRemoval && bytes.Contains(bodyBytes, []byte(`"`+BodyRemoved+`":`)) {
+		var r removalDocument
+		if err := json.Unmarshal(bodyBytes, &r); err != nil {
+			return err
+		}
+		if r.Removed {
+			base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Purging doc %v - removed at rev %v", docID, revID)
+			if err := bh.db.Purge(docID); err != nil {
+				return err
+			}
+			// TODO: Stat?
+			return nil
+		}
 	}
 
 	newDoc := &Document{

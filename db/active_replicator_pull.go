@@ -39,6 +39,8 @@ func (apr *ActivePullReplicator) Start() error {
 		return err
 	}
 
+	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
+
 	if err := apr.initCheckpointer(); err != nil {
 		return err
 	}
