@@ -6,6 +6,7 @@
   <remote fetch="https://github.com/couchbasedeps/" name="couchbasedeps"/>
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
+  <remote fetch="https://github.com/felixge/" name="felixge"/>
 
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
 
@@ -131,6 +132,8 @@
   <project name="go-ole" path="godeps/src/github.com/go-ole/go-ole" remote="couchbasedeps" revision="ae2e2a20879aabdd3a51104ab6a4328af2773948"/>
 
   <project name="gopsutil" path="godeps/src/github.com/shirou/gopsutil" remote="couchbasedeps" revision="cce2d16538b41615132a07ec08d5bdc91c1851e3"/>
+
+  <project name="fgprof" path="godeps/src/github.com/felixge/fgprof" remote="felixge" revision="033348e0f0e4a38fea34ec259398ee3d336c716a"/>
 
 
 </manifest>
