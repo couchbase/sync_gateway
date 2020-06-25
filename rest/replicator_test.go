@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -568,4 +569,104 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
 	ar.Push.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
+}
+
+// TestActiveReplicatorPullTombstone:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a document on rt2 which can be pulled by the replicator running in rt1.
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
+//   - Deletes the document in rt2, and waits for the tombstone to get to rt1.
+func TestActiveReplicatorPullTombstone(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyReplicate)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	docID := t.Name() + "rt2doc1"
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize: 200,
+		Continuous:       true,
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Close()) }()
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start())
+
+	// wait for the document originally written to rt2 to arrive at rt1
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, revID, doc.SyncData.CurrentRev)
+	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	// Tombstone the doc in rt2
+	resp = rt2.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
+	assertStatus(t, resp, http.StatusOK)
+	revID = respRevID(t, resp)
+
+	// wait for the tombstone written to rt2 to arrive at rt1
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+strconv.FormatUint(doc.Sequence, 10), "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.True(t, doc.IsDeleted())
+	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 }
