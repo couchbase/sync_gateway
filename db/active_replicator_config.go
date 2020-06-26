@@ -52,6 +52,8 @@ type ActiveReplicatorConfig struct {
 	PurgeOnRemoval bool
 	// ActiveDB is a reference to the active database context.
 	ActiveDB *Database
+	// WebsocketPingInterval is the time between websocket heartbeats sent by the active replicator.
+	WebsocketPingInterval time.Duration
 }
 
 // CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.

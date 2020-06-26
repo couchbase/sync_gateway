@@ -51,10 +51,11 @@ const (
 )
 
 const (
-	DefaultRevsLimitNoConflicts = 50
-	DefaultRevsLimitConflicts   = 100
-	DefaultPurgeInterval        = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
-	DefaultSGReplicateEnabled   = true
+	DefaultRevsLimitNoConflicts             = 50
+	DefaultRevsLimitConflicts               = 100
+	DefaultPurgeInterval                    = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
+	DefaultSGReplicateEnabled               = true
+	DefaultSGReplicateWebsocketPingInterval = time.Minute * 5
 )
 
 // Default values for delta sync
@@ -124,7 +125,12 @@ type DatabaseContextOptions struct {
 	UseViews                  bool             // Force use of views
 	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
 	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
-	SgReplicateEnabled        bool             // Whether this node can be assigned sg-replicate replications
+	SGReplicateOptions        SGReplicateOptions
+}
+
+type SGReplicateOptions struct {
+	Enabled               bool          // Whether this node can be assigned sg-replicate replications
+	WebsocketPingInterval time.Duration // BLIP Websocket Ping interval (for active replicators)
 }
 
 type OidcTestProviderOptions struct {
@@ -306,7 +312,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	importEnabled := dbContext.UseXattrs() && dbContext.autoImport
-	sgReplicateEnabled := dbContext.Options.SgReplicateEnabled
+	sgReplicateEnabled := dbContext.Options.SGReplicateOptions.Enabled
 
 	// Initialize node heartbeater if sg-replicate or import enabled on the node
 	if importEnabled || sgReplicateEnabled {

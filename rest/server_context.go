@@ -627,6 +627,11 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		sgReplicateEnabled = *config.SGReplicateEnabled
 	}
 
+	sgReplicateWebsocketPingInterval := db.DefaultSGReplicateWebsocketPingInterval
+	if config.SGReplicateWebsocketPingInterval != nil {
+		sgReplicateWebsocketPingInterval = time.Second * time.Duration(*config.SGReplicateWebsocketPingInterval)
+	}
+
 	localDocExpirySecs := base.DefaultLocalDocExpirySecs
 	if config.LocalDocExpirySecs != nil {
 		localDocExpirySecs = *config.LocalDocExpirySecs
@@ -650,8 +655,12 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		DeltaSyncOptions:          deltaSyncOptions,
 		CompactInterval:           compactIntervalSecs,
-		SgReplicateEnabled:        sgReplicateEnabled,
+		SGReplicateOptions: db.SGReplicateOptions{
+			Enabled:               sgReplicateEnabled,
+			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
+		},
 	}
+
 	return contextOptions, nil
 }
 
