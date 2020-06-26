@@ -369,7 +369,7 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 	rc.WebsocketPingInterval = m.dbContext.Options.ActiveReplicatorPingInterval
 
 	// TODO: review whether there's a more appropriate context to use here
-	replicator, err = NewActiveReplicator(context.Background(), rc)
+	replicator, err = NewActiveReplicator(rc)
 	if err != nil {
 		return nil, err
 	}

@@ -11,21 +11,21 @@ import (
 
 // ActivePushReplicator is a unidirectional push active replicator.
 type ActivePushReplicator struct {
-	config          *ActiveReplicatorConfig
-	blipSyncContext *BlipSyncContext
-	blipSender      *blip.Sender
-	ctx             context.Context // closes checkpointer goroutine on cancel (can be a context passed from a parent DB)
-	Checkpointer    *Checkpointer
-	Stats           expvar.Map
+	config                *ActiveReplicatorConfig
+	blipSyncContext       *BlipSyncContext
+	blipSender            *blip.Sender
+	Stats                 expvar.Map
+	Checkpointer          *Checkpointer
+	checkpointerCtx       context.Context
+	checkpointerCtxCancel context.CancelFunc
 }
 
-func NewPushReplicator(ctx context.Context, config *ActiveReplicatorConfig) *ActivePushReplicator {
-	blipContext := blip.NewContextCustomID(config.ID+"-push", blipCBMobileReplication)
-	bsc := NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID)
+func NewPushReplicator(config *ActiveReplicatorConfig) *ActivePushReplicator {
+	ctx, ctxCancelFn := context.WithCancel(context.Background())
 	return &ActivePushReplicator{
-		config:          config,
-		blipSyncContext: bsc,
-		ctx:             ctx,
+		config:                config,
+		checkpointerCtx:       ctx,
+		checkpointerCtxCancel: ctxCancelFn,
 	}
 }
 
@@ -79,6 +79,7 @@ func (apr *ActivePushReplicator) Close() error {
 		return nil
 	}
 
+	apr.checkpointerCtxCancel()
 	apr.Checkpointer.CheckpointNow()
 
 	if apr.blipSender != nil {
@@ -100,7 +101,7 @@ func (apr *ActivePushReplicator) initCheckpointer() error {
 		return err
 	}
 
-	apr.Checkpointer = NewCheckpointer(apr.ctx, checkpointID, apr.blipSender, apr.config.CheckpointInterval)
+	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, checkpointID, apr.blipSender, apr.config.CheckpointInterval)
 
 	checkpoint := apr.Checkpointer.GetCheckpoint()
 	apr.Checkpointer.lastCheckpointRevID = checkpoint.RevID

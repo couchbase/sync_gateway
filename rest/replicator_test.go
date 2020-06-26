@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"context"
 	"expvar"
 	"fmt"
 	"net/http"
@@ -41,7 +40,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePushAndPull,
 		ActiveDB:     &db.Database{DatabaseContext: rt.GetDatabase()},
@@ -101,7 +100,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:                    t.Name(),
 		Direction:             db.ActiveReplicatorTypePush,
 		ActiveDB:              &db.Database{DatabaseContext: rt.GetDatabase()},
@@ -181,7 +180,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePull,
 		PassiveDBURL: passiveDBURL,
@@ -282,7 +281,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(context.Background(), &arConfig)
+	ar, err := db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
@@ -334,7 +333,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar, err = db.NewActiveReplicator(context.Background(), &arConfig)
+	ar, err = db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Close()) }()
 	assert.NoError(t, ar.Start())
@@ -429,7 +428,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePush,
 		PassiveDBURL: passiveDBURL,
@@ -530,7 +529,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(context.Background(), &arConfig)
+	ar, err := db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
@@ -581,7 +580,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar, err = db.NewActiveReplicator(context.Background(), &arConfig)
+	ar, err = db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Close()) }()
 	assert.NoError(t, ar.Start())
@@ -677,7 +676,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePull,
 		PassiveDBURL: passiveDBURL,
@@ -777,7 +776,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	ar, err := db.NewActiveReplicator(context.Background(), &db.ActiveReplicatorConfig{
+	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePull,
 		PassiveDBURL: passiveDBURL,

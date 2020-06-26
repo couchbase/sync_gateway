@@ -32,17 +32,17 @@ type ActiveReplicator struct {
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
-func NewActiveReplicator(ctx context.Context, config *ActiveReplicatorConfig) (*ActiveReplicator, error) {
+func NewActiveReplicator(config *ActiveReplicatorConfig) (*ActiveReplicator, error) {
 	ar := &ActiveReplicator{
 		ID: config.ID,
 	}
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
-		ar.Push = NewPushReplicator(ctx, config)
+		ar.Push = NewPushReplicator(config)
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
-		ar.Pull = NewPullReplicator(ctx, config)
+		ar.Pull = NewPullReplicator(config)
 	}
 
 	return ar, nil
