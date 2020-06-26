@@ -629,7 +629,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 
 	sgReplicateWebsocketPingInterval := db.DefaultSGReplicateWebsocketPingInterval
 	if config.SGReplicateWebsocketPingInterval != nil {
-		sgReplicateWebsocketPingInterval = *config.SGReplicateWebsocketPingInterval
+		sgReplicateWebsocketPingInterval = time.Second * time.Duration(*config.SGReplicateWebsocketPingInterval)
 	}
 
 	localDocExpirySecs := base.DefaultLocalDocExpirySecs
