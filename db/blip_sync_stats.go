@@ -7,6 +7,7 @@ type BlipSyncStats struct {
 	HandleRevErrorCount *expvar.Int
 	SendRevCount        *expvar.Int
 	SendRevErrorCount   *expvar.Int
+	DocsPurgedCount     *expvar.Int
 }
 
 func NewBlipSyncStats() *BlipSyncStats {
@@ -15,5 +16,6 @@ func NewBlipSyncStats() *BlipSyncStats {
 		HandleRevErrorCount: &expvar.Int{},
 		SendRevCount:        &expvar.Int{},
 		SendRevErrorCount:   &expvar.Int{},
+		DocsPurgedCount:     &expvar.Int{},
 	}
 }

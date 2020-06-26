@@ -336,9 +336,10 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 	base.Infof(base.KeyReplicate, "Starting replication %v (placeholder)", config.ID)
 
 	rc := &ActiveReplicatorConfig{
-		ID:         config.ID,
-		Continuous: config.Continuous,
-		ActiveDB:   &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
+		ID:             config.ID,
+		Continuous:     config.Continuous,
+		ActiveDB:       &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
+		PurgeOnRemoval: config.PurgeOnRemoval,
 	}
 
 	if config.Filter == base.ByChannelFilter {
@@ -742,6 +743,7 @@ type ReplicationStatus struct {
 	ID               string `json:"replication_id"`
 	DocsRead         int64  `json:"docs_read"`
 	DocsWritten      int64  `json:"docs_written"`
+	DocsPurged       int64  `json:"docs_purged,omitempty"`
 	DocWriteFailures int64  `json:"doc_write_failures"`
 	Status           string `json:"status"`
 	RejectedRemote   int64  `json:"rejected_by_remote"`
@@ -756,7 +758,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string) (*Replic
 	// Check if replication is active locally
 	replication, ok := m.activeReplications[replicationID]
 	if ok {
-		return replication.GetStatus(replicationID), nil
+		return replication.GetStatus(), nil
 	}
 
 	// Check if replication is remote
