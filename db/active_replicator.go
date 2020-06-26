@@ -108,9 +108,6 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 func connect(idSuffix string, config *ActiveReplicatorConfig) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
 
 	blipContext := NewSGBlipContext(context.TODO(), config.ID+idSuffix)
-	if config.WebsocketPingInterval == 0 {
-		config.WebsocketPingInterval = defaultWebsocketPingInterval
-	}
 	blipContext.WebsocketPingInterval = config.WebsocketPingInterval
 	bsc = NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID)
 

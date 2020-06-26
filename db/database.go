@@ -51,10 +51,11 @@ const (
 )
 
 const (
-	DefaultRevsLimitNoConflicts = 50
-	DefaultRevsLimitConflicts   = 100
-	DefaultPurgeInterval        = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
-	DefaultSGReplicateEnabled   = true
+	DefaultRevsLimitNoConflicts             = 50
+	DefaultRevsLimitConflicts               = 100
+	DefaultPurgeInterval                    = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
+	DefaultSGReplicateEnabled               = true
+	DefaultSGReplicateWebsocketPingInterval = time.Minute * 5
 )
 
 // Default values for delta sync
@@ -106,26 +107,30 @@ type DatabaseContext struct {
 }
 
 type DatabaseContextOptions struct {
-	CacheOptions                 *CacheOptions
-	RevisionCacheOptions         *RevisionCacheOptions
-	OldRevExpirySeconds          uint32
-	AdminInterface               *string
-	UnsupportedOptions           UnsupportedOptions
-	OIDCOptions                  *auth.OIDCOptions
-	DBOnlineCallback             DBOnlineCallback // Callback function to take the DB back online
-	ImportOptions                ImportOptions
-	EnableXattr                  bool             // Use xattr for _sync
-	LocalDocExpirySecs           uint32           // The _local doc expiry time in seconds
-	SecureCookieOverride         bool             // Pass-through DBConfig.SecureCookieOverride
-	SessionCookieName            string           // Pass-through DbConfig.SessionCookieName
-	SessionCookieHttpOnly        bool             // Pass-through DbConfig.SessionCookieHTTPOnly
-	AllowConflicts               *bool            // False forbids creating conflicts
-	SendWWWAuthenticateHeader    *bool            // False disables setting of 'WWW-Authenticate' header
-	UseViews                     bool             // Force use of views
-	DeltaSyncOptions             DeltaSyncOptions // Delta Sync Options
-	CompactInterval              uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
-	SgReplicateEnabled           bool             // Whether this node can be assigned sg-replicate replications
-	ActiveReplicatorPingInterval time.Duration    // BLIP Websocket Ping interval (for active replicators)
+	CacheOptions              *CacheOptions
+	RevisionCacheOptions      *RevisionCacheOptions
+	OldRevExpirySeconds       uint32
+	AdminInterface            *string
+	UnsupportedOptions        UnsupportedOptions
+	OIDCOptions               *auth.OIDCOptions
+	DBOnlineCallback          DBOnlineCallback // Callback function to take the DB back online
+	ImportOptions             ImportOptions
+	EnableXattr               bool             // Use xattr for _sync
+	LocalDocExpirySecs        uint32           // The _local doc expiry time in seconds
+	SecureCookieOverride      bool             // Pass-through DBConfig.SecureCookieOverride
+	SessionCookieName         string           // Pass-through DbConfig.SessionCookieName
+	SessionCookieHttpOnly     bool             // Pass-through DbConfig.SessionCookieHTTPOnly
+	AllowConflicts            *bool            // False forbids creating conflicts
+	SendWWWAuthenticateHeader *bool            // False disables setting of 'WWW-Authenticate' header
+	UseViews                  bool             // Force use of views
+	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
+	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
+	SGReplicateOptions        SGReplicateOptions
+}
+
+type SGReplicateOptions struct {
+	Enabled               bool          // Whether this node can be assigned sg-replicate replications
+	WebsocketPingInterval time.Duration // BLIP Websocket Ping interval (for active replicators)
 }
 
 type OidcTestProviderOptions struct {
@@ -307,7 +312,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	importEnabled := dbContext.UseXattrs() && dbContext.autoImport
-	sgReplicateEnabled := dbContext.Options.SgReplicateEnabled
+	sgReplicateEnabled := dbContext.Options.SGReplicateOptions.Enabled
 
 	// Initialize node heartbeater if sg-replicate or import enabled on the node
 	if importEnabled || sgReplicateEnabled {
