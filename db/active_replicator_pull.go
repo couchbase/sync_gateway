@@ -34,6 +34,7 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 
 	var err error
+
 	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config)
 	if err != nil {
 		return err

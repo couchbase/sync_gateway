@@ -3,6 +3,7 @@ package rest
 import (
 	"expvar"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -818,4 +819,97 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	assert.Error(t, err)
 	assert.True(t, base.IsDocNotFoundError(err), "Error returned wasn't a DocNotFound error")
 	assert.Nil(t, doc)
+}
+
+// TestActiveReplicatorPullConflict:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Create the same document id with different content on rt1 and rt2
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
+func TestActiveReplicatorPullConflict(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	// Create revision on rt2 (creates rev 1-7f11ae86eabce724274a7f18f06f8bf5)
+	docID := t.Name() + "conflictdoc1"
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rt2revID := respRevID(t, resp)
+	// assert revID, as test depends on rt2 being winner under default conflict resolution
+	assert.Equal(t, "1-7f11ae86eabce724274a7f18f06f8bf5", rt2revID)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	// Create conflicting revision on rt1 (creates rev 1-568d6718699d196555298dd8bde69a2a)
+	resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rt1revID := respRevID(t, resp)
+	assert.Equal(t, "1-568d6718699d196555298dd8bde69a2a", rt1revID)
+
+	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize: 200,
+		ConflictResolver: db.DefaultConflictResolver,
+	})
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, ar.Close()) }()
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start())
+
+	time.Sleep(1 * time.Second)
+	log.Printf("========================Replication should be done, checking with changes")
+	// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
+
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, rt2revID, doc.SyncData.CurrentRev)
+	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
 }

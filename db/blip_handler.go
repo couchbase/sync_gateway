@@ -662,10 +662,10 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev
-	var noConflicts bool
+	revNoConflicts := false
 	if val, ok := rq.Properties[RevMessageNoConflicts]; ok {
 		var err error
-		noConflicts, err = strconv.ParseBool(val)
+		revNoConflicts, err = strconv.ParseBool(val)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, "Invalid value for noconflicts: %s", err)
 		}
@@ -701,7 +701,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	// Finally, save the revision (with the new attachments inline)
 	bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyDocPushCount, 1)
 
-	_, _, err = bh.db.PutExistingRev(newDoc, history, noConflicts)
+	// If a conflict resolver is defined for the handler, write with conflict resolution.
+	if bh.conflictResolver != nil {
+		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver)
+	} else {
+		_, _, err = bh.db.PutExistingRev(newDoc, history, revNoConflicts)
+	}
 	if err != nil {
 		return err
 	}
@@ -711,6 +716,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	}
 
 	return nil
+}
+
+func isConflictError(err error) bool {
+	httpError, ok := err.(*base.HTTPError)
+	if ok && httpError.Status == http.StatusConflict {
+		return true
+	}
+	return false
 }
 
 //////// ATTACHMENTS:

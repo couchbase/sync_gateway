@@ -878,6 +878,15 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool) (doc *Document, newRevID string, err error) {
+	return db.PutExistingRevWithConflictResolution(newDoc, docHistory, noConflicts, nil)
+}
+
+// Adds an existing revision to a document along with its history (list of rev IDs.)
+// If this new revision would result in a conflict:
+//     1. If noConflicts == false, the revision will be added to the rev tree as a conflict
+//     2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
+//     3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
+func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolverFunc ConflictResolverFunc) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -925,7 +934,13 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 
 		// Conflict-free mode check
 		if db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
-			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			if conflictResolverFunc == nil {
+				return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			}
+			_, err := db.resolveConflict(doc, newDoc, docHistory, conflictResolverFunc)
+			if err != nil {
+				return nil, nil, nil, err
+			}
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -985,6 +1000,54 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 	return doc, newRevID, err
 
+}
+
+// resolveConflict runs the conflictResolverFunction with doc and newDoc, and updates doc's body and/or revtree based on the result.
+func (db *Database) resolveConflict(doc *Document, newDoc *Document, docHistory []string, resolverFunc ConflictResolverFunc) (resolvedRevID string, resolveError error) {
+
+	if resolverFunc == nil {
+		return "", errors.New("Conflict resolution function is nil for resolveConflict")
+	}
+
+	localDoc := doc.GetDeepMutableBody()
+	localDoc[BodyId] = doc.ID
+	localDoc[BodyRev] = doc.SyncData.CurrentRev
+
+	remoteDoc := newDoc.GetDeepMutableBody()
+	remoteDoc[BodyId] = newDoc.ID
+	remoteDoc[BodyRev] = newDoc.RevID
+
+	conflict := Conflict{
+		LocalDocument:  localDoc,
+		RemoteDocument: remoteDoc,
+	}
+
+	resolvedBody, resolutionType, resolveFuncError := resolverFunc.Resolve(conflict)
+	if resolveError != nil {
+		return "", resolveFuncError
+	}
+
+	switch resolutionType {
+	case ConflictResolutionLocal:
+		resolvedRevID, resolveError = db.resolveDocLocalWins(doc, conflict)
+	case ConflictResolutionRemote:
+		resolvedRevID, resolveError = db.resolveDocRemoteWins(doc, conflict)
+	case ConflictResolutionMerge:
+		resolvedRevID, resolveError = db.resolveDocMerge(doc, conflict, resolvedBody)
+	}
+	return resolvedRevID, resolveError
+}
+
+func (db *Database) resolveDocLocalWins(doc *Document, conflict Conflict) (resolvedRevID string, err error) {
+	return "", nil
+}
+
+func (db *Database) resolveDocRemoteWins(doc *Document, conflict Conflict) (resolvedRevID string, err error) {
+	return "", nil
+}
+
+func (db *Database) resolveDocMerge(doc *Document, conflict Conflict, mergedBody Body) (resolvedRevID string, err error) {
+	return "", nil
 }
 
 func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists bool) error {

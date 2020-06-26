@@ -54,6 +54,8 @@ type ActiveReplicatorConfig struct {
 	ActiveDB *Database
 	// WebsocketPingInterval is the time between websocket heartbeats sent by the active replicator.
 	WebsocketPingInterval time.Duration
+	// Conflict resolver function
+	ConflictResolver ConflictResolverFunc
 }
 
 // CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.

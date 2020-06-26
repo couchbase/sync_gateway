@@ -27,6 +27,16 @@ func (d ConflictResolverType) IsValid() bool {
 	}
 }
 
+// ConflictResolutionType is used to identify the Body returned by a conflict resolution function
+// as local, remote, or merge
+type ConflictResolutionType string
+
+const (
+	ConflictResolutionLocal  ConflictResolutionType = "local"
+	ConflictResolutionRemote ConflictResolutionType = "remote"
+	ConflictResolutionMerge  ConflictResolutionType = "merge"
+)
+
 // Conflict is the input to all conflict resolvers.  LocalDocument and RemoteDocument
 // are expected to be document bodies with metadata injected into the body following
 // the same approach used for doc and oldDoc in the Sync Function
@@ -41,6 +51,35 @@ type Conflict struct {
 //   - In the merge case, winner[revid] must be empty.
 //   - If an nil Body is returned, the conflict should be resolved as a deletion/tombstone.
 type ConflictResolverFunc func(conflict Conflict) (winner Body, err error)
+
+// Wrapper for ConflictResolverFunc that evaluates whether conflict resolution resulted in
+// localWins, remoteWins, or merge
+func (crf ConflictResolverFunc) Resolve(conflict Conflict) (winner Body, resolutionType ConflictResolutionType, err error) {
+
+	winner, err = crf(conflict)
+	if err != nil {
+		return winner, "", err
+	}
+
+	winningRev, ok := winner[BodyRev]
+	if !ok {
+		return winner, ConflictResolutionMerge, nil
+	}
+
+	localRev, ok := conflict.LocalDocument[BodyRev]
+	if ok && localRev == winningRev {
+		return winner, ConflictResolutionLocal, nil
+	}
+
+	remoteRev, ok := conflict.RemoteDocument[BodyRev]
+	if ok && remoteRev == winningRev {
+		return winner, ConflictResolutionRemote, nil
+	}
+
+	base.Infof(base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
+	return winner, resolutionType, err
+
+}
 
 // DefaultConflictResolver uses the same logic as revTree.WinningRevision:
 // the revision whose (!deleted, generation, hash) tuple compares the highest.

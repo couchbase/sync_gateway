@@ -352,9 +352,21 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 		return nil, fmt.Errorf("Unknown replication filter: %v", config.Filter)
 	}
 
-	rc.Direction = ActiveReplicatorDirection(config.Direction)
+	rc.Direction = config.Direction
 	if !rc.Direction.IsValid() {
 		return nil, fmt.Errorf("Unknown replication direction: %v", config.Direction)
+	}
+
+	// Set conflict resolver for pull replications
+	if rc.Direction == ActiveReplicatorTypePull {
+		if config.ConflictResolutionType == "" {
+			rc.ConflictResolver, err = NewConflictResolverFunc(ConflictResolverDefault, "")
+		} else {
+			rc.ConflictResolver, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn)
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if config.Remote == "" {

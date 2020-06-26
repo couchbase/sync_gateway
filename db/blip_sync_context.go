@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"regexp"
 	"runtime/debug"
 	"strconv"
@@ -60,6 +61,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string) *BlipS
 	}
 
 	// Register 2.x replicator handlers
+	log.Printf("registering replication handlers: %v", contextID)
 	for profile, handlerFn := range kHandlersByProfile {
 		bsc.register(profile, handlerFn)
 	}
@@ -93,6 +95,7 @@ type BlipSyncContext struct {
 	postSendRevisionResponseCallback func(remoteSeq string)      // postSendRevisionResponseCallback is called after receiving acknowledgement of a sent revision
 	replicationStats                 *BlipSyncStats              // Replication stats
 	purgeOnRemoval                   bool                        // Purges the document when we pull a _removed:true revision.
+	conflictResolver                 ConflictResolverFunc        // Conflict resolver for active replications
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.
