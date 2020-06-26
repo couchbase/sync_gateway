@@ -348,7 +348,7 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 		if err != nil {
 			return nil, err
 		}
-	} else {
+	} else if config.Filter != "" {
 		return nil, fmt.Errorf("Unknown replication filter: %v", config.Filter)
 	}
 
