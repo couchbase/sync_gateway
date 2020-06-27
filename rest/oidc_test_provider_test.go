@@ -49,7 +49,9 @@ func TestExtractSubjectFromRefreshToken(t *testing.T) {
 	assert.Equal(t, subject, sub)
 }
 
-func TestInsecureOpenIDConnectAuth(t *testing.T) {
+// restTesterConfigWithTestProviderEnabled returns RestTesterConfig with test provider
+// enabled single provider configuration.
+func restTesterConfigWithTestProviderEnabled() RestTesterConfig {
 	providers := auth.OIDCProviderMap{
 		"test": &auth.OIDCProvider{
 			Register:      true,
@@ -61,7 +63,10 @@ func TestInsecureOpenIDConnectAuth(t *testing.T) {
 		},
 	}
 	defaultProvider := "test"
-	opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
+	opts := auth.OIDCOptions{
+		Providers:       providers,
+		DefaultProvider: &defaultProvider,
+	}
 	restTesterConfig := RestTesterConfig{
 		DatabaseConfig: &DbConfig{
 			OIDCConfig: &opts,
@@ -69,13 +74,18 @@ func TestInsecureOpenIDConnectAuth(t *testing.T) {
 				OidcTestProvider: db.OidcTestProviderOptions{
 					Enabled: true,
 				},
-				OidcTlsSkipVerify: true,
 			},
-		}}
+		},
+	}
+	return restTesterConfig
+}
+
+func TestProviderOIDCAuthWithTlsSkipVerifyEnabled(t *testing.T) {
+	restTesterConfig := restTesterConfigWithTestProviderEnabled()
+	restTesterConfig.DatabaseConfig.Unsupported.OidcTlsSkipVerify = true
 	restTester := NewRestTester(t, &restTesterConfig)
 	restTester.SetAdminParty(false)
 	defer restTester.Close()
-
 	mockSyncGateway := httptest.NewTLSServer(restTester.TestPublicHandler())
 	defer mockSyncGateway.Close()
 	mockSyncGatewayURL := mockSyncGateway.URL
@@ -90,6 +100,9 @@ func TestInsecureOpenIDConnectAuth(t *testing.T) {
 	require.NoError(t, err, "Error creating new request")
 	jar, err := cookiejar.New(nil)
 	require.NoError(t, err, "Error creating new cookie jar")
+
+	// Set insecureSkipVerify on the test's HTTP client since both the _oidc and _oidc_testing
+	// endpoints are being run with the same TLSServer.
 	client := auth.GetHttpClient(true)
 	client.Jar = jar
 	response, err := client.Do(request)
@@ -119,6 +132,41 @@ func TestInsecureOpenIDConnectAuth(t *testing.T) {
 	assert.NotEmpty(t, authResponseActual.Username, "session_id doesn't exist")
 	assert.NotEmpty(t, authResponseActual.IDToken, "id_token mismatch")
 	assert.NotEmpty(t, authResponseActual.RefreshToken, "refresh_token mismatch")
+}
+
+func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
+	restTesterConfig := restTesterConfigWithTestProviderEnabled()
+	restTesterConfig.DatabaseConfig.Unsupported.OidcTlsSkipVerify = false
+	restTester := NewRestTester(t, &restTesterConfig)
+	restTester.SetAdminParty(false)
+	defer restTester.Close()
+	mockSyncGateway := httptest.NewTLSServer(restTester.TestPublicHandler())
+	defer mockSyncGateway.Close()
+	mockSyncGatewayURL := mockSyncGateway.URL
+	provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+	provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
+	provider.CallbackURL = base.StringPtr(mockSyncGateway.URL + "/db/_oidc_callback")
+
+	// Send OpenID Connect request
+	authURL := "/db/_oidc?provider=test&offline=true"
+	requestURL := mockSyncGatewayURL + authURL
+	request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+	require.NoError(t, err, "Error creating new request")
+	jar, err := cookiejar.New(nil)
+	require.NoError(t, err, "Error creating new cookie jar")
+
+	// Set insecureSkipVerify on the test's HTTP client since both the _oidc and _oidc_testing
+	// endpoints are being run with the same TLSServer.
+	client := auth.GetHttpClient(true)
+	client.Jar = jar
+	response, err := client.Do(request)
+	require.NoError(t, err, "Error sending request")
+	require.Equal(t, http.StatusInternalServerError, response.StatusCode)
+	bodyBytes, err := ioutil.ReadAll(response.Body)
+	require.NoError(t, err, "Error reading response")
+	bodyString := string(bodyBytes)
+	assert.Contains(t, bodyString, "Unable to obtain client for provider")
+	require.NoError(t, response.Body.Close(), "Error closing response body")
 }
 
 // parseAuthURL returns the authentication URL extracted from user consent form.

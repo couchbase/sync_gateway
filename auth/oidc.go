@@ -452,7 +452,10 @@ func SetURLQueryParam(strURL, name, value string) (string, error) {
 func GetHttpClient(insecureSkipVerify bool) *http.Client {
 	if insecureSkipVerify {
 		transport := base.DefaultHTTPTransport()
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = new(tls.Config)
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true
 		return &http.Client{Transport: transport}
 	}
 	return http.DefaultClient
