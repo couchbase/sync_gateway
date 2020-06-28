@@ -1166,7 +1166,7 @@ func (db *Database) tombstoneActiveRevision(doc *Document, revID string) error {
 	// Backup previous revision body, then remove the current body from the doc
 	bodyBytes, err := doc.BodyBytes()
 	if err == nil {
-		db.setOldRevisionJSON(doc.ID, revID, bodyBytes, db.Options.OldRevExpirySeconds)
+		_ = db.setOldRevisionJSON(doc.ID, revID, bodyBytes, db.Options.OldRevExpirySeconds)
 	}
 	doc.RemoveBody()
 
