@@ -86,7 +86,7 @@ type ReplicationUpsertConfig struct {
 	DeltaSyncEnabled       *bool       `json:"enable_delta_sync,omitempty"`
 	MaxBackoff             *int        `json:"max_backoff_time,omitempty"`
 	State                  *string     `json:"state,omitempty"`
-	Continuous             *bool       `json:"continuous,omitempty"`
+	Continuous             *bool       `json:"continuous"`
 	Filter                 *string     `json:"filter,omitempty"`
 	QueryParams            interface{} `json:"query_params,omitempty"`
 	Cancel                 *bool       `json:"cancel,omitempty"`

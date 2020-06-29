@@ -145,7 +145,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 
 	bh.gotSubChanges = true
 
-	logCtx := bh.BlipSyncContext.blipContextDb.Ctx
+	logCtx := bh.loggingCtx
 	subChangesParams, err := NewSubChangesParams(logCtx, rq, bh.db.CreateZeroSinceValue(), bh.db.ParseSequenceID)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid subChanges parameters")
@@ -210,7 +210,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			channels:   channels,
 			clientType: clientType,
 		})
-		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
+		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
 	return nil
@@ -241,7 +241,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		}
 	}()
 
-	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sending changes since %v", opts.since)
+	base.InfofCtx(bh.loggingCtx, base.KeySync, "Sending changes since %v", opts.since)
 
 	options := ChangesOptions{
 		Since:      opts.since,
@@ -249,7 +249,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 		Continuous: opts.continuous,
 		ActiveOnly: opts.activeOnly,
 		Terminator: bh.BlipSyncContext.terminator,
-		Ctx:        bh.db.Ctx,
+		Ctx:        bh.loggingCtx,
 		clientType: opts.clientType,
 	}
 
@@ -274,7 +274,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	// and BlipSyncContext user access.
 	changesDb := bh.copyContextDatabase()
 	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
-		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySync, "    Sending %d changes", len(changes))
+		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
 
 			if !strings.HasPrefix(change.ID, "_") {
@@ -317,7 +317,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 	outrq.SetProfile("changes")
 	err := outrq.SetJSONBody(changeArray)
 	if err != nil {
-		base.InfofCtx(bh.blipContextDb.Ctx, base.KeyAll, "Error setting changes: %v", err)
+		base.InfofCtx(bh.loggingCtx, base.KeyAll, "Error setting changes: %v", err)
 	}
 
 	if len(changeArray) > 0 {
@@ -335,7 +335,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
-				base.ErrorfCtx(bh.blipContextDb.Ctx, "Error from bh.handleChangesResponse: %v", err)
+				base.ErrorfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 			}
 		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
 	} else {
@@ -347,9 +347,9 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 
 	if len(changeArray) > 0 {
 		sequence := changeArray[0][0].(SequenceID)
-		base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sent %d changes to client, from seq %s", len(changeArray), sequence.String())
+		base.InfofCtx(bh.loggingCtx, base.KeySync, "Sent %d changes to client, from seq %s", len(changeArray), sequence.String())
 	} else {
-		base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Sent all changes to client")
+		base.InfofCtx(bh.loggingCtx, base.KeySync, "Sent all changes to client")
 	}
 
 	return nil
@@ -401,7 +401,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			} else {
 				err := jsonOutput.Encode(possible)
 				if err != nil {
-					base.InfofCtx(bh.blipContextDb.Ctx, base.KeyAll, "Error encoding json: %v", err)
+					base.InfofCtx(bh.loggingCtx, base.KeyAll, "Error encoding json: %v", err)
 				}
 			}
 
@@ -475,7 +475,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 	output.Write([]byte("]"))
 	response := rq.Response()
 	if bh.sgCanUseDeltas {
-		base.DebugfCtx(bh.blipContextDb.Ctx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
+		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on proposeChanges response")
 		response.Properties[ChangesResponseDeltas] = "true"
 	}
 	response.SetCompressed(true)
@@ -494,10 +494,10 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 		return err
 	} else if base.IsDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
-		base.WarnfCtx(bsc.blipContextDb.Ctx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	} else if err != nil {
-		base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	}
 
@@ -508,11 +508,11 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 	}
 
 	if revDelta == nil {
-		base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
 		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	}
 
-	base.TracefCtx(bsc.blipContextDb.Ctx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
 	if err := bsc.sendDelta(sender, docID, deltaSrcRevID, revDelta, seq); err != nil {
 		return err
 	}
@@ -523,7 +523,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 }
 
 func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
-	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
+	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
 		rq.String(), base.UD(rq.Properties[NorevMessageId]), rq.Properties[NorevMessageRev], rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
 	// Couchbase Lite always sense noreply=true for norev profiles
@@ -555,14 +555,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	//addRevisionParams := newAddRevisionParams(rq)
 	revMessage := RevMessage{Message: rq}
 
-	base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
+	base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, rq.Profile(), revMessage.String())
 
 	bodyBytes, err := rq.Body()
 	if err != nil {
 		return err
 	}
 
-	base.TracefCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
+	base.TracefCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
 
 	bh.dbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
 
@@ -579,7 +579,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			return err
 		}
 		if r.Removed {
-			base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "Purging doc %v - removed at rev %v", docID, revID)
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", docID, revID)
 			if err := bh.db.Purge(docID); err != nil {
 				return err
 			}
@@ -638,12 +638,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		err = base.Patch(&deltaSrcMap, newDoc.Body())
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
-			base.WarnfCtx(bh.blipContextDb.Ctx, "Error patching deltaSrc %s with %s for key %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for key %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 
 		newDoc.UpdateBody(deltaSrcMap)
-		base.TracefCtx(bh.blipContextDb.Ctx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
+		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		bh.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
 	}
 
@@ -689,7 +689,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 		// Check for any attachments I don't have yet, and request them:
 		if err := bh.downloadOrVerifyAttachments(rq.Sender, body, minRevpos, docID); err != nil {
-			base.ErrorfCtx(bh.blipContextDb.Ctx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
+			base.ErrorfCtx(bh.loggingCtx, "Error during downloadOrVerifyAttachments for doc %s/%s: %v", base.UD(docID), revID, err)
 			return err
 		}
 
@@ -733,7 +733,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		return err
 
 	}
-	base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySync, "Sending attachment with digest=%q (%dkb)", digest, len(attachment)/1024)
+	base.DebugfCtx(bh.loggingCtx, base.KeySync, "Sending attachment with digest=%q (%dkb)", digest, len(attachment)/1024)
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties[BlipCompress] == "true")
@@ -753,7 +753,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 				// security purposes I do need the client to _prove_ it has the data, otherwise if
 				// it knew the digest it could acquire the data by uploading a document with the
 				// claimed attachment, then downloading it.
-				base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
+				base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 				nonce, proof := GenerateProofOfAttachment(knownData)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{BlipProfile: MessageProveAttachment, ProveAttachmentDigest: digest}
@@ -762,18 +762,18 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 					return nil, ErrClosedBLIPSender
 				}
 				if body, err := outrq.Response().Body(); err != nil {
-					base.WarnfCtx(bh.blipContextDb.Ctx, "Error returned for proveAttachment message for doc %s (digest %s).  Error: %v", base.UD(docID), digest, err)
+					base.WarnfCtx(bh.loggingCtx, "Error returned for proveAttachment message for doc %s (digest %s).  Error: %v", base.UD(docID), digest, err)
 					return nil, err
 				} else if string(body) != proof {
-					base.WarnfCtx(bh.blipContextDb.Ctx, "Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
+					base.WarnfCtx(bh.loggingCtx, "Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
 					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
 				} else {
-					base.InfofCtx(bh.blipContextDb.Ctx, base.KeySync, "proveAttachment successful for doc %s (digest %s)", base.UD(docID), digest)
+					base.InfofCtx(bh.loggingCtx, base.KeySync, "proveAttachment successful for doc %s (digest %s)", base.UD(docID), digest)
 				}
 				return nil, nil
 			} else {
 				// If I don't have the attachment, I will request it from the client:
-				base.DebugfCtx(bh.blipContextDb.Ctx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
+				base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 				outrq := blip.NewRequest()
 				outrq.Properties = map[string]string{BlipProfile: MessageGetAttachment, GetAttachmentDigest: digest}
 				if isCompressible(name, meta) {
@@ -816,7 +816,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(attDigests []string) {
 	for _, digest := range attDigests {
 		bsc.allowedAttachments[digest] = bsc.allowedAttachments[digest] + 1
 	}
-	base.TracefCtx(bsc.blipContextDb.Ctx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, bsc.allowedAttachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, bsc.allowedAttachments)
 }
 
 func (bsc *BlipSyncContext) removeAllowedAttachments(attDigests []string) {
@@ -830,9 +830,9 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(attDigests []string) {
 		}
 	}
 
-	base.TracefCtx(bsc.blipContextDb.Ctx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attDigests, bsc.allowedAttachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attDigests, bsc.allowedAttachments)
 }
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
-	base.InfofCtx(bh.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, profile, endpoint)
+	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s %s", bh.serialNumber, profile, endpoint)
 }
