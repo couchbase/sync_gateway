@@ -417,10 +417,11 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			_, exists := m.activeReplications[replicationID]
 			if !exists {
 				base.Infof(base.KeyCluster, "Starting local replication %s", replicationID)
-				m.activeReplications[replicationID], err = m.StartReplication(replicationCfg)
+				replication, err := m.StartReplication(replicationCfg)
 				if err != nil {
 					return err
 				}
+				m.activeReplications[replicationID] = replication
 			}
 		}
 	}
