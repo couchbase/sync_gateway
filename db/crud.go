@@ -1091,9 +1091,6 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 	remoteRevID := conflict.RemoteDocument.ExtractRev()
 	remoteGeneration, _ := ParseRevID(remoteRevID)
 	newRevID := CreateRevIDWithBytes(remoteGeneration+1, remoteRevID, docBodyBytes)
-	if err != nil {
-		return "", nil, err
-	}
 
 	// Set the incoming document's rev and body to the cloned local revision
 	remoteDoc.RevID = newRevID

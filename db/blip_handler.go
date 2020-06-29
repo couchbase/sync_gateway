@@ -718,14 +718,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	return nil
 }
 
-func isConflictError(err error) bool {
-	httpError, ok := err.(*base.HTTPError)
-	if ok && httpError.Status == http.StatusConflict {
-		return true
-	}
-	return false
-}
-
 //////// ATTACHMENTS:
 
 // Received a "getAttachment" request

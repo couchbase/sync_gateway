@@ -114,7 +114,6 @@ func connect(idSuffix string, config *ActiveReplicatorConfig) (blipSender *blip.
 	bsc.loggingCtx = context.WithValue(context.Background(), base.LogContextKey{},
 		base.LogContext{CorrelationID: config.ID + idSuffix},
 	)
-	bsc.conflictResolver = config.ConflictResolver
 
 	blipSender, err = blipSync(*config.PassiveDBURL, blipContext)
 	if err != nil {

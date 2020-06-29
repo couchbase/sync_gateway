@@ -358,7 +358,7 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 	}
 
 	// Set conflict resolver for pull replications
-	if rc.Direction == ActiveReplicatorTypePull {
+	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
 			rc.ConflictResolver, err = NewConflictResolverFunc(ConflictResolverDefault, "")
 		} else {
