@@ -78,35 +78,6 @@ func (c *Checkpointer) AddExpectedSeq(seq ...string) {
 	c.lock.Unlock()
 }
 
-// GetCheckpoint tries to fetch a since value for the given replication by requesting a checkpoint.
-// If this fails, the function returns a zero value and false.
-func (c *Checkpointer) GetCheckpoint() (r GetSGR2CheckpointResponse) {
-	rq := GetSGR2CheckpointRequest{
-		Client: c.clientID,
-	}
-
-	if err := rq.Send(c.blipSender); err != nil {
-		base.Warnf("couldn't send GetCheckpoint request, starting from 0: %v", err)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	resp, err := rq.Response()
-	if err != nil {
-		base.Warnf("couldn't get response for GetCheckpoint request, starting from 0: %v", err)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	// checkpoint wasn't found (404)
-	if resp == nil {
-		base.Debugf(base.KeyReplicate, "couldn't find existing checkpoint for client %q, starting from 0", c.clientID)
-		c.StatGetCheckpointMissTotal.Add(1)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	c.StatGetCheckpointHitTotal.Add(1)
-	return *resp
-}
-
 func (c *Checkpointer) Start() {
 	// Start a time-based checkpointer goroutine
 	go func() {
@@ -188,6 +159,35 @@ func calculateCheckpointSeq(expectedSeqs []string, processedSeqs map[string]stru
 	}
 
 	return seq
+}
+
+// getCheckpoint tries to fetch a since value for the given replication by requesting a checkpoint.
+// If this fails, the function returns a zero value and false.
+func (c *Checkpointer) getCheckpoint() (r GetSGR2CheckpointResponse) {
+	rq := GetSGR2CheckpointRequest{
+		Client: c.clientID,
+	}
+
+	if err := rq.Send(c.blipSender); err != nil {
+		base.Warnf("couldn't send getCheckpoint request, starting from 0: %v", err)
+		return GetSGR2CheckpointResponse{}
+	}
+
+	resp, err := rq.Response()
+	if err != nil {
+		base.Warnf("couldn't get response for getCheckpoint request, starting from 0: %v", err)
+		return GetSGR2CheckpointResponse{}
+	}
+
+	// checkpoint wasn't found (404)
+	if resp == nil {
+		base.Debugf(base.KeyReplicate, "couldn't find existing checkpoint for client %q, starting from 0", c.clientID)
+		c.StatGetCheckpointMissTotal.Add(1)
+		return GetSGR2CheckpointResponse{}
+	}
+
+	c.StatGetCheckpointHitTotal.Add(1)
+	return *resp
 }
 
 func (c *Checkpointer) setCheckpoint(seq string) {
