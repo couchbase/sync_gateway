@@ -34,11 +34,13 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 
 	var err error
+
 	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config)
 	if err != nil {
 		return err
 	}
 
+	apr.blipSyncContext.conflictResolver = apr.config.ConflictResolver
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 
 	if err := apr.initCheckpointer(); err != nil {

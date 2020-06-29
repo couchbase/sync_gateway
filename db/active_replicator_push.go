@@ -40,6 +40,10 @@ func (apr *ActivePushReplicator) Start() error {
 		return err
 	}
 
+	// TODO: If this were made a config option, and the default conflict resolver not enforced on
+	// 	the pull side, it would be feasible to run sgr-2 in 'manual conflict resolution' mode
+	apr.blipSyncContext.sendRevNoConflicts = true
+
 	if err := apr.initCheckpointer(); err != nil {
 		return err
 	}

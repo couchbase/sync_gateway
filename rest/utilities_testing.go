@@ -477,6 +477,31 @@ func (rt *RestTester) SendAdminRequestWithHeaders(method, resource string, body 
 	return response
 }
 
+// PutDocumentWithRevID builds a new_edits=false style put to create a revision with the specified revID.
+// If parentRevID is not specified, treated as insert
+func (rt *RestTester) PutDocumentWithRevID(docID string, newRevID string, parentRevID string, body db.Body) (response *TestResponse, err error) {
+
+	requestBody := body.ShallowCopy()
+	newRevGeneration, newRevDigest := db.ParseRevID(newRevID)
+
+	revisions := make(map[string]interface{})
+	revisions["start"] = newRevGeneration
+	ids := []string{newRevDigest}
+	if parentRevID != "" {
+		_, parentDigest := db.ParseRevID(parentRevID)
+		ids = append(ids, parentDigest)
+	}
+	revisions["ids"] = ids
+
+	requestBody[db.BodyRevisions] = revisions
+	requestBytes, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, err
+	}
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/"+docID+"?new_edits=false", string(requestBytes))
+	return resp, nil
+}
+
 type SimpleSync struct {
 	Channels map[string]interface{}
 	Rev      string

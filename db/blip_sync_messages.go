@@ -332,6 +332,14 @@ func (rm *RevMessage) SetRev(rev string) {
 	rm.Properties[RevMessageRev] = rev
 }
 
+func (rm *RevMessage) SetNoConflicts(noConflicts bool) {
+	if noConflicts {
+		rm.Properties[RevMessageNoConflicts] = "true"
+	} else {
+		rm.Properties[RevMessageNoConflicts] = "false"
+	}
+}
+
 // setProperties will add the given properties to the blip message, overwriting any that already exist.
 func (rm *RevMessage) SetProperties(properties blip.Properties) {
 	for k, v := range properties {

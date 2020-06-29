@@ -93,6 +93,10 @@ type BlipSyncContext struct {
 	postSendRevisionResponseCallback func(remoteSeq string)      // postSendRevisionResponseCallback is called after receiving acknowledgement of a sent revision
 	replicationStats                 *BlipSyncStats              // Replication stats
 	purgeOnRemoval                   bool                        // Purges the document when we pull a _removed:true revision.
+	conflictResolver                 ConflictResolverFunc        // Conflict resolver for active replications
+	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
+	sendRevNoConflicts bool // Whether to set noconflicts=true when sending revisions
+
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.
@@ -295,6 +299,9 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
 	outrq.SetRev(revID)
+	if bsc.sendRevNoConflicts {
+		outrq.SetNoConflicts(true)
+	}
 
 	// add additional properties passed through
 	outrq.SetProperties(properties)

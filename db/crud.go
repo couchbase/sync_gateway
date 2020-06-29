@@ -11,6 +11,7 @@ package db
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"net/http"
 	"strings"
@@ -878,6 +879,15 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
 func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool) (doc *Document, newRevID string, err error) {
+	return db.PutExistingRevWithConflictResolution(newDoc, docHistory, noConflicts, nil)
+}
+
+// Adds an existing revision to a document along with its history (list of rev IDs.)
+// If this new revision would result in a conflict:
+//     1. If noConflicts == false, the revision will be added to the rev tree as a conflict
+//     2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
+//     3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
+func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolverFunc ConflictResolverFunc) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -925,7 +935,29 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 
 		// Conflict-free mode check
 		if db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
-			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			if conflictResolverFunc == nil {
+				return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			}
+			_, updatedHistory, err := db.resolveConflict(doc, newDoc, docHistory, conflictResolverFunc)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			if updatedHistory != nil {
+				docHistory = updatedHistory
+				// Recalculate the point where this doc's history branches from the current rev.
+				// TODO: The only current scenario for conflict resolution is to add one entry to the history,
+				//       could shorthand this to a +1?
+				newRev = docHistory[0]
+				currentRevIndex = len(docHistory)
+				parent = ""
+				for i, revid := range docHistory {
+					if doc.History.contains(revid) {
+						currentRevIndex = i
+						parent = revid
+						break
+					}
+				}
+			}
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
@@ -985,6 +1017,157 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 
 	return doc, newRevID, err
 
+}
+
+// resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
+// may be changed based on the outcome of conflict resolution - see resolveDocLocalWins, resolveDocRemoteWins and
+// resolveDocMerge for specifics on what is changed under each scenario.
+func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, docHistory []string, resolverFunc ConflictResolverFunc) (resolvedRevID string, updatedHistory []string, resolveError error) {
+
+	if resolverFunc == nil {
+		return "", nil, errors.New("Conflict resolution function is nil for resolveConflict")
+	}
+
+	localDocBody := localDoc.GetDeepMutableBody()
+	localDocBody[BodyId] = localDoc.ID
+	localDocBody[BodyRev] = localDoc.SyncData.CurrentRev
+
+	remoteDocBody := remoteDoc.GetDeepMutableBody()
+	remoteDocBody[BodyId] = remoteDoc.ID
+	remoteDocBody[BodyRev] = remoteDoc.RevID
+
+	conflict := Conflict{
+		LocalDocument:  localDocBody,
+		RemoteDocument: remoteDocBody,
+	}
+
+	resolvedBody, resolutionType, resolveFuncError := resolverFunc.Resolve(conflict)
+	if resolveError != nil {
+		return "", nil, resolveFuncError
+	}
+
+	switch resolutionType {
+	case ConflictResolutionLocal:
+		resolvedRevID, updatedHistory, resolveError = db.resolveDocLocalWins(localDoc, remoteDoc, conflict, docHistory)
+		return resolvedRevID, updatedHistory, resolveError
+	case ConflictResolutionRemote:
+		resolvedRevID, resolveError = db.resolveDocRemoteWins(localDoc, conflict)
+		return resolvedRevID, nil, resolveError
+	case ConflictResolutionMerge:
+		resolvedRevID, updatedHistory, resolveError = db.resolveDocMerge(localDoc, remoteDoc, conflict, docHistory, resolvedBody)
+		return resolvedRevID, updatedHistory, resolveError
+	default:
+		return "", nil, fmt.Errorf("Unexpected conflict resolution type: %v", resolutionType)
+	}
+}
+
+// resolveDocRemoteWins makes the following changes to the document:
+//   - Tombstones the local revision
+// The remote revision is added to the revision tree by the standard update processing.
+func (db *Database) resolveDocRemoteWins(localDoc *Document, conflict Conflict) (resolvedRevID string, err error) {
+
+	// Tombstone the local revision
+	localRevID := conflict.LocalDocument.ExtractRev()
+	tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
+	return conflict.RemoteDocument.ExtractRev(), tombstoneErr
+}
+
+// resolveDocLocalWins makes the following updates to the revision tree:
+//   - Adds the remote revision to the rev tree
+//   - Makes a copy of the local revision as a child of the remote revision
+//   - Tombstones the (original) local revision
+// TODO: This is CBL 2.x handling, and is compatible with the current version of the replicator, but
+//       results in additional replication work for clients that have previously replicated the local
+//       revision.  This will be addressed post-Hydrogen with version vector work, but additional analysis
+//       of options for Hydrogen should be completed.
+func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string) (resolvedRevID string, updatedHistory []string, err error) {
+
+	// Clone the local revision as a child of the remote revision
+	docBodyBytes, err := localDoc.BodyBytes()
+	if err != nil {
+		return "", nil, fmt.Errorf("Unable to retrieve local document body while resolving conflict: %w", err)
+	}
+
+	remoteRevID := conflict.RemoteDocument.ExtractRev()
+	remoteGeneration, _ := ParseRevID(remoteRevID)
+	newRevID := CreateRevIDWithBytes(remoteGeneration+1, remoteRevID, docBodyBytes)
+
+	// Set the incoming document's rev and body to the cloned local revision
+	remoteDoc.RevID = newRevID
+	remoteDoc.RemoveBody()
+	remoteDoc._rawBody = docBodyBytes
+
+	// Update the history for the incoming doc to prepend the cloned revID
+	docHistory = append([]string{newRevID}, docHistory...)
+
+	// Tombstone the local revision
+	localRevID := conflict.LocalDocument.ExtractRev()
+	tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
+	if tombstoneErr != nil {
+		return "", nil, tombstoneErr
+	}
+
+	return newRevID, docHistory, nil
+}
+
+// resolveDocMerge makes the following updates to the revision tree
+//   - Tombstones the local revision
+//   - Modifies the incoming document body to the merged body
+//   - Modifies the incoming history to prepend the merged revid (retaining the previous remote revID as its parent)
+func (db *Database) resolveDocMerge(localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string, mergedBody Body) (resolvedRevID string, updatedHistory []string, err error) {
+
+	// Tombstone the local revision
+	localRevID := conflict.LocalDocument.ExtractRev()
+	tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
+	if tombstoneErr != nil {
+		return "", nil, tombstoneErr
+	}
+
+	remoteRevID := conflict.RemoteDocument.ExtractRev()
+	remoteGeneration, _ := ParseRevID(remoteRevID)
+	mergedRevID, err := createRevID(remoteGeneration+1, remoteRevID, mergedBody)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// Update the remote document's body to the merge result
+	remoteDoc.RevID = mergedRevID
+	remoteDoc.RemoveBody()
+	remoteDoc._body = mergedBody
+
+	// Update the history for the remote doc to prepend the merged revID
+	docHistory = append([]string{mergedRevID}, docHistory...)
+	return mergedRevID, docHistory, nil
+}
+
+// tombstoneRevision updates the document's revision tree to add a tombstone revision as a child of the specified revID
+func (db *Database) tombstoneActiveRevision(doc *Document, revID string) error {
+
+	if doc.CurrentRev != revID {
+		return fmt.Errorf("Attempted to tombstone active revision, but provided rev (%s) doesn't match current rev(%s)", revID, doc.CurrentRev)
+	}
+
+	// Create tombstone
+	newGeneration := genOfRevID(revID) + 1
+	newRevID := CreateRevIDWithBytes(newGeneration, revID, []byte(DeletedDocument))
+	err := doc.History.addRevision(doc.ID,
+		RevInfo{
+			ID:      newRevID,
+			Parent:  revID,
+			Deleted: true,
+		})
+	if err != nil {
+		return err
+	}
+
+	// Backup previous revision body, then remove the current body from the doc
+	bodyBytes, err := doc.BodyBytes()
+	if err == nil {
+		_ = db.setOldRevisionJSON(doc.ID, revID, bodyBytes, db.Options.OldRevExpirySeconds)
+	}
+	doc.RemoveBody()
+
+	return nil
 }
 
 func (db *Database) validateExistingDoc(doc *Document, importAllowed, docExists bool) error {
