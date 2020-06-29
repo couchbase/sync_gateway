@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-blip"
+	"github.com/couchbase/sync_gateway/base"
 	"golang.org/x/net/websocket"
 )
 
@@ -110,6 +111,9 @@ func connect(idSuffix string, config *ActiveReplicatorConfig) (blipSender *blip.
 	blipContext := NewSGBlipContext(context.TODO(), config.ID+idSuffix)
 	blipContext.WebsocketPingInterval = config.WebsocketPingInterval
 	bsc = NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID)
+	bsc.loggingCtx = context.WithValue(context.Background(), base.LogContextKey{},
+		base.LogContext{CorrelationID: config.ID + idSuffix},
+	)
 
 	blipSender, err = blipSync(*config.PassiveDBURL, blipContext)
 	if err != nil {

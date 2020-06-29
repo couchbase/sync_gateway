@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"io"
 	"regexp"
@@ -41,6 +42,7 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string) *BlipS
 	bsc := &BlipSyncContext{
 		blipContext:      bc,
 		blipContextDb:    db,
+		loggingCtx:       db.Ctx,
 		terminator:       make(chan bool),
 		userChangeWaiter: db.NewUserWaiter(),
 		dbStats:          db.DatabaseContext.DbStats,
@@ -69,8 +71,9 @@ func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string) *BlipS
 // This connection remains open until the client closes it, and can receive any number of requests.
 type BlipSyncContext struct {
 	blipContext                      *blip.Context
-	blipContextDb                    *Database    // 'master' database instance for the replication, used as source when creating handler-specific databases
-	dbUserLock                       sync.RWMutex // Must be held when refreshing the db user
+	blipContextDb                    *Database       // 'master' database instance for the replication, used as source when creating handler-specific databases
+	loggingCtx                       context.Context // logging context for connection
+	dbUserLock                       sync.RWMutex    // Must be held when refreshing the db user
 	gotSubChanges                    bool
 	continuous                       bool
 	lock                             sync.Mutex
@@ -109,7 +112,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 		// Trace log the full message body and properties
 		if base.LogTraceEnabled(base.KeySyncMsg) {
 			rqBody, _ := rq.Body()
-			base.TracefCtx(bsc.blipContextDb.Ctx, base.KeySyncMsg, "Recv Req %s: Body: '%s' Properties: %v", rq, base.UD(rqBody), base.UD(rq.Properties))
+			base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Recv Req %s: Body: '%s' Properties: %v", rq, base.UD(rqBody), base.UD(rq.Properties))
 		}
 
 		if err := handlerFn(&handler, rq); err != nil {
@@ -117,11 +120,11 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 			if response := rq.Response(); response != nil {
 				response.SetError("HTTP", status, msg)
 			}
-			base.InfofCtx(bsc.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v", handler.serialNumber, profile, status, msg, time.Since(startTime))
+			base.InfofCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> %d %s Time:%v", handler.serialNumber, profile, status, msg, time.Since(startTime))
 		} else {
 			// Log the fact that the handler has finished, except for the "subChanges" special case which does it's own termination related logging
 			if profile != "subChanges" {
-				base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
+				base.DebugfCtx(bsc.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> OK Time:%v", handler.serialNumber, profile, time.Since(startTime))
 			}
 		}
 
@@ -132,7 +135,7 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 				return
 			}
 			respBody, _ := resp.Body()
-			base.TracefCtx(bsc.blipContextDb.Ctx, base.KeySyncMsg, "Recv Rsp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
+			base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Recv Rsp %s: Body: '%s' Properties: %v", resp, base.UD(respBody), base.UD(resp.Properties))
 		}
 	}
 
@@ -156,8 +159,8 @@ func (bsc *BlipSyncContext) Close() {
 
 // NotFoundHandler is used for unknown requests
 func (bsc *BlipSyncContext) NotFoundHandler(rq *blip.Message) {
-	base.InfofCtx(bsc.blipContextDb.Ctx, base.KeySync, "%s Type:%q", rq, rq.Profile())
-	base.InfofCtx(bsc.blipContextDb.Ctx, base.KeySync, "%s    --> 404 Unknown profile", rq)
+	base.InfofCtx(bsc.loggingCtx, base.KeySync, "%s Type:%q", rq, rq.Profile())
+	base.InfofCtx(bsc.loggingCtx, base.KeySync, "%s    --> 404 Unknown profile", rq)
 	blip.Unhandled(rq)
 }
 
@@ -170,7 +173,7 @@ func (bsc *BlipSyncContext) copyContextDatabase() *Database {
 
 func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 	databaseCopy, _ := GetDatabase(bsc.blipContextDb.DatabaseContext, bsc.blipContextDb.User())
-	databaseCopy.Ctx = bsc.blipContextDb.Ctx
+	databaseCopy.Ctx = bsc.loggingCtx
 	return databaseCopy
 }
 
@@ -192,9 +195,9 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	if err := response.ReadJSONBody(&answer); err != nil {
 		body, _ := response.Body()
 		if err == io.EOF {
-			base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
+			base.DebugfCtx(bsc.loggingCtx, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
 		} else {
-			base.ErrorfCtx(bsc.blipContextDb.Ctx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
+			base.ErrorfCtx(bsc.loggingCtx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
 		}
 		return nil
 	}
@@ -212,7 +215,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	if clientDeltasStr, ok := response.Properties[ChangesResponseDeltas]; ok {
 		bsc.setUseDeltas(clientDeltasStr == "true")
 	} else {
-		base.TracefCtx(bsc.blipContextDb.Ctx, base.KeySync, "Client didn't specify 'deltas' property in 'changes' response. useDeltas: %v", bsc.useDeltas)
+		base.TracefCtx(bsc.loggingCtx, base.KeySync, "Client didn't specify 'deltas' property in 'changes' response. useDeltas: %v", bsc.useDeltas)
 	}
 
 	// Maps docID --> a map containing true for revIDs known to the client
@@ -246,7 +249,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				if revID, ok := rev.(string); ok {
 					knownRevs[revID] = true
 				} else {
-					base.ErrorfCtx(bsc.blipContextDb.Ctx, "Invalid response to 'changes' message")
+					base.ErrorfCtx(bsc.loggingCtx, "Invalid response to 'changes' message")
 					return nil
 				}
 			}
@@ -336,7 +339,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	if response := outrq.Response(); response != nil {
 		if response.Type() == blip.ErrorType {
 			errorBody, _ := response.Body()
-			base.WarnfCtx(bsc.blipContextDb.Ctx, "Client returned error in rev response for doc %q / %q: %s", base.UD(docID), revID, errorBody)
+			base.WarnfCtx(bsc.loggingCtx, "Client returned error in rev response for doc %q / %q: %s", base.UD(docID), revID, errorBody)
 		}
 	}
 
@@ -363,7 +366,7 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 	// Both sides want deltas, and we've not previously enabled them.
 	if bsc.sgCanUseDeltas && clientCanUseDeltas && !bsc.useDeltas {
-		base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeySync, "Enabling deltas for this replication")
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Enabling deltas for this replication")
 		bsc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
 		bsc.useDeltas = true
 		return
@@ -373,14 +376,14 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 
 	// The client doesn't want deltas, but we'd previously enabled them.
 	if !clientCanUseDeltas && bsc.useDeltas {
-		base.InfofCtx(bsc.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on client setting.")
+		base.InfofCtx(bsc.loggingCtx, base.KeySync, "Disabling deltas for this replication based on client setting.")
 		bsc.useDeltas = false
 		return
 	}
 
 	// We don't want deltas, but we'd previously enabled them.
 	if !bsc.sgCanUseDeltas && bsc.useDeltas {
-		base.InfofCtx(bsc.blipContextDb.Ctx, base.KeySync, "Disabling deltas for this replication based on server setting.")
+		base.InfofCtx(bsc.loggingCtx, base.KeySync, "Disabling deltas for this replication based on server setting.")
 		bsc.useDeltas = false
 		return
 	}
@@ -391,7 +394,7 @@ func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID 
 	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
-	base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
+	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
 	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentDigests, properties)
 }
 
@@ -399,14 +402,14 @@ func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID 
 func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Message) bool {
 	if base.LogTraceEnabled(base.KeySyncMsg) {
 		rqBody, _ := msg.Body()
-		base.TracefCtx(bsc.blipContextDb.Ctx, base.KeySyncMsg, "Send Req %s: Body: '%s' Properties: %v", msg, base.UD(rqBody), base.UD(msg.Properties))
+		base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Send Req %s: Body: '%s' Properties: %v", msg, base.UD(rqBody), base.UD(msg.Properties))
 	}
 	return sender.Send(msg)
 }
 
 func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, err error) error {
 
-	base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
+	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
 
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
@@ -465,7 +468,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
 	attDigests := AttachmentDigests(rev.Attachments)
-	base.DebugfCtx(bsc.blipContextDb.Ctx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), attDigests)
+	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), attDigests)
 	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties)
 }
 
