@@ -27,6 +27,7 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -126,6 +127,11 @@ type OIDCProvider struct {
 
 	// Name represents the name of this OpenID Connect provider.
 	Name string
+
+	// InsecureSkipVerify determines whether the TLS certificate verification
+	// should be disabled for this provider. TLS certificate verification is
+	// enabled by default.
+	InsecureSkipVerify bool
 }
 
 type OIDCProviderMap map[string]*OIDCProvider
@@ -272,14 +278,14 @@ func (op *OIDCProvider) DiscoverConfig() (verifier *oidc.IDTokenVerifier, endpoi
 		if err != nil {
 			return nil, nil, err
 		}
-		verifier = op.GenerateVerifier(metadata, context.Background())
+		verifier = op.GenerateVerifier(metadata, GetOIDCClientContext(op.InsecureSkipVerify))
 		endpoint = &oauth2.Endpoint{AuthURL: metadata.AuthorizationEndpoint, TokenURL: metadata.TokenEndpoint}
 	} else {
 		base.Infof(base.KeyAuth, "Fetching provider config from standard issuer-based discovery endpoint, issuer: %s", base.UD(op.Issuer))
 		var provider *oidc.Provider
 		maxRetryAttempts := 5
 		for i := 1; i <= maxRetryAttempts; i++ {
-			provider, err = oidc.NewProvider(context.Background(), op.Issuer)
+			provider, err = oidc.NewProvider(GetOIDCClientContext(op.InsecureSkipVerify), op.Issuer)
 			if err == nil && provider != nil {
 				providerEndpoint := provider.Endpoint()
 				endpoint = &providerEndpoint
@@ -309,7 +315,8 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*Provide
 		base.Debugf(base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := GetHttpClient(op.InsecureSkipVerify)
+	resp, err := client.Do(req)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
@@ -438,4 +445,26 @@ func SetURLQueryParam(strURL, name, value string) (string, error) {
 	rawQuery.Set(name, value)
 	uri.RawQuery = rawQuery.Encode()
 	return uri.String(), nil
+}
+
+// GetHttpClient returns a new HTTP client with TLS certificate verification
+// disabled when insecureSkipVerify is true and enabled otherwise.
+func GetHttpClient(insecureSkipVerify bool) *http.Client {
+	if insecureSkipVerify {
+		transport := base.DefaultHTTPTransport()
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = new(tls.Config)
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true
+		return &http.Client{Transport: transport}
+	}
+	return http.DefaultClient
+}
+
+// GetOIDCClientContext returns a new Context that carries the provided HTTP client
+// with TLS certificate verification disabled when insecureSkipVerify is true and
+// enabled otherwise.
+func GetOIDCClientContext(insecureSkipVerify bool) context.Context {
+	client := GetHttpClient(insecureSkipVerify)
+	return oidc.ClientContext(context.Background(), client)
 }

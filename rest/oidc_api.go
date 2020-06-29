@@ -10,7 +10,6 @@
 package rest
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -176,7 +175,8 @@ func (h *handler) handleOIDCCallback() error {
 	}
 
 	// Converts the authorization code into a token.
-	token, err := client.Config.Exchange(context.Background(), code)
+	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)
+	token, err := client.Config.Exchange(context, code)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Failed to exchange token: "+err.Error())
 	}
@@ -227,7 +227,8 @@ func (h *handler) handleOIDCRefresh() error {
 		return err
 	}
 
-	token, err := client.Config.TokenSource(context.Background(), &oauth2.Token{RefreshToken: refreshToken}).Token()
+	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)
+	token, err := client.Config.TokenSource(context, &oauth2.Token{RefreshToken: refreshToken}).Token()
 	if err != nil {
 		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to refresh token.")
