@@ -45,11 +45,13 @@ func (rq *SubChangesRequest) marshalBLIPRequest() *blip.Message {
 	setOptionalProperty(msg.Properties, SubChangesFilter, rq.Filter)
 	setOptionalProperty(msg.Properties, SubChangesChannels, strings.Join(rq.FilterChannels, ","))
 
-	if err := msg.SetJSONBody(map[string]interface{}{
-		"docIDs": rq.DocIDs,
-	}); err != nil {
-		base.Errorf("error marshalling docIDs slice into subChanges request: %v", err)
-		return nil
+	if len(rq.DocIDs) > 0 {
+		if err := msg.SetJSONBody(map[string]interface{}{
+			"docIDs": rq.DocIDs,
+		}); err != nil {
+			base.Errorf("error marshalling docIDs slice into subChanges request: %v", err)
+			return nil
+		}
 	}
 
 	return msg
