@@ -61,16 +61,16 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 	return msg, nil
 }
 
-// TODO: Checkpoint format? Local/Remote?
-type SGR2Checkpoint struct {
+// SGR2CheckpointDoc is the body of the checkpoint stored in the bucket.
+type SGR2CheckpointDoc struct {
 	LastSequence string `json:"last_sequence,omitempty"`
 }
 
 // SetSGR2CheckpointRequest is a strongly typed 'setCheckpoint' request for SG-Replicate 2.
 type SetSGR2CheckpointRequest struct {
-	Client     string         // Client is the unique ID of client checkpoint to retrieve
-	RevID      *string        // RevID of the previous checkpoint, if known.
-	Checkpoint SGR2Checkpoint // Checkpoint is the actual checkpoint we're sending.
+	Client     string            // Client is the unique ID of client checkpoint to retrieve
+	RevID      *string           // RevID of the previous checkpoint, if known.
+	Checkpoint SGR2CheckpointDoc // Checkpoint is the actual checkpoint we're sending.
 
 	msg *blip.Message
 }
@@ -119,6 +119,12 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 
 	if respMsg.Type() != blip.ResponseType {
 		respBody, _ := respMsg.Body()
+		if respMsg.Type() == blip.ErrorType &&
+			respMsg.Properties["Error-Domain"] == "HTTP" &&
+			respMsg.Properties["Error-Code"] == "409" {
+			// conflict writing checkpoint
+			return nil, fmt.Errorf("conflict writing checkpoint: %s", respBody)
+		}
 		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
 	}
 
@@ -127,7 +133,7 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 	}, nil
 }
 
-// GetSGR2CheckpointRequest is a strongly typed 'getCheckpoint' request for SG-Replicate 2.
+// GetSGR2CheckpointRequest is a strongly typed 'fetchCheckpoints' request for SG-Replicate 2.
 type GetSGR2CheckpointRequest struct {
 	Client string // Client is the unique ID of client checkpoint to retrieve
 
@@ -157,12 +163,12 @@ func (rq *GetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
 	return msg
 }
 
-type GetSGR2CheckpointResponse struct {
-	RevID      string         // The RevID of the checkpoint.
-	Checkpoint SGR2Checkpoint // Checkpoint is the actual checkpoint.
+type SGR2Checkpoint struct {
+	RevID   string // The RevID of the checkpoint.
+	LastSeq string // The last_sequence of the checkpoint.
 }
 
-func (rq *GetSGR2CheckpointRequest) Response() (*GetSGR2CheckpointResponse, error) {
+func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
 	if rq.msg == nil {
 		return nil, fmt.Errorf("GetCheckpointRequest has not been sent")
 	}
@@ -180,13 +186,13 @@ func (rq *GetSGR2CheckpointRequest) Response() (*GetSGR2CheckpointResponse, erro
 		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
 	}
 
-	var c SGR2Checkpoint
+	var c SGR2CheckpointDoc
 	if err := respMsg.ReadJSONBody(&c); err != nil {
 		return nil, err
 	}
 
-	return &GetSGR2CheckpointResponse{
-		RevID:      respMsg.Properties[GetCheckpointResponseRev],
-		Checkpoint: c,
+	return &SGR2Checkpoint{
+		RevID:   respMsg.Properties[GetCheckpointResponseRev],
+		LastSeq: c.LastSequence,
 	}, nil
 }

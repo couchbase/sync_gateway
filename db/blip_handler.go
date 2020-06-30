@@ -82,19 +82,18 @@ func (bh *blipHandler) refreshUser() error {
 
 //////// CHECKPOINTS
 
-// Received a "getCheckpoint" request
+// Received a "fetchCheckpoints" request
 func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 
 	client := rq.Properties[BlipClient]
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("Client:%s", client))
 
-	docID := fmt.Sprintf("checkpoint/%s", client)
 	response := rq.Response()
 	if response == nil {
 		return nil
 	}
 
-	value, err := bh.db.GetSpecial("local", docID)
+	value, err := bh.db.GetSpecial("local", checkpointDocIDPrefix+client)
 	if err != nil {
 		return err
 	}
@@ -115,8 +114,6 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	checkpointMessage := SetCheckpointMessage{rq}
 	bh.logEndpointEntry(rq.Profile(), checkpointMessage.String())
 
-	docID := fmt.Sprintf("checkpoint/%s", checkpointMessage.client())
-
 	var checkpoint Body
 	if err := checkpointMessage.ReadJSONBody(&checkpoint); err != nil {
 		return err
@@ -124,7 +121,7 @@ func (bh *blipHandler) handleSetCheckpoint(rq *blip.Message) error {
 	if revID := checkpointMessage.rev(); revID != "" {
 		checkpoint[BodyRev] = revID
 	}
-	revID, err := bh.db.PutSpecial("local", docID, checkpoint)
+	revID, err := bh.db.PutSpecial("local", checkpointDocIDPrefix+checkpointMessage.client(), checkpoint)
 	if err != nil {
 		return err
 	}

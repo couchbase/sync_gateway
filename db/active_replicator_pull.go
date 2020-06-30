@@ -97,11 +97,12 @@ func (apr *ActivePullReplicator) initCheckpointer() error {
 		return err
 	}
 
-	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, checkpointID, apr.blipSender, apr.config.CheckpointInterval)
+	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, checkpointID, apr.blipSender, apr.config.ActiveDB, apr.config.CheckpointInterval)
 
-	checkpoint := apr.Checkpointer.getCheckpoint()
-	apr.Checkpointer.lastCheckpointRevID = checkpoint.RevID
-	apr.Checkpointer.lastCheckpointSeq = checkpoint.Checkpoint.LastSequence
+	err = apr.Checkpointer.fetchCheckpoints()
+	if err != nil {
+		return err
+	}
 
 	apr.registerCheckpointerCallbacks()
 	apr.Checkpointer.Start()

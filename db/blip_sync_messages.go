@@ -15,7 +15,7 @@ import (
 // Message types
 const (
 	MessageSetCheckpoint   = "setCheckpoint"
-	MessageGetCheckpoint   = "getCheckpoint"
+	MessageGetCheckpoint   = "fetchCheckpoints"
 	MessageSubChanges      = "subChanges"
 	MessageChanges         = "changes"
 	MessageRev             = "rev"
@@ -38,7 +38,7 @@ const (
 	SetCheckpointClient      = "client"
 	SetCheckpointResponseRev = "rev"
 
-	// getCheckpoint message properties
+	// fetchCheckpoints message properties
 	GetCheckpointResponseRev = "rev"
 	GetCheckpointClient      = "client"
 

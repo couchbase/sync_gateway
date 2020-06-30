@@ -1337,3 +1337,165 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	// Start the replicator (implicit connect)
 	assert.Error(t, ar.Start(), "Error certificate signed by unknown authority")
 }
+
+// TestActiveReplicatorRecoverFromRollback:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates documents on rt2 which are pulled to rt1.
+//   - Checkpoints once finished.
+//   - Purges the pulled document from rt1 to simulate a bucket flush.
+//   - Starts the replication again, and ensures that post-flush, documents are re-replicated to it.
+func TestActiveReplicatorRecoverFromRollback(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skipf("test requires a flushable bucket (Couchbase Server)")
+	}
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	// Create first batch of docs
+	docID := t.Name() + "rt2doc"
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+
+	arConfig := db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous: false,
+		// test isn't long running enough to worry about time-based checkpoints,
+		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
+		CheckpointInterval: time.Minute * 5,
+	}
+
+	// Create the first active replicator to pull from seq:0
+	ar, err := db.NewActiveReplicator(&arConfig)
+	require.NoError(t, err)
+
+	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	startNumRevsSentTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+
+	assert.NoError(t, ar.Start())
+
+	// wait for document originally written to rt2 to arrive at rt1
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	// one _changes from seq:0 with initial number of docs sent
+	numChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+
+	// rev assertions
+	numRevsSentTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	assert.Equal(t, startNumRevsSentTotal+1, numRevsSentTotal)
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyRevsReceivedTotal)))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyChangesRevsReceivedTotal)))
+
+	// checkpoint assertions
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatGetCheckpointHitTotal))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatGetCheckpointMissTotal))
+	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+	ar.Pull.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+
+	assert.NoError(t, ar.Close())
+
+	gocbBucket, ok := base.AsGoCBBucket(tb1)
+	require.True(t, ok)
+	require.NoError(t, gocbBucket.Flush())
+
+	fmt.Println("flushed bucket")
+
+	rt1.Close()
+
+	// recreate rt1 with the now flushed tb1 bucket
+	rt1 = NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	// Create a new replicator using the same config, which should use the checkpoint set from the first.
+	// Have to re-set ActiveDB because we recreated it with the new rt1.
+	arConfig.ActiveDB = &db.Database{
+		DatabaseContext: rt1.GetDatabase(),
+	}
+	ar, err = db.NewActiveReplicator(&arConfig)
+	require.NoError(t, err)
+
+	assert.NoError(t, ar.Start())
+
+	// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatGetCheckpointHitTotal))
+
+	// wait for document originally written to rt2 to arrive at rt1
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	// one _changes from seq:0 with initial number of docs sent
+	endNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
+
+	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
+	numRevsSentTotal = base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	assert.Equal(t, startNumRevsSentTotal+2, numRevsSentTotal)
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyRevsReceivedTotal)))
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyChangesRevsReceivedTotal)))
+
+	// assert the second active replicator stats
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatGetCheckpointMissTotal))
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+	ar.Pull.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+
+	assert.NoError(t, ar.Close())
+}
