@@ -821,7 +821,13 @@ func (h *handler) getReplication() error {
 }
 
 func (h *handler) putReplication() error {
-	body, _ := h.readBody()
+
+	body, readErr := h.readBody()
+	if readErr != nil {
+		return readErr
+	}
+	body = base.ConvertBackQuotedStrings(body)
+
 	replicationConfig := &db.ReplicationUpsertConfig{}
 	if err := base.JSONUnmarshal(body, replicationConfig); err != nil {
 		return err
