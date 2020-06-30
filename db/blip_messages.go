@@ -27,14 +27,18 @@ type SubChangesRequest struct {
 var _ BLIPMessageSender = &SubChangesRequest{}
 
 func (rq *SubChangesRequest) Send(s *blip.Sender) error {
-	if ok := s.Send(rq.marshalBLIPRequest()); !ok {
+	r, err := rq.marshalBLIPRequest()
+	if err != nil {
+		return err
+	}
+	if ok := s.Send(r); !ok {
 		return fmt.Errorf("closed blip sender")
 	}
 
 	return nil
 }
 
-func (rq *SubChangesRequest) marshalBLIPRequest() *blip.Message {
+func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 	msg := blip.NewRequest()
 	msg.SetProfile(MessageSubChanges)
 
@@ -45,14 +49,16 @@ func (rq *SubChangesRequest) marshalBLIPRequest() *blip.Message {
 	setOptionalProperty(msg.Properties, SubChangesFilter, rq.Filter)
 	setOptionalProperty(msg.Properties, SubChangesChannels, strings.Join(rq.FilterChannels, ","))
 
-	if err := msg.SetJSONBody(map[string]interface{}{
-		"docIDs": rq.DocIDs,
-	}); err != nil {
-		base.Errorf("error marshalling docIDs slice into subChanges request: %v", err)
-		return nil
+	if len(rq.DocIDs) > 0 {
+		if err := msg.SetJSONBody(map[string]interface{}{
+			"docIDs": rq.DocIDs,
+		}); err != nil {
+			base.Errorf("error marshalling docIDs slice into subChanges request: %v", err)
+			return nil, err
+		}
 	}
 
-	return msg
+	return msg, nil
 }
 
 // TODO: Checkpoint format? Local/Remote?
