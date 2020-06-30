@@ -19,6 +19,7 @@ const (
 	cfgKeySGRCluster        = "sgrCluster" // key used for sgrCluster information in a cbgt.Cfg-based key value store
 	maxSGRClusterCasRetries = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
 	sgrClusterMgrContextID  = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
+	defaultChangesBatchSize = 200          // default changes batch size if replication batch_size is unset
 )
 
 // ClusterUpdateFunc is callback signature used when updating the cluster configuration
@@ -62,11 +63,12 @@ type ReplicationConfig struct {
 	DeltaSyncEnabled       bool                      `json:"enable_delta_sync,omitempty"`
 	MaxBackoff             int                       `json:"max_backoff_time,omitempty"`
 	State                  string                    `json:"state,omitempty"`
-	Continuous             bool                      `json:"continuous,omitempty"`
+	Continuous             bool                      `json:"continuous"`
 	Filter                 string                    `json:"filter,omitempty"`
 	QueryParams            interface{}               `json:"query_params,omitempty"`
 	Cancel                 bool                      `json:"cancel,omitempty"`
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
+	BatchSize              int                       `json:"batch_size,omitempty"`
 }
 
 // ReplicationCfg represents a replication definition as stored in the cluster config.
@@ -91,6 +93,7 @@ type ReplicationUpsertConfig struct {
 	QueryParams            interface{} `json:"query_params,omitempty"`
 	Cancel                 *bool       `json:"cancel,omitempty"`
 	Adhoc                  *bool       `json:"adhoc,omitempty"`
+	BatchSize              *int        `json:"batch_size,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -212,6 +215,10 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.QueryParams = c.QueryParams
 	}
 
+	if c.BatchSize != nil {
+		rc.BatchSize = *c.BatchSize
+	}
+
 	if c.QueryParams != nil {
 		// QueryParams can be either []interface{} or map[string]interface{}, so requires type-specific copying
 		// avoid later mutating c.QueryParams
@@ -330,7 +337,6 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 	//    out until they are implemented?
 	//    - docIDs  (future enhancement)
 	//    - activeOnly (P1)
-	//    - changesBatchSize (to be added only based on perf testing)
 	//    - checkpointInterval (not externally configurable)
 
 	base.Infof(base.KeyReplicate, "Starting replication %v (placeholder)", config.ID)
@@ -340,6 +346,11 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 		Continuous:     config.Continuous,
 		ActiveDB:       &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
 		PurgeOnRemoval: config.PurgeOnRemoval,
+	}
+
+	rc.ChangesBatchSize = defaultChangesBatchSize
+	if config.BatchSize > 0 {
+		rc.ChangesBatchSize = uint16(config.BatchSize)
 	}
 
 	if config.Filter == base.ByChannelFilter {
