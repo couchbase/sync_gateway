@@ -9,7 +9,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,66 +24,73 @@ import (
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
-type jwtHeader struct {
-	Algorithm string `json:"alg"`
-	KeyID     string `json:"kid"`
-	Type      string `json:"typ"`
-	Version   int    `json:"ver"`
-}
-
 func TestCreateJWTToken(t *testing.T) {
+	subject := "alice"
+	issueURL := "http://localhost:4984/db/_oidc_testing"
+	scopes := make(map[string]struct{})
+	scopes["email"] = struct{}{}
+	scopes["profile"] = struct{}{}
+	authState := AuthState{
+		CallbackURL: "http://localhost:4984/db/_oidc_callback",
+		TokenTTL:    5 * time.Minute,
+		Scopes:      scopes,
+	}
+	emailExpected := subject + "@syncgatewayoidctesting.com"
+	nicknameExpected := "slim jim"
 	tests := []struct {
-		name           string
-		idTokenFormat  identityTokenFormat
-		headerExpected jwtHeader
+		name          string              // Unit test name.
+		idTokenFormat identityTokenFormat // Specific token format.
+		algExpected   string              // Identifies the cryptographic algorithm used to secure the JWS.
+		kidExpected   string              // Key Identifier; the hint indicating which key was used to secure the JWS.
+		typExpected   interface{}         // Key Type; identifies the family of algorithms used with this key.
+		x5tExpected   interface{}         // X.509 Certificate Thumbprint; used to identify specific certificates.
+		verExpected   int                 // Version number; used in IBM Cloud App ID format.
 	}{{
 		name:          "create token in default format",
 		idTokenFormat: defaultFormat,
-		headerExpected: jwtHeader{
-			Algorithm: oidc.RS256,
-			Type:      "JWT",
-		},
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
 	}, {
 		name:          "create token in IBM Cloud App ID format",
 		idTokenFormat: ibmCloudAppIDFormat,
-		headerExpected: jwtHeader{
-			Algorithm: oidc.RS256,
-			KeyID:     testProviderKeyIdentifier,
-			Type:      "JWT",
-			Version:   4,
-		},
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+		kidExpected:   testProviderKeyIdentifier,
+		verExpected:   4,
+	}, {
+		name:          "create token in Microsoft Azure Active Directory V2.0 format",
+		idTokenFormat: microsoftAzureADV2Format,
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+		kidExpected:   testProviderKeyIdentifier,
+		x5tExpected:   testProviderKeyIdentifier,
+	}, {
+		name:          "create token in Yahoo! format",
+		idTokenFormat: yahooFormat,
+		algExpected:   oidc.RS256,
+		kidExpected:   testProviderKeyIdentifier,
 	}}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			subject := "alice"
-			issueURL := "http://localhost:4984/db/_oidc_testing"
-			scopes := make(map[string]struct{})
-			scopes["email"] = struct{}{}
-			scopes["profile"] = struct{}{}
-			authState := AuthState{
-				CallbackURL:         "http://localhost:4984/db/_oidc_callback",
-				TokenTTL:            5 * time.Minute,
-				Scopes:              scopes,
-				IdentityTokenFormat: test.idTokenFormat,
-			}
-			token, err := createJWT(subject, issueURL, authState)
+			authState.IdentityTokenFormat = test.idTokenFormat
+			rawToken, err := createJWT(subject, issueURL, authState)
 			assert.NoError(t, err, "Couldn't to create JSON Web Token")
-			assert.NotEmpty(t, token, "Empty token received")
-			tok, err := jwt.ParseSigned(token)
+			assert.NotEmpty(t, rawToken, "Empty token received")
+			token, err := jwt.ParseSigned(rawToken)
 			require.NoError(t, err, "Error parsing signed token")
 			claims := &jwt.Claims{}
 			customClaims := &CustomClaims{}
-			err = tok.UnsafeClaimsWithoutVerification(claims, customClaims)
+			err = token.UnsafeClaimsWithoutVerification(claims, customClaims)
 			require.NoError(t, err, "Error parsing signed token")
+			jwtHeader := token.Headers[0]
+			assert.Equal(t, test.algExpected, jwtHeader.Algorithm, "algorithm mismatch")
+			assert.Equal(t, test.typExpected, jwtHeader.ExtraHeaders["typ"], "token type mismatch")
+			assert.Equal(t, test.x5tExpected, jwtHeader.ExtraHeaders["x5t"], "certificate thumbprint mismatch")
+			assert.Equal(t, test.kidExpected, jwtHeader.KeyID, "key id mismatch")
 			assert.Equal(t, subject, claims.Subject, "Subject mismatch")
 			assert.Equal(t, issueURL, claims.Issuer, "Issuer mismatch")
-			assert.Equal(t, "slim jim", customClaims.Nickname, "Nickname mismatch")
-			assert.Equal(t, subject+"@syncgatewayoidctesting.com", customClaims.Email, "Email mismatch")
-			headerBytes, err := base64.StdEncoding.DecodeString(strings.Split(token, ".")[0])
-			require.NoError(t, err, "Error extracting header from token")
-			var jwtHeaderActual jwtHeader
-			require.NoError(t, json.Unmarshal(headerBytes, &jwtHeaderActual), "Header unmarshal error")
-			require.True(t, reflect.DeepEqual(test.headerExpected, jwtHeaderActual), "Token header mismatch")
+			assert.Equal(t, nicknameExpected, customClaims.Nickname, "Nickname mismatch")
+			assert.Equal(t, emailExpected, customClaims.Email, "Email mismatch")
 		})
 	}
 }
@@ -228,26 +234,39 @@ func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
 
 func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 	tests := []struct {
-		name           string
-		idTokenFormat  identityTokenFormat
-		headerExpected jwtHeader
+		name          string              // Unit test name.
+		idTokenFormat identityTokenFormat // Specific token format.
+		algExpected   string              // Identifies the cryptographic algorithm used to secure the JWS.
+		kidExpected   string              // Key Identifier; the hint indicating which key was used to secure the JWS.
+		typExpected   interface{}         // Key Type; identifies the family of algorithms used with this key.
+		x5tExpected   interface{}         // X.509 Certificate Thumbprint; used to identify specific certificates.
+		verExpected   int                 // Version number; used in IBM Cloud App ID format.
 	}{{
 		name:          "obtain session with bearer token in default format",
 		idTokenFormat: defaultFormat,
-		headerExpected: jwtHeader{
-			Algorithm: oidc.RS256,
-			Type:      "JWT",
-		},
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
 	}, {
 		name:          "obtain session with bearer token in IBM Cloud App ID format",
 		idTokenFormat: ibmCloudAppIDFormat,
-		headerExpected: jwtHeader{
-			Algorithm: oidc.RS256,
-			KeyID:     testProviderKeyIdentifier,
-			Type:      "JWT",
-			Version:   4,
-		},
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+		kidExpected:   testProviderKeyIdentifier,
+		verExpected:   4,
+	}, {
+		name:          "obtain session with bearer token in Microsoft Azure Active Directory V2.0 format",
+		idTokenFormat: microsoftAzureADV2Format,
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+		kidExpected:   testProviderKeyIdentifier,
+		x5tExpected:   testProviderKeyIdentifier,
+	}, {
+		name:          "obtain session with bearer token in Yahoo! format",
+		idTokenFormat: yahooFormat,
+		algExpected:   oidc.RS256,
+		kidExpected:   testProviderKeyIdentifier,
 	}}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			providers := auth.OIDCProviderMap{
@@ -323,11 +342,17 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			assert.NotEmpty(t, authResponseActual.RefreshToken, "refresh_token mismatch")
 
 			// Check token header
-			headerBytes, err := base64.StdEncoding.DecodeString(strings.Split(authResponseActual.IDToken, ".")[0])
-			require.NoError(t, err, "Error extracting header from token")
-			var jwtHeaderActual jwtHeader
-			require.NoError(t, json.Unmarshal(headerBytes, &jwtHeaderActual), "Header unmarshal error")
-			require.True(t, reflect.DeepEqual(test.headerExpected, jwtHeaderActual), "Token header mismatch")
+			token, err := jwt.ParseSigned(authResponseActual.IDToken)
+			require.NoError(t, err, "Error parsing signed token")
+			claims := &jwt.Claims{}
+			customClaims := &CustomClaims{}
+			err = token.UnsafeClaimsWithoutVerification(claims, customClaims)
+			require.NoError(t, err, "Error parsing signed token")
+			jwtHeader := token.Headers[0]
+			assert.Equal(t, test.algExpected, jwtHeader.Algorithm, "algorithm mismatch")
+			assert.Equal(t, test.typExpected, jwtHeader.ExtraHeaders["typ"], "token type mismatch")
+			assert.Equal(t, test.x5tExpected, jwtHeader.ExtraHeaders["x5t"], "certificate thumbprint mismatch")
+			assert.Equal(t, test.kidExpected, jwtHeader.KeyID, "key id mismatch")
 
 			// Obtain session with Bearer token
 			sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"

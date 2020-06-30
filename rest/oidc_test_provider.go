@@ -59,13 +59,28 @@ var testProviderAudiences = []string{testProviderAud} // Audiences in array form
 type identityTokenFormat string
 
 const (
-
-	// defaultFormat represents the common format of ID token supported by most of the providers.
+	// defaultFormat represents the common format of ID token supported by most of the providers such as
+	// Google, Salesforce, Okta etc.
 	defaultFormat identityTokenFormat = "defaultFormat"
 
 	// ibmCloudAppIDFormat represents a specific identity token format supported by IBM Cloud App ID.
 	// It contains a version value and key id in token header in addition to token type and algorithm.
+	// See https://cloud.ibm.com/docs/appid?topic=appid-tokens
 	ibmCloudAppIDFormat identityTokenFormat = "ibmCloudAppIDFormat"
+
+	// microsoftAzureADV2Format represents a specific identity token format supported by Microsoft identity
+	// platform. It supports two versions of tokens; v1.0 and v2.0. The v2.0 tokens are similar to default
+	// token format supported by most of the other providers listed above. But v1.0 tokens emits a legacy
+	// claim 'x5t' for compatibility purposes that has the same use and value as 'kid'.
+	// See https://docs.microsoft.com/en-us/azure/active-directory/develop/id-tokens
+	microsoftAzureADV2Format identityTokenFormat = "microsoftAzureADV2Format"
+
+	// yahooFormat represents a specific identity token format supported by Yahoo!.
+	// The JOSE header of ID tokens issued from Yahoo! contains only two fields:
+	// 1. alg - Identifies the cryptographic algorithm used to secure the JWS.
+	// 2. kid - The hint indicating which key was used to secure the JWS.
+	// See https://developer.yahoo.com/oauth2/guide/openid_connect/decode_id_token.html
+	yahooFormat identityTokenFormat = "yahooFormat"
 )
 
 // This is the HTML template used to display the testing OP internal authentication form
@@ -104,6 +119,8 @@ const loginHtml = `
       <select id="identity-token-formats" name="identity-token-formats">
          <option name="identity-token-format" value="defaultFormat" selected="">Default</option>
          <option name="identity-token-format" value="ibmCloudAppIDFormat">IBM Cloud AppID</option>
+         <option name="identity-token-format" value="microsoftAzureADV2Format">Microsoft Azure AD V2</option>
+         <option name="identity-token-format" value="yahooFormat">Yahoo!</option>
       </select>
    </div>
    <div>
@@ -369,11 +386,20 @@ func createJWT(subject string, issuerUrl string, authState AuthState) (token str
 		Key:       key,
 	}
 	signerOptions := jose.SignerOptions{}
-	signerOptions.WithType("JWT")
 
-	if authState.IdentityTokenFormat == ibmCloudAppIDFormat {
+	switch authState.IdentityTokenFormat {
+	case ibmCloudAppIDFormat:
+		signerOptions.WithType("JWT")
 		signerOptions.WithHeader("kid", testProviderKeyIdentifier)
 		signerOptions.WithHeader("ver", 4)
+	case microsoftAzureADV2Format:
+		signerOptions.WithType("JWT")
+		signerOptions.WithHeader("kid", testProviderKeyIdentifier)
+		signerOptions.WithHeader("x5t", testProviderKeyIdentifier)
+	case yahooFormat:
+		signerOptions.WithHeader("kid", testProviderKeyIdentifier)
+	default:
+		signerOptions.WithType("JWT")
 	}
 	signer, err := jose.NewSigner(signingKey, &signerOptions)
 
