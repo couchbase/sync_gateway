@@ -133,7 +133,7 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 	}, nil
 }
 
-// GetSGR2CheckpointRequest is a strongly typed 'fetchCheckpoints' request for SG-Replicate 2.
+// GetSGR2CheckpointRequest is a strongly typed 'getCheckpoint' request for SG-Replicate 2.
 type GetSGR2CheckpointRequest struct {
 	Client string // Client is the unique ID of client checkpoint to retrieve
 

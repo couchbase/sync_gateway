@@ -82,7 +82,7 @@ func (bh *blipHandler) refreshUser() error {
 
 //////// CHECKPOINTS
 
-// Received a "fetchCheckpoints" request
+// Received a "getCheckpoint" request
 func (bh *blipHandler) handleGetCheckpoint(rq *blip.Message) error {
 
 	client := rq.Properties[BlipClient]
