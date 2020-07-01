@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -139,6 +140,9 @@ type options struct {
 
 	// tokenResponse represents the token response from SG on successful authentication.
 	tokenResponse OIDCTokenResponse
+
+	// claims represents a set of primary and secondary claims to be used to create the ID token.
+	claims claimSet
 }
 
 // The newMockAuthServer returns a new mock OAuth Server but doesn't start it.
@@ -269,7 +273,11 @@ func (s *mockAuthServer) tokenHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	token, err := s.makeToken(claimsAuthentic())
+	claims := s.options.claims
+	if reflect.DeepEqual(s.options.claims, claimSet{}) {
+		claims = claimsAuthentic()
+	}
+	token, err := s.makeToken(claims)
 	if err != nil || token == "" {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -326,6 +334,14 @@ func claimsAuthentic() claimSet {
 		primaryClaims:   primaryClaims,
 		secondaryClaims: secondaryClaims,
 	}
+}
+
+// claimsAuthenticWithUsernameClaim returns returns an authentic claim set after
+// setting the given claim key and value as secondary claims.
+func claimsAuthenticWithUsernameClaim(key string, value interface{}) claimSet {
+	claims := claimsAuthentic()
+	claims.secondaryClaims[key] = value
+	return claims
 }
 
 // keysHandler exposes a set of of a public keys in JWK format that enable clients
@@ -411,7 +427,7 @@ func TestGetOIDCCallbackURL(t *testing.T) {
 	}
 }
 
-// Returns a new OIDCProvider.
+// mockProvider returns a new OIDCProvider.
 func mockProvider(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
@@ -421,7 +437,7 @@ func mockProvider(name string) *auth.OIDCProvider {
 	}
 }
 
-// Returns an auto registration enabled provider.
+// mockProviderWithRegister returns an auto registration enabled provider.
 func mockProviderWithRegister(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:          name,
@@ -432,7 +448,8 @@ func mockProviderWithRegister(name string) *auth.OIDCProvider {
 	}
 }
 
-// Returns a new OIDCProvider with Register and IncludeAccessToken flags enabled.
+// mockProviderWithRegisterWithAccessToken returns a new OIDCProvider with Register and
+// IncludeAccessToken flags enabled.
 func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
@@ -444,7 +461,7 @@ func mockProviderWithRegisterWithAccessToken(name string) *auth.OIDCProvider {
 	}
 }
 
-// Returns a new OIDCProvider with IncludeAccessToken flag enabled.
+// mockProviderWithAccessToken returns a new OIDCProvider with IncludeAccessToken flag enabled.
 func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:               name,
@@ -455,7 +472,7 @@ func mockProviderWithAccessToken(name string) *auth.OIDCProvider {
 	}
 }
 
-// Returns a new OIDCProvider with callback state disabled
+// mockProviderWithCallbackStateDisabled returns a new OIDCProvider with callback state disabled.
 func mockProviderWithCallbackStateDisabled(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:                 name,
@@ -468,7 +485,8 @@ func mockProviderWithCallbackStateDisabled(name string) *auth.OIDCProvider {
 	}
 }
 
-// Returns a new OIDCProvider with callback state disabled with no Register flag.
+// mockProviderWithCallbackStateDisabledWithNoRegister returns a new OIDCProvider with callback
+// state disabled with no Register flag.
 func mockProviderWithCallbackStateDisabledWithNoRegister(name string) *auth.OIDCProvider {
 	return &auth.OIDCProvider{
 		Name:                 name,
@@ -477,6 +495,73 @@ func mockProviderWithCallbackStateDisabledWithNoRegister(name string) *auth.OIDC
 		ValidationKey:        base.StringPtr("qux"),
 		IncludeAccessToken:   true,
 		DisableCallbackState: true,
+	}
+}
+
+// mockProviderWithRegisterWithUsernameClaim returns an auto registration and username claim enabled provider.
+func mockProviderWithRegisterWithUsernameClaim(name, usernameClaim string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:          name,
+		ClientID:      "baz",
+		ValidationKey: base.StringPtr("qux"),
+		Register:      true,
+		UsernameClaim: usernameClaim,
+	}
+}
+
+// mockProviderWithRegisterWithUsernameClaimWithUserPrefix returns an auto registration, user prefix and username
+// claim enabled provider.
+func mockProviderWithRegisterWithUsernameClaimWithUserPrefix(name, usernameClaim string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:          name,
+		ClientID:      "baz",
+		UserPrefix:    name,
+		ValidationKey: base.StringPtr("qux"),
+		Register:      true,
+		UsernameClaim: usernameClaim,
+	}
+}
+
+// mockProviderWithUsernameClaimWithUserPrefix returns a provider with both username_claim and user_prefix are set.
+func mockProviderWithUsernameClaimWithUserPrefix(name, usernameClaim string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:          name,
+		ClientID:      "baz",
+		ValidationKey: base.StringPtr("qux"),
+		UsernameClaim: usernameClaim,
+		UserPrefix:    name,
+	}
+}
+
+// mockProviderWithUsernameClaim returns a provider with only username_claim is set.
+func mockProviderWithUsernameClaim(name, usernameClaim string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:          name,
+		ClientID:      "baz",
+		ValidationKey: base.StringPtr("qux"),
+		UsernameClaim: usernameClaim,
+	}
+}
+
+// mockProviderWithUserPrefix returns a provider with only user_prefix is set.
+func mockProviderWithUserPrefix(name string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:          name,
+		ClientID:      "baz",
+		ValidationKey: base.StringPtr("qux"),
+		UserPrefix:    name,
+	}
+}
+
+// mockProviderWithRegisterWithUserPrefix returns a provider with both auto registration
+// enabled and user_prefix is set.
+func mockProviderWithRegisterWithUserPrefix(name string) *auth.OIDCProvider {
+	return &auth.OIDCProvider{
+		Name:          name,
+		ClientID:      "baz",
+		ValidationKey: base.StringPtr("qux"),
+		Register:      true,
+		UserPrefix:    name,
 	}
 }
 
@@ -1008,13 +1093,13 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 				assertHttpResponse(t, response, tc.expectedError)
 				return
 			}
-			checkGoodAuthResponse(t, response)
+			checkGoodAuthResponse(t, response, "foo_noah")
 		})
 	}
 }
 
 // checkGoodAuthResponse asserts expected session response values against the given response.
-func checkGoodAuthResponse(t *testing.T, response *http.Response) {
+func checkGoodAuthResponse(t *testing.T, response *http.Response, username string) {
 	require.Equal(t, http.StatusOK, response.StatusCode)
 	assert.Equal(t, "application/json", response.Header.Get("Content-Type"))
 	var responseBodyActual map[string]interface{}
@@ -1029,7 +1114,7 @@ func checkGoodAuthResponse(t *testing.T, response *http.Response) {
 		"ok": true,
 		"userCtx": map[string]interface{}{
 			"channels": map[string]interface{}{"!": float64(1)},
-			"name":     "foo_noah",
+			"name":     username,
 		},
 	}
 	assert.Equal(t, responseBodyExpected, responseBodyActual, "Session response mismatch")
@@ -1037,6 +1122,8 @@ func checkGoodAuthResponse(t *testing.T, response *http.Response) {
 
 // E2E test that checks OpenID Connect Implicit Flow edge cases.
 func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
+	const emailClaim = "email"
+	var username = "foo_noah"
 	providers := auth.OIDCProviderMap{
 		"foo": mockProviderWithRegister("foo"),
 	}
@@ -1057,6 +1144,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
 	defer mockSyncGateway.Close()
 	mockSyncGatewayURL := mockSyncGateway.URL
+	authenticator := restTester.ServerContext().Database("db").Authenticator()
 
 	sendAuthRequest := func(claimSet claimSet) (*http.Response, error) {
 		token, err := mockAuthServer.makeToken(claimSet)
@@ -1079,10 +1167,10 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		assertHttpResponse(t, response, expectedAuthError)
 	}
 
-	runGoodAuthTest := func(claimSet claimSet) {
+	runGoodAuthTest := func(claimSet claimSet, username string) {
 		response, err := sendAuthRequest(claimSet)
 		require.NoError(t, err, "Error sending request with bearer token")
-		checkGoodAuthResponse(t, response)
+		checkGoodAuthResponse(t, response, username)
 	}
 
 	t.Run("new user authentication with an expired token", func(t *testing.T) {
@@ -1092,11 +1180,11 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	})
 
 	t.Run("registered user authentication with an expired token", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.Expiry = jwt.NewNumericDate(time.Now().Add(-5 * time.Minute))
 		runBadAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("new user authentication with invalid audience claim", func(t *testing.T) {
@@ -1106,11 +1194,11 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	})
 
 	t.Run("registered user authentication with invalid audience claim", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.Audience = jwt.Audience{"aud1", "aud2", "aud3", "qux"}
 		runBadAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("new user authentication with no subject claim", func(t *testing.T) {
@@ -1120,52 +1208,52 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	})
 
 	t.Run("registered user authentication with no subject claim", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.Subject = ""
 		runBadAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("new user authentication with a bad email claim", func(t *testing.T) {
 		claimSet := claimsAuthentic()
-		claimSet.secondaryClaims["email"] = "foo_noah@"
-		runGoodAuthTest(claimSet)
+		claimSet.secondaryClaims[emailClaim] = "foo_noah@"
+		runGoodAuthTest(claimSet, username)
 
 		// Bad email shouldn't not be saved on successful authentication.
 		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser("foo_noah")
 		require.NoError(t, err, "Error getting user from db")
-		assert.Equal(t, "foo_noah", user.Name())
+		assert.Equal(t, username, user.Name())
 		assert.Empty(t, user.Email(), "Bad email shouldn't be saved")
-		deleteUser(t, restTester, "foo_noah")
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("registered user authentication with a bad email claim", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
-		claimSet.secondaryClaims["email"] = "foo_noah@"
-		runGoodAuthTest(claimSet)
+		claimSet.secondaryClaims[emailClaim] = "foo_noah@"
+		runGoodAuthTest(claimSet, username)
 
 		// Bad email shouldn't not be saved on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser("foo_noah")
+		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser(username)
 		require.NoError(t, err, "Error getting user from db")
-		assert.Equal(t, "foo_noah", user.Name())
+		assert.Equal(t, username, user.Name())
 		assert.Equal(t, "foo_noah@couchbase.com", user.Email(), "Bad email shouldn't be saved")
 		deleteUser(t, restTester, "foo_noah")
 	})
 
 	t.Run("registered user authentication with a good email claim", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
-		claimSet.secondaryClaims["email"] = "foo_noah@example.com"
-		runGoodAuthTest(claimSet)
+		claimSet.secondaryClaims[emailClaim] = "foo_noah@example.com"
+		runGoodAuthTest(claimSet, username)
 
 		// Good email should be updated on successful authentication.
-		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser("foo_noah")
+		user, err := restTester.ServerContext().Database("db").Authenticator().GetUser(username)
 		require.NoError(t, err, "Error getting user from db")
-		assert.Equal(t, "foo_noah", user.Name())
+		assert.Equal(t, username, user.Name())
 		assert.Equal(t, "foo_noah@example.com", user.Email(), "Email is not updated")
-		deleteUser(t, restTester, "foo_noah")
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("new user authentication with bad issuer claim", func(t *testing.T) {
@@ -1175,11 +1263,11 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	})
 
 	t.Run("registered user authentication with bad issuer claim", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.Issuer = "https://login.unknownissuer.com"
 		runBadAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("new user authentication with future time nbf claim", func(t *testing.T) {
@@ -1191,39 +1279,336 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 	t.Run("new user authentication with current time nbf claim", func(t *testing.T) {
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now())
-		runGoodAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		runGoodAuthTest(claimSet, username)
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("new user authentication with past time nbf claim", func(t *testing.T) {
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(-1 * time.Minute))
-		runGoodAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		runGoodAuthTest(claimSet, username)
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("registered user authentication with future time nbf claim", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(5 * time.Minute))
 		runBadAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("registered user authentication with current time nbf claim", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now())
-		runGoodAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		runGoodAuthTest(claimSet, username)
+		deleteUser(t, restTester, username)
 	})
 
 	t.Run("registered user authentication with past time nbf claim", func(t *testing.T) {
-		createUser(t, restTester, "foo_noah")
+		createUser(t, restTester, username)
 		claimSet := claimsAuthentic()
 		claimSet.primaryClaims.NotBefore = jwt.NewNumericDate(time.Now().Add(-1 * time.Minute))
-		runGoodAuthTest(claimSet)
-		deleteUser(t, restTester, "foo_noah")
+		runGoodAuthTest(claimSet, username)
+		deleteUser(t, restTester, username)
+	})
+
+	// If username_claim is set but user_prefix is not set, use that claim as the Sync Gateway username.
+	t.Run("successful new user auth when username_claim is set but user_prefix is not set", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username
+		runGoodAuthTest(claimSet, username)
+		user, err := authenticator.GetUser(username)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, username, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, username)
+	})
+
+	t.Run("successful registered user auth when username_claim is set but user_prefix is not set", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username
+		createUser(t, restTester, username)
+		runGoodAuthTest(claimSet, username)
+		user, err := authenticator.GetUser(username)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, username, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, username)
+	})
+
+	// If username_claim is set and user_prefix is also set, use [user_prefix]_[username_claim] as the Sync Gateway username.
+	t.Run("successful new user auth when both username_claim and user_prefix are set", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = "foo"
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		usernameExpected := provider.UserPrefix + "_" + username
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username
+		runGoodAuthTest(claimSet, usernameExpected)
+		user, err := authenticator.GetUser(usernameExpected)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, usernameExpected)
+	})
+
+	t.Run("successful registered user auth when both username_claim and user_prefix are set", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = "foo"
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		usernameExpected := provider.UserPrefix + "_" + username
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username
+		createUser(t, restTester, usernameExpected)
+		runGoodAuthTest(claimSet, usernameExpected)
+		user, err := authenticator.GetUser(usernameExpected)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, usernameExpected)
+	})
+
+	// If username_claim is not set and user_prefix is set, use [user_prefix]_[subject] as the Sync Gateway
+	// username (existing behaviour).
+	t.Run("successful new user auth when username_claim is not set but user_prefix is set", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUserPrefix := provider.UserPrefix
+		provider.UserPrefix = "foo"
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() { provider.UserPrefix = oldUserPrefix }()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username
+		usernameExpected := provider.UserPrefix + "_" + claimSet.primaryClaims.Subject
+		runGoodAuthTest(claimSet, usernameExpected)
+		user, err := authenticator.GetUser(usernameExpected)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, usernameExpected)
+	})
+
+	t.Run("successful registered user auth when username_claim is not set but user_prefix is set", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUserPrefix := provider.UserPrefix
+		provider.UserPrefix = "foo"
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() { provider.UserPrefix = oldUserPrefix }()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username
+		usernameExpected := provider.UserPrefix + "_" + claimSet.primaryClaims.Subject
+		createUser(t, restTester, usernameExpected)
+		runGoodAuthTest(claimSet, usernameExpected)
+		user, err := authenticator.GetUser(usernameExpected)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, usernameExpected)
+	})
+
+	// If neither username_claim nor user_prefix are set, use [issuer]_[subject] as the Sync Gateway
+	// username (existing behaviour).
+	t.Run("successful new user auth when neither username_claim nor user_prefix are set", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUserPrefix := provider.UserPrefix
+		provider.UserPrefix = ""
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() { provider.UserPrefix = oldUserPrefix }()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username
+		issuerURL, err := url.ParseRequestURI(provider.Issuer)
+		require.NoError(t, err, "Error parsing issuer URL")
+		usernameExpected := url.QueryEscape(issuerURL.Host+issuerURL.Path) + "_" + claimSet.primaryClaims.Subject
+		runGoodAuthTest(claimSet, usernameExpected)
+		user, err := authenticator.GetUser(usernameExpected)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		require.NoError(t, authenticator.Delete(user), "Error deleting user %s", user.Name())
+	})
+
+	t.Run("successful registered user auth when neither username_claim nor user_prefix are set", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUserPrefix := provider.UserPrefix
+		provider.UserPrefix = ""
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() { provider.UserPrefix = oldUserPrefix }()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username
+		issuerURL, err := url.ParseRequestURI(provider.Issuer)
+		require.NoError(t, err, "Error parsing issuer URL")
+		usernameExpected := url.QueryEscape(issuerURL.Host+issuerURL.Path) + "_" + claimSet.primaryClaims.Subject
+		user, err := authenticator.NewUser(usernameExpected, "password", nil)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
+		runGoodAuthTest(claimSet, usernameExpected)
+		user, err = authenticator.GetUser(usernameExpected)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		require.NoError(t, authenticator.Delete(user), "Error deleting user %s", user.Name())
+	})
+
+	// If username_claim is set but the specified claim property does not exist in the token, then reject the token.
+	t.Run("unsuccessful new user auth when username_claim is set but claim not found in token", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		runBadAuthTest(claimSet)
+	})
+
+	t.Run("unsuccessful registered user auth when username_claim is set but claim not found in token", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		createUser(t, restTester, username)
+		runBadAuthTest(claimSet)
+		deleteUser(t, restTester, username)
+	})
+
+	// If the username associated with an OIDC subject changes, Sync Gateway does not maintain any connection
+	// between the previous user and the current user. If register=true, a new user will be created if it does
+	// not exist. If register=false, the user must be created prior to successful authentication with the token.
+	t.Run("successful user auth when username_claim is set with different value in token", func(t *testing.T) {
+		username := "bar_alice"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		provider.Register = true
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username // Username in token
+		createUser(t, restTester, "foo_alice")             // Registered username
+		runGoodAuthTest(claimSet, username)
+		user, err := authenticator.GetUser(username)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, username, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, username)
+		deleteUser(t, restTester, "foo_alice")
+	})
+
+	t.Run("unsuccessful user auth when username_claim is set with different value in token", func(t *testing.T) {
+		username := "bar_alice"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		provider.Register = false
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = username // Username in token
+		createUser(t, restTester, "foo_alice")             // Registered username
+		runBadAuthTest(claimSet)
+		deleteUser(t, restTester, "foo_alice")
 	})
 }
 
@@ -1298,4 +1683,228 @@ func TestCallbackStateClientCookies(t *testing.T) {
 		assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
 		assert.Equal(t, "foo_noah", authResponseActual.Username, "name mismatch")
 	})
+}
+
+// E2E test that checks OpenID Connect Authorization Code Flow with the specified username_claim
+// as Sync Gateway username.
+func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
+	var (
+		defaultProvider = "foo"
+		authURL         = "/db/_oidc?provider=foo&offline=true"
+		claimKey        = "uuid"
+		claimValue      = "80249751"
+	)
+	type test struct {
+		name                  string
+		providers             auth.OIDCProviderMap
+		authErrorExpected     forceError
+		requireRegisteredUser bool
+		registeredUsername    string
+		claims                claimSet
+		usernameExpected      string
+	}
+	tests := []test{
+		{
+			name: "successful new user auth when username_claim is set but user_prefix is not set",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+			},
+			claims:           claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			usernameExpected: claimValue,
+		}, {
+			name: "successful registered user auth when username_claim is set but user_prefix is not set",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithUsernameClaim(defaultProvider, claimKey),
+			},
+			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			usernameExpected:      claimValue,
+			registeredUsername:    claimValue,
+			requireRegisteredUser: true,
+		}, {
+			name: "successful new user auth when both username_claim and user_prefix are set",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithRegisterWithUsernameClaimWithUserPrefix(defaultProvider, claimKey),
+			},
+			claims:           claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			usernameExpected: "foo_80249751",
+		}, {
+			name: "successful registered user auth when both username_claim and user_prefix are set",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithUsernameClaimWithUserPrefix(defaultProvider, claimKey),
+			},
+			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			requireRegisteredUser: true,
+			registeredUsername:    "foo_80249751",
+			usernameExpected:      "foo_80249751",
+		}, {
+			name: "successful new user auth when username_claim is not set but user_prefix is set",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithRegisterWithUserPrefix(defaultProvider),
+			},
+			claims:           claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			usernameExpected: "foo_noah",
+		}, {
+			name: "successful registered user auth when username_claim is not set but user_prefix is set",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithUserPrefix(defaultProvider),
+			},
+			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			usernameExpected:      "foo_noah",
+			registeredUsername:    "foo_noah",
+			requireRegisteredUser: true,
+		}, {
+			name: "successful new user auth when neither username_claim nor user_prefix are set",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithRegister(defaultProvider),
+			},
+			claims:           claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			usernameExpected: "foo_noah",
+		}, {
+			name: "successful registered user auth when neither username_claim nor user_prefix are set",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProvider(defaultProvider),
+			},
+			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			usernameExpected:      "foo_noah",
+			registeredUsername:    "foo_noah",
+			requireRegisteredUser: true,
+		}, {
+			name: "unsuccessful new user auth when username_claim is set but claim not found in token",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+			},
+			claims: claimsAuthentic(),
+			authErrorExpected: forceError{
+				expectedErrorCode:    http.StatusInternalServerError,
+				expectedErrorMessage: `specified claim \"uuid\" not found in id_token`,
+			},
+		}, {
+			name: "unsuccessful registered user auth when username_claim is set but claim not found in token",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithUsernameClaim(defaultProvider, claimKey),
+			},
+			claims:                claimsAuthentic(),
+			requireRegisteredUser: true,
+			registeredUsername:    "foo_noah",
+			usernameExpected:      "foo_noah",
+			authErrorExpected: forceError{
+				expectedErrorCode:    http.StatusInternalServerError,
+				expectedErrorMessage: `specified claim \"uuid\" not found in id_token`,
+			},
+		}, {
+			name: "successful user auth when username_claim is set with different value in token",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+			},
+			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			requireRegisteredUser: true,
+			registeredUsername:    "foo_noah",
+			usernameExpected:      claimValue,
+		}, {
+			name: "unsuccessful user auth when username_claim is set with different value in token",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithUsernameClaim(defaultProvider, claimKey),
+			},
+			claims:                claimsAuthenticWithUsernameClaim(claimKey, claimValue),
+			requireRegisteredUser: true,
+			registeredUsername:    "foo_noah",
+			authErrorExpected: forceError{
+				expectedErrorCode:    http.StatusUnauthorized,
+				expectedErrorMessage: "Invalid login",
+			},
+		}, {
+			name: "unsuccessful new user auth when username_claim is set but claim is not of type string in token",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+			},
+			claims: claimsAuthenticWithUsernameClaim(claimKey, 01234567),
+			authErrorExpected: forceError{
+				expectedErrorCode:    http.StatusInternalServerError,
+				expectedErrorMessage: `oidc: can't cast claim \"uuid\" as string`,
+			},
+		}, {
+			name: "unsuccessful registered user auth when username_claim is set but claim is not of type string in token",
+			providers: auth.OIDCProviderMap{
+				defaultProvider: mockProviderWithRegisterWithUsernameClaim(defaultProvider, claimKey),
+			},
+			claims: claimsAuthenticWithUsernameClaim(claimKey, 01234567),
+			authErrorExpected: forceError{
+				expectedErrorCode:    http.StatusInternalServerError,
+				expectedErrorMessage: `oidc: can't cast claim \"uuid\" as string`,
+			},
+			requireRegisteredUser: true,
+			registeredUsername:    "foo_noah",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
+			mockAuthServer.Start()
+			defer mockAuthServer.Shutdown()
+			mockAuthServer.options.issuer = mockAuthServer.URL + "/" + defaultProvider
+			refreshProviderConfig(tc.providers, mockAuthServer.URL)
+
+			opts := auth.OIDCOptions{
+				Providers:       tc.providers,
+				DefaultProvider: &defaultProvider,
+			}
+			restTesterConfig := RestTesterConfig{
+				DatabaseConfig: &DbConfig{
+					OIDCConfig: &opts,
+				},
+			}
+			restTester := NewRestTester(t, &restTesterConfig)
+			restTester.SetAdminParty(false)
+			defer restTester.Close()
+
+			// Create the user first if the test requires a registered user.
+			if tc.requireRegisteredUser {
+				createUser(t, restTester, tc.registeredUsername)
+			}
+			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+			defer mockSyncGateway.Close()
+			mockSyncGatewayURL := mockSyncGateway.URL
+			mockAuthServer.options.claims = tc.claims
+
+			// Initiate OpenID Connect Authorization Code flow.
+			requestURL := mockSyncGatewayURL + authURL
+			request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+			require.NoError(t, err, "Error creating new request")
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err, "Error creating new cookie jar")
+			client := &http.Client{Jar: jar}
+			response, err := client.Do(request)
+			require.NoError(t, err, "Error sending request")
+			if (forceError{}) != tc.authErrorExpected {
+				assertHttpResponse(t, response, tc.authErrorExpected)
+				return
+			}
+			// Validate received token response
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			var authResponseActual OIDCTokenResponse
+			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
+			require.NoError(t, response.Body.Close(), "Error closing response body")
+			assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
+			assert.Equal(t, tc.usernameExpected, authResponseActual.Username, "name mismatch")
+
+			authResponseExpected := mockAuthServer.options.tokenResponse
+			assert.Equal(t, authResponseExpected.IDToken, authResponseActual.IDToken, "id_token mismatch")
+			assert.Equal(t, authResponseExpected.RefreshToken, authResponseActual.RefreshToken, "refresh_token mismatch")
+
+			// Query db endpoint with Bearer token
+			var responseBody map[string]interface{}
+			dbEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name
+			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
+			require.NoError(t, err, "Error creating new request")
+			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
+			response, err = client.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
+			require.NoError(t, response.Body.Close(), "Error closing response body")
+			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
+		})
+	}
 }

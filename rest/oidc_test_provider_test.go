@@ -361,7 +361,7 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
 			response, err = http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
-			checkGoodAuthResponse(t, response)
+			checkGoodAuthResponse(t, response, "foo_noah")
 		})
 	}
 }

@@ -172,41 +172,43 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 }
 
 func TestOIDCUsername(t *testing.T) {
-
 	provider := OIDCProvider{
 		Name:   "Some_Provider",
 		Issuer: "http://www.someprovider.com",
 	}
 
-	err := provider.initUserPrefix()
+	err := provider.InitUserPrefix()
 	assert.NoError(t, err)
 	assert.Equal(t, "www.someprovider.com", provider.UserPrefix)
 
 	// test username suffix
-	oidcUsername := getOIDCUsername(&provider, "bernard")
+	identity := Identity{Subject: "bernard"}
+	oidcUsername, err := getOIDCUsername(&provider, &identity)
+	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_bernard", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test char escaping
-	oidcUsername = getOIDCUsername(&provider, "{bernard}")
+	identity.Subject = "{bernard}"
+	oidcUsername, err = getOIDCUsername(&provider, &identity)
+	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_%7Bbernard%7D", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test URL with paths
 	provider.UserPrefix = ""
 	provider.Issuer = "http://www.someprovider.com/extra"
-	err = provider.initUserPrefix()
+	err = provider.InitUserPrefix()
 	assert.NoError(t, err)
 	assert.Equal(t, "www.someprovider.com%2Fextra", provider.UserPrefix)
 
 	// test invalid URL
 	provider.UserPrefix = ""
 	provider.Issuer = "http//www.someprovider.com"
-	err = provider.initUserPrefix()
+	err = provider.InitUserPrefix()
 	assert.NoError(t, err)
 	// falls back to provider name:
 	assert.Equal(t, "Some_Provider", provider.UserPrefix)
-
 }
 
 func TestInitOIDCClient(t *testing.T) {

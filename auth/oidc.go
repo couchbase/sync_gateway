@@ -154,6 +154,9 @@ type OIDCProvider struct {
 	// vulnerable to Cross-Site Request Forgery (CSRF, XSRF) and NOT recommended.
 	DisableCallbackState bool `json:"disable_callback_state,omitempty"`
 
+	// UsernameClaim allows to specify a claim other than subject to use as the Sync Gateway username.
+	UsernameClaim string `json:"username_claim"`
+
 	// client represents client configurations to authenticate end-users
 	// with an OpenID Connect provider. It must not be accessed directly,
 	// use the accessor method GetClient() instead.
@@ -257,10 +260,10 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OID
 
 // To support multiple providers referencing the same issuer, the user prefix used to build the SG usernames for
 // a provider is based on the issuer
-func (op *OIDCProvider) initUserPrefix() error {
+func (op *OIDCProvider) InitUserPrefix() error {
 
 	// If the user prefix has been explicitly defined, skip calculation
-	if op.UserPrefix != "" {
+	if op.UserPrefix != "" || op.UsernameClaim != "" {
 		return nil
 	}
 
@@ -307,7 +310,7 @@ func (op *OIDCProvider) initOIDCClient() error {
 	}
 
 	// Initialize the prefix for users created for this provider
-	if err := op.initUserPrefix(); err != nil {
+	if err := op.InitUserPrefix(); err != nil {
 		return err
 	}
 
@@ -399,8 +402,22 @@ func (op *OIDCProvider) standardDiscovery(discoveryURL string) (metadata Provide
 	return metadata, verifier, err
 }
 
-func getOIDCUsername(provider *OIDCProvider, subject string) string {
-	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
+func getOIDCUsername(provider *OIDCProvider, identity *Identity) (username string, err error) {
+	if provider.UsernameClaim != "" {
+		var ok bool
+		var value interface{}
+		if value, ok = identity.Claims[provider.UsernameClaim]; !ok {
+			return "", fmt.Errorf("oidc: specified claim %q not found in id_token, identity: %v", provider.UsernameClaim, identity)
+		}
+		if username, ok = value.(string); !ok {
+			return "", fmt.Errorf("oidc: can't cast claim %q as string, identity: %v", provider.UsernameClaim, identity)
+		}
+		if provider.UserPrefix == "" {
+			return url.QueryEscape(username), nil
+		}
+		return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(username)), nil
+	}
+	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(identity.Subject)), nil
 }
 
 // fetchCustomProviderConfig collects the provider configuration from the given discovery endpoint and determines
