@@ -1535,7 +1535,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
-defer srv.Close()
+	defer srv.Close()
 
 	// Build passiveDBURL with basic auth creds
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
