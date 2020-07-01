@@ -56,6 +56,8 @@ type ActiveReplicatorConfig struct {
 	WebsocketPingInterval time.Duration
 	// Conflict resolver function
 	ConflictResolver ConflictResolverFunc
+	// Delta sync enabled
+	DeltasEnabled bool
 }
 
 // CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.

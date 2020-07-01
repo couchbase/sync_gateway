@@ -421,6 +421,10 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 	output.Write([]byte("]"))
 	response := rq.Response()
+	if bh.sgCanUseDeltas {
+		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
+		response.Properties[ChangesResponseDeltas] = "true"
+	}
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
 

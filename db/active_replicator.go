@@ -115,6 +115,12 @@ func connect(idSuffix string, config *ActiveReplicatorConfig) (blipSender *blip.
 		base.LogContext{CorrelationID: config.ID + idSuffix},
 	)
 
+	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
+	// If deltas have been disabled in the replication config, override this value
+	if config.DeltasEnabled == false {
+		bsc.sgCanUseDeltas = false
+	}
+
 	blipSender, err = blipSync(*config.PassiveDBURL, blipContext)
 	if err != nil {
 		return nil, nil, err

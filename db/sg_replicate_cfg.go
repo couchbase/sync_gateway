@@ -71,6 +71,19 @@ type ReplicationConfig struct {
 	BatchSize              int                       `json:"batch_size,omitempty"`
 }
 
+func DefaultReplicationConfig() ReplicationConfig {
+	return ReplicationConfig{
+		DeltaSyncEnabled:       false,
+		PurgeOnRemoval:         false,
+		MaxBackoff:             5,
+		ConflictResolutionType: ConflictResolverDefault,
+		State:                  "running", // TODO: CBG-911
+		Continuous:             false,
+		Adhoc:                  false,
+		BatchSize:              defaultChangesBatchSize,
+	}
+}
+
 // ReplicationCfg represents a replication definition as stored in the cluster config.
 type ReplicationCfg struct {
 	ReplicationConfig
@@ -190,6 +203,7 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 	if c.PurgeOnRemoval != nil {
 		rc.PurgeOnRemoval = *c.PurgeOnRemoval
 	}
+
 	if c.DeltaSyncEnabled != nil {
 		rc.DeltaSyncEnabled = *c.DeltaSyncEnabled
 	}
@@ -346,6 +360,7 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 		Continuous:     config.Continuous,
 		ActiveDB:       &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
 		PurgeOnRemoval: config.PurgeOnRemoval,
+		DeltasEnabled:  false,
 	}
 
 	rc.ChangesBatchSize = defaultChangesBatchSize
@@ -382,6 +397,10 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 
 	if config.Remote == "" {
 		return nil, fmt.Errorf("Replication remote must not be empty")
+	}
+
+	if config.DeltaSyncEnabled == false {
+		rc.DeltasEnabled = false
 	}
 
 	rc.PassiveDBURL, err = url.Parse(config.Remote)
@@ -637,7 +656,9 @@ func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertCon
 		if exists {
 			created = false
 		} else {
-			cluster.Replications[replication.ID] = &ReplicationCfg{ReplicationConfig: ReplicationConfig{ID: replication.ID}}
+			replicationConfig := DefaultReplicationConfig()
+			replicationConfig.ID = replication.ID
+			cluster.Replications[replication.ID] = &ReplicationCfg{ReplicationConfig: replicationConfig}
 		}
 		cluster.Replications[replication.ID].Upsert(replication)
 
