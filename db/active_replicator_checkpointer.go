@@ -207,18 +207,19 @@ func (c *Checkpointer) fetchCheckpoints() error {
 			return err
 		}
 
+		// roll local/remote checkpoint back to lowest of the two
 		if remoteSeqVal.Before(localSeqVal) {
-			err := c.removeLocalCheckpoint(localRev)
-			if err != nil {
-				return err
-			}
 			checkpointSeq = remoteSeq
-		} else {
-			err := c.removeRemoteCheckpoint(remoteRev)
+			c.lastLocalCheckpointRevID, err = c.setLocalCheckpoint(checkpointSeq, c.lastRemoteCheckpointRevID)
 			if err != nil {
 				return err
 			}
+		} else {
 			checkpointSeq = localSeq
+			c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpoint(checkpointSeq, c.lastRemoteCheckpointRevID)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -282,18 +283,6 @@ func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string,
 	return newRev, nil
 }
 
-func (c *Checkpointer) removeLocalCheckpoint(rev string) error {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "removeLocalCheckpoint(%v)", rev)
-
-	err := c.activeDB.DeleteSpecial("local", checkpointDocIDPrefix+c.clientID, rev)
-	if err != nil {
-		return err
-	}
-
-	c.lastLocalCheckpointRevID = ""
-	return nil
-}
-
 // getRemoteCheckpoint returns the sequence and rev for the remote checkpoint.
 // if the checkpoint does not exist, returns empty sequence and rev.
 func (c *Checkpointer) getRemoteCheckpoint() (seq, rev string, err error) {
@@ -344,24 +333,4 @@ func (c *Checkpointer) setRemoteCheckpoint(seq, parentRev string) (newRev string
 	}
 
 	return resp.RevID, nil
-}
-
-func (c *Checkpointer) removeRemoteCheckpoint(rev string) error {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "removeRemoteCheckpoint(%v)", rev)
-
-	rq := SetSGR2CheckpointRequest{
-		Client: c.clientID,
-		RevID:  &rev,
-	}
-	if err := rq.Send(c.blipSender); err != nil {
-		return err
-	}
-	resp, err := rq.Response()
-	if err != nil {
-		return err
-	}
-
-	// can't actually remove remote checkpoint (CBG-943), so we get a new rev for a blank checkpoint
-	c.lastRemoteCheckpointRevID = resp.RevID
-	return nil
 }
