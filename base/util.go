@@ -14,6 +14,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -1356,4 +1357,18 @@ func GetRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64,
 	}
 
 	return value
+}
+
+// GetHttpClient returns a new HTTP client with TLS certificate verification
+// disabled when insecureSkipVerify is true and enabled otherwise.
+func GetHttpClient(insecureSkipVerify bool) *http.Client {
+	if insecureSkipVerify {
+		transport := DefaultHTTPTransport()
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = new(tls.Config)
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true
+		return &http.Client{Transport: transport}
+	}
+	return http.DefaultClient
 }

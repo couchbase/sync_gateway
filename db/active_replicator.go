@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -121,7 +122,7 @@ func connect(idSuffix string, config *ActiveReplicatorConfig) (blipSender *blip.
 		bsc.sgCanUseDeltas = false
 	}
 
-	blipSender, err = blipSync(*config.PassiveDBURL, blipContext)
+	blipSender, err = blipSync(*config.PassiveDBURL, blipContext, config.InsecureSkipVerify)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -130,9 +131,14 @@ func connect(idSuffix string, config *ActiveReplicatorConfig) (blipSender *blip.
 }
 
 // blipSync opens a connection to the target, and returns a blip.Sender to send messages over.
-func blipSync(target url.URL, blipContext *blip.Context) (*blip.Sender, error) {
+func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool) (*blip.Sender, error) {
 	// GET target database endpoint to see if reachable for exit-early/clearer error message
-	resp, err := http.Get(target.String())
+	req, err := http.NewRequest(http.MethodGet, target.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	client := base.GetHttpClient(insecureSkipVerify)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +162,13 @@ func blipSync(target url.URL, blipContext *blip.Context) (*blip.Sender, error) {
 	config, err := websocket.NewConfig(target.String()+"/_blipsync", "http://localhost")
 	if err != nil {
 		return nil, err
+	}
+
+	if insecureSkipVerify {
+		if config.TlsConfig == nil {
+			config.TlsConfig = new(tls.Config)
+		}
+		config.TlsConfig.InsecureSkipVerify = true
 	}
 
 	if target.User != nil {

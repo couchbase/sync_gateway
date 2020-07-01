@@ -27,7 +27,6 @@ package auth
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
@@ -315,7 +314,7 @@ func (op *OIDCProvider) FetchCustomProviderConfig(discoveryURL string) (*Provide
 		base.Debugf(base.KeyAuth, "Error building new request for URL %s: %v", base.UD(discoveryURL), err)
 		return nil, err
 	}
-	client := GetHttpClient(op.InsecureSkipVerify)
+	client := base.GetHttpClient(op.InsecureSkipVerify)
 	resp, err := client.Do(req)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Error invoking calling discovery URL %s: %v", base.UD(discoveryURL), err)
@@ -447,24 +446,10 @@ func SetURLQueryParam(strURL, name, value string) (string, error) {
 	return uri.String(), nil
 }
 
-// GetHttpClient returns a new HTTP client with TLS certificate verification
-// disabled when insecureSkipVerify is true and enabled otherwise.
-func GetHttpClient(insecureSkipVerify bool) *http.Client {
-	if insecureSkipVerify {
-		transport := base.DefaultHTTPTransport()
-		if transport.TLSClientConfig == nil {
-			transport.TLSClientConfig = new(tls.Config)
-		}
-		transport.TLSClientConfig.InsecureSkipVerify = true
-		return &http.Client{Transport: transport}
-	}
-	return http.DefaultClient
-}
-
 // GetOIDCClientContext returns a new Context that carries the provided HTTP client
 // with TLS certificate verification disabled when insecureSkipVerify is true and
 // enabled otherwise.
 func GetOIDCClientContext(insecureSkipVerify bool) context.Context {
-	client := GetHttpClient(insecureSkipVerify)
+	client := base.GetHttpClient(insecureSkipVerify)
 	return oidc.ClientContext(context.Background(), client)
 }

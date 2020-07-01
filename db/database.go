@@ -160,6 +160,7 @@ type UnsupportedOptions struct {
 	WarningThresholds        WarningThresholds       `json:"warning_thresholds,omitempty"`          // Warning thresholds related to _sync size
 	DisableCleanSkippedQuery bool                    `json:"disable_clean_skipped_query,omitempty"` // Clean skipped sequence processing bypasses final check
 	OidcTlsSkipVerify        bool                    `json:"oidc_tls_skip_verify"`                  // Config option to enable self-signed certs for OIDC testing.
+	SgrTlsSkipVerify         bool                    `json:"sgr_tls_skip_verify"`                   // Config option to enable self-signed certs for SG-Replicate testing.
 }
 
 type WarningThresholds struct {
