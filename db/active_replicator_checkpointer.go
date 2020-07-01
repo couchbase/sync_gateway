@@ -210,7 +210,7 @@ func (c *Checkpointer) fetchCheckpoints() error {
 		// roll local/remote checkpoint back to lowest of the two
 		if remoteSeqVal.Before(localSeqVal) {
 			checkpointSeq = remoteSeq
-			c.lastLocalCheckpointRevID, err = c.setLocalCheckpoint(checkpointSeq, c.lastRemoteCheckpointRevID)
+			c.lastLocalCheckpointRevID, err = c.setLocalCheckpoint(checkpointSeq, c.lastLocalCheckpointRevID)
 			if err != nil {
 				return err
 			}

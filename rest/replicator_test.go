@@ -1535,6 +1535,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
+defer srv.Close()
 
 	// Build passiveDBURL with basic auth creds
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
@@ -1611,7 +1612,6 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	fmt.Println("flushed bucket")
 
-	srv.Close()
 	rt2.Close()
 
 	// recreate rt2, http server and update target URL in the replicator
@@ -1629,8 +1629,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	})
 	defer rt2.Close()
 
-	srv = httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+	srv.Config.Handler = rt2.TestPublicHandler()
 
 	passiveDBURL, err = url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
@@ -1645,8 +1644,8 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	// we pulled the remote checkpoint, but the local checkpoint wasn't there to match it.
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatGetCheckpointHitTotal))
 
-	// wait for document originally written to rt2 to arrive at rt1
-	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	// wait for document originally written to rt1 to arrive at rt2
+	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
