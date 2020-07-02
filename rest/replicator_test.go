@@ -1406,7 +1406,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(&arConfig)
+	ar := db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
@@ -1442,7 +1442,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	ar.Pull.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
 
-	assert.NoError(t, ar.Close())
+	assert.NoError(t, ar.Stop())
 
 	gocbBucket, ok := base.AsGoCBBucket(tb1)
 	require.True(t, ok)
@@ -1463,7 +1463,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	arConfig.ActiveDB = &db.Database{
 		DatabaseContext: rt1.GetDatabase(),
 	}
-	ar, err = db.NewActiveReplicator(&arConfig)
+	ar = db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
 	assert.NoError(t, ar.Start())
@@ -1497,7 +1497,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	ar.Pull.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
 
-	assert.NoError(t, ar.Close())
+	assert.NoError(t, ar.Stop())
 }
 
 // TestActiveReplicatorRecoverFromRemoteFlush:
@@ -1568,7 +1568,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(&arConfig)
+	ar := db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
@@ -1604,7 +1604,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	ar.Push.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
 
-	assert.NoError(t, ar.Close())
+	assert.NoError(t, ar.Stop())
 
 	gocbBucket, ok := base.AsGoCBBucket(tb2)
 	require.True(t, ok)
@@ -1636,7 +1636,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 	arConfig.PassiveDBURL = passiveDBURL
 
-	ar, err = db.NewActiveReplicator(&arConfig)
+	ar = db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
 	assert.NoError(t, ar.Start())
@@ -1670,5 +1670,5 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	ar.Push.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
 
-	assert.NoError(t, ar.Close())
+	assert.NoError(t, ar.Stop())
 }
