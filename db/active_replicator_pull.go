@@ -72,8 +72,9 @@ func (apr *ActivePullReplicator) Close() error {
 	}
 
 	apr.checkpointerCtxCancel()
-	apr.Checkpointer.CheckpointNow()
-
+	if apr.Checkpointer != nil {
+		apr.Checkpointer.CheckpointNow()
+	}
 	if apr.blipSender != nil {
 		apr.blipSender.Close()
 		apr.blipSender = nil

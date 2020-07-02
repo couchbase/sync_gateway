@@ -356,11 +356,12 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 	base.Infof(base.KeyReplicate, "Starting replication %v (placeholder)", config.ID)
 
 	rc := &ActiveReplicatorConfig{
-		ID:             config.ID,
-		Continuous:     config.Continuous,
-		ActiveDB:       &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
-		PurgeOnRemoval: config.PurgeOnRemoval,
-		DeltasEnabled:  false,
+		ID:                 config.ID,
+		Continuous:         config.Continuous,
+		ActiveDB:           &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
+		PurgeOnRemoval:     config.PurgeOnRemoval,
+		DeltasEnabled:      false,
+		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
 	}
 
 	rc.ChangesBatchSize = defaultChangesBatchSize

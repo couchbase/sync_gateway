@@ -103,7 +103,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyEnabled(t *testing.T) {
 
 	// Set insecureSkipVerify on the test's HTTP client since both the _oidc and _oidc_testing
 	// endpoints are being run with the same TLSServer.
-	client := auth.GetHttpClient(true)
+	client := base.GetHttpClient(true)
 	client.Jar = jar
 	response, err := client.Do(request)
 	require.NoError(t, err, "Error sending request")
@@ -157,7 +157,7 @@ func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
 
 	// Set insecureSkipVerify on the test's HTTP client since both the _oidc and _oidc_testing
 	// endpoints are being run with the same TLSServer.
-	client := auth.GetHttpClient(true)
+	client := base.GetHttpClient(true)
 	client.Jar = jar
 	response, err := client.Do(request)
 	require.NoError(t, err, "Error sending request")

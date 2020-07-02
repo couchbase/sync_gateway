@@ -56,8 +56,13 @@ type ActiveReplicatorConfig struct {
 	WebsocketPingInterval time.Duration
 	// Conflict resolver function
 	ConflictResolver ConflictResolverFunc
+
 	// Delta sync enabled
 	DeltasEnabled bool
+
+	// InsecureSkipVerify determines whether the TLS certificate verification should be
+	// disabled during replication. TLS certificate verification is enabled by default.
+	InsecureSkipVerify bool
 }
 
 // CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.
