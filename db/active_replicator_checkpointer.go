@@ -137,6 +137,9 @@ func (c *Checkpointer) Start() {
 
 // CheckpointNow forces the checkpointer to send a checkpoint, and blocks until it has finished.
 func (c *Checkpointer) CheckpointNow() {
+	if c == nil {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

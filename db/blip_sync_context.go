@@ -479,6 +479,11 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties)
 }
 
+// InitializeStats must be run before replication is started - there is no synchronization on replicationStats
+func (bsc *BlipSyncContext) InitializeStats(stats *BlipSyncStats) {
+	bsc.replicationStats = stats
+}
+
 func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) []string {
 	// Get the revision's history as a descending array of ancestor revIDs:
 	history := revisions.ParseRevisions()[1:]

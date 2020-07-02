@@ -885,5 +885,10 @@ func (h *handler) putReplicationStatus() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Query parameter 'action' must be specified")
 	}
 
-	return h.db.SGReplicateMgr.PutReplicationStatus(replicationID, action)
+	updatedStatus, err := h.db.SGReplicateMgr.PutReplicationStatus(replicationID, action)
+	if err != nil {
+		return err
+	}
+	h.writeJSON(updatedStatus)
+	return nil
 }

@@ -41,13 +41,12 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePushAndPull,
 		ActiveDB:     &db.Database{DatabaseContext: rt.GetDatabase()},
 		PassiveDBURL: passiveDBURL,
 	})
-	require.NoError(t, err)
 
 	startNumReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
 	startNumReplicationsActive := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive))
@@ -63,7 +62,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	assert.Equal(t, startNumReplicationsActive+2, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive)))
 
 	// Close the replicator (implicit disconnect)
-	assert.NoError(t, ar.Close())
+	assert.NoError(t, ar.Stop())
 
 	// Wait for active stat to drop to original value
 	numReplicationsActive, ok := base.WaitForStat(func() int64 {
@@ -101,14 +100,13 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:                    t.Name(),
 		Direction:             db.ActiveReplicatorTypePush,
 		ActiveDB:              &db.Database{DatabaseContext: rt.GetDatabase()},
 		PassiveDBURL:          passiveDBURL,
 		WebsocketPingInterval: time.Millisecond * 10,
 	})
-	require.NoError(t, err)
 
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count")))
 
@@ -122,7 +120,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 	pingCount := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count"))
 	assert.Truef(t, pingCount > 0, "Expected ping count to be >0")
 
-	assert.NoError(t, ar.Close())
+	assert.NoError(t, ar.Stop())
 
 	pingGoroutines = base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
 	assert.Equal(t, int64(0), pingGoroutines)
@@ -181,7 +179,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePull,
 		PassiveDBURL: passiveDBURL,
@@ -190,8 +188,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		},
 		ChangesBatchSize: 200,
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Close()) }()
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
@@ -282,8 +279,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(&arConfig)
-	require.NoError(t, err)
+	ar := db.NewActiveReplicator(&arConfig)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
 	startNumRevsSentTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
@@ -325,7 +321,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	ar.Pull.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
 
-	assert.NoError(t, ar.Close())
+	assert.NoError(t, ar.Stop())
 
 	// Second batch of docs
 	for i := numRT2DocsInitial; i < numRT2DocsTotal; i++ {
@@ -334,9 +330,8 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar, err = db.NewActiveReplicator(&arConfig)
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Close()) }()
+	ar = db.NewActiveReplicator(&arConfig)
+	defer func() { assert.NoError(t, ar.Stop()) }()
 	assert.NoError(t, ar.Start())
 
 	// wait for all of the documents originally written to rt2 to arrive at rt1
@@ -429,7 +424,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePush,
 		PassiveDBURL: passiveDBURL,
@@ -438,8 +433,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 		},
 		ChangesBatchSize: 200,
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Close()) }()
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
@@ -468,7 +462,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	const (
 		changesBatchSize  = 10
@@ -530,8 +524,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	ar, err := db.NewActiveReplicator(&arConfig)
-	require.NoError(t, err)
+	ar := db.NewActiveReplicator(&arConfig)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
 	startNumRevsSentTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
@@ -569,10 +562,8 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatGetCheckpointHitTotal))
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatGetCheckpointMissTotal))
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
-	ar.Push.Checkpointer.CheckpointNow()
-	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
 
-	assert.NoError(t, ar.Close())
+	assert.NoError(t, ar.Stop())
 
 	// Second batch of docs
 	for i := numRT1DocsInitial; i < numRT1DocsTotal; i++ {
@@ -581,9 +572,8 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	ar, err = db.NewActiveReplicator(&arConfig)
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Close()) }()
+	ar = db.NewActiveReplicator(&arConfig)
+	defer func() { assert.NoError(t, ar.Stop()) }()
 	assert.NoError(t, ar.Start())
 
 	// wait for all of the documents originally written to rt1 to arrive at rt2
@@ -677,7 +667,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePull,
 		PassiveDBURL: passiveDBURL,
@@ -687,8 +677,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		ChangesBatchSize: 200,
 		Continuous:       true,
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Close()) }()
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
@@ -777,7 +766,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	})
 	defer rt1.Close()
 
-	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePull,
 		PassiveDBURL: passiveDBURL,
@@ -788,8 +777,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 		Continuous:       true,
 		PurgeOnRemoval:   true,
 	})
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Close()) }()
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
@@ -936,7 +924,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
-			ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 				ID:           t.Name(),
 				Direction:    db.ActiveReplicatorTypePull,
 				PassiveDBURL: passiveDBURL,
@@ -947,8 +935,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				ConflictResolver: customConflictResolver,
 				Continuous:       true,
 			})
-			require.NoError(t, err)
-			defer func() { assert.NoError(t, ar.Close()) }()
+			defer func() { assert.NoError(t, ar.Stop()) }()
 
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start())
@@ -1112,7 +1099,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
-			ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 				ID:           t.Name(),
 				Direction:    db.ActiveReplicatorTypePushAndPull,
 				PassiveDBURL: passiveDBURL,
@@ -1123,8 +1110,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				ConflictResolver: customConflictResolver,
 				Continuous:       true,
 			})
-			require.NoError(t, err)
-			defer func() { assert.NoError(t, ar.Close()) }()
+			defer func() { assert.NoError(t, ar.Stop()) }()
 
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start())
@@ -1256,7 +1242,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePush,
 		PassiveDBURL: passiveDBURL,
@@ -1267,7 +1253,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		InsecureSkipVerify: true,
 	})
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Close()) }()
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// Start the replicator (implicit connect)
 	require.NoError(t, ar.Start())
@@ -1335,7 +1321,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	// Add basic auth creds to target db URL
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
-	ar, err := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 		ID:           t.Name(),
 		Direction:    db.ActiveReplicatorTypePush,
 		PassiveDBURL: passiveDBURL,
@@ -1346,7 +1332,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		InsecureSkipVerify: false,
 	})
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, ar.Close()) }()
+	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	// Start the replicator (implicit connect)
 	assert.Error(t, ar.Start(), "Error certificate signed by unknown authority")

@@ -146,7 +146,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 	replicationConfig := db.ReplicationConfig{
 		ID:        "replication1",
 		Remote:    "http://remote:4984/db",
-		Direction: "Pull",
+		Direction: "pull",
 	}
 
 	// PUT replication1
@@ -159,7 +159,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 	var statusResponse db.ReplicationStatus
 	err := json.Unmarshal(response.BodyBytes(), &statusResponse)
 	require.NoError(t, err)
-	assert.Equal(t, statusResponse.ID, "replication1")
+	assert.Equal(t, "replication1", statusResponse.ID)
 
 	// PUT replication2
 	replication2Config := db.ReplicationConfig{

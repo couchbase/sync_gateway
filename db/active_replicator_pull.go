@@ -2,49 +2,46 @@ package db
 
 import (
 	"context"
-	"expvar"
 	"fmt"
-
-	"github.com/couchbase/go-blip"
 )
 
 // ActivePullReplicator is a unidirectional pull active replicator.
 type ActivePullReplicator struct {
-	config                *ActiveReplicatorConfig
-	blipSyncContext       *BlipSyncContext
-	blipSender            *blip.Sender
-	Stats                 expvar.Map
-	Checkpointer          *Checkpointer
-	checkpointerCtx       context.Context
-	checkpointerCtxCancel context.CancelFunc
+	activeReplicatorCommon
 }
 
 func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
-	ctx, ctxCancelFn := context.WithCancel(context.Background())
 	return &ActivePullReplicator{
-		config:                config,
-		checkpointerCtx:       ctx,
-		checkpointerCtxCancel: ctxCancelFn,
+		activeReplicatorCommon: activeReplicatorCommon{
+			config:           config,
+			replicationStats: NewBlipSyncStats(),
+		},
 	}
 }
 
 func (apr *ActivePullReplicator) Start() error {
+
 	if apr == nil {
 		return fmt.Errorf("nil ActivePullReplicator, can't start")
 	}
 
-	var err error
+	if apr.checkpointerCtx != nil {
+		return fmt.Errorf("ActivePushReplicator already running")
+	}
 
-	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config)
+	var err error
+	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config, apr.replicationStats)
 	if err != nil {
-		return err
+		return apr.setError(err)
 	}
 
 	apr.blipSyncContext.conflictResolver = apr.config.ConflictResolver
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 
+	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(context.Background())
 	if err := apr.initCheckpointer(); err != nil {
-		return err
+		apr.checkpointerCtx = nil
+		return apr.setError(err)
 	}
 
 	subChangesRequest := SubChangesRequest{
@@ -59,22 +56,27 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {
-		return err
+		apr.checkpointerCtxCancel()
+		apr.checkpointerCtx = nil
+		return apr.setError(err)
 	}
 
+	apr.setState(ReplicationStateRunning)
 	return nil
 }
 
-func (apr *ActivePullReplicator) Close() error {
+func (apr *ActivePullReplicator) Stop() error {
 	if apr == nil {
 		// noop
 		return nil
 	}
 
-	apr.checkpointerCtxCancel()
-	if apr.Checkpointer != nil {
+	if apr.checkpointerCtx != nil {
+		apr.checkpointerCtxCancel()
 		apr.Checkpointer.CheckpointNow()
 	}
+	apr.checkpointerCtx = nil
+
 	if apr.blipSender != nil {
 		apr.blipSender.Close()
 		apr.blipSender = nil
@@ -84,6 +86,7 @@ func (apr *ActivePullReplicator) Close() error {
 		apr.blipSyncContext.Close()
 		apr.blipSyncContext = nil
 	}
+	apr.setState(ReplicationStateStopped)
 
 	return nil
 }
