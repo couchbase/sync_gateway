@@ -1377,6 +1377,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 
+	assert.NoError(t, rt2.WaitForPendingChanges())
+
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -1548,6 +1550,8 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	docID := t.Name() + "rt1doc"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
+
+	assert.NoError(t, rt1.WaitForPendingChanges())
 
 	arConfig := db.ActiveReplicatorConfig{
 		ID:           t.Name(),
