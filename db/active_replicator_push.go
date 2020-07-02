@@ -2,50 +2,48 @@ package db
 
 import (
 	"context"
-	"expvar"
 	"fmt"
 
-	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 )
 
 // ActivePushReplicator is a unidirectional push active replicator.
 type ActivePushReplicator struct {
-	config                *ActiveReplicatorConfig
-	blipSyncContext       *BlipSyncContext
-	blipSender            *blip.Sender
-	Stats                 expvar.Map
-	Checkpointer          *Checkpointer
-	checkpointerCtx       context.Context
-	checkpointerCtxCancel context.CancelFunc
+	activeReplicatorCommon
 }
 
 func NewPushReplicator(config *ActiveReplicatorConfig) *ActivePushReplicator {
-	ctx, ctxCancelFn := context.WithCancel(context.Background())
 	return &ActivePushReplicator{
-		config:                config,
-		checkpointerCtx:       ctx,
-		checkpointerCtxCancel: ctxCancelFn,
+		activeReplicatorCommon: activeReplicatorCommon{
+			config:           config,
+			replicationStats: NewBlipSyncStats(),
+		},
 	}
 }
 
 func (apr *ActivePushReplicator) Start() error {
+
 	if apr == nil {
 		return fmt.Errorf("nil ActivePushReplicator, can't start")
 	}
 
+	if apr.checkpointerCtx != nil {
+		return fmt.Errorf("ActivePushReplicator already running")
+	}
+
 	var err error
-	apr.blipSender, apr.blipSyncContext, err = connect("-push", apr.config)
+	apr.blipSender, apr.blipSyncContext, err = connect("-push", apr.config, apr.replicationStats)
 	if err != nil {
-		return err
+		return apr.setError(err)
 	}
 
 	// TODO: If this were made a config option, and the default conflict resolver not enforced on
 	// 	the pull side, it would be feasible to run sgr-2 in 'manual conflict resolution' mode
 	apr.blipSyncContext.sendRevNoConflicts = true
 
+	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(context.Background())
 	if err := apr.initCheckpointer(); err != nil {
-		return err
+		return apr.setError(err)
 	}
 
 	bh := blipHandler{
@@ -74,19 +72,22 @@ func (apr *ActivePushReplicator) Start() error {
 		clientType: clientTypeSGR2,
 	})
 
+	apr.setState(ReplicationStateRunning)
 	return nil
 }
 
-func (apr *ActivePushReplicator) Close() error {
+func (apr *ActivePushReplicator) Stop() error {
 	if apr == nil {
 		// noop
 		return nil
 	}
 
-	apr.checkpointerCtxCancel()
-	if apr.Checkpointer != nil {
+	if apr.checkpointerCtx != nil {
+		apr.checkpointerCtxCancel()
 		apr.Checkpointer.CheckpointNow()
 	}
+	apr.checkpointerCtx = nil
+
 	if apr.blipSender != nil {
 		apr.blipSender.Close()
 		apr.blipSender = nil
@@ -96,6 +97,7 @@ func (apr *ActivePushReplicator) Close() error {
 		apr.blipSyncContext.Close()
 		apr.blipSyncContext = nil
 	}
+	apr.setState(ReplicationStateStopped)
 
 	return nil
 }

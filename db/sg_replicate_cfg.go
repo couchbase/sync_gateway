@@ -22,6 +22,13 @@ const (
 	defaultChangesBatchSize = 200          // default changes batch size if replication batch_size is unset
 )
 
+const (
+	ReplicationStateStopped   = "stopped"
+	ReplicationStateRunning   = "running"
+	ReplicationStateResetting = "resetting"
+	ReplicationStateError     = "error"
+)
+
 // ClusterUpdateFunc is callback signature used when updating the cluster configuration
 type ClusterUpdateFunc func(cluster *SGRCluster) (cancel bool, err error)
 
@@ -77,7 +84,7 @@ func DefaultReplicationConfig() ReplicationConfig {
 		PurgeOnRemoval:         false,
 		MaxBackoff:             5,
 		ConflictResolutionType: ConflictResolverDefault,
-		State:                  "running", // TODO: CBG-911
+		State:                  ReplicationStateRunning,
 		Continuous:             false,
 		Adhoc:                  false,
 		BatchSize:              defaultChangesBatchSize,
@@ -269,14 +276,58 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
 type sgReplicateManager struct {
-	cfg                    cbgt.Cfg                      // Key-value store implementation
-	loggingCtx             context.Context               // logging context for manager operations
-	heartbeatListener      *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
-	localNodeUUID          string                        // nodeUUID for this SG node
-	activeReplications     map[string]*ActiveReplicator  // currently active replications
-	activeReplicationsLock sync.RWMutex                  // Mutex for activeReplications
-	terminator             chan struct{}
-	dbContext              *DatabaseContext
+	cfg                   cbgt.Cfg                      // Key-value store implementation
+	loggingCtx            context.Context               // logging context for manager operations
+	heartbeatListener     *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
+	localNodeUUID         string                        // nodeUUID for this SG node
+	activeReplicators     map[string]*ActiveReplicator  // currently assigned replications
+	activeReplicatorsLock sync.RWMutex                  // Mutex for activeReplications
+	terminator            chan struct{}
+	dbContext             *DatabaseContext
+}
+
+// alignState attempts to update the current replicator state to align with the provided targetState, if
+// it's a valid state transition.
+//  Valid:
+//     stopped -> running
+//     stopped -> resetting
+//     resetting -> stopped
+//     running -> stopped
+func (ar *ActiveReplicator) alignState(targetState string) error {
+	if ar == nil {
+		return nil
+	}
+
+	currentState, _ := ar.State()
+	if targetState == currentState {
+		return nil
+	}
+
+	switch targetState {
+	case ReplicationStateStopped:
+		base.Infof(base.KeyReplicate, "Stopping replication %s - previous state %s", ar.ID, currentState)
+		stopErr := ar.Stop()
+		if stopErr != nil {
+			return fmt.Errorf("Unable to gracefully stop active replicator for replication %s: %v", ar.ID, stopErr)
+		}
+	case ReplicationStateRunning:
+		base.Infof(base.KeyReplicate, "Starting replication %s - previous state %s", ar.ID, currentState)
+		startErr := ar.Start()
+		if startErr != nil {
+			return fmt.Errorf("Unable to start active replicator for replication %s: %v", ar.ID, startErr)
+		}
+	case ReplicationStateResetting:
+		if currentState != ReplicationStateStopped {
+			return fmt.Errorf("Replication must be stopped before it can be reset")
+		}
+		base.Infof(base.KeyReplicate, "Resetting replication %s - previous state %s", ar.ID, currentState)
+		resetErr := ar.Reset()
+		if resetErr != nil {
+			return fmt.Errorf("Unable to reset active replicator for replication %s: %v", ar.ID, resetErr)
+		}
+	}
+	return nil
+
 }
 
 func NewSGReplicateManager(dbContext *DatabaseContext, cfg *base.CfgSG) (*sgReplicateManager, error) {
@@ -288,9 +339,9 @@ func NewSGReplicateManager(dbContext *DatabaseContext, cfg *base.CfgSG) (*sgRepl
 		cfg: cfg,
 		loggingCtx: context.WithValue(context.Background(), base.LogContextKey{},
 			base.LogContext{CorrelationID: sgrClusterMgrContextID + dbContext.Name}),
-		terminator:         make(chan struct{}),
-		dbContext:          dbContext,
-		activeReplications: make(map[string]*ActiveReplicator),
+		terminator:        make(chan struct{}),
+		dbContext:         dbContext,
+		activeReplicators: make(map[string]*ActiveReplicator),
 	}, nil
 
 }
@@ -328,32 +379,35 @@ func (m *sgReplicateManager) StartReplications() error {
 	if err != nil {
 		return err
 	}
-
-	for replicationID, replication := range replications {
-		base.Debugf(base.KeyCluster, "Replication %s is assigned to node %s (local node is %s)", replicationID, replication.AssignedNode, m.localNodeUUID)
-		if replication.AssignedNode == m.localNodeUUID {
-			r, err := m.StartReplication(replication)
+	for replicationID, replicationCfg := range replications {
+		base.Debugf(base.KeyCluster, "Replication %s is assigned to node %s (local node is %s)", replicationID, replicationCfg.AssignedNode, m.localNodeUUID)
+		if replicationCfg.AssignedNode == m.localNodeUUID {
+			activeReplicator, err := m.InitializeReplication(replicationCfg)
 			if err != nil {
-				base.Warnf("Unable to start replication %s: %v", replicationID, err)
-				return err
+				base.Warnf("Error initializing replication %s: %v", err)
+				continue
 			}
-			m.activeReplicationsLock.Lock()
-			m.activeReplications[replicationID] = r
-			m.activeReplicationsLock.Unlock()
+			m.activeReplicatorsLock.Lock()
+			m.activeReplicators[replicationID] = activeReplicator
+			m.activeReplicatorsLock.Unlock()
+			if replicationCfg.State == "" || replicationCfg.State == ReplicationStateRunning {
+				if startErr := activeReplicator.Start(); startErr != nil {
+					base.Warnf("Unable to start replication %s: %v", replicationID, startErr)
+				}
+			}
 		}
 	}
-
 	return m.SubscribeCfgChanges()
 }
 
-func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicator *ActiveReplicator, err error) {
+func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (replicator *ActiveReplicator, err error) {
 	// TODO: the following properties on ActiveReplicator aren't currently supported in ReplicationCfg.  Some could be taken
 	//    out until they are implemented?
 	//    - docIDs  (future enhancement)
 	//    - activeOnly (P1)
 	//    - checkpointInterval (not externally configurable)
 
-	base.Infof(base.KeyReplicate, "Starting replication %v (placeholder)", config.ID)
+	base.Infof(base.KeyReplicate, "Initializing replication %v", config.ID)
 
 	rc := &ActiveReplicatorConfig{
 		ID:                 config.ID,
@@ -369,6 +423,8 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 		rc.ChangesBatchSize = uint16(config.BatchSize)
 	}
 
+	// TODO: Move all this config validation to the point of creation, so that
+	//  InitializeReplication doesn't need to report errors based on user data
 	if config.Filter == base.ByChannelFilter {
 		rc.Filter = base.ByChannelFilter
 		rc.FilterChannels, err = ChannelsFromQueryParams(config.QueryParams)
@@ -412,15 +468,7 @@ func (m *sgReplicateManager) StartReplication(config *ReplicationCfg) (replicato
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval
 
 	// TODO: review whether there's a more appropriate context to use here
-	replicator, err = NewActiveReplicator(rc)
-	if err != nil {
-		return nil, err
-	}
-
-	startErr := replicator.Start()
-	if startErr != nil {
-		return nil, startErr
-	}
+	replicator = NewActiveReplicator(rc)
 
 	return replicator, nil
 }
@@ -439,32 +487,49 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 		return err
 	}
 
+	m.activeReplicatorsLock.Lock()
+	defer m.activeReplicatorsLock.Unlock()
+
 	// check for active replications that should be stopped
-	m.activeReplicationsLock.Lock()
-	defer m.activeReplicationsLock.Unlock()
-	for replicationID, activeReplication := range m.activeReplications {
+	for replicationID, activeReplicator := range m.activeReplicators {
 		replicationCfg, ok := configReplications[replicationID]
+
+		// Check for active replications removed from this node
 		if !ok || replicationCfg.AssignedNode != m.localNodeUUID {
-			base.Infof(base.KeyCluster, "Stopping reassigned replication %s", replicationID)
-			err := activeReplication.Close()
+			base.Infof(base.KeyReplicate, "Stopping reassigned replication %s", replicationID)
+			err := activeReplicator.Stop()
 			if err != nil {
 				base.Warnf("Unable to gracefully close active replication: %v", err)
 			}
-			delete(m.activeReplications, replicationID)
+		} else {
+			// Check for replications assigned to this node with updated state
+			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
+			stateErr := activeReplicator.alignState(replicationCfg.State)
+			if stateErr != nil {
+				base.Warnf("Error updating active replication %s to state %s", replicationID, replicationCfg.State)
+			}
 		}
 	}
 
-	// Check for replications assigned to this node that need to be started
+	// Check for replications newly assigned to this node
 	for replicationID, replicationCfg := range configReplications {
 		if replicationCfg.AssignedNode == m.localNodeUUID {
-			_, exists := m.activeReplications[replicationID]
+			replicator, exists := m.activeReplicators[replicationID]
 			if !exists {
-				base.Infof(base.KeyCluster, "Starting local replication %s", replicationID)
-				replication, err := m.StartReplication(replicationCfg)
-				if err != nil {
-					return err
+				var initError error
+				replicator, initError = m.InitializeReplication(replicationCfg)
+				if initError != nil {
+					base.Warnf("Error initializing replication %s: %v", initError)
+					continue
 				}
-				m.activeReplications[replicationID] = replication
+				m.activeReplicators[replicationID] = replicator
+
+				if replicationCfg.State == "" || replicationCfg.State == ReplicationStateRunning {
+					base.Infof(base.KeyReplicate, "Starting newly assigned replication %s", replicationID)
+					if startErr := replicator.Start(); startErr != nil {
+						base.Warnf("Unable to start replication %s: %v", replicationID, startErr)
+					}
+				}
 			}
 		}
 	}
@@ -674,6 +739,58 @@ func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertCon
 	return created, m.updateCluster(addReplicationCallback)
 }
 
+func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state string) (*ReplicationStatus, error) {
+
+	updateReplicationStatusCallback := func(cluster *SGRCluster) (cancel bool, err error) {
+		replicationCfg, exists := cluster.Replications[replicationID]
+		if !exists {
+			return true, base.ErrNotFound
+		}
+
+		stateChangeErr := isValidStateChange(replicationCfg.State, state)
+		if stateChangeErr != nil {
+			return true, stateChangeErr
+		}
+
+		upsertReplication := &ReplicationUpsertConfig{
+			ID:    replicationID,
+			State: &state,
+		}
+		cluster.Replications[replicationID].Upsert(upsertReplication)
+
+		validateErr := cluster.Replications[replicationID].ValidateReplication(false)
+		if validateErr != nil {
+			return true, validateErr
+		}
+
+		cluster.RebalanceReplications()
+		return false, nil
+	}
+	err := m.updateCluster(updateReplicationStatusCallback)
+	if err != nil {
+		return nil, err
+	}
+	return m.GetReplicationStatus(replicationID)
+}
+
+func isValidStateChange(currentState, newState string) error {
+
+	switch newState {
+	case ReplicationStateRunning:
+		if currentState == ReplicationStateResetting {
+			return fmt.Errorf("Replication cannot be started until reset is complete")
+		}
+		return nil
+	case ReplicationStateStopped:
+		return nil
+	case ReplicationStateResetting:
+		if currentState == ReplicationStateRunning {
+			return fmt.Errorf("Replication must be stopped before it can be reset")
+		}
+	}
+	return nil
+}
+
 // DELETE _replication
 func (m *sgReplicateManager) DeleteReplication(replicationID string) error {
 	deleteReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
@@ -803,8 +920,10 @@ type ReplicationStatus struct {
 
 func (m *sgReplicateManager) GetReplicationStatus(replicationID string) (*ReplicationStatus, error) {
 
-	// Check if replication is active locally
-	replication, ok := m.activeReplications[replicationID]
+	// Check if replication is assigned locally
+	m.activeReplicatorsLock.RLock()
+	replication, ok := m.activeReplicators[replicationID]
+	m.activeReplicatorsLock.RUnlock()
 	if ok {
 		return replication.GetStatus(), nil
 	}
@@ -817,14 +936,23 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string) (*Replic
 	// TODO: generation of remote status pending CBG-909
 	return &ReplicationStatus{
 		ID:     replicationID,
-		Status: fmt.Sprintf("running on %s", replicationCfg.AssignedNode),
+		Status: fmt.Sprintf("%s on %s", replicationCfg.State, replicationCfg.AssignedNode),
 	}, nil
 
 }
 
-func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) error {
-	// TODO: CBG-911
-	return nil
+func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) (status *ReplicationStatus, err error) {
+
+	switch action {
+	case "reset":
+		return m.UpdateReplicationState(replicationID, ReplicationStateResetting)
+	case "stop":
+		return m.UpdateReplicationState(replicationID, ReplicationStateStopped)
+	case "start":
+		return m.UpdateReplicationState(replicationID, ReplicationStateRunning)
+	default:
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", status)
+	}
 }
 
 func (m *sgReplicateManager) GetReplicationStatusAll() ([]*ReplicationStatus, error) {
@@ -844,8 +972,6 @@ func (m *sgReplicateManager) GetReplicationStatusAll() ([]*ReplicationStatus, er
 		}
 		statuses = append(statuses, status)
 	}
-
-	// TODO: include adhoc replications
 
 	return statuses, nil
 }
