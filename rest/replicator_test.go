@@ -1450,6 +1450,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
 	fmt.Println("flushed bucket")
 
+	// prevent test bucket from being released back into pool upon close
+	rt1.testBucket = nil
 	rt1.Close()
 
 	// recreate rt1 with the now flushed tb1 bucket
@@ -1612,6 +1614,8 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	fmt.Println("flushed bucket")
 
+	// prevent test bucket from being released back into pool upon close
+	rt2.testBucket = nil
 	rt2.Close()
 
 	// recreate rt2, http server and update target URL in the replicator
