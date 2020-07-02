@@ -126,6 +126,7 @@ type DatabaseContextOptions struct {
 	DeltaSyncOptions          DeltaSyncOptions // Delta Sync Options
 	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions        SGReplicateOptions
+	SlowQueryWarningThreshold time.Duration
 }
 
 type SGReplicateOptions struct {

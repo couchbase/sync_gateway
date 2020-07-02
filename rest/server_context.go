@@ -82,11 +82,9 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 		couchbase.SetTcpKeepalive(true, *config.CouchbaseKeepaliveInterval)
 	}
 
-	slowQuery := kDefaultSlowQueryWarningThreshold
-	if config.SlowQueryWarningThreshold != nil {
-		slowQuery = *config.SlowQueryWarningThreshold
+	if config.SlowQueryWarningThreshold == nil {
+		config.SlowQueryWarningThreshold = base.IntPtr(kDefaultSlowQueryWarningThreshold)
 	}
-	base.SlowQueryWarningThreshold = time.Duration(slowQuery) * time.Millisecond
 
 	sc.startStatsLogger()
 
@@ -659,6 +657,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
 		},
+		SlowQueryWarningThreshold: time.Duration(*sc.config.SlowQueryWarningThreshold) * time.Millisecond,
 	}
 
 	return contextOptions, nil

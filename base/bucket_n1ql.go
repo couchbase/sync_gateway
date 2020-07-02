@@ -16,8 +16,6 @@ const IndexStateDeferred = "deferred" // bucket state value, as returned by SELE
 const IndexStatePending = "pending"   // bucket state value, as returned by SELECT FROM system:indexes.  Index has been created, build is in progress
 const PrimaryIndexName = "#primary"
 
-var SlowQueryWarningThreshold time.Duration
-
 // IndexOptions used to build the 'with' clause
 type N1qlIndexOptions struct {
 	NumReplica      uint `json:"num_replica,omitempty"`          // Number of replicas
@@ -405,8 +403,8 @@ func isTransientIndexerError(err error) bool {
 	return false
 }
 
-func SlowQueryLog(startTime time.Time, messageFormat string, args ...interface{}) {
-	if elapsed := time.Now().Sub(startTime); elapsed > SlowQueryWarningThreshold {
+func SlowQueryLog(startTime time.Time, threshold time.Duration, messageFormat string, args ...interface{}) {
+	if elapsed := time.Now().Sub(startTime); elapsed > threshold {
 		Infof(KeyQuery, messageFormat+" took "+elapsed.String(), args...)
 	}
 }
