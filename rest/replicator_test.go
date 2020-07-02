@@ -1350,8 +1350,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		t.Skipf("test requires a flushable bucket (Couchbase Server)")
 	}
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
+	if base.GTestBucketPool.NumUsableBuckets() < 4 {
+		t.Skipf("test requires at least 4 usable test buckets")
 	}
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
@@ -1444,19 +1444,12 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
 	assert.NoError(t, ar.Stop())
 
-	gocbBucket, ok := base.AsGoCBBucket(tb1)
-	require.True(t, ok)
-	require.NoError(t, gocbBucket.Flush())
-
-	fmt.Println("flushed bucket")
-
-	// prevent test bucket from being released back into pool upon close
-	rt1.testBucket = nil
+	// close rt1, and release the underlying bucket back to the pool.
 	rt1.Close()
 
-	// recreate rt1 with the now flushed tb1 bucket
+	// recreate rt1 with a new bucket
 	rt1 = NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		TestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 
@@ -1514,8 +1507,8 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		t.Skipf("test requires a flushable bucket (Couchbase Server)")
 	}
 
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
+	if base.GTestBucketPool.NumUsableBuckets() < 4 {
+		t.Skipf("test requires at least 4 usable test buckets")
 	}
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
@@ -1608,19 +1601,12 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	assert.NoError(t, ar.Stop())
 
-	gocbBucket, ok := base.AsGoCBBucket(tb2)
-	require.True(t, ok)
-	require.NoError(t, gocbBucket.Flush())
-
-	fmt.Println("flushed bucket")
-
-	// prevent test bucket from being released back into pool upon close
-	rt2.testBucket = nil
+	// close rt2, and release the underlying bucket back to the pool.
 	rt2.Close()
 
-	// recreate rt2, http server and update target URL in the replicator
+	// recreate rt2 with a new bucket, http server and update target URL in the replicator
 	rt2 = NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
