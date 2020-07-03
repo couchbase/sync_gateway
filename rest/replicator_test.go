@@ -1573,7 +1573,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 
@@ -1636,7 +1636,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 
