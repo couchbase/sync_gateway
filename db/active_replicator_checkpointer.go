@@ -172,7 +172,10 @@ func (c *Checkpointer) calculateCheckpointSeq() (seq string) {
 	return seq
 }
 
-const checkpointDocIDPrefix = "checkpoint/"
+const (
+	checkpointDocIDPrefix = "checkpoint/"
+	checkpointDocLastSeqKey = "last_sequence"
+)
 
 // fetchCheckpoints tries to fetch since values for the given replication by requesting a checkpoint on the local and remote.
 // If we fetch missing, or mismatched checkpoints, we'll pick the lower of the two, and roll back the higher checkpoint.
@@ -272,13 +275,13 @@ func (c *Checkpointer) getLocalCheckpoint() (seq, rev string, err error) {
 		return "", "", nil
 	}
 
-	return checkpointBody["last_sequence"].(string), checkpointBody[BodyRev].(string), nil
+	return checkpointBody[checkpointDocLastSeqKey].(string), checkpointBody[BodyRev].(string), nil
 }
 
 func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpoint(%v, %v)", seq, parentRev)
 
-	newRev, err = c.activeDB.putSpecial("local", checkpointDocIDPrefix+c.clientID, parentRev, Body{"last_sequence": seq})
+	newRev, err = c.activeDB.putSpecial("local", checkpointDocIDPrefix+c.clientID, parentRev, Body{checkpointDocLastSeqKey: seq})
 	if err != nil {
 		return "", err
 	}
