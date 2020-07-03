@@ -173,7 +173,7 @@ func (c *Checkpointer) calculateCheckpointSeq() (seq string) {
 }
 
 const (
-	checkpointDocIDPrefix = "checkpoint/"
+	checkpointDocIDPrefix   = "checkpoint/"
 	checkpointDocLastSeqKey = "last_sequence"
 )
 
