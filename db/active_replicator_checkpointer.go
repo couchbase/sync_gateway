@@ -121,7 +121,7 @@ func (c *Checkpointer) CheckpointNow() {
 
 	base.Tracef(base.KeyReplicate, "checkpointer: running")
 
-	seq := calculateCheckpointSeq(c.expectedSeqs, c.processedSeqs)
+	seq := c.calculateCheckpointSeq()
 	if seq == "" {
 		return
 	}
@@ -133,21 +133,24 @@ func (c *Checkpointer) CheckpointNow() {
 	}
 }
 
-func calculateCheckpointSeq(expectedSeqs []string, processedSeqs map[string]struct{}) (seq string) {
-	if len(expectedSeqs) == 0 {
+func (c *Checkpointer) calculateCheckpointSeq() (seq string) {
+	base.Tracef(base.KeyReplicate, "checkpointer: calculateCheckpointSeq(%v, %v)", c.expectedSeqs, c.processedSeqs)
+
+	if len(c.expectedSeqs) == 0 {
 		// nothing to do
 		return ""
 	}
 
 	// iterates over each (ordered) expected sequence and stops when we find the first sequence we've yet to process a rev message for
 	maxI := -1
-	for i, seq := range expectedSeqs {
-		if _, ok := processedSeqs[seq]; !ok {
+	for i, seq := range c.expectedSeqs {
+		if _, ok := c.processedSeqs[seq]; !ok {
 			base.Tracef(base.KeyReplicate, "checkpointer: couldn't find %v in processedSeqs", seq)
 			break
 		}
 
-		delete(processedSeqs, seq)
+		delete(c.processedSeqs, seq)
+		base.Tracef(base.KeyReplicate, "checkpointer: calculateCheckpointSeq removed seq %v from processedSeqs map %v", seq, c.processedSeqs)
 		maxI = i
 	}
 
@@ -156,14 +159,14 @@ func calculateCheckpointSeq(expectedSeqs []string, processedSeqs map[string]stru
 		return
 	}
 
-	seq = expectedSeqs[maxI]
+	seq = c.expectedSeqs[maxI]
 
-	if len(expectedSeqs)-1 == maxI {
+	if len(c.expectedSeqs)-1 == maxI {
 		// received full set, empty list
-		expectedSeqs = expectedSeqs[0:0]
+		c.expectedSeqs = c.expectedSeqs[0:0]
 	} else {
 		// trim sequence list for partially received set
-		expectedSeqs = expectedSeqs[maxI+1:]
+		c.expectedSeqs = c.expectedSeqs[maxI+1:]
 	}
 
 	return seq
