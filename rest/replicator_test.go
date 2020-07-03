@@ -1346,8 +1346,8 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 //   - Starts the replication again, and ensures that documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 4 {
-		t.Skipf("test requires at least 4 usable test buckets")
+	if base.GTestBucketPool.NumUsableBuckets() < 3 {
+		t.Skipf("test requires at least 3 usable test buckets")
 	}
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
@@ -1501,8 +1501,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 //   - Starts the replication again, and ensures that post-flush, documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
-	if base.GTestBucketPool.NumUsableBuckets() < 4 {
-		t.Skipf("test requires at least 4 usable test buckets")
+	if base.GTestBucketPool.NumUsableBuckets() < 3 {
+		t.Skipf("test requires at least 3 usable test buckets")
 	}
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
