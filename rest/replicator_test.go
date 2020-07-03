@@ -1342,13 +1342,9 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a document on rt2 which is pulled to rt1.
 //   - Checkpoints once finished.
-//   - Flushes the bucket behind rt1.
-//   - Starts the replication again, and ensures that post-flush, documents are re-replicated to it.
+//   - Recreates rt1 with a new bucket (to simulate a flush).
+//   - Starts the replication again, and ensures that documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skipf("test requires a flushable bucket (Couchbase Server)")
-	}
 
 	if base.GTestBucketPool.NumUsableBuckets() < 4 {
 		t.Skipf("test requires at least 4 usable test buckets")
@@ -1501,13 +1497,9 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a document on rt1 which is pushed to rt2.
 //   - Checkpoints once finished.
-//   - Flushes the bucket behind rt2.
+//   - Recreates rt2 with a new bucket (to simulate a flush).
 //   - Starts the replication again, and ensures that post-flush, documents are re-replicated to it.
 func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
-
-	if base.UnitTestUrlIsWalrus() {
-		t.Skipf("test requires a flushable bucket (Couchbase Server)")
-	}
 
 	if base.GTestBucketPool.NumUsableBuckets() < 4 {
 		t.Skipf("test requires at least 4 usable test buckets")
