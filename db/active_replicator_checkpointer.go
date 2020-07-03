@@ -104,7 +104,7 @@ func (c *Checkpointer) Start() {
 			c.CheckpointNow()
 
 			if exit {
-				base.Debugf(base.KeyReplicate, "checkpointer goroutine stopped")
+				base.DebugfCtx(c.ctx, base.KeyReplicate, "checkpointer goroutine stopped")
 				return
 			}
 		}
@@ -119,14 +119,14 @@ func (c *Checkpointer) CheckpointNow() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	base.Tracef(base.KeyReplicate, "checkpointer: running")
+	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: running")
 
 	seq := c.calculateCheckpointSeq()
 	if seq == "" {
 		return
 	}
 
-	base.Infof(base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
+	base.InfofCtx(c.ctx, base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
 	err := c.setCheckpoints(seq)
 	if err != nil {
 		base.Warnf("couldn't set checkpoints: %v", err)
@@ -134,7 +134,7 @@ func (c *Checkpointer) CheckpointNow() {
 }
 
 func (c *Checkpointer) calculateCheckpointSeq() (seq string) {
-	base.Tracef(base.KeyReplicate, "checkpointer: calculateCheckpointSeq(%v, %v)", c.expectedSeqs, c.processedSeqs)
+	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: calculateCheckpointSeq(%v, %v)", c.expectedSeqs, c.processedSeqs)
 
 	if len(c.expectedSeqs) == 0 {
 		// nothing to do
@@ -145,12 +145,12 @@ func (c *Checkpointer) calculateCheckpointSeq() (seq string) {
 	maxI := -1
 	for i, seq := range c.expectedSeqs {
 		if _, ok := c.processedSeqs[seq]; !ok {
-			base.Tracef(base.KeyReplicate, "checkpointer: couldn't find %v in processedSeqs", seq)
+			base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: couldn't find %v in processedSeqs", seq)
 			break
 		}
 
 		delete(c.processedSeqs, seq)
-		base.Tracef(base.KeyReplicate, "checkpointer: calculateCheckpointSeq removed seq %v from processedSeqs map %v", seq, c.processedSeqs)
+		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: calculateCheckpointSeq removed seq %v from processedSeqs map %v", seq, c.processedSeqs)
 		maxI = i
 	}
 
@@ -268,7 +268,7 @@ func (c *Checkpointer) getLocalCheckpoint() (seq, rev string, err error) {
 		if !base.IsKeyNotFoundError(c.activeDB.Bucket, err) {
 			return "", "", err
 		}
-		base.Debugf(base.KeyReplicate, "couldn't find existing local checkpoint for client %q", c.clientID)
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing local checkpoint for client %q", c.clientID)
 		return "", "", nil
 	}
 
@@ -304,7 +304,7 @@ func (c *Checkpointer) getRemoteCheckpoint() (seq, rev string, err error) {
 	}
 
 	if resp == nil {
-		base.Debugf(base.KeyReplicate, "couldn't find existing remote checkpoint for client %q", c.clientID)
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing remote checkpoint for client %q", c.clientID)
 		return "", "", nil
 	}
 
