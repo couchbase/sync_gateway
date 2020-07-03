@@ -126,7 +126,7 @@ func (c *Checkpointer) CheckpointNow() {
 		return
 	}
 
-	base.Tracef(base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
+	base.Infof(base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
 	err := c.setCheckpoints(seq)
 	if err != nil {
 		base.Warnf("couldn't set checkpoints: %v", err)
