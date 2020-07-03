@@ -1688,6 +1688,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		},
 		noAdminParty: true,
 	})
+	defer rt2.Close()
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -1779,8 +1780,12 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	// roll back checkpoint value to first one and remove the associated doc
 	err = rt2.Bucket().SetRaw(checkpointDocID, 0, firstCheckpoint)
 	assert.NoError(t, err)
-	err = rt2.Bucket().Delete(docID + "2")
+
+	rt2db, err := db.GetDatabase(rt2.GetDatabase(), nil)
+	require.NoError(t, err)
+	err = rt2db.Purge(docID + "2")
 	assert.NoError(t, err)
+
 	require.NoError(t, rt2.GetDatabase().FlushChannelCache())
 	rt2.GetDatabase().FlushRevisionCacheForTest()
 
