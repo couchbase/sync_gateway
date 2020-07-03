@@ -15,11 +15,8 @@ import (
 type Checkpointer struct {
 	clientID           string
 	blipSender         *blip.Sender
+	activeDB           *Database
 	checkpointInterval time.Duration
-	// lastCheckpointRevID is the last known checkpoint RevID.
-	lastCheckpointRevID string
-	// lastCheckpointSeq is the last checkpointed sequence
-	lastCheckpointSeq string
 	// lock guards the expectedSeqs slice, and processedSeqs map
 	lock sync.Mutex
 	// expectedSeqs is an ordered list of sequence IDs we expect to process revs for
@@ -27,16 +24,24 @@ type Checkpointer struct {
 	// processedSeqs is a map of sequence IDs we've processed revs for
 	processedSeqs map[string]struct{}
 	// ctx is used to stop the checkpointer goroutine
-	ctx                        context.Context
+	ctx context.Context
+	// lastRemoteCheckpointRevID is the last known remote checkpoint RevID.
+	lastRemoteCheckpointRevID string
+	// lastLocalCheckpointRevID is the last known local checkpoint RevID.
+	lastLocalCheckpointRevID string
+	// lastCheckpointSeq is the last checkpointed sequence
+	lastCheckpointSeq string
+
 	StatSetCheckpointTotal     *expvar.Int
 	StatGetCheckpointHitTotal  *expvar.Int
 	StatGetCheckpointMissTotal *expvar.Int
 }
 
-func NewCheckpointer(ctx context.Context, clientID string, blipSender *blip.Sender, checkpointInterval time.Duration) *Checkpointer {
+func NewCheckpointer(ctx context.Context, clientID string, blipSender *blip.Sender, activeDB *Database, checkpointInterval time.Duration) *Checkpointer {
 	return &Checkpointer{
 		clientID:                   clientID,
 		blipSender:                 blipSender,
+		activeDB:                   activeDB,
 		expectedSeqs:               make([]string, 0),
 		processedSeqs:              make(map[string]struct{}),
 		checkpointInterval:         checkpointInterval,
@@ -78,35 +83,6 @@ func (c *Checkpointer) AddExpectedSeq(seq ...string) {
 	c.lock.Unlock()
 }
 
-// GetCheckpoint tries to fetch a since value for the given replication by requesting a checkpoint.
-// If this fails, the function returns a zero value and false.
-func (c *Checkpointer) GetCheckpoint() (r GetSGR2CheckpointResponse) {
-	rq := GetSGR2CheckpointRequest{
-		Client: c.clientID,
-	}
-
-	if err := rq.Send(c.blipSender); err != nil {
-		base.Warnf("couldn't send GetCheckpoint request, starting from 0: %v", err)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	resp, err := rq.Response()
-	if err != nil {
-		base.Warnf("couldn't get response for GetCheckpoint request, starting from 0: %v", err)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	// checkpoint wasn't found (404)
-	if resp == nil {
-		base.Debugf(base.KeyReplicate, "couldn't find existing checkpoint for client %q, starting from 0", c.clientID)
-		c.StatGetCheckpointMissTotal.Add(1)
-		return GetSGR2CheckpointResponse{}
-	}
-
-	c.StatGetCheckpointHitTotal.Add(1)
-	return *resp
-}
-
 func (c *Checkpointer) Start() {
 	// Start a time-based checkpointer goroutine
 	go func() {
@@ -128,7 +104,7 @@ func (c *Checkpointer) Start() {
 			c.CheckpointNow()
 
 			if exit {
-				base.Debugf(base.KeyReplicate, "checkpointer goroutine stopped")
+				base.DebugfCtx(c.ctx, base.KeyReplicate, "checkpointer goroutine stopped")
 				return
 			}
 		}
@@ -143,32 +119,38 @@ func (c *Checkpointer) CheckpointNow() {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	base.Tracef(base.KeyReplicate, "checkpointer: running")
+	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: running")
 
-	seq := calculateCheckpointSeq(c.expectedSeqs, c.processedSeqs)
+	seq := c.calculateCheckpointSeq()
 	if seq == "" {
 		return
 	}
 
-	base.Tracef(base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
-	c.setCheckpoint(seq)
+	base.InfofCtx(c.ctx, base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
+	err := c.setCheckpoints(seq)
+	if err != nil {
+		base.Warnf("couldn't set checkpoints: %v", err)
+	}
 }
 
-func calculateCheckpointSeq(expectedSeqs []string, processedSeqs map[string]struct{}) (seq string) {
-	if len(expectedSeqs) == 0 {
+func (c *Checkpointer) calculateCheckpointSeq() (seq string) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: calculateCheckpointSeq(%v, %v)", c.expectedSeqs, c.processedSeqs)
+
+	if len(c.expectedSeqs) == 0 {
 		// nothing to do
 		return ""
 	}
 
 	// iterates over each (ordered) expected sequence and stops when we find the first sequence we've yet to process a rev message for
 	maxI := -1
-	for i, seq := range expectedSeqs {
-		if _, ok := processedSeqs[seq]; !ok {
-			base.Tracef(base.KeyReplicate, "checkpointer: couldn't find %v in processedSeqs", seq)
+	for i, seq := range c.expectedSeqs {
+		if _, ok := c.processedSeqs[seq]; !ok {
+			base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: couldn't find %v in processedSeqs", seq)
 			break
 		}
 
-		delete(processedSeqs, seq)
+		delete(c.processedSeqs, seq)
+		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: calculateCheckpointSeq removed seq %v from processedSeqs map %v", seq, c.processedSeqs)
 		maxI = i
 	}
 
@@ -177,42 +159,183 @@ func calculateCheckpointSeq(expectedSeqs []string, processedSeqs map[string]stru
 		return
 	}
 
-	seq = expectedSeqs[maxI]
+	seq = c.expectedSeqs[maxI]
 
-	if len(expectedSeqs)-1 == maxI {
+	if len(c.expectedSeqs)-1 == maxI {
 		// received full set, empty list
-		expectedSeqs = expectedSeqs[0:0]
+		c.expectedSeqs = c.expectedSeqs[0:0]
 	} else {
 		// trim sequence list for partially received set
-		expectedSeqs = expectedSeqs[maxI+1:]
+		c.expectedSeqs = c.expectedSeqs[maxI+1:]
 	}
 
 	return seq
 }
 
-func (c *Checkpointer) setCheckpoint(seq string) {
-	rq := SetSGR2CheckpointRequest{
-		Client: c.clientID,
-		Checkpoint: SGR2Checkpoint{
-			LastSequence: seq,
-		},
+const (
+	checkpointDocIDPrefix   = "checkpoint/"
+	checkpointDocLastSeqKey = "last_sequence"
+)
+
+// fetchCheckpoints tries to fetch since values for the given replication by requesting a checkpoint on the local and remote.
+// If we fetch missing, or mismatched checkpoints, we'll pick the lower of the two, and roll back the higher checkpoint.
+func (c *Checkpointer) fetchCheckpoints() error {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchCheckpoints()")
+
+	localSeq, localRev, err := c.getLocalCheckpoint()
+	if err != nil {
+		return err
 	}
-	if c.lastCheckpointRevID != "" {
-		rq.RevID = &c.lastCheckpointRevID
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %q %q", localSeq, localRev)
+	c.lastLocalCheckpointRevID = localRev
+
+	remoteSeq, remoteRev, err := c.getRemoteCheckpoint()
+	if err != nil {
+		return err
+	}
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %q %q", remoteSeq, remoteRev)
+	c.lastRemoteCheckpointRevID = remoteRev
+
+	// If localSeq and remoteSeq match, we'll use this value.
+	checkpointSeq := localSeq
+
+	// Determine the lowest sequence if they don't match
+	if localSeq != remoteSeq {
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "sequences mismatched, finding lowest of %q %q", localSeq, remoteSeq)
+		localSeqVal, err := parseIntegerSequenceID(localSeq)
+		if err != nil {
+			return err
+		}
+
+		remoteSeqVal, err := parseIntegerSequenceID(remoteSeq)
+		if err != nil {
+			return err
+		}
+
+		// roll local/remote checkpoint back to lowest of the two
+		if remoteSeqVal.Before(localSeqVal) {
+			checkpointSeq = remoteSeq
+			c.lastLocalCheckpointRevID, err = c.setLocalCheckpoint(checkpointSeq, c.lastLocalCheckpointRevID)
+			if err != nil {
+				return err
+			}
+		} else {
+			checkpointSeq = localSeq
+			c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpoint(checkpointSeq, c.lastRemoteCheckpointRevID)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if checkpointSeq == "" {
+		c.StatGetCheckpointMissTotal.Add(1)
+	} else {
+		c.StatGetCheckpointHitTotal.Add(1)
+	}
+
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", checkpointSeq)
+	c.lastCheckpointSeq = checkpointSeq
+
+	return nil
+}
+
+func (c *Checkpointer) setCheckpoints(seq string) error {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "setCheckpoints(%v)", seq)
+
+	newLocalRev, err := c.setLocalCheckpoint(seq, c.lastLocalCheckpointRevID)
+	if err != nil {
+		return err
+	}
+	c.lastLocalCheckpointRevID = newLocalRev
+
+	newRemoteRev, err := c.setRemoteCheckpoint(seq, c.lastRemoteCheckpointRevID)
+	if err != nil {
+		return err
+	}
+	c.lastRemoteCheckpointRevID = newRemoteRev
+
+	c.lastCheckpointSeq = seq
+	c.StatSetCheckpointTotal.Add(1)
+
+	return nil
+}
+
+// getLocalCheckpoint returns the sequence and rev for the local checkpoint.
+// if the checkpoint does not exist, returns empty sequence and rev.
+func (c *Checkpointer) getLocalCheckpoint() (seq, rev string, err error) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "getLocalCheckpoint")
+
+	checkpointBody, err := c.activeDB.GetSpecial("local", checkpointDocIDPrefix+c.clientID)
+	if err != nil {
+		if !base.IsKeyNotFoundError(c.activeDB.Bucket, err) {
+			return "", "", err
+		}
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing local checkpoint for client %q", c.clientID)
+		return "", "", nil
+	}
+
+	return checkpointBody[checkpointDocLastSeqKey].(string), checkpointBody[BodyRev].(string), nil
+}
+
+func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string, err error) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpoint(%v, %v)", seq, parentRev)
+
+	newRev, err = c.activeDB.putSpecial("local", checkpointDocIDPrefix+c.clientID, parentRev, Body{checkpointDocLastSeqKey: seq})
+	if err != nil {
+		return "", err
+	}
+	return newRev, nil
+}
+
+// getRemoteCheckpoint returns the sequence and rev for the remote checkpoint.
+// if the checkpoint does not exist, returns empty sequence and rev.
+func (c *Checkpointer) getRemoteCheckpoint() (seq, rev string, err error) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "getRemoteCheckpoint")
+
+	rq := GetSGR2CheckpointRequest{
+		Client: c.clientID,
 	}
 
 	if err := rq.Send(c.blipSender); err != nil {
-		base.Warnf("couldn't send SetCheckpoint request: %v", err)
-		return
+		return "", "", err
 	}
 
 	resp, err := rq.Response()
 	if err != nil {
-		base.Warnf("couldn't get response for SetCheckpoint request: %v", err)
-		return
+		return "", "", err
 	}
 
-	c.lastCheckpointRevID = resp.RevID
-	c.lastCheckpointSeq = seq
-	c.StatSetCheckpointTotal.Add(1)
+	if resp == nil {
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing remote checkpoint for client %q", c.clientID)
+		return "", "", nil
+	}
+
+	return resp.LastSeq, resp.RevID, nil
+}
+
+func (c *Checkpointer) setRemoteCheckpoint(seq, parentRev string) (newRev string, err error) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "setRemoteCheckpoint(%v, %v)", seq, parentRev)
+
+	rq := SetSGR2CheckpointRequest{
+		Client: c.clientID,
+		Checkpoint: SGR2CheckpointDoc{
+			LastSequence: seq,
+		},
+	}
+
+	if parentRev != "" {
+		rq.RevID = &parentRev
+	}
+
+	if err := rq.Send(c.blipSender); err != nil {
+		return "", err
+	}
+
+	resp, err := rq.Response()
+	if err != nil {
+		return "", err
+	}
+
+	return resp.RevID, nil
 }
