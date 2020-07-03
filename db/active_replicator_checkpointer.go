@@ -172,8 +172,7 @@ func calculateCheckpointSeq(expectedSeqs []string, processedSeqs map[string]stru
 const checkpointDocIDPrefix = "checkpoint/"
 
 // fetchCheckpoints tries to fetch since values for the given replication by requesting a checkpoint on the local and remote.
-// If we fail to fetch checkpoints, we remove any existing checkpoints, and start from zero.
-// If we fetch mismatched checkpoints, we'll pick the lower of the two, and remove the higher checkpoint.
+// If we fetch missing, or mismatched checkpoints, we'll pick the lower of the two, and roll back the higher checkpoint.
 func (c *Checkpointer) fetchCheckpoints() error {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchCheckpoints()")
 
