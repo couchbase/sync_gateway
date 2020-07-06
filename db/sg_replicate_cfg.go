@@ -905,19 +905,17 @@ func (a NodesByReplicationCount) Less(i, j int) bool {
 
 // ReplicationStatus is used by the _replicationStatus REST API endpoints
 type ReplicationStatus struct {
-	ID                      string `json:"replication_id"`
-	DocsRead                int64  `json:"docs_read"`
-	DocsWritten             int64  `json:"docs_written"`
-	DocsPurged              int64  `json:"docs_purged,omitempty"`
-	DocWriteFailures        int64  `json:"doc_write_failures"`
-	Status                  string `json:"status"`
-	RejectedRemote          int64  `json:"rejected_by_remote"`
-	RejectedLocal           int64  `json:"rejected_by_local"`
-	LastSeqPull             string `json:"last_seq_pull,omitempty"`
-	LastSeqCheckpointedPull string `json:"last_seq_checkpointed_pull,omitempty"`
-	LastSeqPush             string `json:"last_seq_push,omitempty"`
-	LastSeqCheckpointedPush string `json:"last_seq_checkpointed_push,omitempty"`
-	ErrorMessage            string `json:"error_message,omitempty"`
+	ID               string `json:"replication_id"`
+	DocsRead         int64  `json:"docs_read"`
+	DocsWritten      int64  `json:"docs_written"`
+	DocsPurged       int64  `json:"docs_purged,omitempty"`
+	DocWriteFailures int64  `json:"doc_write_failures"`
+	Status           string `json:"status"`
+	RejectedRemote   int64  `json:"rejected_by_remote"`
+	RejectedLocal    int64  `json:"rejected_by_local"`
+	LastSeqPull      string `json:"last_seq_pull,omitempty"`
+	LastSeqPush      string `json:"last_seq_push,omitempty"`
+	ErrorMessage     string `json:"error_message,omitempty"`
 }
 
 func (m *sgReplicateManager) GetReplicationStatus(replicationID string) (*ReplicationStatus, error) {

@@ -145,13 +145,8 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
 		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map %v", removeSeq, c.processedSeqs)
 	}
 
-	if len(c.expectedSeqs)-1 == maxI {
-		// received full set, empty expectedSeqs list
-		c.expectedSeqs = c.expectedSeqs[0:0]
-	} else {
-		// trim expectedSeqs list for partially received set
-		c.expectedSeqs = c.expectedSeqs[maxI+1:]
-	}
+	// trim expectedSeqs list for all processed seqs
+	c.expectedSeqs = c.expectedSeqs[maxI+1:]
 
 	return safeSeq
 }

@@ -194,7 +194,6 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
-	assert.Equal(t, "", ar.GetStatus().LastSeqCheckpointedPull)
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
@@ -212,12 +211,6 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
 
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
-	assert.Equal(t, "", ar.GetStatus().LastSeqCheckpointedPull)
-
-	ar.Pull.Checkpointer.CheckpointNow()
-
-	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
-	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqCheckpointedPull)
 }
 
 // TestActiveReplicatorPullBasic:
@@ -453,7 +446,6 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
 	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
-	assert.Equal(t, "", ar.GetStatus().LastSeqCheckpointedPush)
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
@@ -471,12 +463,6 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 
 	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
-	assert.Equal(t, "", ar.GetStatus().LastSeqCheckpointedPush)
-
-	ar.Push.Checkpointer.CheckpointNow()
-
-	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
-	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqCheckpointedPush)
 }
 
 // TestActiveReplicatorPushFromCheckpoint:
