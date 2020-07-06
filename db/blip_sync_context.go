@@ -336,32 +336,34 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 			resp := outrq.Response() // blocks till reply is received
 
 			base.TracefCtx(bsc.loggingCtx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
-			bsc.replicationStats.SendRevCount.Add(1)
+
+			if resp.Type() == blip.ErrorType {
+				bsc.replicationStats.SendRevErrorTotal.Add(1)
+				respBody, _ := resp.Body()
+				base.WarnfCtx(bsc.loggingCtx, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
+
+				if resp.Properties["Error-Domain"] == "HTTP" {
+					switch resp.Properties["Error-Code"] {
+					case "409":
+						bsc.replicationStats.SendRevErrorConflictCount.Add(1)
+					case "403":
+						bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
+					case "500":
+						// runtime exceptions return 500 status codes, but we have no other way to determine if this 500 error was caused by the sync-function than matching on the error message.
+						if bytes.Contains(respBody, []byte("JS sync function")) {
+							bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
+						} else {
+							bsc.replicationStats.SendRevErrorOtherCount.Add(1)
+						}
+					}
+				}
+			} else {
+				bsc.replicationStats.SendRevCount.Add(1)
+			}
 
 			bsc.removeAllowedAttachments(attDigests)
 
 			if bsc.postSendRevisionResponseCallback != nil {
-				if resp.Type() == blip.ErrorType {
-					bsc.replicationStats.SendRevErrorTotal.Add(1)
-					respBody, _ := resp.Body()
-					base.WarnfCtx(bsc.loggingCtx, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
-
-					if resp.Properties["Error-Domain"] == "HTTP" {
-						switch resp.Properties["Error-Code"] {
-						case "409":
-							bsc.replicationStats.SendRevErrorConflictCount.Add(1)
-						case "403":
-							bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
-						case "500":
-							// runtime exceptions return 500 status codes, but we have no other way to determine if this 500 error was caused by the sync-function than matching on the error message.
-							if bytes.Contains(respBody, []byte("JS sync function")) {
-								bsc.replicationStats.SendRevErrorRejectedCount.Add(1)
-							} else {
-								bsc.replicationStats.SendRevErrorOtherCount.Add(1)
-							}
-						}
-					}
-				}
 				bsc.postSendRevisionResponseCallback(seq.String())
 			}
 		}()
