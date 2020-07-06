@@ -172,14 +172,14 @@ func (c *Checkpointer) _calculateSafeExpectedSeqsIdx() int {
 	return safeIdx
 }
 
-// calculateSafeProcessedSeq returns the sequence last processed that is able to be checkpointed.
+// calculateSafeProcessedSeq returns the sequence last processed that is able to be checkpointed, or the last checkpointed sequence.
 func (c *Checkpointer) calculateSafeProcessedSeq() string {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	idx := c._calculateSafeExpectedSeqsIdx()
 	if idx == -1 {
-		return ""
+		return c.lastCheckpointSeq
 	}
 
 	return c.expectedSeqs[idx]
