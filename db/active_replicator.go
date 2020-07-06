@@ -138,6 +138,7 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 		pushStats := ar.Push.replicationStats
 		status.DocsWritten = pushStats.SendRevCount.Value()
 		status.DocWriteFailures = pushStats.SendRevErrorTotal.Value()
+		status.DocWriteConflict = pushStats.SendRevErrorConflictCount.Value()
 		status.RejectedRemote = pushStats.SendRevErrorRejectedCount.Value()
 		if ar.Push.Checkpointer != nil {
 			status.LastSeqPush = ar.Push.Checkpointer.calculateSafeProcessedSeq()

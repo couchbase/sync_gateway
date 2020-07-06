@@ -910,6 +910,7 @@ type ReplicationStatus struct {
 	DocsWritten      int64  `json:"docs_written"`
 	DocsPurged       int64  `json:"docs_purged,omitempty"`
 	DocWriteFailures int64  `json:"doc_write_failures"`
+	DocWriteConflict int64  `json:"doc_write_conflict"`
 	Status           string `json:"status"`
 	RejectedRemote   int64  `json:"rejected_by_remote"`
 	RejectedLocal    int64  `json:"rejected_by_local"`
