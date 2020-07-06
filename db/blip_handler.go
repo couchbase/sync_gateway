@@ -505,7 +505,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
-		return bsc.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, properties)
+		return bsc.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, properties, seq)
 	}
 
 	if revDelta == nil {
@@ -527,7 +527,7 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
 		rq.String(), base.UD(rq.Properties[NorevMessageId]), rq.Properties[NorevMessageRev], rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
-	// Couchbase Lite always sense noreply=true for norev profiles
+	// Couchbase Lite always sends noreply=true for norev profiles
 	// but for testing purposes, it's useful to know which handler processed the message
 	if !rq.NoReply() && rq.Properties[SGShowHandler] == "true" {
 		response := rq.Response()
@@ -814,20 +814,31 @@ func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
 }
 
 func (bsc *BlipSyncContext) addAllowedAttachments(attDigests []string) {
+	if len(attDigests) == 0 {
+		return
+	}
+
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
+
 	if bsc.allowedAttachments == nil {
 		bsc.allowedAttachments = make(map[string]int, 100)
 	}
 	for _, digest := range attDigests {
 		bsc.allowedAttachments[digest] = bsc.allowedAttachments[digest] + 1
 	}
+
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, bsc.allowedAttachments)
 }
 
 func (bsc *BlipSyncContext) removeAllowedAttachments(attDigests []string) {
+	if len(attDigests) == 0 {
+		return
+	}
+
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
+
 	for _, digest := range attDigests {
 		if n := bsc.allowedAttachments[digest]; n > 1 {
 			bsc.allowedAttachments[digest] = n - 1
