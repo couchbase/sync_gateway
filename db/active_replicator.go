@@ -131,7 +131,7 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 		status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
 		if ar.Pull.Checkpointer != nil {
 			status.LastSeqPull = ar.Pull.Checkpointer.calculateSafeProcessedSeq()
-			status.LastSeqPullCheckpointed = ar.Pull.Checkpointer.lastCheckpointSeq
+			status.LastSeqCheckpointedPull = ar.Pull.Checkpointer.lastCheckpointSeq
 		}
 	}
 
@@ -141,7 +141,7 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 		status.DocWriteFailures = pushStats.SendRevErrorCount.Value()
 		if ar.Push.Checkpointer != nil {
 			status.LastSeqPush = ar.Push.Checkpointer.calculateSafeProcessedSeq()
-			status.LastSeqPushCheckpointed = ar.Push.Checkpointer.lastCheckpointSeq
+			status.LastSeqCheckpointedPush = ar.Push.Checkpointer.lastCheckpointSeq
 		}
 		// TODO: This is another scenario where we need to send a rev without noreply set to get the returned error
 		// status.RejectedRemote = pushStats.SendRevSyncFunctionErrorCount.Value()

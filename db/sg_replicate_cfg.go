@@ -914,9 +914,9 @@ type ReplicationStatus struct {
 	RejectedRemote          int64  `json:"rejected_by_remote"`
 	RejectedLocal           int64  `json:"rejected_by_local"`
 	LastSeqPull             string `json:"last_seq_pull,omitempty"`
-	LastSeqPullCheckpointed string `json:"last_seq_pull_checkpointed,omitempty"`
+	LastSeqCheckpointedPull string `json:"last_seq_checkpointed_pull,omitempty"`
 	LastSeqPush             string `json:"last_seq_push,omitempty"`
-	LastSeqPushCheckpointed string `json:"last_seq_push_checkpointed,omitempty"`
+	LastSeqCheckpointedPush string `json:"last_seq_checkpointed_push,omitempty"`
 	ErrorMessage            string `json:"error_message,omitempty"`
 }
 
