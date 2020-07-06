@@ -258,11 +258,24 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				}
 			}
 
+			var responseCallback func(resp *blip.Message)
+			if bsc.postSendRevisionResponseCallback != nil {
+				responseCallback = func(resp *blip.Message) {
+					if resp.Type() == blip.ResponseType {
+						bsc.postSendRevisionResponseCallback(seq.String())
+					} else {
+						respBody, _ := response.Body()
+						base.WarnfCtx(bsc.loggingCtx, "error %s in response to rev: %s", response.Properties["Error-Code"], respBody)
+						// TODO: What do we want to do with SGR2 checkpointing in this case? By never calling the callback, we're effectively preventing all future sequences from being checkpointed, but don't have a way to retry or recover.
+					}
+				}
+			}
+
 			var err error
 			if deltaSrcRevID != "" {
-				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDb, responseCallback)
 			} else {
-				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb, responseCallback)
 			}
 			if err != nil {
 				return err
@@ -273,13 +286,6 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 			if bsc.preSendRevisionResponseCallback != nil {
 				bsc.preSendRevisionResponseCallback(seq.String())
-			}
-
-			// TODO: CBG-923 - Await a successful response before calling postSendRevisionCallback
-			//       This is currently not available due to the NOREPLY flag being set on rev messages.
-
-			if bsc.postSendRevisionResponseCallback != nil {
-				bsc.postSendRevisionResponseCallback(seq.String())
 			}
 		}
 	}
@@ -294,7 +300,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, bodyBytes []byte, attDigests []string, properties blip.Properties) error {
+func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, bodyBytes []byte, attDigests []string, properties blip.Properties, responseCallback func(resp *blip.Message)) error {
 
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
@@ -314,17 +320,29 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	}
 	bsc.dbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
 
-	base.Tracef(base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attDigests)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attDigests)
 
 	// TODO: When CBG-881 is implemented, update this stat and SendRevCountError based on sendRev response
 	bsc.replicationStats.SendRevCount.Add(1)
 
-	if len(attDigests) > 0 {
+	// asyncronously wait for a response if we have attachment digests to verify, or if we have a registered callback.
+	verifyAttachments := len(attDigests) > 0
+	awaitResponse := responseCallback != nil || verifyAttachments
+
+	if verifyAttachments {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
 		bsc.addAllowedAttachments(attDigests)
-		if !bsc.sendBLIPMessage(sender, outrq.Message) {
-			return ErrClosedBLIPSender
-		}
+	}
+
+	if !awaitResponse {
+		outrq.SetNoReply(true)
+	}
+
+	if !bsc.sendBLIPMessage(sender, outrq.Message) {
+		return ErrClosedBLIPSender
+	}
+
+	if awaitResponse {
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
@@ -332,22 +350,14 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 					bsc.Close()
 				}
 			}()
-			defer bsc.removeAllowedAttachments(attDigests)
-			outrq.Response() // blocks till reply is received
-			base.Tracef(base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
-		}()
-	} else {
-		outrq.SetNoReply(true)
-		if !bsc.sendBLIPMessage(sender, outrq.Message) {
-			return ErrClosedBLIPSender
-		}
-	}
 
-	if response := outrq.Response(); response != nil {
-		if response.Type() == blip.ErrorType {
-			errorBody, _ := response.Body()
-			base.WarnfCtx(bsc.loggingCtx, "Client returned error in rev response for doc %q / %q: %s", base.UD(docID), revID, errorBody)
-		}
+			resp := outrq.Response() // blocks till reply is received
+			base.TracefCtx(bsc.loggingCtx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
+			if verifyAttachments {
+				bsc.removeAllowedAttachments(attDigests)
+			}
+			responseCallback(resp)
+		}()
 	}
 
 	return nil
@@ -396,13 +406,13 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	}
 }
 
-func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID) error {
+func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID string, revDelta *RevisionDelta, seq SequenceID, responseCallback func(resp *blip.Message)) error {
 
 	properties := blipRevMessageProperties(revDelta.RevisionHistory, revDelta.ToDeleted, seq)
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentDigests, properties)
+	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentDigests, properties, responseCallback)
 }
 
 // sendBLIPMessage is a simple wrapper around all sent BLIP messages
@@ -437,7 +447,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
+func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database, responseCallback func(resp *blip.Message)) error {
 	rev, err := handleChangesResponseDb.GetRev(docID, revID, true, nil)
 	if err != nil {
 		return bsc.sendNoRev(sender, docID, revID, err)
@@ -476,7 +486,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
 	attDigests := AttachmentDigests(rev.Attachments)
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), attDigests)
-	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties)
+	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties, responseCallback)
 }
 
 // InitializeStats must be run before replication is started - there is no synchronization on replicationStats
