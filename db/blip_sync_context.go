@@ -261,13 +261,11 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 			var responseCallback func(resp *blip.Message)
 			if bsc.postSendRevisionResponseCallback != nil {
 				responseCallback = func(resp *blip.Message) {
-					if resp.Type() == blip.ResponseType {
-						bsc.postSendRevisionResponseCallback(seq.String())
-					} else {
+					if resp.Type() != blip.ResponseType {
 						respBody, _ := response.Body()
 						base.WarnfCtx(bsc.loggingCtx, "error %s in response to rev: %s", response.Properties["Error-Code"], respBody)
-						// TODO: What do we want to do with SGR2 checkpointing in this case? By never calling the callback, we're effectively preventing all future sequences from being checkpointed, but don't have a way to retry or recover.
 					}
+					bsc.postSendRevisionResponseCallback(seq.String())
 				}
 			}
 
