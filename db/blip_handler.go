@@ -486,7 +486,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 //////// DOCUMENTS:
 
-func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database, responseCallback func(resp *blip.Message)) error {
+func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
 
 	bsc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
 
@@ -496,25 +496,25 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 	} else if base.IsDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb, responseCallback)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	} else if err != nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb, responseCallback)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	}
 
 	if redactedRev != nil {
 		history := toHistory(redactedRev.History, knownRevs, maxHistory)
 		properties := blipRevMessageProperties(history, redactedRev.Deleted, seq)
-		return bsc.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, properties, responseCallback)
+		return bsc.sendRevisionWithProperties(sender, docID, revID, redactedRev.BodyBytes, nil, properties, seq)
 	}
 
 	if revDelta == nil {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Falling back to full body replication. Couldn't get delta from %s to %s for key %s", deltaSrcRevID, revID, base.UD(docID))
-		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb, responseCallback)
+		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "docID: %s - delta: %v", base.UD(docID), base.UD(string(revDelta.DeltaBytes)))
-	if err := bsc.sendDelta(sender, docID, deltaSrcRevID, revDelta, seq, responseCallback); err != nil {
+	if err := bsc.sendDelta(sender, docID, deltaSrcRevID, revDelta, seq); err != nil {
 		return err
 	}
 
@@ -814,20 +814,31 @@ func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
 }
 
 func (bsc *BlipSyncContext) addAllowedAttachments(attDigests []string) {
+	if len(attDigests) == 0 {
+		return
+	}
+
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
+
 	if bsc.allowedAttachments == nil {
 		bsc.allowedAttachments = make(map[string]int, 100)
 	}
 	for _, digest := range attDigests {
 		bsc.allowedAttachments[digest] = bsc.allowedAttachments[digest] + 1
 	}
+
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, bsc.allowedAttachments)
 }
 
 func (bsc *BlipSyncContext) removeAllowedAttachments(attDigests []string) {
+	if len(attDigests) == 0 {
+		return
+	}
+
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
+
 	for _, digest := range attDigests {
 		if n := bsc.allowedAttachments[digest]; n > 1 {
 			bsc.allowedAttachments[digest] = n - 1
