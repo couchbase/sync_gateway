@@ -86,7 +86,6 @@ func (c *Checkpointer) AddExpectedSeq(seq ...string) {
 func (c *Checkpointer) Start() {
 	// Start a time-based checkpointer goroutine
 	go func() {
-		var exit bool
 		checkpointInterval := defaultCheckpointInterval
 		if c.checkpointInterval > 0 {
 			checkpointInterval = c.checkpointInterval
@@ -96,14 +95,8 @@ func (c *Checkpointer) Start() {
 		for {
 			select {
 			case <-ticker.C:
+				c.CheckpointNow()
 			case <-c.ctx.Done():
-				exit = true
-				// parent context stopped stopped, set a final checkpoint before stopping this goroutine
-			}
-
-			c.CheckpointNow()
-
-			if exit {
 				base.DebugfCtx(c.ctx, base.KeyReplicate, "checkpointer goroutine stopped")
 				return
 			}
@@ -121,7 +114,7 @@ func (c *Checkpointer) CheckpointNow() {
 
 	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: running")
 
-	seq := c.calculateCheckpointSeq()
+	seq := c._updateCheckpointLists()
 	if seq == "" {
 		return
 	}
@@ -133,43 +126,58 @@ func (c *Checkpointer) CheckpointNow() {
 	}
 }
 
-func (c *Checkpointer) calculateCheckpointSeq() (seq string) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: calculateCheckpointSeq(%v, %v)", c.expectedSeqs, c.processedSeqs)
+// _updateCheckpointLists determines the highest checkpointable sequence, and trims the processedSeqs/expectedSeqs lists up to this point.
+func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists(expectedSeqs: %v, procssedSeqs: %v)", c.expectedSeqs, c.processedSeqs)
 
-	if len(c.expectedSeqs) == 0 {
+	maxI := c._calculateSafeExpectedSeqsIdx()
+	if maxI == -1 {
 		// nothing to do
 		return ""
 	}
 
+	safeSeq = c.expectedSeqs[maxI]
+
+	// removes to-be checkpointed sequences from processedSeqs list
+	for i := 0; i < maxI; i++ {
+		removeSeq := c.expectedSeqs[i]
+		delete(c.processedSeqs, removeSeq)
+		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map %v", removeSeq, c.processedSeqs)
+	}
+
+	// trim expectedSeqs list for all processed seqs
+	c.expectedSeqs = c.expectedSeqs[maxI+1:]
+
+	return safeSeq
+}
+
+// _calculateSafeExpectedSeqsIdx returns an index into expectedSeqs which is safe to checkpoint.
+// Returns -1 if no sequence in the list is able to be checkpointed.
+func (c *Checkpointer) _calculateSafeExpectedSeqsIdx() int {
+	safeIdx := -1
+
 	// iterates over each (ordered) expected sequence and stops when we find the first sequence we've yet to process a rev message for
-	maxI := -1
 	for i, seq := range c.expectedSeqs {
 		if _, ok := c.processedSeqs[seq]; !ok {
-			base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: couldn't find %v in processedSeqs", seq)
 			break
 		}
-
-		delete(c.processedSeqs, seq)
-		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: calculateCheckpointSeq removed seq %v from processedSeqs map %v", seq, c.processedSeqs)
-		maxI = i
+		safeIdx = i
 	}
 
-	// the first seq we expected hasn't arrived yet, so can't checkpoint anything
-	if maxI < 0 {
-		return
+	return safeIdx
+}
+
+// calculateSafeProcessedSeq returns the sequence last processed that is able to be checkpointed, or the last checkpointed sequence.
+func (c *Checkpointer) calculateSafeProcessedSeq() string {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	idx := c._calculateSafeExpectedSeqsIdx()
+	if idx == -1 {
+		return c.lastCheckpointSeq
 	}
 
-	seq = c.expectedSeqs[maxI]
-
-	if len(c.expectedSeqs)-1 == maxI {
-		// received full set, empty list
-		c.expectedSeqs = c.expectedSeqs[0:0]
-	} else {
-		// trim sequence list for partially received set
-		c.expectedSeqs = c.expectedSeqs[maxI+1:]
-	}
-
-	return seq
+	return c.expectedSeqs[idx]
 }
 
 const (

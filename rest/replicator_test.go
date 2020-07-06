@@ -161,6 +161,9 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
+	remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -190,6 +193,8 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
+	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
+
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
 
@@ -204,6 +209,8 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
 // TestActiveReplicatorPullBasic:
@@ -414,6 +421,9 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
+	localDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -435,6 +445,8 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
+	assert.Equal(t, "", ar.GetStatus().LastSeqPush)
+
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
 
@@ -444,11 +456,13 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
 }
 
 // TestActiveReplicatorPushFromCheckpoint:
