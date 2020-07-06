@@ -227,8 +227,8 @@ const (
 func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (results gocb.QueryResults, err error) {
 
 	startTime := time.Now()
-	if base.SlowQueryWarningThreshold > 0 {
-		defer base.SlowQueryLog(startTime, "N1QL Query(%q)", queryName)
+	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
+		defer base.SlowQueryLog(startTime, threshold, "N1QL Query(%q)", queryName)
 	}
 
 	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
@@ -250,8 +250,8 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string, params map[string]interface{}) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
-	if base.SlowQueryWarningThreshold > 0 {
-		defer base.SlowQueryLog(startTime, "View Query (%s.%s)", ddoc, viewName)
+	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
+		defer base.SlowQueryLog(startTime, threshold, "View Query (%s.%s)", ddoc, viewName)
 	}
 
 	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
