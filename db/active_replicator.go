@@ -164,7 +164,7 @@ func connect(idSuffix string, config *ActiveReplicatorConfig, replicationStats *
 		bsc.sgCanUseDeltas = false
 	}
 
-	blipSender, err = blipSync(*config.PassiveDBURL, blipContext, config.InsecureSkipVerify, !config.BlipsyncNoRetry)
+	blipSender, err = blipSync(*config.PassiveDBURL, blipContext, config.InsecureSkipVerify, config.BlipsyncNoRetry)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -173,7 +173,7 @@ func connect(idSuffix string, config *ActiveReplicatorConfig, replicationStats *
 }
 
 // blipSync opens a connection to the target, and returns a blip.Sender to send messages over.
-func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool, retry bool) (*blip.Sender, error) {
+func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool, noRetry bool) (*blip.Sender, error) {
 	// switch to websocket protocol scheme
 	if target.Scheme == "http" {
 		target.Scheme = "ws"
@@ -197,7 +197,7 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		config.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(target.User.String())))
 	}
 
-	if !retry {
+	if noRetry {
 		return blipContext.DialConfig(config)
 	}
 
