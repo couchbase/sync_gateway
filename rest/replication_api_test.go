@@ -160,6 +160,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &statusResponse)
 	require.NoError(t, err)
 	assert.Equal(t, "replication1", statusResponse.ID)
+	assert.True(t, statusResponse.Config == nil)
 
 	// PUT replication2
 	replication2Config := db.ReplicationConfig{
@@ -176,7 +177,66 @@ func TestReplicationStatusAPI(t *testing.T) {
 	var allStatusResponse []*db.ReplicationStatus
 	err = json.Unmarshal(response.BodyBytes(), &allStatusResponse)
 	require.NoError(t, err)
-	assert.Equal(t, len(allStatusResponse), 2)
+	require.Equal(t, len(allStatusResponse), 2)
+	assert.True(t, allStatusResponse[0].Config == nil)
+	assert.True(t, allStatusResponse[1].Config == nil)
+
+	// PUT replication status, no action
+	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1", "")
+	assertStatus(t, response, http.StatusBadRequest)
+
+	// PUT replication status with action
+	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=start", "")
+	assertStatus(t, response, http.StatusOK)
+
+}
+
+func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
+
+	var rt = NewRestTester(t, nil)
+	defer rt.Close()
+
+	// GET replication status for non-existent replication ID
+	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1?includeConfig=true", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	replicationConfig := db.ReplicationConfig{
+		ID:        "replication1",
+		Remote:    "http://remote:4984/db",
+		Direction: "pull",
+	}
+
+	// PUT replication1
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, replicationConfig))
+	assertStatus(t, response, http.StatusCreated)
+
+	// GET replication status for replication1
+	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1?includeConfig=true", "")
+	assertStatus(t, response, http.StatusOK)
+	var statusResponse db.ReplicationStatus
+	err := json.Unmarshal(response.BodyBytes(), &statusResponse)
+	require.NoError(t, err)
+	assert.Equal(t, "replication1", statusResponse.ID)
+	assert.True(t, statusResponse.Config != nil)
+
+	// PUT replication2
+	replication2Config := db.ReplicationConfig{
+		ID:        "replication2",
+		Remote:    "http://remote:4984/db",
+		Direction: "Pull",
+	}
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, replication2Config))
+	assertStatus(t, response, http.StatusCreated)
+
+	// GET replication status for all replications
+	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/?includeConfig=true", "")
+	assertStatus(t, response, http.StatusOK)
+	var allStatusResponse []*db.ReplicationStatus
+	err = json.Unmarshal(response.BodyBytes(), &allStatusResponse)
+	require.NoError(t, err)
+	require.Equal(t, len(allStatusResponse), 2)
+	assert.True(t, allStatusResponse[0].Config != nil)
+	assert.True(t, allStatusResponse[1].Config != nil)
 
 	// PUT replication status, no action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1", "")

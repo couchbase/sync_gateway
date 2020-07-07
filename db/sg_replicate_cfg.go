@@ -770,7 +770,7 @@ func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state 
 	if err != nil {
 		return nil, err
 	}
-	return m.GetReplicationStatus(replicationID)
+	return m.GetReplicationStatus(replicationID, false)
 }
 
 func isValidStateChange(currentState, newState string) error {
@@ -905,41 +905,55 @@ func (a NodesByReplicationCount) Less(i, j int) bool {
 
 // ReplicationStatus is used by the _replicationStatus REST API endpoints
 type ReplicationStatus struct {
-	ID               string `json:"replication_id"`
-	DocsRead         int64  `json:"docs_read"`
-	DocsWritten      int64  `json:"docs_written"`
-	DocsPurged       int64  `json:"docs_purged,omitempty"`
-	DocWriteFailures int64  `json:"doc_write_failures"`
-	DocWriteConflict int64  `json:"doc_write_conflict"`
-	Status           string `json:"status"`
-	RejectedRemote   int64  `json:"rejected_by_remote"`
-	RejectedLocal    int64  `json:"rejected_by_local"`
-	LastSeqPull      string `json:"last_seq_pull,omitempty"`
-	LastSeqPush      string `json:"last_seq_push,omitempty"`
-	ErrorMessage     string `json:"error_message,omitempty"`
+	ID               string             `json:"replication_id"`
+	DocsRead         int64              `json:"docs_read"`
+	DocsWritten      int64              `json:"docs_written"`
+	DocsPurged       int64              `json:"docs_purged,omitempty"`
+	DocWriteFailures int64              `json:"doc_write_failures"`
+	DocWriteConflict int64              `json:"doc_write_conflict"`
+	Status           string             `json:"status"`
+	RejectedRemote   int64              `json:"rejected_by_remote"`
+	RejectedLocal    int64              `json:"rejected_by_local"`
+	LastSeqPull      string             `json:"last_seq_pull,omitempty"`
+	LastSeqPush      string             `json:"last_seq_push,omitempty"`
+	ErrorMessage     string             `json:"error_message,omitempty"`
+	Config           *ReplicationConfig `json:"config,omitempty"`
 }
 
-func (m *sgReplicateManager) GetReplicationStatus(replicationID string) (*ReplicationStatus, error) {
+func (m *sgReplicateManager) GetReplicationStatus(replicationID string, includeConfig bool) (*ReplicationStatus, error) {
 
 	// Check if replication is assigned locally
 	m.activeReplicatorsLock.RLock()
-	replication, ok := m.activeReplicators[replicationID]
+	replication, isLocal := m.activeReplicators[replicationID]
 	m.activeReplicatorsLock.RUnlock()
-	if ok {
-		return replication.GetStatus(), nil
+
+	var status *ReplicationStatus
+	if isLocal {
+		status = replication.GetStatus()
+		if includeConfig {
+			config, err := m.GetReplication(replicationID)
+			if err != nil {
+				return nil, err
+			}
+			status.Config = &config.ReplicationConfig
+		}
+		return status, nil
 	}
 
 	// Check if replication is remote
-	replicationCfg, err := m.GetReplication(replicationID)
+	// TODO: generation of remote status pending CBG-909
+	remoteCfg, err := m.GetReplication(replicationID)
 	if err != nil {
 		return nil, err
 	}
-	// TODO: generation of remote status pending CBG-909
-	return &ReplicationStatus{
+	status = &ReplicationStatus{
 		ID:     replicationID,
-		Status: fmt.Sprintf("%s on %s", replicationCfg.State, replicationCfg.AssignedNode),
-	}, nil
-
+		Status: fmt.Sprintf("%s on %s", remoteCfg.State, remoteCfg.AssignedNode),
+	}
+	if includeConfig {
+		status.Config = &remoteCfg.ReplicationConfig
+	}
+	return status, nil
 }
 
 func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) (status *ReplicationStatus, err error) {
@@ -952,11 +966,11 @@ func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) 
 	case "start":
 		return m.UpdateReplicationState(replicationID, ReplicationStateRunning)
 	default:
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", status)
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
 	}
 }
 
-func (m *sgReplicateManager) GetReplicationStatusAll() ([]*ReplicationStatus, error) {
+func (m *sgReplicateManager) GetReplicationStatusAll(includeConfig bool) ([]*ReplicationStatus, error) {
 
 	statuses := make([]*ReplicationStatus, 0)
 
@@ -967,7 +981,7 @@ func (m *sgReplicateManager) GetReplicationStatusAll() ([]*ReplicationStatus, er
 	}
 
 	for replicationID, _ := range persistedReplications {
-		status, err := m.GetReplicationStatus(replicationID)
+		status, err := m.GetReplicationStatus(replicationID, includeConfig)
 		if err != nil {
 			base.Warnf("Unable to retrieve replication status for replication %s", replicationID)
 		}
