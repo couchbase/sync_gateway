@@ -858,7 +858,8 @@ func (h *handler) deleteReplication() error {
 }
 
 func (h *handler) getReplicationsStatus() error {
-	replicationsStatus, err := h.db.SGReplicateMgr.GetReplicationStatusAll()
+	includeConfig, _ := h.getOptBoolQuery("includeConfig", false)
+	replicationsStatus, err := h.db.SGReplicateMgr.GetReplicationStatusAll(includeConfig)
 	if err != nil {
 		return err
 	}
@@ -869,7 +870,8 @@ func (h *handler) getReplicationsStatus() error {
 
 func (h *handler) getReplicationStatus() error {
 	replicationID := mux.Vars(h.rq)["replicationID"]
-	status, err := h.db.SGReplicateMgr.GetReplicationStatus(replicationID)
+	includeConfig, _ := h.getOptBoolQuery("includeConfig", false)
+	status, err := h.db.SGReplicateMgr.GetReplicationStatus(replicationID, includeConfig)
 	if err != nil {
 		return err
 	}
