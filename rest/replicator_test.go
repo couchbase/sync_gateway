@@ -1265,6 +1265,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		},
 		ChangesBatchSize:   200,
 		InsecureSkipVerify: true,
+		BlipsyncNoRetry:    true,
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
@@ -1344,6 +1345,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		},
 		ChangesBatchSize:   200,
 		InsecureSkipVerify: false,
+		BlipsyncNoRetry:    true,
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()

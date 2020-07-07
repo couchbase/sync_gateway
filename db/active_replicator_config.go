@@ -63,6 +63,9 @@ type ActiveReplicatorConfig struct {
 	// InsecureSkipVerify determines whether the TLS certificate verification should be
 	// disabled during replication. TLS certificate verification is enabled by default.
 	InsecureSkipVerify bool
+
+	// BlipsyncNoRetry if true, will attempt to connect via blipsync only once, without going into a retry loop.
+	BlipsyncNoRetry bool
 }
 
 // CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.
