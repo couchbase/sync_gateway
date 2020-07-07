@@ -5,31 +5,94 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/coreos/go-oidc"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/square/go-jose.v2/jwt"
 )
 
 func TestCreateJWTToken(t *testing.T) {
 	subject := "alice"
-	issueURL := "http://localhost:4984/default/_oidc_testing"
-	ttl := 5 * time.Minute
+	issueURL := "http://localhost:4984/db/_oidc_testing"
 	scopes := make(map[string]struct{})
-	token, err := createJWT(subject, issueURL, ttl, scopes)
-	assert.NoError(t, err, "Couldn't to create JSON Web Token for OpenID Connect")
-	log.Printf("Token: %s", token)
+	scopes["email"] = struct{}{}
+	scopes["profile"] = struct{}{}
+	authState := AuthState{
+		CallbackURL: "http://localhost:4984/db/_oidc_callback",
+		TokenTTL:    5 * time.Minute,
+		Scopes:      scopes,
+	}
+	emailExpected := subject + "@syncgatewayoidctesting.com"
+	nicknameExpected := "slim jim"
+	tests := []struct {
+		name          string              // Unit test name.
+		idTokenFormat identityTokenFormat // Specific token format.
+		algExpected   string              // Identifies the cryptographic algorithm used to secure the JWS.
+		kidExpected   string              // Key Identifier; the hint indicating which key was used to secure the JWS.
+		typExpected   interface{}         // Key Type; identifies the family of algorithms used with this key.
+		x5tExpected   interface{}         // X.509 Certificate Thumbprint; used to identify specific certificates.
+		verExpected   int                 // Version number; used in IBM Cloud App ID format.
+	}{{
+		name:          "create token in default format",
+		idTokenFormat: defaultFormat,
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+	}, {
+		name:          "create token in IBM Cloud App ID format",
+		idTokenFormat: ibmCloudAppIDFormat,
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+		kidExpected:   testProviderKeyIdentifier,
+		verExpected:   4,
+	}, {
+		name:          "create token in Microsoft Azure Active Directory V2.0 format",
+		idTokenFormat: microsoftAzureADV2Format,
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+		kidExpected:   testProviderKeyIdentifier,
+		x5tExpected:   testProviderKeyIdentifier,
+	}, {
+		name:          "create token in Yahoo! format",
+		idTokenFormat: yahooFormat,
+		algExpected:   oidc.RS256,
+		kidExpected:   testProviderKeyIdentifier,
+	}}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			authState.IdentityTokenFormat = test.idTokenFormat
+			rawToken, err := createJWT(subject, issueURL, authState)
+			assert.NoError(t, err, "Couldn't to create JSON Web Token")
+			assert.NotEmpty(t, rawToken, "Empty token received")
+			token, err := jwt.ParseSigned(rawToken)
+			require.NoError(t, err, "Error parsing signed token")
+			claims := &jwt.Claims{}
+			customClaims := &CustomClaims{}
+			err = token.UnsafeClaimsWithoutVerification(claims, customClaims)
+			require.NoError(t, err, "Error parsing signed token")
+			jwtHeader := token.Headers[0]
+			assert.Equal(t, test.algExpected, jwtHeader.Algorithm, "algorithm mismatch")
+			assert.Equal(t, test.typExpected, jwtHeader.ExtraHeaders["typ"], "token type mismatch")
+			assert.Equal(t, test.x5tExpected, jwtHeader.ExtraHeaders["x5t"], "certificate thumbprint mismatch")
+			assert.Equal(t, test.kidExpected, jwtHeader.KeyID, "key id mismatch")
+			assert.Equal(t, subject, claims.Subject, "Subject mismatch")
+			assert.Equal(t, issueURL, claims.Issuer, "Issuer mismatch")
+			assert.Equal(t, nicknameExpected, customClaims.Nickname, "Nickname mismatch")
+			assert.Equal(t, emailExpected, customClaims.Email, "Email mismatch")
+		})
+	}
 }
 
 func TestExtractSubjectFromRefreshToken(t *testing.T) {
@@ -167,6 +230,140 @@ func TestProviderOIDCAuthWithTlsSkipVerifyDisabled(t *testing.T) {
 	bodyString := string(bodyBytes)
 	assert.Contains(t, bodyString, "Unable to obtain client for provider")
 	require.NoError(t, response.Body.Close(), "Error closing response body")
+}
+
+func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
+	tests := []struct {
+		name          string              // Unit test name.
+		idTokenFormat identityTokenFormat // Specific token format.
+		algExpected   string              // Identifies the cryptographic algorithm used to secure the JWS.
+		kidExpected   string              // Key Identifier; the hint indicating which key was used to secure the JWS.
+		typExpected   interface{}         // Key Type; identifies the family of algorithms used with this key.
+		x5tExpected   interface{}         // X.509 Certificate Thumbprint; used to identify specific certificates.
+		verExpected   int                 // Version number; used in IBM Cloud App ID format.
+	}{{
+		name:          "obtain session with bearer token in default format",
+		idTokenFormat: defaultFormat,
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+	}, {
+		name:          "obtain session with bearer token in IBM Cloud App ID format",
+		idTokenFormat: ibmCloudAppIDFormat,
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+		kidExpected:   testProviderKeyIdentifier,
+		verExpected:   4,
+	}, {
+		name:          "obtain session with bearer token in Microsoft Azure Active Directory V2.0 format",
+		idTokenFormat: microsoftAzureADV2Format,
+		algExpected:   oidc.RS256,
+		typExpected:   "JWT",
+		kidExpected:   testProviderKeyIdentifier,
+		x5tExpected:   testProviderKeyIdentifier,
+	}, {
+		name:          "obtain session with bearer token in Yahoo! format",
+		idTokenFormat: yahooFormat,
+		algExpected:   oidc.RS256,
+		kidExpected:   testProviderKeyIdentifier,
+	}}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			providers := auth.OIDCProviderMap{
+				"test": &auth.OIDCProvider{
+					Register:      true,
+					Issuer:        "${baseURL}/db/_oidc_testing",
+					Name:          "test",
+					ClientID:      "sync_gateway",
+					ValidationKey: base.StringPtr("qux"),
+					CallbackURL:   base.StringPtr("${baseURL}/db/_oidc_callback"),
+					UserPrefix:    "foo",
+				},
+			}
+			defaultProvider := "test"
+			opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
+			restTesterConfig := RestTesterConfig{
+				DatabaseConfig: &DbConfig{
+					OIDCConfig: &opts,
+					Unsupported: db.UnsupportedOptions{
+						OidcTestProvider: db.OidcTestProviderOptions{
+							Enabled: true,
+						},
+					},
+				}}
+			restTester := NewRestTester(t, &restTesterConfig)
+			restTester.SetAdminParty(false)
+			defer restTester.Close()
+
+			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+			defer mockSyncGateway.Close()
+			mockSyncGatewayURL := mockSyncGateway.URL
+			provider := restTesterConfig.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+			provider.Issuer = mockSyncGateway.URL + "/db/_oidc_testing"
+			provider.CallbackURL = base.StringPtr(mockSyncGateway.URL + "/db/_oidc_callback")
+			createUser(t, restTester, "foo_noah")
+
+			// Send OpenID Connect request
+			authURL := "/db/_oidc?provider=test&offline=true"
+			requestURL := mockSyncGatewayURL + authURL
+			request, err := http.NewRequest(http.MethodGet, requestURL, nil)
+			require.NoError(t, err, "Error creating new request")
+			jar, err := cookiejar.New(nil)
+			require.NoError(t, err, "Error creating new cookie jar")
+			client := http.DefaultClient
+			client.Jar = jar
+			response, err := client.Do(request)
+			require.NoError(t, err, "Error sending request")
+			require.Equal(t, http.StatusOK, response.StatusCode)
+			bodyBytes, err := ioutil.ReadAll(response.Body)
+			require.NoError(t, err, "Error reading response")
+			bodyString := string(bodyBytes)
+			require.NoError(t, response.Body.Close(), "Error closing response body")
+
+			// Send authentication request
+			requestURL = mockSyncGateway.URL + "/db/_oidc_testing/" + parseAuthURL(bodyString)
+			form := url.Values{}
+			form.Add(formKeyUsername, "noah")
+			form.Add(formKeyAuthenticated, "Return a valid authorization code for this user")
+			form.Add(formKeyIdTokenFormat, string(test.idTokenFormat))
+			request, err = http.NewRequest(http.MethodPost, requestURL, bytes.NewBufferString(form.Encode()))
+			require.NoError(t, err, "Error creating new request")
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			response, err = client.Do(request)
+			require.NoError(t, err, "Error sending request")
+			require.Equal(t, http.StatusOK, response.StatusCode)
+
+			var authResponseActual OIDCTokenResponse
+			require.NoError(t, err, json.NewDecoder(response.Body).Decode(&authResponseActual))
+			require.NoError(t, response.Body.Close(), "Error closing response body")
+			assert.NotEmpty(t, authResponseActual.SessionID, "session_id doesn't exist")
+			assert.NotEmpty(t, authResponseActual.Username, "session_id doesn't exist")
+			assert.NotEmpty(t, authResponseActual.IDToken, "id_token mismatch")
+			assert.NotEmpty(t, authResponseActual.RefreshToken, "refresh_token mismatch")
+
+			// Check token header
+			token, err := jwt.ParseSigned(authResponseActual.IDToken)
+			require.NoError(t, err, "Error parsing signed token")
+			claims := &jwt.Claims{}
+			customClaims := &CustomClaims{}
+			err = token.UnsafeClaimsWithoutVerification(claims, customClaims)
+			require.NoError(t, err, "Error parsing signed token")
+			jwtHeader := token.Headers[0]
+			assert.Equal(t, test.algExpected, jwtHeader.Algorithm, "algorithm mismatch")
+			assert.Equal(t, test.typExpected, jwtHeader.ExtraHeaders["typ"], "token type mismatch")
+			assert.Equal(t, test.x5tExpected, jwtHeader.ExtraHeaders["x5t"], "certificate thumbprint mismatch")
+			assert.Equal(t, test.kidExpected, jwtHeader.KeyID, "key id mismatch")
+
+			// Obtain session with Bearer token
+			sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
+			request, err = http.NewRequest(http.MethodPost, sessionEndpoint, strings.NewReader(`{}`))
+			require.NoError(t, err, "Error creating new request")
+			request.Header.Add("Authorization", BearerToken+" "+authResponseActual.IDToken)
+			response, err = http.DefaultClient.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			checkGoodAuthResponse(t, response)
+		})
+	}
 }
 
 // parseAuthURL returns the authentication URL extracted from user consent form.

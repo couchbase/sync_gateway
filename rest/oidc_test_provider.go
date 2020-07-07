@@ -40,7 +40,7 @@ const (
 	formKeyUsername      = "username"
 	formKeyTokenTTL      = "tokenttl"
 	formKeyAuthenticated = "authenticated"
-	formKeyRefreshToken  = "refresh_token"
+	formKeyIdTokenFormat = "identity-token-formats"
 
 	// Headers
 	headerLocation = "Location"
@@ -49,11 +49,39 @@ const (
 type TokenRequestType uint8
 
 const (
-	TokenRequest_AuthCode TokenRequestType = iota
-	TokenRequest_Refresh
+	TokenRequestAuthCode TokenRequestType = iota
+	TokenRequestRefresh
 )
 
 var testProviderAudiences = []string{testProviderAud} // Audiences in array format for test provider validation
+
+// identityTokenFormat represents a specific token format supported by an OpenID Connect provider.
+type identityTokenFormat string
+
+const (
+	// defaultFormat represents the common format of ID token supported by most of the providers such as
+	// Google, Salesforce, Okta etc.
+	defaultFormat identityTokenFormat = "defaultFormat"
+
+	// ibmCloudAppIDFormat represents a specific identity token format supported by IBM Cloud App ID.
+	// It contains a version value and key id in token header in addition to token type and algorithm.
+	// See https://cloud.ibm.com/docs/appid?topic=appid-tokens
+	ibmCloudAppIDFormat identityTokenFormat = "ibmCloudAppIDFormat"
+
+	// microsoftAzureADV2Format represents a specific identity token format supported by Microsoft identity
+	// platform. It supports two versions of tokens; v1.0 and v2.0. The v2.0 tokens are similar to default
+	// token format supported by most of the other providers listed above. But v1.0 tokens emits a legacy
+	// claim 'x5t' for compatibility purposes that has the same use and value as 'kid'.
+	// See https://docs.microsoft.com/en-us/azure/active-directory/develop/id-tokens
+	microsoftAzureADV2Format identityTokenFormat = "microsoftAzureADV2Format"
+
+	// yahooFormat represents a specific identity token format supported by Yahoo!.
+	// The JOSE header of ID tokens issued from Yahoo! contains only two fields:
+	// 1. alg - Identifies the cryptographic algorithm used to secure the JWS.
+	// 2. kid - The hint indicating which key was used to secure the JWS.
+	// See https://developer.yahoo.com/oauth2/guide/openid_connect/decode_id_token.html
+	yahooFormat identityTokenFormat = "yahooFormat"
+)
 
 // This is the HTML template used to display the testing OP internal authentication form
 const loginHtml = `
@@ -87,6 +115,15 @@ const loginHtml = `
    <div>Username:<input type="text" name="username" cols="80"></div>
    <div>ID Token TTL (seconds):<input type="text" name="tokenttl" cols="30" value="3600"></div>
    <div>
+      <label>Identity Token Format:</label>
+      <select id="identity-token-formats" name="identity-token-formats">
+         <option name="identity-token-format" value="defaultFormat" selected="">Default</option>
+         <option name="identity-token-format" value="ibmCloudAppIDFormat">IBM Cloud AppID</option>
+         <option name="identity-token-format" value="microsoftAzureADV2Format">Microsoft Azure AD V2</option>
+         <option name="identity-token-format" value="yahooFormat">Yahoo!</option>
+      </select>
+   </div>
+   <div>
    <input type="checkbox" name="offline" value="offlineAccess">Allow Offline Access
    <div>
    <div><input type="submit" name="authenticated" value="Return a valid authorization code for this user"></div>
@@ -100,9 +137,10 @@ type Page struct {
 }
 
 type AuthState struct {
-	CallbackURL string
-	TokenTTL    time.Duration
-	Scopes      map[string]struct{}
+	CallbackURL         string
+	TokenTTL            time.Duration
+	Scopes              map[string]struct{}
+	IdentityTokenFormat identityTokenFormat
 }
 
 var authCodeTokenMap = make(map[string]AuthState)
@@ -132,6 +170,7 @@ func (h *handler) handleOidcProviderConfiguration() error {
 	}
 
 	if bytes, err := base.JSONMarshal(config); err == nil {
+		h.response.Header().Set("Expires", "0")
 		_, _ = h.response.Write(bytes)
 	}
 
@@ -277,12 +316,14 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 	requestParams := h.getQueryValues()
 	username := h.rq.FormValue(formKeyUsername)
-	tokenttl, err := strconv.Atoi(h.rq.FormValue(formKeyTokenTTL))
+	tokenTtl, err := strconv.Atoi(h.rq.FormValue(formKeyTokenTTL))
+	idTokenFormat := h.rq.FormValue(formKeyIdTokenFormat)
+
 	if err != nil {
-		tokenttl = defaultIdTokenTTL
+		tokenTtl = defaultIdTokenTTL
 	}
 
-	tokenDuration := time.Duration(tokenttl) * time.Second
+	tokenDuration := time.Duration(tokenTtl) * time.Second
 	authenticated := h.rq.FormValue(formKeyAuthenticated)
 	redirectURI := requestParams.Get(requestParamRedirectURI)
 	base.Debugf(base.KeyAuth, "handleOidcTestProviderAuthenticate() called.  username: %s authenticated: %s", username, authenticated)
@@ -300,7 +341,12 @@ func (h *handler) handleOidcTestProviderAuthenticate() error {
 
 	// Generate the return code by base64 encoding the username
 	code := base64.StdEncoding.EncodeToString([]byte(username))
-	authCodeTokenMap[username] = AuthState{CallbackURL: redirectURI, TokenTTL: tokenDuration, Scopes: scopeMap}
+	authCodeTokenMap[username] = AuthState{
+		CallbackURL:         redirectURI,
+		TokenTTL:            tokenDuration,
+		Scopes:              scopeMap,
+		IdentityTokenFormat: identityTokenFormat(idTokenFormat),
+	}
 
 	locationURL, err := url.Parse(redirectURI)
 	if err != nil {
@@ -329,15 +375,34 @@ func scopeStringToMap(scope string) map[string]struct{} {
 }
 
 // Creates a signed JWT for the requesting subject and issuer URL
-func createJWT(subject string, issuerUrl string, ttl time.Duration, scopesMap map[string]struct{}) (token string,
-	err error) {
+func createJWT(subject string, issuerUrl string, authState AuthState) (token string, err error) {
 
 	key, err := privateKey()
 	if err != nil {
 		return "", base.HTTPErrorf(http.StatusInternalServerError, "Error getting private RSA Key: %v", err)
 	}
+	signingKey := jose.SigningKey{
+		Algorithm: jose.RS256,
+		Key:       key,
+	}
+	signerOptions := jose.SignerOptions{}
 
-	sig, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, (&jose.SignerOptions{}).WithType("JWT"))
+	switch authState.IdentityTokenFormat {
+	case ibmCloudAppIDFormat:
+		signerOptions.WithType("JWT")
+		signerOptions.WithHeader("kid", testProviderKeyIdentifier)
+		signerOptions.WithHeader("ver", 4)
+	case microsoftAzureADV2Format:
+		signerOptions.WithType("JWT")
+		signerOptions.WithHeader("kid", testProviderKeyIdentifier)
+		signerOptions.WithHeader("x5t", testProviderKeyIdentifier)
+	case yahooFormat:
+		signerOptions.WithHeader("kid", testProviderKeyIdentifier)
+	default:
+		signerOptions.WithType("JWT")
+	}
+	signer, err := jose.NewSigner(signingKey, &signerOptions)
+
 	if err != nil {
 		return "", base.HTTPErrorf(http.StatusInternalServerError, "Error creating signer: %v", err)
 	}
@@ -347,21 +412,21 @@ func createJWT(subject string, issuerUrl string, ttl time.Duration, scopesMap ma
 		Subject:  subject,
 		Issuer:   issuerUrl,
 		IssuedAt: jwt.NewNumericDate(now),
-		Expiry:   jwt.NewNumericDate(now.Add(ttl)),
+		Expiry:   jwt.NewNumericDate(now.Add(authState.TokenTTL)),
 		Audience: jwt.Audience{testProviderAud},
 	}
 
 	var customClaims CustomClaims
 
-	if _, ok := scopesMap["email"]; ok {
+	if _, ok := authState.Scopes["email"]; ok {
 		customClaims.Email = subject + "@syncgatewayoidctesting.com"
 	}
 
-	if _, ok := scopesMap["profile"]; ok {
+	if _, ok := authState.Scopes["profile"]; ok {
 		customClaims.Nickname = "slim jim"
 	}
 
-	token, err = jwt.Signed(sig).Claims(claims).Claims(customClaims).CompactSerialize()
+	token, err = jwt.Signed(signer).Claims(claims).Claims(customClaims).CompactSerialize()
 	if err != nil {
 		return "", err
 	}
@@ -373,9 +438,9 @@ type CustomClaims struct {
 	Nickname string `json:"nickname,omitempty"`
 }
 
-//Generates the issuer URL based on the scheme and host in the client request
-//this should ensure that the testing provider works for local clients and
-//clients in front of a load balancer.
+// Generates the issuer URL based on the scheme and host in the client request
+// this should ensure that the testing provider works for local clients and
+// clients in front of a load balancer.
 func issuerUrl(h *handler) string {
 	return issuerUrlForDB(h, h.db.Name)
 }
@@ -411,22 +476,22 @@ func handleAuthCodeRequest(h *handler) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
 	}
 
-	//Check for subject in map of known authenticated users
+	// Check for subject in map of known authenticated users
 	authState, ok := authCodeTokenMap[string(subject)]
 	if !ok {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Auth Token: %v", code)
 	}
-	return writeTokenResponse(h, string(subject), issuerUrl(h), authState.TokenTTL, authState.Scopes, TokenRequest_AuthCode)
+	return writeTokenResponse(h, string(subject), issuerUrl(h), authState, TokenRequestAuthCode)
 }
 
 func handleRefreshTokenRequest(h *handler) error {
-	//Validate the refresh request
+	// Validate the refresh request
 	refreshToken := h.rq.FormValue("refresh_token")
 
-	//extract the subject from the refresh token
+	// extract the subject from the refresh token
 	subject, err := extractSubjectFromRefreshToken(refreshToken)
 
-	//Check for subject in map of known authenticated users
+	// Check for subject in map of known authenticated users
 	authState, ok := authCodeTokenMap[subject]
 	if !ok {
 		return base.HTTPErrorf(http.StatusBadRequest, "OIDC Invalid Refresh Token: %v", refreshToken)
@@ -435,19 +500,19 @@ func handleRefreshTokenRequest(h *handler) error {
 	if err != nil {
 		return err
 	}
-	return writeTokenResponse(h, subject, issuerUrl(h), authState.TokenTTL, authState.Scopes, TokenRequest_Refresh)
+	return writeTokenResponse(h, subject, issuerUrl(h), authState, TokenRequestRefresh)
 }
 
-func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl time.Duration, scopesMap map[string]struct{}, requestType TokenRequestType) error {
+func writeTokenResponse(h *handler, subject string, issuerUrl string, authState AuthState, requestType TokenRequestType) error {
 
 	accessToken := base64.StdEncoding.EncodeToString([]byte(subject))
 
 	var refreshToken string
-	if requestType == TokenRequest_AuthCode {
+	if requestType == TokenRequestAuthCode {
 		refreshToken = base64.StdEncoding.EncodeToString([]byte(subject + ":::" + accessToken))
 	}
 
-	idToken, err := createJWT(subject, issuerUrl, tokenttl, scopesMap)
+	idToken, err := createJWT(subject, issuerUrl, authState)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to generate OIDC Auth Token")
 	}
@@ -459,7 +524,7 @@ func writeTokenResponse(h *handler, subject string, issuerUrl string, tokenttl t
 		AccessToken:  accessToken,
 		TokenType:    "Bearer",
 		RefreshToken: refreshToken,
-		ExpiresIn:    int(tokenttl.Seconds()),
+		ExpiresIn:    int(authState.TokenTTL.Seconds()),
 		IdToken:      idToken,
 	}
 
