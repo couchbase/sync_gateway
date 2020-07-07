@@ -4,8 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
-	"fmt"
-	"net/http"
 	"net/url"
 	"time"
 
@@ -176,26 +174,6 @@ func connect(idSuffix string, config *ActiveReplicatorConfig, replicationStats *
 
 // blipSync opens a connection to the target, and returns a blip.Sender to send messages over.
 func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool) (*blip.Sender, error) {
-	// GET target database endpoint to see if reachable for exit-early/clearer error message
-	req, err := http.NewRequest(http.MethodGet, target.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	client := base.GetHttpClient(insecureSkipVerify)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	err = resp.Body.Close()
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code %d from target database", resp.StatusCode)
-	}
-
 	// switch to websocket protocol scheme
 	if target.Scheme == "http" {
 		target.Scheme = "ws"
@@ -219,7 +197,22 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		config.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(target.User.String())))
 	}
 
-	return blipContext.DialConfig(config)
+	dialWorker := func() (bool, error, interface{}) {
+		sender, err := blipContext.DialConfig(config)
+		if err != nil {
+			base.Warnf("couldn't connect to replication target: %v - retrying", err)
+			return true, err, nil
+		}
+		return false, nil, sender
+	}
+
+	// Retry for ~30 minutes
+	err, val := base.RetryLoop("blipSync", dialWorker, base.CreateMaxDoublingSleeperFunc(60, 100, 30000))
+	if err != nil {
+		return nil, err
+	}
+
+	return val.(*blip.Sender), nil
 }
 
 // combinedState reports a combined replication state for a pushAndPull
