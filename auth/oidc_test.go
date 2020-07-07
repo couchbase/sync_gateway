@@ -10,6 +10,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"errors"
@@ -20,6 +21,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -176,102 +178,123 @@ func TestOIDCUsername(t *testing.T) {
 		Issuer: "http://www.someprovider.com",
 	}
 
-	err := provider.InitUserPrefix()
+	err := provider.initUserPrefix()
 	assert.NoError(t, err)
 	assert.Equal(t, "www.someprovider.com", provider.UserPrefix)
 
 	// test username suffix
-	oidcUsername := GetOIDCUsername(&provider, "bernard")
+	oidcUsername := getOIDCUsername(&provider, "bernard")
 	assert.Equal(t, "www.someprovider.com_bernard", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test char escaping
-	oidcUsername = GetOIDCUsername(&provider, "{bernard}")
+	oidcUsername = getOIDCUsername(&provider, "{bernard}")
 	assert.Equal(t, "www.someprovider.com_%7Bbernard%7D", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test URL with paths
 	provider.UserPrefix = ""
 	provider.Issuer = "http://www.someprovider.com/extra"
-	err = provider.InitUserPrefix()
+	err = provider.initUserPrefix()
 	assert.NoError(t, err)
 	assert.Equal(t, "www.someprovider.com%2Fextra", provider.UserPrefix)
 
 	// test invalid URL
 	provider.UserPrefix = ""
 	provider.Issuer = "http//www.someprovider.com"
-	err = provider.InitUserPrefix()
+	err = provider.initUserPrefix()
 	assert.NoError(t, err)
 	// falls back to provider name:
 	assert.Equal(t, "Some_Provider", provider.UserPrefix)
 
 }
 
-func TestOIDCProvider_InitOIDCClient(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
-
-	clientID := "SGW-TEST"
-	callbackURL := "http://sgw-test:4984/_callback"
-
-	tests := []struct {
-		Name             string
-		Provider         *OIDCProvider
-		ErrContains      string
-		ExpectOIDCClient bool
-	}{
-		{
-			Name:        "nil provider",
-			ErrContains: ErrMsgNilProvider,
-		},
-		{
-			Name:        "empty provider",
-			Provider:    &OIDCProvider{},
-			ErrContains: "Issuer not defined",
-		},
-		{
-			Name: "unavailable",
-			Provider: &OIDCProvider{
-				Issuer: "http://127.0.0.1:12345/auth",
-			},
-			ErrContains: ErrMsgUnableToDiscoverConfig,
-		},
-		{
-			Name: "valid provider",
-			Provider: &OIDCProvider{
-				ClientID:    clientID,
-				Issuer:      "https://accounts.google.com",
-				CallbackURL: &callbackURL,
-			},
-			ExpectOIDCClient: true,
-		},
-	}
-
+func TestInitOIDCClient(t *testing.T) {
 	defaultWait := OIDCDiscoveryRetryWait
 	OIDCDiscoveryRetryWait = 10 * time.Millisecond
-	defer func() {
-		OIDCDiscoveryRetryWait = defaultWait
-	}()
+	defer func() { OIDCDiscoveryRetryWait = defaultWait }()
 
-	for _, test := range tests {
-		t.Run(test.Name, func(tt *testing.T) {
-			err := test.Provider.InitOIDCClient()
-			if test.ErrContains != "" {
-				assert.Error(t, err)
-				assert.Contains(tt, err.Error(), test.ErrContains)
-			} else {
-				assert.NoError(t, err)
-			}
+	t.Run("initialize openid connect client with nil provider", func(t *testing.T) {
+		provider := &OIDCProvider{}
+		err := provider.initOIDCClient()
+		require.Error(t, err, "initialized openid connect client with nil provider")
+		assert.Contains(t, err.Error(), "Issuer not defined")
+	})
 
-			if test.Provider != nil {
-				client := test.Provider.GetClient(func(string, bool) string { return "" })
-				if test.ExpectOIDCClient {
-					assert.NotEqual(tt, (*OIDCClient)(nil), client)
-				} else {
-					assert.Equal(tt, (*OIDCClient)(nil), client)
-				}
-			}
-		})
+	t.Run("initialize openid connect client with unavailable issuer", func(t *testing.T) {
+		provider := &OIDCProvider{
+			Issuer:      "http://127.0.0.1:12345/auth",
+			CallbackURL: base.StringPtr("http://127.0.0.1:12345/callback"),
+		}
+		err := provider.initOIDCClient()
+		require.Error(t, err, "openid connect client with unavailable issuer")
+		assert.Contains(t, err.Error(), ErrMsgUnableToDiscoverConfig)
+	})
+
+	t.Run("initialize openid connect client with valid provider config", func(t *testing.T) {
+		provider := &OIDCProvider{
+			ClientID:    "foo",
+			Issuer:      "https://accounts.google.com",
+			CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
+		}
+		err := provider.initOIDCClient()
+		require.NoError(t, err, "openid connect client with unavailable issuer")
+		provider.stopDiscoverySync()
+	})
+}
+
+func TestConcurrentSetConfig(t *testing.T) {
+	providerLock := sync.Mutex{}
+	provider := &OIDCProvider{
+		ClientID:    "foo",
+		Issuer:      "https://accounts.google.com",
+		CallbackURL: base.StringPtr("http://sgw-test:4984/_callback"),
 	}
+	err := provider.initOIDCClient()
+	require.NoError(t, err, "openid connect client initialization failure")
+	metadata, verifier, err := provider.discoverConfig()
+	require.NoError(t, err, "error discovering provider metadata")
+
+	expectedAuthURL := []string{
+		"https://accounts.foo.com/o/oauth2/v2/auth",
+		"https://accounts.bar.com/o/oauth2/v2/auth",
+	}
+	expectedTokenURL := []string{
+		"https://oauth2.foo.com/token",
+		"https://oauth2.bar.com/token",
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		fooMetadata := metadata
+		fooMetadata.AuthorizationEndpoint = expectedAuthURL[0]
+		fooMetadata.TokenEndpoint = expectedTokenURL[0]
+		providerLock.Lock()
+		verifier = provider.generateVerifier(&fooMetadata, context.Background())
+		require.NotNil(t, verifier, "error generating id token verifier")
+		provider.client.SetConfig(verifier, fooMetadata.endpoint())
+		providerLock.Unlock()
+		wg.Done()
+	}()
+	go func() {
+		barMetadata := metadata
+		barMetadata.AuthorizationEndpoint = expectedAuthURL[1]
+		barMetadata.TokenEndpoint = expectedTokenURL[1]
+		providerLock.Lock()
+		verifier = provider.generateVerifier(&barMetadata, context.Background())
+		require.NotNil(t, verifier, "error generating id token verifier")
+		provider.client.SetConfig(verifier, barMetadata.endpoint())
+		providerLock.Unlock()
+		wg.Done()
+	}()
+	wg.Wait()
+	provider.client.mutex.RLock()
+	assert.NotNil(t, provider.client.verifier, "error setting verifier")
+	provider.client.mutex.RUnlock()
+	assert.Contains(t, expectedAuthURL, provider.client.Config().Endpoint.AuthURL)
+	assert.Contains(t, expectedTokenURL, provider.client.Config().Endpoint.TokenURL)
+	provider.stopDiscoverySync()
 }
 
 func TestFetchCustomProviderConfig(t *testing.T) {
@@ -378,9 +401,9 @@ func TestFetchCustomProviderConfig(t *testing.T) {
 			if test.trailingSlash {
 				issuer += "/"
 			}
-			discoveryURL := strings.TrimSuffix(issuer, "/") + OIDCDiscoveryConfigPath
+			discoveryURL := GetStandardDiscoveryEndpoint(issuer)
 			op := &OIDCProvider{Issuer: issuer}
-			metadata, err := op.FetchCustomProviderConfig(discoveryURL)
+			metadata, _, _, err := op.fetchCustomProviderConfig(discoveryURL)
 			if err != nil {
 				assert.True(t, test.wantErr, "Unexpected Error!")
 				return
@@ -408,7 +431,7 @@ func TestGetJWTIssuer(t *testing.T) {
 
 	jwt, err := jwt.ParseSigned(token)
 	require.NoError(t, err, "Failed to decode raw JSON Web Token")
-	issuer, audiences, err := GetIssuerWithAudience(jwt)
+	issuer, audiences, err := getIssuerWithAudience(jwt)
 	assert.Equal(t, wantIssuer, issuer)
 	assert.Equal(t, []string(wantAudience), audiences)
 }
@@ -460,7 +483,7 @@ func TestGetSigningAlgorithms(t *testing.T) {
 		provider := OIDCProvider{}
 		t.Run(test.name, func(t *testing.T) {
 			metadata := &ProviderMetadata{IdTokenSigningAlgValuesSupported: test.inputAlgorithms}
-			signingAlgorithms := provider.GetSigningAlgorithms(metadata)
+			signingAlgorithms := provider.getSigningAlgorithms(metadata)
 			assert.Equal(t, test.wantSupportedAlgorithms, signingAlgorithms.supportedAlgorithms)
 			assert.Equal(t, test.wantUnsupportedAlgorithms, signingAlgorithms.unsupportedAlgorithms)
 		})
@@ -541,6 +564,368 @@ func TestSetURLQueryParam(t *testing.T) {
 			callbackURL, err := SetURLQueryParam(test.inputCallbackURL, test.inputParamName, test.inputParamValue)
 			assert.Equal(t, test.wantError, err)
 			assert.Equal(t, test.wantCallbackURL, callbackURL)
+		})
+	}
+}
+
+func TestGetExpirationPass(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers http.Header
+		wantTTL time.Duration
+		wantOK  bool
+	}{{
+		name: "Expires and Date properly set",
+		headers: http.Header{
+			"Date":    []string{"Thu, 01 Dec 1983 22:00:00 GMT"},
+			"Expires": []string{"Fri, 02 Dec 1983 01:00:00 GMT"},
+		},
+		wantTTL: 10800 * time.Second,
+		wantOK:  true,
+	}, {
+		name: "empty headers",
+		headers: http.Header{
+			"Date":    []string{""},
+			"Expires": []string{""},
+		},
+		wantOK: false,
+	}, {
+		name: "lack of Expires short-circuit Date parsing",
+		headers: http.Header{
+			"Date":    []string{"foo"},
+			"Expires": []string{""},
+		},
+		wantOK: false,
+	}, {
+		name: "lack of Date short-circuit Expires parsing",
+		headers: http.Header{
+			"Date":    []string{""},
+			"Expires": []string{"foo"},
+		},
+		wantOK: false,
+	}, {
+		name: "no Date",
+		headers: http.Header{
+			"Expires": []string{"Thu, 01 Dec 1983 22:00:00 GMT"},
+		},
+		wantTTL: 0,
+		wantOK:  false,
+	}, {
+		name: "no Expires",
+		headers: http.Header{
+			"Date": []string{"Thu, 01 Dec 1983 22:00:00 GMT"},
+		},
+		wantTTL: 0,
+		wantOK:  false,
+	}, {
+		name: "Expires less than Date",
+		headers: http.Header{
+			"Date":    []string{"Fri, 02 Dec 1983 01:00:00 GMT"},
+			"Expires": []string{"Thu, 01 Dec 1983 22:00:00 GMT"},
+		},
+		wantTTL: 0,
+		wantOK:  false,
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ttl, ok, err := getExpiration(tc.headers)
+			require.NoError(t, err, "error getting expiry")
+			assert.Equal(t, tc.wantTTL, ttl, "TTL mismatch")
+			assert.Equal(t, tc.wantOK, ok, " incorrect ok value")
+		})
+	}
+}
+
+func TestGetExpirationFail(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers http.Header
+		wantTTL time.Duration
+		wantOK  bool
+	}{{
+		name: "malformed Date header",
+		headers: http.Header{
+			"Date":    []string{"foo"},
+			"Expires": []string{"Mon, 01 Jun 2020 19:49:09 GMT"},
+		},
+		wantTTL: 0,
+		wantOK:  false,
+	}, {
+		name: "malformed exp header",
+		headers: http.Header{
+			"Date":    []string{"Mon, 01 Jun 2020 19:49:09 GMT"},
+			"Expires": []string{"bar"},
+		},
+		wantTTL: 0,
+		wantOK:  false,
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ttl, ok, err := getExpiration(tc.headers)
+			require.Error(t, err, "No error getting expiry")
+			assert.Equal(t, tc.wantTTL, ttl, "TTL mismatch")
+			assert.Equal(t, tc.wantOK, ok, " incorrect ok value")
+		})
+	}
+}
+
+func TestCacheablePass(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers http.Header
+		wantTTL time.Duration
+		wantOK  bool
+	}{{
+		name: "valid Cache-Control",
+		headers: http.Header{
+			"Cache-Control": []string{"max-age=100"},
+		},
+		wantTTL: 100 * time.Second,
+		wantOK:  true,
+	}, {
+		name: "valid Date and Expires",
+		headers: http.Header{
+			"Date":    []string{"Thu, 01 Dec 1983 22:00:00 GMT"},
+			"Expires": []string{"Fri, 02 Dec 1983 01:00:00 GMT"},
+		},
+		wantTTL: 10800 * time.Second,
+		wantOK:  true,
+	}, {
+		name: "Cache-Control supersedes Date and Expires",
+		headers: http.Header{
+			"Cache-Control": []string{"max-age=100"},
+			"Date":          []string{"Thu, 01 Dec 1983 22:00:00 GMT"},
+			"Expires":       []string{"Fri, 02 Dec 1983 01:00:00 GMT"},
+		},
+		wantTTL: 100 * time.Second,
+		wantOK:  true,
+	}, {
+		name:    "no caching headers",
+		headers: http.Header{},
+		wantOK:  false,
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ttl, ok, err := cacheable(tc.headers)
+			require.NoError(t, err, "Error getting expiry")
+			assert.Equal(t, tc.wantTTL, ttl, "TTL mismatch")
+			assert.Equal(t, tc.wantOK, ok, " incorrect ok value")
+		})
+	}
+}
+
+func TestCacheableFail(t *testing.T) {
+	tests := []struct {
+		name    string
+		header  http.Header
+		wantTTL time.Duration
+		wantOK  bool
+	}{{
+		name: "invalid Cache-Control short-circuits",
+		header: http.Header{
+			"Cache-Control": []string{"max-age"},
+			"Date":          []string{"Thu, 01 Dec 1983 22:00:00 GMT"},
+			"Expires":       []string{"Fri, 02 Dec 1983 01:00:00 GMT"},
+		},
+		wantTTL: 0,
+		wantOK:  false,
+	}, {
+		name: "no Cache-Control invalid Expires",
+		header: http.Header{
+			"Date":    []string{"Thu, 01 Dec 1983 22:00:00 GMT"},
+			"Expires": []string{"boo"},
+		},
+		wantTTL: 0,
+		wantOK:  false,
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ttl, ok, err := cacheable(tc.header)
+			require.Error(t, err, "No error checking max age and expiry")
+			assert.Equal(t, tc.wantTTL, ttl, "TTL mismatch")
+			assert.Equal(t, tc.wantOK, ok, " incorrect ok value")
+		})
+	}
+}
+
+func TestCacheControlMaxAgePass(t *testing.T) {
+	tests := []struct {
+		name       string
+		header     http.Header
+		wantMaxAge time.Duration
+		wantOK     bool
+	}{{
+		name: "Cache-Control header with valid max-age directive",
+		header: http.Header{
+			"Cache-Control": []string{"max-age=12"},
+		},
+		wantMaxAge: 12 * time.Second,
+		wantOK:     true,
+	}, {
+		name: "Cache-Control header with invalid max-age directive",
+		header: http.Header{
+			"Cache-Control": []string{"max-age=-12"},
+		},
+		wantMaxAge: 0,
+		wantOK:     false,
+	}, {
+		name: "Cache-Control header with zero max-age directive",
+		header: http.Header{
+			"Cache-Control": []string{"max-age=0"},
+		},
+		wantMaxAge: 0,
+		wantOK:     false,
+	}, {
+		name: "Cache-Control header with valid max-age set as public",
+		header: http.Header{
+			"Cache-Control": []string{"public, max-age=12"},
+		},
+		wantMaxAge: 12 * time.Second,
+		wantOK:     true,
+	}, {
+		name: "Cache-Control header with valid max-age set as public and must-revalidate",
+		header: http.Header{
+			"Cache-Control": []string{"public, max-age=40192, must-revalidate"},
+		},
+		wantMaxAge: 40192 * time.Second,
+		wantOK:     true,
+	}, {
+		name: "Cache-Control header with invalid max-age set as public and must-revalidate",
+		header: http.Header{
+			"Cache-Control": []string{"public, not-max-age=12, must-revalidate"},
+		},
+		wantMaxAge: time.Duration(0),
+		wantOK:     false,
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			maxAge, ok, err := cacheControlMaxAge(tc.header)
+			require.NoError(t, err, "error checking max age and expiry")
+			assert.Equal(t, tc.wantMaxAge, maxAge, "max age mismatch")
+			assert.Equal(t, tc.wantOK, ok, " incorrect ok value")
+		})
+	}
+}
+
+func TestCacheControlMaxAgeFail(t *testing.T) {
+	tests := []struct {
+		name       string
+		header     http.Header
+		wantMaxAge time.Duration
+		wantOK     bool
+	}{{
+		name: "Cache-Control header with max-age directive that has non-integer value",
+		header: http.Header{
+			"Cache-Control": []string{"max-age=foo"},
+		},
+		wantMaxAge: 0,
+		wantOK:     false,
+	}, {
+		name: "Cache-Control header with max-age directive that has emnpty value",
+		header: http.Header{
+			"Cache-Control": []string{"max-age="},
+		},
+		wantMaxAge: 0,
+		wantOK:     false,
+	}, {
+		name: "Cache-Control header with max-age directive that has no value",
+		header: http.Header{
+			"Cache-Control": []string{"max-age"},
+		},
+		wantMaxAge: 0,
+		wantOK:     false,
+	}}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			maxAge, ok, err := cacheControlMaxAge(tc.header)
+			require.Error(t, err, "No error checking max age and expiry")
+			assert.Equal(t, tc.wantMaxAge, maxAge, "max age mismatch")
+			assert.Equal(t, tc.wantOK, ok, " incorrect ok value")
+		})
+	}
+}
+
+func TestGetDiscoveryEndpoint(t *testing.T) {
+	tests := []struct {
+		name                 string
+		issuer               string
+		expectedDiscoveryURL string
+	}{{
+		name:                 "http issuer URL",
+		issuer:               "http://foo.com",
+		expectedDiscoveryURL: "http://foo.com/.well-known/openid-configuration",
+	}, {
+		name:                 "secure http issuer URL",
+		issuer:               "https://foo.com",
+		expectedDiscoveryURL: "https://foo.com/.well-known/openid-configuration",
+	}, {
+		name:                 "http issuer URL with slash suffix",
+		issuer:               "http://foo.com/",
+		expectedDiscoveryURL: "http://foo.com/.well-known/openid-configuration",
+	}, {
+		name:                 "secure http issuer URL with slash suffix",
+		issuer:               "https://foo.com/",
+		expectedDiscoveryURL: "https://foo.com/.well-known/openid-configuration",
+	}, {
+		name:                 "empty issuer",
+		issuer:               "",
+		expectedDiscoveryURL: "/.well-known/openid-configuration",
+	}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			discoveryURLActual := GetStandardDiscoveryEndpoint(tc.issuer)
+			assert.Equal(t, tc.expectedDiscoveryURL, discoveryURLActual)
+		})
+	}
+}
+func TestIsStandardDiscovery(t *testing.T) {
+	tests := []struct {
+		name                        string
+		provider                    *OIDCProvider
+		isStandardDiscoveryExpected bool
+	}{{
+		name: "provider with valid discovery URL",
+		provider: &OIDCProvider{
+			DiscoveryURI: "https://foo.com/.well-known/openid-configuration",
+		},
+		isStandardDiscoveryExpected: false,
+	}, {
+		name: "provider with valid discovery URL and config validation disabled",
+		provider: &OIDCProvider{
+			DiscoveryURI:            "https://foo.com/.well-known/openid-configuration",
+			DisableConfigValidation: true,
+		},
+		isStandardDiscoveryExpected: false,
+	}, {
+		name: "provider with valid discovery URL and config validation enabled",
+		provider: &OIDCProvider{
+			DiscoveryURI:            "https://foo.com/.well-known/openid-configuration",
+			DisableConfigValidation: false,
+		},
+		isStandardDiscoveryExpected: false,
+	}, {
+		name: "provider with no discovery URL and config validation enabled",
+		provider: &OIDCProvider{
+			DisableConfigValidation: false,
+		},
+		isStandardDiscoveryExpected: true,
+	}, {
+		name: "provider with no discovery URL and config validation disabled",
+		provider: &OIDCProvider{
+			DisableConfigValidation: true,
+		},
+		isStandardDiscoveryExpected: false,
+	}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			isStandardDiscoveryActual := tc.provider.isStandardDiscovery()
+			assert.Equal(t, tc.isStandardDiscoveryExpected, isStandardDiscoveryActual)
 		})
 	}
 }

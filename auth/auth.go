@@ -436,7 +436,7 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 
 		// Extract issuer and audience(s) from JSON Web Token.
 		var audiences []string
-		issuer, audiences, err = GetIssuerWithAudience(jwt)
+		issuer, audiences, err = getIssuerWithAudience(jwt)
 		base.Debugf(base.KeyAuth, "JWT issuer: %v, audiences: %v", base.UD(issuer), base.UD(audiences))
 		if err != nil {
 			base.Debugf(base.KeyAuth, "Error getting issuer and audience from token: %v", err)
@@ -458,8 +458,8 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		return nil, fmt.Errorf("OIDC client was not initialized")
 	}
 
-	// VerifyJWT validates the claims and signature on the JWT
-	idToken, err := client.VerifyJWT(token)
+	// verifyJWT validates the claims and signature on the JWT
+	idToken, err := client.verifyJWT(token)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
 		return nil, err
@@ -496,7 +496,7 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 		base.Debugf(base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
-	username := GetOIDCUsername(provider, identity.Subject)
+	username := getOIDCUsername(provider, identity.Subject)
 	base.Debugf(base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
 	user, err = auth.GetUser(username)

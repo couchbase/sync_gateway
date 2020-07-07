@@ -116,9 +116,9 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 	offline := h.getBoolQuery(requestParamOffline)
 	if offline {
 		// Set access type to offline and prompt to consent in auth code request URL.
-		redirectURL, err = url.Parse(client.Config.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce))
+		redirectURL, err = url.Parse(client.Config().AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.ApprovalForce))
 	} else {
-		redirectURL, err = url.Parse(client.Config.AuthCodeURL(state))
+		redirectURL, err = url.Parse(client.Config().AuthCodeURL(state))
 	}
 
 	if err != nil {
@@ -176,7 +176,7 @@ func (h *handler) handleOIDCCallback() error {
 
 	// Converts the authorization code into a token.
 	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)
-	token, err := client.Config.Exchange(context, code)
+	token, err := client.Config().Exchange(context, code)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Failed to exchange token: "+err.Error())
 	}
@@ -228,7 +228,7 @@ func (h *handler) handleOIDCRefresh() error {
 	}
 
 	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)
-	token, err := client.Config.TokenSource(context, &oauth2.Token{RefreshToken: refreshToken}).Token()
+	token, err := client.Config().TokenSource(context, &oauth2.Token{RefreshToken: refreshToken}).Token()
 	if err != nil {
 		base.Infof(base.KeyAuth, "Unsuccessful token refresh: %v", err)
 		return base.HTTPErrorf(http.StatusInternalServerError, "Unable to refresh token.")
