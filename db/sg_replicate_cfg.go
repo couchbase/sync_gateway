@@ -763,6 +763,12 @@ func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state 
 			return true, stateChangeErr
 		}
 
+		if state == ReplicationStateStopped && replicationCfg.Adhoc == true {
+			delete(cluster.Replications, replicationID)
+			cluster.RebalanceReplications()
+			return false, nil
+		}
+
 		upsertReplication := &ReplicationUpsertConfig{
 			ID:    replicationID,
 			State: &state,
@@ -778,7 +784,6 @@ func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state 
 		return false, nil
 	}
 	return m.updateCluster(updateReplicationStatusCallback)
-
 }
 
 func isValidStateChange(currentState, newState string) error {
@@ -797,6 +802,21 @@ func isValidStateChange(currentState, newState string) error {
 		}
 	}
 	return nil
+}
+
+func transitionStateName(currentState, targetState string) string {
+	transitionState := currentState
+	switch targetState {
+	case ReplicationStateRunning:
+		if currentState != targetState {
+			transitionState = "starting"
+		}
+	case ReplicationStateStopped:
+		if currentState != targetState {
+			transitionState = "stopping"
+		}
+	}
+	return transitionState
 }
 
 // DELETE _replication
@@ -956,7 +976,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, includeC
 	}
 	status = &ReplicationStatus{
 		ID:     replicationID,
-		Status: fmt.Sprintf("%s on %s", remoteCfg.State, remoteCfg.AssignedNode),
+		Status: remoteCfg.State,
 	}
 	if includeConfig {
 		status.Config = &remoteCfg.ReplicationConfig
@@ -966,20 +986,41 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, includeC
 
 func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) (status *ReplicationStatus, err error) {
 
+	targetState := ""
 	switch action {
 	case "reset":
-		err = m.UpdateReplicationState(replicationID, ReplicationStateResetting)
+		targetState = ReplicationStateResetting
 	case "stop":
-		err = m.UpdateReplicationState(replicationID, ReplicationStateStopped)
+		targetState = ReplicationStateStopped
 	case "start":
-		err = m.UpdateReplicationState(replicationID, ReplicationStateRunning)
+		targetState = ReplicationStateRunning
 	default:
-		err = base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
 	}
+
+	err = m.UpdateReplicationState(replicationID, targetState)
 	if err != nil {
 		return nil, err
 	}
-	return m.GetReplicationStatus(replicationID, false)
+
+	updatedStatus, err := m.GetReplicationStatus(replicationID, false)
+	if err != nil {
+		// Not found is expected when adhoc replication is stopped, return removed status instead of error
+		// since UpdateReplicationState was successful
+		if err == base.ErrNotFound {
+			replicationStatus := &ReplicationStatus{
+				ID:     replicationID,
+				Status: "removed",
+			}
+			return replicationStatus, nil
+		} else {
+			return nil, err
+		}
+	}
+
+	// Modify the returned replication state to align with the requested state
+	updatedStatus.Status = transitionStateName(updatedStatus.Status, targetState)
+	return updatedStatus, nil
 }
 
 func (m *sgReplicateManager) GetReplicationStatusAll(includeConfig bool) ([]*ReplicationStatus, error) {

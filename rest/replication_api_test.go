@@ -188,6 +188,73 @@ func TestReplicationStatusAPI(t *testing.T) {
 	// PUT replication status with action
 	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=start", "")
 	assertStatus(t, response, http.StatusOK)
+}
+
+func TestReplicationStatusStopAdhoc(t *testing.T) {
+
+	var rt = NewRestTester(t, nil)
+	defer rt.Close()
+
+	// GET replication status for non-existent replication ID
+	response := rt.SendAdminRequest("GET", "/db/_replicationStatus/replication1", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	permanentReplicationConfig := db.ReplicationConfig{
+		ID:         "replication1",
+		Remote:     "http://remote:4984/db",
+		Direction:  "pull",
+		Continuous: true,
+	}
+
+	adhocReplicationConfig := db.ReplicationConfig{
+		ID:         "replication2",
+		Remote:     "http://remote:4984/db",
+		Direction:  "pull",
+		Continuous: true,
+		Adhoc:      true,
+	}
+
+	// PUT non-adhoc replication
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", marshalConfig(t, permanentReplicationConfig))
+	assertStatus(t, response, http.StatusCreated)
+
+	// PUT adhoc replication
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, adhocReplicationConfig))
+	assertStatus(t, response, http.StatusCreated)
+
+	// GET replication status for all replications
+	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
+	assertStatus(t, response, http.StatusOK)
+	var allStatusResponse []*db.ReplicationStatus
+	err := json.Unmarshal(response.BodyBytes(), &allStatusResponse)
+	require.NoError(t, err)
+	require.Equal(t, len(allStatusResponse), 2)
+	log.Printf("All status response: %v", allStatusResponse)
+
+	// PUT _replicationStatus to stop non-adhoc replication
+	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=stop", "")
+	assertStatus(t, response, http.StatusOK)
+	var stopResponse *db.ReplicationStatus
+	err = json.Unmarshal(response.BodyBytes(), &stopResponse)
+	require.NoError(t, err)
+	assert.True(t, stopResponse.Status == "stopping" || stopResponse.Status == "stopped")
+
+	// PUT _replicationStatus to stop adhoc replication
+	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication2?action=stop", "")
+	assertStatus(t, response, http.StatusOK)
+	var stopAdhocResponse *db.ReplicationStatus
+	err = json.Unmarshal(response.BodyBytes(), &stopAdhocResponse)
+	require.NoError(t, err)
+	assert.True(t, stopAdhocResponse.Status == "removed")
+
+	// GET replication status for all replications
+	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
+	assertStatus(t, response, http.StatusOK)
+	var updatedStatusResponse []*db.ReplicationStatus
+	err = json.Unmarshal(response.BodyBytes(), &updatedStatusResponse)
+	require.NoError(t, err)
+	require.Equal(t, len(updatedStatusResponse), 1)
+	assert.Equal(t, "replication1", updatedStatusResponse[0].ID)
 
 }
 
