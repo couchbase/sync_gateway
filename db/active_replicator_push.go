@@ -182,6 +182,9 @@ func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 func (apr *ActivePushReplicator) waitForPendingChangesResponse() error {
 	waitCount := 0
 	for waitCount < 100 {
+		if apr.blipSyncContext == nil {
+			return nil
+		}
 		pendingCount := atomic.LoadInt64(&apr.blipSyncContext.changesPendingResponseCount)
 		if pendingCount <= 0 {
 			return nil

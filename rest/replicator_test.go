@@ -106,6 +106,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		ActiveDB:              &db.Database{DatabaseContext: rt.GetDatabase()},
 		PassiveDBURL:          passiveDBURL,
 		WebsocketPingInterval: time.Millisecond * 10,
+		Continuous:            true,
 	})
 
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count")))
@@ -278,7 +279,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:       false,
+		Continuous:       true,
 		ChangesBatchSize: changesBatchSize,
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
@@ -622,7 +623,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:       false,
+		Continuous:       true,
 		ChangesBatchSize: changesBatchSize,
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()

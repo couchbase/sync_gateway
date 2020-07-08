@@ -476,7 +476,10 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 }
 
 func (m *sgReplicateManager) replicationComplete(replicationID string) {
-	m.UpdateReplicationState(replicationID, ReplicationStateStopped)
+	_, err := m.UpdateReplicationState(replicationID, ReplicationStateStopped)
+	if err != nil {
+		base.Warnf("Unable to update replication state to stopped on completion: %v", err)
+	}
 }
 
 func (m *sgReplicateManager) Stop() {
