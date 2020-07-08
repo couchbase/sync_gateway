@@ -27,6 +27,9 @@ func NewPushReplicator(config *ActiveReplicatorConfig) *ActivePushReplicator {
 
 func (apr *ActivePushReplicator) Start() error {
 
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
+
 	if apr == nil {
 		return fmt.Errorf("nil ActivePushReplicator, can't start")
 	}
@@ -38,7 +41,7 @@ func (apr *ActivePushReplicator) Start() error {
 	var err error
 	apr.blipSender, apr.blipSyncContext, err = connect("-push", apr.config, apr.replicationStats)
 	if err != nil {
-		return apr.setError(err)
+		return apr._setError(err)
 	}
 
 	// TODO: If this were made a config option, and the default conflict resolver not enforced on
@@ -46,8 +49,8 @@ func (apr *ActivePushReplicator) Start() error {
 	apr.blipSyncContext.sendRevNoConflicts = true
 
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(context.Background())
-	if err := apr.initCheckpointer(); err != nil {
-		return apr.setError(err)
+	if err := apr._initCheckpointer(); err != nil {
+		return apr._setError(err)
 	}
 
 	bh := blipHandler{
@@ -79,7 +82,7 @@ func (apr *ActivePushReplicator) Start() error {
 		apr.Complete()
 	}()
 
-	apr.setState(ReplicationStateRunning)
+	apr._setState(ReplicationStateRunning)
 	return nil
 }
 
@@ -87,8 +90,8 @@ func (apr *ActivePushReplicator) Start() error {
 // before stopping the replication
 func (apr *ActivePushReplicator) Complete() {
 
-	apr.replicatorCompleteMutex.Lock()
-	defer apr.replicatorCompleteMutex.Unlock()
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
 
 	if apr == nil {
 		return
@@ -117,8 +120,8 @@ func (apr *ActivePushReplicator) Complete() {
 
 func (apr *ActivePushReplicator) Stop() error {
 
-	apr.replicatorCompleteMutex.Lock()
-	defer apr.replicatorCompleteMutex.Unlock()
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
 	return apr._stop()
 }
 
@@ -143,12 +146,12 @@ func (apr *ActivePushReplicator) _stop() error {
 		apr.blipSyncContext.Close()
 		apr.blipSyncContext = nil
 	}
-	apr.setState(ReplicationStateStopped)
+	apr._setState(ReplicationStateStopped)
 
 	return nil
 }
 
-func (apr *ActivePushReplicator) initCheckpointer() error {
+func (apr *ActivePushReplicator) _initCheckpointer() error {
 	checkpointID, err := apr.CheckpointID()
 	if err != nil {
 		return err

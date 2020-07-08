@@ -24,6 +24,9 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 
 func (apr *ActivePullReplicator) Start() error {
 
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
+
 	if apr == nil {
 		return fmt.Errorf("nil ActivePullReplicator, can't start")
 	}
@@ -35,16 +38,16 @@ func (apr *ActivePullReplicator) Start() error {
 	var err error
 	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config, apr.replicationStats)
 	if err != nil {
-		return apr.setError(err)
+		return apr._setError(err)
 	}
 
 	apr.blipSyncContext.conflictResolver = apr.config.ConflictResolver
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(context.Background())
-	if err := apr.initCheckpointer(); err != nil {
+	if err := apr._initCheckpointer(); err != nil {
 		apr.checkpointerCtx = nil
-		return apr.setError(err)
+		return apr._setError(err)
 	}
 
 	subChangesRequest := SubChangesRequest{
@@ -61,10 +64,10 @@ func (apr *ActivePullReplicator) Start() error {
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {
 		apr.checkpointerCtxCancel()
 		apr.checkpointerCtx = nil
-		return apr.setError(err)
+		return apr._setError(err)
 	}
 
-	apr.setState(ReplicationStateRunning)
+	apr._setState(ReplicationStateRunning)
 	return nil
 }
 
@@ -72,8 +75,8 @@ func (apr *ActivePullReplicator) Start() error {
 // before stopping the replication
 func (apr *ActivePullReplicator) Complete() {
 
-	apr.replicatorCompleteMutex.Lock()
-	defer apr.replicatorCompleteMutex.Unlock()
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
 	if apr == nil {
 		return
 	}
@@ -95,8 +98,8 @@ func (apr *ActivePullReplicator) Complete() {
 
 func (apr *ActivePullReplicator) Stop() error {
 
-	apr.replicatorCompleteMutex.Lock()
-	defer apr.replicatorCompleteMutex.Unlock()
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
 	return apr._stop()
 }
 
@@ -121,12 +124,12 @@ func (apr *ActivePullReplicator) _stop() error {
 		apr.blipSyncContext.Close()
 		apr.blipSyncContext = nil
 	}
-	apr.setState(ReplicationStateStopped)
+	apr._setState(ReplicationStateStopped)
 
 	return nil
 }
 
-func (apr *ActivePullReplicator) initCheckpointer() error {
+func (apr *ActivePullReplicator) _initCheckpointer() error {
 	checkpointID, err := apr.CheckpointID()
 	if err != nil {
 		return err

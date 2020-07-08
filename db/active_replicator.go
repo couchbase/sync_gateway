@@ -108,10 +108,10 @@ func (ar *ActiveReplicator) Reset() error {
 
 func (ar *ActiveReplicator) ReplicationComplete() {
 	allReplicationsComplete := true
-	if ar.Push != nil && ar.Push.state != ReplicationStateStopped {
+	if ar.Push != nil && ar.Push.getState() != ReplicationStateStopped {
 		allReplicationsComplete = false
 	}
-	if ar.Pull != nil && ar.Pull.state != ReplicationStateStopped {
+	if ar.Pull != nil && ar.Pull.getState() != ReplicationStateStopped {
 		allReplicationsComplete = false
 	}
 
@@ -125,16 +125,14 @@ func (ar *ActiveReplicator) State() (state string, errorMessage string) {
 
 	state = ReplicationStateStopped
 	if ar.Push != nil {
-		state = ar.Push.state
-		if ar.Push.state == ReplicationStateError && ar.Push.lastError != nil {
-			errorMessage = ar.Push.lastError.Error()
-		}
+		state, errorMessage = ar.Push.getStateWithErrorMessage()
 	}
 
 	if ar.Pull != nil {
-		state = combinedState(state, ar.Pull.state)
-		if ar.Pull.state == ReplicationStateError && ar.Pull.lastError != nil {
-			errorMessage = ar.Pull.lastError.Error()
+		pullState, pullErrorMessage := ar.Pull.getStateWithErrorMessage()
+		state = combinedState(state, pullState)
+		if pullErrorMessage != "" {
+			errorMessage = pullErrorMessage
 		}
 	}
 
