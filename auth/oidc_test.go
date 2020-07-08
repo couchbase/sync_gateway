@@ -625,6 +625,14 @@ func TestGetExpirationPass(t *testing.T) {
 		},
 		wantTTL: 0,
 		wantOK:  false,
+	}, {
+		name: "Expires is zero",
+		headers: http.Header{
+			"Date":    []string{"Fri, 02 Dec 1983 01:00:00 GMT"},
+			"Expires": []string{"0"},
+		},
+		wantTTL: 0,
+		wantOK:  false,
 	}}
 
 	for _, tc := range tests {
