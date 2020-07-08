@@ -329,11 +329,14 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return ErrClosedBLIPSender
 		}
 
+		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
+
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				base.ErrorfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 			}
+			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
 		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
 	} else {
 		outrq.SetNoReply(true)
@@ -365,6 +368,13 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 	bh.logEndpointEntry(rq.Profile(), fmt.Sprintf("#Changes:%d", len(changeList)))
 	if len(changeList) == 0 {
+		// An empty changeList is sent when a one-shot replication sends its final changes
+		// message, or a continuous replication catches up *for the first time*.
+		// Note that this doesn't mean that rev messages associated with previous changes
+		// messages have been fully processed
+		if bh.emptyChangesMessageCallback != nil {
+			bh.emptyChangesMessageCallback()
+		}
 		return nil
 	}
 	output := bytes.NewBuffer(make([]byte, 0, 100*len(changeList)))

@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // ActivePullReplicator is a unidirectional pull active replicator.
@@ -15,11 +17,15 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 		activeReplicatorCommon: activeReplicatorCommon{
 			config:           config,
 			replicationStats: NewBlipSyncStats(),
+			state:            ReplicationStateStopped,
 		},
 	}
 }
 
 func (apr *ActivePullReplicator) Start() error {
+
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
 
 	if apr == nil {
 		return fmt.Errorf("nil ActivePullReplicator, can't start")
@@ -32,16 +38,16 @@ func (apr *ActivePullReplicator) Start() error {
 	var err error
 	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config, apr.replicationStats)
 	if err != nil {
-		return apr.setError(err)
+		return apr._setError(err)
 	}
 
 	apr.blipSyncContext.conflictResolver = apr.config.ConflictResolver
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(context.Background())
-	if err := apr.initCheckpointer(); err != nil {
+	if err := apr._initCheckpointer(); err != nil {
 		apr.checkpointerCtx = nil
-		return apr.setError(err)
+		return apr._setError(err)
 	}
 
 	subChangesRequest := SubChangesRequest{
@@ -58,14 +64,46 @@ func (apr *ActivePullReplicator) Start() error {
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {
 		apr.checkpointerCtxCancel()
 		apr.checkpointerCtx = nil
-		return apr.setError(err)
+		return apr._setError(err)
 	}
 
-	apr.setState(ReplicationStateRunning)
+	apr._setState(ReplicationStateRunning)
 	return nil
 }
 
+// Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
+// before stopping the replication
+func (apr *ActivePullReplicator) Complete() {
+
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
+	if apr == nil {
+		return
+	}
+
+	err := apr.Checkpointer.waitForExpectedSequences()
+	if err != nil {
+		base.Infof(base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
+	}
+
+	stopErr := apr._stop()
+	if stopErr != nil {
+		base.Infof(base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
+	}
+
+	if apr.onReplicatorComplete != nil {
+		apr.onReplicatorComplete()
+	}
+}
+
 func (apr *ActivePullReplicator) Stop() error {
+
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
+	return apr._stop()
+}
+
+func (apr *ActivePullReplicator) _stop() error {
 	if apr == nil {
 		// noop
 		return nil
@@ -86,12 +124,12 @@ func (apr *ActivePullReplicator) Stop() error {
 		apr.blipSyncContext.Close()
 		apr.blipSyncContext = nil
 	}
-	apr.setState(ReplicationStateStopped)
+	apr._setState(ReplicationStateStopped)
 
 	return nil
 }
 
-func (apr *ActivePullReplicator) initCheckpointer() error {
+func (apr *ActivePullReplicator) _initCheckpointer() error {
 	checkpointID, err := apr.CheckpointID()
 	if err != nil {
 		return err
@@ -131,4 +169,14 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsReceivedTotal, 1)
 		apr.Checkpointer.ProcessedSeq(remoteSeq)
 	}
+
+	// Trigger complete for non-continuous replications when caught up
+	if !apr.config.Continuous {
+		apr.blipSyncContext.emptyChangesMessageCallback = func() {
+			// Complete blocks waiting for pending rev messages, so needs
+			// it's own goroutine
+			go apr.Complete()
+		}
+	}
+
 }

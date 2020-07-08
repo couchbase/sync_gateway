@@ -2,7 +2,10 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -17,11 +20,15 @@ func NewPushReplicator(config *ActiveReplicatorConfig) *ActivePushReplicator {
 		activeReplicatorCommon: activeReplicatorCommon{
 			config:           config,
 			replicationStats: NewBlipSyncStats(),
+			state:            ReplicationStateStopped,
 		},
 	}
 }
 
 func (apr *ActivePushReplicator) Start() error {
+
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
 
 	if apr == nil {
 		return fmt.Errorf("nil ActivePushReplicator, can't start")
@@ -34,7 +41,7 @@ func (apr *ActivePushReplicator) Start() error {
 	var err error
 	apr.blipSender, apr.blipSyncContext, err = connect("-push", apr.config, apr.replicationStats)
 	if err != nil {
-		return apr.setError(err)
+		return apr._setError(err)
 	}
 
 	// TODO: If this were made a config option, and the default conflict resolver not enforced on
@@ -42,8 +49,8 @@ func (apr *ActivePushReplicator) Start() error {
 	apr.blipSyncContext.sendRevNoConflicts = true
 
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(context.Background())
-	if err := apr.initCheckpointer(); err != nil {
-		return apr.setError(err)
+	if err := apr._initCheckpointer(); err != nil {
+		return apr._setError(err)
 	}
 
 	bh := blipHandler{
@@ -62,21 +69,63 @@ func (apr *ActivePushReplicator) Start() error {
 		channels = base.SetFromArray(apr.config.FilterChannels)
 	}
 
-	go bh.sendChanges(apr.blipSender, &sendChangesOptions{
-		docIDs:     apr.config.DocIDs,
-		since:      seq,
-		continuous: apr.config.Continuous,
-		activeOnly: apr.config.ActiveOnly,
-		batchSize:  int(apr.config.ChangesBatchSize),
-		channels:   channels,
-		clientType: clientTypeSGR2,
-	})
+	go func() {
+		bh.sendChanges(apr.blipSender, &sendChangesOptions{
+			docIDs:     apr.config.DocIDs,
+			since:      seq,
+			continuous: apr.config.Continuous,
+			activeOnly: apr.config.ActiveOnly,
+			batchSize:  int(apr.config.ChangesBatchSize),
+			channels:   channels,
+			clientType: clientTypeSGR2,
+		})
+		apr.Complete()
+	}()
 
-	apr.setState(ReplicationStateRunning)
+	apr._setState(ReplicationStateRunning)
 	return nil
 }
 
+// Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
+// before stopping the replication
+func (apr *ActivePushReplicator) Complete() {
+
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
+
+	if apr == nil {
+		return
+	}
+
+	// Wait for any pending changes responses to arrive and be processed
+	err := apr.waitForPendingChangesResponse()
+	if err != nil {
+		base.Infof(base.KeyReplicate, "Timeout waiting for pending changes response for replication %s - stopping: %v", apr.config.ID, err)
+	}
+
+	err = apr.Checkpointer.waitForExpectedSequences()
+	if err != nil {
+		base.Infof(base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
+	}
+
+	stopErr := apr._stop()
+	if stopErr != nil {
+		base.Infof(base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
+	}
+
+	if apr.onReplicatorComplete != nil {
+		apr.onReplicatorComplete()
+	}
+}
+
 func (apr *ActivePushReplicator) Stop() error {
+
+	apr.lock.Lock()
+	defer apr.lock.Unlock()
+	return apr._stop()
+}
+
+func (apr *ActivePushReplicator) _stop() error {
 	if apr == nil {
 		// noop
 		return nil
@@ -97,12 +146,12 @@ func (apr *ActivePushReplicator) Stop() error {
 		apr.blipSyncContext.Close()
 		apr.blipSyncContext = nil
 	}
-	apr.setState(ReplicationStateStopped)
+	apr._setState(ReplicationStateStopped)
 
 	return nil
 }
 
-func (apr *ActivePushReplicator) initCheckpointer() error {
+func (apr *ActivePushReplicator) _initCheckpointer() error {
 	checkpointID, err := apr.CheckpointID()
 	if err != nil {
 		return err
@@ -141,4 +190,24 @@ func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsSentTotal, 1)
 		apr.Checkpointer.ProcessedSeq(remoteSeq)
 	}
+}
+
+// waitForExpectedSequences waits for the pending changes response count
+// to drain to zero.  Intended to be used once the replication has been stopped, to wait for
+// in-flight changes responses to arrive.
+// Waits up to 10s, polling every 100ms.
+func (apr *ActivePushReplicator) waitForPendingChangesResponse() error {
+	waitCount := 0
+	for waitCount < 100 {
+		if apr.blipSyncContext == nil {
+			return nil
+		}
+		pendingCount := atomic.LoadInt64(&apr.blipSyncContext.changesPendingResponseCount)
+		if pendingCount <= 0 {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+		waitCount++
+	}
+	return errors.New("checkpointer waitForPendingChangesResponse failed to complete after waiting 10s")
 }

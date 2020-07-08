@@ -467,10 +467,19 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval
 
+	rc.onComplete = m.replicationComplete
+
 	// TODO: review whether there's a more appropriate context to use here
 	replicator = NewActiveReplicator(rc)
 
 	return replicator, nil
+}
+
+func (m *sgReplicateManager) replicationComplete(replicationID string) {
+	_, err := m.UpdateReplicationState(replicationID, ReplicationStateStopped)
+	if err != nil {
+		base.Warnf("Unable to update replication state to stopped on completion: %v", err)
+	}
 }
 
 func (m *sgReplicateManager) Stop() {
@@ -501,6 +510,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			if err != nil {
 				base.Warnf("Unable to gracefully close active replication: %v", err)
 			}
+			delete(m.activeReplicators, replicationID)
 		} else {
 			// Check for replications assigned to this node with updated state
 			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)

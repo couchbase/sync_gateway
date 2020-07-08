@@ -28,23 +28,31 @@ const (
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID   string
-	Push *ActivePushReplicator
-	Pull *ActivePullReplicator
+	ID         string
+	Push       *ActivePushReplicator
+	Pull       *ActivePullReplicator
+	onComplete OnCompleteFunc
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 	ar := &ActiveReplicator{
-		ID: config.ID,
+		ID:         config.ID,
+		onComplete: config.onComplete,
 	}
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		ar.Push = NewPushReplicator(config)
+		if ar.onComplete != nil {
+			ar.Push.onReplicatorComplete = ar.ReplicationComplete
+		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
 		ar.Pull = NewPullReplicator(config)
+		if ar.onComplete != nil {
+			ar.Pull.onReplicatorComplete = ar.ReplicationComplete
+		}
 	}
 
 	return ar
@@ -98,19 +106,33 @@ func (ar *ActiveReplicator) Reset() error {
 	return nil
 }
 
+func (ar *ActiveReplicator) ReplicationComplete() {
+	allReplicationsComplete := true
+	if ar.Push != nil && ar.Push.getState() != ReplicationStateStopped {
+		allReplicationsComplete = false
+	}
+	if ar.Pull != nil && ar.Pull.getState() != ReplicationStateStopped {
+		allReplicationsComplete = false
+	}
+
+	if allReplicationsComplete {
+		ar.onComplete(ar.ID)
+	}
+
+}
+
 func (ar *ActiveReplicator) State() (state string, errorMessage string) {
 
+	state = ReplicationStateStopped
 	if ar.Push != nil {
-		state = ar.Push.state
-		if ar.Push.state == ReplicationStateError && ar.Push.lastError != nil {
-			errorMessage = ar.Push.lastError.Error()
-		}
+		state, errorMessage = ar.Push.getStateWithErrorMessage()
 	}
 
 	if ar.Pull != nil {
-		state = combinedState(state, ar.Pull.state)
-		if ar.Pull.state == ReplicationStateError && ar.Pull.lastError != nil {
-			errorMessage = ar.Pull.lastError.Error()
+		pullState, pullErrorMessage := ar.Pull.getStateWithErrorMessage()
+		state = combinedState(state, pullState)
+		if pullErrorMessage != "" {
+			errorMessage = pullErrorMessage
 		}
 	}
 
