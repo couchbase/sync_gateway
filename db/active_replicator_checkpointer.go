@@ -139,7 +139,7 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
 	safeSeq = c.expectedSeqs[maxI]
 
 	// removes to-be checkpointed sequences from processedSeqs list
-	for i := 0; i < maxI; i++ {
+	for i := 0; i <= maxI; i++ {
 		removeSeq := c.expectedSeqs[i]
 		delete(c.processedSeqs, removeSeq)
 		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map %v", removeSeq, c.processedSeqs)
