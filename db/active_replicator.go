@@ -44,14 +44,14 @@ func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		ar.Push = NewPushReplicator(config)
 		if ar.onComplete != nil {
-			ar.Push.onReplicatorComplete = ar.ReplicationComplete
+			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
 		ar.Pull = NewPullReplicator(config)
 		if ar.onComplete != nil {
-			ar.Pull.onReplicatorComplete = ar.ReplicationComplete
+			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
@@ -106,12 +106,14 @@ func (ar *ActiveReplicator) Reset() error {
 	return nil
 }
 
-func (ar *ActiveReplicator) ReplicationComplete() {
+// _onReplicationComplete is invoked from Complete in an active replication.  If all replications
+// associated with the ActiveReplicator are complete, onComplete is invoked
+func (ar *ActiveReplicator) _onReplicationComplete() {
 	allReplicationsComplete := true
-	if ar.Push != nil && ar.Push.getState() != ReplicationStateStopped {
+	if ar.Push != nil && ar.Push.state != ReplicationStateStopped {
 		allReplicationsComplete = false
 	}
-	if ar.Pull != nil && ar.Pull.getState() != ReplicationStateStopped {
+	if ar.Pull != nil && ar.Pull.state != ReplicationStateStopped {
 		allReplicationsComplete = false
 	}
 

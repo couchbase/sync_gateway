@@ -475,8 +475,9 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	return replicator, nil
 }
 
+// replicationComplete updates the replication status.
 func (m *sgReplicateManager) replicationComplete(replicationID string) {
-	_, err := m.UpdateReplicationState(replicationID, ReplicationStateStopped)
+	err := m.UpdateReplicationState(replicationID, ReplicationStateStopped)
 	if err != nil {
 		base.Warnf("Unable to update replication state to stopped on completion: %v", err)
 	}
@@ -749,7 +750,7 @@ func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertCon
 	return created, m.updateCluster(addReplicationCallback)
 }
 
-func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state string) (*ReplicationStatus, error) {
+func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state string) error {
 
 	updateReplicationStatusCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		replicationCfg, exists := cluster.Replications[replicationID]
@@ -776,11 +777,8 @@ func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state 
 		cluster.RebalanceReplications()
 		return false, nil
 	}
-	err := m.updateCluster(updateReplicationStatusCallback)
-	if err != nil {
-		return nil, err
-	}
-	return m.GetReplicationStatus(replicationID, false)
+	return m.updateCluster(updateReplicationStatusCallback)
+
 }
 
 func isValidStateChange(currentState, newState string) error {
@@ -970,14 +968,18 @@ func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) 
 
 	switch action {
 	case "reset":
-		return m.UpdateReplicationState(replicationID, ReplicationStateResetting)
+		err = m.UpdateReplicationState(replicationID, ReplicationStateResetting)
 	case "stop":
-		return m.UpdateReplicationState(replicationID, ReplicationStateStopped)
+		err = m.UpdateReplicationState(replicationID, ReplicationStateStopped)
 	case "start":
-		return m.UpdateReplicationState(replicationID, ReplicationStateRunning)
+		err = m.UpdateReplicationState(replicationID, ReplicationStateRunning)
 	default:
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
+		err = base.HTTPErrorf(http.StatusBadRequest, "Unrecognized action %q.  Valid values are start/stop/reset.", action)
 	}
+	if err != nil {
+		return nil, err
+	}
+	return m.GetReplicationStatus(replicationID, false)
 }
 
 func (m *sgReplicateManager) GetReplicationStatusAll(includeConfig bool) ([]*ReplicationStatus, error) {
