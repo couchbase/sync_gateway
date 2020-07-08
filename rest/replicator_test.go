@@ -1597,7 +1597,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous: false,
+		Continuous: true,
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval: time.Minute * 5,
@@ -1752,7 +1752,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous: false,
+		Continuous: true,
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval: time.Minute * 5,

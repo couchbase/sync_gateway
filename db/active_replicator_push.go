@@ -87,6 +87,13 @@ func (apr *ActivePushReplicator) Start() error {
 // before stopping the replication
 func (apr *ActivePushReplicator) Complete() {
 
+	apr.replicatorCompleteMutex.Lock()
+	defer apr.replicatorCompleteMutex.Unlock()
+
+	if apr == nil {
+		return
+	}
+
 	// Wait for any pending changes responses to arrive and be processed
 	err := apr.waitForPendingChangesResponse()
 	if err != nil {
@@ -98,7 +105,7 @@ func (apr *ActivePushReplicator) Complete() {
 		base.Infof(base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
 	}
 
-	stopErr := apr.Stop()
+	stopErr := apr._stop()
 	if stopErr != nil {
 		base.Infof(base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
 	}
@@ -109,6 +116,13 @@ func (apr *ActivePushReplicator) Complete() {
 }
 
 func (apr *ActivePushReplicator) Stop() error {
+
+	apr.replicatorCompleteMutex.Lock()
+	defer apr.replicatorCompleteMutex.Unlock()
+	return apr._stop()
+}
+
+func (apr *ActivePushReplicator) _stop() error {
 	if apr == nil {
 		// noop
 		return nil

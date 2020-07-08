@@ -71,12 +71,19 @@ func (apr *ActivePullReplicator) Start() error {
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
 // before stopping the replication
 func (apr *ActivePullReplicator) Complete() {
+
+	apr.replicatorCompleteMutex.Lock()
+	defer apr.replicatorCompleteMutex.Unlock()
+	if apr == nil {
+		return
+	}
+
 	err := apr.Checkpointer.waitForExpectedSequences()
 	if err != nil {
 		base.Infof(base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
 	}
 
-	stopErr := apr.Stop()
+	stopErr := apr._stop()
 	if stopErr != nil {
 		base.Infof(base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
 	}
@@ -87,6 +94,13 @@ func (apr *ActivePullReplicator) Complete() {
 }
 
 func (apr *ActivePullReplicator) Stop() error {
+
+	apr.replicatorCompleteMutex.Lock()
+	defer apr.replicatorCompleteMutex.Unlock()
+	return apr._stop()
+}
+
+func (apr *ActivePullReplicator) _stop() error {
 	if apr == nil {
 		// noop
 		return nil

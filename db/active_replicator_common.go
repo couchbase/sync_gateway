@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"expvar"
+	"sync"
 
 	"github.com/couchbase/go-blip"
 )
@@ -10,17 +11,18 @@ import (
 // replicatorCommon defines the struct contents shared by ActivePushReplicator
 // and ActivePullReplicator
 type activeReplicatorCommon struct {
-	config                *ActiveReplicatorConfig
-	blipSyncContext       *BlipSyncContext
-	blipSender            *blip.Sender
-	Stats                 expvar.Map
-	Checkpointer          *Checkpointer
-	checkpointerCtx       context.Context
-	checkpointerCtxCancel context.CancelFunc
-	state                 string
-	lastError             error
-	replicationStats      *BlipSyncStats
-	onReplicatorComplete  ReplicatorCompleteFunc
+	config                  *ActiveReplicatorConfig
+	blipSyncContext         *BlipSyncContext
+	blipSender              *blip.Sender
+	Stats                   expvar.Map
+	Checkpointer            *Checkpointer
+	checkpointerCtx         context.Context
+	checkpointerCtxCancel   context.CancelFunc
+	state                   string
+	lastError               error
+	replicationStats        *BlipSyncStats
+	onReplicatorComplete    ReplicatorCompleteFunc
+	replicatorCompleteMutex sync.Mutex
 }
 
 type ReplicatorCompleteFunc func()
