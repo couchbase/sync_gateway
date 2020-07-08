@@ -63,7 +63,12 @@ type ActiveReplicatorConfig struct {
 	// InsecureSkipVerify determines whether the TLS certificate verification should be
 	// disabled during replication. TLS certificate verification is enabled by default.
 	InsecureSkipVerify bool
+
+	// Callback to be invoked on replication completion
+	onComplete OnCompleteFunc
 }
+
+type OnCompleteFunc func(replicationID string)
 
 // CheckpointHash returns a deterministic hash of the given config to be used as a checkpoint ID.
 // TODO: Might be a way of caching this value? But need to be sure no config values wil change without clearing the cached hash.

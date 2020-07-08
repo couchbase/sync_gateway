@@ -20,7 +20,10 @@ type activeReplicatorCommon struct {
 	state                 string
 	lastError             error
 	replicationStats      *BlipSyncStats
+	onReplicatorComplete  ReplicatorCompleteFunc
 }
+
+type ReplicatorCompleteFunc func()
 
 // setErrorState updates state and lastError, and
 // returns the error provided

@@ -213,7 +213,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
-// TestActiveReplicatorPullBasic:
+// TestActiveReplicatorPullFromCheckpoint:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates enough documents on rt2 which can be pulled by a replicator running in rt1 to start setting checkpoints.
 //   - Insert the second batch of docs into rt2.
@@ -376,6 +376,98 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
 	ar.Pull.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+}
+
+// TestActiveReplicatorPullOneshot:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a document on rt2 which can be pulled by the replicator running in rt1.
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
+func TestActiveReplicatorPullOneshot(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	docID := t.Name() + "rt2doc1"
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+
+	remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize: 200,
+	})
+	defer func() { assert.NoError(t, ar.Stop()) }()
+
+	assert.Equal(t, "", ar.GetStatus().LastSeqPull)
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start())
+
+	// wait for the replication to stop
+	replicationStopped := false
+	for i := 0; i < 100; i++ {
+		status := ar.GetStatus()
+		if status.Status == db.ReplicationStateStopped {
+			replicationStopped = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	assert.True(t, replicationStopped, "Replication status should be stopped")
+
+	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, revID, doc.SyncData.CurrentRev)
+	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
 // TestActiveReplicatorPushBasic:

@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // ActivePullReplicator is a unidirectional pull active replicator.
@@ -63,6 +65,26 @@ func (apr *ActivePullReplicator) Start() error {
 
 	apr.setState(ReplicationStateRunning)
 	return nil
+}
+
+// Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
+// before stopping the replication
+func (apr *ActivePullReplicator) Complete() {
+	base.Infof(base.KeyReplicate, "Performing Complete for replication %s", apr.config.ID)
+	err := apr.Checkpointer.waitForExpectedSequences()
+	if err != nil {
+		base.Infof(base.KeyReplicate, "Timeout draining replication - stopping: %v", err)
+	}
+	base.Infof(base.KeyReplicate, "Drain done, stopping replication %s", apr.config.ID)
+
+	stopErr := apr.Stop()
+	if stopErr != nil {
+		base.Infof(base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
+	}
+
+	if apr.onReplicatorComplete != nil {
+		apr.onReplicatorComplete()
+	}
 }
 
 func (apr *ActivePullReplicator) Stop() error {
@@ -131,4 +153,14 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsReceivedTotal, 1)
 		apr.Checkpointer.ProcessedSeq(remoteSeq)
 	}
+
+	// Trigger complete for non-continuous replications when caught up
+	if !apr.config.Continuous {
+		apr.blipSyncContext.emptyChangesMessageCallback = func() {
+			// Complete blocks waiting for pending rev messages, so needs
+			// it's own goroutine
+			go apr.Complete()
+		}
+	}
+
 }

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"expvar"
 	"sync"
 	"time"
@@ -120,7 +121,7 @@ func (c *Checkpointer) CheckpointNow() {
 	}
 
 	base.InfofCtx(c.ctx, base.KeyReplicate, "checkpointer: calculated seq: %v", seq)
-	err := c.setCheckpoints(seq)
+	err := c._setCheckpoints(seq)
 	if err != nil {
 		base.Warnf("couldn't set checkpoints: %v", err)
 	}
@@ -139,7 +140,7 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
 	safeSeq = c.expectedSeqs[maxI]
 
 	// removes to-be checkpointed sequences from processedSeqs list
-	for i := 0; i < maxI; i++ {
+	for i := 0; i <= maxI; i++ {
 		removeSeq := c.expectedSeqs[i]
 		delete(c.processedSeqs, removeSeq)
 		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map %v", removeSeq, c.processedSeqs)
@@ -248,7 +249,7 @@ func (c *Checkpointer) fetchCheckpoints() error {
 	return nil
 }
 
-func (c *Checkpointer) setCheckpoints(seq string) error {
+func (c *Checkpointer) _setCheckpoints(seq string) error {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setCheckpoints(%v)", seq)
 
 	newLocalRev, err := c.setLocalCheckpoint(seq, c.lastLocalCheckpointRevID)
@@ -346,4 +347,38 @@ func (c *Checkpointer) setRemoteCheckpoint(seq, parentRev string) (newRev string
 	}
 
 	return resp.RevID, nil
+}
+
+func (c *Checkpointer) getCounts() (expectedCount, processedCount int) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return len(c.expectedSeqs), len(c.processedSeqs)
+}
+
+// waitForExpectedSequences waits for the expectedSeqs set to drain to zero.
+// Intended to be used once the replication has been stopped, to wait for
+// in-flight mutations to complete.
+// Triggers immediate checkpointing if expectedCount == processedCount.
+// Waits up to 10s, polling every 100ms.
+func (c *Checkpointer) waitForExpectedSequences() error {
+	waitCount := 0
+	for waitCount < 100 {
+		expectedCount, processedCount := c.getCounts()
+		if expectedCount == 0 {
+			return nil
+		}
+		if expectedCount == processedCount {
+			c.CheckpointNow()
+			// Doing an additional check here, instead of just 'continue',
+			// in case of bugs that result in expectedCount==processedCount, but the
+			// sets are not identical.  In that scenario, want to sleep before retrying
+			updatedExpectedCount, _ := c.getCounts()
+			if updatedExpectedCount == 0 {
+				return nil
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+		waitCount++
+	}
+	return errors.New("checkpointer waitForExpectedSequences failed to complete after waiting 10s")
 }

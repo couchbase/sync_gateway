@@ -92,6 +92,7 @@ type BlipSyncContext struct {
 	postHandleChangesCallback        func(expectedSeqs []string) // postHandleChangesCallback is called after successfully handling an incoming changes message
 	preSendRevisionResponseCallback  func(remoteSeq string)      // preSendRevisionResponseCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
 	postSendRevisionResponseCallback func(remoteSeq string)      // postSendRevisionResponseCallback is called after receiving acknowledgement of a sent revision
+	emptyChangesMessageCallback      func()                      // emptyChangesMessageCallback is called when an empty changes message is received
 	replicationStats                 *BlipSyncStats              // Replication stats
 	purgeOnRemoval                   bool                        // Purges the document when we pull a _removed:true revision.
 	conflictResolver                 ConflictResolverFunc        // Conflict resolver for active replications
