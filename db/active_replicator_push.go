@@ -91,9 +91,8 @@ func (apr *ActivePushReplicator) Start() error {
 func (apr *ActivePushReplicator) Complete() {
 
 	apr.lock.Lock()
-	defer apr.lock.Unlock()
-
 	if apr == nil {
+		apr.lock.Unlock()
 		return
 	}
 
@@ -113,8 +112,12 @@ func (apr *ActivePushReplicator) Complete() {
 		base.Infof(base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
 	}
 
-	if apr.onReplicatorComplete != nil {
-		apr.onReplicatorComplete()
+	// unlock the replication before triggering callback, in case callback attempts to re-acquire the lock
+	onCompleteCallback := apr.onReplicatorComplete
+	apr.lock.Unlock()
+
+	if onCompleteCallback != nil {
+		onCompleteCallback()
 	}
 }
 
