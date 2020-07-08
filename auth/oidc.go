@@ -431,7 +431,7 @@ func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata
 
 	ttl, _, err = cacheable(resp.Header)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Failed to determine whether provider metadata can be cached, error: %v", err)
+		base.Infof(base.KeyAuth, "Failed to determine whether provider metadata can be cached, error: %v", err)
 	}
 
 	// If the metadata expiry is zero or greater than 24 hours, the next sync should start in 24 hours.
