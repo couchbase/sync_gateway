@@ -329,11 +329,14 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return ErrClosedBLIPSender
 		}
 
+		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
+
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				base.ErrorfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 			}
+			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
 		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
 	} else {
 		outrq.SetNoReply(true)

@@ -2,7 +2,10 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -62,18 +65,46 @@ func (apr *ActivePushReplicator) Start() error {
 		channels = base.SetFromArray(apr.config.FilterChannels)
 	}
 
-	go bh.sendChanges(apr.blipSender, &sendChangesOptions{
-		docIDs:     apr.config.DocIDs,
-		since:      seq,
-		continuous: apr.config.Continuous,
-		activeOnly: apr.config.ActiveOnly,
-		batchSize:  int(apr.config.ChangesBatchSize),
-		channels:   channels,
-		clientType: clientTypeSGR2,
-	})
+	go func() {
+		bh.sendChanges(apr.blipSender, &sendChangesOptions{
+			docIDs:     apr.config.DocIDs,
+			since:      seq,
+			continuous: apr.config.Continuous,
+			activeOnly: apr.config.ActiveOnly,
+			batchSize:  int(apr.config.ChangesBatchSize),
+			channels:   channels,
+			clientType: clientTypeSGR2,
+		})
+		apr.Complete()
+	}()
 
 	apr.setState(ReplicationStateRunning)
 	return nil
+}
+
+// Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
+// before stopping the replication
+func (apr *ActivePushReplicator) Complete() {
+
+	// Wait for any pending changes responses to arrive and be processed
+	err := apr.waitForPendingChangesResponse()
+	if err != nil {
+		base.Infof(base.KeyReplicate, "Timeout waiting for pending changes response for replication %s - stopping: %v", apr.config.ID, err)
+	}
+
+	err = apr.Checkpointer.waitForExpectedSequences()
+	if err != nil {
+		base.Infof(base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
+	}
+
+	stopErr := apr.Stop()
+	if stopErr != nil {
+		base.Infof(base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
+	}
+
+	if apr.onReplicatorComplete != nil {
+		apr.onReplicatorComplete()
+	}
 }
 
 func (apr *ActivePushReplicator) Stop() error {
@@ -141,4 +172,21 @@ func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 		apr.Stats.Add(ActiveReplicatorStatsKeyRevsSentTotal, 1)
 		apr.Checkpointer.ProcessedSeq(remoteSeq)
 	}
+}
+
+// waitForExpectedSequences waits for the pending changes response count
+// to drain to zero.  Intended to be used once the replication has been stopped, to wait for
+// in-flight changes responses to arrive.
+// Waits up to 10s, polling every 100ms.
+func (apr *ActivePushReplicator) waitForPendingChangesResponse() error {
+	waitCount := 0
+	for waitCount < 100 {
+		pendingCount := atomic.LoadInt64(&apr.blipSyncContext.changesPendingResponseCount)
+		if pendingCount <= 0 {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+		waitCount++
+	}
+	return errors.New("checkpointer waitForPendingChangesResponse failed to complete after waiting 10s")
 }

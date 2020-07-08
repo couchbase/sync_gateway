@@ -70,12 +70,10 @@ func (apr *ActivePullReplicator) Start() error {
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
 // before stopping the replication
 func (apr *ActivePullReplicator) Complete() {
-	base.Infof(base.KeyReplicate, "Performing Complete for replication %s", apr.config.ID)
 	err := apr.Checkpointer.waitForExpectedSequences()
 	if err != nil {
-		base.Infof(base.KeyReplicate, "Timeout draining replication - stopping: %v", err)
+		base.Infof(base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
 	}
-	base.Infof(base.KeyReplicate, "Drain done, stopping replication %s", apr.config.ID)
 
 	stopErr := apr.Stop()
 	if stopErr != nil {
