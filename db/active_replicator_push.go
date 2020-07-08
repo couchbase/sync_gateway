@@ -20,6 +20,7 @@ func NewPushReplicator(config *ActiveReplicatorConfig) *ActivePushReplicator {
 		activeReplicatorCommon: activeReplicatorCommon{
 			config:           config,
 			replicationStats: NewBlipSyncStats(),
+			state:            ReplicationStateStopped,
 		},
 	}
 }

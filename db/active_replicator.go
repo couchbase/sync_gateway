@@ -123,6 +123,7 @@ func (ar *ActiveReplicator) ReplicationComplete() {
 
 func (ar *ActiveReplicator) State() (state string, errorMessage string) {
 
+	state = ReplicationStateStopped
 	if ar.Push != nil {
 		state = ar.Push.state
 		if ar.Push.state == ReplicationStateError && ar.Push.lastError != nil {
