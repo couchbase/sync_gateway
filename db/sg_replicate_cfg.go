@@ -456,8 +456,8 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		return nil, fmt.Errorf("Replication remote must not be empty")
 	}
 
-	if config.DeltaSyncEnabled == false {
-		rc.DeltasEnabled = false
+	if config.DeltaSyncEnabled == true {
+		rc.DeltasEnabled = true
 	}
 
 	rc.PassiveDBURL, err = url.Parse(config.Remote)
@@ -945,6 +945,9 @@ type ReplicationStatus struct {
 	LastSeqPull      string             `json:"last_seq_pull,omitempty"`
 	LastSeqPush      string             `json:"last_seq_push,omitempty"`
 	ErrorMessage     string             `json:"error_message,omitempty"`
+	DeltasSent       int64              `json:"deltas_sent,omitempty"`
+	DeltasRecv       int64              `json:"deltas_recv,omitempty"`
+	DeltasRequested  int64              `json:"deltas_requested,omitempty"`
 	Config           *ReplicationConfig `json:"config,omitempty"`
 }
 

@@ -11,6 +11,9 @@ type BlipSyncStats struct {
 	SendRevErrorRejectedCount *expvar.Int
 	SendRevErrorOtherCount    *expvar.Int
 	DocsPurgedCount           *expvar.Int
+	DeltaSentCount            *expvar.Int
+	DeltaReceivedCount        *expvar.Int
+	DeltaRequestedCount       *expvar.Int
 }
 
 func NewBlipSyncStats() *BlipSyncStats {
@@ -23,5 +26,8 @@ func NewBlipSyncStats() *BlipSyncStats {
 		SendRevErrorRejectedCount: &expvar.Int{},
 		SendRevErrorOtherCount:    &expvar.Int{},
 		DocsPurgedCount:           &expvar.Int{},
+		DeltaSentCount:            &expvar.Int{},
+		DeltaReceivedCount:        &expvar.Int{},
+		DeltaRequestedCount:       &expvar.Int{},
 	}
 }
