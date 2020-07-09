@@ -414,7 +414,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		Continuous:         config.Continuous,
 		ActiveDB:           &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
 		PurgeOnRemoval:     config.PurgeOnRemoval,
-		DeltasEnabled:      false,
+		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
 	}
 
@@ -454,10 +454,6 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 
 	if config.Remote == "" {
 		return nil, fmt.Errorf("Replication remote must not be empty")
-	}
-
-	if config.DeltaSyncEnabled == false {
-		rc.DeltasEnabled = false
 	}
 
 	rc.PassiveDBURL, err = url.Parse(config.Remote)
@@ -945,6 +941,9 @@ type ReplicationStatus struct {
 	LastSeqPull      string             `json:"last_seq_pull,omitempty"`
 	LastSeqPush      string             `json:"last_seq_push,omitempty"`
 	ErrorMessage     string             `json:"error_message,omitempty"`
+	DeltasSent       int64              `json:"deltas_sent,omitempty"`
+	DeltasRecv       int64              `json:"deltas_recv,omitempty"`
+	DeltasRequested  int64              `json:"deltas_requested,omitempty"`
 	Config           *ReplicationConfig `json:"config,omitempty"`
 }
 

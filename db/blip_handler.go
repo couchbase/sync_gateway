@@ -431,6 +431,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	if bh.sgCanUseDeltas {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
 		response.Properties[ChangesResponseDeltas] = "true"
+		bh.replicationStats.DeltaRequestedCount.Add(int64(nWritten))
 	}
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
@@ -530,6 +531,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 
 	bsc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
 
+	bsc.replicationStats.DeltaSentCount.Add(1)
 	return nil
 }
 
@@ -656,6 +658,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		newDoc.UpdateBody(deltaSrcMap)
 		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
 		bh.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
+
+		bh.replicationStats.DeltaReceivedCount.Add(1)
 	}
 
 	// Handle and pull out expiry
