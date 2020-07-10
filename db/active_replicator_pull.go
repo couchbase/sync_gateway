@@ -162,6 +162,17 @@ func (apr *ActivePullReplicator) CheckpointID() (string, error) {
 	return "sgr2cp:pull:" + checkpointHash, nil
 }
 
+func (apr *ActivePullReplicator) reset() error {
+	if apr.state != ReplicationStateStopped {
+		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
+	}
+	checkpointID, err := apr.CheckpointID()
+	if err != nil {
+		return err
+	}
+	return resetLocalCheckpoint(apr.config.ActiveDB, checkpointID)
+}
+
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 	apr.blipSyncContext.postHandleChangesCallback = func(changesSeqs []string) {

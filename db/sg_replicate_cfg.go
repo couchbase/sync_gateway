@@ -515,6 +515,14 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			if stateErr != nil {
 				base.Warnf("Error updating active replication %s to state %s", replicationID, replicationCfg.State)
 			}
+			// Reset is synchronous - after completion the replication state should be updated to stopped
+			if replicationCfg.State == ReplicationStateResetting {
+				postResetErr := m.UpdateReplicationState(replicationCfg.ID, ReplicationStateStopped)
+				if postResetErr != nil {
+					base.Warnf("Error updating replication state to stopped after successful reset: %v", postResetErr)
+				}
+
+			}
 		}
 	}
 
@@ -787,21 +795,22 @@ func isValidStateChange(currentState, newState string) error {
 	switch newState {
 	case ReplicationStateRunning:
 		if currentState == ReplicationStateResetting {
-			return fmt.Errorf("Replication cannot be started until reset is complete")
+			return base.HTTPErrorf(http.StatusBadRequest, "Replication cannot be started until reset is complete")
 		}
 		return nil
 	case ReplicationStateStopped:
 		return nil
 	case ReplicationStateResetting:
 		if currentState == ReplicationStateRunning {
-			return fmt.Errorf("Replication must be stopped before it can be reset")
+			return base.HTTPErrorf(http.StatusBadRequest, "Replication must be stopped before it can be reset")
 		}
 	}
 	return nil
 }
 
 func transitionStateName(currentState, targetState string) string {
-	transitionState := currentState
+	transitionState := targetState
+
 	switch targetState {
 	case ReplicationStateRunning:
 		if currentState != targetState {
@@ -812,6 +821,7 @@ func transitionStateName(currentState, targetState string) string {
 			transitionState = "stopping"
 		}
 	}
+
 	return transitionState
 }
 
