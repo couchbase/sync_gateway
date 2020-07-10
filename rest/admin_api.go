@@ -802,6 +802,16 @@ func (h *handler) getReplications() error {
 	if err != nil {
 		return err
 	}
+
+	// TODO: remove the local/non-local handling below when CBG-909 is completed
+	for _, replication := range replications {
+		if replication.AssignedNode == h.db.UUID {
+			replication.AssignedNode = replication.AssignedNode + " (local)"
+		} else {
+			replication.AssignedNode = replication.AssignedNode + " (non-local)"
+		}
+	}
+
 	h.writeJSON(replications)
 	return nil
 }
@@ -858,25 +868,35 @@ func (h *handler) deleteReplication() error {
 }
 
 func (h *handler) getReplicationsStatus() error {
-	includeConfig, _ := h.getOptBoolQuery("includeConfig", false)
-	replicationsStatus, err := h.db.SGReplicateMgr.GetReplicationStatusAll(includeConfig)
+	replicationsStatus, err := h.db.SGReplicateMgr.GetReplicationStatusAll(h.getReplicationStatusOptions())
 	if err != nil {
 		return err
 	}
 	h.writeJSON(replicationsStatus)
 	return nil
-
 }
 
 func (h *handler) getReplicationStatus() error {
 	replicationID := mux.Vars(h.rq)["replicationID"]
-	includeConfig, _ := h.getOptBoolQuery("includeConfig", false)
-	status, err := h.db.SGReplicateMgr.GetReplicationStatus(replicationID, includeConfig)
+	status, err := h.db.SGReplicateMgr.GetReplicationStatus(replicationID, h.getReplicationStatusOptions())
 	if err != nil {
 		return err
 	}
 	h.writeJSON(status)
 	return nil
+}
+
+func (h *handler) getReplicationStatusOptions() db.ReplicationStatusOptions {
+	activeOnly, _ := h.getOptBoolQuery("activeOnly", false)
+	localOnly, _ := h.getOptBoolQuery("localOnly", false)
+	includeError, _ := h.getOptBoolQuery("includeError", true)
+	includeConfig, _ := h.getOptBoolQuery("includeConfig", false)
+	return db.ReplicationStatusOptions{
+		ActiveOnly:    activeOnly,
+		LocalOnly:     localOnly,
+		IncludeError:  includeError,
+		IncludeConfig: includeConfig,
+	}
 }
 
 func (h *handler) putReplicationStatus() error {

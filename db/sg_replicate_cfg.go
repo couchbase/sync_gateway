@@ -513,7 +513,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
 			stateErr := activeReplicator.alignState(replicationCfg.State)
 			if stateErr != nil {
-				base.Warnf("Error updating active replication %s to state %s", replicationID, replicationCfg.State)
+				base.Warnf("Error updating active replication %s to state %s: %v", replicationID, replicationCfg.State, err)
 			}
 			// Reset is synchronous - after completion the replication state should be updated to stopped
 			if replicationCfg.State == ReplicationStateResetting {
@@ -680,6 +680,14 @@ func (m *sgReplicateManager) GetReplication(replicationID string) (*ReplicationC
 	if !exists {
 		return nil, base.ErrNotFound
 	}
+
+	// TODO: remove the local/non-local handling below when CBG-909 is completed
+	if replication.AssignedNode == m.localNodeUUID {
+		replication.AssignedNode = replication.AssignedNode + " (local)"
+	} else {
+		replication.AssignedNode = replication.AssignedNode + " (non-local)"
+	}
+
 	return replication, nil
 }
 
@@ -957,7 +965,23 @@ type ReplicationStatus struct {
 	Config           *ReplicationConfig `json:"config,omitempty"`
 }
 
-func (m *sgReplicateManager) GetReplicationStatus(replicationID string, includeConfig bool) (*ReplicationStatus, error) {
+type ReplicationStatusOptions struct {
+	IncludeConfig bool // Include replication config
+	LocalOnly     bool // Local replications only
+	ActiveOnly    bool // Active replications only (
+	IncludeError  bool // Exclude replication in error state
+}
+
+func DefaultReplicationStatusOptions() ReplicationStatusOptions {
+	return ReplicationStatusOptions{
+		IncludeConfig: false,
+		LocalOnly:     false,
+		ActiveOnly:    false,
+		IncludeError:  true,
+	}
+}
+
+func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options ReplicationStatusOptions) (*ReplicationStatus, error) {
 
 	// Check if replication is assigned locally
 	m.activeReplicatorsLock.RLock()
@@ -967,29 +991,39 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, includeC
 	var status *ReplicationStatus
 	if isLocal {
 		status = replication.GetStatus()
-		if includeConfig {
+		if options.IncludeConfig {
 			config, err := m.GetReplication(replicationID)
 			if err != nil {
 				return nil, err
 			}
 			status.Config = &config.ReplicationConfig
 		}
-		return status, nil
+	} else {
+		// Check if replication is remote
+		if options.LocalOnly {
+			return nil, nil
+		}
+		// TODO: generation of remote status pending CBG-909
+		remoteCfg, err := m.GetReplication(replicationID)
+		if err != nil {
+			return nil, err
+		}
+		status = &ReplicationStatus{
+			ID:     replicationID,
+			Status: remoteCfg.State,
+		}
+		if options.IncludeConfig {
+			status.Config = &remoteCfg.ReplicationConfig
+		}
 	}
 
-	// Check if replication is remote
-	// TODO: generation of remote status pending CBG-909
-	remoteCfg, err := m.GetReplication(replicationID)
-	if err != nil {
-		return nil, err
+	if !options.IncludeError && status.Status == ReplicationStateError {
+		return nil, nil
 	}
-	status = &ReplicationStatus{
-		ID:     replicationID,
-		Status: remoteCfg.State,
+	if options.ActiveOnly && status.Status != ReplicationStateRunning {
+		return nil, nil
 	}
-	if includeConfig {
-		status.Config = &remoteCfg.ReplicationConfig
-	}
+
 	return status, nil
 }
 
@@ -1012,7 +1046,7 @@ func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) 
 		return nil, err
 	}
 
-	updatedStatus, err := m.GetReplicationStatus(replicationID, false)
+	updatedStatus, err := m.GetReplicationStatus(replicationID, DefaultReplicationStatusOptions())
 	if err != nil {
 		// Not found is expected when adhoc replication is stopped, return removed status instead of error
 		// since UpdateReplicationState was successful
@@ -1032,7 +1066,7 @@ func (m *sgReplicateManager) PutReplicationStatus(replicationID, action string) 
 	return updatedStatus, nil
 }
 
-func (m *sgReplicateManager) GetReplicationStatusAll(includeConfig bool) ([]*ReplicationStatus, error) {
+func (m *sgReplicateManager) GetReplicationStatusAll(options ReplicationStatusOptions) ([]*ReplicationStatus, error) {
 
 	statuses := make([]*ReplicationStatus, 0)
 
@@ -1043,11 +1077,13 @@ func (m *sgReplicateManager) GetReplicationStatusAll(includeConfig bool) ([]*Rep
 	}
 
 	for replicationID, _ := range persistedReplications {
-		status, err := m.GetReplicationStatus(replicationID, includeConfig)
+		status, err := m.GetReplicationStatus(replicationID, options)
 		if err != nil {
 			base.Warnf("Unable to retrieve replication status for replication %s", replicationID)
 		}
-		statuses = append(statuses, status)
+		if status != nil {
+			statuses = append(statuses, status)
+		}
 	}
 
 	return statuses, nil
