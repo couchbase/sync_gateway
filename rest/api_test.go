@@ -4689,6 +4689,74 @@ func TestWebhookSpecialProperties(t *testing.T) {
 	wg.Wait()
 }
 
+func TestWebhookPropsWithAttachments(t *testing.T) {
+	wg := sync.WaitGroup{}
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		defer wg.Done()
+		bodyBytes, err := ioutil.ReadAll(r.Body)
+		require.NoError(t, err, "Error reading request body")
+		require.NoError(t, r.Body.Close(), "Error closing request body")
+
+		var body db.Body
+		require.NoError(t, base.JSONUnmarshal(bodyBytes, &body), "Error parsing document body")
+		assert.Equal(t, "doc1", body[db.BodyId])
+		assert.Equal(t, "bar", body["foo"])
+
+		if strings.HasPrefix(body[db.BodyRev].(string), "1-") {
+			assert.Equal(t, "1-cd809becc169215072fd567eebd8b8de", body[db.BodyRev])
+		}
+
+		if strings.HasPrefix(body[db.BodyRev].(string), "2-") {
+			assert.Equal(t, "2-6433ff70e11791fcb7fdf16746f4b9e7", body[db.BodyRev])
+			attachments := body[db.BodyAttachments].(map[string]interface{})
+			attachment1 := attachments["attach1"].(map[string]interface{})
+			assert.Equal(t, "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=", attachment1["digest"])
+			assert.Equal(t, float64(30), attachment1["length"])
+			assert.Equal(t, float64(2), attachment1["revpos"])
+			assert.True(t, attachment1["stub"].(bool))
+			assert.Equal(t, "content/type", attachment1["content_type"])
+		}
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(handler))
+	defer s.Close()
+
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport: true,
+			EventHandlers: map[string]interface{}{
+				"document_changed": []map[string]interface{}{{
+					"url": s.URL, "filter": "function(doc){return true;}", "handler": "webhook"}}},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	// Create first revision of the document with no attachment.
+	response := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"foo": "bar"}`)
+	assertStatus(t, response, http.StatusCreated)
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.True(t, body["ok"].(bool))
+	doc1revId := body["rev"].(string)
+	wg.Add(1)
+
+	// Add attachment to the doc.
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{"Content-Type": attachmentContentType}
+	resource := "/db/doc1/attach1?rev=" + doc1revId
+	response = rt.SendRequestWithHeaders(http.MethodPut, resource, attachmentBody, reqHeaders)
+	assertStatus(t, response, http.StatusCreated)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.True(t, body["ok"].(bool))
+	revIdAfterAttachment := body["rev"].(string)
+	assert.NotEmpty(t, revIdAfterAttachment, "No revid in response for PUT attachment")
+	assert.NotEqual(t, revIdAfterAttachment, doc1revId)
+	wg.Add(1)
+	wg.Wait()
+}
+
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
 
 	defer base.SetUpBenchmarkLogging(base.LevelInfo, base.KeyHTTP)()
@@ -5022,73 +5090,4 @@ func TestImportOnWriteMigration(t *testing.T) {
 	// Update doc with xattr - successful update
 	response = rt.SendAdminRequest("PUT", "/db/doc1?rev=2-44ad6f128a2b1f75d0d0bb49b1fc0019", `{"value":"newer"}`)
 	assertStatus(t, response, http.StatusCreated)
-}
-
-func TestWebhookPropsWithAttachments(t *testing.T) {
-	wg := sync.WaitGroup{}
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, err := ioutil.ReadAll(r.Body)
-		require.NoError(t, err, "Error reading request body")
-		require.NoError(t, r.Body.Close(), "Error closing request body")
-
-		var body db.Body
-		require.NoError(t, base.JSONUnmarshal(bodyBytes, &body), "Error parsing document body")
-		assert.Equal(t, "doc1", body[db.BodyId])
-		assert.Equal(t, "bar", body["foo"])
-
-		if strings.HasPrefix(body[db.BodyRev].(string), "1-") {
-			assert.Equal(t, "1-cd809becc169215072fd567eebd8b8de", body[db.BodyRev])
-		}
-
-		if strings.HasPrefix(body[db.BodyRev].(string), "2-") {
-			assert.Equal(t, "2-6433ff70e11791fcb7fdf16746f4b9e7", body[db.BodyRev])
-			attachments := body[db.BodyAttachments].(map[string]interface{})
-			attachment1 := attachments["attach1"].(map[string]interface{})
-			assert.Equal(t, "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=", attachment1["digest"])
-			assert.Equal(t, float64(30), attachment1["length"])
-			assert.Equal(t, float64(2), attachment1["revpos"])
-			assert.True(t, attachment1["stub"].(bool))
-			assert.Equal(t, "content/type", attachment1["content_type"])
-		}
-		wg.Done()
-	}
-
-	s := httptest.NewServer(http.HandlerFunc(handler))
-	defer s.Close()
-
-	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			AutoImport: true,
-			EventHandlers: map[string]interface{}{
-				"document_changed": []map[string]interface{}{{
-					"url": s.URL, "filter": "function(doc){return true;}", "handler": "webhook"}}},
-		},
-	}
-	rt := NewRestTester(t, rtConfig)
-	defer rt.Close()
-
-	// Create first revision of the document with no attachment.
-	response := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"foo": "bar"}`)
-	assertStatus(t, response, http.StatusCreated)
-	var body db.Body
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.True(t, body["ok"].(bool))
-	doc1revId := body["rev"].(string)
-	wg.Add(1)
-
-	// Add attachment to the doc.
-	attachmentBody := "this is the body of attachment"
-	attachmentContentType := "content/type"
-	reqHeaders := map[string]string{"Content-Type": attachmentContentType}
-	resource := "/db/doc1/attach1?rev=" + doc1revId
-	response = rt.SendRequestWithHeaders(http.MethodPut, resource, attachmentBody, reqHeaders)
-	assertStatus(t, response, http.StatusCreated)
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	require.True(t, body["ok"].(bool))
-	revIdAfterAttachment := body["rev"].(string)
-	assert.NotEmpty(t, revIdAfterAttachment, "No revid in response for PUT attachment")
-	assert.NotEqual(t, revIdAfterAttachment, doc1revId)
-	wg.Add(1)
-
-	wg.Wait()
 }
