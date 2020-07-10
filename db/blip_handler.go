@@ -381,6 +381,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	output.Write([]byte("["))
 	jsonOutput := base.JSONEncoder(output)
 	nWritten := 0
+	nRequested := 0
 
 	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
 	startTime := time.Now()
@@ -403,6 +404,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			output.Write([]byte("0"))
 		} else {
 			// we want this rev, send possible ancestors to the peer
+			nRequested++
 			if len(possible) == 0 {
 				output.Write([]byte("[]"))
 			} else {
@@ -431,7 +433,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	if bh.sgCanUseDeltas {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
 		response.Properties[ChangesResponseDeltas] = "true"
-		bh.replicationStats.DeltaRequestedCount.Add(int64(nWritten))
+		bh.replicationStats.DeltaRequestedCount.Add(int64(nRequested))
 	}
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
