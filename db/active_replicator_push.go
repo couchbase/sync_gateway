@@ -182,7 +182,7 @@ func (apr *ActivePushReplicator) CheckpointID() (string, error) {
 	return "sgr2cp:push:" + checkpointHash, nil
 }
 
-// Reset performs a reset on the replication by removing the local checkpoint document.
+// reset performs a reset on the replication by removing the local checkpoint document.
 func (apr *ActivePushReplicator) reset() error {
 	if apr.state != ReplicationStateStopped {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
