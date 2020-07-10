@@ -182,6 +182,18 @@ func (apr *ActivePushReplicator) CheckpointID() (string, error) {
 	return "sgr2cp:push:" + checkpointHash, nil
 }
 
+// reset performs a reset on the replication by removing the local checkpoint document.
+func (apr *ActivePushReplicator) reset() error {
+	if apr.state != ReplicationStateStopped {
+		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
+	}
+	checkpointID, err := apr.CheckpointID()
+	if err != nil {
+		return err
+	}
+	return resetLocalCheckpoint(apr.config.ActiveDB, checkpointID)
+}
+
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 	apr.blipSyncContext.preSendRevisionResponseCallback = func(remoteSeq string) {

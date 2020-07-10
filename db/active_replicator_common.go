@@ -64,13 +64,3 @@ func (a *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastE
 		return a.state, a.lastError.Error()
 	}
 }
-
-func (a *activeReplicatorCommon) Reset() error {
-	// TODO: pending CBG-908
-	//  Since we require that a replication be stopped
-	//  prior to reset, it's expected that checkpointer
-	//  is unavailable.  This function will need to
-	//  remove local checkpoints for push and pull replications
-	//  using the config.ActiveDB
-	return nil
-}

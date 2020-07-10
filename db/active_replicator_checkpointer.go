@@ -297,6 +297,11 @@ func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string,
 	return newRev, nil
 }
 
+func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
+	key := activeDB.realSpecialDocID("local", checkpointDocIDPrefix+checkpointID)
+	return activeDB.Bucket.Delete(key)
+}
+
 // getRemoteCheckpoint returns the sequence and rev for the remote checkpoint.
 // if the checkpoint does not exist, returns empty sequence and rev.
 func (c *Checkpointer) getRemoteCheckpoint() (seq, rev string, err error) {

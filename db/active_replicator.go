@@ -92,13 +92,13 @@ func (ar *ActiveReplicator) Stop() error {
 
 func (ar *ActiveReplicator) Reset() error {
 	if ar.Push != nil {
-		if err := ar.Push.Reset(); err != nil {
+		if err := ar.Push.reset(); err != nil {
 			return err
 		}
 	}
 
 	if ar.Pull != nil {
-		if err := ar.Pull.Reset(); err != nil {
+		if err := ar.Pull.reset(); err != nil {
 			return err
 		}
 	}
