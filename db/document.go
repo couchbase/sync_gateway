@@ -212,6 +212,10 @@ func (doc *Document) BodyWithSpecialProperties() ([]byte, error) {
 		kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 	}
 
+	if len(doc.Attachments) > 0 {
+		kvPairs = append(kvPairs, base.KVPair{Key: BodyAttachments, Val: doc.Attachments})
+	}
+
 	bodyBytes, err = base.InjectJSONProperties(bodyBytes, kvPairs...)
 	if err != nil {
 		return nil, err
