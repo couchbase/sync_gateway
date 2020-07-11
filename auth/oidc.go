@@ -27,7 +27,6 @@ package auth
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -432,7 +431,7 @@ func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata
 
 	ttl, _, err = cacheable(resp.Header)
 	if err != nil {
-		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
+		base.Infof(base.KeyAuth, "Failed to determine whether provider metadata can be cached, error: %v", err)
 	}
 
 	// If the metadata expiry is zero or greater than 24 hours, the next sync should start in 24 hours.
@@ -680,7 +679,7 @@ func getExpiration(header http.Header) (ttl time.Duration, ok bool, err error) {
 		return 0, false, nil
 	}
 	expires := header.Get("Expires")
-	if expires == "" {
+	if expires == "" || expires == "0" {
 		return 0, false, nil
 	}
 	te, err := time.Parse(time.RFC1123, expires)
@@ -707,20 +706,6 @@ func cacheable(header http.Header) (ttl time.Duration, ok bool, err error) {
 		return ttl, ok, err
 	}
 	return getExpiration(header)
-}
-
-// GetHttpClient returns a new HTTP client with TLS certificate verification
-// disabled when insecureSkipVerify is true and enabled otherwise.
-func GetHttpClient(insecureSkipVerify bool) *http.Client {
-	if insecureSkipVerify {
-		transport := base.DefaultHTTPTransport()
-		if transport.TLSClientConfig == nil {
-			transport.TLSClientConfig = new(tls.Config)
-		}
-		transport.TLSClientConfig.InsecureSkipVerify = true
-		return &http.Client{Transport: transport}
-	}
-	return http.DefaultClient
 }
 
 // GetOIDCClientContext returns a new Context that carries the provided HTTP client
