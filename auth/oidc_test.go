@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -894,6 +895,7 @@ func TestGetDiscoveryEndpoint(t *testing.T) {
 		})
 	}
 }
+
 func TestIsStandardDiscovery(t *testing.T) {
 	tests := []struct {
 		name                        string
@@ -936,6 +938,44 @@ func TestIsStandardDiscovery(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			isStandardDiscoveryActual := tc.provider.isStandardDiscovery()
 			assert.Equal(t, tc.isStandardDiscoveryExpected, isStandardDiscoveryActual)
+		})
+	}
+}
+
+func TestFormatUsername(t *testing.T) {
+	tests := []struct {
+		name             string
+		username         interface{}
+		usernameExpected string
+		errorExpected    error
+	}{{
+		name:             "format username with valid username of type string",
+		username:         "80249751",
+		usernameExpected: "80249751",
+	}, {
+		name:             "format username with valid username of type int",
+		username:         80249751,
+		usernameExpected: "",
+		errorExpected:    errors.New("oidc: can't treat value of type: int as valid username"),
+	}, {
+		name:             "format username with valid username of type float64",
+		username:         float64(80249751),
+		usernameExpected: "8.0249751e+07",
+	}, {
+		name:             "format username with valid username of type json.Number",
+		username:         json.Number("80249751"),
+		usernameExpected: "80249751",
+	}, {
+		name:             "format username with valid username of type nil",
+		username:         nil,
+		usernameExpected: "",
+		errorExpected:    errors.New("oidc: can't treat value of type: <nil> as valid username"),
+	}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			username, err := formatUsername(tc.username)
+			assert.Equal(t, tc.errorExpected, err)
+			assert.Equal(t, tc.usernameExpected, username)
 		})
 	}
 }

@@ -27,6 +27,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -402,15 +403,15 @@ func (op *OIDCProvider) standardDiscovery(discoveryURL string) (metadata Provide
 	return metadata, verifier, err
 }
 
+// getOIDCUsername returns the username to be used as the Sync Gateway username.
 func getOIDCUsername(provider *OIDCProvider, identity *Identity) (username string, err error) {
 	if provider.UsernameClaim != "" {
-		var ok bool
-		var value interface{}
-		if value, ok = identity.Claims[provider.UsernameClaim]; !ok {
+		value, ok := identity.Claims[provider.UsernameClaim]
+		if !ok {
 			return "", fmt.Errorf("oidc: specified claim %q not found in id_token, identity: %v", provider.UsernameClaim, identity)
 		}
-		if username, ok = value.(string); !ok {
-			return "", fmt.Errorf("oidc: can't cast claim %q as string, identity: %v", provider.UsernameClaim, identity)
+		if username, err = formatUsername(value); err != nil {
+			return "", err
 		}
 		if provider.UserPrefix == "" {
 			return url.QueryEscape(username), nil
@@ -418,6 +419,20 @@ func getOIDCUsername(provider *OIDCProvider, identity *Identity) (username strin
 		return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(username)), nil
 	}
 	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(identity.Subject)), nil
+}
+
+// formatUsername returns the string representation of the given username value.
+func formatUsername(value interface{}) (string, error) {
+	switch valueType := value.(type) {
+	case string:
+		return valueType, nil
+	case json.Number:
+		return string(valueType), nil
+	case float64:
+		return strconv.FormatFloat(valueType, 'e', -1, 64), nil
+	default:
+		return "", fmt.Errorf("oidc: can't treat value of type: %T as valid username", valueType)
+	}
 }
 
 // fetchCustomProviderConfig collects the provider configuration from the given discovery endpoint and determines

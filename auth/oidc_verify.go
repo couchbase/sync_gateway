@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -40,13 +41,19 @@ type IdentityJson struct {
 	Claims    map[string]interface{} `json:"-"`
 }
 
-// UnmarshalIdentityJSON unmarshalls the raw claims into IdentityJson
-func UnmarshalIdentityJSON(claims []byte, identity *IdentityJson) error {
-	if err := json.Unmarshal(claims, &identity); err != nil {
-		return err
+// UnmarshalIdentityJSON raw claim bytes as IdentityJson
+func UnmarshalIdentityJSON(claims []byte) (*IdentityJson, error) {
+	if len(claims) <= 0 {
+		return nil, errors.New("can't extract identity claims from an empty byte slice")
 	}
-	if err := json.Unmarshal(claims, &identity.Claims); err != nil {
-		return err
+	identity := IdentityJson{}
+	if err := json.Unmarshal(claims, &identity); err != nil {
+		return nil, err
+	}
+	decoder := base.JSONDecoder(bytes.NewReader(claims))
+	decoder.UseNumber()
+	if err := decoder.Decode(&identity.Claims); err != nil {
+		return nil, err
 	}
 	delete(identity.Claims, "iss")
 	delete(identity.Claims, "sub")
@@ -55,7 +62,7 @@ func UnmarshalIdentityJSON(claims []byte, identity *IdentityJson) error {
 	delete(identity.Claims, "iat")
 	delete(identity.Claims, "nbf")
 	delete(identity.Claims, "email")
-	return nil
+	return &identity, nil
 }
 
 // VerifyClaims parses a raw ID Token and verifies the claim.
@@ -64,8 +71,9 @@ func VerifyClaims(rawIDToken, clientID, issuer string) (*Identity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
 	}
-	identityJson := new(IdentityJson)
-	if err := UnmarshalIdentityJSON(payload, identityJson); err != nil {
+
+	identityJson, err := UnmarshalIdentityJSON(payload)
+	if err != nil {
 		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %v", err)
 	}
 
