@@ -156,6 +156,8 @@ type OIDCProvider struct {
 	DisableCallbackState bool `json:"disable_callback_state,omitempty"`
 
 	// UsernameClaim allows to specify a claim other than subject to use as the Sync Gateway username.
+	// The specified claim must be a string - numeric claims may be unmarshalled inconsistently between 
+	// Sync Gateway and the underlying OIDC library.
 	UsernameClaim string `json:"username_claim"`
 
 	// client represents client configurations to authenticate end-users
