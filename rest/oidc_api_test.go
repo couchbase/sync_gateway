@@ -1611,27 +1611,28 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		deleteUser(t, restTester, "foo_alice")
 	})
 
-	t.Run("unsuccessful new user auth when username_claim is set but claim is of legal type in token", func(t *testing.T) {
-		username := "80249751"
-		usernameClaim := "gpid"
-		email := username + "@example.com"
-		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
-		oldUsernameClaim := provider.UsernameClaim
-		oldUserPrefix := provider.UserPrefix
-		provider.UsernameClaim = usernameClaim
-		provider.UserPrefix = ""
-		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
-		defer func() {
-			provider.UsernameClaim = oldUsernameClaim
-			provider.UserPrefix = oldUserPrefix
-		}()
-		claimSet := claimsAuthentic()
-		claimSet.secondaryClaims[emailClaim] = email
-		claimSet.secondaryClaims[usernameClaim] = []int{80249751}
-		runBadAuthTest(claimSet)
-	})
+	t.Run("unsuccessful new user auth when username_claim is set but claim is of illegal type in token",
+		func(t *testing.T) {
+			username := "80249751"
+			usernameClaim := "gpid"
+			email := username + "@example.com"
+			provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+			oldUsernameClaim := provider.UsernameClaim
+			oldUserPrefix := provider.UserPrefix
+			provider.UsernameClaim = usernameClaim
+			provider.UserPrefix = ""
+			require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+			defer func() {
+				provider.UsernameClaim = oldUsernameClaim
+				provider.UserPrefix = oldUserPrefix
+			}()
+			claimSet := claimsAuthentic()
+			claimSet.secondaryClaims[emailClaim] = email
+			claimSet.secondaryClaims[usernameClaim] = []int{80249751}
+			runBadAuthTest(claimSet)
+		})
 
-	t.Run("unsuccessful registered user auth when username_claim is set but claim is of legal type in token", func(t *testing.T) {
+	t.Run("unsuccessful registered user auth when username_claim is set but claim is of illegal type in token", func(t *testing.T) {
 		username := "80249751"
 		usernameClaim := "gpid"
 		email := username + "@example.com"
@@ -1650,6 +1651,112 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		claimSet.secondaryClaims[usernameClaim] = []int{80249751}
 		createUser(t, restTester, username)
 		runBadAuthTest(claimSet)
+		deleteUser(t, restTester, username)
+	})
+
+	t.Run("successful new user auth when username_claim is set and claim is of legal float64 type in token", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		provider.Register = true
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = float64(80249751)
+		runGoodAuthTest(claimSet, username)
+		user, err := authenticator.GetUser(username)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, username, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, username)
+	})
+
+	t.Run("successful registered user auth when username_claim is set and claim is of legal float64 type in token",
+		func(t *testing.T) {
+			username := "80249751"
+			usernameClaim := "gpid"
+			email := username + "@example.com"
+			provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+			oldUsernameClaim := provider.UsernameClaim
+			oldUserPrefix := provider.UserPrefix
+			provider.UsernameClaim = usernameClaim
+			provider.UserPrefix = ""
+			require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+			defer func() {
+				provider.UsernameClaim = oldUsernameClaim
+				provider.UserPrefix = oldUserPrefix
+			}()
+			claimSet := claimsAuthentic()
+			claimSet.secondaryClaims[emailClaim] = email
+			claimSet.secondaryClaims[usernameClaim] = float64(80249751)
+			createUser(t, restTester, username)
+			runGoodAuthTest(claimSet, username)
+			user, err := authenticator.GetUser(username)
+			require.NoError(t, err, "Error getting user from db")
+			assert.Equal(t, username, user.Name(), "Username mismatch")
+			assert.Equal(t, email, user.Email(), "Email is not updated")
+			deleteUser(t, restTester, username)
+		})
+
+	t.Run("successful new user auth when username_claim is set and claim is of legal json.Number type in token", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		provider.Register = true
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = json.Number("80249751")
+		runGoodAuthTest(claimSet, username)
+		user, err := authenticator.GetUser(username)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, username, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
+		deleteUser(t, restTester, username)
+	})
+
+	t.Run("successful registered user auth when username_claim is set and claim is of legal json.Number type in token", func(t *testing.T) {
+		username := "80249751"
+		usernameClaim := "gpid"
+		email := username + "@example.com"
+		provider := restTester.DatabaseConfig.OIDCConfig.Providers.GetDefaultProvider()
+		oldUsernameClaim := provider.UsernameClaim
+		oldUserPrefix := provider.UserPrefix
+		provider.UsernameClaim = usernameClaim
+		provider.UserPrefix = ""
+		provider.Register = true
+		require.NoError(t, provider.InitUserPrefix(), "Error initializing user_prefix")
+		defer func() {
+			provider.UsernameClaim = oldUsernameClaim
+			provider.UserPrefix = oldUserPrefix
+		}()
+		claimSet := claimsAuthentic()
+		claimSet.secondaryClaims[emailClaim] = email
+		claimSet.secondaryClaims[usernameClaim] = json.Number("80249751")
+		createUser(t, restTester, username)
+		runGoodAuthTest(claimSet, username)
+		user, err := authenticator.GetUser(username)
+		require.NoError(t, err, "Error getting user from db")
+		assert.Equal(t, username, user.Name(), "Username mismatch")
+		assert.Equal(t, email, user.Email(), "Email is not updated")
 		deleteUser(t, restTester, username)
 	})
 }

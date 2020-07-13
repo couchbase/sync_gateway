@@ -427,9 +427,9 @@ func formatUsername(value interface{}) (string, error) {
 	case string:
 		return valueType, nil
 	case json.Number:
-		return string(valueType), nil
+		return valueType.String(), nil
 	case float64:
-		return strconv.FormatFloat(valueType, 'e', -1, 64), nil
+		return strconv.FormatFloat(valueType, 'f', -1, 64), nil
 	default:
 		return "", fmt.Errorf("oidc: can't treat value of type: %T as valid username", valueType)
 	}

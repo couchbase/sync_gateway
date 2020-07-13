@@ -960,7 +960,7 @@ func TestFormatUsername(t *testing.T) {
 	}, {
 		name:             "format username with valid username of type float64",
 		username:         float64(80249751),
-		usernameExpected: "8.0249751e+07",
+		usernameExpected: "80249751",
 	}, {
 		name:             "format username with valid username of type json.Number",
 		username:         json.Number("80249751"),
