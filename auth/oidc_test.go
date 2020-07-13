@@ -13,6 +13,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
 	"errors"
 	"io"
 	"log"
@@ -172,41 +173,43 @@ func TestOIDCProviderMap_GetProviderForIssuer(t *testing.T) {
 }
 
 func TestOIDCUsername(t *testing.T) {
-
 	provider := OIDCProvider{
 		Name:   "Some_Provider",
 		Issuer: "http://www.someprovider.com",
 	}
 
-	err := provider.initUserPrefix()
+	err := provider.InitUserPrefix()
 	assert.NoError(t, err)
 	assert.Equal(t, "www.someprovider.com", provider.UserPrefix)
 
 	// test username suffix
-	oidcUsername := getOIDCUsername(&provider, "bernard")
+	identity := Identity{Subject: "bernard"}
+	oidcUsername, err := getOIDCUsername(&provider, &identity)
+	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_bernard", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test char escaping
-	oidcUsername = getOIDCUsername(&provider, "{bernard}")
+	identity.Subject = "{bernard}"
+	oidcUsername, err = getOIDCUsername(&provider, &identity)
+	assert.NoError(t, err, "Error retrieving OpenID Connect username")
 	assert.Equal(t, "www.someprovider.com_%7Bbernard%7D", oidcUsername)
 	assert.Equal(t, true, IsValidPrincipalName(oidcUsername))
 
 	// test URL with paths
 	provider.UserPrefix = ""
 	provider.Issuer = "http://www.someprovider.com/extra"
-	err = provider.initUserPrefix()
+	err = provider.InitUserPrefix()
 	assert.NoError(t, err)
 	assert.Equal(t, "www.someprovider.com%2Fextra", provider.UserPrefix)
 
 	// test invalid URL
 	provider.UserPrefix = ""
 	provider.Issuer = "http//www.someprovider.com"
-	err = provider.initUserPrefix()
+	err = provider.InitUserPrefix()
 	assert.NoError(t, err)
 	// falls back to provider name:
 	assert.Equal(t, "Some_Provider", provider.UserPrefix)
-
 }
 
 func TestInitOIDCClient(t *testing.T) {
@@ -892,6 +895,7 @@ func TestGetDiscoveryEndpoint(t *testing.T) {
 		})
 	}
 }
+
 func TestIsStandardDiscovery(t *testing.T) {
 	tests := []struct {
 		name                        string
@@ -934,6 +938,44 @@ func TestIsStandardDiscovery(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			isStandardDiscoveryActual := tc.provider.isStandardDiscovery()
 			assert.Equal(t, tc.isStandardDiscoveryExpected, isStandardDiscoveryActual)
+		})
+	}
+}
+
+func TestFormatUsername(t *testing.T) {
+	tests := []struct {
+		name             string
+		username         interface{}
+		usernameExpected string
+		errorExpected    error
+	}{{
+		name:             "format username with valid username of type string",
+		username:         "80249751",
+		usernameExpected: "80249751",
+	}, {
+		name:             "format username with valid username of type int",
+		username:         80249751,
+		usernameExpected: "",
+		errorExpected:    errors.New("oidc: can't treat value of type: int as valid username"),
+	}, {
+		name:             "format username with valid username of type float64",
+		username:         float64(80249751),
+		usernameExpected: "80249751",
+	}, {
+		name:             "format username with valid username of type json.Number",
+		username:         json.Number("80249751"),
+		usernameExpected: "80249751",
+	}, {
+		name:             "format username with valid username of type nil",
+		username:         nil,
+		usernameExpected: "",
+		errorExpected:    errors.New("oidc: can't treat value of type: <nil> as valid username"),
+	}}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			username, err := formatUsername(tc.username)
+			assert.Equal(t, tc.errorExpected, err)
+			assert.Equal(t, tc.usernameExpected, username)
 		})
 	}
 }

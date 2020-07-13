@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -26,16 +27,42 @@ type Identity struct {
 	Expiry   time.Time
 	IssuedAt time.Time
 	Email    string
+	Claims   map[string]interface{}
 }
 
 type IdentityJson struct {
-	Issuer    string    `json:"iss"`
-	Subject   string    `json:"sub"`
-	Audience  audience  `json:"aud"`
-	Expiry    jsonTime  `json:"exp"`
-	IssuedAt  jsonTime  `json:"iat"`
-	NotBefore *jsonTime `json:"nbf"`
-	Email     string    `json:"email"`
+	Issuer    string                 `json:"iss"`
+	Subject   string                 `json:"sub"`
+	Audience  audience               `json:"aud"`
+	Expiry    jsonTime               `json:"exp"`
+	IssuedAt  jsonTime               `json:"iat"`
+	NotBefore *jsonTime              `json:"nbf"`
+	Email     string                 `json:"email"`
+	Claims    map[string]interface{} `json:"-"`
+}
+
+// UnmarshalIdentityJSON raw claim bytes as IdentityJson
+func UnmarshalIdentityJSON(claims []byte) (*IdentityJson, error) {
+	if len(claims) <= 0 {
+		return nil, errors.New("can't extract identity claims from an empty byte slice")
+	}
+	identity := IdentityJson{}
+	if err := json.Unmarshal(claims, &identity); err != nil {
+		return nil, err
+	}
+	decoder := base.JSONDecoder(bytes.NewReader(claims))
+	decoder.UseNumber()
+	if err := decoder.Decode(&identity.Claims); err != nil {
+		return nil, err
+	}
+	delete(identity.Claims, "iss")
+	delete(identity.Claims, "sub")
+	delete(identity.Claims, "aud")
+	delete(identity.Claims, "exp")
+	delete(identity.Claims, "iat")
+	delete(identity.Claims, "nbf")
+	delete(identity.Claims, "email")
+	return &identity, nil
 }
 
 // VerifyClaims parses a raw ID Token and verifies the claim.
@@ -44,8 +71,9 @@ func VerifyClaims(rawIDToken, clientID, issuer string) (*Identity, error) {
 	if err != nil {
 		return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
 	}
-	var identityJson IdentityJson
-	if err := json.Unmarshal(payload, &identityJson); err != nil {
+
+	identityJson, err := UnmarshalIdentityJSON(payload)
+	if err != nil {
 		return nil, fmt.Errorf("oidc: failed to unmarshal claims: %v", err)
 	}
 
@@ -56,6 +84,7 @@ func VerifyClaims(rawIDToken, clientID, issuer string) (*Identity, error) {
 		Expiry:   time.Time(identityJson.Expiry),
 		IssuedAt: time.Time(identityJson.IssuedAt),
 		Email:    identityJson.Email,
+		Claims:   identityJson.Claims,
 	}
 
 	// Check issuer. Google sometimes returns "accounts.google.com" as the issuer claim instead of the required
@@ -139,15 +168,10 @@ func (j *jsonTime) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func GetIdentity(idToken *oidc.IDToken) (identity *Identity, identityErr error) {
+// getIdentity returns identity claims extracted from an ID token.
+func getIdentity(idToken *oidc.IDToken) (identity *Identity, ok bool, identityErr error) {
 	if idToken == nil {
-		return nil, errors.New("can't extract identity from a nil token")
-	}
-	var claims struct {
-		Email string `json:"email"`
-	}
-	if err := idToken.Claims(&claims); err != nil {
-		identityErr = pkgerrors.Wrap(err, "failed to get email from token")
+		return nil, false, errors.New("can't extract identity claims from a nil token")
 	}
 	identity = &Identity{
 		Issuer:   idToken.Issuer,
@@ -155,7 +179,17 @@ func GetIdentity(idToken *oidc.IDToken) (identity *Identity, identityErr error) 
 		Subject:  idToken.Subject,
 		Expiry:   idToken.Expiry,
 		IssuedAt: idToken.IssuedAt,
-		Email:    claims.Email,
 	}
-	return identity, identityErr
+	claims := map[string]interface{}{}
+	if err := idToken.Claims(&claims); err != nil {
+		identityErr = pkgerrors.Wrap(err, "failed to extract identity claims from token")
+	}
+	identity.Claims = claims
+	if claim, found := claims["email"]; found {
+		var ok bool
+		if identity.Email, ok = claim.(string); !ok {
+			return identity, true, fmt.Errorf("oidc: can't cast claim %q as string", "email")
+		}
+	}
+	return identity, true, identityErr
 }

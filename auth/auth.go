@@ -465,11 +465,13 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		return nil, err
 	}
 
-	identity, err := GetIdentity(idToken)
+	identity, ok, err := getIdentity(idToken)
 	if err != nil {
-		base.Debugf(base.KeyAuth, "Error getting identity from token", base.UD(identity), err)
+		base.Debugf(base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
 	}
-
+	if !ok {
+		return nil, err
+	}
 	user, _, err := auth.authenticateOIDCIdentity(identity, provider)
 	return user, err
 }
@@ -496,7 +498,11 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 		base.Debugf(base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
-	username := getOIDCUsername(provider, identity.Subject)
+	username, err := getOIDCUsername(provider, identity)
+	if err != nil {
+		base.Debugf(base.KeyAuth, "Error retrieving OIDCUsername: %v", err)
+		return nil, time.Time{}, err
+	}
 	base.Debugf(base.KeyAuth, "OIDCUsername: %v", base.UD(username))
 
 	user, err = auth.GetUser(username)
@@ -506,7 +512,7 @@ func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider
 	}
 
 	// If user found, check whether the email needs to be updated (e.g. user has changed email in external auth system)
-	if user != nil && identity.Email != "" {
+	if user != nil && identity.Email != "" && user.Email() != identity.Email {
 		err = auth.UpdateUserEmail(user, identity.Email)
 		if err != nil {
 			base.Warnf("Unable to set user email to %v for OIDC", base.UD(identity.Email))

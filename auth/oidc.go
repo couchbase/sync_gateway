@@ -27,6 +27,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -154,6 +155,11 @@ type OIDCProvider struct {
 	// vulnerable to Cross-Site Request Forgery (CSRF, XSRF) and NOT recommended.
 	DisableCallbackState bool `json:"disable_callback_state,omitempty"`
 
+	// UsernameClaim allows to specify a claim other than subject to use as the Sync Gateway username.
+	// The specified claim must be a string - numeric claims may be unmarshalled inconsistently between
+	// Sync Gateway and the underlying OIDC library.
+	UsernameClaim string `json:"username_claim"`
+
 	// client represents client configurations to authenticate end-users
 	// with an OpenID Connect provider. It must not be accessed directly,
 	// use the accessor method GetClient() instead.
@@ -257,10 +263,10 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OID
 
 // To support multiple providers referencing the same issuer, the user prefix used to build the SG usernames for
 // a provider is based on the issuer
-func (op *OIDCProvider) initUserPrefix() error {
+func (op *OIDCProvider) InitUserPrefix() error {
 
 	// If the user prefix has been explicitly defined, skip calculation
-	if op.UserPrefix != "" {
+	if op.UserPrefix != "" || op.UsernameClaim != "" {
 		return nil
 	}
 
@@ -307,7 +313,7 @@ func (op *OIDCProvider) initOIDCClient() error {
 	}
 
 	// Initialize the prefix for users created for this provider
-	if err := op.initUserPrefix(); err != nil {
+	if err := op.InitUserPrefix(); err != nil {
 		return err
 	}
 
@@ -399,8 +405,36 @@ func (op *OIDCProvider) standardDiscovery(discoveryURL string) (metadata Provide
 	return metadata, verifier, err
 }
 
-func getOIDCUsername(provider *OIDCProvider, subject string) string {
-	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(subject))
+// getOIDCUsername returns the username to be used as the Sync Gateway username.
+func getOIDCUsername(provider *OIDCProvider, identity *Identity) (username string, err error) {
+	if provider.UsernameClaim != "" {
+		value, ok := identity.Claims[provider.UsernameClaim]
+		if !ok {
+			return "", fmt.Errorf("oidc: specified claim %q not found in id_token, identity: %v", provider.UsernameClaim, identity)
+		}
+		if username, err = formatUsername(value); err != nil {
+			return "", err
+		}
+		if provider.UserPrefix == "" {
+			return url.QueryEscape(username), nil
+		}
+		return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(username)), nil
+	}
+	return fmt.Sprintf("%s_%s", provider.UserPrefix, url.QueryEscape(identity.Subject)), nil
+}
+
+// formatUsername returns the string representation of the given username value.
+func formatUsername(value interface{}) (string, error) {
+	switch valueType := value.(type) {
+	case string:
+		return valueType, nil
+	case json.Number:
+		return valueType.String(), nil
+	case float64:
+		return strconv.FormatFloat(valueType, 'f', -1, 64), nil
+	default:
+		return "", fmt.Errorf("oidc: can't treat value of type: %T as valid username", valueType)
+	}
 }
 
 // fetchCustomProviderConfig collects the provider configuration from the given discovery endpoint and determines
