@@ -32,7 +32,7 @@ type ReplicatorCompleteFunc func()
 // returns the error provided.  Expects callers to be holding
 // a.lock
 func (a *activeReplicatorCommon) _setError(err error) (passThrough error) {
-	base.Infof(base.KeyReplicate, "ActiveReplicator had error state set with err: %v" ,err)
+	base.Infof(base.KeyReplicate, "ActiveReplicator had error state set with err: %v", err)
 	a.state = ReplicationStateError
 	a.lastError = err
 	return err
