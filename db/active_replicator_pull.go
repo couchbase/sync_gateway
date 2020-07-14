@@ -177,8 +177,7 @@ func (apr *ActivePullReplicator) reset() error {
 func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 	apr.blipSyncContext.sgr2PullIgnoreSeqCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyPullIgnoredSeqsTotal, 1)
-		apr.Checkpointer.AddExpectedSeq(remoteSeq)
-		apr.Checkpointer.ProcessedSeq(remoteSeq)
+		apr.Checkpointer.AddIgnoredSeq(remoteSeq)
 	}
 
 	apr.blipSyncContext.sgr2PullAddExepectedSeqsCallback = func(changesSeqs []string) {
@@ -189,7 +188,7 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 	// TODO: Check whether we need to add a handleNoRev callback to remove expected sequences.
 	apr.blipSyncContext.sgr2PullProcessedSeqCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyPullProcessedSeqsTotal, 1)
-		apr.Checkpointer.ProcessedSeq(remoteSeq)
+		apr.Checkpointer.AddProcessedSeq(remoteSeq)
 	}
 
 	// Trigger complete for non-continuous replications when caught up

@@ -198,8 +198,7 @@ func (apr *ActivePushReplicator) reset() error {
 func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 	apr.blipSyncContext.sgr2PushIgnoreSeqCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyPushIgnoredSeqsTotal, 1)
-		apr.Checkpointer.AddExpectedSeq(remoteSeq)
-		apr.Checkpointer.ProcessedSeq(remoteSeq)
+		apr.Checkpointer.AddIgnoredSeq(remoteSeq)
 	}
 	apr.blipSyncContext.sgr2PushAddExpectedSeqCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyPushExpectedSeqsTotal, 1)
@@ -208,7 +207,7 @@ func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 
 	apr.blipSyncContext.sgr2PushProcessedSeqCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyPushProcessedSeqsTotal, 1)
-		apr.Checkpointer.ProcessedSeq(remoteSeq)
+		apr.Checkpointer.AddProcessedSeq(remoteSeq)
 	}
 }
 
