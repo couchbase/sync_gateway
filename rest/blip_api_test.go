@@ -2025,6 +2025,73 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 }
 
+// TestBlipDeltaSyncPullResend tests that a simple pull replication that uses a delta a client rejects will resend the revision in full.
+func TestBlipDeltaSyncPullResend(t *testing.T) {
+
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Enterprise-only test for delta sync")
+	}
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: base.BoolPtr(true)}}}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	// create doc1 rev 1
+	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+	rev1ID := respRevID(t, resp)
+
+	deltaSentCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent))
+
+	client, err := NewBlipTesterClient(t, rt)
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// reject deltas built ontop of rev 1
+	client.rejectDeltasForSrcRev = rev1ID
+
+	client.ClientDeltas = true
+	err = client.StartPull()
+	assert.NoError(t, err)
+
+	data, ok := client.WaitForRev("doc1", rev1ID)
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
+
+	// create doc1 rev 2
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev="+rev1ID, `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": 12345678901234567890}]}`)
+	assert.Equal(t, http.StatusCreated, resp.Code)
+	rev2ID := respRevID(t, resp)
+
+	data, ok = client.WaitForRev("doc1", rev2ID)
+	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
+
+	msg, ok := client.pullReplication.WaitForMessage(5)
+	assert.True(t, ok)
+
+	// Check the request was initially sent with the correct deltaSrc property
+	assert.Equal(t, rev1ID, msg.Properties[db.RevMessageDeltaSrc])
+	// Check the request body was the actual delta
+	msgBody, err := msg.Body()
+	assert.NoError(t, err)
+	assert.Equal(t, `{"greetings":{"2-":[{"howdy":12345678901234567890}]}}`, string(msgBody))
+	assert.Equal(t, deltaSentCount+1, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent)))
+
+	msg, ok = client.pullReplication.WaitForMessage(6)
+	assert.True(t, ok)
+
+	// Check the resent request was NOT sent with a deltaSrc property
+	assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
+	// Check the request body was NOT the delta
+	msgBody, err = msg.Body()
+	assert.NoError(t, err)
+	assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":12345678901234567890}]}}`, string(msgBody))
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(msgBody))
+}
+
 // TestBlipDeltaSyncPullRemoved tests a simple pull replication that drops a document out of the user's channel.
 func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 
