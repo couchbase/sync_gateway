@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"strconv"
 	"sync"
 	"testing"
@@ -16,9 +17,10 @@ import (
 )
 
 type BlipTesterClientOpts struct {
-	ClientDeltas bool // Support deltas on the client side
-	Username     string
-	Channels     []string
+	ClientDeltas          bool // Support deltas on the client side
+	Username              string
+	Channels              []string
+	rejectDeltasForSrcRev string // a deltaSrc rev ID for which to reject a delta
 }
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
@@ -184,6 +186,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		if msg.Properties[db.RevMessageDeleted] == "1" {
 			btc.docsLock.Lock()
+			defer btc.docsLock.Unlock()
 			if _, ok := btc.docs[docID]; ok {
 				bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 				btc.docs[docID][revID] = bodyMessagePair
@@ -192,7 +195,6 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
 			}
 			btc.updateLastReplicatedRev(docID, revID)
-			btc.docsLock.Unlock()
 
 			if !msg.NoReply() {
 				response := msg.Response()
@@ -207,6 +209,16 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		// If deltas are enabled, and we see a deltaSrc property, we'll need to patch it before storing
 		if btc.ClientDeltas && deltaSrc != "" {
+			if btc.rejectDeltasForSrcRev == deltaSrc {
+				if !msg.NoReply() {
+					response := msg.Response()
+					response.SetError("HTTP", http.StatusUnprocessableEntity, "test code intentionally rejected delta")
+					return
+				} else {
+					panic("expected delta rev message to be sent without noreply flag")
+				}
+			}
+
 			// unmarshal body to extract deltaSrc
 			var delta db.Body
 			if err := delta.Unmarshal(body); err != nil {
@@ -303,6 +315,8 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		}
 
 		btc.docsLock.Lock()
+		defer btc.docsLock.Unlock()
+
 		if _, ok := btc.docs[docID]; ok {
 			bodyMessagePair := &BodyMessagePair{body: body, message: msg}
 			btc.docs[docID][revID] = bodyMessagePair
@@ -311,7 +325,6 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 			btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
 		}
 		btc.updateLastReplicatedRev(docID, revID)
-		btc.docsLock.Unlock()
 
 		if !msg.NoReply() {
 			response := msg.Response()
