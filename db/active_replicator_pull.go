@@ -182,13 +182,13 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 	}
 
 	apr.blipSyncContext.sgr2PullAddExepectedSeqsCallback = func(changesSeqs []string) {
-		apr.Stats.Add(ActiveReplicatorStatsKeyExpectedSeqsTotal, int64(len(changesSeqs)))
+		apr.Stats.Add(ActiveReplicatorStatsKeyPullExpectedSeqsTotal, int64(len(changesSeqs)))
 		apr.Checkpointer.AddExpectedSeq(changesSeqs...)
 	}
 
 	// TODO: Check whether we need to add a handleNoRev callback to remove expected sequences.
 	apr.blipSyncContext.sgr2PullProcessedSeqCallback = func(remoteSeq string) {
-		apr.Stats.Add(ActiveReplicatorStatsKeyProcessedSeqsTotal, 1)
+		apr.Stats.Add(ActiveReplicatorStatsKeyPullProcessedSeqsTotal, 1)
 		apr.Checkpointer.ProcessedSeq(remoteSeq)
 	}
 

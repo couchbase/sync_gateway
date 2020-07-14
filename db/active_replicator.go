@@ -16,8 +16,8 @@ import (
 
 const (
 	// TODO: Not aligned these to any stats in the PRD yet, these are used for test assertions.
-	ActiveReplicatorStatsKeyExpectedSeqsTotal      = "sgr2_pull_expected_seqs_total"
-	ActiveReplicatorStatsKeyProcessedSeqsTotal     = "sgr2_pull_processed_seqs_total"
+	ActiveReplicatorStatsKeyPullExpectedSeqsTotal  = "sgr2_pull_expected_seqs_total"
+	ActiveReplicatorStatsKeyPullProcessedSeqsTotal = "sgr2_pull_processed_seqs_total"
 	ActiveReplicatorStatsKeyPullIgnoredSeqsTotal   = "sgr2_pull_ignored_seqs_total"
 	ActiveReplicatorStatsKeyPushExpectedSeqsTotal  = "sgr2_push_expected_seqs_total"
 	ActiveReplicatorStatsKeyPushProcessedSeqsTotal = "sgr2_push_processed_seqs_total"
