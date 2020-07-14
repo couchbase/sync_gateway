@@ -88,10 +88,12 @@ type BlipSyncContext struct {
 	userChangeWaiter                 *ChangeWaiter               // Tracks whether the users/roles associated with the replication have changed
 	userName                         string                      // Avoid contention on db.user during userChangeWaiter user lookup
 	dbStats                          *DatabaseStats              // Direct stats access to support reloading db while stats are being updated
-	postHandleRevCallback            func(remoteSeq string)      // postHandleRevCallback is called after successfully handling an incoming rev message
-	postHandleChangesCallback        func(expectedSeqs []string) // postHandleChangesCallback is called after successfully handling an incoming changes message
-	preSendRevisionResponseCallback  func(remoteSeq string)      // preSendRevisionResponseCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
-	postSendRevisionResponseCallback func(remoteSeq string)      // postSendRevisionResponseCallback is called after receiving acknowledgement of a sent revision
+	sgr2PullAddExepectedSeqsCallback func(expectedSeqs []string) // sgr2PullAddExepectedSeqsCallback is called after successfully handling an incoming changes message
+	sgr2PullProcessedSeqCallback     func(remoteSeq string)      // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
+	sgr2PullIgnoreSeqCallback        func(remoteSeq string)      // sgr2PullIgnoreSeqCallback is called to mark the sequence as being immediately processed
+	sgr2PushAddExpectedSeqCallback   func(remoteSeq string)      // sgr2PushAddExpectedSeqCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
+	sgr2PushProcessedSeqCallback     func(remoteSeq string)      // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
+	sgr2PushIgnoreSeqCallback        func(remoteSeq string)      // sgr2PushIgnoreSeqCallback is called to mark the sequence as being immediately processed
 	emptyChangesMessageCallback      func()                      // emptyChangesMessageCallback is called when an empty changes message is received
 	replicationStats                 *BlipSyncStats              // Replication stats
 	purgeOnRemoval                   bool                        // Purges the document when we pull a _removed:true revision.
@@ -232,11 +234,12 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	// placeholder (probably 0). The item numbers match those of changeArray.
 	var revSendTimeLatency int64
 	var revSendCount int64
-	for i, knownRevsArray := range answer {
-		if knownRevsArray, ok := knownRevsArray.([]interface{}); ok {
-			seq := changeArray[i][0].(SequenceID)
-			docID := changeArray[i][1].(string)
-			revID := changeArray[i][2].(string)
+	for i, knownRevsArrayInterface := range answer {
+		seq := changeArray[i][0].(SequenceID)
+		docID := changeArray[i][1].(string)
+		revID := changeArray[i][2].(string)
+
+		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
 			deltaSrcRevID := ""
 			//deleted := changeArray[i][3].(bool)
 			knownRevs := knownRevsByDoc[docID]
@@ -274,8 +277,13 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
 			revSendCount++
 
-			if bsc.preSendRevisionResponseCallback != nil {
-				bsc.preSendRevisionResponseCallback(seq.String())
+			if bsc.sgr2PushAddExpectedSeqCallback != nil {
+				bsc.sgr2PushAddExpectedSeqCallback(seq.String())
+			}
+		} else {
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %v / %v (seq:%v)", docID, revID, seq)
+			if bsc.sgr2PushIgnoreSeqCallback != nil {
+				bsc.sgr2PushIgnoreSeqCallback(seq.String())
 			}
 		}
 	}
@@ -313,7 +321,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attDigests)
 
 	// asynchronously wait for a response if we have attachment digests to verify, if we sent a delta and want to error check, or if we have a registered callback.
-	awaitResponse := len(attDigests) > 0 || properties[RevMessageDeltaSrc] != "" || bsc.postSendRevisionResponseCallback != nil
+	awaitResponse := len(attDigests) > 0 || properties[RevMessageDeltaSrc] != "" || bsc.sgr2PushProcessedSeqCallback != nil
 
 	if !awaitResponse {
 		outrq.SetNoReply(true)
@@ -372,8 +380,8 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 			bsc.removeAllowedAttachments(attDigests)
 
-			if bsc.postSendRevisionResponseCallback != nil {
-				bsc.postSendRevisionResponseCallback(seq.String())
+			if bsc.sgr2PushProcessedSeqCallback != nil {
+				bsc.sgr2PushProcessedSeqCallback(seq.String())
 			}
 		}()
 	}
