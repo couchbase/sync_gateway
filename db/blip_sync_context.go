@@ -342,7 +342,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 			if resp.Type() == blip.ErrorType {
 				bsc.replicationStats.SendRevErrorTotal.Add(1)
 				respBody, _ := resp.Body()
-				base.WarnfCtx(bsc.loggingCtx, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
+				base.InfofCtx(bsc.loggingCtx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
 
 				if resp.Properties["Error-Domain"] == "HTTP" {
 					switch resp.Properties["Error-Code"] {
