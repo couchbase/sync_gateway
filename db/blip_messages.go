@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/couchbase/go-blip"
@@ -123,7 +124,7 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 			respMsg.Properties["Error-Domain"] == "HTTP" &&
 			respMsg.Properties["Error-Code"] == "409" {
 			// conflict writing checkpoint
-			return nil, fmt.Errorf("conflict writing checkpoint: %s", respBody)
+			return nil, base.HTTPErrorf(http.StatusConflict, "Document update conflict")
 		}
 		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
 	}
