@@ -53,7 +53,7 @@ func NewCheckpointer(ctx context.Context, clientID string, blipSender *blip.Send
 	}
 }
 
-func (c *Checkpointer) AddIgnoredSeq(seq string) {
+func (c *Checkpointer) AddAlreadyKnownSeq(seq ...string) {
 	select {
 	case <-c.ctx.Done():
 		// replicator already closed, bail out of checkpointing work
@@ -62,8 +62,10 @@ func (c *Checkpointer) AddIgnoredSeq(seq string) {
 	}
 
 	c.lock.Lock()
-	c.processedSeqs[seq] = struct{}{}
-	c.expectedSeqs = append(c.expectedSeqs, seq)
+	c.expectedSeqs = append(c.expectedSeqs, seq...)
+	for _, seq := range seq {
+		c.processedSeqs[seq] = struct{}{}
+	}
 	c.lock.Unlock()
 }
 

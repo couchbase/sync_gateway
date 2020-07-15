@@ -88,12 +88,12 @@ type BlipSyncContext struct {
 	userChangeWaiter                 *ChangeWaiter               // Tracks whether the users/roles associated with the replication have changed
 	userName                         string                      // Avoid contention on db.user during userChangeWaiter user lookup
 	dbStats                          *DatabaseStats              // Direct stats access to support reloading db while stats are being updated
-	sgr2PullAddExepectedSeqsCallback func(expectedSeqs []string) // sgr2PullAddExepectedSeqsCallback is called after successfully handling an incoming changes message
+	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs []string) // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
 	sgr2PullProcessedSeqCallback     func(remoteSeq string)      // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
-	sgr2PullIgnoreSeqCallback        func(remoteSeq string)      // sgr2PullIgnoreSeqCallback is called to mark the sequence as being immediately processed
+	sgr2PullAlreadyKnownSeqsCallback func(ignoredSeqs []string)  // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
 	sgr2PushAddExpectedSeqCallback   func(remoteSeq string)      // sgr2PushAddExpectedSeqCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
 	sgr2PushProcessedSeqCallback     func(remoteSeq string)      // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
-	sgr2PushIgnoreSeqCallback        func(remoteSeq string)      // sgr2PushIgnoreSeqCallback is called to mark the sequence as being immediately processed
+	sgr2PushAlreadyKnownSeqCallback  func(remoteSeq string)      // sgr2PushAlreadyKnownSeqCallback is called to mark the sequence as being immediately processed
 	emptyChangesMessageCallback      func()                      // emptyChangesMessageCallback is called when an empty changes message is received
 	replicationStats                 *BlipSyncStats              // Replication stats
 	purgeOnRemoval                   bool                        // Purges the document when we pull a _removed:true revision.
@@ -281,9 +281,9 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				bsc.sgr2PushAddExpectedSeqCallback(seq.String())
 			}
 		} else {
-			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %v / %v (seq:%v)", docID, revID, seq)
-			if bsc.sgr2PushIgnoreSeqCallback != nil {
-				bsc.sgr2PushIgnoreSeqCallback(seq.String())
+			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), revID, seq)
+			if bsc.sgr2PushAlreadyKnownSeqCallback != nil {
+				bsc.sgr2PushAlreadyKnownSeqCallback(seq.String())
 			}
 		}
 	}

@@ -391,6 +391,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}()
 
 	expectedSeqs := make([]string, 0)
+	ignoredSeqs := make([]string, 0)
 
 	for _, change := range changeList {
 		docID := change[1].(string)
@@ -402,8 +403,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		if missing == nil {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
-			if bh.sgr2PullIgnoreSeqCallback != nil {
-				bh.sgr2PullIgnoreSeqCallback(seqStr(change[0]))
+			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
+				ignoredSeqs = append(ignoredSeqs, seqStr(change[0]))
 			}
 		} else {
 			// we want this rev, send possible ancestors to the peer
@@ -418,7 +419,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			}
 
 			// skip parsing seqno if we're not going to use it (no callback defined)
-			if bh.sgr2PullAddExepectedSeqsCallback != nil {
+			if bh.sgr2PullAddExpectedSeqsCallback != nil {
 				expectedSeqs = append(expectedSeqs, seqStr(change[0]))
 			}
 		}
@@ -434,8 +435,11 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
 
-	if bh.sgr2PullAddExepectedSeqsCallback != nil {
-		bh.sgr2PullAddExepectedSeqsCallback(expectedSeqs)
+	if bh.sgr2PullAddExpectedSeqsCallback != nil {
+		bh.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
+	}
+	if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
+		bh.sgr2PullAlreadyKnownSeqsCallback(ignoredSeqs)
 	}
 
 	return nil

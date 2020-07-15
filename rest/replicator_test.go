@@ -463,7 +463,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	_, ok := base.WaitForStat(func() int64 {
-		return base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyPullIgnoredSeqsTotal))
+		return base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyPullAlreadyKnownSeqsTotal))
 	}, numRT2DocsInitial)
 	assert.True(t, ok)
 
@@ -520,7 +520,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	_, ok = base.WaitForStat(func() int64 {
-		return base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyPullIgnoredSeqsTotal))
+		return base.ExpvarVar2Int(ar.Pull.Stats.Get(db.ActiveReplicatorStatsKeyPullAlreadyKnownSeqsTotal))
 	}, numRT2DocsTotal-numRT2DocsInitial)
 	assert.True(t, ok)
 
@@ -968,7 +968,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	_, ok := base.WaitForStat(func() int64 {
-		return base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushIgnoredSeqsTotal))
+		return base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushAlreadyKnownSeqsTotal))
 	}, numRT1DocsInitial)
 	assert.True(t, ok)
 
@@ -1006,7 +1006,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	_, ok = base.WaitForStat(func() int64 {
-		return base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushIgnoredSeqsTotal))
+		return base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushAlreadyKnownSeqsTotal))
 	}, numRT1DocsTotal-numRT1DocsInitial)
 	assert.True(t, ok)
 

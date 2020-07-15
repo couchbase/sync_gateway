@@ -175,12 +175,12 @@ func (apr *ActivePullReplicator) reset() error {
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
-	apr.blipSyncContext.sgr2PullIgnoreSeqCallback = func(remoteSeq string) {
-		apr.Stats.Add(ActiveReplicatorStatsKeyPullIgnoredSeqsTotal, 1)
-		apr.Checkpointer.AddIgnoredSeq(remoteSeq)
+	apr.blipSyncContext.sgr2PullAlreadyKnownSeqsCallback = func(alreadyKnownSeqs []string) {
+		apr.Stats.Add(ActiveReplicatorStatsKeyPullAlreadyKnownSeqsTotal, int64(len(alreadyKnownSeqs)))
+		apr.Checkpointer.AddAlreadyKnownSeq(alreadyKnownSeqs...)
 	}
 
-	apr.blipSyncContext.sgr2PullAddExepectedSeqsCallback = func(changesSeqs []string) {
+	apr.blipSyncContext.sgr2PullAddExpectedSeqsCallback = func(changesSeqs []string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyPullExpectedSeqsTotal, int64(len(changesSeqs)))
 		apr.Checkpointer.AddExpectedSeq(changesSeqs...)
 	}

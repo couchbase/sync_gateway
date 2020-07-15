@@ -196,9 +196,9 @@ func (apr *ActivePushReplicator) reset() error {
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
-	apr.blipSyncContext.sgr2PushIgnoreSeqCallback = func(remoteSeq string) {
-		apr.Stats.Add(ActiveReplicatorStatsKeyPushIgnoredSeqsTotal, 1)
-		apr.Checkpointer.AddIgnoredSeq(remoteSeq)
+	apr.blipSyncContext.sgr2PushAlreadyKnownSeqCallback = func(remoteSeq string) {
+		apr.Stats.Add(ActiveReplicatorStatsKeyPushAlreadyKnownSeqsTotal, 1)
+		apr.Checkpointer.AddAlreadyKnownSeq(remoteSeq)
 	}
 	apr.blipSyncContext.sgr2PushAddExpectedSeqCallback = func(remoteSeq string) {
 		apr.Stats.Add(ActiveReplicatorStatsKeyPushExpectedSeqsTotal, 1)
