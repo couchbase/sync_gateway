@@ -298,29 +298,10 @@ func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string,
 
 // setLocalCheckpointWithRetry attempts to rewrite the checkpoint if the rev ID is mismatched, or the checkpoint has since been deleted.
 func (c *Checkpointer) setLocalCheckpointWithRetry(seq, existingRevID string) (newRevID string, err error) {
-	for numAttempts := 0; numAttempts < 10; numAttempts++ {
-		newRevID, err = c.setLocalCheckpoint(seq, existingRevID)
-		if err != nil {
-			if strings.HasPrefix(err.Error(), "409") {
-				base.WarnfCtx(c.ctx, "rev mismatch from setLocalCheckpoint - updating last known rev ID: %v", err)
-				_, rev, getErr := c.getLocalCheckpoint()
-				if getErr != nil {
-					return "", getErr
-				}
-				base.InfofCtx(c.ctx, base.KeyReplicate, "using new rev from local checkpoint: %v", rev)
-				existingRevID = rev
-			} else if strings.HasPrefix(err.Error(), "404") {
-				base.WarnfCtx(c.ctx, "local checkpoint did not exist for attempted update - removing last known rev ID: %v", err)
-				existingRevID = ""
-			} else {
-				base.WarnfCtx(c.ctx, "got unexpected error from setLocalCheckpoint: %v", err)
-			}
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
-		return newRevID, nil
-	}
-	return "", errors.New("failed to write local checkpoint after 10 attempts")
+	return c.setRetry(seq, existingRevID,
+		c.setLocalCheckpoint,
+		c.getLocalCheckpoint,
+	)
 }
 
 func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
@@ -382,29 +363,10 @@ func (c *Checkpointer) setRemoteCheckpoint(seq, parentRev string) (newRev string
 
 // setRemoteCheckpointWithRetry attempts to rewrite the checkpoint if the rev ID is mismatched, or the checkpoint has since been deleted.
 func (c *Checkpointer) setRemoteCheckpointWithRetry(seq, existingRevID string) (newRevID string, err error) {
-	for numAttempts := 0; numAttempts < 10; numAttempts++ {
-		newRevID, err = c.setRemoteCheckpoint(seq, existingRevID)
-		if err != nil {
-			if strings.HasPrefix(err.Error(), "409") {
-				base.WarnfCtx(c.ctx, "rev mismatch from setRemoteCheckpoint - updating last known rev ID: %v", err)
-				_, rev, getErr := c.getRemoteCheckpoint()
-				if getErr != nil {
-					return "", getErr
-				}
-				base.InfofCtx(c.ctx, base.KeyReplicate, "using new rev from remote checkpoint: %v", rev)
-				existingRevID = rev
-			} else if strings.HasPrefix(err.Error(), "404") {
-				base.WarnfCtx(c.ctx, "remote checkpoint did not exist for attempted update - removing last known rev ID: %v", err)
-				existingRevID = ""
-			} else {
-				base.WarnfCtx(c.ctx, "got unexpected error from setRemoteCheckpoint: %v", err)
-			}
-			time.Sleep(time.Millisecond * 100)
-			continue
-		}
-		return newRevID, nil
-	}
-	return "", errors.New("failed to write remote checkpoint after 10 attempts")
+	return c.setRetry(seq, existingRevID,
+		c.setRemoteCheckpoint,
+		c.getRemoteCheckpoint,
+	)
 }
 
 func (c *Checkpointer) getCounts() (expectedCount, processedCount int) {
@@ -439,4 +401,35 @@ func (c *Checkpointer) waitForExpectedSequences() error {
 		waitCount++
 	}
 	return errors.New("checkpointer waitForExpectedSequences failed to complete after waiting 10s")
+}
+
+type setCheckpointFn func(seq, parentRevID string) (string, error)
+type getCheckpointFn func() (string, string, error)
+
+// setRetry is a retry loop for a setCheckpointFn, which will fetch a new RevID from a getCheckpointFn in the event of a write conflict.
+func (c *Checkpointer) setRetry(seq, existingRevID string, setFn setCheckpointFn, getFn getCheckpointFn) (newRevID string, err error) {
+	for numAttempts := 0; numAttempts < 10; numAttempts++ {
+		newRevID, err = setFn(seq, existingRevID)
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "409") {
+				base.WarnfCtx(c.ctx, "rev mismatch from setCheckpoint - updating last known rev ID: %v", err)
+				_, rev, getErr := getFn()
+				if getErr == nil {
+					base.InfofCtx(c.ctx, base.KeyReplicate, "using new rev from checkpoint: %v", rev)
+					existingRevID = rev
+				} else {
+					// fall through to retry
+				}
+			} else if strings.HasPrefix(err.Error(), "404") {
+				base.WarnfCtx(c.ctx, "checkpoint did not exist for attempted update - removing last known rev ID: %v", err)
+				existingRevID = ""
+			} else {
+				base.WarnfCtx(c.ctx, "got unexpected error from setCheckpoint: %v", err)
+			}
+			time.Sleep(time.Millisecond * 100)
+			continue
+		}
+		return newRevID, nil
+	}
+	return "", errors.New("failed to write checkpoint after 10 attempts")
 }
