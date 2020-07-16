@@ -107,6 +107,10 @@ func (spec BucketSpec) RetrySleeper() RetrySleeper {
 	return CreateDoublingSleeperFunc(spec.MaxNumRetries, spec.InitialRetrySleepTimeMS)
 }
 
+func (spec BucketSpec) MaxRetrySleeper(maxSleepMs int) RetrySleeper {
+	return CreateMaxDoublingSleeperFunc(spec.MaxNumRetries, spec.InitialRetrySleepTimeMS, maxSleepMs)
+}
+
 func (spec BucketSpec) IsWalrusBucket() bool {
 	return strings.Contains(spec.Server, "walrus:")
 }
