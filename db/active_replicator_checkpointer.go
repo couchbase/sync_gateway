@@ -403,8 +403,8 @@ func (c *Checkpointer) waitForExpectedSequences() error {
 	return errors.New("checkpointer waitForExpectedSequences failed to complete after waiting 10s")
 }
 
-type setCheckpointFn func(seq, parentRevID string) (string, error)
-type getCheckpointFn func() (string, string, error)
+type setCheckpointFn func(seq, parentRevID string) (revID string, err error)
+type getCheckpointFn func() (seq string, revID string, err error)
 
 // setRetry is a retry loop for a setCheckpointFn, which will fetch a new RevID from a getCheckpointFn in the event of a write conflict.
 func (c *Checkpointer) setRetry(seq, existingRevID string, setFn setCheckpointFn, getFn getCheckpointFn) (newRevID string, err error) {
