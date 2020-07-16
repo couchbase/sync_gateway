@@ -32,7 +32,7 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 
 	if apr.checkpointerCtx != nil {
-		return fmt.Errorf("ActivePushReplicator already running")
+		return fmt.Errorf("ActivePullReplicator already running")
 	}
 
 	var err error
@@ -175,15 +175,20 @@ func (apr *ActivePullReplicator) reset() error {
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
-	apr.blipSyncContext.postHandleChangesCallback = func(changesSeqs []string) {
-		apr.Stats.Add(ActiveReplicatorStatsKeyChangesRevsReceivedTotal, int64(len(changesSeqs)))
+	apr.blipSyncContext.sgr2PullAlreadyKnownSeqsCallback = func(alreadyKnownSeqs []string) {
+		apr.Stats.Add(ActiveReplicatorStatsKeyPullAlreadyKnownSeqsTotal, int64(len(alreadyKnownSeqs)))
+		apr.Checkpointer.AddAlreadyKnownSeq(alreadyKnownSeqs...)
+	}
+
+	apr.blipSyncContext.sgr2PullAddExpectedSeqsCallback = func(changesSeqs []string) {
+		apr.Stats.Add(ActiveReplicatorStatsKeyPullExpectedSeqsTotal, int64(len(changesSeqs)))
 		apr.Checkpointer.AddExpectedSeq(changesSeqs...)
 	}
 
 	// TODO: Check whether we need to add a handleNoRev callback to remove expected sequences.
-	apr.blipSyncContext.postHandleRevCallback = func(remoteSeq string) {
-		apr.Stats.Add(ActiveReplicatorStatsKeyRevsReceivedTotal, 1)
-		apr.Checkpointer.ProcessedSeq(remoteSeq)
+	apr.blipSyncContext.sgr2PullProcessedSeqCallback = func(remoteSeq string) {
+		apr.Stats.Add(ActiveReplicatorStatsKeyPullProcessedSeqsTotal, 1)
+		apr.Checkpointer.AddProcessedSeq(remoteSeq)
 	}
 
 	// Trigger complete for non-continuous replications when caught up

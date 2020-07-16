@@ -391,6 +391,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}()
 
 	expectedSeqs := make([]string, 0)
+	alreadyKnownSeqs := make([]string, 0)
 
 	for _, change := range changeList {
 		docID := change[1].(string)
@@ -402,6 +403,9 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		if missing == nil {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
+			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
+				alreadyKnownSeqs = append(alreadyKnownSeqs, seqStr(change[0]))
+			}
 		} else {
 			// we want this rev, send possible ancestors to the peer
 			nRequested++
@@ -415,15 +419,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			}
 
 			// skip parsing seqno if we're not going to use it (no callback defined)
-			if bh.postHandleChangesCallback != nil {
-				var seqStr string
-				switch seq := change[0].(type) {
-				case string:
-					seqStr = seq
-				case json.Number:
-					seqStr = seq.String()
-				}
-				expectedSeqs = append(expectedSeqs, seqStr)
+			if bh.sgr2PullAddExpectedSeqsCallback != nil {
+				expectedSeqs = append(expectedSeqs, seqStr(change[0]))
 			}
 		}
 		nWritten++
@@ -438,11 +435,25 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
 
-	if bh.postHandleChangesCallback != nil {
-		bh.postHandleChangesCallback(expectedSeqs)
+	if bh.sgr2PullAddExpectedSeqsCallback != nil {
+		bh.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
+	}
+	if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
+		bh.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs)
 	}
 
 	return nil
+}
+
+func seqStr(seq interface{}) string {
+	switch seq := seq.(type) {
+	case string:
+		return seq
+	case json.Number:
+		return seq.String()
+	}
+	base.Warnf("unknown seq type: %T", seq)
+	return ""
 }
 
 // Handles a "proposeChanges" request, similar to "changes" but in no-conflicts mode
@@ -604,8 +615,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 				return err
 			}
 			bh.replicationStats.DocsPurgedCount.Add(1)
-			if bh.postHandleRevCallback != nil {
-				bh.postHandleRevCallback(rq.Properties[RevMessageSequence])
+			if bh.sgr2PullProcessedSeqCallback != nil {
+				bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence])
 			}
 			return nil
 		}
@@ -733,8 +744,8 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		return err
 	}
 
-	if bh.postHandleRevCallback != nil {
-		bh.postHandleRevCallback(rq.Properties[RevMessageSequence])
+	if bh.sgr2PullProcessedSeqCallback != nil {
+		bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence])
 	}
 
 	return nil

@@ -53,7 +53,23 @@ func NewCheckpointer(ctx context.Context, clientID string, blipSender *blip.Send
 	}
 }
 
-func (c *Checkpointer) ProcessedSeq(seq string) {
+func (c *Checkpointer) AddAlreadyKnownSeq(seq ...string) {
+	select {
+	case <-c.ctx.Done():
+		// replicator already closed, bail out of checkpointing work
+		return
+	default:
+	}
+
+	c.lock.Lock()
+	c.expectedSeqs = append(c.expectedSeqs, seq...)
+	for _, seq := range seq {
+		c.processedSeqs[seq] = struct{}{}
+	}
+	c.lock.Unlock()
+}
+
+func (c *Checkpointer) AddProcessedSeq(seq string) {
 	select {
 	case <-c.ctx.Done():
 		// replicator already closed, bail out of checkpointing work
