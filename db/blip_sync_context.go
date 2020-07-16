@@ -91,9 +91,9 @@ type BlipSyncContext struct {
 	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs []string)     // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
 	sgr2PullProcessedSeqCallback     func(remoteSeq string)          // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
 	sgr2PullAlreadyKnownSeqsCallback func(alreadyKnownSeqs []string) // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
-	sgr2PushAddExpectedSeqCallback   func(expectedSeqs []string)     // sgr2PushAddExpectedSeqCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
+	sgr2PushAddExpectedSeqsCallback  func(expectedSeqs []string)     // sgr2PushAddExpectedSeqsCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
 	sgr2PushProcessedSeqCallback     func(remoteSeq string)          // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
-	sgr2PushAlreadyKnownSeqCallback  func(alreadyKnownSeqs []string) // sgr2PushAlreadyKnownSeqCallback is called to mark the sequence as being immediately processed
+	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs []string) // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
 	emptyChangesMessageCallback      func()                          // emptyChangesMessageCallback is called when an empty changes message is received
 	replicationStats                 *BlipSyncStats                  // Replication stats
 	purgeOnRemoval                   bool                            // Purges the document when we pull a _removed:true revision.
@@ -280,24 +280,24 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 			revSendTimeLatency += time.Since(changesResponseReceived).Nanoseconds()
 			revSendCount++
 
-			if bsc.sgr2PushAddExpectedSeqCallback != nil {
+			if bsc.sgr2PushAddExpectedSeqsCallback != nil {
 				sentSeqs = append(sentSeqs, seq.String())
 			}
 		} else {
 			base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Peer didn't want revision %s / %s (seq:%v)", base.UD(docID), revID, seq)
-			if bsc.sgr2PushAlreadyKnownSeqCallback != nil {
+			if bsc.sgr2PushAlreadyKnownSeqsCallback != nil {
 				alreadyKnownSeqs = append(alreadyKnownSeqs, seq.String())
 			}
 		}
 	}
 
-	if bsc.sgr2PushAlreadyKnownSeqCallback != nil {
-		bsc.sgr2PushAlreadyKnownSeqCallback(alreadyKnownSeqs)
+	if bsc.sgr2PushAlreadyKnownSeqsCallback != nil {
+		bsc.sgr2PushAlreadyKnownSeqsCallback(alreadyKnownSeqs)
 	}
 
 	if revSendCount > 0 {
-		if bsc.sgr2PushAddExpectedSeqCallback != nil {
-			bsc.sgr2PushAddExpectedSeqCallback(sentSeqs)
+		if bsc.sgr2PushAddExpectedSeqsCallback != nil {
+			bsc.sgr2PushAddExpectedSeqsCallback(sentSeqs)
 		}
 
 		bsc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendCount, revSendCount)
