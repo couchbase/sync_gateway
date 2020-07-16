@@ -2314,3 +2314,114 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
 	assert.NoError(t, ar.Stop())
 }
+
+// TestActiveReplicatorRecoverFromMismatchedRev:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a document on rt1 which is pushed to rt2.
+//   - Modifies the checkpoint rev ID in the target bucket.
+//   - Checkpoints again to ensure it is retried on error.
+func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	arConfig := db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePushAndPull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous: true,
+		// test isn't long running enough to worry about time-based checkpoints,
+		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
+		CheckpointInterval: time.Minute * 5,
+	}
+
+	// Create the first active replicator to pull from seq:0
+	ar := db.NewActiveReplicator(&arConfig)
+	require.NoError(t, err)
+
+	assert.NoError(t, ar.Start())
+
+	pushCheckpointID, err := ar.Push.CheckpointID()
+	require.NoError(t, err)
+	pushCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pushCheckpointID
+	err = rt2.Bucket().SetRaw(pushCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
+	require.NoError(t, err)
+
+	pullCheckpointID, err := ar.Pull.CheckpointID()
+	require.NoError(t, err)
+	pullCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pullCheckpointID
+	err = rt1.Bucket().SetRaw(pullCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
+	require.NoError(t, err)
+
+	// Create doc1 on rt1
+	docID := t.Name() + "rt1doc"
+	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	assert.NoError(t, rt1.WaitForPendingChanges())
+
+	// wait for document originally written to rt1 to arrive at rt2
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	// Create doc2 on rt2
+	docID = t.Name() + "rt2doc"
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	assert.NoError(t, rt2.WaitForPendingChanges())
+
+	// wait for document originally written to rt2 to arrive at rt1
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since=1", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
+	ar.Push.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Checkpointer.StatSetCheckpointTotal))
+
+	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+	ar.Pull.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Pull.Checkpointer.StatSetCheckpointTotal))
+
+	assert.NoError(t, ar.Stop())
+}

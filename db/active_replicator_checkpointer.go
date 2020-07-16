@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"strings"
 	"sync"
 	"time"
 
@@ -242,13 +243,13 @@ func (c *Checkpointer) fetchCheckpoints() error {
 			checkpointSeq = remoteSeq
 			c.lastLocalCheckpointRevID, err = c.setLocalCheckpoint(checkpointSeq, c.lastLocalCheckpointRevID)
 			if err != nil {
-				return err
+				base.WarnfCtx(c.ctx, "Unable to roll back local checkpoint: %v", err)
 			}
 		} else {
 			checkpointSeq = localSeq
 			c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpoint(checkpointSeq, c.lastRemoteCheckpointRevID)
 			if err != nil {
-				return err
+				base.WarnfCtx(c.ctx, "Unable to roll back remote checkpoint: %v", err)
 			}
 		}
 	}
@@ -265,20 +266,18 @@ func (c *Checkpointer) fetchCheckpoints() error {
 	return nil
 }
 
-func (c *Checkpointer) _setCheckpoints(seq string) error {
+func (c *Checkpointer) _setCheckpoints(seq string) (err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setCheckpoints(%v)", seq)
 
-	newLocalRev, err := c.setLocalCheckpoint(seq, c.lastLocalCheckpointRevID)
+	c.lastLocalCheckpointRevID, err = c.setLocalCheckpointWithRetry(seq, c.lastLocalCheckpointRevID)
 	if err != nil {
 		return err
 	}
-	c.lastLocalCheckpointRevID = newLocalRev
 
-	newRemoteRev, err := c.setRemoteCheckpoint(seq, c.lastRemoteCheckpointRevID)
+	c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpointWithRetry(seq, c.lastRemoteCheckpointRevID)
 	if err != nil {
 		return err
 	}
-	c.lastRemoteCheckpointRevID = newRemoteRev
 
 	c.lastCheckpointSeq = seq
 	c.StatSetCheckpointTotal.Add(1)
@@ -311,6 +310,14 @@ func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string,
 		return "", err
 	}
 	return newRev, nil
+}
+
+// setLocalCheckpointWithRetry attempts to rewrite the checkpoint if the rev ID is mismatched, or the checkpoint has since been deleted.
+func (c *Checkpointer) setLocalCheckpointWithRetry(seq, existingRevID string) (newRevID string, err error) {
+	return c.setRetry(seq, existingRevID,
+		c.setLocalCheckpoint,
+		c.getLocalCheckpoint,
+	)
 }
 
 func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
@@ -370,6 +377,14 @@ func (c *Checkpointer) setRemoteCheckpoint(seq, parentRev string) (newRev string
 	return resp.RevID, nil
 }
 
+// setRemoteCheckpointWithRetry attempts to rewrite the checkpoint if the rev ID is mismatched, or the checkpoint has since been deleted.
+func (c *Checkpointer) setRemoteCheckpointWithRetry(seq, existingRevID string) (newRevID string, err error) {
+	return c.setRetry(seq, existingRevID,
+		c.setRemoteCheckpoint,
+		c.getRemoteCheckpoint,
+	)
+}
+
 func (c *Checkpointer) getCounts() (expectedCount, processedCount int) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
@@ -402,4 +417,35 @@ func (c *Checkpointer) waitForExpectedSequences() error {
 		waitCount++
 	}
 	return errors.New("checkpointer waitForExpectedSequences failed to complete after waiting 10s")
+}
+
+type setCheckpointFn func(seq, parentRevID string) (revID string, err error)
+type getCheckpointFn func() (seq string, revID string, err error)
+
+// setRetry is a retry loop for a setCheckpointFn, which will fetch a new RevID from a getCheckpointFn in the event of a write conflict.
+func (c *Checkpointer) setRetry(seq, existingRevID string, setFn setCheckpointFn, getFn getCheckpointFn) (newRevID string, err error) {
+	for numAttempts := 0; numAttempts < 10; numAttempts++ {
+		newRevID, err = setFn(seq, existingRevID)
+		if err != nil {
+			if strings.HasPrefix(err.Error(), "409") {
+				base.WarnfCtx(c.ctx, "rev mismatch from setCheckpoint - updating last known rev ID: %v", err)
+				_, rev, getErr := getFn()
+				if getErr == nil {
+					base.InfofCtx(c.ctx, base.KeyReplicate, "using new rev from checkpoint: %v", rev)
+					existingRevID = rev
+				} else {
+					// fall through to retry
+				}
+			} else if strings.HasPrefix(err.Error(), "404") {
+				base.WarnfCtx(c.ctx, "checkpoint did not exist for attempted update - removing last known rev ID: %v", err)
+				existingRevID = ""
+			} else {
+				base.WarnfCtx(c.ctx, "got unexpected error from setCheckpoint: %v", err)
+			}
+			time.Sleep(time.Millisecond * 100)
+			continue
+		}
+		return newRevID, nil
+	}
+	return "", errors.New("failed to write checkpoint after 10 attempts")
 }
