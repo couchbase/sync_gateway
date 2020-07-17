@@ -840,20 +840,6 @@ func isGoCBQueryTimeoutError(err error) bool {
 
 }
 
-func containsElement(items []string, itemToCheck string) bool {
-	for _, item := range items {
-		if item == itemToCheck {
-			return true
-		}
-	}
-	return false
-}
-
-func mapContains(mapInstance map[string]interface{}, key string) bool {
-	_, ok := mapInstance[key]
-	return ok
-}
-
 func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
 
 	bucket.singleOps <- struct{}{}
@@ -870,7 +856,7 @@ func (bucket *CouchbaseBucketGoCB) GetAndTouchRaw(k string, exp uint32) (rv []by
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoopCas("GetAndTouchRaw", worker, bucket.Spec.RetrySleeper())
+	err, cas = RetryLoopCas("GetAndTouchRaw", worker, bucket.Spec.MaxRetrySleeper(1000))
 	if err != nil {
 		err = pkgerrors.Wrapf(err, fmt.Sprintf("Error during GetAndTouchRaw with key %v", UD(k).Redact()))
 	}
@@ -899,7 +885,7 @@ func (bucket *CouchbaseBucketGoCB) Touch(k string, exp uint32) (cas uint64, err 
 	}
 
 	// Kick off retry loop
-	err, cas = RetryLoopCas("Touch", worker, bucket.Spec.RetrySleeper())
+	err, cas = RetryLoopCas("Touch", worker, bucket.Spec.MaxRetrySleeper(1000))
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during Touch for key %v", UD(k).Redact())
 	}
