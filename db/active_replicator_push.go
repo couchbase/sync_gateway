@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync/atomic"
 	"time"
 
@@ -206,6 +207,7 @@ func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 	}
 
 	apr.blipSyncContext.sgr2PushProcessedSeqCallback = func(remoteSeq string) {
+		log.Printf("stats in sgr2PushProcessedSeqCallback: %T %+v", apr.Stats, apr.Stats)
 		apr.Stats.Add(ActiveReplicatorStatsKeyPushProcessedSeqsTotal, 1)
 		apr.Checkpointer.AddProcessedSeq(remoteSeq)
 	}

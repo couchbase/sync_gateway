@@ -32,7 +32,7 @@ func (h *handler) handleBLIPSync() error {
 	)
 
 	// Create a new BlipSyncContext attached to the given blipContext.
-	ctx := db.NewBlipSyncContext(blipContext, h.db, h.formatSerialNumber())
+	ctx := db.NewBlipSyncContext(blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats))
 	defer ctx.Close()
 
 	// Create a BLIP WebSocket handler and have it handle the request:

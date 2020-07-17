@@ -186,11 +186,11 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	go func() {
 		// Pull replication stats by type - Active stats decremented in Close()
 		if bh.continuous {
-			bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, 1)
-			bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalContinuous, 1)
+			bh.replicationStats.SubChangesContinuousActive.Add(1)
+			bh.replicationStats.SubChangesContinuousTotal.Add(1)
 		} else {
-			bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, 1)
-			bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalOneShot, 1)
+			bh.replicationStats.SubChangesOneShotActive.Add(1)
+			bh.replicationStats.SubChangesOneShotTotal.Add(1)
 		}
 
 		defer func() {
@@ -385,9 +385,9 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 	// Include changes messages w/ proposeChanges stats, although CBL should only be using proposeChanges
 	startTime := time.Now()
-	bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	bh.replicationStats.HandleChangesCount.Add(int64(len(changeList)))
 	defer func() {
-		bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
+		bh.replicationStats.HandleChangesTime.Add(time.Since(startTime).Nanoseconds())
 	}()
 
 	expectedSeqs := make([]string, 0)
@@ -430,7 +430,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	if bh.sgCanUseDeltas {
 		base.DebugfCtx(bh.loggingCtx, base.KeyAll, "Setting deltas=true property on handleChanges response")
 		response.Properties[ChangesResponseDeltas] = "true"
-		bh.replicationStats.DeltaRequestedCount.Add(int64(nRequested))
+		bh.replicationStats.HandleChangesDeltaRequestedCount.Add(int64(nRequested))
 	}
 	response.SetCompressed(true)
 	response.SetBody(output.Bytes())
@@ -472,9 +472,9 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 	// proposeChanges stats
 	startTime := time.Now()
-	bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyProposeChangeCount, int64(len(changeList)))
+	bh.replicationStats.HandleChangesCount.Add(int64(len(changeList)))
 	defer func() {
-		bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyProposeChangeTime, time.Since(startTime).Nanoseconds())
+		bh.replicationStats.HandleChangesTime.Add(time.Since(startTime).Nanoseconds())
 	}()
 
 	for i, change := range changeList {
@@ -512,7 +512,7 @@ func (bh *blipHandler) handleProposeChanges(rq *blip.Message) error {
 
 func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, deltaSrcRevID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
 
-	bsc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltasRequested, 1)
+	bsc.replicationStats.SendRevDeltaRequestedCount.Add(1)
 
 	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(docID, deltaSrcRevID, revID)
 	if err == ErrForbidden {
@@ -547,9 +547,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 		return err
 	}
 
-	bsc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltasSent, 1)
-
-	bsc.replicationStats.DeltaSentCount.Add(1)
+	bsc.replicationStats.SendRevDeltaSentCount.Add(1)
 	return nil
 }
 
@@ -575,7 +573,7 @@ type removalDocument struct {
 func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	startTime := time.Now()
 	defer func() {
-		bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyWriteProcessingTime, time.Since(startTime).Nanoseconds())
+		bh.replicationStats.HandleRevProcessingTime.Add(time.Since(startTime).Nanoseconds())
 		if err == nil {
 			bh.BlipSyncContext.replicationStats.HandleRevCount.Add(1)
 		} else {
@@ -595,7 +593,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 	base.TracefCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Properties:%v  Body:%s", bh.serialNumber, base.UD(revMessage.Properties), base.UD(string(bodyBytes)))
 
-	bh.dbStats.StatsDatabase().Add(base.StatKeyDocWritesBytesBlip, int64(len(bodyBytes)))
+	bh.replicationStats.HandleRevBytes.Add(int64(len(bodyBytes)))
 
 	// Doc metadata comes from the BLIP message metadata, not magic document properties:
 	docID, found := revMessage.ID()
@@ -614,7 +612,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			if err := bh.db.Purge(docID); err != nil {
 				return err
 			}
-			bh.replicationStats.DocsPurgedCount.Add(1)
+			bh.replicationStats.HandleRevDocsPurgedCount.Add(1)
 			if bh.sgr2PullProcessedSeqCallback != nil {
 				bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence])
 			}
@@ -675,9 +673,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 		newDoc.UpdateBody(deltaSrcMap)
 		base.TracefCtx(bh.loggingCtx, base.KeySync, "docID: %s - body after patching: %v", base.UD(docID), base.UD(deltaSrcMap))
-		bh.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPushDocCount, 1)
-
-		bh.replicationStats.DeltaReceivedCount.Add(1)
+		bh.replicationStats.HandleRevDeltaRecvCount.Add(1)
 	}
 
 	// Handle and pull out expiry
@@ -732,8 +728,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	}
 
 	// Finally, save the revision (with the new attachments inline)
-	bh.dbStats.StatsCblReplicationPush().Add(base.StatKeyDocPushCount, 1)
-
 	// If a conflict resolver is defined for the handler, write with conflict resolution.
 	if bh.conflictResolver != nil {
 		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver)
@@ -775,8 +769,8 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties[BlipCompress] == "true")
-	bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
-	bh.dbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(attachment)))
+	bh.replicationStats.GetAttachmentCount.Add(1)
+	bh.replicationStats.GetAttachmentBytes.Add(int64(len(attachment)))
 
 	return nil
 }

@@ -797,7 +797,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	ar := db.NewActiveReplicator(&arConfig)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
-	startNumRevsSentTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 
 	assert.NoError(t, ar.Start())
 
@@ -823,7 +823,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
-	numRevsSentTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	numRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 	assert.Equal(t, startNumRevsSentTotal+numRT1DocsInitial, numRevsSentTotal)
 	assert.Equal(t, int64(numRT1DocsInitial), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushProcessedSeqsTotal)))
 	assert.Equal(t, int64(numRT1DocsInitial), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushExpectedSeqsTotal)))
@@ -869,9 +869,9 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	endNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
 	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
 
-	// make sure rt1 thinks it has sent all of the revs via a 2.x replicator
-	numRevsSentTotal = base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
-	assert.Equal(t, startNumRevsSentTotal+numRT1DocsTotal, numRevsSentTotal)
+	// make sure the new replicator has only sent new mutations
+	numRevsSentNewReplicator := ar.Push.GetStats().SendRevCount.Value()
+	assert.Equal(t, numRT1DocsTotal-numRT1DocsInitial, int(numRevsSentNewReplicator))
 	assert.Equal(t, int64(numRT1DocsTotal-numRT1DocsInitial), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushProcessedSeqsTotal)))
 	assert.Equal(t, int64(numRT1DocsTotal-numRT1DocsInitial), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushExpectedSeqsTotal)))
 
@@ -977,7 +977,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
-	numRevsSentTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	numRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 	assert.Equal(t, int64(0), numRevsSentTotal)
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushProcessedSeqsTotal)))
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushExpectedSeqsTotal)))
@@ -1015,7 +1015,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
 
 	// make sure rt1 thinks it has sent all of the revs via a 2.x replicator
-	numRevsSentTotal = base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	numRevsSentTotal = ar.Push.GetStats().SendRevCount.Value()
 	assert.Equal(t, int64(0), numRevsSentTotal)
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushProcessedSeqsTotal)))
 	assert.Equal(t, int64(0), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushExpectedSeqsTotal)))
@@ -1858,7 +1858,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		t.Skipf("test requires at least 3 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -2013,7 +2013,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 		t.Skipf("test requires at least 3 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -2071,7 +2071,8 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.NoError(t, err)
 
 	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
-	startNumRevsSentTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	//startNumRevsSentTotal := ar.Pull.GetStats().SendRevCount.Value()
+	startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 
 	assert.NoError(t, ar.Start())
 
@@ -2090,7 +2091,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
-	numRevsSentTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	numRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 	assert.Equal(t, startNumRevsSentTotal+1, numRevsSentTotal)
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushProcessedSeqsTotal)))
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushExpectedSeqsTotal)))
@@ -2152,9 +2153,9 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	endNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
 	assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
 
-	// make sure rt1 thinks it has sent all of the revs via a 2.x replicator
-	numRevsSentTotal = base.ExpvarVar2Int(rt1.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
-	assert.Equal(t, startNumRevsSentTotal+2, numRevsSentTotal)
+	// make sure the replicator has resent the rev
+	numRevsSentTotal = ar.Push.GetStats().SendRevCount.Value()
+	assert.Equal(t, startNumRevsSentTotal+1, numRevsSentTotal)
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushProcessedSeqsTotal)))
 	assert.Equal(t, int64(1), base.ExpvarVar2Int(ar.Push.Stats.Get(db.ActiveReplicatorStatsKeyPushExpectedSeqsTotal)))
 

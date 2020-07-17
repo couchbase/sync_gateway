@@ -153,10 +153,10 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 	if ar.Pull != nil {
 		pullStats := ar.Pull.replicationStats
 		status.DocsRead = pullStats.HandleRevCount.Value()
-		status.DocsPurged = pullStats.DocsPurgedCount.Value()
+		status.DocsPurged = pullStats.HandleRevDocsPurgedCount.Value()
 		status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
-		status.DeltasRecv = pullStats.DeltaReceivedCount.Value()
-		status.DeltasRequested = pullStats.DeltaRequestedCount.Value()
+		status.DeltasRecv = pullStats.HandleRevDeltaRecvCount.Value()
+		status.DeltasRequested = pullStats.HandleChangesDeltaRequestedCount.Value()
 		if ar.Pull.Checkpointer != nil {
 			status.LastSeqPull = ar.Pull.Checkpointer.calculateSafeProcessedSeq()
 		}
@@ -168,7 +168,7 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 		status.DocWriteFailures = pushStats.SendRevErrorTotal.Value()
 		status.DocWriteConflict = pushStats.SendRevErrorConflictCount.Value()
 		status.RejectedRemote = pushStats.SendRevErrorRejectedCount.Value()
-		status.DeltasSent = pushStats.DeltaSentCount.Value()
+		status.DeltasSent = pushStats.SendRevDeltaSentCount.Value()
 		if ar.Push.Checkpointer != nil {
 			status.LastSeqPush = ar.Push.Checkpointer.calculateSafeProcessedSeq()
 		}
@@ -183,11 +183,10 @@ func connect(idSuffix string, config *ActiveReplicatorConfig, replicationStats *
 
 	blipContext := NewSGBlipContext(context.TODO(), config.ID+idSuffix)
 	blipContext.WebsocketPingInterval = config.WebsocketPingInterval
-	bsc = NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID)
+	bsc = NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID, replicationStats)
 	bsc.loggingCtx = context.WithValue(context.Background(), base.LogContextKey{},
 		base.LogContext{CorrelationID: config.ID + idSuffix},
 	)
-	bsc.InitializeStats(replicationStats)
 
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
 	// If deltas have been disabled in the replication config, override this value
