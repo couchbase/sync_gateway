@@ -15,16 +15,6 @@ import (
 )
 
 const (
-	// TODO: Not aligned these to any stats in the PRD yet, these are used for test assertions.
-	ActiveReplicatorStatsKeyPullExpectedSeqsTotal     = "sgr2_pull_expected_seqs_total"
-	ActiveReplicatorStatsKeyPullProcessedSeqsTotal    = "sgr2_pull_processed_seqs_total"
-	ActiveReplicatorStatsKeyPullAlreadyKnownSeqsTotal = "sgr2_pull_already_known_seqs_total"
-	ActiveReplicatorStatsKeyPushExpectedSeqsTotal     = "sgr2_push_expected_seqs_total"
-	ActiveReplicatorStatsKeyPushProcessedSeqsTotal    = "sgr2_push_processed_seqs_total"
-	ActiveReplicatorStatsKeyPushAlreadyKnownSeqsTotal = "sgr2_push_already_known_seqs_total"
-)
-
-const (
 	defaultCheckpointInterval = time.Second * 30
 )
 
