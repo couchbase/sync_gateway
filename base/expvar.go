@@ -235,7 +235,7 @@ func init() {
 	GlobalStats.Set(StatsGroupKeyResourceUtilization, NewStatsResourceUtilization())
 
 	c := &Collector{
-		DBName:    "global",
+		DBName:    "",
 		Subsystem: "resource_utilization",
 		Info: map[string]StatComponents{
 			StatKeyProcessCpuPercentUtilization:   {ValueType: prometheus.GaugeValue},
