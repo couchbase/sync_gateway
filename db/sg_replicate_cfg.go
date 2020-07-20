@@ -601,6 +601,13 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 // updateCluster manages CAS retry for SGRCluster updates.
 func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
 	for i := 1; i <= maxSGRClusterCasRetries; i++ {
+		select {
+		case <-m.terminator:
+			base.DebugfCtx(m.loggingCtx, base.KeyReplicate, "manager terminated, bailing out of update retry loop")
+			return nil
+		default:
+		}
+
 		sgrCluster, cas, err := m.loadSGRCluster()
 		if err != nil {
 			return err

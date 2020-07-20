@@ -537,6 +537,9 @@ func (context *DatabaseContext) Close() {
 	if context.Heartbeater != nil {
 		context.Heartbeater.Stop()
 	}
+	if context.SGReplicateMgr != nil {
+		context.SGReplicateMgr.Stop()
+	}
 	context.Bucket.Close()
 	context.Bucket = nil
 
