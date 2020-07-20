@@ -515,6 +515,21 @@ func CreateMaxDoublingSleeperFunc(maxNumAttempts, initialTimeToSleepMs int, maxS
 
 }
 
+// CreateIndefiniteMaxDoublingSleeperFunc is similar to CreateMaxDoublingSleeperFunc, with the exception that there is no number of maximum retries.
+func CreateIndefiniteMaxDoublingSleeperFunc(initialTimeToSleepMs int, maxSleepPerRetryMs int) RetrySleeper {
+	timeToSleepMs := initialTimeToSleepMs
+
+	sleeper := func(numAttempts int) (bool, int) {
+		timeToSleepMs *= 2
+		if timeToSleepMs > maxSleepPerRetryMs {
+			timeToSleepMs = maxSleepPerRetryMs
+		}
+		return true, timeToSleepMs
+	}
+
+	return sleeper
+}
+
 // SortedUint64Slice attaches the methods of sort.Interface to []uint64, sorting in increasing order.
 type SortedUint64Slice []uint64
 

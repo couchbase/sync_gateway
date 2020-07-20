@@ -57,6 +57,12 @@ type ActiveReplicatorConfig struct {
 	WebsocketPingInterval time.Duration
 	// Conflict resolver
 	ConflictResolverFunc ConflictResolverFunc
+	// InitialReconnectInterval is the initial time to wait for exponential backoff reconnects.
+	InitialReconnectInterval time.Duration
+	// MaxReconnectInterval is the maximum amount of time to wait between exponential backoff reconnect attempts.
+	MaxReconnectInterval time.Duration
+	// TotalReconnectTimeout, if non-zero, is the amount of time to wait before giving up trying to reconnect.
+	TotalReconnectTimeout time.Duration
 
 	// Delta sync enabled
 	DeltasEnabled bool

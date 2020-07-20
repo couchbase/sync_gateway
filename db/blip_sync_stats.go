@@ -39,6 +39,8 @@ type BlipSyncStats struct {
 	SubChangesOneShotActive          *expvar.Int
 	SubChangesOneShotTotal           *expvar.Int
 	SendChangesCount                 *expvar.Int // sendChagnes
+	NumConnectAttempts               *expvar.Int
+	NumReconnectsAborted             *expvar.Int
 }
 
 func NewBlipSyncStats() *BlipSyncStats {
@@ -75,6 +77,8 @@ func NewBlipSyncStats() *BlipSyncStats {
 		SubChangesOneShotActive:          &expvar.Int{},
 		SubChangesOneShotTotal:           &expvar.Int{},
 		SendChangesCount:                 &expvar.Int{},
+		NumConnectAttempts:               &expvar.Int{},
+		NumReconnectsAborted:             &expvar.Int{},
 	}
 }
 

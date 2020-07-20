@@ -207,22 +207,23 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 	return status
 }
 
-func connect(idSuffix string, config *ActiveReplicatorConfig, replicationStats *BlipSyncStats) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
+func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
+	arc.replicationStats.NumConnectAttempts.Add(1)
 
-	blipContext := NewSGBlipContext(context.TODO(), config.ID+idSuffix)
-	blipContext.WebsocketPingInterval = config.WebsocketPingInterval
-	bsc = NewBlipSyncContext(blipContext, config.ActiveDB, blipContext.ID, replicationStats)
+	blipContext := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
+	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
+	bsc = NewBlipSyncContext(blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats)
 	bsc.loggingCtx = context.WithValue(context.Background(), base.LogContextKey{},
-		base.LogContext{CorrelationID: config.ID + idSuffix},
+		base.LogContext{CorrelationID: arc.config.ID + idSuffix},
 	)
 
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
 	// If deltas have been disabled in the replication config, override this value
-	if config.DeltasEnabled == false {
+	if arc.config.DeltasEnabled == false {
 		bsc.sgCanUseDeltas = false
 	}
 
-	blipSender, err = blipSync(*config.PassiveDBURL, blipContext, config.InsecureSkipVerify)
+	blipSender, err = blipSync(*arc.config.PassiveDBURL, blipContext, arc.config.InsecureSkipVerify)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -291,16 +292,20 @@ func combinedState(state1, state2 string) (combinedState string) {
 		return state1
 	}
 
-	if state1 == ReplicationStateError || state2 == ReplicationStateError {
-		return ReplicationStateError
+	if state1 == ReplicationStateStopped && state2 == ReplicationStateStopped {
+		return ReplicationStateStopped
 	}
 
 	if state1 == ReplicationStateRunning || state2 == ReplicationStateRunning {
 		return ReplicationStateRunning
 	}
 
-	if state1 == ReplicationStateStopped && state2 == ReplicationStateStopped {
-		return ReplicationStateStopped
+	if state1 == ReplicationStateError || state2 == ReplicationStateError {
+		return ReplicationStateError
+	}
+
+	if state1 == ReplicationStateReconnecting || state2 == ReplicationStateReconnecting {
+		return ReplicationStateReconnecting
 	}
 
 	base.Infof(base.KeyReplicate, "Unhandled combination of replication states (%s, %s), returning %s", state1, state2, state1)
