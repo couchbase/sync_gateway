@@ -403,8 +403,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	if strings.HasPrefix(docID, base.SGCfgPrefix) {
-		if c.context.ImportListener != nil {
-			c.context.ImportListener.NotifyCfg(docID, event.Cas)
+		if c.context.CfgSG != nil {
+			c.context.CfgSG.FireEvent(docID, event.Cas, nil)
 		}
 	}
 

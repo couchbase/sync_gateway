@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/couchbase/cbgt"
@@ -114,7 +115,9 @@ func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 	return nil
 }
 
-func (c *CfgSG) FireEvent(cfgKey string, cas uint64, err error) {
+func (c *CfgSG) FireEvent(docID string, cas uint64, err error) {
+
+	cfgKey := strings.TrimPrefix(docID, SGCfgPrefix)
 	c.lock.Lock()
 	InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: FireEvent, key: %s, cas %d", cfgKey, cas)
 	for _, ch := range c.subscriptions[cfgKey] {
