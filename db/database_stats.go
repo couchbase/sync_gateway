@@ -201,6 +201,24 @@ func NewDatabaseStats(dbName string) *DatabaseStats {
 	}
 	prometheus.MustRegister(c)
 
+	c = &base.Collector{
+		DBName:    dbName,
+		Subsystem: "gsi_views",
+		Info: map[string]base.StatComponents{
+			"access_count":     {ValueType: prometheus.CounterValue},
+			"roleAccess_count": {ValueType: prometheus.CounterValue},
+			"channels_count":   {ValueType: prometheus.CounterValue},
+			"allDocs_count":    {ValueType: prometheus.CounterValue},
+			"principals_count": {ValueType: prometheus.CounterValue},
+			"resync_count":     {ValueType: prometheus.CounterValue},
+			"sequences_count":  {ValueType: prometheus.CounterValue},
+			"sessions_count":   {ValueType: prometheus.CounterValue},
+			"tombstones_count": {ValueType: prometheus.CounterValue},
+		},
+		VarMap: dbStats.StatsGsiViews(),
+	}
+	prometheus.MustRegister(c)
+
 	return &dbStats
 }
 
