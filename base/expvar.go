@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -231,6 +233,34 @@ func init() {
 
 	// Add StatsResourceUtilization under GlobalStats
 	GlobalStats.Set(StatsGroupKeyResourceUtilization, NewStatsResourceUtilization())
+
+	c := &Collector{
+		DBName:    "global",
+		Subsystem: "resource_utilization",
+		Info: map[string]StatComponents{
+			StatKeyProcessCpuPercentUtilization:   {ValueType: prometheus.GaugeValue},
+			StatKeyProcessMemoryResident:          {ValueType: prometheus.GaugeValue},
+			StatKeySystemMemoryTotal:              {ValueType: prometheus.GaugeValue},
+			StatKeyPubNetworkInterfaceBytesSent:   {ValueType: prometheus.CounterValue},
+			StatKeyPubNetworkInterfaceBytesRecv:   {ValueType: prometheus.CounterValue},
+			StatKeyAdminNetworkInterfaceBytesSent: {ValueType: prometheus.CounterValue},
+			StatKeyAdminNetworkInterfaceBytesRecv: {ValueType: prometheus.CounterValue},
+			StatKeyNumGoroutines:                  {ValueType: prometheus.GaugeValue},
+			StatKeyGoroutinesHighWatermark:        {ValueType: prometheus.GaugeValue},
+			StatKeyGoMemstatsSys:                  {ValueType: prometheus.GaugeValue},
+			StatKeyGoMemstatsHeapAlloc:            {ValueType: prometheus.GaugeValue},
+			StatKeyGoMemstatsHeapIdle:             {ValueType: prometheus.GaugeValue},
+			StatKeyGoMemstatsHeapInUse:            {ValueType: prometheus.GaugeValue},
+			StatKeyGoMemstatsHeapReleased:         {ValueType: prometheus.GaugeValue},
+			StatKeyGoMemstatsStackInUse:           {ValueType: prometheus.GaugeValue},
+			StatKeyGoMemstatsStackSys:             {ValueType: prometheus.GaugeValue},
+			StatKeyGoMemstatsPauseTotalNs:         {ValueType: prometheus.GaugeValue},
+			StatKeyErrorCount:                     {ValueType: prometheus.CounterValue},
+			StatKeyWarnCount:                      {ValueType: prometheus.CounterValue},
+		},
+		VarMap: StatsResourceUtilization(),
+	}
+	prometheus.MustRegister(c)
 
 }
 
