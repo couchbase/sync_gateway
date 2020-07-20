@@ -1041,7 +1041,7 @@ func RunServer(config *ServerConfig) {
 
 	go sc.PostStartup()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "")
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server")
 	go config.Serve(":1234", CreateMetricHandler(sc))
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", *config.AdminInterface)
