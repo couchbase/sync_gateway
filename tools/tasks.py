@@ -23,6 +23,15 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# The 'latin-1' encoding is being used since we can't guarantee that all bytes that will be
+# processed through sgcollect will be decodable from 'utf-8' (which is the default in Python)
+# and the decoder may fail if it encounters any such byte sequence whilst decoding byte strings.
+# The 'latin-1' encoding belongs to the ISO-8859 family and is capable of decoding any byte sequence.
+ENCODING_LATIN1 = 'latin-1'
+
+# Error handler is being used to handle special cases on Windows platforms when the cp1252
+# encoding is  referred to as 'latin-1',  it does not map all possible byte values.
+BACKSLASH_REPLACE = 'backslashreplace'
 
 class LogRedactor:
     def __init__(self, salt, tmpdir):
@@ -34,8 +43,8 @@ class LogRedactor:
 
     def _process_file(self, ifile, ofile, processor):
         try:
-            with open(ifile, 'r') as inp:
-                with open(ofile, 'w+') as out:
+            with open(ifile, 'r', newline='', encoding=ENCODING_LATIN1, errors=BACKSLASH_REPLACE) as inp:
+                with open(ofile, 'w+', newline='', encoding=ENCODING_LATIN1, errors=BACKSLASH_REPLACE) as out:
                     # Write redaction header
                     out.write(self.couchbase_log.do("RedactLevel"))
                     for line in inp:
