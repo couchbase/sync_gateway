@@ -1816,7 +1816,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 		Doc   db.Body `json:"doc,omitempty"`
 		Error string  `json:"error"`
 	}
-	var allDocsResult struct {
+	type allDocsResponse struct {
 		TotalRows int          `json:"total_rows"`
 		Offset    int          `json:"offset"`
 		Rows      []allDocsRow `json:"rows"`
@@ -1862,6 +1862,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
 
+	allDocsResult := allDocsResponse{}
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
@@ -1880,6 +1881,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 1)
@@ -1893,6 +1895,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 1)
@@ -1906,6 +1909,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 1)
@@ -1919,6 +1923,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 1)
@@ -1932,6 +1937,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 1)
@@ -1945,6 +1951,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 3)
@@ -1960,18 +1967,23 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 4)
 	goassert.Equals(t, allDocsResult.Rows[0].Key, "doc4")
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc4")
+	goassert.Equals(t, allDocsResult.Rows[0].Value.Rev, "1-e0351a57554e023a77544d33dd21e56c")
 	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 	goassert.Equals(t, allDocsResult.Rows[1].Key, "doc1")
 	goassert.Equals(t, allDocsResult.Rows[1].Error, "forbidden")
+	goassert.Equals(t, allDocsResult.Rows[1].Value.Rev, "")
 	goassert.Equals(t, allDocsResult.Rows[2].ID, "doc3")
 	goassert.DeepEquals(t, allDocsResult.Rows[2].Value.Channels, []string{"Cinemax"})
+	goassert.Equals(t, allDocsResult.Rows[2].Value.Rev, "1-20912648f85f2bbabefb0993ddd37b41")
 	goassert.Equals(t, allDocsResult.Rows[3].Key, "b0gus")
 	goassert.Equals(t, allDocsResult.Rows[3].Error, "not_found")
+	goassert.Equals(t, allDocsResult.Rows[3].Value.Rev, "")
 
 	// Check GET to _all_docs with keys parameter:
 	request, _ = http.NewRequest("GET", `/db/_all_docs?channels=true&keys=%5B%22doc4%22%2C%22doc1%22%2C%22doc3%22%2C%22b0gus%22%5D`, nil)
@@ -1980,6 +1992,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response from GET _all_docs = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 4)
@@ -2001,6 +2014,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Response from POST _all_docs = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 1)
@@ -2013,6 +2027,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	assertStatus(t, response, 200)
 
 	log.Printf("Admin response = %s", response.Body.Bytes())
+	allDocsResult = allDocsResponse{}
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
 	goassert.Equals(t, len(allDocsResult.Rows), 5)
