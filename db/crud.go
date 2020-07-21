@@ -407,12 +407,12 @@ func (db *Database) authorizeUserForChannels(docID, revID string, channels base.
 
 // Returns the body of a revision of a document, as well as the document's current channels
 // and the user/roles it grants channel access to.
-func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevisions bool) (bodyBytes []byte, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, gotRevID string, removed bool, err error) {
-	doc, err := db.GetDocument(docid, DocUnmarshalAll)
+func (db *Database) Get1xRevAndChannels(docID string, revID string, listRevisions bool) (bodyBytes []byte, channels channels.ChannelMap, access UserAccessMap, roleAccess UserAccessMap, flags uint8, sequence uint64, gotRevID string, removed bool, err error) {
+	doc, err := db.GetDocument(docID, DocUnmarshalAll)
 	if doc == nil {
 		return
 	}
-	bodyBytes, removed, err = db.get1xRevFromDoc(doc, revid, listRevisions)
+	bodyBytes, removed, err = db.get1xRevFromDoc(doc, revID, listRevisions)
 	if err != nil {
 		return
 	}
@@ -421,7 +421,11 @@ func (db *Database) Get1xRevAndChannels(docid string, revid string, listRevision
 	roleAccess = doc.RoleAccess
 	sequence = doc.Sequence
 	flags = doc.Flags
-	gotRevID = doc.RevID
+	if revID == "" {
+		gotRevID = doc.CurrentRev
+	} else {
+		gotRevID = revID
+	}
 	return
 }
 
