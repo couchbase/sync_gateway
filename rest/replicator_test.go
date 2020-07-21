@@ -1336,16 +1336,18 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 		expectedLocalBody       db.Body
 		expectedLocalRevID      string
 		expectedTombstonedRevID string
+		expectedResolutionType  db.ConflictResolutionType
 	}{
 		{
-			name:               "remoteWins",
-			localRevisionBody:  db.Body{"source": "local"},
-			localRevID:         "1-a",
-			remoteRevisionBody: db.Body{"source": "remote"},
-			remoteRevID:        "1-b",
-			conflictResolver:   `function(conflict) {return conflict.RemoteDocument;}`,
-			expectedLocalBody:  db.Body{"source": "remote"},
-			expectedLocalRevID: "1-b",
+			name:                   "remoteWins",
+			localRevisionBody:      db.Body{"source": "local"},
+			localRevID:             "1-a",
+			remoteRevisionBody:     db.Body{"source": "remote"},
+			remoteRevID:            "1-b",
+			conflictResolver:       `function(conflict) {return conflict.RemoteDocument;}`,
+			expectedLocalBody:      db.Body{"source": "remote"},
+			expectedLocalRevID:     "1-b",
+			expectedResolutionType: db.ConflictResolutionRemote,
 		},
 		{
 			name:               "merge",
@@ -1358,18 +1360,20 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 					mergedDoc.source = "merged";
 					return mergedDoc;
 				}`,
-			expectedLocalBody:  db.Body{"source": "merged"},
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
+			expectedLocalBody:      db.Body{"source": "merged"},
+			expectedLocalRevID:     db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
+			expectedResolutionType: db.ConflictResolutionMerge,
 		},
 		{
-			name:               "localWins",
-			localRevisionBody:  db.Body{"source": "local"},
-			localRevID:         "1-a",
-			remoteRevisionBody: db.Body{"source": "remote"},
-			remoteRevID:        "1-b",
-			conflictResolver:   `function(conflict) {return conflict.LocalDocument;}`,
-			expectedLocalBody:  db.Body{"source": "local"},
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
+			name:                   "localWins",
+			localRevisionBody:      db.Body{"source": "local"},
+			localRevID:             "1-a",
+			remoteRevisionBody:     db.Body{"source": "remote"},
+			remoteRevID:            "1-b",
+			conflictResolver:       `function(conflict) {return conflict.LocalDocument;}`,
+			expectedLocalBody:      db.Body{"source": "local"},
+			expectedLocalRevID:     db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
+			expectedResolutionType: db.ConflictResolutionLocal,
 		},
 	}
 
@@ -1432,6 +1436,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
+			replicationStats := new(expvar.Map).Init()
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 				ID:           t.Name(),
 				Direction:    db.ActiveReplicatorTypePull,
@@ -1439,18 +1444,31 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize: 200,
-				ConflictResolver: customConflictResolver,
-				Continuous:       true,
+				ChangesBatchSize:     200,
+				ConflictResolverFunc: customConflictResolver,
+				Continuous:           true,
+				ReplicationStatsMap:  replicationStats,
 			})
 			defer func() { assert.NoError(t, ar.Stop()) }()
 
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start())
 
-			// TODO: Use replication stats to wait for replication to complete
-			time.Sleep(1 * time.Second)
-			log.Printf("========================Replication should be done, checking with changes")
+			waitForCondition(t, func() bool { return ar.GetStatus().DocsRead == 1 })
+			switch test.expectedResolutionType {
+			case db.ConflictResolutionLocal:
+				assert.Equal(t, "1", replicationStats.Get(base.StatKeySgrConflictResolvedLocal).String())
+				assert.Equal(t, "0", replicationStats.Get(base.StatKeySgrConflictResolvedMerge).String())
+				assert.Equal(t, "0", replicationStats.Get(base.StatKeySgrConflictResolvedRemote).String())
+			case db.ConflictResolutionMerge:
+				assert.Equal(t, "0", replicationStats.Get(base.StatKeySgrConflictResolvedLocal).String())
+				assert.Equal(t, "1", replicationStats.Get(base.StatKeySgrConflictResolvedMerge).String())
+				assert.Equal(t, "0", replicationStats.Get(base.StatKeySgrConflictResolvedRemote).String())
+			case db.ConflictResolutionRemote:
+				assert.Equal(t, "0", replicationStats.Get(base.StatKeySgrConflictResolvedLocal).String())
+				assert.Equal(t, "0", replicationStats.Get(base.StatKeySgrConflictResolvedMerge).String())
+				assert.Equal(t, "1", replicationStats.Get(base.StatKeySgrConflictResolvedRemote).String())
+			}
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
 
 			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
@@ -1614,9 +1632,9 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
-				ChangesBatchSize: 200,
-				ConflictResolver: customConflictResolver,
-				Continuous:       true,
+				ChangesBatchSize:     200,
+				ConflictResolverFunc: customConflictResolver,
+				Continuous:           true,
 			})
 			defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -2425,4 +2443,16 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().SetCheckpointCount)
 
 	assert.NoError(t, ar.Stop())
+}
+
+func waitForCondition(t *testing.T, fn func() bool) {
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			t.Fatalf("Condition failed to be satisfied")
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
 }

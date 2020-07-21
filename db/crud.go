@@ -891,7 +891,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 //     1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //     2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //     3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolverFunc ConflictResolverFunc) (doc *Document, newRevID string, err error) {
+func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -939,10 +939,10 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 
 		// Conflict-free mode check
 		if db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
-			if conflictResolverFunc == nil {
+			if conflictResolver == nil {
 				return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
-			_, updatedHistory, err := db.resolveConflict(doc, newDoc, docHistory, conflictResolverFunc)
+			_, updatedHistory, err := db.resolveConflict(doc, newDoc, docHistory, conflictResolver)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -1026,9 +1026,9 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 // resolveConflict runs the conflictResolverFunction with doc and newDoc.  doc and newDoc's bodies and revision trees
 // may be changed based on the outcome of conflict resolution - see resolveDocLocalWins, resolveDocRemoteWins and
 // resolveDocMerge for specifics on what is changed under each scenario.
-func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, docHistory []string, resolverFunc ConflictResolverFunc) (resolvedRevID string, updatedHistory []string, resolveError error) {
+func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, docHistory []string, resolver *ConflictResolver) (resolvedRevID string, updatedHistory []string, resolveError error) {
 
-	if resolverFunc == nil {
+	if resolver == nil {
 		return "", nil, errors.New("Conflict resolution function is nil for resolveConflict")
 	}
 
@@ -1045,7 +1045,7 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 		RemoteDocument: remoteDocBody,
 	}
 
-	resolvedBody, resolutionType, resolveFuncError := resolverFunc.Resolve(conflict)
+	resolvedBody, resolutionType, resolveFuncError := resolver.Resolve(conflict)
 	if resolveError != nil {
 		return "", nil, resolveFuncError
 	}

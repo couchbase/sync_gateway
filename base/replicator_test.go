@@ -42,7 +42,7 @@ func TestReplicator(t *testing.T) {
 }
 
 func waitForActiveTasks(t *testing.T, r *Replicator, taskCount int) {
-	for i := 0; i < 20; i++ {
+	for i := 0; i <= 20; i++ {
 		if i == 20 {
 			t.Fatalf("failed to find active task")
 		}

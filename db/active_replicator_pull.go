@@ -16,7 +16,7 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 	return &ActivePullReplicator{
 		activeReplicatorCommon: activeReplicatorCommon{
 			config:           config,
-			replicationStats: BlipSyncStatsForSGRPull(config.ReplicationStats),
+			replicationStats: BlipSyncStatsForSGRPull(config.ReplicationStatsMap),
 			state:            ReplicationStateStopped,
 		},
 	}
@@ -41,7 +41,9 @@ func (apr *ActivePullReplicator) Start() error {
 		return apr._setError(err)
 	}
 
-	apr.blipSyncContext.conflictResolver = apr.config.ConflictResolver
+	if apr.config.ConflictResolverFunc != nil {
+		apr.blipSyncContext.conflictResolver = NewConflictResolver(apr.config.ConflictResolverFunc, apr.config.ReplicationStatsMap)
+	}
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 
 	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(context.Background())

@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"expvar"
 	"fmt"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -52,33 +53,77 @@ type Conflict struct {
 //   - If an nil Body is returned, the conflict should be resolved as a deletion/tombstone.
 type ConflictResolverFunc func(conflict Conflict) (winner Body, err error)
 
+type ConflictResolverStats struct {
+	ConflictResultMergeCount  *expvar.Int
+	ConflictResultLocalCount  *expvar.Int
+	ConflictResultRemoteCount *expvar.Int
+}
+
+func DefaultConflictResolverStats() *ConflictResolverStats {
+	return &ConflictResolverStats{
+		ConflictResultMergeCount:  &expvar.Int{},
+		ConflictResultLocalCount:  &expvar.Int{},
+		ConflictResultRemoteCount: &expvar.Int{},
+	}
+}
+
+// NewConflictResolverStats initializes the replications stats inside the provided container, and returns
+// a ConflictResolverStats to manage interaction with those stats.  If the container is not specified, expvar stats
+// will not be published.
+func NewConflictResolverStats(container *expvar.Map) *ConflictResolverStats {
+	if container == nil {
+		return DefaultConflictResolverStats()
+	}
+	return &ConflictResolverStats{
+		ConflictResultMergeCount:  initReplicationStat(container, base.StatKeySgrConflictResolvedMerge),
+		ConflictResultLocalCount:  initReplicationStat(container, base.StatKeySgrConflictResolvedLocal),
+		ConflictResultRemoteCount: initReplicationStat(container, base.StatKeySgrConflictResolvedRemote),
+	}
+}
+
+type ConflictResolver struct {
+	crf   ConflictResolverFunc
+	stats *ConflictResolverStats
+}
+
+func NewConflictResolver(crf ConflictResolverFunc, statsContainer *expvar.Map) *ConflictResolver {
+	resolver := &ConflictResolver{
+		crf:   crf,
+		stats: NewConflictResolverStats(statsContainer),
+	}
+	return resolver
+}
+
 // Wrapper for ConflictResolverFunc that evaluates whether conflict resolution resulted in
 // localWins, remoteWins, or merge
-func (crf ConflictResolverFunc) Resolve(conflict Conflict) (winner Body, resolutionType ConflictResolutionType, err error) {
+func (c *ConflictResolver) Resolve(conflict Conflict) (winner Body, resolutionType ConflictResolutionType, err error) {
 
-	winner, err = crf(conflict)
+	winner, err = c.crf(conflict)
 	if err != nil {
 		return winner, "", err
 	}
 
 	winningRev, ok := winner[BodyRev]
 	if !ok {
+		c.stats.ConflictResultMergeCount.Add(1)
 		return winner, ConflictResolutionMerge, nil
 	}
 
 	localRev, ok := conflict.LocalDocument[BodyRev]
 	if ok && localRev == winningRev {
+		c.stats.ConflictResultLocalCount.Add(1)
 		return winner, ConflictResolutionLocal, nil
 	}
 
 	remoteRev, ok := conflict.RemoteDocument[BodyRev]
 	if ok && remoteRev == winningRev {
+		c.stats.ConflictResultRemoteCount.Add(1)
 		return winner, ConflictResolutionRemote, nil
 	}
 
 	base.Infof(base.KeyReplicate, "Conflict resolver returned non-empty revID (%s) not matching local (%s) or remote (%s), treating result as merge.", winningRev, localRev, remoteRev)
-	return winner, resolutionType, err
-
+	c.stats.ConflictResultMergeCount.Add(1)
+	return winner, ConflictResolutionMerge, err
 }
 
 // DefaultConflictResolver uses the same logic as revTree.WinningRevision:

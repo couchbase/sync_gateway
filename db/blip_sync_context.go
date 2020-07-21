@@ -99,7 +99,7 @@ type BlipSyncContext struct {
 	emptyChangesMessageCallback      func()                          // emptyChangesMessageCallback is called when an empty changes message is received
 	replicationStats                 *BlipSyncStats                  // Replication stats
 	purgeOnRemoval                   bool                            // Purges the document when we pull a _removed:true revision.
-	conflictResolver                 ConflictResolverFunc            // Conflict resolver for active replications
+	conflictResolver                 *ConflictResolver               // Conflict resolver for active replications
 	changesPendingResponseCount      int64                           // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool // Whether to set noconflicts=true when sending revisions

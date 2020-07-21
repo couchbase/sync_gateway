@@ -19,7 +19,7 @@ func NewPushReplicator(config *ActiveReplicatorConfig) *ActivePushReplicator {
 	return &ActivePushReplicator{
 		activeReplicatorCommon: activeReplicatorCommon{
 			config:           config,
-			replicationStats: BlipSyncStatsForSGRPush(config.ReplicationStats),
+			replicationStats: BlipSyncStatsForSGRPush(config.ReplicationStatsMap),
 			state:            ReplicationStateStopped,
 		},
 	}

@@ -55,8 +55,8 @@ type ActiveReplicatorConfig struct {
 	ActiveDB *Database
 	// WebsocketPingInterval is the time between websocket heartbeats sent by the active replicator.
 	WebsocketPingInterval time.Duration
-	// Conflict resolver function
-	ConflictResolver ConflictResolverFunc
+	// Conflict resolver
+	ConflictResolverFunc ConflictResolverFunc
 
 	// Delta sync enabled
 	DeltasEnabled bool
@@ -68,9 +68,9 @@ type ActiveReplicatorConfig struct {
 	// Callback to be invoked on replication completion
 	onComplete OnCompleteFunc
 
-	// Map corresponding to db.replications.[replicationID] in Sync Gateway's expvars.  Mapped to
+	// Map corresponding to db.replications.[replicationID] in Sync Gateway's expvars.  Populated with
 	// replication stats in blip_sync_stats.go
-	ReplicationStats *expvar.Map
+	ReplicationStatsMap *expvar.Map
 }
 
 type OnCompleteFunc func(replicationID string)

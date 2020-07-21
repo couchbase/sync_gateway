@@ -444,9 +444,9 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	// Set conflict resolver for pull replications
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
-			rc.ConflictResolver, err = NewConflictResolverFunc(ConflictResolverDefault, "")
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(ConflictResolverDefault, "")
 		} else {
-			rc.ConflictResolver, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn)
+			rc.ConflictResolverFunc, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn)
 		}
 		if err != nil {
 			return nil, err
@@ -476,7 +476,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	} else {
 		statsMap = statsVar.(*expvar.Map)
 	}
-	rc.ReplicationStats = statsMap
+	rc.ReplicationStatsMap = statsMap
 
 	// TODO: review whether there's a more appropriate context to use here
 	replicator = NewActiveReplicator(rc)
