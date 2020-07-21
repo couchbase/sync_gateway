@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"errors"
-	"expvar"
 	"strings"
 	"sync"
 	"time"
@@ -34,23 +33,28 @@ type Checkpointer struct {
 	// lastCheckpointSeq is the last checkpointed sequence
 	lastCheckpointSeq string
 
-	StatSetCheckpointTotal     *expvar.Int
-	StatGetCheckpointHitTotal  *expvar.Int
-	StatGetCheckpointMissTotal *expvar.Int
+	stats CheckpointerStats
+}
+
+type CheckpointerStats struct {
+	ExpectedSequenceCount     int64
+	ProcessedSequenceCount    int64
+	AlreadyKnownSequenceCount int64
+	SetCheckpointCount        int64
+	GetCheckpointHitCount     int64
+	GetCheckpointMissCount    int64
 }
 
 func NewCheckpointer(ctx context.Context, clientID string, blipSender *blip.Sender, activeDB *Database, checkpointInterval time.Duration) *Checkpointer {
 	return &Checkpointer{
-		clientID:                   clientID,
-		blipSender:                 blipSender,
-		activeDB:                   activeDB,
-		expectedSeqs:               make([]string, 0),
-		processedSeqs:              make(map[string]struct{}),
-		checkpointInterval:         checkpointInterval,
-		ctx:                        ctx,
-		StatSetCheckpointTotal:     &expvar.Int{},
-		StatGetCheckpointHitTotal:  &expvar.Int{},
-		StatGetCheckpointMissTotal: &expvar.Int{},
+		clientID:           clientID,
+		blipSender:         blipSender,
+		activeDB:           activeDB,
+		expectedSeqs:       make([]string, 0),
+		processedSeqs:      make(map[string]struct{}),
+		checkpointInterval: checkpointInterval,
+		ctx:                ctx,
+		stats:              CheckpointerStats{},
 	}
 }
 
@@ -67,6 +71,7 @@ func (c *Checkpointer) AddAlreadyKnownSeq(seq ...string) {
 	for _, seq := range seq {
 		c.processedSeqs[seq] = struct{}{}
 	}
+	c.stats.AlreadyKnownSequenceCount += int64(len(seq))
 	c.lock.Unlock()
 }
 
@@ -80,6 +85,7 @@ func (c *Checkpointer) AddProcessedSeq(seq string) {
 
 	c.lock.Lock()
 	c.processedSeqs[seq] = struct{}{}
+	c.stats.ProcessedSequenceCount++
 	c.lock.Unlock()
 }
 
@@ -98,6 +104,7 @@ func (c *Checkpointer) AddExpectedSeq(seq ...string) {
 
 	c.lock.Lock()
 	c.expectedSeqs = append(c.expectedSeqs, seq...)
+	c.stats.ExpectedSequenceCount += int64(len(seq))
 	c.lock.Unlock()
 }
 
@@ -142,6 +149,14 @@ func (c *Checkpointer) CheckpointNow() {
 	if err != nil {
 		base.Warnf("couldn't set checkpoints: %v", err)
 	}
+}
+
+// Stats returns a copy of the checkpointer stats. Intended for test use - non-test usage may have
+// performance implications associated with locking
+func (c *Checkpointer) Stats() CheckpointerStats {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	return c.stats
 }
 
 // _updateCheckpointLists determines the highest checkpointable sequence, and trims the processedSeqs/expectedSeqs lists up to this point.
@@ -255,9 +270,9 @@ func (c *Checkpointer) fetchCheckpoints() error {
 	}
 
 	if checkpointSeq == "" {
-		c.StatGetCheckpointMissTotal.Add(1)
+		c.stats.GetCheckpointMissCount++
 	} else {
-		c.StatGetCheckpointHitTotal.Add(1)
+		c.stats.GetCheckpointHitCount++
 	}
 
 	base.DebugfCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", checkpointSeq)
@@ -280,7 +295,7 @@ func (c *Checkpointer) _setCheckpoints(seq string) (err error) {
 	}
 
 	c.lastCheckpointSeq = seq
-	c.StatSetCheckpointTotal.Add(1)
+	c.stats.SetCheckpointCount++
 
 	return nil
 }

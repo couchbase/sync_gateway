@@ -66,3 +66,9 @@ func (a *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastE
 		return a.state, a.lastError.Error()
 	}
 }
+
+func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+	return a.replicationStats
+}

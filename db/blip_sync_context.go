@@ -39,17 +39,20 @@ var (
 
 var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
-func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string) *BlipSyncContext {
+func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
 	bsc := &BlipSyncContext{
 		blipContext:      bc,
 		blipContextDb:    db,
 		loggingCtx:       db.Ctx,
 		terminator:       make(chan bool),
 		userChangeWaiter: db.NewUserWaiter(),
-		dbStats:          db.DatabaseContext.DbStats,
 		sgCanUseDeltas:   db.DeltaSyncEnabled(),
-		replicationStats: NewBlipSyncStats(),
+		replicationStats: replicationStats,
 	}
+	if bsc.replicationStats == nil {
+		bsc.replicationStats = NewBlipSyncStats()
+	}
+
 	if u := db.User(); u != nil {
 		bsc.userName = u.Name()
 	}
@@ -87,7 +90,6 @@ type BlipSyncContext struct {
 	sgCanUseDeltas                   bool                            // Whether deltas can be used by Sync Gateway for this connection
 	userChangeWaiter                 *ChangeWaiter                   // Tracks whether the users/roles associated with the replication have changed
 	userName                         string                          // Avoid contention on db.user during userChangeWaiter user lookup
-	dbStats                          *DatabaseStats                  // Direct stats access to support reloading db while stats are being updated
 	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs []string)     // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
 	sgr2PullProcessedSeqCallback     func(remoteSeq string)          // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
 	sgr2PullAlreadyKnownSeqsCallback func(alreadyKnownSeqs []string) // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
@@ -154,11 +156,11 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 
 func (bsc *BlipSyncContext) Close() {
 	if bsc.gotSubChanges {
-		stat := base.StatKeyPullReplicationsActiveOneShot
 		if bsc.continuous {
-			stat = base.StatKeyPullReplicationsActiveContinuous
+			bsc.replicationStats.SubChangesContinuousActive.Add(-1)
+		} else {
+			bsc.replicationStats.SubChangesOneShotActive.Add(-1)
 		}
-		bsc.dbStats.StatsCblReplicationPull().Add(stat, -1)
 	}
 
 	bsc.terminatorOnce.Do(func() {
@@ -212,8 +214,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	}
 	changesResponseReceived := time.Now()
 
-	bsc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRequestChangesCount, 1)
-	bsc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRequestChangesTime, time.Since(requestSent).Nanoseconds())
+	bsc.replicationStats.HandleChangesResponseCount.Add(1)
+	bsc.replicationStats.HandleChangesResponseTime.Add(time.Since(requestSent).Nanoseconds())
 
 	maxHistory := 0
 	if max, err := strconv.ParseUint(response.Properties[ChangesResponseMaxHistory], 10, 64); err == nil {
@@ -300,9 +302,9 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 			bsc.sgr2PushAddExpectedSeqsCallback(sentSeqs)
 		}
 
-		bsc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendCount, revSendCount)
-		bsc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRevSendLatency, revSendTimeLatency)
-		bsc.dbStats.StatsCblReplicationPull().Add(base.StatKeyRevProcessingTime, time.Since(changesResponseReceived).Nanoseconds())
+		bsc.replicationStats.HandleChangesSendRevCount.Add(revSendCount)
+		bsc.replicationStats.HandleChangesSendRevLatency.Add(revSendTimeLatency)
+		bsc.replicationStats.HandleChangesSendRevTime.Add(time.Since(changesResponseReceived).Nanoseconds())
 	}
 
 	return nil
@@ -325,9 +327,8 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 	// Update read stats
 	if messageBody, err := outrq.Body(); err == nil {
-		bsc.dbStats.StatsDatabase().Add(base.StatKeyDocReadsBytesBlip, int64(len(messageBody)))
+		bsc.replicationStats.SendRevBytes.Add(int64(len(messageBody)))
 	}
-	bsc.dbStats.StatsDatabase().Add(base.StatKeyNumDocReadsBlip, 1)
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attDigests)
 
@@ -335,6 +336,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	awaitResponse := len(attDigests) > 0 || properties[RevMessageDeltaSrc] != "" || bsc.sgr2PushProcessedSeqCallback != nil
 
 	if !awaitResponse {
+		bsc.replicationStats.SendRevCount.Add(1)
 		outrq.SetNoReply(true)
 	}
 
@@ -421,7 +423,7 @@ func (bsc *BlipSyncContext) setUseDeltas(clientCanUseDeltas bool) {
 	// Both sides want deltas, and we've not previously enabled them.
 	if bsc.sgCanUseDeltas && clientCanUseDeltas && !bsc.useDeltas {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Enabling deltas for this replication")
-		bsc.dbStats.StatsDeltaSync().Add(base.StatKeyDeltaPullReplicationCount, 1)
+		bsc.replicationStats.DeltaEnabledPullReplicationCount.Add(1)
 		bsc.useDeltas = true
 		return
 	}
@@ -524,11 +526,6 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	attDigests := AttachmentDigests(rev.Attachments)
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), attDigests)
 	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties, seq, nil)
-}
-
-// InitializeStats must be run before replication is started - there is no synchronization on replicationStats
-func (bsc *BlipSyncContext) InitializeStats(stats *BlipSyncStats) {
-	bsc.replicationStats = stats
 }
 
 func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) []string {
