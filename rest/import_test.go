@@ -128,6 +128,89 @@ func TestXattrImportOldDoc(t *testing.T) {
 	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
 }
 
+// Test import of an SDK delete with ImportFilter .
+func TestXattrImportOldDocWithImportFilter(t *testing.T) {
+	SkipImportTestsIfNotEnabled(t)
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc, oldDoc) {
+			if (oldDoc == null) {
+				channel("oldDocNil")
+			} 
+			if (doc._deleted) {
+				channel("docDeleted")
+			}
+		}`,
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+			ImportFilter: base.StringPtr(`function (doc) {
+				console.log("Doc in Import Filter:" + JSON.stringify(doc));
+				if (doc.channels || doc._deleted) {
+					return true
+				}
+				return false
+			}`),
+		},
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	bucket := rt.Bucket()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyJavascript)()
+
+	// 1. Test oldDoc behaviour during SDK insert
+	key := "doc1"
+	docBody := db.Body{"key": key, "channels": "ABC"}
+	_, err := bucket.Add(key, 0, docBody)
+	assert.NoErrorf(t, err, "Unable to insert doc %s", key)
+
+	// Attempt to get the document via Sync Gateway, to trigger import. On import of a create, oldDoc should be nil.
+	endpoint := "/db/_raw/" + key + "?redact=false"
+	response := rt.SendAdminRequest(http.MethodGet, endpoint, "")
+	assert.Equal(t, response.Code, http.StatusOK)
+	var rawInsertResponse RawResponse
+	err = base.JSONUnmarshal(response.Body.Bytes(), &rawInsertResponse)
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+	assert.True(t, rawInsertResponse.Sync.Channels != nil, "Expected channels not returned for SDK insert")
+	log.Printf("insert channels: %+v", rawInsertResponse.Sync.Channels)
+	assert.True(t, HasActiveChannel(rawInsertResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK insert")
+
+	// 2. Test oldDoc behaviour during SDK update
+	updatedBody := db.Body{"key": key, "channels": "HBO"}
+	err = bucket.Set(key, 0, updatedBody)
+	assert.NoErrorf(t, err, "Unable to update doc %s", key)
+
+	// Attempt to get the document via Sync Gateway, to trigger import. On import of a create, oldDoc should be nil.
+	response = rt.SendAdminRequest(http.MethodGet, endpoint, "")
+	assert.Equal(t, response.Code, http.StatusOK)
+	var rawUpdateResponse RawResponse
+	err = base.JSONUnmarshal(response.Body.Bytes(), &rawUpdateResponse)
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+
+	// If delta sync is enabled, old doc may be available based on the backup used for delta generation, if it hasn't already
+	// been converted to a delta
+	if !rt.GetDatabase().DeltaSyncEnabled() {
+		assert.True(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
+		log.Printf("update channels: %+v", rawUpdateResponse.Sync.Channels)
+		assert.True(t, HasActiveChannel(rawUpdateResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK update")
+	}
+
+	// 3. Test oldDoc behaviour during SDK delete
+	err = bucket.Delete(key)
+	assert.NoErrorf(t, err, "Unable to delete doc %s", key)
+
+	response = rt.SendAdminRequest(http.MethodGet, endpoint, "")
+	assert.Equal(t, response.Code, http.StatusOK)
+	var rawDeleteResponse RawResponse
+	err = base.JSONUnmarshal(response.Body.Bytes(), &rawDeleteResponse)
+	log.Printf("Post-delete: %s", response.Body.Bytes())
+	assert.NoError(t, err, "Unable to unmarshal raw response")
+	assert.True(t, rawUpdateResponse.Sync.Channels != nil, "Expected channels not returned for SDK update")
+	log.Printf("update channels: %+v", rawDeleteResponse.Sync.Channels)
+	if !rt.GetDatabase().DeltaSyncEnabled() {
+		assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "oldDocNil"), "oldDoc was not nil during import of SDK delete")
+	}
+	assert.True(t, HasActiveChannel(rawDeleteResponse.Sync.Channels, "docDeleted"), "doc did not set _deleted:true for SDK delete")
+}
+
 // Validate tombstone w/ xattrs
 func TestXattrSGTombstone(t *testing.T) {
 
