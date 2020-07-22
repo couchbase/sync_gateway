@@ -25,7 +25,9 @@ type BlipSyncStats struct {
 	HandleChangesCount               *expvar.Int // handleChanges/handleProposeChanges
 	HandleChangesTime                *expvar.Int
 	HandleChangesDeltaRequestedCount *expvar.Int
-	GetAttachmentCount               *expvar.Int // getAttachment
+	HandleGetAttachment              *expvar.Int // handleGetAttachment
+	HandleGetAttachmentBytes         *expvar.Int
+	GetAttachment                    *expvar.Int // getAttachment
 	GetAttachmentBytes               *expvar.Int
 	HandleChangesResponseCount       *expvar.Int // handleChangesResponse
 	HandleChangesResponseTime        *expvar.Int
@@ -36,6 +38,7 @@ type BlipSyncStats struct {
 	SubChangesContinuousTotal        *expvar.Int
 	SubChangesOneShotActive          *expvar.Int
 	SubChangesOneShotTotal           *expvar.Int
+	SendChangesCount                 *expvar.Int // sendChagnes
 }
 
 func NewBlipSyncStats() *BlipSyncStats {
@@ -58,8 +61,8 @@ func NewBlipSyncStats() *BlipSyncStats {
 		HandleChangesCount:               &expvar.Int{}, // handleChanges/handleProposeChanges
 		HandleChangesTime:                &expvar.Int{},
 		HandleChangesDeltaRequestedCount: &expvar.Int{},
-		GetAttachmentCount:               &expvar.Int{}, // getAttachment
-		GetAttachmentBytes:               &expvar.Int{},
+		HandleGetAttachment:              &expvar.Int{}, // getAttachment
+		HandleGetAttachmentBytes:         &expvar.Int{},
 		HandleChangesResponseCount:       &expvar.Int{}, // handleChangesResponse
 		HandleChangesResponseTime:        &expvar.Int{},
 		HandleChangesSendRevCount:        &expvar.Int{}, //  - (duplicates SendRevCount, included for support of CBL expvars)
@@ -69,6 +72,7 @@ func NewBlipSyncStats() *BlipSyncStats {
 		SubChangesContinuousTotal:        &expvar.Int{},
 		SubChangesOneShotActive:          &expvar.Int{},
 		SubChangesOneShotTotal:           &expvar.Int{},
+		SendChangesCount:                 &expvar.Int{},
 	}
 }
 
@@ -92,8 +96,8 @@ func BlipSyncStatsForCBL(dbStats *DatabaseStats) *BlipSyncStats {
 	blipStats.HandleRevDeltaRecvCount = dbStats.StatsDeltaSync().Get(base.StatKeyDeltaPushDocCount).(*expvar.Int)
 	blipStats.HandleRevCount = dbStats.StatsCblReplicationPush().Get(base.StatKeyDocPushCount).(*expvar.Int)
 
-	blipStats.GetAttachmentCount = dbStats.StatsCblReplicationPull().Get(base.StatKeyAttachmentPullCount).(*expvar.Int)
-	blipStats.GetAttachmentBytes = dbStats.StatsCblReplicationPull().Get(base.StatKeyAttachmentPullBytes).(*expvar.Int)
+	blipStats.HandleGetAttachment = dbStats.StatsCblReplicationPull().Get(base.StatKeyAttachmentPullCount).(*expvar.Int)
+	blipStats.HandleGetAttachmentBytes = dbStats.StatsCblReplicationPull().Get(base.StatKeyAttachmentPullBytes).(*expvar.Int)
 
 	blipStats.HandleChangesResponseCount = dbStats.StatsCblReplicationPull().Get(base.StatKeyRequestChangesCount).(*expvar.Int)
 	blipStats.HandleChangesResponseTime = dbStats.StatsCblReplicationPull().Get(base.StatKeyRequestChangesTime).(*expvar.Int)
@@ -108,6 +112,47 @@ func BlipSyncStatsForCBL(dbStats *DatabaseStats) *BlipSyncStats {
 	blipStats.SubChangesOneShotTotal = dbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsTotalOneShot).(*expvar.Int)
 
 	blipStats.DeltaEnabledPullReplicationCount = dbStats.StatsDeltaSync().Get(base.StatKeyDeltaPullReplicationCount).(*expvar.Int)
+
+	return blipStats
+}
+
+func initReplicationStat(statMap *expvar.Map, key string) (stat *expvar.Int) {
+	expvarVar := statMap.Get(key)
+	if expvarVar == nil {
+		stat = base.ExpvarIntVal(0)
+		statMap.Set(key, stat)
+	} else {
+		stat = expvarVar.(*expvar.Int)
+	}
+	return stat
+}
+
+func BlipSyncStatsForSGRPush(statsMap *expvar.Map) *BlipSyncStats {
+	blipStats := NewBlipSyncStats()
+
+	blipStats.HandleGetAttachmentBytes = initReplicationStat(statsMap, base.StatKeySgrNumAttachmentBytesPushed)
+	blipStats.HandleGetAttachment = initReplicationStat(statsMap, base.StatKeySgrNumAttachmentsPushed)
+
+	blipStats.SendRevCount = initReplicationStat(statsMap, base.StatKeySgrNumDocsPushed)
+	blipStats.SendRevErrorTotal = initReplicationStat(statsMap, base.StatKeySgrNumDocsFailedToPush)
+	blipStats.SendRevErrorConflictCount = initReplicationStat(statsMap, base.StatKeySgrPushConflictCount)
+	blipStats.SendRevErrorRejectedCount = initReplicationStat(statsMap, base.StatKeySgrPushRejectedCount)
+	blipStats.SendRevDeltaSentCount = initReplicationStat(statsMap, base.StatKeySgrPushDeltaSentCount)
+	blipStats.SendChangesCount = initReplicationStat(statsMap, base.StatKeySgrDocsCheckedSent)
+	return blipStats
+}
+
+func BlipSyncStatsForSGRPull(statsMap *expvar.Map) *BlipSyncStats {
+	blipStats := NewBlipSyncStats()
+
+	blipStats.GetAttachmentBytes = initReplicationStat(statsMap, base.StatKeySgrNumAttachmentBytesPulled)
+	blipStats.GetAttachment = initReplicationStat(statsMap, base.StatKeySgrNumAttachmentsPulled)
+	blipStats.HandleRevCount = initReplicationStat(statsMap, base.StatKeySgrPulledCount)
+	blipStats.HandleRevDocsPurgedCount = initReplicationStat(statsMap, base.StatKeySgrPurgedCount)
+	blipStats.HandleRevErrorCount = initReplicationStat(statsMap, base.StatKeySgrFailedToPullCount)
+	blipStats.HandleRevDeltaRecvCount = initReplicationStat(statsMap, base.StatKeySgrDeltaRecvCount)
+	blipStats.HandleChangesDeltaRequestedCount = initReplicationStat(statsMap, base.StatKeySgrDeltaRequestedCount)
+	blipStats.HandleChangesCount = initReplicationStat(statsMap, base.StatKeySgrDocsCheckedRecv)
 
 	return blipStats
 }

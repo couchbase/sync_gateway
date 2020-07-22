@@ -180,13 +180,33 @@ const (
 	StatKeyViewQueryErrorCountExpvarFormat = "%s.%s_error_count" // Design doc, view
 	StatKeyViewQueryTimeExpvarFormat       = "%s.%s_time"        // Design doc, view
 
-	// StatsReplication
+	// StatsReplication (1.x)
 	StatKeySgrActive                     = "sgr_active"
-	StatKeySgrNumDocsPushed              = "sgr_num_docs_pushed"
-	StatKeySgrNumDocsFailedToPush        = "sgr_num_docs_failed_to_push"
 	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
 	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
-	StatKeySgrDocsCheckedSent            = "sgr_docs_checked_sent"
+
+	// StatsReplication (SGR 1.x and 2.x)
+	StatKeySgrNumDocsPushed       = "sgr_num_docs_pushed"
+	StatKeySgrNumDocsFailedToPush = "sgr_num_docs_failed_to_push"
+	StatKeySgrDocsCheckedSent     = "sgr_docs_checked_sent"
+
+	// StatsReplication (SGR 2.x)
+	StatKeySgrNumAttachmentsPushed     = "sgr_num_attachments_pushed"
+	StatKeySgrNumAttachmentBytesPushed = "sgr_num_attachment_bytes_pushed"
+	StatKeySgrNumAttachmentsPulled     = "sgr_num_attachments_pulled"
+	StatKeySgrNumAttachmentBytesPulled = "sgr_num_attachment_bytes_pulled"
+	StatKeySgrPulledCount              = "sgr_num_docs_pulled"
+	StatKeySgrPurgedCount              = "sgr_num_docs_purged"
+	StatKeySgrFailedToPullCount        = "sgr_num_docs_failed_to_pull"
+	StatKeySgrPushConflictCount        = "sgr_push_conflict_count"
+	StatKeySgrPushRejectedCount        = "sgr_push_rejected_count"
+	StatKeySgrDocsCheckedRecv          = "sgr_docs_checked_recv"
+	StatKeySgrDeltaRecvCount           = "sgr_deltas_recv"
+	StatKeySgrDeltaRequestedCount      = "sgr_deltas_requested"
+	StatKeySgrPushDeltaSentCount       = "sgr_deltas_sent"
+	StatKeySgrConflictResolvedLocal    = "sgr_conflict_resolved_local_count"
+	StatKeySgrConflictResolvedRemote   = "sgr_conflict_resolved_remote_count"
+	StatKeySgrConflictResolvedMerge    = "sgr_conflict_resolved_merge_count"
 )
 
 const (
@@ -200,6 +220,7 @@ const (
 	StatsGroupKeyCblReplicationPull  = "cbl_replication_pull"
 	StatsGroupKeySecurity            = "security"
 	StatsGroupKeyGsiViews            = "gsi_views"
+	StatsGroupKeyReplications        = "replications"
 )
 
 func init() {

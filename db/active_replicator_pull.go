@@ -16,7 +16,7 @@ func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
 	return &ActivePullReplicator{
 		activeReplicatorCommon: activeReplicatorCommon{
 			config:           config,
-			replicationStats: NewBlipSyncStats(),
+			replicationStats: BlipSyncStatsForSGRPull(config.ReplicationStats),
 			state:            ReplicationStateStopped,
 		},
 	}
