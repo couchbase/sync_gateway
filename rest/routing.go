@@ -310,6 +310,23 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	return r
 }
 
+// Prometheus Metrics API
+
+// Creates the HTTP handler for the prometheus metrics API of a gateway server.
+func CreateMetricHandler(sc *ServerContext) http.Handler {
+	router := CreateMetricRouter(sc)
+	return wrapRouter(sc, publicPrivs, router)
+}
+
+func CreateMetricRouter(sc *ServerContext) *mux.Router {
+	r, _ := createHandler(sc, publicPrivs)
+
+	r.Handle("/_metrics", makeHandler(sc, publicPrivs, (*handler).handleMetrics)).Methods("GET")
+	r.Handle("/_expvar", makeHandler(sc, publicPrivs, (*handler).handleExpvar)).Methods("GET")
+
+	return r
+}
+
 // Returns a top-level HTTP handler for a Router. This adds behavior for URLs that don't
 // match anything -- it handles the OPTIONS method as well as returning either a 404 or 405
 // for URLs that don't match a route.

@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -45,27 +47,6 @@ const (
 )
 
 const (
-
-	// StatsResourceUtilization
-	StatKeyProcessCpuPercentUtilization   = "process_cpu_percent_utilization"
-	StatKeyProcessMemoryResident          = "process_memory_resident"
-	StatKeySystemMemoryTotal              = "system_memory_total"
-	StatKeyPubNetworkInterfaceBytesSent   = "pub_net_bytes_sent"
-	StatKeyPubNetworkInterfaceBytesRecv   = "pub_net_bytes_recv"
-	StatKeyAdminNetworkInterfaceBytesSent = "admin_net_bytes_sent"
-	StatKeyAdminNetworkInterfaceBytesRecv = "admin_net_bytes_recv"
-	StatKeyNumGoroutines                  = "num_goroutines"
-	StatKeyGoroutinesHighWatermark        = "goroutines_high_watermark"
-	StatKeyGoMemstatsSys                  = "go_memstats_sys"
-	StatKeyGoMemstatsHeapAlloc            = "go_memstats_heapalloc"
-	StatKeyGoMemstatsHeapIdle             = "go_memstats_heapidle"
-	StatKeyGoMemstatsHeapInUse            = "go_memstats_heapinuse"
-	StatKeyGoMemstatsHeapReleased         = "go_memstats_heapreleased"
-	StatKeyGoMemstatsStackInUse           = "go_memstats_stackinuse"
-	StatKeyGoMemstatsStackSys             = "go_memstats_stacksys"
-	StatKeyGoMemstatsPauseTotalNs         = "go_memstats_pausetotalns"
-	StatKeyErrorCount                     = "error_count"
-	StatKeyWarnCount                      = "warn_count"
 
 	// StatsCache
 	StatKeyRevisionCacheHits                   = "rev_cache_hits"
@@ -210,17 +191,20 @@ const (
 )
 
 const (
-	StatsGroupKeySyncGateway         = "syncgateway"
-	StatsGroupKeyResourceUtilization = "resource_utilization"
-	StatsGroupKeyCache               = "cache"
-	StatsGroupKeyDatabase            = "database"
-	StatsGroupKeyDeltaSync           = "delta_sync"
-	StatsGroupKeySharedBucketImport  = "shared_bucket_import"
-	StatsGroupKeyCblReplicationPush  = "cbl_replication_push"
-	StatsGroupKeyCblReplicationPull  = "cbl_replication_pull"
-	StatsGroupKeySecurity            = "security"
-	StatsGroupKeyGsiViews            = "gsi_views"
-	StatsGroupKeyReplications        = "replications"
+	StatsGroupKeySyncGateway        = "syncgateway"
+	StatsGroupKeyCache              = "cache"
+	StatsGroupKeyDatabase           = "database"
+	StatsGroupKeyDeltaSync          = "delta_sync"
+	StatsGroupKeySharedBucketImport = "shared_bucket_import"
+	StatsGroupKeyCblReplicationPush = "cbl_replication_push"
+	StatsGroupKeyCblReplicationPull = "cbl_replication_pull"
+	StatsGroupKeySecurity           = "security"
+	StatsGroupKeyGsiViews           = "gsi_views"
+	StatsGroupKeyReplications       = "replications"
+)
+
+var (
+	SyncGatewayStats SgwStats
 )
 
 func init() {
@@ -250,38 +234,165 @@ func init() {
 	PerReplicationStats = new(expvar.Map).Init()
 	Stats.Set(PerReplication, PerReplicationStats)
 
-	// Add StatsResourceUtilization under GlobalStats
-	GlobalStats.Set(StatsGroupKeyResourceUtilization, NewStatsResourceUtilization())
-
-}
-
-func StatsResourceUtilization() *expvar.Map {
-	statsResourceUtilizationVar := GlobalStats.Get(StatsGroupKeyResourceUtilization)
-	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
-	return statsResourceUtilization
+	NewStatsResourceUtilization()
 }
 
 func NewStatsResourceUtilization() *expvar.Map {
 	stats := new(expvar.Map).Init()
-	stats.Set(StatKeyProcessCpuPercentUtilization, ExpvarFloatVal(0))
-	stats.Set(StatKeyProcessMemoryResident, ExpvarIntVal(0))
-	stats.Set(StatKeySystemMemoryTotal, ExpvarIntVal(0))
-	stats.Set(StatKeyPubNetworkInterfaceBytesSent, ExpvarIntVal(0))
-	stats.Set(StatKeyPubNetworkInterfaceBytesRecv, ExpvarIntVal(0))
-	stats.Set(StatKeyAdminNetworkInterfaceBytesSent, ExpvarIntVal(0))
-	stats.Set(StatKeyAdminNetworkInterfaceBytesRecv, ExpvarIntVal(0))
-	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
-	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsSys, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsHeapAlloc, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsHeapIdle, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsHeapInUse, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsHeapReleased, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsStackInUse, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsStackSys, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsPauseTotalNs, ExpvarIntVal(0))
-	stats.Set(StatKeyErrorCount, ExpvarIntVal(0))
-	stats.Set(StatKeyWarnCount, ExpvarIntVal(0))
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesReceived = NewIntStat(
+		"resource_utilization",
+		"admin_net_bytes_recv",
+		"",
+		prometheus.CounterValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesSent = NewIntStat(
+		"resource_utilization",
+		"admin_net_bytes_sent",
+		"",
+		prometheus.CounterValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount = NewIntStat(
+		"resource_utilization",
+		"error_count",
+		"",
+		prometheus.CounterValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapAlloc = NewIntStat(
+		"resource_utilization",
+		"go_memstats_heapalloc",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapIdle = NewIntStat(
+		"resource_utilization",
+		"go_memstats_heapidle",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapInUse = NewIntStat(
+		"resource_utilization",
+		"go_memstats_heapinuse",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapReleased = NewIntStat(
+		"resource_utilization",
+		"go_memstats_heapreleased",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsPauseTotalNS = NewIntStat(
+		"resource_utilization",
+		"go_memstats_pausetotalns",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackInUse = NewIntStat(
+		"resource_utilization",
+		"go_memstats_stackinuse",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackSys = NewIntStat(
+		"resource_utilization",
+		"go_memstats_stacksys",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsSys = NewIntStat(
+		"resource_utilization",
+		"go_memstats_sys",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.GoroutinesHighWatermark = NewIntStat(
+		"resource_utilization",
+		"goroutines_high_watermark",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.NumGoroutines = NewIntStat(
+		"resource_utilization",
+		"num_goroutines",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.ProcessMemoryResident = NewIntStat(
+		"resource_utilization",
+		"process_memory_resident",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesReceived = NewIntStat(
+		"resource_utilization",
+		"pub_net_bytes_recv",
+		"",
+		prometheus.CounterValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesSent = NewIntStat(
+		"resource_utilization",
+		"pub_net_bytes_sent",
+		"",
+		prometheus.CounterValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.SystemMemoryTotal = NewIntStat(
+		"resource_utilization",
+		"system_memory_total",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount = NewIntStat(
+		"resource_utilization",
+		"warn_count",
+		"",
+		prometheus.CounterValue,
+		0,
+	)
+
+	SyncGatewayStats.GlobalStats.ResourceUtilization.CpuPercentUtil = NewIntStat(
+		"resource_utilization",
+		"process_cpu_percent_utilization",
+		"",
+		prometheus.GaugeValue,
+		0,
+	)
+
+	expvar.Publish("new_sg", SyncGatewayStats)
 	return stats
 }
 

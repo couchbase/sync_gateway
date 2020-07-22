@@ -546,7 +546,7 @@ func TestImportFilterLogging(t *testing.T) {
 	assert.True(t, ok)
 
 	//Get number of errors before
-	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.String())
 	assert.NoError(t, err)
 
 	//Attempt to get doc will trigger import
@@ -554,7 +554,7 @@ func TestImportFilterLogging(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 
 	//Get number of errors after
-	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.String())
 	assert.NoError(t, err)
 
 	//Make sure an error was logged
