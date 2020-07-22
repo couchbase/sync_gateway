@@ -118,7 +118,7 @@ func (statsContext *statsContext) calculateProcessCpuPercentage() (cpuPercentUti
 
 func (statsContext *statsContext) addProcessCpuPercentage() error {
 
-	statsResourceUtilization := base.StatsResourceUtilization()
+	// statsResourceUtilization := base.StatsResourceUtilization()
 
 	// Calculate the cpu percentage for the process
 	cpuPercentUtilization, err := statsContext.calculateProcessCpuPercentage()
@@ -127,16 +127,14 @@ func (statsContext *statsContext) addProcessCpuPercentage() error {
 	}
 
 	// Record stat
-	statsResourceUtilization.Set(base.StatKeyProcessCpuPercentUtilization, base.ExpvarFloatVal(cpuPercentUtilization))
+	// statsResourceUtilization.Set(base.StatKeyProcessCpuPercentUtilization, base.ExpvarFloatVal(cpuPercentUtilization))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.CpuPercentUtil.Set(cpuPercentUtilization)
 
 	return nil
 
 }
 
 func (statsContext *statsContext) addProcessMemoryPercentage() error {
-
-	statsResourceUtilization := base.StatsResourceUtilization()
-
 	pid := os.Getpid()
 
 	procMem := gosigar.ProcMem{}
@@ -150,11 +148,10 @@ func (statsContext *statsContext) addProcessMemoryPercentage() error {
 	}
 
 	// Record stats
-	statsResourceUtilization.Set(base.StatKeyProcessMemoryResident, base.ExpvarFloatVal(float64(procMem.Resident)))
-	statsResourceUtilization.Set(base.StatKeySystemMemoryTotal, base.ExpvarFloatVal(float64(totalMem.Total)))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.ProcessMemoryResident.Set(procMem.Resident)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.SystemMemoryTotal.Set(totalMem.Total)
 
 	return nil
-
 }
 
 func (statsContext *statsContext) addGoSigarStats() error {
@@ -178,8 +175,8 @@ func (statsContext *statsContext) addPublicNetworkInterfaceStatsForHostnamePort(
 		return err
 	}
 
-	base.StatsResourceUtilization().Set(base.StatKeyPubNetworkInterfaceBytesSent, base.ExpvarUInt64Val(iocountersStats.BytesSent))
-	base.StatsResourceUtilization().Set(base.StatKeyPubNetworkInterfaceBytesRecv, base.ExpvarUInt64Val(iocountersStats.BytesRecv))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesSent.Set(iocountersStats.BytesSent)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesReceived.Set(iocountersStats.BytesRecv)
 
 	return nil
 }
@@ -191,51 +188,46 @@ func (statsContext *statsContext) addAdminNetworkInterfaceStatsForHostnamePort(h
 		return err
 	}
 
-	base.StatsResourceUtilization().Set(base.StatKeyAdminNetworkInterfaceBytesSent, base.ExpvarUInt64Val(iocountersStats.BytesSent))
-	base.StatsResourceUtilization().Set(base.StatKeyAdminNetworkInterfaceBytesRecv, base.ExpvarUInt64Val(iocountersStats.BytesRecv))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesSent.Set(iocountersStats.BytesSent)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesReceived.Set(iocountersStats.BytesRecv)
 
 	return nil
 }
 
 func AddGoRuntimeStats() {
-
-	statsResourceUtilization := base.StatsResourceUtilization()
-
 	// Num goroutines
 	numGoroutine := runtime.NumGoroutine()
 
-	statsResourceUtilization.Set(base.StatKeyNumGoroutines, base.ExpvarIntVal(numGoroutine))
-
-	statsResourceUtilization.Set(base.StatKeyGoroutinesHighWatermark, base.ExpvarUInt64Val(goroutineHighwaterMark(uint64(numGoroutine))))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.NumGoroutines.Set(numGoroutine)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoroutinesHighWatermark.Set(goroutineHighwaterMark(uint64(numGoroutine)))
 
 	// Read memstats (relatively expensive)
 	memstats := runtime.MemStats{}
 	runtime.ReadMemStats(&memstats)
 
 	// Sys
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsSys, base.ExpvarUInt64Val(memstats.Sys))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsSys.Set(memstats.Sys)
 
 	// HeapAlloc
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapAlloc, base.ExpvarUInt64Val(memstats.HeapAlloc))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapAlloc.Set(memstats.HeapAlloc)
 
 	// HeapIdle
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapIdle, base.ExpvarUInt64Val(memstats.HeapIdle))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapIdle.Set(memstats.HeapIdle)
 
 	// HeapInuse
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapInUse, base.ExpvarUInt64Val(memstats.HeapInuse))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapInUse.Set(memstats.HeapInuse)
 
 	// HeapReleased
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsHeapReleased, base.ExpvarUInt64Val(memstats.HeapReleased))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapReleased.Set(memstats.HeapReleased)
 
 	// StackInuse
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsStackInUse, base.ExpvarUInt64Val(memstats.StackInuse))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackInUse.Set(memstats.StackInuse)
 
 	// StackSys
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsStackSys, base.ExpvarUInt64Val(memstats.StackSys))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackSys.Set(memstats.StackSys)
 
 	// PauseTotalNs
-	statsResourceUtilization.Set(base.StatKeyGoMemstatsPauseTotalNs, base.ExpvarUInt64Val(memstats.PauseTotalNs))
-
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsPauseTotalNS.Set(memstats.PauseTotalNs)
 }
 
 // Record Goroutines high watermark into expvars

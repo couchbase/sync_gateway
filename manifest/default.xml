@@ -135,5 +135,23 @@
   <project name="fgprof" path="godeps/src/github.com/felixge/fgprof" remote="couchbasedeps" revision="033348e0f0e4a38fea34ec259398ee3d336c716a"/>
   <project name="pprof" path="godeps/src/github.com/google/pprof" remote="couchbasedeps" revision="03e1cf38a040dd596c700aa260c3eddc2bf38987"/>
 
+  <!-- prometheus -->
+  <remote fetch="https://github.com/prometheus/" name="prometheus"/>
+  <remote fetch="https://github.com/golang/" name="golang"/>
+  <remote fetch="https://github.com/protocolbuffers/" name="protocolbuffers"/>
+  <remote fetch="https://github.com/beorn7/" name="beorn7"/>
+  <remote fetch="https://github.com/cespare/" name="cespare"/>
+  <remote fetch="https://github.com/matttproud/" name="matttproud"/>
+
+  <project name="golang_protobuf_extensions" path="godeps/src/github.com/matttproud/golang_protobuf_extensions" revision="master" remote="matttproud" />
+  <project name="client_golang" path="godeps/src/github.com/prometheus/client_golang" revision="master" remote="prometheus" />
+  <project name="client_model" path="godeps/src/github.com/prometheus/client_model" revision="master" remote="prometheus" />
+  <project name="common" path="godeps/src/github.com/prometheus/common" revision="master" remote="prometheus" />
+  <project name="procfs" path="godeps/src/github.com/prometheus/procfs" revision="master" remote="prometheus" />
+  <project name="perks" path="godeps/src/github.com/beorn7/perks" revision="master" remote="beorn7" />
+  <project name="xxhash" path="godeps/src/github.com/cespare/xxhash" revision="master" remote="cespare" />
+  <project name="protobuf" path="godeps/src/github.com/golang/protobuf" revision="master" remote="golang" />
+  <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" revision="master" remote="protocolbuffers" />
+
 
 </manifest>
