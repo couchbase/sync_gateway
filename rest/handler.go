@@ -132,17 +132,22 @@ func (h *handler) invoke(method handlerMethod) error {
 		}
 	}
 
+	var isRequestLogged bool
+	defer func() {
+		if !isRequestLogged {
+			h.logRequestLine()
+		}
+	}()
+
 	switch h.rq.Header.Get("Content-Encoding") {
 	case "":
 		h.requestBody = h.rq.Body
 	case "gzip":
 		if h.requestBody, err = gzip.NewReader(h.rq.Body); err != nil {
-			h.logRequestLine()
 			return err
 		}
 		h.rq.Header.Del("Content-Encoding") // to prevent double decoding later on
 	default:
-		h.logRequestLine()
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
@@ -156,7 +161,6 @@ func (h *handler) invoke(method handlerMethod) error {
 	var dbContext *db.DatabaseContext
 	if dbname := h.PathVar("db"); dbname != "" {
 		if dbContext, err = h.server.GetDatabase(dbname); err != nil {
-			h.logRequestLine()
 			return err
 		}
 	}
@@ -177,11 +181,9 @@ func (h *handler) invoke(method handlerMethod) error {
 
 			//if dbState == db.DBOnline, continue flow and invoke the handler method
 			if dbState == db.DBOffline {
-				h.logRequestLine()
 				// DB is offline, only handlers with runOffline true can run in this state
 				return base.HTTPErrorf(http.StatusServiceUnavailable, "DB is currently under maintenance")
 			} else if dbState != db.DBOnline {
-				h.logRequestLine()
 				//DB is in transition state, no calls will be accepted until it is Online or Offline state
 				return base.HTTPErrorf(http.StatusServiceUnavailable, fmt.Sprintf("DB is %v - try again later", db.RunStateString[dbState]))
 			}
@@ -191,12 +193,12 @@ func (h *handler) invoke(method handlerMethod) error {
 	// Authenticate, if not on admin port:
 	if h.privs != adminPrivs {
 		if err = h.checkAuth(dbContext); err != nil {
-			h.logRequestLine()
 			return err
 		}
 	}
 
 	h.logRequestLine()
+	isRequestLogged = true
 
 	// Now set the request's Database (i.e. context + user)
 	if dbContext != nil {
