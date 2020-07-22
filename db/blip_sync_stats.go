@@ -61,8 +61,10 @@ func NewBlipSyncStats() *BlipSyncStats {
 		HandleChangesCount:               &expvar.Int{}, // handleChanges/handleProposeChanges
 		HandleChangesTime:                &expvar.Int{},
 		HandleChangesDeltaRequestedCount: &expvar.Int{},
-		HandleGetAttachment:              &expvar.Int{}, // getAttachment
+		HandleGetAttachment:              &expvar.Int{}, // handleGetAttachment
 		HandleGetAttachmentBytes:         &expvar.Int{},
+		GetAttachment:                    &expvar.Int{}, // getAttachment
+		GetAttachmentBytes:               &expvar.Int{},
 		HandleChangesResponseCount:       &expvar.Int{}, // handleChangesResponse
 		HandleChangesResponseTime:        &expvar.Int{},
 		HandleChangesSendRevCount:        &expvar.Int{}, //  - (duplicates SendRevCount, included for support of CBL expvars)
@@ -129,6 +131,10 @@ func initReplicationStat(statMap *expvar.Map, key string) (stat *expvar.Int) {
 
 func BlipSyncStatsForSGRPush(statsMap *expvar.Map) *BlipSyncStats {
 	blipStats := NewBlipSyncStats()
+	if statsMap == nil {
+		base.Warnf("statsMap not provided for SGRPush initialization - replication stats will not be published")
+		statsMap = new(expvar.Map).Init()
+	}
 
 	blipStats.HandleGetAttachmentBytes = initReplicationStat(statsMap, base.StatKeySgrNumAttachmentBytesPushed)
 	blipStats.HandleGetAttachment = initReplicationStat(statsMap, base.StatKeySgrNumAttachmentsPushed)
@@ -144,6 +150,10 @@ func BlipSyncStatsForSGRPush(statsMap *expvar.Map) *BlipSyncStats {
 
 func BlipSyncStatsForSGRPull(statsMap *expvar.Map) *BlipSyncStats {
 	blipStats := NewBlipSyncStats()
+	if statsMap == nil {
+		base.Warnf("statsMap not provided for SGRPull initialization - replication stats will not be published")
+		statsMap = new(expvar.Map).Init()
+	}
 
 	blipStats.GetAttachmentBytes = initReplicationStat(statsMap, base.StatKeySgrNumAttachmentBytesPulled)
 	blipStats.GetAttachment = initReplicationStat(statsMap, base.StatKeySgrNumAttachmentsPulled)
