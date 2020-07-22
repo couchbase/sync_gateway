@@ -113,6 +113,14 @@ func (bsc *BlipSyncContext) register(profile string, handlerFn func(*blipHandler
 	// Wrap the handler function with a function that adds handling needed by all handlers
 	handlerFnWrapper := func(rq *blip.Message) {
 
+		// Recover to log panic from handlers and repanic for go-blip response handling
+		defer func() {
+			if err := recover(); err != nil {
+				base.WarnfCtx(bsc.loggingCtx, "PANIC handling BLIP request %v: %v\n%s", rq, err, debug.Stack())
+				panic(err)
+			}
+		}()
+
 		startTime := time.Now()
 		handler := blipHandler{
 			BlipSyncContext: bsc,
