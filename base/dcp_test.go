@@ -52,6 +52,7 @@ func TestDCPKeyFilter(t *testing.T) {
 	assert.False(t, dcpKeyFilter([]byte(SyncPrefix+"unusualSeq")))
 	assert.False(t, dcpKeyFilter([]byte(SyncDataKey)))
 	assert.False(t, dcpKeyFilter([]byte(DCPCheckpointPrefix+"12")))
+	assert.False(t, dcpKeyFilter([]byte(TxnPrefix+"atrData")))
 }
 
 // Compare Atoi vs map lookup for partition conversion

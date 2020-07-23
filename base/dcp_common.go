@@ -498,8 +498,12 @@ func (b *backfillStatus) purgeBackfillSequences(bucket Bucket) error {
 // Only a subset of Sync Gateway's internal documents need to be included during DCP processing: user, role, and
 // unused sequence documents.  Any other documents with the leading '_sync' prefix can be ignored.
 // dcpKeyFilter returns true for documents that should be processed, false for those that do not need processing.
-//  TODO: The hardcoded strings here should be changed to constants (CBG-274)
 func dcpKeyFilter(key []byte) bool {
+
+	// If it's a _txn doc, don't process
+	if bytes.HasPrefix(key, []byte(TxnPrefix)) {
+		return false
+	}
 
 	// If it's not a _sync doc, process
 	if !bytes.HasPrefix(key, []byte(SyncPrefix)) {

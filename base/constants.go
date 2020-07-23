@@ -117,6 +117,9 @@ const (
 	SyncPropertyName = "_sync"
 	SyncXattrName    = "_sync"
 
+	// Prefix for transaction metadata documents
+	TxnPrefix = "_txn:"
+
 	// Replication filter constants
 	ByChannelFilter = "sync_gateway/bychannel"
 )
