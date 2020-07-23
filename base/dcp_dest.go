@@ -58,11 +58,11 @@ type DCPDest struct {
 	*DCPCommon
 	feedType           destFeedType
 	stats              *expvar.Map // DCP feed stats (rollback, backfill)
-	partitionCountStat *expvar.Int // Stat for partition count.  Stored outside the DCP feed stats map
+	partitionCountStat *SgwIntStat // Stat for partition count.  Stored outside the DCP feed stats map
 	metaInitComplete   []bool      // Whether metadata initialization has been completed, per vbNo
 }
 
-func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *expvar.Int) (SGDest, context.Context) {
+func NewDCPDest(callback sgbucket.FeedEventCallbackFunc, bucket Bucket, maxVbNo uint16, persistCheckpoints bool, dcpStats *expvar.Map, feedID string, importPartitionStat *SgwIntStat) (SGDest, context.Context) {
 
 	dcpCommon := NewDCPCommon(callback, bucket, maxVbNo, persistCheckpoints, dcpStats, feedID)
 

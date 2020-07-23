@@ -300,9 +300,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// If the doc was already imported, we want to return the imported version
 		docOut = alreadyImportedDoc
 	case nil:
-		db.DbStats.StatsSharedBucketImport().Add(base.StatKeyImportCount, 1)
-		db.DbStats.StatsSharedBucketImport().Set(base.StatKeyImportHighSeq, base.ExpvarInt64Val(int64(docOut.SyncData.Sequence)))
-		db.DbStats.StatsSharedBucketImport().Add(base.StatKeyImportProcessingTime, time.Since(importStartTime).Nanoseconds())
+		db.DbStats.NewStats.SharedBucketImport().ImportCount.Add(1)
+		db.DbStats.NewStats.SharedBucketImport().ImportHighSeq.Set(docOut.SyncData.Sequence)
+		db.DbStats.NewStats.SharedBucketImport().ImportProcessingTime.Add(int(time.Since(importStartTime).Nanoseconds()))
 		base.Debugf(base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
@@ -311,14 +311,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		return nil, err
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
-		db.DbStats.StatsSharedBucketImport().Add(base.StatKeyImportCancelCAS, 1)
+		db.DbStats.NewStats.SharedBucketImport().ImportCancelCAS.Add(1)
 		return nil, err
 	case base.ErrImportCancelledPurged:
 		// Import ignored
 		return nil, err
 	default:
 		base.Infof(base.KeyImport, "Error importing doc %q: %v", base.UD(newDoc.ID), err)
-		db.DbStats.StatsSharedBucketImport().Add(base.StatKeyImportErrorCount, 1)
+		db.DbStats.NewStats.SharedBucketImport().ImportErrorCount.Add(1)
 		return nil, err
 
 	}

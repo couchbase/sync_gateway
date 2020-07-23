@@ -241,6 +241,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	dbStats := NewDatabaseStats()
 
+	dbStats.NewStats = base.SyncGatewayStats.DBStats(dbName)
+
 	base.PerDbStats.Set(dbName, dbStats.ExpvarMap())
 
 	dbContext := &DatabaseContext{
