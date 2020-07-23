@@ -111,12 +111,12 @@ const (
 	StatKeyDeltaPushDocCount         = "delta_push_doc_count"
 
 	// StatsSharedBucketImport
-	StatKeyImportCount          = "import_count"
-	StatKeyImportCancelCAS      = "import_cancel_cas"
-	StatKeyImportErrorCount     = "import_error_count"
-	StatKeyImportProcessingTime = "import_processing_time"
-	StatKeyImportHighSeq        = "import_high_seq"
-	StatKeyImportPartitions     = "import_partitions"
+	// StatKeyImportCount          = "import_count"
+	// StatKeyImportCancelCAS      = "import_cancel_cas"
+	// StatKeyImportErrorCount     = "import_error_count"
+	// StatKeyImportProcessingTime = "import_processing_time"
+	// StatKeyImportHighSeq        = "import_high_seq"
+	// StatKeyImportPartitions     = "import_partitions"
 
 	// StatsCBLReplicationPush
 	StatKeyDocPushCount        = "doc_push_count"
@@ -154,12 +154,12 @@ const (
 
 	// StatsGsiViews
 	// Gsi and View stat names are dynamically generated based on the following patterns
-	StatKeyN1qlQueryCountExpvarFormat      = "%s_count"          // Query name
-	StatKeyN1qlQueryErrorCountExpvarFormat = "%s_error_count"    // Query name
-	StatKeyN1qlQueryTimeExpvarFormat       = "%s_time"           // Query name
-	StatKeyViewQueryCountExpvarFormat      = "%s.%s_count"       // Design doc, view
-	StatKeyViewQueryErrorCountExpvarFormat = "%s.%s_error_count" // Design doc, view
-	StatKeyViewQueryTimeExpvarFormat       = "%s.%s_time"        // Design doc, view
+	// StatKeyN1qlQueryCountExpvarFormat      = "%s_count"          // Query name
+	// StatKeyN1qlQueryErrorCountExpvarFormat = "%s_error_count"    // Query name
+	// StatKeyN1qlQueryTimeExpvarFormat       = "%s_time"           // Query name
+	// StatKeyViewQueryCountExpvarFormat      = "%s.%s_count"       // Design doc, view
+	// StatKeyViewQueryErrorCountExpvarFormat = "%s.%s_error_count" // Design doc, view
+	// StatKeyViewQueryTimeExpvarFormat       = "%s.%s_time"        // Design doc, view
 
 	// StatsReplication (1.x)
 	StatKeySgrActive                     = "sgr_active"
@@ -233,6 +233,8 @@ func init() {
 
 	PerReplicationStats = new(expvar.Map).Init()
 	Stats.Set(PerReplication, PerReplicationStats)
+
+	SyncGatewayStats = SgwStats{}
 
 	NewStatsResourceUtilization()
 }
@@ -392,7 +394,7 @@ func NewStatsResourceUtilization() *expvar.Map {
 		0,
 	)
 
-	expvar.Publish("new_sg", SyncGatewayStats)
+	expvar.Publish("new_sg", expvar.Func(SyncGatewayStats.Magic))
 	return stats
 }
 

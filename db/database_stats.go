@@ -34,8 +34,10 @@ type DatabaseStats struct {
 	cblReplicationPush,
 	cblReplicationPull,
 	statsSecurity,
-	statsGsiViews,
+	statsGsiViews *expvar.Map
 	statsReplications *expvar.Map
+
+	NewStats *base.DbStats
 }
 
 func NewDatabaseStats() *DatabaseStats {
@@ -192,14 +194,14 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyDeltaCacheMisses, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyDeltaPushDocCount, base.ExpvarIntVal(0))
 		d.statsDeltaSyncMap = result
-	case base.StatsGroupKeySharedBucketImport:
-		result.Set(base.StatKeyImportCount, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyImportCancelCAS, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyImportErrorCount, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyImportProcessingTime, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyImportHighSeq, base.ExpvarUInt64Val(0))
-		result.Set(base.StatKeyImportPartitions, base.ExpvarIntVal(0))
-		d.sharedBucketImportMap = result
+	// case base.StatsGroupKeySharedBucketImport:
+	// 	result.Set(base.StatKeyImportCount, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyImportCancelCAS, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyImportErrorCount, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyImportProcessingTime, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyImportHighSeq, base.ExpvarUInt64Val(0))
+	// 	result.Set(base.StatKeyImportPartitions, base.ExpvarIntVal(0))
+	// 	d.sharedBucketImportMap = result
 	case base.StatsGroupKeyCblReplicationPush:
 		result.Set(base.StatKeyDocPushCount, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyWriteProcessingTime, base.ExpvarIntVal(0))

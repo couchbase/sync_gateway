@@ -67,10 +67,7 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 		return nil, errors.New("Import feed stats map not initialized")
 	}
 
-	importPartitionStat, ok := il.database.DbStats.StatsSharedBucketImport().Get(base.StatKeyImportPartitions).(*expvar.Int)
-	if !ok {
-		return nil, errors.New("Import partitions stat not initialized")
-	}
+	importPartitionStat := il.database.DbStats.NewStats.SharedBucketImport().ImportPartitions
 
 	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap, base.DCPImportFeedID, importPartitionStat)
 	return importDest, nil

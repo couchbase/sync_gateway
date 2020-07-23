@@ -3457,9 +3457,9 @@ func TestTombstoneCompaction(t *testing.T) {
 
 		var actualBatches int
 		if base.TestsDisableGSI() {
-			actualBatches = int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, db.DesignDocSyncHousekeeping(), db.ViewTombstones))))
+			actualBatches = rt.GetDatabase().DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", db.DesignDocSyncHousekeeping(), db.ViewTombstones)).QueryCount.Value.(int)
 		} else {
-			actualBatches = int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsGsiViews().Get(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, db.QueryTypeTombstones))))
+			actualBatches = rt.GetDatabase().DbStats.NewStats.GSIStats(fmt.Sprintf("%s", db.QueryTypeTombstones)).QueryCount.Value.(int)
 		}
 
 		expectedBatches += numDocs/db.QueryTombstoneBatch + 1
