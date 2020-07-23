@@ -331,6 +331,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 
 		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
 
+		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
 		// Spawn a goroutine to await the client's response:
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
@@ -769,8 +770,8 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties[BlipCompress] == "true")
-	bh.replicationStats.GetAttachmentCount.Add(1)
-	bh.replicationStats.GetAttachmentBytes.Add(int64(len(attachment)))
+	bh.replicationStats.HandleGetAttachment.Add(1)
+	bh.replicationStats.HandleGetAttachmentBytes.Add(int64(len(attachment)))
 
 	return nil
 }
@@ -830,6 +831,8 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 					return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s", digest)
 				}
 
+				bh.replicationStats.GetAttachment.Add(1)
+				bh.replicationStats.GetAttachmentBytes.Add(metaLength)
 				return attBody, nil
 			}
 		})

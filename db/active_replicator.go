@@ -162,8 +162,6 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 		if ar.Push.Checkpointer != nil {
 			status.LastSeqPush = ar.Push.Checkpointer.calculateSafeProcessedSeq()
 		}
-		// TODO: This is another scenario where we need to send a rev without noreply set to get the returned error
-		// status.RejectedRemote = pushStats.SendRevSyncFunctionErrorCount.Value()
 	}
 
 	return status

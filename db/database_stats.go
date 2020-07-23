@@ -24,7 +24,8 @@ type DatabaseStats struct {
 	cblReplicationPushSync,
 	cblReplicationPullSync,
 	statsSecuritySync,
-	statsGsiViewsSync sync.Once
+	statsGsiViewsSync,
+	statsReplicationsSync sync.Once
 
 	statsCacheMap,
 	statsDatabaseMap,
@@ -33,7 +34,8 @@ type DatabaseStats struct {
 	cblReplicationPush,
 	cblReplicationPull,
 	statsSecurity,
-	statsGsiViews *expvar.Map
+	statsGsiViews,
+	statsReplications *expvar.Map
 }
 
 func NewDatabaseStats() *DatabaseStats {
@@ -103,6 +105,13 @@ func (d *DatabaseStats) StatsGsiViews() (stats *expvar.Map) {
 		d.StatsByKey(base.StatsGroupKeyGsiViews)
 	})
 	return d.statsGsiViews
+}
+
+func (d *DatabaseStats) StatsReplications() (stats *expvar.Map) {
+	d.statsReplicationsSync.Do(func() {
+		d.StatsByKey(base.StatsGroupKeyReplications)
+	})
+	return d.statsReplications
 }
 
 func (d *DatabaseStats) StatsByKey(key string) (stats *expvar.Map) {
@@ -228,6 +237,9 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 	case base.StatsGroupKeyGsiViews:
 		// GsiView stat keys are dynamically generated based on query names - see query.go
 		d.statsGsiViews = result
+	case base.StatsGroupKeyReplications:
+		// Replications stat keys are generated per replication, see blip_sync_stats.go
+		d.statsReplications = result
 	}
 
 	return result

@@ -2,6 +2,7 @@ package db
 
 import (
 	"crypto/sha1"
+	"expvar"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -66,6 +67,10 @@ type ActiveReplicatorConfig struct {
 
 	// Callback to be invoked on replication completion
 	onComplete OnCompleteFunc
+
+	// Map corresponding to db.replications.[replicationID] in Sync Gateway's expvars.  Mapped to
+	// replication stats in blip_sync_stats.go
+	ReplicationStats *expvar.Map
 }
 
 type OnCompleteFunc func(replicationID string)
