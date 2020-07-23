@@ -221,7 +221,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			var shouldImport bool
 			var importErr error
 
-			if len(body) == 0 && isDelete {
+			if isDelete {
 				deleteBody := Body{BodyDeleted: true}
 				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(deleteBody)
 			} else {
