@@ -1877,13 +1877,13 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 	if db.ChannelMapper != nil {
 		// Call the ChannelMapper:
 		startTime := time.Now()
-		db.DbStats.StatsCblReplicationPush().Add(base.StatKeySyncFunctionCount, 1)
+		db.DbStats.NewStats.CBLReplicationPush().SyncFunctionCount.Add(1)
 
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
 			makeUserCtx(db.user))
 
-		db.DbStats.StatsCblReplicationPush().Add(base.StatKeySyncFunctionTime, time.Since(startTime).Nanoseconds())
+		db.DbStats.NewStats.CBLReplicationPush().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
 
 		if err == nil {
 			result = output.Channels
@@ -1894,9 +1894,11 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 			if err != nil {
 				base.InfofCtx(db.Ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
 				base.DebugfCtx(db.Ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
-				db.DbStats.StatsSecurity().Add(base.StatKeyNumDocsRejected, 1)
+				// db.DbStats.StatsSecurity().Add(base.StatKeyNumDocsRejected, 1)
+				db.DbStats.NewStats.Security().NumDocsRejected.Add(1)
 				if isAccessError(err) {
-					db.DbStats.StatsSecurity().Add(base.StatKeyNumAccessErrors, 1)
+					// db.DbStats.StatsSecurity().Add(base.StatKeyNumAccessErrors, 1)
+					db.DbStats.NewStats.Security().NumAccessErrors.Add(1)
 				}
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")

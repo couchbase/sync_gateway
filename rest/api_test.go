@@ -4437,7 +4437,7 @@ func TestNumAccessErrors(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/_expvar", "")
 
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
-	numAccessErrors := responseBody["syncgateway"].(map[string]interface{})["per_db"].(map[string]interface{})["db"].(map[string]interface{})["security"].(map[string]interface{})["num_access_errors"]
+	numAccessErrors := responseBody["new_sg"].(map[string]interface{})["per_db"].(map[string]interface{})["db"].(map[string]interface{})["security"].(map[string]interface{})["num_access_errors"]
 	assert.Equal(t, float64(1), numAccessErrors)
 }
 

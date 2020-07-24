@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/base64"
-	"expvar"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -102,7 +101,7 @@ func writeJSONPart(writer *multipart.Writer, contentType string, body db.Body, c
 }
 
 // Writes a revision to a MIME multipart writer, encoding large attachments as separate parts.
-func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *expvar.Map, body db.Body, writer *multipart.Writer, compress bool) {
+func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *base.CBLReplicationPullStats, body db.Body, writer *multipart.Writer, compress bool) {
 	// First extract the attachments that should follow:
 	following := []attInfo{}
 	for name, value := range db.GetBodyAttachments(body) {
@@ -137,8 +136,8 @@ func WriteMultipartDocument(ctx context.Context, cblReplicationPullStats *expvar
 		partHeaders.Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.name))
 		part, _ := writer.CreatePart(partHeaders)
 		if cblReplicationPullStats != nil {
-			cblReplicationPullStats.Add(base.StatKeyAttachmentPullCount, 1)
-			cblReplicationPullStats.Add(base.StatKeyAttachmentPullBytes, int64(len(info.data)))
+			cblReplicationPullStats.AttachmentPullCount.Add(1)
+			cblReplicationPullStats.AttachmentPullBytes.Add(int64(len(info.data)))
 		}
 		_, _ = part.Write(info.data)
 
@@ -156,7 +155,7 @@ func hasInlineAttachments(body db.Body) bool {
 
 // Adds a new part to the given multipart writer, containing the given revision.
 // The revision will be written as a nested multipart body if it has attachments.
-func WriteRevisionAsPart(ctx context.Context, cblReplicationPullStats *expvar.Map, revBody db.Body, isError bool, compressPart bool, writer *multipart.Writer) error {
+func WriteRevisionAsPart(ctx context.Context, cblReplicationPullStats *base.CBLReplicationPullStats, revBody db.Body, isError bool, compressPart bool, writer *multipart.Writer) error {
 	partHeaders := textproto.MIMEHeader{}
 	docID, _ := revBody[db.BodyId].(string)
 	revID, _ := revBody[db.BodyRev].(string)

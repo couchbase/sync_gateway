@@ -189,8 +189,8 @@ func (db *Database) setAttachments(attachments AttachmentData) error {
 		_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, data)
 		if err == nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
-			db.DbStats.StatsCblReplicationPush().Add(base.StatKeyAttachmentPushCount, 1)
-			db.DbStats.StatsCblReplicationPush().Add(base.StatKeyAttachmentPushBytes, attachmentSize)
+			db.DbStats.NewStats.CBLReplicationPush().AttachmentPushCount.Add(1)
+			db.DbStats.NewStats.CBLReplicationPush().AttachmentPushBytes.Add(attachmentSize)
 		} else {
 			return err
 		}
