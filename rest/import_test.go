@@ -2167,9 +2167,8 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 	var respBody db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
-	syncMeta := respBody["_sync"].(map[string]interface{})
+	syncMeta := respBody[base.SyncPropertyName].(map[string]interface{})
 	assert.NotEmpty(t, syncMeta["rev"].(string))
-	log.Printf("Imported: %s", response.Body.Bytes())
 
 	// Delete the document via SDK
 	err = bucket.Delete(key)
@@ -2180,7 +2179,6 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
 	assert.True(t, respBody[db.BodyDeleted].(bool))
-	log.Printf("Imported Post-delete: %v", respBody)
-	syncMeta = respBody["_sync"].(map[string]interface{})
+	syncMeta = respBody[base.SyncPropertyName].(map[string]interface{})
 	assert.NotEmpty(t, syncMeta["rev"].(string))
 }
