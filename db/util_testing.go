@@ -87,7 +87,7 @@ func (db *DatabaseContext) CacheCompactActive() bool {
 func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
 	for i := 0; i < 100; i++ {
 		// caughtUpCount := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
-		caughtUpCount := db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value
+		caughtUpCount := db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 		if caughtUpCount >= targetCount {
 			return nil
 		}
@@ -115,8 +115,8 @@ func (db *DatabaseContext) NewStatWaiter(stat *expvar.Int, tb testing.TB) *StatW
 
 func (db *DatabaseContext) NewNewStatWaiter(stat *base.SgwIntStat, tb testing.TB) *StatWaiter {
 	return &StatWaiter{
-		initCount:   stat.Value,
-		targetCount: stat.Value,
+		initCount:   stat.Value(),
+		targetCount: stat.Value(),
 		newStat:     stat,
 		tb:          tb,
 	}
@@ -171,7 +171,7 @@ func (sw *StatWaiter) Wait() {
 
 		sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d)", sw.targetCount, actualCount)
 	} else {
-		actualCount := sw.newStat.Value
+		actualCount := sw.newStat.Value()
 		if actualCount >= sw.targetCount {
 			return
 		}
@@ -180,7 +180,7 @@ func (sw *StatWaiter) Wait() {
 		for i := 0; i < 13; i++ {
 			waitTime = waitTime * 2
 			time.Sleep(waitTime)
-			actualCount = sw.newStat.Value
+			actualCount = sw.newStat.Value()
 			if actualCount >= sw.targetCount {
 				return
 			}
@@ -312,10 +312,10 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 
 func (db *DatabaseContext) GetChannelQueryCount() int64 {
 	if db.UseViews() {
-		return db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value
+		return db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
 	}
 
-	return db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryCount.Value
+	return db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryCount.Value()
 }
 
 // GetLocalActiveReplicatorForTest is a test util for retrieving an Active Replicator for deeper introspection/assertions.
