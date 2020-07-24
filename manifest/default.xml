@@ -153,5 +153,19 @@
   <project name="protobuf" path="godeps/src/github.com/golang/protobuf" revision="master" remote="golang" />
   <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" revision="master" remote="protocolbuffers" />
 
+  <!-- Missing:
+   - matttproud/golang_protobuf_extensions        https://github.com/matttproud/golang_protobuf_extensions
+   - prometheus/client_golang                     https://github.com/prometheus/client_golang
+   - prometheus/client_model                      https://github.com/prometheus/client_model
+   - prometheus/common                            https://github.com/prometheus/common
+   - prometheus/procfs                            https://github.com/prometheus/procfs
+   - beorn7/perks                                 https://github.com/beorn7/perks
+   - cespare/xxhash                               https://github.com/cespare/xxhash
+   - protobuf-go                                  https://github.com/protocolbuffers/protobuf-go
+  -->
+
+  <!-- Have:
+   - golang/protobuf                              https://github.com/couchbasedeps/protobuf
+  -->
 
 </manifest>

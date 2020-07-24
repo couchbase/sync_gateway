@@ -102,22 +102,6 @@ const (
 	StatKeyCachingDcpStats         = "cache_feed"
 	StatKeyImportDcpStats          = "import_feed"
 
-	// StatsDeltaSync
-	StatKeyDeltasRequested           = "deltas_requested"
-	StatKeyDeltasSent                = "deltas_sent"
-	StatKeyDeltaPullReplicationCount = "delta_pull_replication_count"
-	StatKeyDeltaCacheHits            = "delta_cache_hit"
-	StatKeyDeltaCacheMisses          = "delta_cache_miss"
-	StatKeyDeltaPushDocCount         = "delta_push_doc_count"
-
-	// StatsSharedBucketImport
-	// StatKeyImportCount          = "import_count"
-	// StatKeyImportCancelCAS      = "import_cancel_cas"
-	// StatKeyImportErrorCount     = "import_error_count"
-	// StatKeyImportProcessingTime = "import_processing_time"
-	// StatKeyImportHighSeq        = "import_high_seq"
-	// StatKeyImportPartitions     = "import_partitions"
-
 	// StatsCBLReplicationPush
 	StatKeyDocPushCount        = "doc_push_count"
 	StatKeyWriteProcessingTime = "write_processing_time"
@@ -386,7 +370,7 @@ func NewStatsResourceUtilization() *expvar.Map {
 		0,
 	)
 
-	SyncGatewayStats.GlobalStats.ResourceUtilization.CpuPercentUtil = NewIntStat(
+	SyncGatewayStats.GlobalStats.ResourceUtilization.CpuPercentUtil = NewFloatStat(
 		"resource_utilization",
 		"process_cpu_percent_utilization",
 		"",

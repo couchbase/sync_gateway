@@ -241,8 +241,8 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 		context.DbStats.NewStats.GSIStats(queryName).QueryErrorCount.Add(1)
 	}
 
-	context.DbStats.NewStats.GSIStats(queryName).QueryErrorCount.Add(1)
-	context.DbStats.NewStats.GSIStats(queryName).QueryTime.Add(int(time.Since(startTime).Nanoseconds()))
+	context.DbStats.NewStats.GSIStats(queryName).QueryCount.Add(1)
+	context.DbStats.NewStats.GSIStats(queryName).QueryTime.Add(time.Since(startTime).Nanoseconds())
 
 	return results, err
 }
@@ -260,7 +260,7 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 		context.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryErrorCount.Add(1)
 	}
 	base.SyncGatewayStats.DBStats(context.Name).GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryCount.Add(1)
-	base.SyncGatewayStats.DBStats(context.Name).GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryTime.Add(int(time.Since(startTime).Nanoseconds()))
+	base.SyncGatewayStats.DBStats(context.Name).GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryTime.Add(time.Since(startTime).Nanoseconds())
 
 	return results, err
 }

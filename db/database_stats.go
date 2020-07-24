@@ -186,14 +186,14 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 		result.Set(base.StatKeyImportDcpStats, new(expvar.Map).Init())
 		result.Set(base.StatKeyHighSeqFeed, new(base.IntMax))
 		d.statsDatabaseMap = result
-	case base.StatsGroupKeyDeltaSync:
-		result.Set(base.StatKeyDeltasRequested, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyDeltasSent, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyDeltaPullReplicationCount, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyDeltaCacheHits, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyDeltaCacheMisses, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyDeltaPushDocCount, base.ExpvarIntVal(0))
-		d.statsDeltaSyncMap = result
+	// case base.StatsGroupKeyDeltaSync:
+	// 	result.Set(base.StatKeyDeltasRequested, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyDeltasSent, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyDeltaPullReplicationCount, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyDeltaCacheHits, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyDeltaCacheMisses, base.ExpvarIntVal(0))
+	// 	result.Set(base.StatKeyDeltaPushDocCount, base.ExpvarIntVal(0))
+	// 	d.statsDeltaSyncMap = result
 	// case base.StatsGroupKeySharedBucketImport:
 	// 	result.Set(base.StatKeyImportCount, base.ExpvarIntVal(0))
 	// 	result.Set(base.StatKeyImportCancelCAS, base.ExpvarIntVal(0))

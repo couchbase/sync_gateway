@@ -312,7 +312,8 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 			}
 
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
-			db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
+			// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
+			db.DbStats.NewStats.DeltaSync().DeltaCacheHit.Add(1)
 			return fromRevision.Delta, nil, nil
 		} else {
 			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
@@ -323,7 +324,8 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	// Delta is unavailable, but the body is available.
 	if fromRevision.BodyBytes != nil {
 
-		db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
+		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
+		db.DbStats.NewStats.DeltaSync().DeltaCacheMiss.Add(1)
 		toRevision, err := db.revisionCache.Get(docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err

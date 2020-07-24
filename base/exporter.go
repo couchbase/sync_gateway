@@ -25,25 +25,25 @@ type GlobalStat struct {
 }
 
 type ResourceUtilization struct {
-	AdminNetworkInterfaceBytesReceived  *SgwIntStat `json:"admin_network_interface_bytes_recv"`
-	AdminNetworkInterfaceBytesSent      *SgwIntStat `json:"admin_network_interface_bytes_sent"`
-	ErrorCount                          *SgwIntStat `json:"error_count"`
-	GoMemstatsHeapAlloc                 *SgwIntStat `json:"go_memstats_heapalloc"`
-	GoMemstatsHeapIdle                  *SgwIntStat `json:"go_memstats_heapidle"`
-	GoMemstatsHeapInUse                 *SgwIntStat `json:"go_memstats_heapinuse"`
-	GoMemstatsHeapReleased              *SgwIntStat `json:"go_memstats_heapreleased"`
-	GoMemstatsPauseTotalNS              *SgwIntStat `json:"go_memstats_pausetotalns"`
-	GoMemstatsStackInUse                *SgwIntStat `json:"go_memstats_stackinuse"`
-	GoMemstatsStackSys                  *SgwIntStat `json:"go_memstats_stacksys"`
-	GoMemstatsSys                       *SgwIntStat `json:"go_memstats_sys"`
-	GoroutinesHighWatermark             *SgwIntStat `json:"goroutines_high_watermark"`
-	NumGoroutines                       *SgwIntStat `json:"num_goroutines"`
-	ProcessMemoryResident               *SgwIntStat `json:"process_memory_resident"`
-	PublicNetworkInterfaceBytesReceived *SgwIntStat `json:"pub_net_bytes_recv"`
-	PublicNetworkInterfaceBytesSent     *SgwIntStat `json:"pub_net_bytes_sent"`
-	SystemMemoryTotal                   *SgwIntStat `json:"system_memory_total"`
-	WarnCount                           *SgwIntStat `json:"warn_count"`
-	CpuPercentUtil                      *SgwIntStat `json:"cpu_percent_util"`
+	AdminNetworkInterfaceBytesReceived  *SgwIntStat   `json:"admin_network_interface_bytes_recv"`
+	AdminNetworkInterfaceBytesSent      *SgwIntStat   `json:"admin_network_interface_bytes_sent"`
+	ErrorCount                          *SgwIntStat   `json:"error_count"`
+	GoMemstatsHeapAlloc                 *SgwIntStat   `json:"go_memstats_heapalloc"`
+	GoMemstatsHeapIdle                  *SgwIntStat   `json:"go_memstats_heapidle"`
+	GoMemstatsHeapInUse                 *SgwIntStat   `json:"go_memstats_heapinuse"`
+	GoMemstatsHeapReleased              *SgwIntStat   `json:"go_memstats_heapreleased"`
+	GoMemstatsPauseTotalNS              *SgwIntStat   `json:"go_memstats_pausetotalns"`
+	GoMemstatsStackInUse                *SgwIntStat   `json:"go_memstats_stackinuse"`
+	GoMemstatsStackSys                  *SgwIntStat   `json:"go_memstats_stacksys"`
+	GoMemstatsSys                       *SgwIntStat   `json:"go_memstats_sys"`
+	GoroutinesHighWatermark             *SgwIntStat   `json:"goroutines_high_watermark"`
+	NumGoroutines                       *SgwIntStat   `json:"num_goroutines"`
+	ProcessMemoryResident               *SgwIntStat   `json:"process_memory_resident"`
+	PublicNetworkInterfaceBytesReceived *SgwIntStat   `json:"pub_net_bytes_recv"`
+	PublicNetworkInterfaceBytesSent     *SgwIntStat   `json:"pub_net_bytes_sent"`
+	SystemMemoryTotal                   *SgwIntStat   `json:"system_memory_total"`
+	WarnCount                           *SgwIntStat   `json:"warn_count"`
+	CpuPercentUtil                      *SgwFloatStat `json:"cpu_percent_util"`
 }
 
 type DbStats struct {
@@ -133,16 +133,24 @@ type SharedBucketImportStats struct {
 	ImportPartitions     *SgwIntStat `json:"import_partitions"`
 }
 
-type SgwIntStat struct {
+type SgwStat struct {
 	statFQDN      string
 	statDesc      *prometheus.Desc
 	dbName        string
 	statValueType prometheus.ValueType
-	Value         interface{}
 }
 
-func NewIntStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue interface{}) *SgwIntStat {
+type SgwIntStat struct {
+	SgwStat
+	Value int64
+}
 
+type SgwFloatStat struct {
+	SgwStat
+	Value float64
+}
+
+func NewIntStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue int64) *SgwIntStat {
 	var label []string
 	if dbName != "" {
 		label = []string{"database"}
@@ -152,15 +160,15 @@ func NewIntStat(subsystem string, key string, dbName string, statValueType prome
 	desc := prometheus.NewDesc(name, key, label, nil)
 
 	stat := &SgwIntStat{
-		statFQDN:      name,
-		statDesc:      desc,
-		dbName:        dbName,
-		statValueType: statValueType,
-		Value:         initialValue,
+		SgwStat: SgwStat{
+			statFQDN:      name,
+			statDesc:      desc,
+			dbName:        dbName,
+			statValueType: statValueType,
+		},
+		Value: initialValue,
 	}
-
 	prometheus.MustRegister(stat)
-
 	return stat
 }
 
@@ -169,66 +177,26 @@ func (s *SgwIntStat) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
-	val := s.Value
-
-	switch formattedVal := val.(type) {
-	case int:
-		if s.dbName != "" {
-			ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(formattedVal), s.dbName)
-		} else {
-			ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(formattedVal))
-		}
-		break
-	case uint64:
-		if s.dbName != "" {
-			ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(formattedVal), s.dbName)
-		} else {
-			ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(formattedVal))
-		}
-		break
-	case float64:
-		if s.dbName != "" {
-			ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, formattedVal, s.dbName)
-		} else {
-			ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, formattedVal)
-		}
-		break
-	default:
-		panic("Err")
+	var labelVals []string
+	if s.dbName != "" {
+		labelVals = append(labelVals, s.dbName)
 	}
-
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Value), labelVals...)
 }
 
-func (s *SgwIntStat) Set(newV interface{}) {
+func (s *SgwIntStat) Set(newV int64) {
 	s.Value = newV
 	fmt.Println(s.Value)
 }
 
-func (s *SgwIntStat) SetIfMax(newV int) {
-	switch formattedVal := s.Value.(type) {
-	case int:
-		if newV > formattedVal {
-			s.Value = newV
-		}
-		break
-	default:
-		panic("err")
+func (s *SgwIntStat) SetIfMax(newV int64) {
+	if newV > s.Value {
+		s.Value = newV
 	}
 }
 
-func (s *SgwIntStat) Add(newV int) {
-
-	if s.Value == nil {
-		s.Value = newV
-	}
-
-	switch formattedVal := s.Value.(type) {
-	case int:
-		s.Value = formattedVal + newV
-		break
-	default:
-		panic("Err")
-	}
+func (s *SgwIntStat) Add(newV int64) {
+	s.Value += newV
 }
 
 func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
@@ -236,6 +204,63 @@ func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SgwIntStat) String() string {
+	return fmt.Sprintf("%v", s.Value)
+}
+
+func NewFloatStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue float64) *SgwFloatStat {
+	var label []string
+	if dbName != "" {
+		label = []string{"database"}
+	}
+
+	name := prometheus.BuildFQName("sgw", subsystem, key)
+	desc := prometheus.NewDesc(name, key, label, nil)
+
+	stat := &SgwFloatStat{
+		SgwStat: SgwStat{
+			statFQDN:      name,
+			statDesc:      desc,
+			dbName:        dbName,
+			statValueType: statValueType,
+		},
+		Value: initialValue,
+	}
+	prometheus.MustRegister(stat)
+	return stat
+}
+
+func (s *SgwFloatStat) Describe(ch chan<- *prometheus.Desc) {
+	return
+}
+
+func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
+	var labelVals []string
+	if s.dbName != "" {
+		labelVals = append(labelVals, s.dbName)
+	}
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, s.Value, labelVals...)
+}
+
+func (s *SgwFloatStat) Set(newV float64) {
+	s.Value = newV
+	fmt.Println(s.Value)
+}
+
+func (s *SgwFloatStat) SetIfMax(newV float64) {
+	if newV > s.Value {
+		s.Value = newV
+	}
+}
+
+func (s *SgwFloatStat) Add(newV float64) {
+	s.Value += newV
+}
+
+func (s *SgwFloatStat) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("%v", s.Value)), nil
+}
+
+func (s *SgwFloatStat) String() string {
 	return fmt.Sprintf("%v", s.Value)
 }
 
@@ -257,8 +282,9 @@ func (s *SgwStats) DBStats(name string) *DbStats {
 	return s.DbStats[name]
 }
 
-func (d *DbStats) DeltaSync(dbName string) *DeltaSyncStats {
+func (d *DbStats) DeltaSync() *DeltaSyncStats {
 	if d.DeltaSyncStats == nil {
+		dbName := d.dbName
 		d.DeltaSyncStats = &DeltaSyncStats{
 			DeltasRequested:           NewIntStat("delta_sync", "deltas_requested", dbName, prometheus.CounterValue, 0),
 			DeltasSent:                NewIntStat("delta_sync", "deltas_sent", dbName, prometheus.CounterValue, 0),
