@@ -471,13 +471,14 @@ func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Messa
 	return sender.Send(msg)
 }
 
-func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, err error) error {
+func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, seq SequenceID, err error) error {
 
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending norev %q %s due to unavailable revision: %v", base.UD(docID), revID, err)
 
 	noRevRq := NewNoRevMessage()
 	noRevRq.SetId(docID)
 	noRevRq.SetRev(revID)
+	noRevRq.SetSeq(seq)
 
 	status, reason := base.ErrorAsHTTPStatus(err)
 	noRevRq.SetError(strconv.Itoa(status))
@@ -490,6 +491,10 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 		return ErrClosedBLIPSender
 	}
 
+	if bsc.sgr2PushProcessedSeqCallback != nil {
+		bsc.sgr2PushProcessedSeqCallback(seq.String())
+	}
+
 	return nil
 }
 
@@ -497,7 +502,7 @@ func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, 
 func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
 	rev, err := handleChangesResponseDb.GetRev(docID, revID, true, nil)
 	if err != nil {
-		return bsc.sendNoRev(sender, docID, revID, err)
+		return bsc.sendNoRev(sender, docID, revID, seq, err)
 	}
 
 	base.Tracef(base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
@@ -515,7 +520,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	} else {
 		body, err := rev.MutableBody()
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, err)
+			return bsc.sendNoRev(sender, docID, revID, seq, err)
 		}
 
 		// Still need to stamp _attachments into BLIP messages
@@ -525,7 +530,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
 		if err != nil {
-			return bsc.sendNoRev(sender, docID, revID, err)
+			return bsc.sendNoRev(sender, docID, revID, seq, err)
 		}
 	}
 
