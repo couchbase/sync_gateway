@@ -301,8 +301,8 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		docOut = alreadyImportedDoc
 	case nil:
 		db.DbStats.NewStats.SharedBucketImport().ImportCount.Add(1)
-		db.DbStats.NewStats.SharedBucketImport().ImportHighSeq.Set(docOut.SyncData.Sequence)
-		db.DbStats.NewStats.SharedBucketImport().ImportProcessingTime.Add(int(time.Since(importStartTime).Nanoseconds()))
+		db.DbStats.NewStats.SharedBucketImport().ImportHighSeq.Set(int64(docOut.SyncData.Sequence))
+		db.DbStats.NewStats.SharedBucketImport().ImportProcessingTime.Add(time.Since(importStartTime).Nanoseconds())
 		base.Debugf(base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.

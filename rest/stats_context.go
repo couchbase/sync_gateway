@@ -148,8 +148,8 @@ func (statsContext *statsContext) addProcessMemoryPercentage() error {
 	}
 
 	// Record stats
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.ProcessMemoryResident.Set(procMem.Resident)
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.SystemMemoryTotal.Set(totalMem.Total)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.ProcessMemoryResident.Set(int64(procMem.Resident))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.SystemMemoryTotal.Set(int64(totalMem.Total))
 
 	return nil
 }
@@ -175,8 +175,8 @@ func (statsContext *statsContext) addPublicNetworkInterfaceStatsForHostnamePort(
 		return err
 	}
 
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesSent.Set(iocountersStats.BytesSent)
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesReceived.Set(iocountersStats.BytesRecv)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesSent.Set(int64(iocountersStats.BytesSent))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesReceived.Set(int64(iocountersStats.BytesRecv))
 
 	return nil
 }
@@ -188,8 +188,8 @@ func (statsContext *statsContext) addAdminNetworkInterfaceStatsForHostnamePort(h
 		return err
 	}
 
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesSent.Set(iocountersStats.BytesSent)
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesReceived.Set(iocountersStats.BytesRecv)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesSent.Set(int64(iocountersStats.BytesSent))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesReceived.Set(int64(iocountersStats.BytesRecv))
 
 	return nil
 }
@@ -198,36 +198,36 @@ func AddGoRuntimeStats() {
 	// Num goroutines
 	numGoroutine := runtime.NumGoroutine()
 
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.NumGoroutines.Set(numGoroutine)
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoroutinesHighWatermark.Set(goroutineHighwaterMark(uint64(numGoroutine)))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.NumGoroutines.Set(int64(numGoroutine))
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoroutinesHighWatermark.Set(int64(goroutineHighwaterMark(uint64(numGoroutine))))
 
 	// Read memstats (relatively expensive)
 	memstats := runtime.MemStats{}
 	runtime.ReadMemStats(&memstats)
 
 	// Sys
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsSys.Set(memstats.Sys)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsSys.Set(int64(memstats.Sys))
 
 	// HeapAlloc
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapAlloc.Set(memstats.HeapAlloc)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapAlloc.Set(int64(memstats.HeapAlloc))
 
 	// HeapIdle
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapIdle.Set(memstats.HeapIdle)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapIdle.Set(int64(memstats.HeapIdle))
 
 	// HeapInuse
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapInUse.Set(memstats.HeapInuse)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapInUse.Set(int64(memstats.HeapInuse))
 
 	// HeapReleased
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapReleased.Set(memstats.HeapReleased)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapReleased.Set(int64(memstats.HeapReleased))
 
 	// StackInuse
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackInUse.Set(memstats.StackInuse)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackInUse.Set(int64(memstats.StackInuse))
 
 	// StackSys
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackSys.Set(memstats.StackSys)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackSys.Set(int64(memstats.StackSys))
 
 	// PauseTotalNs
-	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsPauseTotalNS.Set(memstats.PauseTotalNs)
+	base.SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsPauseTotalNS.Set(int64(memstats.PauseTotalNs))
 }
 
 // Record Goroutines high watermark into expvars

@@ -3455,11 +3455,11 @@ func TestTombstoneCompaction(t *testing.T) {
 		compactionTotal += numDocs
 		assert.Equal(t, compactionTotal, int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted))))
 
-		var actualBatches int
+		var actualBatches int64
 		if base.TestsDisableGSI() {
-			actualBatches = rt.GetDatabase().DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", db.DesignDocSyncHousekeeping(), db.ViewTombstones)).QueryCount.Value.(int)
+			actualBatches = rt.GetDatabase().DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", db.DesignDocSyncHousekeeping(), db.ViewTombstones)).QueryCount.Value
 		} else {
-			actualBatches = rt.GetDatabase().DbStats.NewStats.GSIStats(fmt.Sprintf("%s", db.QueryTypeTombstones)).QueryCount.Value.(int)
+			actualBatches = rt.GetDatabase().DbStats.NewStats.GSIStats(fmt.Sprintf("%s", db.QueryTypeTombstones)).QueryCount.Value
 		}
 
 		expectedBatches += numDocs/db.QueryTombstoneBatch + 1

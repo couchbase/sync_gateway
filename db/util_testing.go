@@ -286,8 +286,8 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 
 func (db *DatabaseContext) GetChannelQueryCount() int64 {
 	if db.UseViews() {
-		return int64(db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value.(int))
+		return db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value
 	}
 
-	return int64(db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryCount.Value.(int))
+	return db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryCount.Value
 }
