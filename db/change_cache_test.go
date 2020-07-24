@@ -369,7 +369,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	caughtUpStart := db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value
+	caughtUpStart := db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
 	terminator := make(chan bool)
 	var changesFeedsWg sync.WaitGroup

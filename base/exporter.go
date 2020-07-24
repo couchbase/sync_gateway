@@ -205,17 +205,17 @@ type SgwStat struct {
 
 type SgwIntStat struct {
 	SgwStat
-	Value int64
+	Val int64
 }
 
 type SgwFloatStat struct {
 	SgwStat
-	Value float64
+	Val float64
 }
 
 type SgwBoolStat struct {
 	SgwStat
-	Value bool
+	Val bool
 }
 
 func NewIntStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue int64) *SgwIntStat {
@@ -234,7 +234,7 @@ func NewIntStat(subsystem string, key string, dbName string, statValueType prome
 			dbName:        dbName,
 			statValueType: statValueType,
 		},
-		Value: initialValue,
+		Val: initialValue,
 	}
 	prometheus.MustRegister(stat)
 	return stat
@@ -249,30 +249,34 @@ func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
 	if s.dbName != "" {
 		labelVals = append(labelVals, s.dbName)
 	}
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Value), labelVals...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Val), labelVals...)
 }
 
 func (s *SgwIntStat) Set(newV int64) {
-	s.Value = newV
-	fmt.Println(s.Value)
+	s.Val = newV
+	fmt.Println(s.Val)
 }
 
 func (s *SgwIntStat) SetIfMax(newV int64) {
-	if newV > s.Value {
-		s.Value = newV
+	if newV > s.Val {
+		s.Val = newV
 	}
 }
 
 func (s *SgwIntStat) Add(newV int64) {
-	s.Value += newV
+	s.Val += newV
 }
 
 func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("%v", s.Value)), nil
+	return []byte(fmt.Sprintf("%v", s.Val)), nil
 }
 
 func (s *SgwIntStat) String() string {
-	return fmt.Sprintf("%v", s.Value)
+	return fmt.Sprintf("%v", s.Val)
+}
+
+func (s *SgwIntStat) Value() int64 {
+	return s.Val
 }
 
 func NewFloatStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue float64) *SgwFloatStat {
@@ -291,7 +295,7 @@ func NewFloatStat(subsystem string, key string, dbName string, statValueType pro
 			dbName:        dbName,
 			statValueType: statValueType,
 		},
-		Value: initialValue,
+		Val: initialValue,
 	}
 	prometheus.MustRegister(stat)
 	return stat
@@ -306,30 +310,34 @@ func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
 	if s.dbName != "" {
 		labelVals = append(labelVals, s.dbName)
 	}
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, s.Value, labelVals...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, s.Val, labelVals...)
 }
 
 func (s *SgwFloatStat) Set(newV float64) {
-	s.Value = newV
-	fmt.Println(s.Value)
+	s.Val = newV
+	fmt.Println(s.Val)
 }
 
 func (s *SgwFloatStat) SetIfMax(newV float64) {
-	if newV > s.Value {
-		s.Value = newV
+	if newV > s.Val {
+		s.Val = newV
 	}
 }
 
 func (s *SgwFloatStat) Add(newV float64) {
-	s.Value += newV
+	s.Val += newV
 }
 
 func (s *SgwFloatStat) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("%v", s.Value)), nil
+	return []byte(fmt.Sprintf("%v", s.Val)), nil
 }
 
 func (s *SgwFloatStat) String() string {
-	return fmt.Sprintf("%v", s.Value)
+	return fmt.Sprintf("%v", s.Val)
+}
+
+func (s *SgwFloatStat) Value() float64 {
+	return s.Val
 }
 
 func NewBoolStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue bool) *SgwBoolStat {
@@ -348,23 +356,27 @@ func NewBoolStat(subsystem string, key string, dbName string, statValueType prom
 			dbName:        dbName,
 			statValueType: statValueType,
 		},
-		Value: initialValue,
+		Val: initialValue,
 	}
 	// prometheus.MustRegister(stat)
 	return stat
 }
 
 func (s *SgwBoolStat) Set(newV bool) {
-	s.Value = newV
-	fmt.Println(s.Value)
+	s.Val = newV
+	fmt.Println(s.Val)
 }
 
 func (s *SgwBoolStat) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("%v", s.Value)), nil
+	return []byte(fmt.Sprintf("%v", s.Val)), nil
 }
 
 func (s *SgwBoolStat) String() string {
-	return fmt.Sprintf("%v", s.Value)
+	return fmt.Sprintf("%v", s.Val)
+}
+
+func (s *SgwBoolStat) Value() bool {
+	return s.Val
 }
 
 type QueryStat struct {

@@ -182,10 +182,10 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 
 	if ar.Pull != nil {
 		pullStats := ar.Pull.replicationStats
-		status.DocsRead = pullStats.HandleRevCount.Value
+		status.DocsRead = pullStats.HandleRevCount.Value()
 		status.DocsPurged = pullStats.HandleRevDocsPurgedCount.Value()
 		status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
-		status.DeltasRecv = pullStats.HandleRevDeltaRecvCount.Value
+		status.DeltasRecv = pullStats.HandleRevDeltaRecvCount.Value()
 		status.DeltasRequested = pullStats.HandleChangesDeltaRequestedCount.Value()
 		if ar.Pull.Checkpointer != nil {
 			status.LastSeqPull = ar.Pull.Checkpointer.calculateSafeProcessedSeq()
@@ -198,7 +198,7 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 		status.DocWriteFailures = pushStats.SendRevErrorTotal.Value()
 		status.DocWriteConflict = pushStats.SendRevErrorConflictCount.Value()
 		status.RejectedRemote = pushStats.SendRevErrorRejectedCount.Value()
-		status.DeltasSent = pushStats.SendRevDeltaSentCount.Value
+		status.DeltasSent = pushStats.SendRevDeltaSentCount.Value()
 		if ar.Push.Checkpointer != nil {
 			status.LastSeqPush = ar.Push.Checkpointer.calculateSafeProcessedSeq()
 		}
