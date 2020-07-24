@@ -103,47 +103,23 @@ const (
 	StatKeyImportDcpStats          = "import_feed"
 
 	// StatsCBLReplicationPush
-	StatKeyDocPushCount        = "doc_push_count"
-	StatKeyWriteProcessingTime = "write_processing_time"
-	StatKeySyncFunctionTime    = "sync_function_time"
-	StatKeySyncFunctionCount   = "sync_function_count"
-	StatKeyProposeChangeTime   = "propose_change_time"
-	StatKeyProposeChangeCount  = "propose_change_count"
-	StatKeyAttachmentPushCount = "attachment_push_count"
-	StatKeyAttachmentPushBytes = "attachment_push_bytes"
-	StatKeyConflictWriteCount  = "conflict_write_count"
+	StatKeyConflictWriteCount = "conflict_write_count"
 
 	// StatsCBLReplicationPull
-	StatKeyPullReplicationsActiveOneShot    = "num_pull_repl_active_one_shot"
-	StatKeyPullReplicationsActiveContinuous = "num_pull_repl_active_continuous"
-	StatKeyPullReplicationsTotalOneShot     = "num_pull_repl_total_one_shot"
-	StatKeyPullReplicationsTotalContinuous  = "num_pull_repl_total_continuous"
-	StatKeyPullReplicationsSinceZero        = "num_pull_repl_since_zero"
-	StatKeyPullReplicationsCaughtUp         = "num_pull_repl_caught_up"
-	StatKeyRequestChangesCount              = "request_changes_count"
-	StatKeyRequestChangesTime               = "request_changes_time"
-	StatKeyRevSendCount                     = "rev_send_count"
-	StatKeyRevSendLatency                   = "rev_send_latency"
-	StatKeyRevProcessingTime                = "rev_processing_time"
-	StatKeyMaxPending                       = "max_pending"
-	StatKeyAttachmentPullCount              = "attachment_pull_count"
-	StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
-
-	// StatsSecurity
-	StatKeyNumDocsRejected  = "num_docs_rejected"
-	StatKeyNumAccessErrors  = "num_access_errors"
-	StatKeyAuthSuccessCount = "auth_success_count"
-	StatKeyAuthFailedCount  = "auth_failed_count"
-	StatKeyTotalAuthTime    = "total_auth_time"
-
-	// StatsGsiViews
-	// Gsi and View stat names are dynamically generated based on the following patterns
-	// StatKeyN1qlQueryCountExpvarFormat      = "%s_count"          // Query name
-	// StatKeyN1qlQueryErrorCountExpvarFormat = "%s_error_count"    // Query name
-	// StatKeyN1qlQueryTimeExpvarFormat       = "%s_time"           // Query name
-	// StatKeyViewQueryCountExpvarFormat      = "%s.%s_count"       // Design doc, view
-	// StatKeyViewQueryErrorCountExpvarFormat = "%s.%s_error_count" // Design doc, view
-	// StatKeyViewQueryTimeExpvarFormat       = "%s.%s_time"        // Design doc, view
+	// StatKeyPullReplicationsActiveOneShot    = "num_pull_repl_active_one_shot"
+	// StatKeyPullReplicationsActiveContinuous = "num_pull_repl_active_continuous"
+	// StatKeyPullReplicationsTotalOneShot     = "num_pull_repl_total_one_shot"
+	// StatKeyPullReplicationsTotalContinuous  = "num_pull_repl_total_continuous"
+	// StatKeyPullReplicationsSinceZero        = "num_pull_repl_since_zero"
+	// StatKeyPullReplicationsCaughtUp         = "num_pull_repl_caught_up"
+	// StatKeyRequestChangesCount              = "request_changes_count"
+	// StatKeyRequestChangesTime               = "request_changes_time"
+	// StatKeyRevSendCount                     = "rev_send_count"
+	// StatKeyRevSendLatency                   = "rev_send_latency"
+	// StatKeyRevProcessingTime                = "rev_processing_time"
+	// StatKeyMaxPending                       = "max_pending"
+	// StatKeyAttachmentPullCount              = "attachment_pull_count"
+	// StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
 
 	// StatsReplication (1.x)
 	StatKeySgrActive                     = "sgr_active"

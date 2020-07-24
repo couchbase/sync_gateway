@@ -255,7 +255,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	caughtUpCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+	caughtUpCount := rt.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value
 
 	wg.Add(1)
 	go func() {
@@ -999,7 +999,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "5::12", changes.Last_Seq)
 
-	caughtUpCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+	caughtUpCount := rt.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value
 	// Issue a longpoll changes request.  Will block.
 	var longpollWg sync.WaitGroup
 	longpollWg.Add(1)
@@ -3312,7 +3312,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	caughtUpCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+	caughtUpCount := rt.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value
 
 	// Issue longpoll changes request
 	var longpollWg sync.WaitGroup
@@ -3358,7 +3358,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	caughtUpCount := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+	caughtUpCount := rt.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value
 
 	// Get 100 changes requests into wait mode (each for a different channel)
 	changesURLPattern := "/db/_changes?filter=sync_gateway/bychannel&feed=longpoll&since=0&channels=%s"

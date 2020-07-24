@@ -77,7 +77,8 @@ func (c *changeCache) updateStats() {
 
 	base.SetIfMax(c.context.DbStats.StatsDatabase(), base.StatKeyHighSeqFeed, int64(c.internalStats.highSeqFeed))
 	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(c.internalStats.pendingSeqLen))
-	base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(c.internalStats.maxPending))
+	// base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(c.internalStats.maxPending))
+	c.context.DbStats.NewStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
 	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
 
 	c.lock.Unlock()

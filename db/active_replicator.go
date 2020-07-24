@@ -182,7 +182,7 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 
 	if ar.Pull != nil {
 		pullStats := ar.Pull.replicationStats
-		status.DocsRead = pullStats.HandleRevCount.Value()
+		status.DocsRead = pullStats.HandleRevCount.Value
 		status.DocsPurged = pullStats.HandleRevDocsPurgedCount.Value()
 		status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
 		status.DeltasRecv = pullStats.HandleRevDeltaRecvCount.Value

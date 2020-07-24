@@ -735,9 +735,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					break waitForChanges
 				}
 
-				db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, 1)
+				// db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, 1)
+				db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Add(1)
 				waitResponse := changeWaiter.Wait()
-				db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, -1)
+				// db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, -1)
+				db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
 
 				if waitResponse == WaiterClosed {
 					break outer
@@ -1090,7 +1092,7 @@ func GenerateChanges(cancelCtx context.Context, database *Database, inChannels b
 	}
 
 	if !options.Since.IsNonZero() {
-		database.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsSinceZero, 1)
+		database.DatabaseContext.DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Add(1)
 	}
 
 	var lastSeq SequenceID
