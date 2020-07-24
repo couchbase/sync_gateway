@@ -62,6 +62,7 @@ const (
 	// norev message properties
 	NorevMessageId     = "id"
 	NorevMessageRev    = "rev"
+	NorevMessageSeq    = "seq"
 	NorevMessageError  = "error"
 	NorevMessageReason = "reason"
 
@@ -391,6 +392,10 @@ func (nrm *noRevMessage) SetId(id string) {
 
 func (nrm *noRevMessage) SetRev(rev string) {
 	nrm.Properties[NorevMessageRev] = rev
+}
+
+func (nrm *noRevMessage) SetSeq(seq SequenceID) {
+	nrm.Properties[NorevMessageSeq] = seq.String()
 }
 
 func (nrm *noRevMessage) SetReason(reason string) {
