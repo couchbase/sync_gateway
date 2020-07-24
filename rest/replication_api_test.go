@@ -166,7 +166,7 @@ func TestReplicationStatusAPI(t *testing.T) {
 	replication2Config := db.ReplicationConfig{
 		ID:        "replication2",
 		Remote:    "http://remote:4984/db",
-		Direction: "Pull",
+		Direction: "pull",
 	}
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, replication2Config))
 	assertStatus(t, response, http.StatusCreated)
@@ -290,7 +290,7 @@ func TestReplicationStatusAPIIncludeConfig(t *testing.T) {
 	replication2Config := db.ReplicationConfig{
 		ID:        "replication2",
 		Remote:    "http://remote:4984/db",
-		Direction: "Pull",
+		Direction: "pull",
 	}
 	response = rt.SendAdminRequest("PUT", "/db/_replication/replication2", marshalConfig(t, replication2Config))
 	assertStatus(t, response, http.StatusCreated)
