@@ -16,33 +16,36 @@ import (
 
 const (
 	defaultCheckpointInterval = time.Second * 30
+	defaultStatusInterval     = time.Second * 10
 )
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID         string
-	Push       *ActivePushReplicator
-	Pull       *ActivePullReplicator
-	onComplete OnCompleteFunc
+	ID               string
+	Push             *ActivePushReplicator
+	Pull             *ActivePullReplicator
+	config           *ActiveReplicatorConfig
+	statusTerminator chan struct{}
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 	ar := &ActiveReplicator{
-		ID:         config.ID,
-		onComplete: config.onComplete,
+		ID:               config.ID,
+		config:           config,
+		statusTerminator: make(chan struct{}),
 	}
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		ar.Push = NewPushReplicator(config)
-		if ar.onComplete != nil {
+		if ar.config.onComplete != nil {
 			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
 		ar.Pull = NewPullReplicator(config)
-		if ar.onComplete != nil {
+		if ar.config.onComplete != nil {
 			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
@@ -51,6 +54,11 @@ func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 }
 
 func (ar *ActiveReplicator) Start() error {
+
+	if ar.Push == nil && ar.Pull == nil {
+		return fmt.Errorf("Attempted to start activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
+	}
+
 	if ar.Push != nil {
 		if err := ar.Push.Start(); err != nil {
 			return err
@@ -63,10 +71,21 @@ func (ar *ActiveReplicator) Start() error {
 		}
 	}
 
+	// Push.Start and Pull.Start both return error if Start is called for an already started replication, so
+	// can safely start a new goroutine to publish status here.
+	_ = ar.publishStatus()
+	ar.statusTerminator = make(chan struct{})
+	go ar.startStatusUpdates()
+
 	return nil
 }
 
 func (ar *ActiveReplicator) Stop() error {
+
+	if ar.Push == nil && ar.Pull == nil {
+		return fmt.Errorf("Attempted to stop activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
+	}
+
 	if ar.Push != nil {
 		if err := ar.Push.Stop(); err != nil {
 			return err
@@ -79,6 +98,12 @@ func (ar *ActiveReplicator) Stop() error {
 		}
 	}
 
+	if ar.statusTerminator != nil {
+		close(ar.statusTerminator)
+		ar.statusTerminator = nil
+	}
+
+	_ = ar.publishStatus()
 	return nil
 }
 
@@ -95,6 +120,7 @@ func (ar *ActiveReplicator) Reset() error {
 		}
 	}
 
+	_ = ar.publishStatus()
 	return nil
 }
 
@@ -110,7 +136,7 @@ func (ar *ActiveReplicator) _onReplicationComplete() {
 	}
 
 	if allReplicationsComplete {
-		ar.onComplete(ar.ID)
+		ar.config.onComplete(ar.ID)
 	}
 
 }
@@ -265,4 +291,40 @@ func combinedState(state1, state2 string) (combinedState string) {
 
 	base.Infof(base.KeyReplicate, "Unhandled combination of replication states (%s, %s), returning %s", state1, state2, state1)
 	return state1
+}
+
+func (ar *ActiveReplicator) publishStatus() error {
+	status := ar.GetStatus()
+	base.Debugf(base.KeyReplicate, "Persisting replication status for replicationID %v", ar.ID)
+	err := ar.config.ActiveDB.Bucket.Set(replicationStatusKey(ar.ID), 0, status)
+	return err
+}
+
+func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
+	_, err = dbContext.Bucket.Get(replicationStatusKey(replicationID), &status)
+	return status, err
+}
+
+func replicationStatusKey(replicationID string) string {
+	return fmt.Sprintf("%s%s", base.SGRStatusPrefix, replicationID)
+}
+
+func (ar *ActiveReplicator) startStatusUpdates() {
+	ticker := time.NewTicker(defaultStatusInterval)
+	terminator := ar.statusTerminator
+	go func() {
+		defer base.FatalPanicHandler()
+		for {
+			select {
+			case <-terminator:
+				ticker.Stop()
+				base.Debugf(base.KeyReplicate, "Stopping status persistence for replication %s", ar.ID)
+				return
+			case <-ticker.C:
+				if err := ar.publishStatus(); err != nil {
+					base.Warnf("Unexpected error publishing replication status, will retry in %v: %v", defaultStatusInterval, err)
+				}
+			}
+		}
+	}()
 }

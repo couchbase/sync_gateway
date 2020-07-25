@@ -46,6 +46,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		Direction:    db.ActiveReplicatorTypePushAndPull,
 		ActiveDB:     &db.Database{DatabaseContext: rt.GetDatabase()},
 		PassiveDBURL: passiveDBURL,
+		Continuous:   true,
 	})
 
 	startNumReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
