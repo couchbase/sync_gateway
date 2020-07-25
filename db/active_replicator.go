@@ -15,34 +15,35 @@ import (
 )
 
 const (
-	defaultCheckpointInterval = time.Second * 30
+	defaultCheckpointInterval    = time.Second * 30
+	defaultPublishStatusInterval = time.Second * 10
 )
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID         string
-	Push       *ActivePushReplicator
-	Pull       *ActivePullReplicator
-	onComplete OnCompleteFunc
+	ID     string
+	Push   *ActivePushReplicator
+	Pull   *ActivePullReplicator
+	config *ActiveReplicatorConfig
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 	ar := &ActiveReplicator{
-		ID:         config.ID,
-		onComplete: config.onComplete,
+		ID:     config.ID,
+		config: config,
 	}
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		ar.Push = NewPushReplicator(config)
-		if ar.onComplete != nil {
+		if ar.config.onComplete != nil {
 			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
 		ar.Pull = NewPullReplicator(config)
-		if ar.onComplete != nil {
+		if ar.config.onComplete != nil {
 			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
@@ -51,6 +52,11 @@ func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 }
 
 func (ar *ActiveReplicator) Start() error {
+
+	if ar.Push == nil && ar.Pull == nil {
+		return fmt.Errorf("Attempted to start activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
+	}
+
 	var pushErr error
 	if ar.Push != nil {
 		pushErr = ar.Push.Start()
@@ -69,10 +75,17 @@ func (ar *ActiveReplicator) Start() error {
 		return pullErr
 	}
 
+	_ = ar.publishStatus()
+
 	return nil
 }
 
 func (ar *ActiveReplicator) Stop() error {
+
+	if ar.Push == nil && ar.Pull == nil {
+		return fmt.Errorf("Attempted to stop activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
+	}
+
 	var pushErr error
 	if ar.Push != nil {
 		pushErr = ar.Push.Stop()
@@ -91,6 +104,7 @@ func (ar *ActiveReplicator) Stop() error {
 		return pullErr
 	}
 
+	_ = ar.publishStatus()
 	return nil
 }
 
@@ -113,6 +127,7 @@ func (ar *ActiveReplicator) Reset() error {
 		return pullErr
 	}
 
+	_ = ar.publishStatus()
 	return nil
 }
 
@@ -128,7 +143,7 @@ func (ar *ActiveReplicator) _onReplicationComplete() {
 	}
 
 	if allReplicationsComplete {
-		ar.onComplete(ar.ID)
+		ar.config.onComplete(ar.ID)
 	}
 
 }
@@ -283,4 +298,20 @@ func combinedState(state1, state2 string) (combinedState string) {
 
 	base.Infof(base.KeyReplicate, "Unhandled combination of replication states (%s, %s), returning %s", state1, state2, state1)
 	return state1
+}
+
+func (ar *ActiveReplicator) publishStatus() error {
+	status := ar.GetStatus()
+	base.Debugf(base.KeyReplicate, "Persisting replication status for replicationID %v", ar.ID)
+	err := ar.config.ActiveDB.Bucket.Set(replicationStatusKey(ar.ID), 0, status)
+	return err
+}
+
+func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
+	_, err = dbContext.Bucket.Get(replicationStatusKey(replicationID), &status)
+	return status, err
+}
+
+func replicationStatusKey(replicationID string) string {
+	return fmt.Sprintf("%s%s", base.SGRStatusPrefix, replicationID)
 }
