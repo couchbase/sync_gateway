@@ -122,70 +122,47 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 	// Cancel is only supported via the REST API
 	if rc.Cancel {
 		if fromConfig {
-			err = base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
-			return
+			return base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
 		}
 	}
 
 	// Adhoc is only supported via the REST API
 	if rc.Adhoc {
 		if fromConfig {
-			err = base.HTTPErrorf(http.StatusBadRequest, "adhoc=true is invalid for replication in Sync Gateway configuration")
-			return
+			return base.HTTPErrorf(http.StatusBadRequest, "adhoc=true is invalid for replication in Sync Gateway configuration")
 		}
 	}
 
 	if rc.Remote == "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "Replication remote must be specified.")
-		return err
+		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote must be specified.")
 	}
 
 	if rc.Direction == "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "Replication direction must be specified")
-		return err
+		return base.HTTPErrorf(http.StatusBadRequest, "Replication direction must be specified")
+	}
+
+	if !rc.Direction.IsValid() {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid replication direction %q, valid values are %s/%s/%s",
+			rc.Direction, ActiveReplicatorTypePush, ActiveReplicatorTypePull, ActiveReplicatorTypePushAndPull)
 	}
 
 	remoteURL, err := url.Parse(rc.Remote)
 	if err != nil {
-		err = base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v", remoteURL, err)
-		return err
+		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v", remoteURL, err)
 	}
 
 	if rc.Filter == base.ByChannelFilter {
 		if rc.QueryParams == nil {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing query_params")
-			return
+			return base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing query_params")
 		}
 
-		//The Channels may be passed as a JSON array of strings directly
-		//or embedded in a JSON object with the "channels" property and array value
-		var chanarray []interface{}
+		_, invalidChannelsErr := ChannelsFromQueryParams(rc.QueryParams)
+		if invalidChannelsErr != nil {
+			return invalidChannelsErr
+		}
 
-		if paramsmap, ok := rc.QueryParams.(map[string]interface{}); ok {
-			if chanarray, ok = paramsmap["channels"].([]interface{}); !ok {
-				err = base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing channels property in query_params")
-				return
-			}
-		} else if chanarray, ok = rc.QueryParams.([]interface{}); ok {
-			// query params is an array and chanarray has been set, now drop out of if-then-else for processing
-		} else {
-			err = base.HTTPErrorf(http.StatusBadRequest, "Bad channels array in query_params for sync_gateway/bychannel filter.")
-			return
-		}
-		if len(chanarray) > 0 {
-			channels := make([]string, len(chanarray))
-			for i := range chanarray {
-				if channel, ok := chanarray[i].(string); ok {
-					channels[i] = channel
-				} else {
-					err = base.HTTPErrorf(http.StatusBadRequest, "Bad channel name in query_params for sync_gateway/bychannel filter")
-					return
-				}
-			}
-		}
 	} else if rc.Filter != "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "Unknown replication filter; try sync_gateway/bychannel")
-		return
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown replication filter; try sync_gateway/bychannel")
 	}
 	return nil
 }
@@ -402,13 +379,15 @@ func (m *sgReplicateManager) StartReplications() error {
 }
 
 func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (replicator *ActiveReplicator, err error) {
-	// TODO: the following properties on ActiveReplicator aren't currently supported in ReplicationCfg.  Some could be taken
-	//    out until they are implemented?
-	//    - docIDs  (future enhancement)
-	//    - activeOnly (P1)
-	//    - checkpointInterval (not externally configurable)
 
-	base.Infof(base.KeyReplicate, "Initializing replication %v", config.ID)
+	base.Infof(base.KeyReplicate, "Initializing replication %v", base.UD(config.ID))
+
+	// Re-validate replication.  Replication config should have already been validated on creation/update, but
+	// re-checking here in case of issues during persistence/load.
+	configValidationError := config.ValidateReplication(false)
+	if configValidationError != nil {
+		return nil, fmt.Errorf("Validation failure for replication config when initializing replication %s: %v", base.UD(config.ID), configValidationError)
+	}
 
 	rc := &ActiveReplicatorConfig{
 		ID:                 config.ID,
@@ -424,22 +403,15 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		rc.ChangesBatchSize = uint16(config.BatchSize)
 	}
 
-	// TODO: Move all this config validation to the point of creation, so that
-	//  InitializeReplication doesn't need to report errors based on user data
+	// Channel filter processing
 	if config.Filter == base.ByChannelFilter {
 		rc.Filter = base.ByChannelFilter
 		rc.FilterChannels, err = ChannelsFromQueryParams(config.QueryParams)
 		if err != nil {
 			return nil, err
 		}
-	} else if config.Filter != "" {
-		return nil, fmt.Errorf("Unknown replication filter: %v", config.Filter)
 	}
-
 	rc.Direction = config.Direction
-	if !rc.Direction.IsValid() {
-		return nil, fmt.Errorf("Unknown replication direction: %v", config.Direction)
-	}
 
 	// Set conflict resolver for pull replications
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
