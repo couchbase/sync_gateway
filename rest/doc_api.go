@@ -80,7 +80,7 @@ func (h *handler) handleGetDoc() error {
 		}
 		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))
 
-		h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
+		h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
 		hasBodies := attachmentsSince != nil && value[db.BodyAttachments] != nil
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
@@ -121,7 +121,7 @@ func (h *handler) handleGetDoc() error {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
 					_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.NewStats.CBLReplicationPull(), revBody, err != nil, false, writer)
-					h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
+					h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
 				}
 				return nil
 			})
@@ -146,7 +146,7 @@ func (h *handler) handleGetDoc() error {
 				}
 			}
 			_, _ = h.response.Write([]byte(`]`))
-			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
+			h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
 		}
 	}
 	return nil
@@ -173,7 +173,7 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 
 	h.setHeader("Content-Type", "application/json")
 	_, _ = h.response.Write(bodyBytes)
-	h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
+	h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
 
 	return nil
 }

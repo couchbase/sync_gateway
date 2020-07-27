@@ -297,9 +297,9 @@ func (h *handler) handleChanges() error {
 	}
 
 	// Overall replication counts
-	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsActive, 1)
-	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsTotal, 1)
-	defer h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsActive, -1)
+	h.db.DatabaseContext.DbStats.NewStats.Database().NumReplicationsActive.Add(1)
+	h.db.DatabaseContext.DbStats.NewStats.Database().NumReplicationsTotal.Add(1)
+	defer h.db.DatabaseContext.DbStats.NewStats.Database().NumReplicationsActive.Add(-1)
 
 	options.Terminator = make(chan bool)
 

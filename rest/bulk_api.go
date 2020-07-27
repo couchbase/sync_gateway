@@ -436,7 +436,7 @@ func (h *handler) handleBulkGet() error {
 
 			_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.NewStats.CBLReplicationPull(), body, err != nil, canCompressParts, writer)
 
-			h.db.DbStats.StatsDatabase().Add(base.StatKeyNumDocReadsRest, 1)
+			h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
 		}
 		return nil
 	})

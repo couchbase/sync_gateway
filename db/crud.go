@@ -60,7 +60,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 
 		isSgWrite, crc32Match := doc.IsSGWrite(rawBucketDoc.Body)
 		if crc32Match {
-			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+			db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
@@ -140,7 +140,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 
 		isSgWrite, crc32Match := doc.IsSGWrite(rawDoc)
 		if crc32Match {
-			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+			db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
@@ -808,7 +808,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		if doc != nil {
 			isSgWrite, crc32Match = doc.IsSGWrite(nil)
 			if crc32Match {
-				db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+				db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
 			}
 		}
 
@@ -911,7 +911,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		if doc != nil {
 			isSgWrite, crc32Match = doc.IsSGWrite(nil)
 			if crc32Match {
-				db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+				db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
 			}
 		}
 
@@ -1639,7 +1639,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if xattrBytesThreshold := db.Options.UnsupportedOptions.WarningThresholds.XattrSize; xattrBytesThreshold != nil {
 				xattrBytes = len(rawXattr)
 				if uint32(xattrBytes) >= *xattrBytesThreshold {
-					db.DbStats.StatsDatabase().Add(base.StatKeyWarnXattrSizeCount, 1)
+					db.DbStats.NewStats.Database().WarnXattrSizeCount.Add(1)
 					base.WarnfCtx(db.Ctx, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(doc.ID), xattrBytes, *xattrBytesThreshold)
 				}
 			}
@@ -1683,11 +1683,11 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		return nil, "", err
 	}
 
-	db.DbStats.StatsDatabase().Add(base.StatKeyNumDocWrites, 1)
-	db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesBytes, int64(docBytes))
-	db.DbStats.StatsDatabase().Add(base.StatKeyDocWritesXattrBytes, int64(xattrBytes))
+	db.DbStats.NewStats.Database().NumDocWrites.Add(1)
+	db.DbStats.NewStats.Database().DocWritesBytes.Add(int64(docBytes))
+	db.DbStats.NewStats.Database().DocWritesXattrBytes.Add(int64(xattrBytes))
 	if inConflict {
-		db.DbStats.StatsDatabase().Add(base.StatKeyConflictWriteCount, 1)
+		db.DbStats.NewStats.Database().ConflictWriteCount.Add(1)
 	}
 
 	if doc.History[newRevID] != nil {
@@ -1748,7 +1748,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 	if channelCountThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; channelCountThreshold != nil {
 		channelCount := len(channels)
 		if uint32(channelCount) >= *channelCountThreshold {
-			db.DbStats.StatsDatabase().Add(base.StatKeyWarnChannelsPerDocCount, 1)
+			db.DbStats.NewStats.Database().WarnChannelsPerDocCount.Add(1)
 			base.WarnfCtx(db.Ctx, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
 		}
 	}
@@ -1757,7 +1757,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 	if grantThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; grantThreshold != nil {
 		grantCount := len(accessGrants) + len(roleGrants)
 		if uint32(grantCount) >= *grantThreshold {
-			db.DbStats.StatsDatabase().Add(base.StatKeyWarnGrantsPerDocCount, 1)
+			db.DbStats.NewStats.Database().WarnGrantsPerDocCount.Add(1)
 			base.WarnfCtx(db.Ctx, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
 		}
 	}

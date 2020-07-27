@@ -259,8 +259,8 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 	if err != nil {
 		context.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryErrorCount.Add(1)
 	}
-	base.SyncGatewayStats.DBStats(context.Name).GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryCount.Add(1)
-	base.SyncGatewayStats.DBStats(context.Name).GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryTime.Add(time.Since(startTime).Nanoseconds())
+	context.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryCount.Add(1)
+	context.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryTime.Add(time.Since(startTime).Nanoseconds())
 
 	return results, err
 }

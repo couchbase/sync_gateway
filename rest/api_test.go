@@ -4634,7 +4634,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, body["ok"].(bool))
 		revID = body["rev"].(string)
-		assert.Equal(t, base.ExpvarIntVal(1), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+		assert.Equal(t, 1, rt.GetDatabase().DbStats.NewStats.Database().NumDocWrites.Value())
 	} else {
 		assertStatus(t, response, http.StatusNotImplemented)
 	}
@@ -4646,7 +4646,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
 		assert.NoError(t, err)
 		assert.True(t, body["ok"].(bool))
-		assert.Equal(t, base.ExpvarIntVal(2), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+		assert.Equal(t, 2, rt.GetDatabase().DbStats.NewStats.Database().NumDocWrites.Value())
 	} else {
 		assertStatus(t, response, http.StatusNotImplemented)
 	}
@@ -4657,7 +4657,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
 		assert.NoError(t, err)
 		assert.Equal(t, "bar", body["foo"])
-		assert.Equal(t, base.ExpvarIntVal(1), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocReadsRest))
+		assert.Equal(t, 1, rt.GetDatabase().DbStats.NewStats.Database().NumDocReadsRest.Value())
 	} else {
 		assertStatus(t, response, http.StatusNotFound)
 	}
@@ -4675,7 +4675,7 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, body["ok"].(bool))
 	revID := body["rev"].(string)
-	assert.Equal(t, base.ExpvarIntVal(1), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.NewStats.Database().NumDocWrites.Value())
 
 	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID+"&deleted=true", "{}")
 	if base.IsEnterpriseEdition() {
@@ -4684,11 +4684,11 @@ func TestDeletedPutReplicator2(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, body["ok"].(bool))
 		revID = body["rev"].(string)
-		assert.Equal(t, base.ExpvarIntVal(2), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+		assert.Equal(t, 2, rt.GetDatabase().DbStats.NewStats.Database().NumDocWrites.Value())
 
 		response = rt.SendAdminRequest("GET", "/db/doc1", ``)
 		assertStatus(t, response, http.StatusNotFound)
-		assert.Equal(t, base.ExpvarIntVal(0), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocReadsRest))
+		assert.Equal(t, 0, rt.GetDatabase().DbStats.NewStats.Database().NumDocReadsRest.Value())
 	} else {
 		assertStatus(t, response, http.StatusNotImplemented)
 	}
@@ -4699,11 +4699,11 @@ func TestDeletedPutReplicator2(t *testing.T) {
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
 		assert.NoError(t, err)
 		assert.True(t, body["ok"].(bool))
-		assert.Equal(t, base.ExpvarIntVal(3), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+		assert.Equal(t, 3, rt.GetDatabase().DbStats.NewStats.Database().NumDocWrites.Value())
 
 		response = rt.SendAdminRequest("GET", "/db/doc1", ``)
 		assertStatus(t, response, http.StatusOK)
-		assert.Equal(t, base.ExpvarIntVal(1), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocReadsRest))
+		assert.Equal(t, 1, rt.GetDatabase().DbStats.NewStats.Database().NumDocReadsRest.Value())
 	} else {
 		assertStatus(t, response, http.StatusNotImplemented)
 	}

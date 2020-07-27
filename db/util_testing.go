@@ -123,11 +123,7 @@ func (db *DatabaseContext) NewNewStatWaiter(stat *base.SgwIntStat, tb testing.TB
 }
 
 func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
-	stat, ok := db.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount).(*expvar.Int)
-	if !ok {
-		tb.Fatalf("Unable to retrieve StatKeyDcpCachingCount during StatWaiter initialization ")
-	}
-	return db.NewStatWaiter(stat, tb)
+	return db.NewNewStatWaiter(db.DbStats.NewStats.Database().DCPCachingCount, tb)
 }
 
 func (db *DatabaseContext) NewPullReplicationCaughtUpWaiter(tb testing.TB) *StatWaiter {

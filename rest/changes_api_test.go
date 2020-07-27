@@ -3453,7 +3453,7 @@ func TestTombstoneCompaction(t *testing.T) {
 		rt.SendAdminRequest("POST", "/db/_compact", "")
 
 		compactionTotal += numDocs
-		assert.Equal(t, compactionTotal, int(base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumTombstonesCompacted))))
+		assert.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.NewStats.Database().NumTombstonesCompacted.Value()))
 
 		var actualBatches int64
 		if base.TestsDisableGSI() {

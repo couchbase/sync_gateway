@@ -75,9 +75,8 @@ func (c *changeCache) updateStats() {
 
 	c.lock.Lock()
 
-	base.SetIfMax(c.context.DbStats.StatsDatabase(), base.StatKeyHighSeqFeed, int64(c.internalStats.highSeqFeed))
+	c.context.DbStats.NewStats.Database().HighSeqFeed.SetIfMax(int64(c.internalStats.highSeqFeed))
 	c.context.DbStats.StatsCache().Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(c.internalStats.pendingSeqLen))
-	// base.SetIfMax(c.context.DbStats.StatsCblReplicationPull(), base.StatKeyMaxPending, int64(c.internalStats.maxPending))
 	c.context.DbStats.NewStats.CBLReplicationPull().MaxPending.SetIfMax(int64(c.internalStats.maxPending))
 	c.context.DbStats.StatsCache().Set(base.StatKeyHighSeqStable, base.ExpvarUInt64Val(c._getMaxStableCached()))
 
@@ -473,10 +472,10 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		// Record latency when greater than zero
 		feedNano := feedLatency.Nanoseconds()
 		if feedNano > 0 {
-			c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpReceivedTime, feedNano)
+			c.context.DbStats.NewStats.Database().DCPReceivedTime.Add(feedNano)
 		}
 	}
-	c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpReceivedCount, 1)
+	c.context.DbStats.NewStats.Database().DCPReceivedCount.Add(1)
 
 	// If the doc update wasted any sequences due to conflicts, add empty entries for them:
 	for _, seq := range syncData.UnusedSequences {
@@ -761,8 +760,8 @@ func (c *changeCache) _addToCache(change *LogEntry) []string {
 	}
 
 	if !change.TimeReceived.IsZero() {
-		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingCount, 1)
-		c.context.DbStats.StatsDatabase().Add(base.StatKeyDcpCachingTime, time.Since(change.TimeReceived).Nanoseconds())
+		c.context.DbStats.NewStats.Database().DCPCachingCount.Add(1)
+		c.context.DbStats.NewStats.Database().DCPCachingTime.Add(time.Since(change.TimeReceived).Nanoseconds())
 	}
 
 	return updatedChannels

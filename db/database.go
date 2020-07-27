@@ -241,7 +241,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	dbStats := NewDatabaseStats()
 
-	dbStats.NewStats = base.SyncGatewayStats.DBStats(dbName)
+	dbStats.NewStats = base.SyncGatewayStats.NewDBStats(dbName)
 
 	base.PerDbStats.Set(dbName, dbStats.ExpvarMap())
 
@@ -272,7 +272,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.EventMgr = NewEventManager()
 
 	var err error
-	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats.StatsDatabase())
+	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats.NewStats.Database())
 	if err != nil {
 		return nil, err
 	}
@@ -360,7 +360,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Start DCP feed
 	base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
-	cacheFeedStatsMap, ok := dbContext.DbStats.statsDatabaseMap.Get(base.StatKeyCachingDcpStats).(*expvar.Map)
+	cacheFeedStatsMap, ok := dbContext.DbStats.StatsDatabase().Get(base.StatKeyCachingDcpStats).(*expvar.Map)
 	if !ok {
 		return nil, errors.New("Cache feed stats map not initialized")
 	}
@@ -927,7 +927,7 @@ func (db *Database) Compact() (int, error) {
 		purgedDocCount += count
 		if count > 0 {
 			db.changeCache.Remove(purgedDocs, startTime)
-			db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
+			db.DbStats.NewStats.Database().NumTombstonesCompacted.Add(int64(count))
 		}
 		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 

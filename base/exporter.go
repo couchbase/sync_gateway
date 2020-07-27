@@ -115,7 +115,6 @@ type CBLReplicationPullStats struct {
 type CBLReplicationPushStats struct {
 	AttachmentPushBytes *SgwIntStat `json:"attachment_push_bytes"`
 	AttachmentPushCount *SgwIntStat `json:"attachment_push_count"`
-	ConflictWriteCount  *SgwIntStat `json:"conflict_write_count"`
 	DocPushCount        *SgwIntStat `json:"doc_push_count"`
 	ProposeChangeCount  *SgwIntStat `json:"propose_change_count"`
 	ProposeChangeTime   *SgwIntStat `json:"propose_change_time"`
@@ -127,6 +126,7 @@ type CBLReplicationPushStats struct {
 type DatabaseStats struct {
 	// TODO : Cache feed & Import feed
 	AbandonedSeqs           *SgwIntStat `json:"abandoned_seqs"`
+	ConflictWriteCount      *SgwIntStat `json:"conflict_write_count"`
 	Crc32MatchCount         *SgwIntStat `json:"crc_32_match_count"`
 	DCPCachingCount         *SgwIntStat `json:"dcp_caching_count"`
 	DCPCachingTime          *SgwIntStat `json:"dcp_caching_time"`
@@ -391,16 +391,14 @@ type QueryStat struct {
 	QueryTime       *SgwIntStat
 }
 
-func (s *SgwStats) DBStats(name string) *DbStats {
+func (s *SgwStats) NewDBStats(name string) *DbStats {
 	s.initDBStats.Do(func() {
 		if s.DbStats == nil {
 			s.DbStats = map[string]*DbStats{}
 		}
 	})
 
-	if _, ok := s.DbStats[name]; !ok {
-		s.DbStats[name] = &DbStats{}
-	}
+	s.DbStats[name] = &DbStats{}
 	return s.DbStats[name]
 }
 
@@ -437,7 +435,6 @@ func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
 			d.CBLReplicationPushStats = &CBLReplicationPushStats{
 				AttachmentPushBytes: NewIntStat("replication_push", "attachment_push_bytes", dbName, prometheus.CounterValue, 0),
 				AttachmentPushCount: NewIntStat("replication_push", "attachment_push_count", dbName, prometheus.CounterValue, 0),
-				ConflictWriteCount:  NewIntStat("replication_push", "conflict_write_count", dbName, prometheus.CounterValue, 0),
 				DocPushCount:        NewIntStat("replication_push", "doc_push_count", dbName, prometheus.GaugeValue, 0),
 				ProposeChangeCount:  NewIntStat("replication_push", "propose_change_count", dbName, prometheus.CounterValue, 0),
 				ProposeChangeTime:   NewIntStat("replication_push", "propose_change_time", dbName, prometheus.CounterValue, 0),
@@ -448,6 +445,43 @@ func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
 		}
 	})
 	return d.CBLReplicationPushStats
+}
+
+func (d *DbStats) Database() *DatabaseStats {
+	d.initDatabaseStats.Do(func() {
+		if d.DatabaseStats == nil {
+			dbName := d.dbName
+			d.DatabaseStats = &DatabaseStats{
+				AbandonedSeqs:           NewIntStat("database", "abandoned_seqs", dbName, prometheus.CounterValue, 0),
+				ConflictWriteCount:      NewIntStat("database", "conflict_write_count", dbName, prometheus.CounterValue, 0),
+				Crc32MatchCount:         NewIntStat("database", "crc32c_match_count", dbName, prometheus.GaugeValue, 0),
+				DCPCachingCount:         NewIntStat("database", "dcp_caching_count", dbName, prometheus.GaugeValue, 0),
+				DCPCachingTime:          NewIntStat("database", "dcp_caching_time", dbName, prometheus.GaugeValue, 0),
+				DCPReceivedCount:        NewIntStat("database", "dcp_received_count", dbName, prometheus.GaugeValue, 0),
+				DCPReceivedTime:         NewIntStat("database", "dcp_received_time", dbName, prometheus.GaugeValue, 0),
+				DocReadsBytesBlip:       NewIntStat("database", "doc_reads_bytes_blip", dbName, prometheus.CounterValue, 0),
+				DocWritesBytes:          NewIntStat("database", "doc_writes_bytes", dbName, prometheus.CounterValue, 0),
+				DocWritesXattrBytes:     NewIntStat("database", "doc_writes_xattr_bytes", dbName, prometheus.CounterValue, 0),
+				HighSeqFeed:             NewIntStat("database", "high_seq_feed", dbName, prometheus.CounterValue, 0),
+				DocWritesBytesBlip:      NewIntStat("database", "doc_writes_bytes_blip", dbName, prometheus.CounterValue, 0),
+				NumDocReadsBlip:         NewIntStat("database", "num_doc_reads_blip", dbName, prometheus.CounterValue, 0),
+				NumDocReadsRest:         NewIntStat("database", "num_doc_reads_rest", dbName, prometheus.CounterValue, 0),
+				NumDocWrites:            NewIntStat("database", "num_doc_writes", dbName, prometheus.CounterValue, 0),
+				NumReplicationsActive:   NewIntStat("database", "num_replications_active", dbName, prometheus.GaugeValue, 0),
+				NumReplicationsTotal:    NewIntStat("database", "num_replications_total", dbName, prometheus.CounterValue, 0),
+				NumTombstonesCompacted:  NewIntStat("database", "num_tombstones_compacted", dbName, prometheus.CounterValue, 0),
+				SequenceAssignedCount:   NewIntStat("database", "sequence_assigned_count", dbName, prometheus.CounterValue, 0),
+				SequenceGetCount:        NewIntStat("database", "sequence_get_count", dbName, prometheus.CounterValue, 0),
+				SequenceIncrCount:       NewIntStat("database", "sequence_incr_count", dbName, prometheus.CounterValue, 0),
+				SequenceReleasedCount:   NewIntStat("database", "sequence_released_count", dbName, prometheus.CounterValue, 0),
+				SequenceReservedCount:   NewIntStat("database", "sequence_reserved_count", dbName, prometheus.CounterValue, 0),
+				WarnChannelsPerDocCount: NewIntStat("database", "warn_channels_per_doc_count", dbName, prometheus.CounterValue, 0),
+				WarnGrantsPerDocCount:   NewIntStat("database", "warn_grants_per_doc_count", dbName, prometheus.CounterValue, 0),
+				WarnXattrSizeCount:      NewIntStat("database", "warn_xattr_size_count", dbName, prometheus.CounterValue, 0),
+			}
+		}
+	})
+	return d.DatabaseStats
 }
 
 func (d *DbStats) DeltaSync() *DeltaSyncStats {
