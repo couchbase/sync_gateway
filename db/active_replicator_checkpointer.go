@@ -103,13 +103,12 @@ func (c *Checkpointer) AddProcessedSeqIDAndRev(seq string, idAndRev IDAndRev) {
 
 	c.lock.Lock()
 
-	// need to remove idAndRev from the lookup map even if we have a seq available
-	lookupSeq, _ := c.idAndRevLookup[idAndRev]
+	if seq == "" {
+		seq, _ = c.idAndRevLookup[idAndRev]
+	}
+	// should remove entry in the map even if we have a seq available
 	delete(c.idAndRevLookup, idAndRev)
 
-	if seq == "" {
-		seq = lookupSeq
-	}
 	c.processedSeqs[seq] = struct{}{}
 	c.stats.ProcessedSequenceCount++
 
