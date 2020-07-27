@@ -13,13 +13,9 @@ type SgwStats struct {
 	initDBStats sync.Once
 }
 
-func (s SgwStats) String() string {
+func (s *SgwStats) String() string {
 	bytes, _ := JSONMarshal(s)
 	return string(bytes)
-}
-
-func (s *SgwStats) Magic() interface{} {
-	return *s
 }
 
 type GlobalStat struct {
@@ -168,6 +164,7 @@ type DeltaSyncStats struct {
 
 type GsiStats struct {
 	Stats map[string]*QueryStat
+	mutex sync.Mutex
 }
 
 type ReplicatorStats struct {
@@ -201,6 +198,7 @@ type SgwStat struct {
 	statDesc      *prometheus.Desc
 	dbName        string
 	statValueType prometheus.ValueType
+	mutex         sync.Mutex
 }
 
 type SgwIntStat struct {
@@ -253,17 +251,23 @@ func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (s *SgwIntStat) Set(newV int64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.Val = newV
 	fmt.Println(s.Val)
 }
 
 func (s *SgwIntStat) SetIfMax(newV int64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	if newV > s.Val {
 		s.Val = newV
 	}
 }
 
 func (s *SgwIntStat) Add(newV int64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.Val += newV
 }
 
@@ -276,6 +280,8 @@ func (s *SgwIntStat) String() string {
 }
 
 func (s *SgwIntStat) Value() int64 {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	return s.Val
 }
 
@@ -520,6 +526,7 @@ func (d *DbStats) GSIStats(queryName string) *QueryStat {
 		}
 	})
 
+	d.GsiStats.mutex.Lock()
 	if _, ok := d.GsiStats.Stats[queryName]; !ok {
 		dbName := d.dbName
 		d.GsiStats.Stats[queryName] = &QueryStat{
@@ -528,6 +535,7 @@ func (d *DbStats) GSIStats(queryName string) *QueryStat {
 			QueryTime:       NewIntStat("gsi_views", queryName+"_query_time", dbName, prometheus.CounterValue, 0),
 		}
 	}
+	d.GsiStats.mutex.Unlock()
 
 	return d.GsiStats.Stats[queryName]
 }
