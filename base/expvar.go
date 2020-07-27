@@ -354,7 +354,7 @@ func NewStatsResourceUtilization() *expvar.Map {
 		0,
 	)
 
-	expvar.Publish("new_sg", expvar.Func(SyncGatewayStats.Magic))
+	expvar.Publish("new_sg", &SyncGatewayStats)
 	return stats
 }
 
