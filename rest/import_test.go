@@ -2132,3 +2132,53 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	syncMeta := rawResponse["_sync"].(map[string]interface{})
 	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", syncMeta["rev"])
 }
+
+// Check deleted document via SDK is getting imported if it is included in through ImportFilter function.
+func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
+	SkipImportTestsIfNotEnabled(t)
+	rtConfig := RestTesterConfig{
+		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+			ImportFilter: base.StringPtr(`function (doc) {
+				console.log("Doc in Import Filter:" + JSON.stringify(doc));
+				if (doc.channels || doc._deleted) {
+					return true
+				}
+				return false
+			}`),
+		},
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+	bucket := rt.Bucket()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyCRUD, base.KeyJavascript)()
+
+	// Create document via SDK
+	key := "doc1"
+	docBody := db.Body{"key": key, "channels": "ABC"}
+	expiry := time.Now().Add(time.Second * 30)
+	_, err := bucket.Add(key, uint32(expiry.Unix()), docBody)
+	assert.NoErrorf(t, err, "Unable to insert doc %s", key)
+
+	// Trigger import and check whether created document is getting imported
+	endpoint := "/db/_raw/" + key + "?redact=false"
+	response := rt.SendAdminRequest(http.MethodGet, endpoint, "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	var respBody db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	syncMeta := respBody[base.SyncPropertyName].(map[string]interface{})
+	assert.NotEmpty(t, syncMeta["rev"].(string))
+
+	// Delete the document via SDK
+	err = bucket.Delete(key)
+	assert.NoErrorf(t, err, "Unable to delete doc %s", key)
+
+	// Trigger import and check whether deleted document is getting imported
+	response = rt.SendAdminRequest(http.MethodGet, endpoint, "")
+	assert.Equal(t, http.StatusOK, response.Code)
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &respBody))
+	assert.True(t, respBody[db.BodyDeleted].(bool))
+	syncMeta = respBody[base.SyncPropertyName].(map[string]interface{})
+	assert.NotEmpty(t, syncMeta["rev"].(string))
+}

@@ -218,12 +218,25 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		// If there's a filter function defined, evaluate to determine whether we should import this doc
 		if db.DatabaseContext.Options.ImportOptions.ImportFilter != nil {
-			shouldImport, err := db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(body)
-			if err != nil {
+			var shouldImport bool
+			var importErr error
+
+			if isDelete && body == nil {
+				deleteBody := Body{BodyDeleted: true}
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(deleteBody)
+			} else if isDelete && body != nil {
+				deleteBody := body.ShallowCopy()
+				deleteBody[BodyDeleted] = true
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(deleteBody)
+			} else {
+				shouldImport, importErr = db.DatabaseContext.Options.ImportOptions.ImportFilter.EvaluateFunction(body)
+			}
+
+			if importErr != nil {
 				base.Debugf(base.KeyImport, "Error returned for doc %s while evaluating import function - will not be imported.", base.UD(docid))
 				return nil, nil, updatedExpiry, base.ErrImportCancelledFilter
 			}
-			if shouldImport == false {
+			if !shouldImport {
 				base.Debugf(base.KeyImport, "Doc %s excluded by document import function - will not be imported.", base.UD(docid))
 				// TODO: If this document has a current revision (this is a document that was previously mobile-enabled), do additional opt-out processing
 				// pending https://github.com/couchbase/sync_gateway/issues/2750
