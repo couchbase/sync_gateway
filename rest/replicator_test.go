@@ -51,31 +51,31 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		Continuous:  true,
 	})
 
-	startNumReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
-	startNumReplicationsActive := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive))
+	startNumReplicationsTotal := rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsTotal.Value()
+	startNumReplicationsActive := rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsActive.Value()
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
 
 	// Check total stat
-	numReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
+	numReplicationsTotal := rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsTotal.Value()
 	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 
 	// Check active stat
-	assert.Equal(t, startNumReplicationsActive+2, base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive)))
+	assert.Equal(t, startNumReplicationsActive+2, rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsActive.Value())
 
 	// Close the replicator (implicit disconnect)
 	assert.NoError(t, ar.Stop())
 
 	// Wait for active stat to drop to original value
 	numReplicationsActive, ok := base.WaitForStat(func() int64 {
-		return base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsActive))
+		return rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsActive.Value()
 	}, startNumReplicationsActive)
 	assert.True(t, ok)
 	assert.Equal(t, startNumReplicationsActive, numReplicationsActive)
 
 	// Verify total stat has not been decremented
-	numReplicationsTotal = base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
+	numReplicationsTotal = rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsTotal.Value()
 	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 }
 

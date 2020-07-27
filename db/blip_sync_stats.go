@@ -11,13 +11,13 @@ type BlipSyncStats struct {
 	HandleRevCount                   *base.SgwIntStat // handleRev
 	HandleRevErrorCount              *expvar.Int
 	HandleRevDeltaRecvCount          *base.SgwIntStat
-	HandleRevBytes                   *expvar.Int
+	HandleRevBytes                   *base.SgwIntStat
 	HandleRevProcessingTime          *base.SgwIntStat
 	HandleRevDocsPurgedCount         *expvar.Int
-	SendRevCount                     *expvar.Int // sendRev
+	SendRevCount                     *base.SgwIntStat // sendRev
 	SendRevDeltaRequestedCount       *base.SgwIntStat
 	SendRevDeltaSentCount            *base.SgwIntStat
-	SendRevBytes                     *expvar.Int
+	SendRevBytes                     *base.SgwIntStat
 	SendRevErrorTotal                *expvar.Int
 	SendRevErrorConflictCount        *expvar.Int
 	SendRevErrorRejectedCount        *expvar.Int
@@ -49,13 +49,13 @@ func NewBlipSyncStats() *BlipSyncStats {
 		HandleRevCount:                   &base.SgwIntStat{}, // handleRev
 		HandleRevErrorCount:              &expvar.Int{},
 		HandleRevDeltaRecvCount:          &base.SgwIntStat{},
-		HandleRevBytes:                   &expvar.Int{},
+		HandleRevBytes:                   &base.SgwIntStat{},
 		HandleRevProcessingTime:          &base.SgwIntStat{},
 		HandleRevDocsPurgedCount:         &expvar.Int{},
-		SendRevCount:                     &expvar.Int{}, // sendRev
+		SendRevCount:                     &base.SgwIntStat{}, // sendRev
 		SendRevDeltaRequestedCount:       &base.SgwIntStat{},
 		SendRevDeltaSentCount:            &base.SgwIntStat{},
-		SendRevBytes:                     &expvar.Int{},
+		SendRevBytes:                     &base.SgwIntStat{},
 		SendRevErrorTotal:                &expvar.Int{},
 		SendRevErrorConflictCount:        &expvar.Int{},
 		SendRevErrorRejectedCount:        &expvar.Int{},
@@ -87,56 +87,36 @@ func NewBlipSyncStats() *BlipSyncStats {
 func BlipSyncStatsForCBL(dbStats *DatabaseStats) *BlipSyncStats {
 	blipStats := NewBlipSyncStats()
 
-	// blipStats.HandleChangesCount = dbStats.StatsCblReplicationPush().Get(base.StatKeyProposeChangeCount).(*expvar.Int)
-	// blipStats.HandleChangesTime = dbStats.StatsCblReplicationPush().Get(base.StatKeyProposeChangeTime).(*expvar.Int)
-
 	blipStats.HandleChangesCount = dbStats.NewStats.CBLReplicationPush().ProposeChangeCount
 	blipStats.HandleChangesTime = dbStats.NewStats.CBLReplicationPush().ProposeChangeTime
 
-	// blipStats.SendRevDeltaSentCount = dbStats.StatsDeltaSync().Get(base.StatKeyDeltasSent).(*expvar.Int)
 	blipStats.SendRevDeltaSentCount = dbStats.NewStats.DeltaSync().DeltasSent
 
-	// blipStats.SendRevDeltaRequestedCount = dbStats.StatsDeltaSync().Get(base.StatKeyDeltasRequested).(*expvar.Int)
 	blipStats.SendRevDeltaRequestedCount = dbStats.NewStats.DeltaSync().DeltasRequested
-	blipStats.SendRevBytes = dbStats.StatsDatabase().Get(base.StatKeyDocReadsBytesBlip).(*expvar.Int)
-	blipStats.SendRevCount = dbStats.StatsDatabase().Get(base.StatKeyNumDocReadsBlip).(*expvar.Int)
+	blipStats.SendRevBytes = dbStats.NewStats.Database().DocReadsBytesBlip
+	blipStats.SendRevCount = dbStats.NewStats.Database().NumDocReadsBlip
 
-	blipStats.HandleRevBytes = dbStats.StatsDatabase().Get(base.StatKeyDocWritesBytesBlip).(*expvar.Int)
-	// blipStats.HandleRevProcessingTime = dbStats.StatsCblReplicationPush().Get(base.StatKeyWriteProcessingTime).(*expvar.Int)
+	blipStats.HandleRevBytes = dbStats.NewStats.Database().DocWritesBytesBlip
 	blipStats.HandleRevProcessingTime = dbStats.NewStats.CBLReplicationPush().WriteProcessingTime
 
-	// blipStats.HandleRevDeltaRecvCount = dbStats.StatsDeltaSync().Get(base.StatKeyDeltaPushDocCount).(*expvar.Int)
 	blipStats.HandleRevDeltaRecvCount = dbStats.NewStats.DeltaSync().DeltaPushDocCount
-	// blipStats.HandleRevCount = dbStats.StatsCblReplicationPush().Get(base.StatKeyDocPushCount).(*expvar.Int)
 	blipStats.HandleRevCount = dbStats.NewStats.CBLReplicationPush().DocPushCount
 
-	// blipStats.GetAttachmentCount = dbStats.StatsCblReplicationPull().Get(base.StatKeyAttachmentPullCount).(*expvar.Int)
 	blipStats.GetAttachment = dbStats.NewStats.CBLReplicationPull().AttachmentPullCount
-	// blipStats.GetAttachmentBytes = dbStats.StatsCblReplicationPull().Get(base.StatKeyAttachmentPullBytes).(*expvar.Int)
 	blipStats.GetAttachmentBytes = dbStats.NewStats.CBLReplicationPull().AttachmentPullBytes
 
-	// blipStats.HandleChangesResponseCount = dbStats.StatsCblReplicationPull().Get(base.StatKeyRequestChangesCount).(*expvar.Int)
 	blipStats.HandleChangesResponseCount = dbStats.NewStats.CBLReplicationPull().RequestChangesCount
-	// blipStats.HandleChangesResponseTime = dbStats.StatsCblReplicationPull().Get(base.StatKeyRequestChangesTime).(*expvar.Int)
 	blipStats.HandleChangesResponseTime = dbStats.NewStats.CBLReplicationPull().RequestChangesTime
-	// blipStats.HandleChangesSendRevCount = dbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount).(*expvar.Int)
 	blipStats.HandleChangesSendRevCount = dbStats.NewStats.CBLReplicationPull().RevSendCount
-	// blipStats.HandleChangesSendRevLatency = dbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendLatency).(*expvar.Int)
 	blipStats.HandleChangesSendRevLatency = dbStats.NewStats.CBLReplicationPull().RevSendLatency
-	// blipStats.HandleChangesSendRevTime = dbStats.StatsCblReplicationPull().Get(base.StatKeyRevProcessingTime).(*expvar.Int)
 	blipStats.HandleChangesSendRevTime = dbStats.NewStats.CBLReplicationPull().RevProcessingTime
 
 	// TODO: these are strictly cross-replication stats, maybe do elsewhere?
-	// blipStats.SubChangesContinuousActive = dbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsActiveContinuous).(*expvar.Int)
 	blipStats.SubChangesContinuousActive = dbStats.NewStats.CBLReplicationPull().NumPullReplActiveContinuous
-	// blipStats.SubChangesContinuousTotal = dbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsTotalContinuous).(*expvar.Int)
 	blipStats.SubChangesContinuousTotal = dbStats.NewStats.CBLReplicationPull().NumPullReplTotalContinuous
-	// blipStats.SubChangesOneShotActive = dbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsActiveOneShot).(*expvar.Int)
 	blipStats.SubChangesOneShotActive = dbStats.NewStats.CBLReplicationPull().NumPullReplActiveOneShot
-	// blipStats.SubChangesOneShotTotal = dbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsTotalOneShot).(*expvar.Int)
 	blipStats.SubChangesOneShotTotal = dbStats.NewStats.CBLReplicationPull().NumPullReplTotalOneShot
 
-	// blipStats.DeltaEnabledPullReplicationCount = dbStats.StatsDeltaSync().Get(base.StatKeyDeltaPullReplicationCount).(*expvar.Int)
 	blipStats.DeltaEnabledPullReplicationCount = dbStats.NewStats.DeltaSync().DeltaPullReplicationCount
 
 	return blipStats

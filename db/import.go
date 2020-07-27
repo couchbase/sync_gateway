@@ -205,7 +205,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// Is this doc an SG Write?
 		isSgWrite, crc32Match := doc.IsSGWrite(existingDoc.Body)
 		if crc32Match {
-			db.DbStats.StatsDatabase().Add(base.StatKeyCrc32cMatchCount, 1)
+			db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
 		}
 
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.

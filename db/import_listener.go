@@ -12,11 +12,11 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName  string            // Used for logging
-	terminator  chan bool         // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	database    Database          // Admin database instance to be used for import
-	stats       *expvar.Map       // Database stats group
-	cbgtContext *base.CbgtContext // Handle to cbgt manager,cfg
+	bucketName  string              // Used for logging
+	terminator  chan bool           // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	database    Database            // Admin database instance to be used for import
+	stats       *base.DatabaseStats // Database stats group
+	cbgtContext *base.CbgtContext   // Handle to cbgt manager,cfg
 }
 
 func NewImportListener() *importListener {
@@ -34,14 +34,14 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
-	il.stats = dbStats.statsDatabaseMap
+	il.stats = dbStats.NewStats.DatabaseStats
 	feedArgs := sgbucket.FeedArguments{
 		ID:         base.DCPImportFeedID,
 		Backfill:   sgbucket.FeedResume,
 		Terminator: il.terminator,
 	}
 
-	importFeedStatsMap, ok := dbContext.DbStats.statsDatabaseMap.Get(base.StatKeyImportDcpStats).(*expvar.Map)
+	importFeedStatsMap, ok := dbContext.DbStats.StatsDatabase().Get(base.StatKeyImportDcpStats).(*expvar.Map)
 	if !ok {
 		return errors.New("Import feed stats map not initialized")
 	}
@@ -115,7 +115,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 	if syncData != nil {
 		isSGWrite, crc32Match = syncData.IsSGWrite(event.Cas, rawBody)
 		if crc32Match {
-			il.stats.Add(base.StatKeyCrc32cMatchCount, 1)
+			il.stats.Crc32MatchCount.Add(1)
 		}
 	}
 
