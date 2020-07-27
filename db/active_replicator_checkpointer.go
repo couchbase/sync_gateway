@@ -24,6 +24,9 @@ type Checkpointer struct {
 	expectedSeqs []string
 	// processedSeqs is a map of sequence IDs we've processed revs for
 	processedSeqs map[string]struct{}
+	// idAndRevLookup is a temporary map of DocID/RevID pair to sequence number,
+	// to handle cases where we receive a message that doesn't contain a sequence.
+	idAndRevLookup map[IDAndRev]string
 	// ctx is used to stop the checkpointer goroutine
 	ctx context.Context
 	// lastRemoteCheckpointRevID is the last known remote checkpoint RevID.
@@ -52,6 +55,7 @@ func NewCheckpointer(ctx context.Context, clientID string, blipSender *blip.Send
 		activeDB:           activeDB,
 		expectedSeqs:       make([]string, 0),
 		processedSeqs:      make(map[string]struct{}),
+		idAndRevLookup:     make(map[IDAndRev]string),
 		checkpointInterval: checkpointInterval,
 		ctx:                ctx,
 		stats:              CheckpointerStats{},
@@ -89,8 +93,30 @@ func (c *Checkpointer) AddProcessedSeq(seq string) {
 	c.lock.Unlock()
 }
 
-func (c *Checkpointer) AddExpectedSeq(seq ...string) {
-	if len(seq) == 0 {
+func (c *Checkpointer) AddProcessedSeqIDAndRev(seq string, idAndRev IDAndRev) {
+	select {
+	case <-c.ctx.Done():
+		// replicator already closed, bail out of checkpointing work
+		return
+	default:
+	}
+
+	c.lock.Lock()
+
+	if seq == "" {
+		seq, _ = c.idAndRevLookup[idAndRev]
+	}
+	// should remove entry in the map even if we have a seq available
+	delete(c.idAndRevLookup, idAndRev)
+
+	c.processedSeqs[seq] = struct{}{}
+	c.stats.ProcessedSequenceCount++
+
+	c.lock.Unlock()
+}
+
+func (c *Checkpointer) AddExpectedSeqs(seqs ...string) {
+	if len(seqs) == 0 {
 		// nothing to do
 		return
 	}
@@ -103,8 +129,30 @@ func (c *Checkpointer) AddExpectedSeq(seq ...string) {
 	}
 
 	c.lock.Lock()
-	c.expectedSeqs = append(c.expectedSeqs, seq...)
-	c.stats.ExpectedSequenceCount += int64(len(seq))
+	c.expectedSeqs = append(c.expectedSeqs, seqs...)
+	c.stats.ExpectedSequenceCount += int64(len(seqs))
+	c.lock.Unlock()
+}
+
+func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]string) {
+	if len(seqs) == 0 {
+		// nothing to do
+		return
+	}
+
+	select {
+	case <-c.ctx.Done():
+		// replicator already closed, bail out of checkpointing work
+		return
+	default:
+	}
+
+	c.lock.Lock()
+	for idAndRev, seq := range seqs {
+		c.idAndRevLookup[idAndRev] = seq
+		c.expectedSeqs = append(c.expectedSeqs, seq)
+	}
+	c.stats.ExpectedSequenceCount += int64(len(seqs))
 	c.lock.Unlock()
 }
 

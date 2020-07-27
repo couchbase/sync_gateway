@@ -391,7 +391,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		bh.replicationStats.HandleChangesTime.Add(time.Since(startTime).Nanoseconds())
 	}()
 
-	expectedSeqs := make([]string, 0)
+	// DocID+RevID -> SeqNo
+	expectedSeqs := make(map[IDAndRev]string, 0)
 	alreadyKnownSeqs := make([]string, 0)
 
 	for _, change := range changeList {
@@ -421,7 +422,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 			// skip parsing seqno if we're not going to use it (no callback defined)
 			if bh.sgr2PullAddExpectedSeqsCallback != nil {
-				expectedSeqs = append(expectedSeqs, seqStr(change[0]))
+				expectedSeqs[IDAndRev{DocID: docID, RevID: revID}] = seqStr(change[0])
 			}
 		}
 		nWritten++
@@ -440,7 +441,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		bh.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
 	}
 	if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
-		bh.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs)
+		bh.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
 	}
 
 	return nil
@@ -556,6 +557,10 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
 		rq.String(), base.UD(rq.Properties[NorevMessageId]), rq.Properties[NorevMessageRev], rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
+	if bh.sgr2PullProcessedSeqCallback != nil {
+		bh.sgr2PullProcessedSeqCallback(rq.Properties[NorevMessageSeq], IDAndRev{DocID: rq.Properties[NorevMessageId], RevID: rq.Properties[NorevMessageRev]})
+	}
+
 	// Couchbase Lite always sends noreply=true for norev profiles
 	// but for testing purposes, it's useful to know which handler processed the message
 	if !rq.NoReply() && rq.Properties[SGShowHandler] == "true" {
@@ -615,7 +620,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			}
 			bh.replicationStats.HandleRevDocsPurgedCount.Add(1)
 			if bh.sgr2PullProcessedSeqCallback != nil {
-				bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence])
+				bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
 			}
 			return nil
 		}
@@ -740,7 +745,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	}
 
 	if bh.sgr2PullProcessedSeqCallback != nil {
-		bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence])
+		bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
 	}
 
 	return nil

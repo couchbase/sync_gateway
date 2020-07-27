@@ -177,18 +177,11 @@ func (apr *ActivePullReplicator) reset() error {
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
-	apr.blipSyncContext.sgr2PullAlreadyKnownSeqsCallback = func(alreadyKnownSeqs []string) {
-		apr.Checkpointer.AddAlreadyKnownSeq(alreadyKnownSeqs...)
-	}
+	apr.blipSyncContext.sgr2PullAlreadyKnownSeqsCallback = apr.Checkpointer.AddAlreadyKnownSeq
 
-	apr.blipSyncContext.sgr2PullAddExpectedSeqsCallback = func(changesSeqs []string) {
-		apr.Checkpointer.AddExpectedSeq(changesSeqs...)
-	}
+	apr.blipSyncContext.sgr2PullAddExpectedSeqsCallback = apr.Checkpointer.AddExpectedSeqIDAndRevs
 
-	// TODO: Check whether we need to add a handleNoRev callback to remove expected sequences.
-	apr.blipSyncContext.sgr2PullProcessedSeqCallback = func(remoteSeq string) {
-		apr.Checkpointer.AddProcessedSeq(remoteSeq)
-	}
+	apr.blipSyncContext.sgr2PullProcessedSeqCallback = apr.Checkpointer.AddProcessedSeqIDAndRev
 
 	// Trigger complete for non-continuous replications when caught up
 	if !apr.config.Continuous {
