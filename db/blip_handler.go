@@ -441,7 +441,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		bh.sgr2PullAddExpectedSeqsCallback(expectedSeqs)
 	}
 	if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
-		bh.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs)
+		bh.sgr2PullAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
 	}
 
 	return nil
@@ -557,8 +557,8 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 	base.InfofCtx(bh.loggingCtx, base.KeySyncMsg, "%s: norev for doc %q / %q - error: %q - reason: %q",
 		rq.String(), base.UD(rq.Properties[NorevMessageId]), rq.Properties[NorevMessageRev], rq.Properties[NorevMessageError], rq.Properties[NorevMessageReason])
 
-	if bh.sgr2PullNorevCallback != nil {
-		bh.sgr2PullNorevCallback(rq.Properties[NorevMessageId], rq.Properties[NorevMessageRev])
+	if bh.sgr2PullProcessedSeqCallback != nil {
+		bh.sgr2PullProcessedSeqCallback(rq.Properties[NorevMessageSeq], IDAndRev{DocID: rq.Properties[NorevMessageId], RevID: rq.Properties[NorevMessageRev]})
 	}
 
 	// Couchbase Lite always sends noreply=true for norev profiles
@@ -620,7 +620,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			}
 			bh.replicationStats.HandleRevDocsPurgedCount.Add(1)
 			if bh.sgr2PullProcessedSeqCallback != nil {
-				bh.sgr2PullProcessedSeqCallback(IDAndRev{DocID: docID, RevID: revID}, rq.Properties[RevMessageSequence])
+				bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
 			}
 			return nil
 		}
@@ -745,7 +745,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	}
 
 	if bh.sgr2PullProcessedSeqCallback != nil {
-		bh.sgr2PullProcessedSeqCallback(IDAndRev{DocID: docID, RevID: revID}, rq.Properties[RevMessageSequence])
+		bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
 	}
 
 	return nil

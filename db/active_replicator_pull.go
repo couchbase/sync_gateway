@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -176,63 +175,13 @@ func (apr *ActivePullReplicator) reset() error {
 	return resetLocalCheckpoint(apr.config.ActiveDB, checkpointID)
 }
 
-type pullCheckpointerLookup struct {
-	m map[IDAndRev]string
-	l sync.Mutex
-}
-
-func newPullCheckpointerLookup() *pullCheckpointerLookup {
-	return &pullCheckpointerLookup{
-		m: make(map[IDAndRev]string, 0),
-	}
-}
-
-func (p *pullCheckpointerLookup) AddSeqs(idRevAndSeq map[IDAndRev]string) (addedSeqs []string) {
-	addedSeqs = make([]string, 0, len(idRevAndSeq))
-	p.l.Lock()
-	for k, v := range idRevAndSeq {
-		p.m[k] = v
-		addedSeqs = append(addedSeqs, v)
-	}
-	p.l.Unlock()
-	return addedSeqs
-}
-
-// Pop a sequence by DocID+RevID
-func (p *pullCheckpointerLookup) PopSeq(idAndRev IDAndRev) (seq string) {
-	p.l.Lock()
-	seq, ok := p.m[idAndRev]
-	if ok {
-		delete(p.m, idAndRev)
-	}
-	p.l.Unlock()
-	return seq
-}
-
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
 func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
-	// noRevSeqLookup is required for sgr2PullNorevCallback because sequence isn't sent in norev messages like it is for everything else.
-	// For hydrogen-to-hydrogen replications, we do send seq in norev, but still need this handling for pre-hydrogen targets.
-	noRevSeqLookup := newPullCheckpointerLookup()
+	apr.blipSyncContext.sgr2PullAlreadyKnownSeqsCallback = apr.Checkpointer.AddAlreadyKnownSeq
 
-	apr.blipSyncContext.sgr2PullAlreadyKnownSeqsCallback = func(alreadyKnownSeqs []string) {
-		apr.Checkpointer.AddAlreadyKnownSeq(alreadyKnownSeqs...)
-	}
+	apr.blipSyncContext.sgr2PullAddExpectedSeqsCallback = apr.Checkpointer.AddExpectedSeqIDAndRevs
 
-	apr.blipSyncContext.sgr2PullAddExpectedSeqsCallback = func(changesSeqs map[IDAndRev]string) {
-		seqs := noRevSeqLookup.AddSeqs(changesSeqs)
-		apr.Checkpointer.AddExpectedSeq(seqs...)
-	}
-
-	apr.blipSyncContext.sgr2PullProcessedSeqCallback = func(idAndRev IDAndRev, remoteSeq string) {
-		_ = noRevSeqLookup.PopSeq(idAndRev)
-		apr.Checkpointer.AddProcessedSeq(remoteSeq)
-	}
-
-	apr.blipSyncContext.sgr2PullNorevCallback = func(docID, revID string) {
-		seq := noRevSeqLookup.PopSeq(IDAndRev{DocID: docID, RevID: revID})
-		apr.Checkpointer.AddProcessedSeq(seq)
-	}
+	apr.blipSyncContext.sgr2PullProcessedSeqCallback = apr.Checkpointer.AddProcessedSeqIDAndRev
 
 	// Trigger complete for non-continuous replications when caught up
 	if !apr.config.Continuous {

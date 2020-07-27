@@ -91,12 +91,11 @@ type BlipSyncContext struct {
 	userChangeWaiter                 *ChangeWaiter                             // Tracks whether the users/roles associated with the replication have changed
 	userName                         string                                    // Avoid contention on db.user during userChangeWaiter user lookup
 	sgr2PullAddExpectedSeqsCallback  func(expectedSeqs map[IDAndRev]string)    // sgr2PullAddExpectedSeqsCallback is called after successfully handling an incoming changes message
-	sgr2PullProcessedSeqCallback     func(idAndRev IDAndRev, remoteSeq string) // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
-	sgr2PullAlreadyKnownSeqsCallback func(alreadyKnownSeqs []string)           // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
-	sgr2PullNorevCallback            func(docID, revID string)                 // sgr2PullNorevCallback is called when we receive a norev in response to a rev request
-	sgr2PushAddExpectedSeqsCallback  func(expectedSeqs []string)               // sgr2PushAddExpectedSeqsCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
+	sgr2PullProcessedSeqCallback     func(remoteSeq string, idAndRev IDAndRev) // sgr2PullProcessedSeqCallback is called after successfully handling an incoming rev message
+	sgr2PullAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...string)          // sgr2PullAlreadyKnownSeqsCallback is called to mark the sequences as being immediately processed
+	sgr2PushAddExpectedSeqsCallback  func(expectedSeqs ...string)              // sgr2PushAddExpectedSeqsCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
 	sgr2PushProcessedSeqCallback     func(remoteSeq string)                    // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
-	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs []string)           // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
+	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...string)          // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
 	emptyChangesMessageCallback      func()                                    // emptyChangesMessageCallback is called when an empty changes message is received
 	replicationStats                 *BlipSyncStats                            // Replication stats
 	purgeOnRemoval                   bool                                      // Purges the document when we pull a _removed:true revision.
@@ -303,12 +302,12 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	}
 
 	if bsc.sgr2PushAlreadyKnownSeqsCallback != nil {
-		bsc.sgr2PushAlreadyKnownSeqsCallback(alreadyKnownSeqs)
+		bsc.sgr2PushAlreadyKnownSeqsCallback(alreadyKnownSeqs...)
 	}
 
 	if revSendCount > 0 {
 		if bsc.sgr2PushAddExpectedSeqsCallback != nil {
-			bsc.sgr2PushAddExpectedSeqsCallback(sentSeqs)
+			bsc.sgr2PushAddExpectedSeqsCallback(sentSeqs...)
 		}
 
 		bsc.replicationStats.HandleChangesSendRevCount.Add(revSendCount)
