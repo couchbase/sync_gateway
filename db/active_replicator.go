@@ -127,7 +127,7 @@ func (ar *ActiveReplicator) Reset() error {
 		return pullErr
 	}
 
-	_ = ar.publishStatus()
+	_ = ar.purgeStatus()
 	return nil
 }
 
@@ -305,6 +305,15 @@ func (ar *ActiveReplicator) publishStatus() error {
 	base.Debugf(base.KeyReplicate, "Persisting replication status for replicationID %v", ar.ID)
 	err := ar.config.ActiveDB.Bucket.Set(replicationStatusKey(ar.ID), 0, status)
 	return err
+}
+
+func (ar *ActiveReplicator) purgeStatus() error {
+	base.Debugf(base.KeyReplicate, "Purging replication status for replicationID %v", ar.ID)
+	err := ar.config.ActiveDB.Bucket.Delete(replicationStatusKey(ar.ID))
+	if !base.IsKeyNotFoundError(ar.config.ActiveDB.Bucket, err) {
+		return err
+	}
+	return nil
 }
 
 func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {

@@ -492,7 +492,11 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			if err != nil {
 				base.Warnf("Unable to gracefully close active replication: %v", err)
 			}
+			if !ok {
+				activeReplicator.purgeStatus()
+			}
 			delete(m.activeReplicators, replicationID)
+
 		} else {
 			// Check for replications assigned to this node with updated state
 			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
