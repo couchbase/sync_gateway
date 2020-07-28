@@ -21,17 +21,19 @@ const (
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID     string
-	Push   *ActivePushReplicator
-	Pull   *ActivePullReplicator
-	config *ActiveReplicatorConfig
+	ID        string
+	Push      *ActivePushReplicator
+	Pull      *ActivePullReplicator
+	config    *ActiveReplicatorConfig
+	statusKey string // key used when persisting replication status
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 	ar := &ActiveReplicator{
-		ID:     config.ID,
-		config: config,
+		ID:        config.ID,
+		config:    config,
+		statusKey: replicationStatusKey(config.ID),
 	}
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
@@ -48,6 +50,7 @@ func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 		}
 	}
 
+	base.InfofCtx(config.ActiveDB.Ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
 	return ar
 }
 
@@ -302,14 +305,14 @@ func combinedState(state1, state2 string) (combinedState string) {
 
 func (ar *ActiveReplicator) publishStatus() error {
 	status := ar.GetStatus()
-	base.Debugf(base.KeyReplicate, "Persisting replication status for replicationID %v", ar.ID)
-	err := ar.config.ActiveDB.Bucket.Set(replicationStatusKey(ar.ID), 0, status)
+	base.Debugf(base.KeyReplicate, "Persisting replication status for replicationID %v (%v)", ar.ID, ar.statusKey)
+	err := ar.config.ActiveDB.Bucket.Set(ar.statusKey, 0, status)
 	return err
 }
 
 func (ar *ActiveReplicator) purgeStatus() error {
-	base.Debugf(base.KeyReplicate, "Purging replication status for replicationID %v", ar.ID)
-	err := ar.config.ActiveDB.Bucket.Delete(replicationStatusKey(ar.ID))
+	base.Debugf(base.KeyReplicate, "Purging replication status for replicationID %v (%v)", ar.ID, ar.statusKey)
+	err := ar.config.ActiveDB.Bucket.Delete(ar.statusKey)
 	if !base.IsKeyNotFoundError(ar.config.ActiveDB.Bucket, err) {
 		return err
 	}
@@ -321,6 +324,14 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 	return status, err
 }
 
+// replicationStatusKey generates the key used to store status information for the given replicationID.  If replicationID
+// is 40 characters or longer, a SHA-1 hash of the replicationID is used in the status key.
+// If the replicationID is less than 40 characters, the ID can be used directly without worrying about final key length
+// or collision with other sha-1 hashes.
 func replicationStatusKey(replicationID string) string {
-	return fmt.Sprintf("%s%s", base.SGRStatusPrefix, replicationID)
+	statusKeyID := replicationID
+	if len(statusKeyID) >= 40 {
+		statusKeyID = base.Sha1HashString(replicationID, "")
+	}
+	return fmt.Sprintf("%s%s", base.SGRStatusPrefix, statusKeyID)
 }
