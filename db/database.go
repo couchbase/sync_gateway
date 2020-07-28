@@ -266,7 +266,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
 		dbContext,
-		dbContext.DbStats.StatsCache(),
+		dbContext.DbStats.NewStats.Cache(),
 	)
 
 	dbContext.EventMgr = NewEventManager()
@@ -286,7 +286,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Initialize the active channel counter
-	dbContext.activeChannels = channels.NewActiveChannels(dbStats.StatsCache().Get(base.StatKeyActiveChannels).(*expvar.Int))
+	dbContext.activeChannels = channels.NewActiveChannels(dbStats.NewStats.Cache().NumActiveChannels)
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
@@ -1233,7 +1233,7 @@ func (context *DatabaseContext) FlushRevisionCacheForTest() {
 	context.revisionCache = NewRevisionCache(
 		context.Options.RevisionCacheOptions,
 		context,
-		context.DbStats.StatsCache(),
+		context.DbStats.NewStats.Cache(),
 	)
 
 }

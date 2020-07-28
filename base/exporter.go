@@ -45,8 +45,8 @@ type ResourceUtilization struct {
 }
 
 type DbStats struct {
-	dbName string
-	// Cache                   *CacheStats              `json:"cache"`
+	dbName                  string
+	CacheStats              *CacheStats              `json:"cache"`
 	CBLReplicationPullStats *CBLReplicationPullStats `json:"cbl_replication_pull_stats"`
 	CBLReplicationPushStats *CBLReplicationPushStats `json:"cbl_replication_push_stats"`
 	DatabaseStats           *DatabaseStats           `json:"database_stats,omitempty"`
@@ -68,30 +68,30 @@ type DbStats struct {
 }
 
 type CacheStats struct {
-	RevisionCacheHits                   *SgwIntStat `json:"revision_cache_hits"`
-	RevisionCacheMisses                 *SgwIntStat `json:"revision_cache_misses"`
-	RevisionCacheBypass                 *SgwIntStat `json:"revision_cache_bypass"`
-	ChannelCacheHits                    *SgwIntStat `json:"channel_cache_hits"`
-	ChannelCacheMisses                  *SgwIntStat `json:"channel_cache_misses"`
+	AbandonedSeqs                       *SgwIntStat `json:"abandoned_seqs"`
 	ChannelCacheRevsActive              *SgwIntStat `json:"channel_cache_revs_active"`
-	ChannelCacheRevsTombstone           *SgwIntStat `json:"channel_cache_revs_tombstone"`
-	ChannelCacheRevsRemoval             *SgwIntStat `json:"channel_cache_revs_removal"`
-	ChannelCacheNumChannels             *SgwIntStat `json:"channel_cache_num_channels"`
-	ChannelCacheMaxEntries              *SgwIntStat `json:"channel_cache_max_entries"`
-	ChannelCachePendingQueries          *SgwIntStat `json:"channel_cache_pending_queries"`
+	ChannelCacheBypassCount             *SgwIntStat `json:"channel_cache_bypass_count"`
 	ChannelCacheChannelsAdded           *SgwIntStat `json:"channel_cache_channels_added"`
 	ChannelCacheChannelsEvictedInactive *SgwIntStat `json:"channel_cache_channels_evicted_inactive"`
 	ChannelCacheChannelsEvictedNRU      *SgwIntStat `json:"channel_cache_channels_evicted_nru"`
 	ChannelCacheCompactCount            *SgwIntStat `json:"channel_cache_compact_count"`
 	ChannelCacheCompactTime             *SgwIntStat `json:"channel_cache_compact_time"`
-	ChannelCacheBypassCount             *SgwIntStat `json:"channel_cache_bypass_count"`
-	ActiveChannels                      *SgwIntStat `json:"active_channels"`
-	NumSkippedSeqs                      *SgwIntStat `json:"num_skipped_seqs"`
-	AbandonedSeqs                       *SgwIntStat `json:"abandoned_seqs"`
+	ChannelCacheHits                    *SgwIntStat `json:"channel_cache_hits"`
+	ChannelCacheMaxEntries              *SgwIntStat `json:"channel_cache_max_entries"`
+	ChannelCacheMisses                  *SgwIntStat `json:"channel_cache_misses"`
+	ChannelCacheNumChannels             *SgwIntStat `json:"channel_cache_num_channels"`
+	ChannelCachePendingQueries          *SgwIntStat `json:"channel_cache_pending_queries"`
+	ChannelCacheRevsRemoval             *SgwIntStat `json:"channel_cache_revs_removal"`
+	ChannelCacheRevsTombstone           *SgwIntStat `json:"channel_cache_revs_tombstone"`
 	HighSeqCached                       *SgwIntStat `json:"high_seq_cached"`
 	HighSeqStable                       *SgwIntStat `json:"high_seq_stable"`
-	SkippedSeqLen                       *SgwIntStat `json:"skipped_seq_len"`
+	NumActiveChannels                   *SgwIntStat `json:"num_active_channels"`
+	NumSkippedSeqs                      *SgwIntStat `json:"num_skipped_seqs"`
 	PendingSeqLen                       *SgwIntStat `json:"pending_seq_len"`
+	RevisionCacheBypass                 *SgwIntStat `json:"revision_cache_bypass"`
+	RevisionCacheHits                   *SgwIntStat `json:"revision_cache_hits"`
+	RevisionCacheMisses                 *SgwIntStat `json:"revision_cache_misses"`
+	SkippedSeqLen                       *SgwIntStat `json:"skipped_seq_len"`
 }
 
 type CBLReplicationPullStats struct {
@@ -400,6 +400,41 @@ func (s *SgwStats) NewDBStats(name string) *DbStats {
 
 	s.DbStats[name] = &DbStats{}
 	return s.DbStats[name]
+}
+
+func (d *DbStats) Cache() *CacheStats {
+	d.initCacheStats.Do(func() {
+		if d.CacheStats == nil {
+			dbName := d.dbName
+			d.CacheStats = &CacheStats{
+				AbandonedSeqs:                       NewIntStat("cache", "abadoned_seqs", dbName, prometheus.CounterValue, 0),
+				ChannelCacheRevsActive:              NewIntStat("cache", "chan_cache_active_revs", dbName, prometheus.GaugeValue, 0),
+				ChannelCacheBypassCount:             NewIntStat("cache", "chan_cache_bypass_count", dbName, prometheus.CounterValue, 0),
+				ChannelCacheChannelsAdded:           NewIntStat("cache", "chan_cache_channels_added", dbName, prometheus.CounterValue, 0),
+				ChannelCacheChannelsEvictedInactive: NewIntStat("cache", "chan_cache_channels_evicted_inactive", dbName, prometheus.CounterValue, 0),
+				ChannelCacheChannelsEvictedNRU:      NewIntStat("cache", "chan_cache_channels_evicted_nru", dbName, prometheus.CounterValue, 0),
+				ChannelCacheCompactCount:            NewIntStat("cache", "chan_cache_compact_count", dbName, prometheus.CounterValue, 0),
+				ChannelCacheCompactTime:             NewIntStat("cache", "chan_cache_compact_time", dbName, prometheus.CounterValue, 0),
+				ChannelCacheHits:                    NewIntStat("cache", "chan_cache_hits", dbName, prometheus.CounterValue, 0),
+				ChannelCacheMaxEntries:              NewIntStat("cache", "chan_cache_max_entries", dbName, prometheus.GaugeValue, 0),
+				ChannelCacheMisses:                  NewIntStat("cache", "chan_cache_misses", dbName, prometheus.CounterValue, 0),
+				ChannelCacheNumChannels:             NewIntStat("cache", "chan_cache_num_channels", dbName, prometheus.GaugeValue, 0),
+				ChannelCachePendingQueries:          NewIntStat("cache", "chan_cache_pending_queries", dbName, prometheus.GaugeValue, 0),
+				ChannelCacheRevsRemoval:             NewIntStat("cache", "chan_cache_removal_revs", dbName, prometheus.GaugeValue, 0),
+				ChannelCacheRevsTombstone:           NewIntStat("cache", "chan_cache_tombstone_revs", dbName, prometheus.GaugeValue, 0),
+				HighSeqCached:                       NewIntStat("cache", "high_seq_cached", dbName, prometheus.CounterValue, 0),
+				HighSeqStable:                       NewIntStat("cache", "high_seq_stable", dbName, prometheus.CounterValue, 0),
+				NumActiveChannels:                   NewIntStat("cache", "num_active_channels", dbName, prometheus.GaugeValue, 0),
+				NumSkippedSeqs:                      NewIntStat("cache", "num_skipped_seqs", dbName, prometheus.CounterValue, 0),
+				PendingSeqLen:                       NewIntStat("cache", "pending_seq_len", dbName, prometheus.GaugeValue, 0),
+				RevisionCacheBypass:                 NewIntStat("cache", "rev_cache_bypass", dbName, prometheus.GaugeValue, 0),
+				RevisionCacheHits:                   NewIntStat("cache", "rev_cache_hits", dbName, prometheus.CounterValue, 0),
+				RevisionCacheMisses:                 NewIntStat("cache", "rev_cache_misses", dbName, prometheus.CounterValue, 0),
+				SkippedSeqLen:                       NewIntStat("cache", "skipped_seq_len", dbName, prometheus.GaugeValue, 0),
+			}
+		}
+	})
+	return d.CacheStats
 }
 
 func (d *DbStats) CBLReplicationPull() *CBLReplicationPullStats {

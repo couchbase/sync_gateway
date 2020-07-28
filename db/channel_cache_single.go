@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"errors"
-	"expvar"
 	"fmt"
 	"math"
 	"sync"
@@ -105,14 +104,14 @@ type singleChannelCacheImpl struct {
 	options          *ChannelCacheOptions // Cache size/expiry settings
 	cachedDocIDs     map[string]struct{}  // Set of keys present in the cache.  Used for efficient check for previous revisions on append
 	recentlyUsed     base.AtomicBool      // Atomic recently used flag, used by cache compaction.
-	statsMap         *expvar.Map          // Map used for cache stats
+	cacheStats       *base.CacheStats     // Map used for cache stats
 }
 
-func newSingleChannelCache(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, statsMap *expvar.Map) *singleChannelCacheImpl {
+func newSingleChannelCache(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, cacheStats *base.CacheStats) *singleChannelCacheImpl {
 	cache := &singleChannelCacheImpl{queryHandler: queryHandler, channelName: channelName, validFrom: validFrom}
 	cache.initializeLateLogs()
 	cache.cachedDocIDs = make(map[string]struct{})
-	cache.statsMap = statsMap
+	cache.cacheStats = cacheStats
 	cache.options = &ChannelCacheOptions{
 		ChannelCacheMinLength: DefaultChannelCacheMinLength,
 		ChannelCacheMaxLength: DefaultChannelCacheMaxLength,
@@ -125,8 +124,8 @@ func newSingleChannelCache(queryHandler ChannelQueryHandler, channelName string,
 	return cache
 }
 
-func newChannelCacheWithOptions(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, options ChannelCacheOptions, statsMap *expvar.Map) *singleChannelCacheImpl {
-	cache := newSingleChannelCache(queryHandler, channelName, validFrom, statsMap)
+func newChannelCacheWithOptions(queryHandler ChannelQueryHandler, channelName string, validFrom uint64, options ChannelCacheOptions, cacheStats *base.CacheStats) *singleChannelCacheImpl {
+	cache := newSingleChannelCache(queryHandler, channelName, validFrom, cacheStats)
 
 	// Update cache options when present
 	if options.ChannelCacheMinLength > 0 {
@@ -369,17 +368,17 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 	}
 	startSeq := options.Since.SafeSequence() + 1
 	if cacheValidFrom <= startSeq {
-		c.statsMap.Add(base.StatKeyChannelCacheHits, 1)
+		c.cacheStats.ChannelCacheHits.Add(1)
 		return resultFromCache, nil
 	}
 
 	// Nope, we're going to have to backfill from the view.
 	//** First acquire the _query_ lock (not the regular lock!)
 	// Track pending queries via StatKeyChannelCachePendingQueries expvar
-	c.statsMap.Add(base.StatKeyChannelCachePendingQueries, 1)
+	c.cacheStats.ChannelCachePendingQueries.Add(1)
 	c.queryLock.Lock()
 	defer c.queryLock.Unlock()
-	c.statsMap.Add(base.StatKeyChannelCachePendingQueries, -1)
+	c.cacheStats.ChannelCachePendingQueries.Add(-1)
 
 	// Another goroutine might have gotten the lock first and already queried the view and updated
 	// the cache, so repeat the above:
@@ -389,7 +388,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 			base.UD(c.channelName), options.Since.String(), len(resultFromCache)-numFromCache, cacheValidFrom)
 	}
 	if cacheValidFrom <= startSeq {
-		c.statsMap.Add(base.StatKeyChannelCacheHits, 1)
+		c.cacheStats.ChannelCacheHits.Add(1)
 		return resultFromCache, nil
 	}
 
@@ -404,7 +403,7 @@ func (c *singleChannelCacheImpl) GetChanges(options ChangesOptions) ([]*LogEntry
 
 	// Now query the view. We set the max sequence equal to cacheValidFrom, so we'll get one
 	// overlap, which helps confirm that we've got everything.
-	c.statsMap.Add(base.StatKeyChannelCacheMisses, 1)
+	c.cacheStats.ChannelCacheMisses.Add(1)
 	endSeq := cacheValidFrom
 	resultFromQuery, err := c.queryHandler.getChangesInChannelFromQuery(c.channelName, startSeq, endSeq, options.Limit, options.ActiveOnly)
 	if err != nil {
@@ -490,11 +489,11 @@ func (c *singleChannelCacheImpl) _appendChange(change *LogEntry) {
 // Updates cache utilization.  Note that cache entries that are both removals and tombstones are counted as removals
 func (c *singleChannelCacheImpl) UpdateCacheUtilization(entry *LogEntry, delta int64) {
 	if entry.IsRemoved() {
-		c.statsMap.Add(base.StatKeyChannelCacheRevsRemoval, delta)
+		c.cacheStats.ChannelCacheRevsRemoval.Add(delta)
 	} else if entry.IsDeleted() {
-		c.statsMap.Add(base.StatKeyChannelCacheRevsTombstone, delta)
+		c.cacheStats.ChannelCacheRevsTombstone.Add(delta)
 	} else {
-		c.statsMap.Add(base.StatKeyChannelCacheRevsActive, delta)
+		c.cacheStats.ChannelCacheRevsActive.Add(delta)
 	}
 }
 

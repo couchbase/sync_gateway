@@ -3391,7 +3391,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 
 	// Validate that cache has been compacted to LWM <= size <= HWM.  Actual size will vary, as
 	// channels may be added after initial compaction to LWM (but not enough to retrigger compaction).
-	cacheSize := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsCache().Get(base.StatKeyChannelCacheNumChannels))
+	cacheSize := rt.GetDatabase().DbStats.NewStats.Cache().ChannelCacheNumChannels.Value()
 	log.Printf("Cache size after compaction: %v", cacheSize)
 	assert.True(t, cacheSize >= 60)
 	assert.True(t, cacheSize <= 80)

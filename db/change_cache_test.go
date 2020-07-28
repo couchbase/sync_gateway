@@ -13,7 +13,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"expvar"
 	"fmt"
 	"log"
 	"math/rand"
@@ -120,7 +119,9 @@ func TestLateSequenceHandling(t *testing.T) {
 	context := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 	defer context.Close()
 
-	cacheStats := &expvar.Map{}
+	stats := &base.SgwStats{}
+	cacheStats := stats.NewDBStats("").CacheStats
+
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
 	goassert.True(t, cache != nil)
 
@@ -187,7 +188,11 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	context, err := NewDatabaseContext("db", b, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+
+	stats := &base.SgwStats{}
+	cacheStats := stats.NewDBStats("").CacheStats
+
+	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
 	goassert.True(t, cache != nil)
 
 	// Add Listener before late entries arrive
@@ -1015,7 +1020,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		assert.Fail(t, "Changes goroutine failed to initiate view query in 10 seconds.")
 	}
 
-	initialPendingQueries := base.ExpvarVar2Int(db.DbStats.StatsCache().Get(base.StatKeyChannelCachePendingQueries))
+	initialPendingQueries := db.DbStats.NewStats.Cache().ChannelCachePendingQueries.Value()
 
 	// Start a second goroutine that should block waiting for the view lock
 	changesTerminator := make(chan bool)
@@ -1035,7 +1040,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	// wait for second goroutine to be queued for the view lock (based on expvar)
 	var pendingQueries int64
 	for i := 0; i < 1000; i++ {
-		pendingQueries = base.ExpvarVar2Int(db.DbStats.StatsCache().Get(base.StatKeyChannelCachePendingQueries))
+		pendingQueries = db.DbStats.NewStats.Cache().ChannelCachePendingQueries.Value()
 		if pendingQueries > initialPendingQueries {
 			break
 		}

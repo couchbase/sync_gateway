@@ -1,16 +1,16 @@
 package channels
 
 import (
-	"expvar"
 	"sync"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestActiveChannelsConcurrency(t *testing.T) {
 
-	activeChannelStat := &expvar.Int{}
+	activeChannelStat := &base.SgwIntStat{}
 	ac := NewActiveChannels(activeChannelStat)
 	var wg sync.WaitGroup
 

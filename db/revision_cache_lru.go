@@ -2,7 +2,6 @@ package db
 
 import (
 	"container/list"
-	"expvar"
 	"sync"
 	"time"
 
@@ -16,7 +15,7 @@ type ShardedLRURevisionCache struct {
 }
 
 // Creates a sharded revision cache with the given capacity and an optional loader function.
-func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *expvar.Int) *ShardedLRURevisionCache {
+func NewShardedLRURevisionCache(shardCount uint16, capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *ShardedLRURevisionCache {
 
 	caches := make([]*LRURevisionCache, shardCount)
 	// Add 10% to per-shared cache capacity to ensure overall capacity is reached under non-ideal shard hashing
@@ -62,8 +61,8 @@ type LRURevisionCache struct {
 	capacity     uint32                     // Max number of revisions to cache
 	backingStore RevisionCacheBackingStore  // provides the methods used by the RevisionCacheLoaderFunc
 	lock         sync.Mutex                 // For thread-safety
-	cacheHits    *expvar.Int
-	cacheMisses  *expvar.Int
+	cacheHits    *base.SgwIntStat
+	cacheMisses  *base.SgwIntStat
 }
 
 // The cache payload data. Stored as the Value of a list Element.
@@ -82,7 +81,7 @@ type revCacheValue struct {
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
-func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *expvar.Int) *LRURevisionCache {
+func NewLRURevisionCache(capacity uint32, backingStore RevisionCacheBackingStore, cacheHitStat, cacheMissStat *base.SgwIntStat) *LRURevisionCache {
 
 	return &LRURevisionCache{
 		cache:        map[IDAndRev]*list.Element{},
