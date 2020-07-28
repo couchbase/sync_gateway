@@ -134,34 +134,7 @@ func initEmptyStatsMap(key string, d *DatabaseStats) *expvar.Map {
 	result := new(expvar.Map).Init()
 
 	switch key {
-	case base.StatsGroupKeyCache:
-		result.Set(base.StatKeyRevisionCacheHits, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyRevisionCacheMisses, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyRevisionCacheBypass, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheHits, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheMisses, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheRevsActive, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheRevsTombstone, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheRevsRemoval, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheNumChannels, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCachePendingQueries, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheChannelsAdded, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheChannelsEvictedInactive, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheChannelsEvictedNRU, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheCompactCount, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheCompactTime, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyChannelCacheBypassCount, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyActiveChannels, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyNumSkippedSeqs, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyAbandonedSeqs, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyHighSeqCached, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyHighSeqStable, base.ExpvarIntVal(0))
-		result.Set(base.StatKeySkippedSeqLen, base.ExpvarIntVal(0))
-		result.Set(base.StatKeyPendingSeqLen, base.ExpvarIntVal(0))
-		d.statsCacheMap = result
 	case base.StatsGroupKeyDatabase:
-		result.Set(base.StatKeyAbandonedSeqs, base.ExpvarIntVal(0))
 		result.Set(base.StatKeyCachingDcpStats, new(expvar.Map).Init())
 		result.Set(base.StatKeyImportDcpStats, new(expvar.Map).Init())
 		d.statsDatabaseMap = result
@@ -182,8 +155,8 @@ func (db *DatabaseContext) UpdateCalculatedStats() {
 	if db.changeCache != nil {
 		db.changeCache.updateStats()
 		channelCache := db.changeCache.getChannelCache()
-		db.DbStats.StatsCache().Set(base.StatKeyChannelCacheMaxEntries, base.ExpvarIntVal(channelCache.MaxCacheSize()))
-		db.DbStats.StatsCache().Set(base.StatKeyHighSeqCached, base.ExpvarUInt64Val(channelCache.GetHighCacheSequence()))
+		db.DbStats.NewStats.Cache().ChannelCacheMaxEntries.Set(int64(channelCache.MaxCacheSize()))
+		db.DbStats.NewStats.Cache().HighSeqCached.Set(int64(channelCache.GetHighCacheSequence()))
 	}
 
 }

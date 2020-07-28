@@ -1,7 +1,6 @@
 package channels
 
 import (
-	"expvar"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -17,10 +16,10 @@ import (
 type ActiveChannels struct {
 	channelCounts map[string]uint64 // Count of active pull replications (changes) per channel
 	lock          sync.RWMutex      // Mutex for channelCounts map access
-	countStat     *expvar.Int       // Channel count stat
+	countStat     *base.SgwIntStat  // Channel count stat
 }
 
-func NewActiveChannels(activeChannelCountStat *expvar.Int) *ActiveChannels {
+func NewActiveChannels(activeChannelCountStat *base.SgwIntStat) *ActiveChannels {
 	return &ActiveChannels{
 		channelCounts: make(map[string]uint64),
 		countStat:     activeChannelCountStat,

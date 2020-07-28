@@ -131,11 +131,7 @@ func (db *DatabaseContext) NewPullReplicationCaughtUpWaiter(tb testing.TB) *Stat
 }
 
 func (db *DatabaseContext) NewCacheRevsActiveWaiter(tb testing.TB) *StatWaiter {
-	stat, ok := db.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsActive).(*expvar.Int)
-	if !ok {
-		tb.Fatalf("Unable to retrieve StatKeyChannelCacheRevsActive during StatWaiter initialization ")
-	}
-	return db.NewStatWaiter(stat, tb)
+	return db.NewNewStatWaiter(db.DbStats.NewStats.Cache().ChannelCacheRevsActive, tb)
 }
 
 func (sw *StatWaiter) Add(count int) {

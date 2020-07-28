@@ -4495,7 +4495,7 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	err = rt.WaitForPendingChanges()
 	assert.NoError(t, err)
 
-	assert.Equal(t, base.ExpvarIntVal(0), rt.GetDatabase().DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsActive))
+	assert.Equal(t, 0, int(rt.GetDatabase().DbStats.NewStats.Cache().ChannelCacheRevsActive.Value()))
 
 }
 

@@ -1,7 +1,6 @@
 package db
 
 import (
-	"expvar"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -18,8 +17,8 @@ import (
 type testBackingStore struct {
 	// notFoundDocIDs is a list of doc IDs that GetDocument returns a 404 for.
 	notFoundDocIDs     []string
-	getDocumentCounter *expvar.Int
-	getRevisionCounter *expvar.Int
+	getDocumentCounter *base.SgwIntStat
+	getRevisionCounter *base.SgwIntStat
 }
 
 func (t *testBackingStore) GetDocument(docid string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
@@ -69,7 +68,7 @@ func (*noopBackingStore) getRevision(doc *Document, revid string) ([]byte, Body,
 
 // Tests the eviction from the LRURevisionCache
 func TestLRURevisionCacheEviction(t *testing.T) {
-	cacheHitCounter, cacheMissCounter := expvar.Int{}, expvar.Int{}
+	cacheHitCounter, cacheMissCounter := base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &noopBackingStore{}, &cacheHitCounter, &cacheMissCounter)
 
 	// Fill up the rev cache with the first 10 docs
@@ -120,7 +119,7 @@ func TestLRURevisionCacheEviction(t *testing.T) {
 
 func TestBackingStore(t *testing.T) {
 
-	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{[]string{"Peter"}, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	// Get Rev for the first time - miss cache, but fetch the doc and revision to store
@@ -230,7 +229,7 @@ func TestBypassRevisionCache(t *testing.T) {
 	rev2, _, err := db.Put(key, docBody)
 	assert.NoError(t, err)
 
-	bypassStat := expvar.Int{}
+	bypassStat := base.SgwIntStat{}
 	rc := NewBypassRevisionCache(db.DatabaseContext, &bypassStat)
 
 	// Peek always returns false for BypassRevisionCache
@@ -362,7 +361,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestRevisionImmutableDelta(t *testing.T) {
-	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	firstDelta := []byte("delta")
@@ -397,7 +396,7 @@ func TestRevisionImmutableDelta(t *testing.T) {
 
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestSingleLoad(t *testing.T) {
-	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	cache.Put(DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc123", RevID: "1-abc", History: Revisions{"start": 1}})
@@ -407,7 +406,7 @@ func TestSingleLoad(t *testing.T) {
 
 // Ensure subsequent updates to delta don't mutate previously retrieved deltas
 func TestConcurrentLoad(t *testing.T) {
-	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(10, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	cache.Put(DocumentRevision{BodyBytes: []byte(`{"test":"1234"}`), DocID: "doc1", RevID: "1-abc", History: Revisions{"start": 1}})
@@ -430,7 +429,7 @@ func TestConcurrentLoad(t *testing.T) {
 func BenchmarkRevisionCacheRead(b *testing.B) {
 	defer base.SetUpBenchmarkLogging(base.LevelDebug, base.KeyAll)()
 
-	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := expvar.Int{}, expvar.Int{}, expvar.Int{}, expvar.Int{}
+	cacheHitCounter, cacheMissCounter, getDocumentCounter, getRevisionCounter := base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}, base.SgwIntStat{}
 	cache := NewLRURevisionCache(5000, &testBackingStore{nil, &getDocumentCounter, &getRevisionCounter}, &cacheHitCounter, &cacheMissCounter)
 
 	// trigger load into cache

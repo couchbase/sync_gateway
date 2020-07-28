@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"expvar"
 	"math"
 	"sync"
 	"time"
@@ -79,17 +78,17 @@ type channelCacheImpl struct {
 	compactLowWatermark  int                       // Low Watermark for cache compaction
 	compactRunning       base.AtomicBool           // Whether compact is currently running
 	activeChannels       *channels.ActiveChannels  // Active channel handler
-	statsMap             *expvar.Map               // Map used for cache stats
+	cacheStats           *base.CacheStats          // Map used for cache stats
 	validFromLock        sync.RWMutex              // Mutex used to avoid race between AddToCache and addChannelCache.  See CBG-520 for more details
 }
 
 func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
-	return newChannelCache(context.Name, terminator, options, context, context.activeChannels, context.DbStats.StatsCache())
+	return newChannelCache(context.Name, terminator, options, context, context.activeChannels, context.DbStats.NewStats.Cache())
 }
 
 func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOptions,
 	queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels,
-	statsMap *expvar.Map) (*channelCacheImpl, error) {
+	cacheStats *base.CacheStats) (*channelCacheImpl, error) {
 
 	channelCache := &channelCacheImpl{
 		queryHandler:         queryHandler,
@@ -100,7 +99,7 @@ func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOp
 		compactHighWatermark: int(math.Round(float64(options.CompactHighWatermarkPercent) / 100 * float64(options.MaxNumChannels))),
 		compactLowWatermark:  int(math.Round(float64(options.CompactLowWatermarkPercent) / 100 * float64(options.MaxNumChannels))),
 		activeChannels:       activeChannels,
-		statsMap:             statsMap,
+		cacheStats:           cacheStats,
 	}
 	err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
 	if err != nil {
@@ -283,7 +282,7 @@ func (c *channelCacheImpl) getChannelCache(channelName string) SingleChannelCach
 		channelName:  channelName,
 		queryHandler: c.queryHandler,
 	}
-	c.statsMap.Add(base.StatKeyChannelCacheBypassCount, 1)
+	c.cacheStats.ChannelCacheBypassCount.Add(1)
 	return bypassChannelCache
 
 }
@@ -318,7 +317,7 @@ func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCa
 	// Everything after the current high sequence will be added to the cache via the feed
 	validFrom := c.GetHighCacheSequence() + 1
 
-	singleChannelCache := newChannelCacheWithOptions(c.queryHandler, channelName, validFrom, c.options, c.statsMap)
+	singleChannelCache := newChannelCacheWithOptions(c.queryHandler, channelName, validFrom, c.options, c.cacheStats)
 	cacheValue, created, cacheSize := c.channelCaches.GetOrInsert(channelName, singleChannelCache)
 	c.validFromLock.Unlock()
 
@@ -329,8 +328,8 @@ func (c *channelCacheImpl) addChannelCache(channelName string) (*singleChannelCa
 	}
 
 	if created {
-		c.statsMap.Add(base.StatKeyChannelCacheNumChannels, 1)
-		c.statsMap.Add(base.StatKeyChannelCacheChannelsAdded, 1)
+		c.cacheStats.ChannelCacheNumChannels.Add(1)
+		c.cacheStats.ChannelCacheChannelsAdded.Add(1)
 	}
 
 	return singleChannelCache, true
@@ -382,7 +381,7 @@ func (c *channelCacheImpl) compactChannelCache() {
 	defer c.compactRunning.Set(false)
 
 	// Increment compact count on start, as timing is updated per loop iteration
-	c.statsMap.Add(base.StatKeyChannelCacheCompactCount, 1)
+	c.cacheStats.ChannelCacheCompactCount.Add(1)
 
 	cacheSize := c.channelCaches.Length()
 	base.Infof(base.KeyCache, "Starting channel cache compaction, size %d", cacheSize)
@@ -486,16 +485,16 @@ func (c *channelCacheImpl) compactChannelCache() {
 func (c *channelCacheImpl) updateEvictionStats(inactiveEvicted int, totalEvicted int, startTime time.Time) {
 	// Eviction stats
 	if inactiveEvicted > 0 {
-		c.statsMap.Add(base.StatKeyChannelCacheChannelsEvictedInactive, int64(inactiveEvicted))
+		c.cacheStats.ChannelCacheChannelsEvictedInactive.Add(int64(inactiveEvicted))
 	}
 	nruEvicted := totalEvicted - inactiveEvicted
 	if nruEvicted > 0 {
-		c.statsMap.Add(base.StatKeyChannelCacheChannelsEvictedNRU, int64(nruEvicted))
+		c.cacheStats.ChannelCacheChannelsEvictedNRU.Add(int64(nruEvicted))
 	}
 
 	// Compaction time is updated on each iteration (to ensure stat is updated during long-running compact)
-	c.statsMap.Add(base.StatKeyChannelCacheCompactTime, time.Since(startTime).Nanoseconds())
+	c.cacheStats.ChannelCacheCompactTime.Add(time.Since(startTime).Nanoseconds())
 
 	// Update channel count
-	c.statsMap.Add(base.StatKeyChannelCacheNumChannels, -1*int64(totalEvicted))
+	c.cacheStats.ChannelCacheNumChannels.Add(-1 * int64(totalEvicted))
 }

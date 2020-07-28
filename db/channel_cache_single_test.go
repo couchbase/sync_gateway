@@ -1,7 +1,6 @@
 package db
 
 import (
-	"expvar"
 	"fmt"
 	"log"
 	"math"
@@ -22,7 +21,7 @@ func TestDuplicateDocID(t *testing.T) {
 	require.NoError(t, err)
 	defer context.Close()
 
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Test1", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(1, "doc1", "1-a"), false)
@@ -68,7 +67,8 @@ func TestLateArrivingSequence(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+
+	cache := newSingleChannelCache(context, "Test1", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(1, "doc1", "1-a"), false)
@@ -100,7 +100,8 @@ func TestLateSequenceAsFirst(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+
+	cache := newSingleChannelCache(context, "Test1", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(5, "doc1", "1-a"), false)
@@ -132,7 +133,8 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+
+	cache := newSingleChannelCache(context, "Test1", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(10, "doc1", "1-a"), false)
@@ -205,8 +207,9 @@ func TestPrependChanges(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
+
 	// 1. Test prepend to empty cache
-	cache := newSingleChannelCache(context, "PrependEmptyCache", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "PrependEmptyCache", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	changesToPrepend := LogEntries{
 		testLogEntry(10, "doc3", "2-a"),
 		testLogEntry(12, "doc2", "2-a"),
@@ -222,7 +225,7 @@ func TestPrependChanges(t *testing.T) {
 	require.Len(t, cachedChanges, 3)
 
 	// 2. Test prepend to populated cache, with overlap and duplicates
-	cache = newSingleChannelCache(context, "PrependPopulatedCache", 0, &expvar.Map{})
+	cache = newSingleChannelCache(context, "PrependPopulatedCache", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
 	cache.addToCache(testLogEntry(20, "doc2", "3-a"), false)
@@ -276,7 +279,7 @@ func TestPrependChanges(t *testing.T) {
 	require.Len(t, cachedChanges, 4)
 
 	// 3. Test prepend that exceeds cache capacity
-	cache = newSingleChannelCache(context, "PrependToFillCache", 0, &expvar.Map{})
+	cache = newSingleChannelCache(context, "PrependToFillCache", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	cache.options.ChannelCacheMaxLength = 5
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
@@ -313,7 +316,7 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// 4. Test prepend where all docids are already present in cache.  Cache entries shouldn't change, but validFrom is updated
-	cache = newSingleChannelCache(context, "PrependDuplicatesOnly", 0, &expvar.Map{})
+	cache = newSingleChannelCache(context, "PrependDuplicatesOnly", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
 	cache.addToCache(testLogEntry(20, "doc2", "3-a"), false)
@@ -343,7 +346,7 @@ func TestPrependChanges(t *testing.T) {
 	}
 
 	// 5. Test prepend for an already full cache
-	cache = newSingleChannelCache(context, "PrependFullCache", 0, &expvar.Map{})
+	cache = newSingleChannelCache(context, "PrependFullCache", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	cache.options.ChannelCacheMaxLength = 5
 	cache.validFrom = 13
 	cache.addToCache(testLogEntry(14, "doc1", "2-a"), false)
@@ -388,7 +391,7 @@ func TestChannelCacheRemove(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Test1", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 
 	// Add some entries to cache
 	cache.addToCache(testLogEntry(1, "doc1", "1-a"), false)
@@ -427,7 +430,7 @@ func TestChannelCacheStats(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	cache := newSingleChannelCache(context, "Test1", 0, testStats)
 
 	// Add some entries to cache
@@ -497,7 +500,7 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	cache := newSingleChannelCache(context, "Test1", 0, testStats)
 	cache.options.ChannelCacheMaxLength = 5
 
@@ -527,7 +530,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	cache := newSingleChannelCache(context, "Test1", 99, testStats)
 	cache.options.ChannelCacheMaxLength = 15
 
@@ -616,7 +619,7 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Benchmark", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	// generate doc IDs
 	docIDs := make([]string, b.N)
 	for i := 0; i < b.N; i++ {
@@ -635,7 +638,7 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Benchmark", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(5.0, b.N)
@@ -652,7 +655,7 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Benchmark", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(20.0, b.N)
@@ -669,7 +672,7 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Benchmark", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(50.0, b.N)
@@ -686,7 +689,7 @@ func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Benchmark", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(80.0, b.N)
@@ -703,7 +706,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Benchmark", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	// generate doc IDs
 
 	docIDs, revStrings := generateDocs(95.0, b.N)
@@ -720,7 +723,7 @@ func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
-	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
+	cache := newSingleChannelCache(context, "Benchmark", 0, (&base.SgwStats{}).NewDBStats("").Cache())
 	// generate docs
 	docs := make([]*LogEntry, b.N)
 	r := rand.New(rand.NewSource(99))

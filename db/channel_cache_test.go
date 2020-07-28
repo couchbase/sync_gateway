@@ -10,11 +10,9 @@
 package db
 
 import (
-	"expvar"
 	"fmt"
 	"log"
 	"math/rand"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -54,25 +52,15 @@ func TestChannelCacheMaxSize(t *testing.T) {
 
 	context.UpdateCalculatedStats()
 
-	maxEntries, _ := strconv.Atoi(context.DbStats.StatsCache().Get(base.StatKeyChannelCacheMaxEntries).String())
-	assert.Equal(t, 4, maxEntries)
+	maxEntries := context.DbStats.NewStats.Cache().ChannelCacheMaxEntries.Value()
+	assert.Equal(t, 4, int(maxEntries))
 }
 
-func getCacheUtilization(stats *expvar.Map) (active, tombstones, removals int) {
-	activeStat := stats.Get(base.StatKeyChannelCacheRevsActive)
-	if activeStat != nil {
-		active, _ = strconv.Atoi(activeStat.String())
-	}
+func getCacheUtilization(stats *base.CacheStats) (active, tombstones, removals int) {
+	active = int(stats.ChannelCacheRevsActive.Value())
+	tombstones = int(stats.ChannelCacheRevsTombstone.Value())
+	removals = int(stats.ChannelCacheRevsRemoval.Value())
 
-	tombstoneStat := stats.Get(base.StatKeyChannelCacheRevsTombstone)
-	if tombstoneStat != nil {
-		tombstones, _ = strconv.Atoi(tombstoneStat.String())
-	}
-
-	removalStat := stats.Get(base.StatKeyChannelCacheRevsRemoval)
-	if removalStat != nil {
-		removals, _ = strconv.Atoi(removalStat.String())
-	}
 	return active, tombstones, removals
 }
 
@@ -95,9 +83,9 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20
 
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	queryHandler := &testQueryHandler{}
-	activeChannelStat := &expvar.Int{}
+	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 	cache, err := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
@@ -133,9 +121,9 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 50
 
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	queryHandler := &testQueryHandler{}
-	activeChannelStat := &expvar.Int{}
+	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 	cache, err := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
@@ -190,9 +178,9 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	queryHandler := &testQueryHandler{}
-	activeChannelStat := &expvar.Int{}
+	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 	cache, err := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
@@ -285,9 +273,9 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	queryHandler := &testQueryHandler{}
-	activeChannelStat := &expvar.Int{}
+	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 	cache, err := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
@@ -357,9 +345,9 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	options.CompactHighWatermarkPercent = 90
 	options.CompactLowWatermarkPercent = 70
 
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	queryHandler := &testQueryHandler{}
-	activeChannelStat := &expvar.Int{}
+	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 	cache, err := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
@@ -424,9 +412,9 @@ func TestChannelCacheBypass(t *testing.T) {
 	options.CompactHighWatermarkPercent = 100
 	options.CompactLowWatermarkPercent = 50
 
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	queryHandler := &testQueryHandler{}
-	activeChannelStat := &expvar.Int{}
+	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 	cache, err := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
@@ -457,9 +445,9 @@ func TestChannelCacheBypass(t *testing.T) {
 	}
 
 	// check bypass count stat
-	bypassCountStat := testStats.Get(base.StatKeyChannelCacheBypassCount)
+	bypassCountStat := testStats.ChannelCacheBypassCount
 	require.NotNil(t, bypassCountStat)
-	assert.Equal(t, "80", bypassCountStat.String())
+	assert.Equal(t, 80, int(bypassCountStat.Value()))
 }
 
 func waitForCompaction(cache *channelCacheImpl) (compactionComplete bool) {
@@ -519,9 +507,9 @@ func TestChannelCacheBackgroundTaskWithIllegalTimeInterval(t *testing.T) {
 	options := DefaultCacheOptions().ChannelCacheOptions
 	// Specify illegal time interval for background task. Time interval should be > 0
 	options.ChannelCacheAge = 0
-	testStats := &expvar.Map{}
+	testStats := (&base.SgwStats{}).NewDBStats("").Cache()
 	queryHandler := &testQueryHandler{}
-	activeChannelStat := &expvar.Int{}
+	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
 	cache, err := newChannelCache("testDb", terminator, options, queryHandler, activeChannels, testStats)
 	assert.Error(t, err, "Background task error whilst creating channel cache")
