@@ -9,9 +9,9 @@ import (
 )
 
 type SgwStats struct {
-	GlobalStats     GlobalStat          `json:"global_stats"`
+	GlobalStats     GlobalStat          `json:"global"`
 	DbStats         map[string]*DbStats `json:"per_db"`
-	ReplicatorStats *ReplicatorStats    `json:"replicator_stats"`
+	ReplicatorStats *ReplicatorStats    `json:"per_replication"`
 
 	initDBStats               sync.Once
 	registeredReplicatorStats sync.Once
@@ -40,8 +40,8 @@ func (s *SgwStats) ReplicationStats() *expvar.Map {
 }
 
 type ResourceUtilization struct {
-	AdminNetworkInterfaceBytesReceived  *SgwIntStat   `json:"admin_network_interface_bytes_recv"`
-	AdminNetworkInterfaceBytesSent      *SgwIntStat   `json:"admin_network_interface_bytes_sent"`
+	AdminNetworkInterfaceBytesReceived  *SgwIntStat   `json:"admin_net_bytes_recv"`
+	AdminNetworkInterfaceBytesSent      *SgwIntStat   `json:"admin_net_bytes_sent"`
 	ErrorCount                          *SgwIntStat   `json:"error_count"`
 	GoMemstatsHeapAlloc                 *SgwIntStat   `json:"go_memstats_heapalloc"`
 	GoMemstatsHeapIdle                  *SgwIntStat   `json:"go_memstats_heapidle"`
@@ -53,24 +53,24 @@ type ResourceUtilization struct {
 	GoMemstatsSys                       *SgwIntStat   `json:"go_memstats_sys"`
 	GoroutinesHighWatermark             *SgwIntStat   `json:"goroutines_high_watermark"`
 	NumGoroutines                       *SgwIntStat   `json:"num_goroutines"`
+	CpuPercentUtil                      *SgwFloatStat `json:"process_cpu_percent_utilization"`
 	ProcessMemoryResident               *SgwIntStat   `json:"process_memory_resident"`
 	PublicNetworkInterfaceBytesReceived *SgwIntStat   `json:"pub_net_bytes_recv"`
 	PublicNetworkInterfaceBytesSent     *SgwIntStat   `json:"pub_net_bytes_sent"`
 	SystemMemoryTotal                   *SgwIntStat   `json:"system_memory_total"`
 	WarnCount                           *SgwIntStat   `json:"warn_count"`
-	CpuPercentUtil                      *SgwFloatStat `json:"cpu_percent_util"`
 }
 
 type DbStats struct {
 	dbName                  string
 	CacheStats              *CacheStats              `json:"cache,omitempty"`
-	CBLReplicationPullStats *CBLReplicationPullStats `json:"cbl_replication_pull_stats,omitempty"`
-	CBLReplicationPushStats *CBLReplicationPushStats `json:"cbl_replication_push_stats,omitempty"`
-	DatabaseStats           *DatabaseStats           `json:"database_stats,omitempty"`
-	DeltaSyncStats          *DeltaSyncStats          `json:"delta_sync_stats,omitempty"`
+	CBLReplicationPullStats *CBLReplicationPullStats `json:"cbl_replication_pull,omitempty"`
+	CBLReplicationPushStats *CBLReplicationPushStats `json:"cbl_replication_push,omitempty"`
+	DatabaseStats           *DatabaseStats           `json:"database,omitempty"`
+	DeltaSyncStats          *DeltaSyncStats          `json:"delta_sync,omitempty"`
 	GsiStats                *GsiStats                `json:"gsi_views,omitempty"`
 	SecurityStats           *SecurityStats           `json:"security,omitempty"`
-	SharedBucketImportStats *SharedBucketImportStats `json:"shared_bucket_import_stats,omitempty"`
+	SharedBucketImportStats *SharedBucketImportStats `json:"shared_bucket_import,omitempty"`
 
 	initCacheStats              sync.Once
 	initCBLReplicationPullStats sync.Once
@@ -84,28 +84,28 @@ type DbStats struct {
 
 type CacheStats struct {
 	AbandonedSeqs                       *SgwIntStat `json:"abandoned_seqs"`
-	ChannelCacheRevsActive              *SgwIntStat `json:"channel_cache_revs_active"`
-	ChannelCacheBypassCount             *SgwIntStat `json:"channel_cache_bypass_count"`
-	ChannelCacheChannelsAdded           *SgwIntStat `json:"channel_cache_channels_added"`
-	ChannelCacheChannelsEvictedInactive *SgwIntStat `json:"channel_cache_channels_evicted_inactive"`
-	ChannelCacheChannelsEvictedNRU      *SgwIntStat `json:"channel_cache_channels_evicted_nru"`
-	ChannelCacheCompactCount            *SgwIntStat `json:"channel_cache_compact_count"`
-	ChannelCacheCompactTime             *SgwIntStat `json:"channel_cache_compact_time"`
-	ChannelCacheHits                    *SgwIntStat `json:"channel_cache_hits"`
-	ChannelCacheMaxEntries              *SgwIntStat `json:"channel_cache_max_entries"`
-	ChannelCacheMisses                  *SgwIntStat `json:"channel_cache_misses"`
-	ChannelCacheNumChannels             *SgwIntStat `json:"channel_cache_num_channels"`
-	ChannelCachePendingQueries          *SgwIntStat `json:"channel_cache_pending_queries"`
-	ChannelCacheRevsRemoval             *SgwIntStat `json:"channel_cache_revs_removal"`
-	ChannelCacheRevsTombstone           *SgwIntStat `json:"channel_cache_revs_tombstone"`
+	ChannelCacheRevsActive              *SgwIntStat `json:"chan_cache_active_revs"`
+	ChannelCacheBypassCount             *SgwIntStat `json:"chan_cache_bypass_count"`
+	ChannelCacheChannelsAdded           *SgwIntStat `json:"chan_cache_channels_added"`
+	ChannelCacheChannelsEvictedInactive *SgwIntStat `json:"chan_cache_channels_evicted_inactive"`
+	ChannelCacheChannelsEvictedNRU      *SgwIntStat `json:"chan_cache_channels_evicted_nru"`
+	ChannelCacheCompactCount            *SgwIntStat `json:"chan_cache_compact_count"`
+	ChannelCacheCompactTime             *SgwIntStat `json:"chan_cache_compact_time"`
+	ChannelCacheHits                    *SgwIntStat `json:"chan_cache_hits"`
+	ChannelCacheMaxEntries              *SgwIntStat `json:"chan_cache_max_entries"`
+	ChannelCacheMisses                  *SgwIntStat `json:"chan_cache_misses"`
+	ChannelCacheNumChannels             *SgwIntStat `json:"chan_cache_num_channels"`
+	ChannelCachePendingQueries          *SgwIntStat `json:"chan_cache_pending_queries"`
+	ChannelCacheRevsRemoval             *SgwIntStat `json:"chan_cache_removal_revs"`
+	ChannelCacheRevsTombstone           *SgwIntStat `json:"chan_cache_tombstone_revs"`
 	HighSeqCached                       *SgwIntStat `json:"high_seq_cached"`
 	HighSeqStable                       *SgwIntStat `json:"high_seq_stable"`
 	NumActiveChannels                   *SgwIntStat `json:"num_active_channels"`
 	NumSkippedSeqs                      *SgwIntStat `json:"num_skipped_seqs"`
 	PendingSeqLen                       *SgwIntStat `json:"pending_seq_len"`
-	RevisionCacheBypass                 *SgwIntStat `json:"revision_cache_bypass"`
-	RevisionCacheHits                   *SgwIntStat `json:"revision_cache_hits"`
-	RevisionCacheMisses                 *SgwIntStat `json:"revision_cache_misses"`
+	RevisionCacheBypass                 *SgwIntStat `json:"rev_cache_bypass"`
+	RevisionCacheHits                   *SgwIntStat `json:"rev_cache_hits"`
+	RevisionCacheMisses                 *SgwIntStat `json:"rev_cache_misses"`
 	SkippedSeqLen                       *SgwIntStat `json:"skipped_seq_len"`
 }
 
@@ -127,6 +127,7 @@ type CBLReplicationPullStats struct {
 	RevSendLatency              *SgwIntStat `json:"rev_send_latency"`
 }
 
+// TODO: Conflict write count -- This stat is no longer here - LOOK INTO THIS
 type CBLReplicationPushStats struct {
 	AttachmentPushBytes *SgwIntStat `json:"attachment_push_bytes"`
 	AttachmentPushCount *SgwIntStat `json:"attachment_push_count"`
@@ -138,10 +139,11 @@ type CBLReplicationPushStats struct {
 	WriteProcessingTime *SgwIntStat `json:"write_processing_time"`
 }
 
+// TODO: Conflict write count -- This stat is here - LOOK INTO THIS
 type DatabaseStats struct {
 	AbandonedSeqs           *SgwIntStat `json:"abandoned_seqs"`
 	ConflictWriteCount      *SgwIntStat `json:"conflict_write_count"`
-	Crc32MatchCount         *SgwIntStat `json:"crc_32_match_count"`
+	Crc32MatchCount         *SgwIntStat `json:"crc32c_match_count"`
 	DCPCachingCount         *SgwIntStat `json:"dcp_caching_count"`
 	DCPCachingTime          *SgwIntStat `json:"dcp_caching_time"`
 	DCPReceivedCount        *SgwIntStat `json:"dcp_received_count"`
@@ -411,29 +413,6 @@ func (s *SgwFloatStat) Value() float64 {
 	return s.Val
 }
 
-func NewBoolStat(initialValue bool) *SgwBoolStat {
-	stat := &SgwBoolStat{
-		Val: initialValue,
-	}
-	return stat
-}
-
-func (s *SgwBoolStat) Set(newV bool) {
-	s.Val = newV
-}
-
-func (s *SgwBoolStat) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("%v", s.Val)), nil
-}
-
-func (s *SgwBoolStat) String() string {
-	return fmt.Sprintf("%v", s.Val)
-}
-
-func (s *SgwBoolStat) Value() bool {
-	return s.Val
-}
-
 type QueryStat struct {
 	QueryCount      *SgwIntStat
 	QueryErrorCount *SgwIntStat
@@ -457,7 +436,7 @@ func (d *DbStats) Cache() *CacheStats {
 		if d.CacheStats == nil {
 			dbName := d.dbName
 			d.CacheStats = &CacheStats{
-				AbandonedSeqs:                       NewIntStat("cache", "abadoned_seqs", dbName, prometheus.CounterValue, 0),
+				AbandonedSeqs:                       NewIntStat("cache", "abandoned_seqs", dbName, prometheus.CounterValue, 0),
 				ChannelCacheRevsActive:              NewIntStat("cache", "chan_cache_active_revs", dbName, prometheus.GaugeValue, 0),
 				ChannelCacheBypassCount:             NewIntStat("cache", "chan_cache_bypass_count", dbName, prometheus.CounterValue, 0),
 				ChannelCacheChannelsAdded:           NewIntStat("cache", "chan_cache_channels_added", dbName, prometheus.CounterValue, 0),
@@ -513,6 +492,7 @@ func (d *DbStats) CBLReplicationPull() *CBLReplicationPullStats {
 	return d.CBLReplicationPullStats
 }
 
+// TODO: Conflict write count?
 func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
 	d.initCBLReplicationPushStats.Do(func() {
 		if d.CBLReplicationPushStats == nil {
@@ -634,9 +614,9 @@ func (d *DbStats) GSIStats(queryName string) *QueryStat {
 	if _, ok := d.GsiStats.Stats[queryName]; !ok {
 		dbName := d.dbName
 		d.GsiStats.Stats[queryName] = &QueryStat{
-			QueryCount:      NewIntStat("gsi_views", queryName+"_query_count", dbName, prometheus.CounterValue, 0),
-			QueryErrorCount: NewIntStat("gsi_views", queryName+"_query_error_count", dbName, prometheus.CounterValue, 0),
-			QueryTime:       NewIntStat("gsi_views", queryName+"_query_time", dbName, prometheus.CounterValue, 0),
+			QueryCount:      NewIntStat("gsi_views", queryName+"_count", dbName, prometheus.CounterValue, 0),
+			QueryErrorCount: NewIntStat("gsi_views", queryName+"_error_count", dbName, prometheus.CounterValue, 0),
+			QueryTime:       NewIntStat("gsi_views", queryName+"_time", dbName, prometheus.CounterValue, 0),
 		}
 	}
 	d.GsiStats.mutex.Unlock()
