@@ -2482,5 +2482,5 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 
 	response, err := http.DefaultClient.Do(request)
 	require.NoError(t, err, "Error sending request")
-	require.Equal(t, http.StatusForbidden, response.StatusCode)
+	require.Equal(t, http.StatusUpgradeRequired, response.StatusCode)
 }
