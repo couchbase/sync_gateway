@@ -2456,3 +2456,31 @@ func waitForCondition(t *testing.T, fn func() bool) {
 		time.Sleep(time.Millisecond * 100)
 	}
 }
+
+func TestBlipSyncNonUpgradableConnection(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)()
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {Password: base.StringPtr("pass")},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt.Close()
+
+	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
+	server := httptest.NewServer(rt.TestPublicHandler())
+	defer server.Close()
+	dbURL, err := url.Parse(server.URL + "/db/_blipsync")
+	require.NoError(t, err)
+
+	// Add basic auth credentials to target db URL
+	dbURL.User = url.UserPassword("alice", "pass")
+	request, err := http.NewRequest(http.MethodGet, dbURL.String(), nil)
+	require.NoError(t, err, "Error creating new request")
+
+	response, err := http.DefaultClient.Do(request)
+	require.NoError(t, err, "Error sending request")
+	require.Equal(t, http.StatusUpgradeRequired, response.StatusCode)
+}
