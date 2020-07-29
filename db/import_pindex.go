@@ -1,9 +1,6 @@
 package db
 
 import (
-	"errors"
-	"expvar"
-
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -62,13 +59,9 @@ func (il *importListener) NewImportDest() (cbgt.Dest, error) {
 		return nil, err
 	}
 
-	importFeedStatsMap, ok := il.database.DbStats.StatsDatabase().Get(base.StatKeyImportDcpStats).(*expvar.Map)
-	if !ok {
-		return nil, errors.New("Import feed stats map not initialized")
-	}
-
+	importFeedStatsMap := il.database.DbStats.NewStats.Database().ImportFeedMapStats
 	importPartitionStat := il.database.DbStats.NewStats.SharedBucketImport().ImportPartitions
 
-	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap, base.DCPImportFeedID, importPartitionStat)
+	importDest, _ := base.NewDCPDest(callback, bucket, maxVbNo, true, importFeedStatsMap.Map, base.DCPImportFeedID, importPartitionStat)
 	return importDest, nil
 }

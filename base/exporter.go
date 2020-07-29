@@ -1,6 +1,7 @@
 package base
 
 import (
+	"expvar"
 	"fmt"
 	"sync"
 
@@ -8,9 +9,12 @@ import (
 )
 
 type SgwStats struct {
-	GlobalStats GlobalStat          `json:"global_stats"`
-	DbStats     map[string]*DbStats `json:"per_db"`
-	initDBStats sync.Once
+	GlobalStats     GlobalStat          `json:"global_stats"`
+	DbStats         map[string]*DbStats `json:"per_db"`
+	ReplicatorStats *ReplicatorStats    `json:"replicator_stats"`
+
+	initDBStats               sync.Once
+	registeredReplicatorStats sync.Once
 }
 
 func (s *SgwStats) String() string {
@@ -20,6 +24,19 @@ func (s *SgwStats) String() string {
 
 type GlobalStat struct {
 	ResourceUtilization ResourceUtilization `json:"resource_utilization"`
+}
+
+func (s *SgwStats) ReplicationStats() *expvar.Map {
+	s.registeredReplicatorStats.Do(func() {
+		if s.ReplicatorStats == nil {
+			s.ReplicatorStats = &ReplicatorStats{
+				toplevelMap: new(expvar.Map).Init(),
+			}
+		}
+		prometheus.MustRegister(s.ReplicatorStats)
+	})
+
+	return s.ReplicatorStats.toplevelMap
 }
 
 type ResourceUtilization struct {
@@ -46,14 +63,13 @@ type ResourceUtilization struct {
 
 type DbStats struct {
 	dbName                  string
-	CacheStats              *CacheStats              `json:"cache"`
-	CBLReplicationPullStats *CBLReplicationPullStats `json:"cbl_replication_pull_stats"`
-	CBLReplicationPushStats *CBLReplicationPushStats `json:"cbl_replication_push_stats"`
+	CacheStats              *CacheStats              `json:"cache,omitempty"`
+	CBLReplicationPullStats *CBLReplicationPullStats `json:"cbl_replication_pull_stats,omitempty"`
+	CBLReplicationPushStats *CBLReplicationPushStats `json:"cbl_replication_push_stats,omitempty"`
 	DatabaseStats           *DatabaseStats           `json:"database_stats,omitempty"`
 	DeltaSyncStats          *DeltaSyncStats          `json:"delta_sync_stats,omitempty"`
 	GsiStats                *GsiStats                `json:"gsi_views,omitempty"`
-	ReplicationStats        *ReplicatorStats         `json:"replication_stats"`
-	SecurityStats           *SecurityStats           `json:"security"`
+	SecurityStats           *SecurityStats           `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats `json:"shared_bucket_import_stats,omitempty"`
 
 	initCacheStats              sync.Once
@@ -62,7 +78,6 @@ type DbStats struct {
 	initDatabaseStats           sync.Once
 	initDeltaSyncStats          sync.Once
 	initGsiStats                sync.Once
-	initReplicatorStats         sync.Once
 	initSecurityStats           sync.Once
 	initSharedBucketImportStats sync.Once
 }
@@ -124,7 +139,6 @@ type CBLReplicationPushStats struct {
 }
 
 type DatabaseStats struct {
-	// TODO : Cache feed & Import feed
 	AbandonedSeqs           *SgwIntStat `json:"abandoned_seqs"`
 	ConflictWriteCount      *SgwIntStat `json:"conflict_write_count"`
 	Crc32MatchCount         *SgwIntStat `json:"crc_32_match_count"`
@@ -151,6 +165,66 @@ type DatabaseStats struct {
 	WarnChannelsPerDocCount *SgwIntStat `json:"warn_channels_per_doc_count"`
 	WarnGrantsPerDocCount   *SgwIntStat `json:"warn_grants_per_doc_count"`
 	WarnXattrSizeCount      *SgwIntStat `json:"warn_xattr_size_count"`
+
+	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
+	// prior to Hydrogen release.
+	CacheFeedMapStats  *ExpVarMapWrapper `json:"cache_feed"`
+	ImportFeedMapStats *ExpVarMapWrapper `json:"import_feed"`
+}
+
+type ExpVarMapWrapper struct {
+	*expvar.Map
+}
+
+func (wrapper *ExpVarMapWrapper) MarshalJSON() ([]byte, error) {
+	return []byte(wrapper.String()), nil
+}
+
+type ReplicatorStats struct {
+	toplevelMap *expvar.Map
+}
+
+func (rs *ReplicatorStats) MarshalJSON() ([]byte, error) {
+	return []byte(rs.toplevelMap.String()), nil
+}
+
+func (rs *ReplicatorStats) Describe(ch chan<- *prometheus.Desc) {
+	return
+}
+
+func (rs *ReplicatorStats) Collect(ch chan<- prometheus.Metric) {
+	rs.toplevelMap.Do(func(value expvar.KeyValue) {
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_docs_checked_sent"), "sgr_docs_checked_sent", []string{"replication"}, nil),
+			prometheus.GaugeValue,
+			float64(value.Value.(*expvar.Map).Get("sgr_docs_checked_sent").(*expvar.Int).Value()),
+			value.Key,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", []string{"replication"}, nil),
+			prometheus.GaugeValue,
+			float64(value.Value.(*expvar.Map).Get("sgr_num_attachment_bytes_transferred").(*expvar.Int).Value()),
+			value.Key,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", []string{"replication"}, nil),
+			prometheus.GaugeValue,
+			float64(value.Value.(*expvar.Map).Get("sgr_num_attachments_transferred").(*expvar.Int).Value()),
+			value.Key,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", []string{"replication"}, nil),
+			prometheus.GaugeValue,
+			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_failed_to_push").(*expvar.Int).Value()),
+			value.Key,
+		)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_docs_pushed"), "sgr_num_docs_pushed", []string{"replication"}, nil),
+			prometheus.GaugeValue,
+			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_pushed").(*expvar.Int).Value()),
+			value.Key,
+		)
+	})
 }
 
 type DeltaSyncStats struct {
@@ -165,15 +239,6 @@ type DeltaSyncStats struct {
 type GsiStats struct {
 	Stats map[string]*QueryStat
 	mutex sync.Mutex
-}
-
-type ReplicatorStats struct {
-	Active                        *SgwBoolStat `json:"active"`
-	DocsCheckedSent               *SgwIntStat  `json:"docs_checked_sent"`
-	NumAttachmentBytesTransferred *SgwIntStat  `json:"num_attachment_bytes_transferred"`
-	NumAttachmentsTransferred     *SgwIntStat  `json:"num_attachments_transferred"`
-	NumDocsFailedToPush           *SgwIntStat  `json:"num_docs_failed_to_push"`
-	NumDocsPushed                 *SgwIntStat  `json:"num_docs_pushed"`
 }
 
 type SecurityStats struct {
@@ -211,8 +276,8 @@ type SgwFloatStat struct {
 	Val float64
 }
 
+// Just a bool wrapper. Prometheus doesn't support boolean metrics and so this just goes to expvars
 type SgwBoolStat struct {
-	SgwStat
 	Val bool
 }
 
@@ -254,7 +319,6 @@ func (s *SgwIntStat) Set(newV int64) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.Val = newV
-	fmt.Println(s.Val)
 }
 
 func (s *SgwIntStat) SetIfMax(newV int64) {
@@ -272,6 +336,8 @@ func (s *SgwIntStat) Add(newV int64) {
 }
 
 func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	return []byte(fmt.Sprintf("%v", s.Val)), nil
 }
 
@@ -321,7 +387,6 @@ func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
 
 func (s *SgwFloatStat) Set(newV float64) {
 	s.Val = newV
-	fmt.Println(s.Val)
 }
 
 func (s *SgwFloatStat) SetIfMax(newV float64) {
@@ -346,31 +411,15 @@ func (s *SgwFloatStat) Value() float64 {
 	return s.Val
 }
 
-func NewBoolStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue bool) *SgwBoolStat {
-	var label []string
-	if dbName != "" {
-		label = []string{"database"}
-	}
-
-	name := prometheus.BuildFQName("sgw", subsystem, key)
-	desc := prometheus.NewDesc(name, key, label, nil)
-
+func NewBoolStat(initialValue bool) *SgwBoolStat {
 	stat := &SgwBoolStat{
-		SgwStat: SgwStat{
-			statFQDN:      name,
-			statDesc:      desc,
-			dbName:        dbName,
-			statValueType: statValueType,
-		},
 		Val: initialValue,
 	}
-	// prometheus.MustRegister(stat)
 	return stat
 }
 
 func (s *SgwBoolStat) Set(newV bool) {
 	s.Val = newV
-	fmt.Println(s.Val)
 }
 
 func (s *SgwBoolStat) MarshalJSON() ([]byte, error) {
@@ -399,6 +448,7 @@ func (s *SgwStats) NewDBStats(name string) *DbStats {
 	})
 
 	s.DbStats[name] = &DbStats{}
+	s.DbStats[name].dbName = name
 	return s.DbStats[name]
 }
 
@@ -513,6 +563,8 @@ func (d *DbStats) Database() *DatabaseStats {
 				WarnChannelsPerDocCount: NewIntStat("database", "warn_channels_per_doc_count", dbName, prometheus.CounterValue, 0),
 				WarnGrantsPerDocCount:   NewIntStat("database", "warn_grants_per_doc_count", dbName, prometheus.CounterValue, 0),
 				WarnXattrSizeCount:      NewIntStat("database", "warn_xattr_size_count", dbName, prometheus.CounterValue, 0),
+				ImportFeedMapStats:      &ExpVarMapWrapper{new(expvar.Map).Init()},
+				CacheFeedMapStats:       &ExpVarMapWrapper{new(expvar.Map).Init()},
 			}
 		}
 	})
@@ -534,23 +586,6 @@ func (d *DbStats) DeltaSync() *DeltaSyncStats {
 		}
 	})
 	return d.DeltaSyncStats
-}
-
-func (d *DbStats) Replication() *ReplicatorStats {
-	d.initReplicatorStats.Do(func() {
-		if d.ReplicationStats == nil {
-			dbName := d.dbName
-			d.ReplicationStats = &ReplicatorStats{
-				Active:                        NewBoolStat("replication", "active", dbName, prometheus.GaugeValue, false),
-				DocsCheckedSent:               NewIntStat("replication", "docs_checked_sent", dbName, prometheus.CounterValue, 0),
-				NumAttachmentBytesTransferred: NewIntStat("replication", "attachment_bytes_transferred", dbName, prometheus.CounterValue, 0),
-				NumAttachmentsTransferred:     NewIntStat("replication", "attachments_transferred", dbName, prometheus.CounterValue, 0),
-				NumDocsFailedToPush:           NewIntStat("replication", "num_docs_failed_to_push", dbName, prometheus.CounterValue, 0),
-				NumDocsPushed:                 NewIntStat("replication", "num_docs_pushed", dbName, prometheus.CounterValue, 0),
-			}
-		}
-	})
-	return d.ReplicationStats
 }
 
 func (d *DbStats) Security() *SecurityStats {

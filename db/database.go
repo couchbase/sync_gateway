@@ -12,7 +12,6 @@ package db
 import (
 	"context"
 	"errors"
-	"expvar"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -243,8 +242,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	dbStats.NewStats = base.SyncGatewayStats.NewDBStats(dbName)
 
-	base.PerDbStats.Set(dbName, dbStats.ExpvarMap())
-
 	dbContext := &DatabaseContext{
 		Name:       dbName,
 		UUID:       cbgt.NewUUID(),
@@ -360,11 +357,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Start DCP feed
 	base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
-	cacheFeedStatsMap, ok := dbContext.DbStats.StatsDatabase().Get(base.StatKeyCachingDcpStats).(*expvar.Map)
-	if !ok {
-		return nil, errors.New("Cache feed stats map not initialized")
-	}
-	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap)
+	cacheFeedStatsMap := dbContext.DbStats.NewStats.Database().CacheFeedMapStats
+	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map)
 
 	// Check if there is an error starting the DCP feed
 	if err != nil {
