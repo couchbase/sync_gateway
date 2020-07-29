@@ -124,7 +124,7 @@ func (r *Replicator) startReplication(parameters sgreplicate.ReplicationParamete
 // ReplicationStats returns replication stats for the given replication ID, or a new set if they do not already exist.
 func ReplicationStats(replicationID string) (stats *sgreplicate.ReplicationStats) {
 	stats = sgreplicate.NewReplicationStats()
-	if existingStats := PerReplicationStats.Get(replicationID); existingStats != nil {
+	if existingStats := SyncGatewayStats.ReplicationStats().Get(replicationID); existingStats != nil {
 		existingStatsMap := existingStats.(*expvar.Map)
 		stats.Active = existingStatsMap.Get(StatKeySgrActive).(*sgreplicate.AtomicBool)
 		stats.DocsWritten = existingStatsMap.Get(StatKeySgrNumDocsPushed).(*expvar.Int)
@@ -134,7 +134,7 @@ func ReplicationStats(replicationID string) (stats *sgreplicate.ReplicationStats
 		stats.DocsCheckedSent = existingStatsMap.Get(StatKeySgrDocsCheckedSent).(*expvar.Int)
 	} else {
 		// Initialize replication stats
-		PerReplicationStats.Set(replicationID, ReplicationStatsMap(stats))
+		SyncGatewayStats.ReplicationStats().Set(replicationID, ReplicationStatsMap(stats))
 	}
 
 	return

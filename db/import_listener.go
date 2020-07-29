@@ -1,8 +1,6 @@
 package db
 
 import (
-	"errors"
-	"expvar"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -41,10 +39,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 		Terminator: il.terminator,
 	}
 
-	importFeedStatsMap, ok := dbContext.DbStats.StatsDatabase().Get(base.StatKeyImportDcpStats).(*expvar.Map)
-	if !ok {
-		return errors.New("Import feed stats map not initialized")
-	}
+	importFeedStatsMap := dbContext.DbStats.NewStats.Database().ImportFeedMapStats
 
 	// Register cbgt PIndex to support sharded import.
 	il.RegisterImportPindexImpl()
@@ -56,7 +51,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok || !base.IsEnterpriseEdition() {
 		// Non-gocb bucket or CE, start a non-sharded feed
-		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap)
+		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	} else {
 		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.UUID, dbContext.Heartbeater, gocbBucket, dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err

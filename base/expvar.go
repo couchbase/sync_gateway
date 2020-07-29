@@ -25,33 +25,8 @@ const (
 
 var TimingExpvarsEnabled = false
 
-var (
-
-	// Top level stats expvar map
-	Stats *expvar.Map
-
-	// Global Stats
-	GlobalStats *expvar.Map
-
-	// Per-database stats
-	PerDbStats *expvar.Map
-
-	// Per-replication (sg-replicate) stats
-	PerReplicationStats *expvar.Map
-)
-
 const (
-	PerDb          = "per_db"
-	PerReplication = "per_replication"
-	Global         = "global"
-)
-
-const (
-	// StatsDatabase
-	StatKeyCachingDcpStats = "cache_feed"
-	StatKeyImportDcpStats  = "import_feed"
-
-	// StatsReplication (1.x)
+	// StatsReplication
 	StatKeySgrActive                     = "sgr_active"
 	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
 	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
@@ -81,16 +56,7 @@ const (
 )
 
 const (
-	StatsGroupKeySyncGateway        = "syncgateway"
-	StatsGroupKeyCache              = "cache"
-	StatsGroupKeyDatabase           = "database"
-	StatsGroupKeyDeltaSync          = "delta_sync"
-	StatsGroupKeySharedBucketImport = "shared_bucket_import"
-	StatsGroupKeyCblReplicationPush = "cbl_replication_push"
-	StatsGroupKeyCblReplicationPull = "cbl_replication_pull"
-	StatsGroupKeySecurity           = "security"
-	StatsGroupKeyGsiViews           = "gsi_views"
-	StatsGroupKeyReplications       = "replications"
+	StatsGroupKeySyncGateway = "syncgateway"
 )
 
 var (
@@ -113,18 +79,9 @@ func init() {
 	// }
 
 	// All stats will be stored in expvars under the "syncgateway" key.
-	Stats = expvar.NewMap(StatsGroupKeySyncGateway)
-
-	GlobalStats = new(expvar.Map).Init()
-	Stats.Set(Global, GlobalStats)
-
-	PerDbStats = new(expvar.Map).Init()
-	Stats.Set(PerDb, PerDbStats)
-
-	PerReplicationStats = new(expvar.Map).Init()
-	Stats.Set(PerReplication, PerReplicationStats)
-
 	SyncGatewayStats = SgwStats{}
+
+	// SyncGatewayStats.InitialiseReplicationStats(SyncGatewayStats.ReplicationStats())
 
 	NewStatsResourceUtilization()
 }
@@ -284,7 +241,7 @@ func NewStatsResourceUtilization() *expvar.Map {
 		0,
 	)
 
-	expvar.Publish("new_sg", &SyncGatewayStats)
+	expvar.Publish("syncgateway", &SyncGatewayStats)
 	return stats
 }
 
@@ -293,7 +250,7 @@ func NewStatsResourceUtilization() *expvar.Map {
 func RemovePerDbStats(dbName string) {
 
 	// Clear out the stats for this db since they will no longer be updated.
-	PerDbStats.Set(dbName, new(expvar.Map).Init())
+	SyncGatewayStats.NewDBStats(dbName)
 
 }
 
