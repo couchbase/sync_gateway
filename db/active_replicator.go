@@ -51,48 +51,66 @@ func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 }
 
 func (ar *ActiveReplicator) Start() error {
+	var pushErr error
 	if ar.Push != nil {
-		if err := ar.Push.Start(); err != nil {
-			return err
-		}
+		pushErr = ar.Push.Start()
 	}
 
+	var pullErr error
 	if ar.Pull != nil {
-		if err := ar.Pull.Start(); err != nil {
-			return err
-		}
+		pullErr = ar.Pull.Start()
+	}
+
+	if pushErr != nil {
+		return pushErr
+	}
+
+	if pullErr != nil {
+		return pullErr
 	}
 
 	return nil
 }
 
 func (ar *ActiveReplicator) Stop() error {
+	var pushErr error
 	if ar.Push != nil {
-		if err := ar.Push.Stop(); err != nil {
-			return err
-		}
+		pushErr = ar.Push.Stop()
 	}
 
+	var pullErr error
 	if ar.Pull != nil {
-		if err := ar.Pull.Stop(); err != nil {
-			return err
-		}
+		pullErr = ar.Pull.Stop()
+	}
+
+	if pushErr != nil {
+		return pushErr
+	}
+
+	if pullErr != nil {
+		return pullErr
 	}
 
 	return nil
 }
 
 func (ar *ActiveReplicator) Reset() error {
+	var pushErr error
 	if ar.Push != nil {
-		if err := ar.Push.reset(); err != nil {
-			return err
-		}
+		pushErr = ar.Push.reset()
 	}
 
+	var pullErr error
 	if ar.Pull != nil {
-		if err := ar.Pull.reset(); err != nil {
-			return err
-		}
+		pullErr = ar.Pull.reset()
+	}
+
+	if pushErr != nil {
+		return pushErr
+	}
+
+	if pullErr != nil {
+		return pullErr
 	}
 
 	return nil
