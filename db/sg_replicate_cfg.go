@@ -493,7 +493,10 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 				base.Warnf("Unable to gracefully close active replication: %v", err)
 			}
 			if !ok {
-				activeReplicator.purgeStatus()
+				purgeErr := activeReplicator.purgeStatus()
+				if purgeErr != nil {
+					base.Warnf("Unable to purge replication status for removed replication: %v", err)
+				}
 			}
 			delete(m.activeReplicators, replicationID)
 

@@ -130,7 +130,10 @@ func (ar *ActiveReplicator) Reset() error {
 		return pullErr
 	}
 
-	_ = ar.purgeStatus()
+	err := ar.purgeStatus()
+	if err != nil {
+		base.Warnf("Unable to purge replication status for reset replication: %v", err)
+	}
 	return nil
 }
 
