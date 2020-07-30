@@ -37,9 +37,9 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	docSeqMap["queryTestDoc3"] = doc.Sequence
 
 	// Check expvar prior to test
-	channelQueryCountBefore := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
-	channelQueryTimeBefore := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryTime.Value()
-	channelQueryErrorCountBefore := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryErrorCount.Value()
+	channelQueryCountBefore := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
+	channelQueryTimeBefore := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryTime.Value()
+	channelQueryErrorCountBefore := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryErrorCount.Value()
 
 	// Issue channels query
 	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
@@ -50,9 +50,9 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
-	channelQueryCountAfter := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
-	channelQueryTimeAfter := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryTime.Value()
-	channelQueryErrorCountAfter := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryErrorCount.Value()
+	channelQueryCountAfter := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
+	channelQueryTimeAfter := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryTime.Value()
+	channelQueryErrorCountAfter := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryErrorCount.Value()
 
 	assert.Equal(t, channelQueryCountBefore+1, channelQueryCountAfter)
 	assert.True(t, channelQueryTimeAfter > channelQueryTimeBefore, "Channel query time stat didn't change")
@@ -84,9 +84,9 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	docSeqMap["queryTestDoc3"] = doc.Sequence
 
 	// Check expvar prior to test
-	channelQueryCountBefore := db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryCount.Value()
-	channelQueryTimeBefore := db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryTime.Value()
-	channelQueryErrorCountBefore := db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryErrorCount.Value()
+	channelQueryCountBefore := db.DbStats.NewStats.Query(QueryTypeChannels).QueryCount.Value()
+	channelQueryTimeBefore := db.DbStats.NewStats.Query(QueryTypeChannels).QueryTime.Value()
+	channelQueryErrorCountBefore := db.DbStats.NewStats.Query(QueryTypeChannels).QueryErrorCount.Value()
 
 	// Issue channels query
 	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
@@ -97,9 +97,9 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	closeErr := results.Close()
 	assert.NoError(t, closeErr, "Close error")
 
-	channelQueryCountAfter := db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryCount.Value()
-	channelQueryTimeAfter := db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryTime.Value()
-	channelQueryErrorCountAfter := db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryErrorCount.Value()
+	channelQueryCountAfter := db.DbStats.NewStats.Query(QueryTypeChannels).QueryCount.Value()
+	channelQueryTimeAfter := db.DbStats.NewStats.Query(QueryTypeChannels).QueryTime.Value()
+	channelQueryErrorCountAfter := db.DbStats.NewStats.Query(QueryTypeChannels).QueryErrorCount.Value()
 
 	assert.Equal(t, channelQueryCountBefore+1, channelQueryCountAfter)
 	assert.True(t, channelQueryTimeAfter > channelQueryTimeBefore, "Channel query time stat didn't change")
@@ -125,8 +125,8 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	}
 
 	// Check expvar prior to test
-	channelQueryCountBefore := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
-	channelQueryErrorCountBefore := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryErrorCount.Value()
+	channelQueryCountBefore := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
+	channelQueryErrorCountBefore := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryErrorCount.Value()
 
 	// Issue channels query
 	results, queryErr := db.QuerySequences([]uint64{
@@ -156,8 +156,8 @@ func TestQuerySequencesStatsView(t *testing.T) {
 	results, queryErr = db.QuerySequences([]uint64{})
 	assert.Error(t, queryErr, "Expect empty sequence error")
 
-	channelQueryCountAfter := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
-	channelQueryErrorCountAfter := db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryErrorCount.Value()
+	channelQueryCountAfter := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
+	channelQueryErrorCountAfter := db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryErrorCount.Value()
 
 	goassert.Equals(t, channelQueryCountBefore+3, channelQueryCountAfter)
 	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
@@ -218,8 +218,8 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	}
 
 	// Check expvar prior to test
-	channelQueryCountBefore := db.DbStats.NewStats.GSIStats(QueryTypeSequences).QueryCount.Value()
-	channelQueryErrorCountBefore := db.DbStats.NewStats.GSIStats(QueryTypeSequences).QueryErrorCount.Value()
+	channelQueryCountBefore := db.DbStats.NewStats.Query(QueryTypeSequences).QueryCount.Value()
+	channelQueryErrorCountBefore := db.DbStats.NewStats.Query(QueryTypeSequences).QueryErrorCount.Value()
 
 	// Issue channels query
 	results, queryErr := db.QuerySequences([]uint64{
@@ -249,8 +249,8 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 	results, queryErr = db.QuerySequences([]uint64{})
 	assert.Error(t, queryErr, "Expect empty sequence error")
 
-	channelQueryCountAfter := db.DbStats.NewStats.GSIStats(QueryTypeSequences).QueryCount.Value()
-	channelQueryErrorCountAfter := db.DbStats.NewStats.GSIStats(QueryTypeSequences).QueryErrorCount.Value()
+	channelQueryCountAfter := db.DbStats.NewStats.Query(QueryTypeSequences).QueryCount.Value()
+	channelQueryErrorCountAfter := db.DbStats.NewStats.Query(QueryTypeSequences).QueryErrorCount.Value()
 
 	goassert.Equals(t, channelQueryCountBefore+3, channelQueryCountAfter)
 	goassert.Equals(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)

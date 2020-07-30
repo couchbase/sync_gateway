@@ -117,9 +117,6 @@ func (statsContext *statsContext) calculateProcessCpuPercentage() (cpuPercentUti
 }
 
 func (statsContext *statsContext) addProcessCpuPercentage() error {
-
-	// statsResourceUtilization := base.StatsResourceUtilization()
-
 	// Calculate the cpu percentage for the process
 	cpuPercentUtilization, err := statsContext.calculateProcessCpuPercentage()
 	if err != nil {
@@ -127,7 +124,6 @@ func (statsContext *statsContext) addProcessCpuPercentage() error {
 	}
 
 	// Record stat
-	// statsResourceUtilization.Set(base.StatKeyProcessCpuPercentUtilization, base.ExpvarFloatVal(cpuPercentUtilization))
 	base.SyncGatewayStats.GlobalStats.ResourceUtilization.CpuPercentUtil.Set(cpuPercentUtilization)
 
 	return nil
