@@ -221,13 +221,14 @@ const (
 )
 
 type sendChangesOptions struct {
-	docIDs     []string
-	since      SequenceID
-	continuous bool
-	activeOnly bool
-	batchSize  int
-	channels   base.Set
-	clientType clientType
+	docIDs            []string
+	since             SequenceID
+	continuous        bool
+	activeOnly        bool
+	batchSize         int
+	channels          base.Set
+	clientType        clientType
+	ignoreNoConflicts bool
 }
 
 // Sends all changes since the given sequence
@@ -259,7 +260,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	pendingChanges := make([][]interface{}, 0, opts.batchSize)
 	sendPendingChangesAt := func(minChanges int) error {
 		if len(pendingChanges) >= minChanges {
-			if err := bh.sendBatchOfChanges(sender, pendingChanges); err != nil {
+			if err := bh.sendBatchOfChanges(sender, pendingChanges, opts.ignoreNoConflicts); err != nil {
 				return err
 			}
 			pendingChanges = make([][]interface{}, 0, opts.batchSize)
@@ -294,7 +295,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 			if !caughtUp {
 				caughtUp = true
 				// Signal to client that it's caught up
-				if err := bh.sendBatchOfChanges(sender, nil); err != nil {
+				if err := bh.sendBatchOfChanges(sender, nil, opts.ignoreNoConflicts); err != nil {
 					return err
 				}
 			}
@@ -309,9 +310,12 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 
 }
 
-func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}) error {
+func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}, ignoreNoConflicts bool) error {
 	outrq := blip.NewRequest()
 	outrq.SetProfile("changes")
+	if ignoreNoConflicts {
+		outrq.Properties[ChangesMessageIgnoreNoConflicts] = "true"
+	}
 	err := outrq.SetJSONBody(changeArray)
 	if err != nil {
 		base.InfofCtx(bh.loggingCtx, base.KeyAll, "Error setting changes: %v", err)
@@ -358,9 +362,15 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 
 // Handles a "changes" request, i.e. a set of changes pushed by the client
 func (bh *blipHandler) handleChanges(rq *blip.Message) error {
-	if !bh.db.AllowConflicts() {
+	var ignoreNoConflicts bool
+	if val := rq.Properties[ChangesMessageIgnoreNoConflicts]; val != "" {
+		ignoreNoConflicts = val == "true"
+	}
+
+	if !ignoreNoConflicts && !bh.db.AllowConflicts() {
 		return base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
 	}
+
 	var changeList [][]interface{}
 	if err := rq.ReadJSONBody(&changeList); err != nil {
 		base.Warnf("Handle changes got error: %v", err)

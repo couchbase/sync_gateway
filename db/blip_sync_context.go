@@ -200,13 +200,13 @@ func (bsc *BlipSyncContext) _copyContextDatabase() *Database {
 func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, requestSent time.Time, handleChangesResponseDb *Database) error {
 	defer func() {
 		if panicked := recover(); panicked != nil {
-			base.Warnf("[%s] PANIC handling 'changes' response: %v\n%s", bsc.blipContext.ID, panicked, debug.Stack())
+			base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'changes' response: %v\n%s", panicked, debug.Stack())
 		}
 	}()
 
 	if response.Type() == blip.ErrorType {
 		errorBody, _ := response.Body()
-		base.Infof(base.KeyAll, "[%s] Client returned error in changesResponse: %s", bsc.blipContext.ID, errorBody)
+		base.InfofCtx(bsc.loggingCtx, base.KeyAll, "Client returned error in changesResponse: %s", errorBody)
 		return nil
 	}
 
@@ -359,7 +359,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
-					base.Warnf("[%s] PANIC handling 'sendRevision' response: %v\n%s", bsc.blipContext.ID, panicked, debug.Stack())
+					base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
 					bsc.Close()
 				}
 			}()
