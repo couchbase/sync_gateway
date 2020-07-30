@@ -15,42 +15,51 @@ import (
 )
 
 const (
-	defaultCheckpointInterval = time.Second * 30
+	defaultCheckpointInterval    = time.Second * 30
+	defaultPublishStatusInterval = time.Second * 10
 )
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID         string
-	Push       *ActivePushReplicator
-	Pull       *ActivePullReplicator
-	onComplete OnCompleteFunc
+	ID        string
+	Push      *ActivePushReplicator
+	Pull      *ActivePullReplicator
+	config    *ActiveReplicatorConfig
+	statusKey string // key used when persisting replication status
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
 func NewActiveReplicator(config *ActiveReplicatorConfig) *ActiveReplicator {
 	ar := &ActiveReplicator{
-		ID:         config.ID,
-		onComplete: config.onComplete,
+		ID:        config.ID,
+		config:    config,
+		statusKey: replicationStatusKey(config.ID),
 	}
 
 	if pushReplication := config.Direction == ActiveReplicatorTypePush || config.Direction == ActiveReplicatorTypePushAndPull; pushReplication {
 		ar.Push = NewPushReplicator(config)
-		if ar.onComplete != nil {
+		if ar.config.onComplete != nil {
 			ar.Push.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
 	if pullReplication := config.Direction == ActiveReplicatorTypePull || config.Direction == ActiveReplicatorTypePushAndPull; pullReplication {
 		ar.Pull = NewPullReplicator(config)
-		if ar.onComplete != nil {
+		if ar.config.onComplete != nil {
 			ar.Pull.onReplicatorComplete = ar._onReplicationComplete
 		}
 	}
 
+	base.InfofCtx(config.ActiveDB.Ctx, base.KeyReplicate, "Created active replicator ID:%s statusKey: %s", config.ID, ar.statusKey)
 	return ar
 }
 
 func (ar *ActiveReplicator) Start() error {
+
+	if ar.Push == nil && ar.Pull == nil {
+		return fmt.Errorf("Attempted to start activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
+	}
+
 	var pushErr error
 	if ar.Push != nil {
 		pushErr = ar.Push.Start()
@@ -69,10 +78,17 @@ func (ar *ActiveReplicator) Start() error {
 		return pullErr
 	}
 
+	_ = ar.publishStatus()
+
 	return nil
 }
 
 func (ar *ActiveReplicator) Stop() error {
+
+	if ar.Push == nil && ar.Pull == nil {
+		return fmt.Errorf("Attempted to stop activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
+	}
+
 	var pushErr error
 	if ar.Push != nil {
 		pushErr = ar.Push.Stop()
@@ -91,6 +107,7 @@ func (ar *ActiveReplicator) Stop() error {
 		return pullErr
 	}
 
+	_ = ar.publishStatus()
 	return nil
 }
 
@@ -113,6 +130,10 @@ func (ar *ActiveReplicator) Reset() error {
 		return pullErr
 	}
 
+	err := ar.purgeStatus()
+	if err != nil {
+		base.Warnf("Unable to purge replication status for reset replication: %v", err)
+	}
 	return nil
 }
 
@@ -128,7 +149,7 @@ func (ar *ActiveReplicator) _onReplicationComplete() {
 	}
 
 	if allReplicationsComplete {
-		ar.onComplete(ar.ID)
+		ar.config.onComplete(ar.ID)
 	}
 
 }
@@ -283,4 +304,37 @@ func combinedState(state1, state2 string) (combinedState string) {
 
 	base.Infof(base.KeyReplicate, "Unhandled combination of replication states (%s, %s), returning %s", state1, state2, state1)
 	return state1
+}
+
+func (ar *ActiveReplicator) publishStatus() error {
+	status := ar.GetStatus()
+	base.Debugf(base.KeyReplicate, "Persisting replication status for replicationID %v (%v)", ar.ID, ar.statusKey)
+	err := ar.config.ActiveDB.Bucket.Set(ar.statusKey, 0, status)
+	return err
+}
+
+func (ar *ActiveReplicator) purgeStatus() error {
+	base.Debugf(base.KeyReplicate, "Purging replication status for replicationID %v (%v)", ar.ID, ar.statusKey)
+	err := ar.config.ActiveDB.Bucket.Delete(ar.statusKey)
+	if !base.IsKeyNotFoundError(ar.config.ActiveDB.Bucket, err) {
+		return err
+	}
+	return nil
+}
+
+func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (status *ReplicationStatus, err error) {
+	_, err = dbContext.Bucket.Get(replicationStatusKey(replicationID), &status)
+	return status, err
+}
+
+// replicationStatusKey generates the key used to store status information for the given replicationID.  If replicationID
+// is 40 characters or longer, a SHA-1 hash of the replicationID is used in the status key.
+// If the replicationID is less than 40 characters, the ID can be used directly without worrying about final key length
+// or collision with other sha-1 hashes.
+func replicationStatusKey(replicationID string) string {
+	statusKeyID := replicationID
+	if len(statusKeyID) >= 40 {
+		statusKeyID = base.Sha1HashString(replicationID, "")
+	}
+	return fmt.Sprintf("%s%s", base.SGRStatusPrefix, statusKeyID)
 }

@@ -117,6 +117,8 @@ const (
 	SyncPropertyName = "_sync"
 	SyncXattrName    = "_sync"
 
+	SGRStatusPrefix = SyncPrefix + "sgrStatus:"
+
 	// Prefix for transaction metadata documents
 	TxnPrefix = "_txn:"
 

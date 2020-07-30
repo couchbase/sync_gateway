@@ -492,7 +492,14 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			if err != nil {
 				base.Warnf("Unable to gracefully close active replication: %v", err)
 			}
+			if !ok {
+				purgeErr := activeReplicator.purgeStatus()
+				if purgeErr != nil {
+					base.Warnf("Unable to purge replication status for removed replication: %v", err)
+				}
+			}
 			delete(m.activeReplicators, replicationID)
+
 		} else {
 			// Check for replications assigned to this node with updated state
 			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
@@ -980,33 +987,42 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 	replication, isLocal := m.activeReplicators[replicationID]
 	m.activeReplicatorsLock.RUnlock()
 
+	if options.LocalOnly && !isLocal {
+		return nil, nil
+	}
+
 	var status *ReplicationStatus
+	var remoteCfg *ReplicationCfg
 	if isLocal {
 		status = replication.GetStatus()
-		if options.IncludeConfig {
-			config, err := m.GetReplication(replicationID)
+	} else {
+		// Attempt to retrieve persisted status
+		var loadErr error
+		status, loadErr = LoadReplicationStatus(m.dbContext, replicationID)
+		if loadErr != nil {
+			// Unable to load persisted status.  Create status stub based on config
+			var err error
+			remoteCfg, err = m.GetReplication(replicationID)
 			if err != nil {
 				return nil, err
 			}
-			status.Config = &config.ReplicationConfig
+			status = &ReplicationStatus{
+				ID:     replicationID,
+				Status: remoteCfg.State,
+			}
 		}
-	} else {
-		// Check if replication is remote
-		if options.LocalOnly {
-			return nil, nil
+	}
+
+	// Add the replicaiton config if requested
+	if options.IncludeConfig {
+		if remoteCfg == nil {
+			var err error
+			remoteCfg, err = m.GetReplication(replicationID)
+			if err != nil {
+				return nil, err
+			}
 		}
-		// TODO: generation of remote status pending CBG-909
-		remoteCfg, err := m.GetReplication(replicationID)
-		if err != nil {
-			return nil, err
-		}
-		status = &ReplicationStatus{
-			ID:     replicationID,
-			Status: remoteCfg.State,
-		}
-		if options.IncludeConfig {
-			status.Config = &remoteCfg.ReplicationConfig
-		}
+		status.Config = &remoteCfg.ReplicationConfig
 	}
 
 	if !options.IncludeError && status.Status == ReplicationStateError {
@@ -1079,6 +1095,20 @@ func (m *sgReplicateManager) GetReplicationStatusAll(options ReplicationStatusOp
 	}
 
 	return statuses, nil
+}
+
+func (m *sgReplicateManager) PublishReplicationStatus() {
+	m.activeReplicatorsLock.RLock()
+	defer m.activeReplicatorsLock.RUnlock()
+	for replicationID, replicator := range m.activeReplicators {
+		state, _ := replicator.State()
+		if state == ReplicationStateRunning {
+			err := replicator.publishStatus()
+			if err != nil {
+				base.WarnfCtx(m.loggingCtx, "Unable to publish replication status for replication %q: %v", replicationID, err)
+			}
+		}
+	}
 }
 
 // ImportHeartbeatListener uses replication cfg to manage node list
