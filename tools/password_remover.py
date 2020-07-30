@@ -29,15 +29,13 @@ def tag_userdata_in_server_config(json_text, log_json_parsing_exceptions=True):
     Content postprocessor that tags user data in a config ready for post-process redaction
     """
     try:
-
-        # lower case everything so that "databases" works as a key even if the JSON has "Databases"
-        # as a key.  seems like there has to be a better way!
-        json_text = json_text.lower()
         valid_json = convert_to_valid_json(json_text)
-        parsed_json = json.loads(valid_json)
+
+        # Lower case keys so that "databases" works as a
+        # key even if the JSON has "Databases" as a key.
+        parsed_json = lower_keys_dict(valid_json)
 
         tag_userdata_in_server_json(parsed_json)
-
         formatted_json_string = json.dumps(parsed_json, indent=4)
         return formatted_json_string
 
@@ -65,15 +63,13 @@ def tag_userdata_in_db_config(json_text, log_json_parsing_exceptions=True):
     Content postprocessor that tags user data in a db config ready for post-process redaction
     """
     try:
-
-        # lower case everything so that "databases" works as a key even if the JSON has "Databases"
-        # as a key.  seems like there has to be a better way!
-        json_text = json_text.lower()
         valid_json = convert_to_valid_json(json_text)
-        parsed_json = json.loads(valid_json)
+
+        # Lower case keys so that "databases" works as a
+        # key even if the JSON has "Databases" as a key.
+        parsed_json = lower_keys_dict(valid_json)
 
         tag_userdata_in_db_json(parsed_json)
-
         formatted_json_string = json.dumps(parsed_json, indent=4)
         return formatted_json_string
 
@@ -157,20 +153,15 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
     Content postprocessor that strips out all of the sensitive passwords
     """
     try:
-
-        # lower case everything so that "databases" works as a key even if the JSON has "Databases"
-        # as a key.  seems like there has to be a better way!
-        json_text = json_text.lower()
-
         valid_json = convert_to_valid_json(json_text)
 
-        parsed_json = json.loads(valid_json)
-
+        # Lower case keys so that "databases" works as a
+        # key even if the JSON has "Databases" as a key.
+        parsed_json = lower_keys_dict(valid_json)
         remove_passwords_from_config(parsed_json)
 
         # Append a trailing \n here to ensure there's adequate separation in sync_gateway.log
         formatted_json_string = json.dumps(parsed_json, indent=4) + "\n"
-
         return formatted_json_string
 
     except Exception as e:
@@ -178,6 +169,23 @@ def remove_passwords(json_text, log_json_parsing_exceptions=True):
             print("Exception trying to remove passwords from {0}.  Exception: {1}".format(json_text, e))
             traceback.print_exc()
         return '{"Error":"Error in sgcollect_info password_remover.py trying to remove passwords.  See logs for details"}'
+
+
+def lower_keys_dict(json_text):
+    """Deserialize the given JSON document to a Python dictionary and
+    transform all keys to lower case.
+    """
+    def iterate(k):
+        return lower_level(k) if isinstance(k, dict) else k
+
+    def lower(k):
+        return k.lower() if isinstance(k, str) else k
+
+    def lower_level(kv):
+        return dict((lower(k), iterate(v)) for k, v in kv.items())
+
+    json_dict = json.loads(json_text)
+    return lower_level(json_dict)
 
 
 def pretty_print_json(json_text):
@@ -448,11 +456,11 @@ class TestTagUserData(unittest.TestCase):
         """
         tagged = tag_userdata_in_server_config(json_with_userdata)
         assert "<ud>uber_secret_channel</ud>" in tagged
-        assert "<ud>foo</ud>" in tagged           # everything is lowercased
+        assert "<ud>foo</ud>" in tagged           # everything is lower cased
         assert "<ud>bucket-user</ud>" in tagged
 
         assert "<ud>baz</ud>" not in tagged       # passwords shouldn't be tagged, they get removed
-        assert "<ud>bucket-1</ud>" not in tagged  # bucket name is acutally metadata
+        assert "<ud>bucket-1</ud>" not in tagged  # bucket name is actually metadata
 
 
 class TestConvertToValidJSON(unittest.TestCase):
@@ -566,6 +574,45 @@ class TestConvertToValidJSON(unittest.TestCase):
             print("Exception: {0}".format(e))
 
         assert got_exception is False, "Failed to convert to valid JSON"
+
+
+class TestLowerKeys(unittest.TestCase):
+
+    def test_basic(self):
+        json_text_input = """{
+           "Name": "Couchbase, Inc.",
+           "Address": {
+              "Street": "3250 Olcott St",
+              "City": "Santa Clara",
+              "State": "CA",
+              "Zip_Code": 95054
+           },
+           "Products": [
+              "Couchbase Server",      
+              "Sync Gateway",
+              "Couchbase Lite"
+           ]
+        }"""
+        json_dict_actual = lower_keys_dict(json_text_input)
+        json_dict_expected = json.loads("""{
+           "name": "Couchbase, Inc.",
+           "address": {
+              "street": "3250 Olcott St",
+              "city": "Santa Clara",
+              "state": "CA",
+              "zip_code": 95054
+           },
+           "products": [
+              "Couchbase Server",
+              "Sync Gateway",
+              "Couchbase Lite"
+           ]
+        }""")
+
+        # Sort the lists(if any) in both dictionaries before dumping to a string.
+        json_text_actual = json.dumps(json_dict_actual, sort_keys=True)
+        json_text_expected = json.dumps(json_dict_expected, sort_keys=True)
+        assert json_text_expected == json_text_actual
 
 
 if __name__ == "__main__":
