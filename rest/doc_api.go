@@ -260,8 +260,6 @@ func (h *handler) handleGetAttachment() error {
 		h.setHeader("Content-Disposition", "attachment")
 
 	}
-	// h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
-	// h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullBytes, int64(len(data)))
 	h.db.DbStats.NewStats.CBLReplicationPull().AttachmentPullCount.Add(1)
 	h.db.DbStats.NewStats.CBLReplicationPull().AttachmentPullBytes.Add(int64(len(data)))
 	h.response.WriteHeader(status)

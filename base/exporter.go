@@ -68,7 +68,7 @@ type DbStats struct {
 	CBLReplicationPushStats *CBLReplicationPushStats `json:"cbl_replication_push,omitempty"`
 	DatabaseStats           *DatabaseStats           `json:"database,omitempty"`
 	DeltaSyncStats          *DeltaSyncStats          `json:"delta_sync,omitempty"`
-	GsiStats                *GsiStats                `json:"gsi_views,omitempty"`
+	QueryStats              *QueryStats              `json:"gsi_views,omitempty"`
 	SecurityStats           *SecurityStats           `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats `json:"shared_bucket_import,omitempty"`
 
@@ -77,7 +77,7 @@ type DbStats struct {
 	initCBLReplicationPushStats sync.Once
 	initDatabaseStats           sync.Once
 	initDeltaSyncStats          sync.Once
-	initGsiStats                sync.Once
+	initQueryStats              sync.Once
 	initSecurityStats           sync.Once
 	initSharedBucketImportStats sync.Once
 }
@@ -238,7 +238,7 @@ type DeltaSyncStats struct {
 	DeltasSent                *SgwIntStat `json:"deltas_sent"`
 }
 
-type GsiStats struct {
+type QueryStats struct {
 	Stats map[string]*QueryStat
 	mutex sync.Mutex
 }
@@ -261,7 +261,7 @@ type SharedBucketImportStats struct {
 }
 
 type SgwStat struct {
-	statFQDN      string
+	statFQN       string
 	statDesc      *prometheus.Desc
 	dbName        string
 	statValueType prometheus.ValueType
@@ -294,7 +294,7 @@ func NewIntStat(subsystem string, key string, dbName string, statValueType prome
 
 	stat := &SgwIntStat{
 		SgwStat: SgwStat{
-			statFQDN:      name,
+			statFQN:       name,
 			statDesc:      desc,
 			dbName:        dbName,
 			statValueType: statValueType,
@@ -364,7 +364,7 @@ func NewFloatStat(subsystem string, key string, dbName string, statValueType pro
 
 	stat := &SgwFloatStat{
 		SgwStat: SgwStat{
-			statFQDN:      name,
+			statFQN:       name,
 			statDesc:      desc,
 			dbName:        dbName,
 			statValueType: statValueType,
@@ -601,30 +601,30 @@ func (d *DbStats) SharedBucketImport() *SharedBucketImportStats {
 	return d.SharedBucketImportStats
 }
 
-func (d *DbStats) GSIStats(queryName string) *QueryStat {
-	d.initGsiStats.Do(func() {
-		if d.GsiStats == nil {
-			d.GsiStats = &GsiStats{
+func (d *DbStats) Query(queryName string) *QueryStat {
+	d.initQueryStats.Do(func() {
+		if d.QueryStats == nil {
+			d.QueryStats = &QueryStats{
 				Stats: map[string]*QueryStat{},
 			}
 		}
 	})
 
-	d.GsiStats.mutex.Lock()
-	if _, ok := d.GsiStats.Stats[queryName]; !ok {
+	d.QueryStats.mutex.Lock()
+	if _, ok := d.QueryStats.Stats[queryName]; !ok {
 		dbName := d.dbName
-		d.GsiStats.Stats[queryName] = &QueryStat{
+		d.QueryStats.Stats[queryName] = &QueryStat{
 			QueryCount:      NewIntStat("gsi_views", queryName+"_count", dbName, prometheus.CounterValue, 0),
 			QueryErrorCount: NewIntStat("gsi_views", queryName+"_error_count", dbName, prometheus.CounterValue, 0),
 			QueryTime:       NewIntStat("gsi_views", queryName+"_time", dbName, prometheus.CounterValue, 0),
 		}
 	}
-	d.GsiStats.mutex.Unlock()
+	d.QueryStats.mutex.Unlock()
 
-	return d.GsiStats.Stats[queryName]
+	return d.QueryStats.Stats[queryName]
 }
 
-func (g *GsiStats) MarshalJSON() ([]byte, error) {
+func (g *QueryStats) MarshalJSON() ([]byte, error) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
 	ret := map[string]interface{}{}

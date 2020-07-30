@@ -304,10 +304,10 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 
 func (db *DatabaseContext) GetChannelQueryCount() int64 {
 	if db.UseViews() {
-		return db.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
+		return db.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
 	}
 
-	return db.DbStats.NewStats.GSIStats(QueryTypeChannels).QueryCount.Value()
+	return db.DbStats.NewStats.Query(QueryTypeChannels).QueryCount.Value()
 }
 
 // GetLocalActiveReplicatorForTest is a test util for retrieving an Active Replicator for deeper introspection/assertions.

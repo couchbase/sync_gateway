@@ -238,11 +238,11 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 
 	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
 	if err != nil {
-		context.DbStats.NewStats.GSIStats(queryName).QueryErrorCount.Add(1)
+		context.DbStats.NewStats.Query(queryName).QueryErrorCount.Add(1)
 	}
 
-	context.DbStats.NewStats.GSIStats(queryName).QueryCount.Add(1)
-	context.DbStats.NewStats.GSIStats(queryName).QueryTime.Add(time.Since(startTime).Nanoseconds())
+	context.DbStats.NewStats.Query(queryName).QueryCount.Add(1)
+	context.DbStats.NewStats.Query(queryName).QueryTime.Add(time.Since(startTime).Nanoseconds())
 
 	return results, err
 }
@@ -257,10 +257,10 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 
 	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
 	if err != nil {
-		context.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryErrorCount.Add(1)
+		context.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryErrorCount.Add(1)
 	}
-	context.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryCount.Add(1)
-	context.DbStats.NewStats.GSIStats(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryTime.Add(time.Since(startTime).Nanoseconds())
+	context.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryCount.Add(1)
+	context.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryTime.Add(time.Since(startTime).Nanoseconds())
 
 	return results, err
 }

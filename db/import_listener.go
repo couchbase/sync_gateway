@@ -32,7 +32,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
-	il.stats = dbStats.NewStats.DatabaseStats
+	il.stats = dbStats.NewStats.Database()
 	feedArgs := sgbucket.FeedArguments{
 		ID:         base.DCPImportFeedID,
 		Backfill:   sgbucket.FeedResume,
