@@ -346,7 +346,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			return nil, registerNodeErr
 		}
 		// Start background task to publish replication status
-		err := NewBackgroundTask("ReplicaitonStatus", dbContext.Name, func(ctx context.Context) error {
+		err := NewBackgroundTask("ReplicationStatus", dbContext.Name, func(ctx context.Context) error {
 			dbContext.SGReplicateMgr.PublishReplicationStatus()
 			return nil
 		}, defaultPublishStatusInterval, dbContext.terminator)
