@@ -67,6 +67,9 @@ const (
 	NorevMessageReason = "reason"
 
 	// changes message properties
+	ChangesMessageIgnoreNoConflicts = "ignoreNoConflicts"
+
+	// changes response properties
 	ChangesResponseMaxHistory = "maxHistory"
 	ChangesResponseDeltas     = "deltas"
 

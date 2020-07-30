@@ -71,13 +71,14 @@ func (apr *ActivePushReplicator) Start() error {
 
 	go func() {
 		bh.sendChanges(apr.blipSender, &sendChangesOptions{
-			docIDs:     apr.config.DocIDs,
-			since:      seq,
-			continuous: apr.config.Continuous,
-			activeOnly: apr.config.ActiveOnly,
-			batchSize:  int(apr.config.ChangesBatchSize),
-			channels:   channels,
-			clientType: clientTypeSGR2,
+			docIDs:            apr.config.DocIDs,
+			since:             seq,
+			continuous:        apr.config.Continuous,
+			activeOnly:        apr.config.ActiveOnly,
+			batchSize:         int(apr.config.ChangesBatchSize),
+			channels:          channels,
+			clientType:        clientTypeSGR2,
+			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
 		})
 		apr.Complete()
 	}()
