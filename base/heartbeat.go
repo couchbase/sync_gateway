@@ -2,6 +2,8 @@ package base
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -213,10 +215,26 @@ func (h *couchbaseHeartBeater) UnregisterListener(handlerName string) {
 	delete(h.heartbeatListeners, handlerName)
 }
 
+type ListenerMap map[string][]HeartbeatListener
+
+// Custom string format for ListenerMap logging to only print map keys
+// as slice when logging ListenerMap contents
+func (l ListenerMap) String() string {
+	if len(l) == 0 {
+		return "[]"
+	}
+	keys := make([]string, 0, len(l))
+	for k, _ := range l {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return fmt.Sprintf("%v", keys)
+}
+
 // getAllNodes returns all nodes from all registered listeners as a map from nodeUUID to the listeners
 // registered for that node
-func (h *couchbaseHeartBeater) getNodeListenerMap() map[string][]HeartbeatListener {
-	nodeToListenerMap := make(map[string][]HeartbeatListener)
+func (h *couchbaseHeartBeater) getNodeListenerMap() ListenerMap {
+	nodeToListenerMap := make(ListenerMap)
 	h.heartbeatListenersMutex.RLock()
 	for _, listener := range h.heartbeatListeners {
 		listenerNodes, err := listener.GetNodes()
@@ -239,7 +257,7 @@ func (h *couchbaseHeartBeater) checkStaleHeartbeats() error {
 
 	// Build set of all nodes
 	nodeListenerMap := h.getNodeListenerMap()
-	Debugf(KeyCluster, "Checking heartbeats for node set: %v", nodeListenerMap)
+	Debugf(KeyCluster, "Checking heartbeats for node set: %s", nodeListenerMap)
 
 	for heartbeatNodeUUID, listeners := range nodeListenerMap {
 		if heartbeatNodeUUID == h.nodeUUID {
