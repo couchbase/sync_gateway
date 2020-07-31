@@ -98,6 +98,7 @@ func (sc *ServerContext) PostStartup() {
 	// Introduce a minor delay if there are any replications
 	// (sc.startReplicators() might rely on SG being fully started)
 	if len(sc.config.Replications) > 0 {
+		base.Warnf("Using deprecated top-level 'replications' property in config. Use database-level 'replications' instead.")
 		time.Sleep(time.Second)
 	}
 	sc.startReplicators()
