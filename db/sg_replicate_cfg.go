@@ -64,6 +64,8 @@ func NewSGNode(uuid string, host string) *SGNode {
 type ReplicationConfig struct {
 	ID                     string                    `json:"replication_id"`
 	Remote                 string                    `json:"remote"`
+	Username               string                    `json:"username,omitempty"`
+	Password               string                    `json:"password,omitempty"`
 	Direction              ActiveReplicatorDirection `json:"direction"`
 	ConflictResolutionType ConflictResolverType      `json:"conflict_resolution_type,omitempty"`
 	ConflictResolutionFn   string                    `json:"custom_conflict_resolver,omitempty"`
@@ -102,6 +104,8 @@ type ReplicationCfg struct {
 type ReplicationUpsertConfig struct {
 	ID                     string      `json:"replication_id"`
 	Remote                 *string     `json:"remote"`
+	Username               *string     `json:"username,omitempty"`
+	Password               *string     `json:"password,omitempty"`
 	Direction              *string     `json:"direction"`
 	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
 	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
@@ -179,6 +183,14 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 		rc.Remote = *c.Remote
 	}
 
+	if c.Username != nil {
+		rc.Username = *c.Username
+	}
+
+	if c.Username != nil {
+		rc.Password = *c.Password
+	}
+
 	if c.Direction != nil {
 		rc.Direction = ActiveReplicatorDirection(*c.Direction)
 	}
@@ -254,6 +266,28 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 		return false, err
 	}
 	return bytes.Equal(currentBytes, compareToBytes), nil
+}
+
+// Redact returns the ReplicationCfg with auth credentials of the remote database
+// redacted. Credentials will be redacted from replication config and remote URL.
+func (r *ReplicationCfg) Redact() (config *ReplicationCfg) {
+	config = r
+	if r.Username != "" {
+		config.Username = ""
+	}
+	if r.Password != "" {
+		config.Password = ""
+	}
+	remote, err := url.Parse(r.Remote)
+	if err != nil {
+		base.Warnf("Failed to redact auth credentials from remote URL (%s): %v", r.Remote, err)
+		return
+	}
+	if remote.User.Username() != "" {
+		remote.User = nil
+		config.Remote = remote.String()
+	}
+	return
 }
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
@@ -436,6 +470,12 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	rc.PassiveDBURL, err = url.Parse(config.Remote)
 	if err != nil {
 		return nil, err
+	}
+
+	// Explicitly defined auth credentials of remote database takes precedence over
+	// the credentials specified in the database URL.
+	if config.Username != "" && config.Password != "" {
+		rc.PassiveDBURL.User = url.UserPassword(config.Username, config.Password)
 	}
 
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval
@@ -1026,7 +1066,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 		}
 	}
 
-	// Add the replicaiton config if requested
+	// Add the replication config if requested
 	if options.IncludeConfig {
 		if remoteCfg == nil {
 			var err error
@@ -1035,7 +1075,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 				return nil, err
 			}
 		}
-		status.Config = &remoteCfg.ReplicationConfig
+		status.Config = &remoteCfg.Redact().ReplicationConfig
 	}
 
 	if !options.IncludeError && status.Status == ReplicationStateError {

@@ -794,3 +794,96 @@ func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
 	return statuses
 }
+
+func TestReplicationAPIWithAuthCredentials(t *testing.T) {
+	var rt = NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create replication with explicitly defined auth credentials in replication config
+	replication1Config := db.ReplicationConfig{
+		ID:        "replication1",
+		Remote:    "http://remote:4984/db",
+		Username:  "bob",
+		Password:  "pass",
+		Direction: db.ActiveReplicatorTypePull,
+		Adhoc:     true,
+	}
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, replication1Config))
+	assertStatus(t, response, http.StatusCreated)
+
+	// Check whether auth are credentials redacted from the first replication response
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusOK)
+	var configResponse db.ReplicationConfig
+	err := json.Unmarshal(response.BodyBytes(), &configResponse)
+	require.NoError(t, err, "Error un-marshalling replication response")
+
+	// Assert actual replication config response against expected
+	checkReplicationConfig := func(expected, actual *db.ReplicationConfig) {
+		require.NotNil(t, actual, "Actual replication config is not available")
+		assert.Equal(t, expected.ID, actual.ID, "Replication ID mismatch")
+		assert.Equal(t, expected.Adhoc, actual.Adhoc, "Replication type mismatch")
+		assert.Equal(t, expected.Direction, actual.Direction, "Replication direction mismatch")
+		assert.Equal(t, "http://remote:4984/db", actual.Remote, "Couldn't redact auth credentials")
+		assert.Empty(t, actual.Username, "Couldn't redact username")
+		assert.Empty(t, actual.Password, "Couldn't redact password")
+	}
+	checkReplicationConfig(&replication1Config, &configResponse)
+
+	// Create another replication with auth credentials defined in Remote URL
+	replication2Config := db.ReplicationConfig{
+		ID:        "replication2",
+		Remote:    "http://bob:pass@remote:4984/db",
+		Direction: db.ActiveReplicatorTypePull,
+		Adhoc:     true,
+	}
+	response = rt.SendAdminRequest(http.MethodPost, "/db/_replication/", marshalConfig(t, replication2Config))
+	assertStatus(t, response, http.StatusCreated)
+
+	// Check whether auth are credentials redacted from the second replication response
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
+	assertStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &configResponse)
+	require.NoError(t, err, "Error un-marshalling replication response")
+	checkReplicationConfig(&replication2Config, &configResponse)
+
+	// Check whether auth are credentials redacted from all replications response
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/", "")
+	assertStatus(t, response, http.StatusOK)
+	log.Printf("response: %s", response.BodyBytes())
+
+	var replicationsResponse map[string]db.ReplicationConfig
+	err = json.Unmarshal(response.BodyBytes(), &replicationsResponse)
+	require.NoError(t, err, "Error un-marshalling replication response")
+	assert.Equal(t, 2, len(replicationsResponse), "Replication count mismatch")
+
+	replication1, ok := replicationsResponse[replication1Config.ID]
+	assert.True(t, ok, "Error getting replication")
+	checkReplicationConfig(&replication1Config, &replication1)
+
+	replication2, ok := replicationsResponse[replication2Config.ID]
+	assert.True(t, ok, "Error getting replication")
+	checkReplicationConfig(&replication2Config, &replication2)
+
+	// Check whether auth are credentials redacted replication status for all replications
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replicationStatus/?includeConfig=true", "")
+	assertStatus(t, response, http.StatusOK)
+	var allStatusResponse []*db.ReplicationStatus
+	require.NoError(t, json.Unmarshal(response.BodyBytes(), &allStatusResponse))
+
+	require.Equal(t, 2, len(allStatusResponse), "Replication count mismatch")
+	checkReplicationConfig(&replication1Config, allStatusResponse[0].Config)
+	checkReplicationConfig(&replication2Config, allStatusResponse[1].Config)
+
+	// Delete both replications
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication2", "")
+	assertStatus(t, response, http.StatusOK)
+
+	// Verify deletes were successful
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusNotFound)
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
+	assertStatus(t, response, http.StatusNotFound)
+}

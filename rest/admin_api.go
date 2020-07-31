@@ -814,6 +814,7 @@ func (h *handler) getReplications() error {
 		} else {
 			replication.AssignedNode = replication.AssignedNode + " (non-local)"
 		}
+		replication = replication.Redact()
 	}
 
 	h.writeJSON(replications)
@@ -830,7 +831,7 @@ func (h *handler) getReplication() error {
 		return err
 	}
 
-	h.writeJSON(replication)
+	h.writeJSON(replication.Redact())
 	return nil
 }
 
