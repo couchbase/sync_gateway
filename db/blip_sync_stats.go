@@ -86,16 +86,19 @@ func BlipSyncStatsForCBL(dbStats *DatabaseStats) *BlipSyncStats {
 	blipStats.HandleChangesCount = dbStats.NewStats.CBLReplicationPush().ProposeChangeCount
 	blipStats.HandleChangesTime = dbStats.NewStats.CBLReplicationPush().ProposeChangeTime
 
-	blipStats.SendRevDeltaSentCount = dbStats.NewStats.DeltaSync().DeltasSent
+	if dbStats.NewStats.DeltaSync() != nil {
+		blipStats.SendRevDeltaRequestedCount = dbStats.NewStats.DeltaSync().DeltasRequested
+		blipStats.SendRevDeltaSentCount = dbStats.NewStats.DeltaSync().DeltasSent
+		blipStats.HandleRevDeltaRecvCount = dbStats.NewStats.DeltaSync().DeltaPushDocCount
+		blipStats.DeltaEnabledPullReplicationCount = dbStats.NewStats.DeltaSync().DeltaPullReplicationCount
+	}
 
-	blipStats.SendRevDeltaRequestedCount = dbStats.NewStats.DeltaSync().DeltasRequested
 	blipStats.SendRevBytes = dbStats.NewStats.Database().DocReadsBytesBlip
 	blipStats.SendRevCount = dbStats.NewStats.Database().NumDocReadsBlip
 
 	blipStats.HandleRevBytes = dbStats.NewStats.Database().DocWritesBytesBlip
 	blipStats.HandleRevProcessingTime = dbStats.NewStats.CBLReplicationPush().WriteProcessingTime
 
-	blipStats.HandleRevDeltaRecvCount = dbStats.NewStats.DeltaSync().DeltaPushDocCount
 	blipStats.HandleRevCount = dbStats.NewStats.CBLReplicationPush().DocPushCount
 
 	blipStats.GetAttachment = dbStats.NewStats.CBLReplicationPull().AttachmentPullCount
@@ -112,8 +115,6 @@ func BlipSyncStatsForCBL(dbStats *DatabaseStats) *BlipSyncStats {
 	blipStats.SubChangesContinuousTotal = dbStats.NewStats.CBLReplicationPull().NumPullReplTotalContinuous
 	blipStats.SubChangesOneShotActive = dbStats.NewStats.CBLReplicationPull().NumPullReplActiveOneShot
 	blipStats.SubChangesOneShotTotal = dbStats.NewStats.CBLReplicationPull().NumPullReplTotalOneShot
-
-	blipStats.DeltaEnabledPullReplicationCount = dbStats.NewStats.DeltaSync().DeltaPullReplicationCount
 
 	return blipStats
 }

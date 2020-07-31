@@ -251,6 +251,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	if options.UseViews {
 		dbStats.NewStats.InitQueryStats(
+			true,
 			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewAccess),
 			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewAccessVbSeq),
 			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels),
@@ -263,6 +264,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewTombstones))
 	} else {
 		dbStats.NewStats.InitQueryStats(
+			false,
 			QueryTypeAccess,
 			QueryTypeRoleAccess,
 			QueryTypeChannels,
