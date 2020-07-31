@@ -5,7 +5,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
+
+	"github.com/couchbaselabs/walrus"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -404,4 +408,354 @@ func TestReplicationsFromConfig(t *testing.T) {
 		})
 	}
 
+}
+
+// TestPushReplicationAPI
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates documents on rt1.
+//   - Creates a continuous push replication on rt1 via the REST API
+//   - Validates documents are replicated to rt2
+func TestPushReplicationAPI(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Create doc1 on rt1
+	docID1 := t.Name() + "rt1doc"
+	_ = rt1.putDoc(docID1, `{"source":"rt1","channels":["alice"]}`)
+
+	// Create push replication, verify running
+	replicationID := t.Name()
+	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil)
+	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
+
+	// wait for document originally written to rt1 to arrive at rt2
+	changesResults := rt2.RequireWaitChanges(1, "0")
+	assert.Equal(t, docID1, changesResults.Results[0].ID)
+
+	// Validate doc1 contents on remote
+	doc1Body := rt2.getDoc(docID1)
+	assert.Equal(t, "rt1", doc1Body["source"])
+
+	// Create doc2 on rt1
+	docID2 := t.Name() + "rt1doc2"
+	_ = rt2.putDoc(docID2, `{"source":"rt1","channels":["alice"]}`)
+
+	// wait for doc2 to arrive at rt2
+	changesResults = rt2.RequireWaitChanges(1, changesResults.Last_Seq.(string))
+	assert.Equal(t, docID2, changesResults.Results[0].ID)
+
+	// Validate doc2 contents
+	doc2Body := rt2.getDoc(docID2)
+	assert.Equal(t, "rt1", doc2Body["source"])
+}
+
+// TestPullReplicationAPI
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates documents on rt2.
+//   - Creates a continuous pull replication on rt1 via the REST API
+//   - Validates documents are replicated to rt1
+func TestPullReplicationAPI(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Create doc1 on rt2
+	docID1 := t.Name() + "rt2doc"
+	_ = rt2.putDoc(docID1, `{"source":"rt2","channels":["alice"]}`)
+
+	// Create pull replication, verify running
+	replicationID := t.Name()
+	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil)
+	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
+
+	// wait for document originally written to rt2 to arrive at rt1
+	changesResults := rt1.RequireWaitChanges(1, "0")
+	changesResults.requireDocIDs(t, []string{docID1})
+
+	// Validate doc1 contents
+	doc1Body := rt1.getDoc(docID1)
+	assert.Equal(t, "rt2", doc1Body["source"])
+
+	// Create doc2 on rt2
+	docID2 := t.Name() + "rt2doc2"
+	_ = rt2.putDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
+
+	// wait for new document to arrive at rt1
+	changesResults = rt1.RequireWaitChanges(1, changesResults.Last_Seq.(string))
+	changesResults.requireDocIDs(t, []string{docID2})
+
+	// Validate doc2 contents
+	doc2Body := rt1.getDoc(docID2)
+	assert.Equal(t, "rt2", doc2Body["source"])
+}
+
+// TestReplicationRebalancePull
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates documents on rt1 in two channels
+//   - Creates two continuous pull replications on rt1 via the REST API
+//   - adds another active node
+//   - Creates more documents, validates they are replicated
+func TestReplicationRebalancePull(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Create docs on remote
+	docABC1 := t.Name() + "ABC1"
+	docDEF1 := t.Name() + "DEF1"
+	_ = remoteRT.putDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.putDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
+
+	// Create pull replications, verify running
+	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"})
+	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
+	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"})
+	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
+
+	// wait for documents originally written to remoteRT to arrive at activeRT
+	changesResults := activeRT.RequireWaitChanges(2, "0")
+	changesResults.requireDocIDs(t, []string{docABC1, docDEF1})
+
+	// Validate doc contents
+	docABC1Body := activeRT.getDoc(docABC1)
+	assert.Equal(t, "remoteRT", docABC1Body["source"])
+	docDEF1Body := activeRT.getDoc(docDEF1)
+	assert.Equal(t, "remoteRT", docDEF1Body["source"])
+
+	// Add another node to the active cluster
+	activeRT2 := addActiveRT(t, activeRT.TestBucket)
+	defer activeRT2.Close()
+
+	// Wait for replication to be rebalanced to activeRT2
+	activeRT.waitForAssignedReplications(1)
+	activeRT2.waitForAssignedReplications(1)
+
+	// Create additional docs on remoteRT
+	docABC2 := t.Name() + "ABC2"
+	_ = remoteRT.putDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
+	docDEF2 := t.Name() + "DEF2"
+	_ = remoteRT.putDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
+
+	// wait for new documents to arrive at activeRT
+	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
+	changesResults.requireDocIDs(t, []string{docABC2, docDEF2})
+
+	// Validate doc contents
+	docABC2Body := activeRT.getDoc(docABC2)
+	assert.Equal(t, "remoteRT", docABC2Body["source"])
+	docDEF2Body := activeRT.getDoc(docDEF2)
+	assert.Equal(t, "remoteRT", docDEF2Body["source"])
+	docABC2Body2 := activeRT2.getDoc(docABC2)
+	assert.Equal(t, "remoteRT", docABC2Body2["source"])
+	docDEF2Body2 := activeRT2.getDoc(docDEF2)
+	assert.Equal(t, "remoteRT", docDEF2Body2["source"])
+}
+
+// TestReplicationRebalancePush
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates documents on rt1 in two channels
+//   - Creates two continuous pull replications on rt1 via the REST API
+//   - adds another active node
+//   - Creates more documents, validates they are replicated
+func TestReplicationRebalancePush(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Create docs on active
+	docABC1 := t.Name() + "ABC1"
+	docDEF1 := t.Name() + "DEF1"
+	_ = remoteRT.putDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
+	_ = remoteRT.putDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
+
+	// Create push replications, verify running
+	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"})
+	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
+	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"})
+	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
+
+	// wait for documents to be pushed to remote
+	changesResults := remoteRT.RequireWaitChanges(2, "0")
+	changesResults.requireDocIDs(t, []string{docABC1, docDEF1})
+
+	// Validate doc contents
+	docABC1Body := remoteRT.getDoc(docABC1)
+	assert.Equal(t, "activeRT", docABC1Body["source"])
+	docDEF1Body := remoteRT.getDoc(docDEF1)
+	assert.Equal(t, "activeRT", docDEF1Body["source"])
+
+	// Add another node to the active cluster
+	activeRT2 := addActiveRT(t, activeRT.TestBucket)
+	defer activeRT2.Close()
+
+	// Wait for replication to be rebalanced to activeRT2
+	activeRT.waitForAssignedReplications(1)
+	activeRT2.waitForAssignedReplications(1)
+
+	// Create additional docs on local
+	docABC2 := t.Name() + "ABC2"
+	_ = activeRT.putDoc(docABC2, `{"source":"activeRT","channels":["ABC"]}`)
+	docDEF2 := t.Name() + "DEF2"
+	_ = activeRT.putDoc(docDEF2, `{"source":"activeRT","channels":["DEF"]}`)
+
+	// wait for new documents to arrive at remote
+	changesResults = remoteRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
+	changesResults.requireDocIDs(t, []string{docABC2, docDEF2})
+
+	// Validate doc contents
+	docABC2Body := remoteRT.getDoc(docABC2)
+	assert.Equal(t, "activeRT", docABC2Body["source"])
+	docDEF2Body := remoteRT.getDoc(docDEF2)
+	assert.Equal(t, "activeRT", docDEF2Body["source"])
+}
+
+// Helper functions for SGR testing
+
+// setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
+//   activeRT:
+//     - backed by test bucket
+//     - SGReplicationMgr.StartReplications() has been called
+//   passiveRT:
+//     - backed by different test bucket
+//     - user 'alice' created with star channel access
+//     - http server wrapping the public API, remoteDBURLString targets the rt2 database as user alice (e.g. http://alice:pass@host/db)
+//   returned teardown function closes activeRT, passiveRT and the http server, should be invoked with defer
+func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, remoteDBURLString string, teardown func()) {
+	// Set up passive RestTester (rt2)
+	passiveRT = NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("*"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(passiveRT.TestPublicHandler())
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, _ := url.Parse(srv.URL + "/db")
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Set up active RestTester (rt1)
+	activeRT = NewRestTester(t, &RestTesterConfig{
+		TestBucket:         base.GetTestBucket(t),
+		sgReplicateEnabled: true,
+	})
+
+	// Start replication manager on rt1
+	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
+
+	teardown = func() {
+		activeRT.Close()
+		srv.Close()
+		passiveRT.Close()
+	}
+	return activeRT, passiveRT, passiveDBURL.String(), teardown
+}
+
+// AddActiveRT returns a new RestTester backed by a no-close clone of TestBucket
+func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *RestTester) {
+
+	// Create a new rest tester, using a NoCloseClone of testBucket, which disables the TestBucketPool teardown
+	activeRT = NewRestTester(t, &RestTesterConfig{
+		TestBucket:         testBucket.NoCloseClone(),
+		sgReplicateEnabled: true,
+	})
+
+	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
+	// deleted when bucket.Close() is called during DatabaseContext.Close().
+	// Using IgnoreClose in leakyBucket to no-op the close operation.
+	// Because RestTester has Sync Gateway create the database context and bucket based on the bucketSpec, we can't
+	// set up the leakyBucket wrapper prior to bucket creation.
+	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
+	leakyBucket, ok := activeRT.GetDatabase().Bucket.(*base.LeakyBucket)
+	if ok {
+		underlyingBucket := leakyBucket.GetUnderlyingBucket()
+		if _, ok := underlyingBucket.(*walrus.WalrusBucket); ok {
+			leakyBucket.SetIgnoreClose(true)
+		}
+	}
+
+	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
+	return activeRT
+}
+
+// assertReplicationState retrieves _replicationStatus via the REST API for the specified replicationID, and
+// validates the expected state
+func (rt *RestTester) assertReplicationState(replicationID string, expectedState string) {
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/_replicationStatus/"+replicationID, "")
+	assertStatus(rt.tb, resp, http.StatusOK)
+	var status db.ReplicationStatus
+	require.NoError(rt.tb, json.Unmarshal(resp.Body.Bytes(), &status))
+	assert.Equal(rt.tb, expectedState, status.Status)
+}
+
+// createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
+func (rt *RestTester) createReplication(replicationID string, remoteURLString string,
+	direction db.ActiveReplicatorDirection, channels []string) {
+	replicationConfig := &db.ReplicationConfig{
+		ID:         replicationID,
+		Direction:  direction,
+		Remote:     remoteURLString,
+		Continuous: true,
+	}
+	if len(channels) > 0 {
+		replicationConfig.Filter = base.ByChannelFilter
+		replicationConfig.QueryParams = map[string]interface{}{"channels": channels}
+	}
+	payload, err := json.Marshal(replicationConfig)
+	require.NoError(rt.tb, err)
+	resp := rt.SendAdminRequest(http.MethodPost, "/db/_replication/", string(payload))
+	assertStatus(rt.tb, resp, http.StatusCreated)
+}
+
+func (rt *RestTester) waitForAssignedReplications(count int) {
+	successFunc := func() bool {
+		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
+		return len(replicationStatuses) == count
+	}
+	require.NoError(rt.tb, rt.WaitForCondition(successFunc))
+}
+
+func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationCfg) {
+	rawResponse := rt.SendAdminRequest("GET", "/db/_replication/", "")
+	assertStatus(rt.tb, rawResponse, 200)
+	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
+	return replications
+}
+
+func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
+	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+queryString, "")
+	assertStatus(rt.tb, rawResponse, 200)
+	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &statuses))
+	return statuses
 }

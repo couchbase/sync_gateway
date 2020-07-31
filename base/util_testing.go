@@ -42,6 +42,17 @@ func (tb TestBucket) Close() {
 	tb.closeFn()
 }
 
+// NoCloseClone returns a new test bucket referencing the same underlying bucket and bucketspec, but
+// with an IgnoreClose leaky bucket, and a no-op close function.  Used when multiple references to the same bucket are needed.
+func (tb *TestBucket) NoCloseClone() *TestBucket {
+	noCloseBucket := NewLeakyBucket(tb.Bucket, LeakyBucketConfig{IgnoreClose: true})
+	return &TestBucket{
+		Bucket:     noCloseBucket,
+		BucketSpec: tb.BucketSpec,
+		closeFn:    func() {},
+	}
+}
+
 func GetTestBucket(t testing.TB) *TestBucket {
 	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
 	return &TestBucket{

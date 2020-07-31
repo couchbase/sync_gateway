@@ -465,6 +465,15 @@ func (m *sgReplicateManager) replicationComplete(replicationID string) {
 }
 
 func (m *sgReplicateManager) Stop() {
+	// Stop active replications
+	m.activeReplicatorsLock.Lock()
+	for _, repl := range m.activeReplicators {
+		err := repl.Stop()
+		if err != nil {
+			base.WarnfCtx(m.loggingCtx, "Error stopping replication %s during manager stop: %v", repl.ID, err)
+		}
+	}
+	m.activeReplicatorsLock.Unlock()
 	close(m.terminator)
 }
 

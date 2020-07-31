@@ -56,6 +56,9 @@ type LeakyBucketConfig struct {
 
 	// IncrCallback issues a callback during incr.  Used for sequence allocation race tests
 	IncrCallback func()
+
+	// When IgnoreClose is set to true, bucket.Close() is a no-op.  Used when multiple references to a bucket are active.
+	IgnoreClose bool
 }
 
 func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {
@@ -69,6 +72,11 @@ var _ N1QLBucket = &LeakyBucket{}
 
 func (b *LeakyBucket) GetUnderlyingBucket() Bucket {
 	return b.bucket
+}
+
+// For walrus handling, ignore close needs to be set after the bucket is initialized
+func (b *LeakyBucket) SetIgnoreClose(value bool) {
+	b.config.IgnoreClose = value
 }
 
 func (b *LeakyBucket) GetName() string {
@@ -396,7 +404,9 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 }
 
 func (b *LeakyBucket) Close() {
-	b.bucket.Close()
+	if !b.config.IgnoreClose {
+		b.bucket.Close()
+	}
 }
 func (b *LeakyBucket) Dump() {
 	b.bucket.Dump()
