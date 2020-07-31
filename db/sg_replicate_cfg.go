@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"expvar"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -497,16 +496,8 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	rc.onComplete = m.replicationComplete
 
 	// Retrieve or create an entry in db.replications expvar for this replication
-	allReplicationsStatsMap := m.dbContext.DbStats.StatsReplications()
-	var statsMap *expvar.Map
-	statsVar := allReplicationsStatsMap.Get(rc.ID)
-	if statsVar == nil {
-		statsMap = new(expvar.Map).Init()
-		allReplicationsStatsMap.Set(rc.ID, statsMap)
-	} else {
-		statsMap = statsVar.(*expvar.Map)
-	}
-	rc.ReplicationStatsMap = statsMap
+	allReplicationsStatsMap := m.dbContext.DbStats.NewStats.DBReplicatorStats(rc.ID)
+	rc.ReplicationStatsMap = allReplicationsStatsMap
 
 	// TODO: review whether there's a more appropriate context to use here
 	replicator = NewActiveReplicator(rc)

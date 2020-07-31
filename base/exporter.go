@@ -64,14 +64,15 @@ type ResourceUtilization struct {
 
 type DbStats struct {
 	dbName                  string
-	CacheStats              *CacheStats              `json:"cache,omitempty"`
-	CBLReplicationPullStats *CBLReplicationPullStats `json:"cbl_replication_pull,omitempty"`
-	CBLReplicationPushStats *CBLReplicationPushStats `json:"cbl_replication_push,omitempty"`
-	DatabaseStats           *DatabaseStats           `json:"database,omitempty"`
-	DeltaSyncStats          *DeltaSyncStats          `json:"delta_sync,omitempty"`
-	QueryStats              *QueryStats              `json:"gsi_views,omitempty"`
-	SecurityStats           *SecurityStats           `json:"security,omitempty"`
-	SharedBucketImportStats *SharedBucketImportStats `json:"shared_bucket_import,omitempty"`
+	CacheStats              *CacheStats                   `json:"cache,omitempty"`
+	CBLReplicationPullStats *CBLReplicationPullStats      `json:"cbl_replication_pull,omitempty"`
+	CBLReplicationPushStats *CBLReplicationPushStats      `json:"cbl_replication_push,omitempty"`
+	DatabaseStats           *DatabaseStats                `json:"database,omitempty"`
+	DeltaSyncStats          *DeltaSyncStats               `json:"delta_sync,omitempty"`
+	QueryStats              *QueryStats                   `json:"gsi_views,omitempty"`
+	DbReplicatorStats       map[string]*DbReplicatorStats `json:"db_replicator_stats"`
+	SecurityStats           *SecurityStats                `json:"security,omitempty"`
+	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 }
 
 type CacheStats struct {
@@ -231,6 +232,30 @@ type DeltaSyncStats struct {
 type QueryStats struct {
 	Stats map[string]*QueryStat
 	mutex sync.Mutex
+}
+
+type DbReplicatorStats struct {
+	NumAttachmentBytesPushed *SgwIntStat `json:"num_attachment_bytes_pushed"`
+	NumAttachmentPushed      *SgwIntStat `json:"num_attachment_pushed"`
+	NumDocPushed             *SgwIntStat `json:"num_doc_pushed"`
+	NumDocsFailedToPush      *SgwIntStat `json:"num_docs_failed_to_push"`
+	PushConflictCount        *SgwIntStat `json:"push_conflict_count"`
+	PushRejectedCount        *SgwIntStat `json:"push_rejected_count"`
+	PushDeltaSentCount       *SgwIntStat `json:"push_delta_sent_count"`
+	DocsCheckedSent          *SgwIntStat `json:"docs_checked_sent" `
+
+	NumAttachmentBytesPulled *SgwIntStat `json:"num_attachment_bytes_pulled"`
+	NumAttachmentsPulled     *SgwIntStat `json:"num_attachments_pulled"`
+	PulledCount              *SgwIntStat `json:"pulled_count"`
+	PurgedCount              *SgwIntStat `json:"purged_count"`
+	FailedToPullCount        *SgwIntStat `json:"failed_to_pull_count"`
+	DeltaReceviedCount       *SgwIntStat `json:"delta_recevied_count"`
+	DeltaRequestedCount      *SgwIntStat `json:"delta_requested_count"`
+	DocsCheckedRecevied      *SgwIntStat `json:"docs_checked_recevied"`
+
+	ConflictResolvedLocalCount  *SgwIntStat `json:"conflict_resolved_local_count"`
+	ConflictResolvedRemoteCount *SgwIntStat `json:"conflict_resolved_remote_count"`
+	ConflictResolvedMergedCount *SgwIntStat `json:"conflict_resolved_merged_count"`
 }
 
 type SecurityStats struct {
@@ -582,6 +607,38 @@ func (d *DbStats) initSecurityStats() {
 			TotalAuthTime:    NewIntStat("security", "total_auth_time", dbName, prometheus.GaugeValue, 0),
 		}
 	}
+}
+
+func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
+	if d.DbReplicatorStats == nil {
+		d.DbReplicatorStats = map[string]*DbReplicatorStats{}
+	}
+
+	if _, ok := d.DbReplicatorStats[replicationID]; !ok {
+		d.DbReplicatorStats[replicationID] = &DbReplicatorStats{
+			NumAttachmentBytesPushed:    NewIntStat("replication", "sgr_num_attachment_bytes_pushed", d.dbName, prometheus.CounterValue, 0),
+			NumAttachmentPushed:         NewIntStat("replication", "sgr_num_attachments_pushed", d.dbName, prometheus.CounterValue, 0),
+			NumDocPushed:                NewIntStat("replication", "sgr_num_docs_pushed", d.dbName, prometheus.CounterValue, 0),
+			NumDocsFailedToPush:         NewIntStat("replication", "sgr_num_docs_failed_to_push", d.dbName, prometheus.CounterValue, 0),
+			PushConflictCount:           NewIntStat("replication", "sgr_push_conflict_count", d.dbName, prometheus.CounterValue, 0),
+			PushRejectedCount:           NewIntStat("replication", "sgr_push_rejected_count", d.dbName, prometheus.CounterValue, 0),
+			PushDeltaSentCount:          NewIntStat("replication", "sgr_deltas_sent", d.dbName, prometheus.CounterValue, 0),
+			DocsCheckedSent:             NewIntStat("replication", "sgr_docs_checked_sent", d.dbName, prometheus.CounterValue, 0),
+			NumAttachmentBytesPulled:    NewIntStat("replication", "sgr_num_attachment_bytes_pulled", d.dbName, prometheus.CounterValue, 0),
+			NumAttachmentsPulled:        NewIntStat("replication", "sgr_num_attachments_pulled", d.dbName, prometheus.CounterValue, 0),
+			PulledCount:                 NewIntStat("replication", "sgr_num_docs_pulled", d.dbName, prometheus.CounterValue, 0),
+			PurgedCount:                 NewIntStat("replication", "sgr_num_docs_purged", d.dbName, prometheus.CounterValue, 0),
+			FailedToPullCount:           NewIntStat("replication", "sgr_num_docs_failed_to_pull", d.dbName, prometheus.CounterValue, 0),
+			DeltaReceviedCount:          NewIntStat("replication", "sgr_deltas_recv", d.dbName, prometheus.CounterValue, 0),
+			DeltaRequestedCount:         NewIntStat("replication", "sgr_deltas_requested", d.dbName, prometheus.CounterValue, 0),
+			DocsCheckedRecevied:         NewIntStat("replication", "sgr_docs_checked_recv", d.dbName, prometheus.CounterValue, 0),
+			ConflictResolvedLocalCount:  NewIntStat("replication", "sgr_conflict_resolved_local_count", d.dbName, prometheus.CounterValue, 0),
+			ConflictResolvedRemoteCount: NewIntStat("replication", "sgr_conflict_resolved_remote_count", d.dbName, prometheus.CounterValue, 0),
+			ConflictResolvedMergedCount: NewIntStat("replication", "sgr_conflict_resolved_merge_count", d.dbName, prometheus.CounterValue, 0),
+		}
+	}
+
+	return d.DbReplicatorStats[replicationID]
 }
 
 func (d *DbStats) Security() *SecurityStats {

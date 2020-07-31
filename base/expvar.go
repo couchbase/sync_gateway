@@ -26,7 +26,7 @@ const (
 var TimingExpvarsEnabled = false
 
 const (
-	// StatsReplication
+	// StatsReplication (SGR 1.x)
 	StatKeySgrActive                     = "sgr_active"
 	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
 	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
@@ -35,24 +35,6 @@ const (
 	StatKeySgrNumDocsPushed       = "sgr_num_docs_pushed"
 	StatKeySgrNumDocsFailedToPush = "sgr_num_docs_failed_to_push"
 	StatKeySgrDocsCheckedSent     = "sgr_docs_checked_sent"
-
-	// StatsReplication (SGR 2.x)
-	StatKeySgrNumAttachmentsPushed     = "sgr_num_attachments_pushed"
-	StatKeySgrNumAttachmentBytesPushed = "sgr_num_attachment_bytes_pushed"
-	StatKeySgrNumAttachmentsPulled     = "sgr_num_attachments_pulled"
-	StatKeySgrNumAttachmentBytesPulled = "sgr_num_attachment_bytes_pulled"
-	StatKeySgrPulledCount              = "sgr_num_docs_pulled"
-	StatKeySgrPurgedCount              = "sgr_num_docs_purged"
-	StatKeySgrFailedToPullCount        = "sgr_num_docs_failed_to_pull"
-	StatKeySgrPushConflictCount        = "sgr_push_conflict_count"
-	StatKeySgrPushRejectedCount        = "sgr_push_rejected_count"
-	StatKeySgrDocsCheckedRecv          = "sgr_docs_checked_recv"
-	StatKeySgrDeltaRecvCount           = "sgr_deltas_recv"
-	StatKeySgrDeltaRequestedCount      = "sgr_deltas_requested"
-	StatKeySgrPushDeltaSentCount       = "sgr_deltas_sent"
-	StatKeySgrConflictResolvedLocal    = "sgr_conflict_resolved_local_count"
-	StatKeySgrConflictResolvedRemote   = "sgr_conflict_resolved_remote_count"
-	StatKeySgrConflictResolvedMerge    = "sgr_conflict_resolved_merge_count"
 )
 
 const (
@@ -84,7 +66,7 @@ func init() {
 	// SyncGatewayStats.InitialiseReplicationStats(SyncGatewayStats.ReplicationStats())
 
 	NewStatsResourceUtilization()
-	expvar.Publish("syncgateway", &SyncGatewayStats)
+	expvar.Publish(StatsGroupKeySyncGateway, &SyncGatewayStats)
 }
 
 func NewStatsResourceUtilization() *expvar.Map {
