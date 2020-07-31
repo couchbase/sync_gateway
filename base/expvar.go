@@ -84,6 +84,7 @@ func init() {
 	// SyncGatewayStats.InitialiseReplicationStats(SyncGatewayStats.ReplicationStats())
 
 	NewStatsResourceUtilization()
+	expvar.Publish("syncgateway", &SyncGatewayStats)
 }
 
 func NewStatsResourceUtilization() *expvar.Map {
@@ -241,7 +242,6 @@ func NewStatsResourceUtilization() *expvar.Map {
 		0,
 	)
 
-	expvar.Publish("syncgateway", &SyncGatewayStats)
 	return stats
 }
 

@@ -239,8 +239,41 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	dbStats := NewDatabaseStats()
-
 	dbStats.NewStats = base.SyncGatewayStats.NewDBStats(dbName)
+
+	if options.DeltaSyncOptions.Enabled {
+		dbStats.NewStats.InitDeltaSyncStats()
+	}
+
+	if autoImport {
+		dbStats.NewStats.InitSharedBucketImportStats()
+	}
+
+	if options.UseViews {
+		dbStats.NewStats.InitQueryStats(
+			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewAccess),
+			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewAccessVbSeq),
+			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels),
+			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewPrincipals),
+			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewRoleAccess),
+			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewRoleAccessVbSeq),
+			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewAllDocs),
+			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewImport),
+			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewSessions),
+			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewTombstones))
+	} else {
+		dbStats.NewStats.InitQueryStats(
+			QueryTypeAccess,
+			QueryTypeRoleAccess,
+			QueryTypeChannels,
+			QueryTypeChannelsStar,
+			QueryTypeSequences,
+			QueryTypePrincipals,
+			QueryTypeSessions,
+			QueryTypeTombstones,
+			QueryTypeResync,
+			QueryTypeAllDocs)
+	}
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,
