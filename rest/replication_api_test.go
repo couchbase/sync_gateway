@@ -803,7 +803,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	replication1Config := db.ReplicationConfig{
 		ID:        "replication1",
 		Remote:    "http://remote:4984/db",
-		Username:  "bob",
+		Username:  "alice",
 		Password:  "pass",
 		Direction: db.ActiveReplicatorTypePull,
 		Adhoc:     true,
@@ -811,7 +811,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, replication1Config))
 	assertStatus(t, response, http.StatusCreated)
 
-	// Check whether auth are credentials redacted from the first replication response
+	// Check whether auth are credentials redacted from replication response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
 	assertStatus(t, response, http.StatusOK)
 	var configResponse db.ReplicationConfig
@@ -824,10 +824,12 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 		assert.Equal(t, expected.ID, actual.ID, "Replication ID mismatch")
 		assert.Equal(t, expected.Adhoc, actual.Adhoc, "Replication type mismatch")
 		assert.Equal(t, expected.Direction, actual.Direction, "Replication direction mismatch")
-		assert.Equal(t, "http://remote:4984/db", actual.Remote, "Couldn't redact auth credentials")
-		assert.Empty(t, actual.Username, "Couldn't redact username")
-		assert.Empty(t, actual.Password, "Couldn't redact password")
+		assert.Equal(t, expected.Remote, actual.Remote, "Couldn't redact auth credentials")
+		assert.Equal(t, expected.Username, actual.Username, "Couldn't redact username")
+		assert.Equal(t, expected.Password, actual.Password, "Couldn't redact password")
 	}
+	replication1Config.Username = "****"
+	replication1Config.Password = "****"
 	checkReplicationConfig(&replication1Config, &configResponse)
 
 	// Create another replication with auth credentials defined in Remote URL
@@ -840,12 +842,14 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodPost, "/db/_replication/", marshalConfig(t, replication2Config))
 	assertStatus(t, response, http.StatusCreated)
 
-	// Check whether auth are credentials redacted from the second replication response
+	// Check whether auth are credentials redacted from replication response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
 	assertStatus(t, response, http.StatusOK)
+	configResponse = db.ReplicationConfig{}
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
-	checkReplicationConfig(&replication2Config, &configResponse)
+	replication2Config.Remote = "http://****:****@remote:4984/db"
+	//checkReplicationConfig(&replication2Config, &configResponse)
 
 	// Check whether auth are credentials redacted from all replications response
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/", "")
@@ -887,3 +891,154 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
 	assertStatus(t, response, http.StatusNotFound)
 }
+
+func TestValidateReplication(t *testing.T) {
+	testCases := []struct {
+		name              string
+		replicationConfig db.ReplicationConfig
+		fromConfig        bool
+		errExpected       error
+	}{
+		{
+			name: "replication config unsupported Cancel option",
+			replicationConfig: db.ReplicationConfig{
+				Cancel: true,
+			},
+			fromConfig: true,
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "cancel=true is invalid for replication in Sync Gateway configuration",
+			},
+		},
+		{
+			name: "replication config unsupported Adhoc option",
+			replicationConfig: db.ReplicationConfig{
+				Adhoc: true,
+			},
+			fromConfig: true,
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "adhoc=true is invalid for replication in Sync Gateway configuration",
+			},
+		},
+		{
+			name: "replication config with no remote URL specified",
+			replicationConfig: db.ReplicationConfig{
+				Remote: "",
+			},
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "Replication remote must be specified.",
+			},
+		},
+		{
+			name: "replication config with invalid remote URL specified",
+			replicationConfig: db.ReplicationConfig{
+				Remote: "http://user:foo{bar=pass@remote:4984/db",
+			},
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "Replication remote URL is invalid",
+			},
+		},
+		{
+			name: "auth credentials specified in both replication config and remote URL",
+			replicationConfig: db.ReplicationConfig{
+				Remote:   "http://bob:pass@remote:4984/db",
+				Username: "alice",
+				Password: "pass",
+			},
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "Auth credentials can be specified either in replication config or remote URL but not allowed in both",
+			},
+		},
+		{
+			name: "auth credentials specified in replication config",
+			replicationConfig: db.ReplicationConfig{
+				Remote:      "http://remote:4984/db",
+				Username:    "alice",
+				Password:    "pass",
+				Filter:      base.ByChannelFilter,
+				QueryParams: map[string]interface{}{"channels": []interface{}{"E", "A", "D", "G", "B", "e"}},
+				Direction:   db.ActiveReplicatorTypePull,
+			},
+		},
+		{
+			name: "auth credentials specified in remote URL",
+			replicationConfig: db.ReplicationConfig{
+				Remote:      "http://bob:pass@remote:4984/db",
+				Filter:      base.ByChannelFilter,
+				QueryParams: map[string]interface{}{"channels": []interface{}{"E", "A", "D", "G", "B", "e"}},
+				Direction:   db.ActiveReplicatorTypePull,
+			},
+		},
+		{
+			name: "replication config with no direction",
+			replicationConfig: db.ReplicationConfig{
+				Remote: "http://bob:pass@remote:4984/db",
+			},
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "Replication direction must be specified",
+			},
+		},
+		{
+			name: "replication config with invalid direction",
+			replicationConfig: db.ReplicationConfig{
+				Remote:    "http://bob:pass@remote:4984/db",
+				Direction: "UpAndDown",
+			},
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "Invalid replication direction \"UpAndDown\", valid values are push/pull/pushAndPull",
+			},
+		},
+		{
+			name: "replication config with unknown filter",
+			replicationConfig: db.ReplicationConfig{
+				Remote:      "http://bob:pass@remote:4984/db",
+				QueryParams: map[string]interface{}{"channels": []interface{}{"E", "A", "D", "G", "B", "e"}},
+				Direction:   db.ActiveReplicatorTypePull,
+				Filter:      "unknownFilter",
+			},
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "Unknown replication filter; try sync_gateway/bychannel",
+			},
+		},
+		{
+			name: "replication config with channel filter but no query params",
+			replicationConfig: db.ReplicationConfig{
+				Remote:    "http://bob:pass@remote:4984/db",
+				Filter:    base.ByChannelFilter,
+				Direction: db.ActiveReplicatorTypePull,
+			},
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "Replication specifies sync_gateway/bychannel filter but is missing query_params",
+			},
+		},
+		{
+			name: "replication config with channel filter and invalid query params",
+			replicationConfig: db.ReplicationConfig{
+				Remote:      "http://bob:pass@remote:4984/db",
+				Filter:      base.ByChannelFilter,
+				QueryParams: []string{"E", "A", "D", "G", "B", "e"},
+				Direction:   db.ActiveReplicatorTypePull,
+			},
+			errExpected: &base.HTTPError{
+				Status:  http.StatusBadRequest,
+				Message: "Bad channels array in query_params for sync_gateway/bychannel filter",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.replicationConfig.ValidateReplication(tc.fromConfig)
+			assert.Equal(t, tc.errExpected, err)
+		})
+	}
+}
+
