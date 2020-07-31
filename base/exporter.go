@@ -3,6 +3,7 @@ package base
 import (
 	"expvar"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -71,15 +72,6 @@ type DbStats struct {
 	QueryStats              *QueryStats              `json:"gsi_views,omitempty"`
 	SecurityStats           *SecurityStats           `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats `json:"shared_bucket_import,omitempty"`
-
-	initCacheStats              sync.Once
-	initCBLReplicationPullStats sync.Once
-	initCBLReplicationPushStats sync.Once
-	initDatabaseStats           sync.Once
-	initDeltaSyncStats          sync.Once
-	initQueryStats              sync.Once
-	initSecurityStats           sync.Once
-	initSharedBucketImportStats sync.Once
 }
 
 type CacheStats struct {
@@ -127,7 +119,6 @@ type CBLReplicationPullStats struct {
 	RevSendLatency              *SgwIntStat `json:"rev_send_latency"`
 }
 
-// TODO: Conflict write count -- This stat is no longer here - LOOK INTO THIS
 type CBLReplicationPushStats struct {
 	AttachmentPushBytes *SgwIntStat `json:"attachment_push_bytes"`
 	AttachmentPushCount *SgwIntStat `json:"attachment_push_count"`
@@ -139,7 +130,6 @@ type CBLReplicationPushStats struct {
 	WriteProcessingTime *SgwIntStat `json:"write_processing_time"`
 }
 
-// TODO: Conflict write count -- This stat is here - LOOK INTO THIS
 type DatabaseStats struct {
 	AbandonedSeqs           *SgwIntStat `json:"abandoned_seqs"`
 	ConflictWriteCount      *SgwIntStat `json:"conflict_write_count"`
@@ -426,201 +416,229 @@ func (s *SgwStats) NewDBStats(name string) *DbStats {
 		}
 	})
 
-	s.DbStats[name] = &DbStats{}
-	s.DbStats[name].dbName = name
+	s.DbStats[name] = &DbStats{
+		dbName: name,
+	}
+
+	// These have a pretty good chance of being used so we'll initialise these for every database stat struct created
+	s.DbStats[name].InitCacheStats()
+	s.DbStats[name].InitCBLReplicationPullStats()
+	s.DbStats[name].initCBLReplicationPushStats()
+	s.DbStats[name].InitDatabaseStats()
+
 	return s.DbStats[name]
 }
 
-func (d *DbStats) Cache() *CacheStats {
-	d.initCacheStats.Do(func() {
-		if d.CacheStats == nil {
-			dbName := d.dbName
-			d.CacheStats = &CacheStats{
-				AbandonedSeqs:                       NewIntStat("cache", "abandoned_seqs", dbName, prometheus.CounterValue, 0),
-				ChannelCacheRevsActive:              NewIntStat("cache", "chan_cache_active_revs", dbName, prometheus.GaugeValue, 0),
-				ChannelCacheBypassCount:             NewIntStat("cache", "chan_cache_bypass_count", dbName, prometheus.CounterValue, 0),
-				ChannelCacheChannelsAdded:           NewIntStat("cache", "chan_cache_channels_added", dbName, prometheus.CounterValue, 0),
-				ChannelCacheChannelsEvictedInactive: NewIntStat("cache", "chan_cache_channels_evicted_inactive", dbName, prometheus.CounterValue, 0),
-				ChannelCacheChannelsEvictedNRU:      NewIntStat("cache", "chan_cache_channels_evicted_nru", dbName, prometheus.CounterValue, 0),
-				ChannelCacheCompactCount:            NewIntStat("cache", "chan_cache_compact_count", dbName, prometheus.CounterValue, 0),
-				ChannelCacheCompactTime:             NewIntStat("cache", "chan_cache_compact_time", dbName, prometheus.CounterValue, 0),
-				ChannelCacheHits:                    NewIntStat("cache", "chan_cache_hits", dbName, prometheus.CounterValue, 0),
-				ChannelCacheMaxEntries:              NewIntStat("cache", "chan_cache_max_entries", dbName, prometheus.GaugeValue, 0),
-				ChannelCacheMisses:                  NewIntStat("cache", "chan_cache_misses", dbName, prometheus.CounterValue, 0),
-				ChannelCacheNumChannels:             NewIntStat("cache", "chan_cache_num_channels", dbName, prometheus.GaugeValue, 0),
-				ChannelCachePendingQueries:          NewIntStat("cache", "chan_cache_pending_queries", dbName, prometheus.GaugeValue, 0),
-				ChannelCacheRevsRemoval:             NewIntStat("cache", "chan_cache_removal_revs", dbName, prometheus.GaugeValue, 0),
-				ChannelCacheRevsTombstone:           NewIntStat("cache", "chan_cache_tombstone_revs", dbName, prometheus.GaugeValue, 0),
-				HighSeqCached:                       NewIntStat("cache", "high_seq_cached", dbName, prometheus.CounterValue, 0),
-				HighSeqStable:                       NewIntStat("cache", "high_seq_stable", dbName, prometheus.CounterValue, 0),
-				NumActiveChannels:                   NewIntStat("cache", "num_active_channels", dbName, prometheus.GaugeValue, 0),
-				NumSkippedSeqs:                      NewIntStat("cache", "num_skipped_seqs", dbName, prometheus.CounterValue, 0),
-				PendingSeqLen:                       NewIntStat("cache", "pending_seq_len", dbName, prometheus.GaugeValue, 0),
-				RevisionCacheBypass:                 NewIntStat("cache", "rev_cache_bypass", dbName, prometheus.GaugeValue, 0),
-				RevisionCacheHits:                   NewIntStat("cache", "rev_cache_hits", dbName, prometheus.CounterValue, 0),
-				RevisionCacheMisses:                 NewIntStat("cache", "rev_cache_misses", dbName, prometheus.CounterValue, 0),
-				SkippedSeqLen:                       NewIntStat("cache", "skipped_seq_len", dbName, prometheus.GaugeValue, 0),
-			}
+func (d *DbStats) InitCacheStats() {
+	if d.CacheStats == nil {
+		dbName := d.dbName
+		d.CacheStats = &CacheStats{
+			AbandonedSeqs:                       NewIntStat("cache", "abandoned_seqs", dbName, prometheus.CounterValue, 0),
+			ChannelCacheRevsActive:              NewIntStat("cache", "chan_cache_active_revs", dbName, prometheus.GaugeValue, 0),
+			ChannelCacheBypassCount:             NewIntStat("cache", "chan_cache_bypass_count", dbName, prometheus.CounterValue, 0),
+			ChannelCacheChannelsAdded:           NewIntStat("cache", "chan_cache_channels_added", dbName, prometheus.CounterValue, 0),
+			ChannelCacheChannelsEvictedInactive: NewIntStat("cache", "chan_cache_channels_evicted_inactive", dbName, prometheus.CounterValue, 0),
+			ChannelCacheChannelsEvictedNRU:      NewIntStat("cache", "chan_cache_channels_evicted_nru", dbName, prometheus.CounterValue, 0),
+			ChannelCacheCompactCount:            NewIntStat("cache", "chan_cache_compact_count", dbName, prometheus.CounterValue, 0),
+			ChannelCacheCompactTime:             NewIntStat("cache", "chan_cache_compact_time", dbName, prometheus.CounterValue, 0),
+			ChannelCacheHits:                    NewIntStat("cache", "chan_cache_hits", dbName, prometheus.CounterValue, 0),
+			ChannelCacheMaxEntries:              NewIntStat("cache", "chan_cache_max_entries", dbName, prometheus.GaugeValue, 0),
+			ChannelCacheMisses:                  NewIntStat("cache", "chan_cache_misses", dbName, prometheus.CounterValue, 0),
+			ChannelCacheNumChannels:             NewIntStat("cache", "chan_cache_num_channels", dbName, prometheus.GaugeValue, 0),
+			ChannelCachePendingQueries:          NewIntStat("cache", "chan_cache_pending_queries", dbName, prometheus.GaugeValue, 0),
+			ChannelCacheRevsRemoval:             NewIntStat("cache", "chan_cache_removal_revs", dbName, prometheus.GaugeValue, 0),
+			ChannelCacheRevsTombstone:           NewIntStat("cache", "chan_cache_tombstone_revs", dbName, prometheus.GaugeValue, 0),
+			HighSeqCached:                       NewIntStat("cache", "high_seq_cached", dbName, prometheus.CounterValue, 0),
+			HighSeqStable:                       NewIntStat("cache", "high_seq_stable", dbName, prometheus.CounterValue, 0),
+			NumActiveChannels:                   NewIntStat("cache", "num_active_channels", dbName, prometheus.GaugeValue, 0),
+			NumSkippedSeqs:                      NewIntStat("cache", "num_skipped_seqs", dbName, prometheus.CounterValue, 0),
+			PendingSeqLen:                       NewIntStat("cache", "pending_seq_len", dbName, prometheus.GaugeValue, 0),
+			RevisionCacheBypass:                 NewIntStat("cache", "rev_cache_bypass", dbName, prometheus.GaugeValue, 0),
+			RevisionCacheHits:                   NewIntStat("cache", "rev_cache_hits", dbName, prometheus.CounterValue, 0),
+			RevisionCacheMisses:                 NewIntStat("cache", "rev_cache_misses", dbName, prometheus.CounterValue, 0),
+			SkippedSeqLen:                       NewIntStat("cache", "skipped_seq_len", dbName, prometheus.GaugeValue, 0),
 		}
-	})
+	}
+}
+
+func (d *DbStats) Cache() *CacheStats {
 	return d.CacheStats
 }
 
-func (d *DbStats) CBLReplicationPull() *CBLReplicationPullStats {
-	d.initCBLReplicationPullStats.Do(func() {
-		if d.CBLReplicationPullStats == nil {
-			dbName := d.dbName
-			d.CBLReplicationPullStats = &CBLReplicationPullStats{
-				AttachmentPullBytes:         NewIntStat("replication_pull", "attachment_pull_bytes", dbName, prometheus.CounterValue, 0),
-				AttachmentPullCount:         NewIntStat("replication_pull", "attachment_pull_count", dbName, prometheus.CounterValue, 0),
-				MaxPending:                  NewIntStat("replication_pull", "max_pending", dbName, prometheus.GaugeValue, 0),
-				NumReplicationsActive:       NewIntStat("replication_pull", "num_pull_repl_active_continuous", dbName, prometheus.GaugeValue, 0),
-				NumPullReplActiveContinuous: NewIntStat("replication_pull", "num_pull_repl_active_one_shot", dbName, prometheus.GaugeValue, 0),
-				NumPullReplActiveOneShot:    NewIntStat("replication_pull", "num_replications_active", dbName, prometheus.GaugeValue, 0),
-				NumPullReplCaughtUp:         NewIntStat("replication_pull", "num_pull_repl_caught_up", dbName, prometheus.GaugeValue, 0),
-				NumPullReplSinceZero:        NewIntStat("replication_pull", "num_pull_repl_since_zero", dbName, prometheus.CounterValue, 0),
-				NumPullReplTotalContinuous:  NewIntStat("replication_pull", "num_pull_repl_total_continuous", dbName, prometheus.GaugeValue, 0),
-				NumPullReplTotalOneShot:     NewIntStat("replication_pull", "num_pull_repl_total_one_shot", dbName, prometheus.GaugeValue, 0),
-				RequestChangesCount:         NewIntStat("replication_pull", "request_changes_count", dbName, prometheus.CounterValue, 0),
-				RequestChangesTime:          NewIntStat("replication_pull", "request_changes_time", dbName, prometheus.CounterValue, 0),
-				RevProcessingTime:           NewIntStat("replication_pull", "rev_processing_time", dbName, prometheus.GaugeValue, 0),
-				RevSendCount:                NewIntStat("replication_pull", "rev_send_count", dbName, prometheus.CounterValue, 0),
-				RevSendLatency:              NewIntStat("replication_pull", "rev_send_latency", dbName, prometheus.CounterValue, 0),
-			}
+func (d *DbStats) InitCBLReplicationPullStats() {
+	if d.CBLReplicationPullStats == nil {
+		dbName := d.dbName
+		d.CBLReplicationPullStats = &CBLReplicationPullStats{
+			AttachmentPullBytes:         NewIntStat("replication_pull", "attachment_pull_bytes", dbName, prometheus.CounterValue, 0),
+			AttachmentPullCount:         NewIntStat("replication_pull", "attachment_pull_count", dbName, prometheus.CounterValue, 0),
+			MaxPending:                  NewIntStat("replication_pull", "max_pending", dbName, prometheus.GaugeValue, 0),
+			NumReplicationsActive:       NewIntStat("replication_pull", "num_pull_repl_active_continuous", dbName, prometheus.GaugeValue, 0),
+			NumPullReplActiveContinuous: NewIntStat("replication_pull", "num_pull_repl_active_one_shot", dbName, prometheus.GaugeValue, 0),
+			NumPullReplActiveOneShot:    NewIntStat("replication_pull", "num_replications_active", dbName, prometheus.GaugeValue, 0),
+			NumPullReplCaughtUp:         NewIntStat("replication_pull", "num_pull_repl_caught_up", dbName, prometheus.GaugeValue, 0),
+			NumPullReplSinceZero:        NewIntStat("replication_pull", "num_pull_repl_since_zero", dbName, prometheus.CounterValue, 0),
+			NumPullReplTotalContinuous:  NewIntStat("replication_pull", "num_pull_repl_total_continuous", dbName, prometheus.GaugeValue, 0),
+			NumPullReplTotalOneShot:     NewIntStat("replication_pull", "num_pull_repl_total_one_shot", dbName, prometheus.GaugeValue, 0),
+			RequestChangesCount:         NewIntStat("replication_pull", "request_changes_count", dbName, prometheus.CounterValue, 0),
+			RequestChangesTime:          NewIntStat("replication_pull", "request_changes_time", dbName, prometheus.CounterValue, 0),
+			RevProcessingTime:           NewIntStat("replication_pull", "rev_processing_time", dbName, prometheus.GaugeValue, 0),
+			RevSendCount:                NewIntStat("replication_pull", "rev_send_count", dbName, prometheus.CounterValue, 0),
+			RevSendLatency:              NewIntStat("replication_pull", "rev_send_latency", dbName, prometheus.CounterValue, 0),
 		}
-	})
+	}
+}
+
+func (d *DbStats) CBLReplicationPull() *CBLReplicationPullStats {
 	return d.CBLReplicationPullStats
 }
 
-// TODO: Conflict write count?
-func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
-	d.initCBLReplicationPushStats.Do(func() {
-		if d.CBLReplicationPushStats == nil {
-			dbName := d.dbName
-			d.CBLReplicationPushStats = &CBLReplicationPushStats{
-				AttachmentPushBytes: NewIntStat("replication_push", "attachment_push_bytes", dbName, prometheus.CounterValue, 0),
-				AttachmentPushCount: NewIntStat("replication_push", "attachment_push_count", dbName, prometheus.CounterValue, 0),
-				DocPushCount:        NewIntStat("replication_push", "doc_push_count", dbName, prometheus.GaugeValue, 0),
-				ProposeChangeCount:  NewIntStat("replication_push", "propose_change_count", dbName, prometheus.CounterValue, 0),
-				ProposeChangeTime:   NewIntStat("replication_push", "propose_change_time", dbName, prometheus.CounterValue, 0),
-				SyncFunctionCount:   NewIntStat("replication_push", "sync_function_count", dbName, prometheus.CounterValue, 0),
-				SyncFunctionTime:    NewIntStat("replication_push", "sync_function_time", dbName, prometheus.CounterValue, 0),
-				WriteProcessingTime: NewIntStat("replication_push", "write_processing_time", dbName, prometheus.GaugeValue, 0),
-			}
+func (d *DbStats) initCBLReplicationPushStats() {
+	if d.CBLReplicationPushStats == nil {
+		dbName := d.dbName
+		d.CBLReplicationPushStats = &CBLReplicationPushStats{
+			AttachmentPushBytes: NewIntStat("replication_push", "attachment_push_bytes", dbName, prometheus.CounterValue, 0),
+			AttachmentPushCount: NewIntStat("replication_push", "attachment_push_count", dbName, prometheus.CounterValue, 0),
+			DocPushCount:        NewIntStat("replication_push", "doc_push_count", dbName, prometheus.GaugeValue, 0),
+			ProposeChangeCount:  NewIntStat("replication_push", "propose_change_count", dbName, prometheus.CounterValue, 0),
+			ProposeChangeTime:   NewIntStat("replication_push", "propose_change_time", dbName, prometheus.CounterValue, 0),
+			SyncFunctionCount:   NewIntStat("replication_push", "sync_function_count", dbName, prometheus.CounterValue, 0),
+			SyncFunctionTime:    NewIntStat("replication_push", "sync_function_time", dbName, prometheus.CounterValue, 0),
+			WriteProcessingTime: NewIntStat("replication_push", "write_processing_time", dbName, prometheus.GaugeValue, 0),
 		}
-	})
+	}
+}
+
+func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
 	return d.CBLReplicationPushStats
 }
 
-func (d *DbStats) Database() *DatabaseStats {
-	d.initDatabaseStats.Do(func() {
-		if d.DatabaseStats == nil {
-			dbName := d.dbName
-			d.DatabaseStats = &DatabaseStats{
-				AbandonedSeqs:           NewIntStat("database", "abandoned_seqs", dbName, prometheus.CounterValue, 0),
-				ConflictWriteCount:      NewIntStat("database", "conflict_write_count", dbName, prometheus.CounterValue, 0),
-				Crc32MatchCount:         NewIntStat("database", "crc32c_match_count", dbName, prometheus.GaugeValue, 0),
-				DCPCachingCount:         NewIntStat("database", "dcp_caching_count", dbName, prometheus.GaugeValue, 0),
-				DCPCachingTime:          NewIntStat("database", "dcp_caching_time", dbName, prometheus.GaugeValue, 0),
-				DCPReceivedCount:        NewIntStat("database", "dcp_received_count", dbName, prometheus.GaugeValue, 0),
-				DCPReceivedTime:         NewIntStat("database", "dcp_received_time", dbName, prometheus.GaugeValue, 0),
-				DocReadsBytesBlip:       NewIntStat("database", "doc_reads_bytes_blip", dbName, prometheus.CounterValue, 0),
-				DocWritesBytes:          NewIntStat("database", "doc_writes_bytes", dbName, prometheus.CounterValue, 0),
-				DocWritesXattrBytes:     NewIntStat("database", "doc_writes_xattr_bytes", dbName, prometheus.CounterValue, 0),
-				HighSeqFeed:             NewIntStat("database", "high_seq_feed", dbName, prometheus.CounterValue, 0),
-				DocWritesBytesBlip:      NewIntStat("database", "doc_writes_bytes_blip", dbName, prometheus.CounterValue, 0),
-				NumDocReadsBlip:         NewIntStat("database", "num_doc_reads_blip", dbName, prometheus.CounterValue, 0),
-				NumDocReadsRest:         NewIntStat("database", "num_doc_reads_rest", dbName, prometheus.CounterValue, 0),
-				NumDocWrites:            NewIntStat("database", "num_doc_writes", dbName, prometheus.CounterValue, 0),
-				NumReplicationsActive:   NewIntStat("database", "num_replications_active", dbName, prometheus.GaugeValue, 0),
-				NumReplicationsTotal:    NewIntStat("database", "num_replications_total", dbName, prometheus.CounterValue, 0),
-				NumTombstonesCompacted:  NewIntStat("database", "num_tombstones_compacted", dbName, prometheus.CounterValue, 0),
-				SequenceAssignedCount:   NewIntStat("database", "sequence_assigned_count", dbName, prometheus.CounterValue, 0),
-				SequenceGetCount:        NewIntStat("database", "sequence_get_count", dbName, prometheus.CounterValue, 0),
-				SequenceIncrCount:       NewIntStat("database", "sequence_incr_count", dbName, prometheus.CounterValue, 0),
-				SequenceReleasedCount:   NewIntStat("database", "sequence_released_count", dbName, prometheus.CounterValue, 0),
-				SequenceReservedCount:   NewIntStat("database", "sequence_reserved_count", dbName, prometheus.CounterValue, 0),
-				WarnChannelsPerDocCount: NewIntStat("database", "warn_channels_per_doc_count", dbName, prometheus.CounterValue, 0),
-				WarnGrantsPerDocCount:   NewIntStat("database", "warn_grants_per_doc_count", dbName, prometheus.CounterValue, 0),
-				WarnXattrSizeCount:      NewIntStat("database", "warn_xattr_size_count", dbName, prometheus.CounterValue, 0),
-				ImportFeedMapStats:      &ExpVarMapWrapper{new(expvar.Map).Init()},
-				CacheFeedMapStats:       &ExpVarMapWrapper{new(expvar.Map).Init()},
-			}
+func (d *DbStats) InitDatabaseStats() {
+	if d.DatabaseStats == nil {
+		dbName := d.dbName
+		d.DatabaseStats = &DatabaseStats{
+			AbandonedSeqs:           NewIntStat("database", "abandoned_seqs", dbName, prometheus.CounterValue, 0),
+			ConflictWriteCount:      NewIntStat("database", "conflict_write_count", dbName, prometheus.CounterValue, 0),
+			Crc32MatchCount:         NewIntStat("database", "crc32c_match_count", dbName, prometheus.GaugeValue, 0),
+			DCPCachingCount:         NewIntStat("database", "dcp_caching_count", dbName, prometheus.GaugeValue, 0),
+			DCPCachingTime:          NewIntStat("database", "dcp_caching_time", dbName, prometheus.GaugeValue, 0),
+			DCPReceivedCount:        NewIntStat("database", "dcp_received_count", dbName, prometheus.GaugeValue, 0),
+			DCPReceivedTime:         NewIntStat("database", "dcp_received_time", dbName, prometheus.GaugeValue, 0),
+			DocReadsBytesBlip:       NewIntStat("database", "doc_reads_bytes_blip", dbName, prometheus.CounterValue, 0),
+			DocWritesBytes:          NewIntStat("database", "doc_writes_bytes", dbName, prometheus.CounterValue, 0),
+			DocWritesXattrBytes:     NewIntStat("database", "doc_writes_xattr_bytes", dbName, prometheus.CounterValue, 0),
+			HighSeqFeed:             NewIntStat("database", "high_seq_feed", dbName, prometheus.CounterValue, 0),
+			DocWritesBytesBlip:      NewIntStat("database", "doc_writes_bytes_blip", dbName, prometheus.CounterValue, 0),
+			NumDocReadsBlip:         NewIntStat("database", "num_doc_reads_blip", dbName, prometheus.CounterValue, 0),
+			NumDocReadsRest:         NewIntStat("database", "num_doc_reads_rest", dbName, prometheus.CounterValue, 0),
+			NumDocWrites:            NewIntStat("database", "num_doc_writes", dbName, prometheus.CounterValue, 0),
+			NumReplicationsActive:   NewIntStat("database", "num_replications_active", dbName, prometheus.GaugeValue, 0),
+			NumReplicationsTotal:    NewIntStat("database", "num_replications_total", dbName, prometheus.CounterValue, 0),
+			NumTombstonesCompacted:  NewIntStat("database", "num_tombstones_compacted", dbName, prometheus.CounterValue, 0),
+			SequenceAssignedCount:   NewIntStat("database", "sequence_assigned_count", dbName, prometheus.CounterValue, 0),
+			SequenceGetCount:        NewIntStat("database", "sequence_get_count", dbName, prometheus.CounterValue, 0),
+			SequenceIncrCount:       NewIntStat("database", "sequence_incr_count", dbName, prometheus.CounterValue, 0),
+			SequenceReleasedCount:   NewIntStat("database", "sequence_released_count", dbName, prometheus.CounterValue, 0),
+			SequenceReservedCount:   NewIntStat("database", "sequence_reserved_count", dbName, prometheus.CounterValue, 0),
+			WarnChannelsPerDocCount: NewIntStat("database", "warn_channels_per_doc_count", dbName, prometheus.CounterValue, 0),
+			WarnGrantsPerDocCount:   NewIntStat("database", "warn_grants_per_doc_count", dbName, prometheus.CounterValue, 0),
+			WarnXattrSizeCount:      NewIntStat("database", "warn_xattr_size_count", dbName, prometheus.CounterValue, 0),
+			ImportFeedMapStats:      &ExpVarMapWrapper{new(expvar.Map).Init()},
+			CacheFeedMapStats:       &ExpVarMapWrapper{new(expvar.Map).Init()},
 		}
-	})
+	}
+}
+
+func (d *DbStats) Database() *DatabaseStats {
 	return d.DatabaseStats
 }
 
-func (d *DbStats) DeltaSync() *DeltaSyncStats {
-	d.initDeltaSyncStats.Do(func() {
-		if d.DeltaSyncStats == nil {
-			dbName := d.dbName
-			d.DeltaSyncStats = &DeltaSyncStats{
-				DeltasRequested:           NewIntStat("delta_sync", "deltas_requested", dbName, prometheus.CounterValue, 0),
-				DeltasSent:                NewIntStat("delta_sync", "deltas_sent", dbName, prometheus.CounterValue, 0),
-				DeltaPullReplicationCount: NewIntStat("delta_sync", "delta_pull_replication_count", dbName, prometheus.CounterValue, 0),
-				DeltaCacheHit:             NewIntStat("delta_sync", "delta_cache_hit", dbName, prometheus.CounterValue, 0),
-				DeltaCacheMiss:            NewIntStat("delta_sync", "delta_sync_miss", dbName, prometheus.CounterValue, 0),
-				DeltaPushDocCount:         NewIntStat("delta_sync", "delta_push_doc_count", dbName, prometheus.CounterValue, 0),
-			}
+func (d *DbStats) InitDeltaSyncStats() {
+	if d.DeltaSyncStats == nil {
+		dbName := d.dbName
+		d.DeltaSyncStats = &DeltaSyncStats{
+			DeltasRequested:           NewIntStat("delta_sync", "deltas_requested", dbName, prometheus.CounterValue, 0),
+			DeltasSent:                NewIntStat("delta_sync", "deltas_sent", dbName, prometheus.CounterValue, 0),
+			DeltaPullReplicationCount: NewIntStat("delta_sync", "delta_pull_replication_count", dbName, prometheus.CounterValue, 0),
+			DeltaCacheHit:             NewIntStat("delta_sync", "delta_cache_hit", dbName, prometheus.CounterValue, 0),
+			DeltaCacheMiss:            NewIntStat("delta_sync", "delta_sync_miss", dbName, prometheus.CounterValue, 0),
+			DeltaPushDocCount:         NewIntStat("delta_sync", "delta_push_doc_count", dbName, prometheus.CounterValue, 0),
 		}
-	})
+	}
+}
+
+func (d *DbStats) DeltaSync() *DeltaSyncStats {
 	return d.DeltaSyncStats
 }
 
-func (d *DbStats) Security() *SecurityStats {
-	d.initSecurityStats.Do(func() {
-		if d.SecurityStats == nil {
-			dbName := d.dbName
-			d.SecurityStats = &SecurityStats{
-				AuthFailedCount:  NewIntStat("security", "auth_failed_count", dbName, prometheus.CounterValue, 0),
-				AuthSuccessCount: NewIntStat("security", "auth_success_count", dbName, prometheus.CounterValue, 0),
-				NumAccessErrors:  NewIntStat("security", "num_access_errors", dbName, prometheus.CounterValue, 0),
-				NumDocsRejected:  NewIntStat("security", "num_docs_rejected", dbName, prometheus.CounterValue, 0),
-				TotalAuthTime:    NewIntStat("security", "total_auth_time", dbName, prometheus.GaugeValue, 0),
-			}
+func (d *DbStats) InitSecurityStats() {
+	if d.SecurityStats == nil {
+		dbName := d.dbName
+		d.SecurityStats = &SecurityStats{
+			AuthFailedCount:  NewIntStat("security", "auth_failed_count", dbName, prometheus.CounterValue, 0),
+			AuthSuccessCount: NewIntStat("security", "auth_success_count", dbName, prometheus.CounterValue, 0),
+			NumAccessErrors:  NewIntStat("security", "num_access_errors", dbName, prometheus.CounterValue, 0),
+			NumDocsRejected:  NewIntStat("security", "num_docs_rejected", dbName, prometheus.CounterValue, 0),
+			TotalAuthTime:    NewIntStat("security", "total_auth_time", dbName, prometheus.GaugeValue, 0),
 		}
-	})
+	}
+}
+
+func (d *DbStats) Security() *SecurityStats {
 	return d.SecurityStats
 }
 
-func (d *DbStats) SharedBucketImport() *SharedBucketImportStats {
-	d.initSharedBucketImportStats.Do(func() {
-		if d.SharedBucketImportStats == nil {
-			dbName := d.dbName
-			d.SharedBucketImportStats = &SharedBucketImportStats{
-				ImportCount:          NewIntStat("shared_bucket_import", "import_count", dbName, prometheus.CounterValue, 0),
-				ImportCancelCAS:      NewIntStat("shared_bucket_import", "import_cancel_cas", dbName, prometheus.CounterValue, 0),
-				ImportErrorCount:     NewIntStat("shared_bucket_import", "import_error_count", dbName, prometheus.CounterValue, 0),
-				ImportProcessingTime: NewIntStat("shared_bucket_import", "import_processing_time", dbName, prometheus.GaugeValue, 0),
-				ImportHighSeq:        NewIntStat("shared_bucket_import", "import_high_seq", dbName, prometheus.CounterValue, 0),
-				ImportPartitions:     NewIntStat("shared_bucket_import", "import_partitions", dbName, prometheus.GaugeValue, 0),
-			}
+func (d *DbStats) InitSharedBucketImportStats() {
+	if d.SharedBucketImportStats == nil {
+		dbName := d.dbName
+		d.SharedBucketImportStats = &SharedBucketImportStats{
+			ImportCount:          NewIntStat("shared_bucket_import", "import_count", dbName, prometheus.CounterValue, 0),
+			ImportCancelCAS:      NewIntStat("shared_bucket_import", "import_cancel_cas", dbName, prometheus.CounterValue, 0),
+			ImportErrorCount:     NewIntStat("shared_bucket_import", "import_error_count", dbName, prometheus.CounterValue, 0),
+			ImportProcessingTime: NewIntStat("shared_bucket_import", "import_processing_time", dbName, prometheus.GaugeValue, 0),
+			ImportHighSeq:        NewIntStat("shared_bucket_import", "import_high_seq", dbName, prometheus.CounterValue, 0),
+			ImportPartitions:     NewIntStat("shared_bucket_import", "import_partitions", dbName, prometheus.GaugeValue, 0),
 		}
-	})
+	}
+}
+
+func (d *DbStats) SharedBucketImport() *SharedBucketImportStats {
 	return d.SharedBucketImportStats
 }
 
-func (d *DbStats) Query(queryName string) *QueryStat {
-	d.initQueryStats.Do(func() {
-		if d.QueryStats == nil {
-			d.QueryStats = &QueryStats{
-				Stats: map[string]*QueryStat{},
-			}
+func (d *DbStats) InitQueryStats(useViews bool, queryNames ...string) {
+	if d.QueryStats == nil {
+		d.QueryStats = &QueryStats{
+			Stats: map[string]*QueryStat{},
 		}
-	})
+		d.QueryStats.mutex.Lock()
+		for _, queryName := range queryNames {
+			d.initQueryStat(useViews, queryName)
+		}
+		d.QueryStats.mutex.Unlock()
+	}
+}
 
-	d.QueryStats.mutex.Lock()
+func (d *DbStats) initQueryStat(useViews bool, queryName string) {
 	if _, ok := d.QueryStats.Stats[queryName]; !ok {
 		dbName := d.dbName
+
+		// Prometheus isn't happy with '.'s in the name and the '.'s come from the design doc version. Design doc isn't
+		// reported to prometheus. Only the view name.
+		prometheusKey := queryName
+		if useViews {
+			splitName := strings.Split(queryName, ".")
+			prometheusKey = splitName[len(splitName)-1]
+		}
+
 		d.QueryStats.Stats[queryName] = &QueryStat{
-			QueryCount:      NewIntStat("gsi_views", queryName+"_count", dbName, prometheus.CounterValue, 0),
-			QueryErrorCount: NewIntStat("gsi_views", queryName+"_error_count", dbName, prometheus.CounterValue, 0),
-			QueryTime:       NewIntStat("gsi_views", queryName+"_time", dbName, prometheus.CounterValue, 0),
+			QueryCount:      NewIntStat("gsi_views", prometheusKey+"_count", dbName, prometheus.CounterValue, 0),
+			QueryErrorCount: NewIntStat("gsi_views", prometheusKey+"_error_count", dbName, prometheus.CounterValue, 0),
+			QueryTime:       NewIntStat("gsi_views", prometheusKey+"_time", dbName, prometheus.CounterValue, 0),
 		}
 	}
-	d.QueryStats.mutex.Unlock()
+}
 
+func (d *DbStats) Query(queryName string) *QueryStat {
 	return d.QueryStats.Stats[queryName]
 }
 
