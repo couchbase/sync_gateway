@@ -421,15 +421,16 @@ func (s *SgwStats) NewDBStats(name string) *DbStats {
 	}
 
 	// These have a pretty good chance of being used so we'll initialise these for every database stat struct created
-	s.DbStats[name].InitCacheStats()
-	s.DbStats[name].InitCBLReplicationPullStats()
+	s.DbStats[name].initCacheStats()
+	s.DbStats[name].initCBLReplicationPullStats()
 	s.DbStats[name].initCBLReplicationPushStats()
-	s.DbStats[name].InitDatabaseStats()
+	s.DbStats[name].initDatabaseStats()
+	s.DbStats[name].initSecurityStats()
 
 	return s.DbStats[name]
 }
 
-func (d *DbStats) InitCacheStats() {
+func (d *DbStats) initCacheStats() {
 	if d.CacheStats == nil {
 		dbName := d.dbName
 		d.CacheStats = &CacheStats{
@@ -465,7 +466,7 @@ func (d *DbStats) Cache() *CacheStats {
 	return d.CacheStats
 }
 
-func (d *DbStats) InitCBLReplicationPullStats() {
+func (d *DbStats) initCBLReplicationPullStats() {
 	if d.CBLReplicationPullStats == nil {
 		dbName := d.dbName
 		d.CBLReplicationPullStats = &CBLReplicationPullStats{
@@ -512,7 +513,7 @@ func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
 	return d.CBLReplicationPushStats
 }
 
-func (d *DbStats) InitDatabaseStats() {
+func (d *DbStats) initDatabaseStats() {
 	if d.DatabaseStats == nil {
 		dbName := d.dbName
 		d.DatabaseStats = &DatabaseStats{
@@ -570,7 +571,7 @@ func (d *DbStats) DeltaSync() *DeltaSyncStats {
 	return d.DeltaSyncStats
 }
 
-func (d *DbStats) InitSecurityStats() {
+func (d *DbStats) initSecurityStats() {
 	if d.SecurityStats == nil {
 		dbName := d.dbName
 		d.SecurityStats = &SecurityStats{

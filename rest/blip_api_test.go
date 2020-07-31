@@ -1976,7 +1976,11 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	deltaSentCount := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	var deltaSentCount int64
+
+	if rt.GetDatabase().DbStats.NewStats.DeltaSync() != nil {
+		deltaSentCount = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	}
 
 	client, err := NewBlipTesterClient(t, rt)
 	assert.NoError(t, err)
@@ -2022,7 +2026,13 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEqual(t, `{"greetings":{"2-":[{"howdy":12345678901234567890}]}}`, string(msgBody))
 		assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(msgBody))
-		assert.Equal(t, deltaSentCount, rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value())
+
+		var afterDeltaSyncCount int64
+		if rt.GetDatabase().DbStats.NewStats.DeltaSync() != nil {
+			afterDeltaSyncCount = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+		}
+
+		assert.Equal(t, deltaSentCount, afterDeltaSyncCount)
 	}
 }
 
@@ -2157,10 +2167,17 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	deltaCacheHitsStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheHit.Value()
-	deltaCacheMissesStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheMiss.Value()
-	deltasRequestedStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasRequested.Value()
-	deltasSentStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	var deltaCacheHitsStart int64
+	var deltaCacheMissesStart int64
+	var deltasRequestedStart int64
+	var deltasSentStart int64
+
+	if rt.GetDatabase().DbStats.NewStats.DeltaSync() != nil {
+		deltaCacheHitsStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheHit.Value()
+		deltaCacheMissesStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheMiss.Value()
+		deltasRequestedStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasRequested.Value()
+		deltasSentStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	}
 
 	client, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
 		Username:     "alice",
@@ -2197,10 +2214,17 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	assert.Equal(t, `{}`, string(msgBody))
 	assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted])
 
-	deltaCacheHitsEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheHit.Value()
-	deltaCacheMissesEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheMiss.Value()
-	deltasRequestedEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasRequested.Value()
-	deltasSentEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	var deltaCacheHitsEnd int64
+	var deltaCacheMissesEnd int64
+	var deltasRequestedEnd int64
+	var deltasSentEnd int64
+
+	if rt.GetDatabase().DbStats.NewStats.DeltaSync() != nil {
+		deltaCacheHitsEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheHit.Value()
+		deltaCacheMissesEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheMiss.Value()
+		deltasRequestedEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasRequested.Value()
+		deltasSentEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	}
 
 	if sgUseDeltas {
 		assert.Equal(t, deltaCacheHitsStart, deltaCacheHitsEnd)
@@ -2238,10 +2262,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	deltaCacheHitsStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheHit.Value()
-	deltaCacheMissesStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheMiss.Value()
-	deltasRequestedStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasRequested.Value()
-	deltasSentStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	var deltaCacheHitsStart int64
+	var deltaCacheMissesStart int64
+	var deltasRequestedStart int64
+	var deltasSentStart int64
+
+	if rt.GetDatabase().DbStats.NewStats.DeltaSync() != nil {
+		deltaCacheHitsStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheHit.Value()
+		deltaCacheMissesStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheMiss.Value()
+		deltasRequestedStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasRequested.Value()
+		deltasSentStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	}
 
 	client1, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
 		Username:     "client1",
@@ -2317,10 +2348,17 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted], "unexpected deleted property for message %v in %v",
 		msg.SerialNumber(), client2.pullReplication.GetMessages())
 
-	deltaCacheHitsEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheHit.Value()
-	deltaCacheMissesEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheMiss.Value()
-	deltasRequestedEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasRequested.Value()
-	deltasSentEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	var deltaCacheHitsEnd int64
+	var deltaCacheMissesEnd int64
+	var deltasRequestedEnd int64
+	var deltasSentEnd int64
+
+	if rt.GetDatabase().DbStats.NewStats.DeltaSync() != nil {
+		deltaCacheHitsEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheHit.Value()
+		deltaCacheMissesEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaCacheMiss.Value()
+		deltasRequestedEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasRequested.Value()
+		deltasSentEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltasSent.Value()
+	}
 
 	if sgUseDeltas {
 		assert.Equal(t, deltaCacheHitsStart+1, deltaCacheHitsEnd)
@@ -2540,7 +2578,11 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
-	deltaPushDocCountStart := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaPushDocCount.Value()
+	var deltaPushDocCountStart int64
+
+	if rt.GetDatabase().DbStats.NewStats.DeltaSync() != nil {
+		deltaPushDocCountStart = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaPushDocCount.Value()
+	}
 	revID, err := client.PushRev("doc1", "3-f3be6c85e0362153005dae6f08fc68bb", []byte(`{"undelete":true}`))
 
 	if base.IsEnterpriseEdition() {
@@ -2556,7 +2598,11 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		assert.Equal(t, "4-abcxyz", revID)
 	}
 
-	deltaPushDocCountEnd := rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaPushDocCount.Value()
+	var deltaPushDocCountEnd int64
+
+	if rt.GetDatabase().DbStats.NewStats.DeltaSync() != nil {
+		deltaPushDocCountEnd = rt.GetDatabase().DbStats.NewStats.DeltaSync().DeltaPushDocCount.Value()
+	}
 	assert.Equal(t, deltaPushDocCountStart, deltaPushDocCountEnd)
 }
 
