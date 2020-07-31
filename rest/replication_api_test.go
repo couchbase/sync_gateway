@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/couchbaselabs/walrus"
 
@@ -513,6 +514,11 @@ func TestReplicationRebalancePull(t *testing.T) {
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	oldFrequency := db.MaxSequenceIncrFrequency
+	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
+	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
 
@@ -580,14 +586,19 @@ func TestReplicationRebalancePush(t *testing.T) {
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	oldFrequency := db.MaxSequenceIncrFrequency
+	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
+	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
 
 	// Create docs on active
 	docABC1 := t.Name() + "ABC1"
 	docDEF1 := t.Name() + "DEF1"
-	_ = remoteRT.putDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
-	_ = remoteRT.putDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
+	_ = activeRT.putDoc(docABC1, `{"source":"activeRT","channels":["ABC"]}`)
+	_ = activeRT.putDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
 
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"})
