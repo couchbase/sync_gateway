@@ -38,6 +38,7 @@ type RestTesterConfig struct {
 	EnableNoConflictsMode bool             // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	distributedIndex      bool             // Test with walrus-based index bucket
 	TestBucket            *base.TestBucket // If set, use this bucket instead of requesting a new one.
+	sgReplicateEnabled    bool             // sgReplicateManager disabled by default for RestTester
 }
 
 type RestTester struct {
@@ -141,7 +142,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.DatabaseConfig.AllowConflicts = &boolVal
 	}
 
-	rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(false)
+	rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
 	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
 	if err != nil {
@@ -291,6 +292,20 @@ type changesResults struct {
 	Last_Seq interface{}
 }
 
+func (cr changesResults) requireDocIDs(t testing.TB, docIDs []string) {
+	require.Equal(t, len(docIDs), len(cr.Results))
+	for _, docID := range docIDs {
+		var found bool
+		for _, changeEntry := range cr.Results {
+			if changeEntry.ID == docID {
+				found = true
+				break
+			}
+		}
+		require.True(t, found)
+	}
+}
+
 func (rt *RestTester) CreateWaitForChangesRetryWorker(numChangesExpected int, changesUrl, username string, useAdminPort bool) (worker base.RetryWorker) {
 
 	waitForChangesWorker := func() (shouldRetry bool, err error, value interface{}) {
@@ -340,6 +355,28 @@ func (rt *RestTester) WaitForChanges(numChangesExpected int, changesUrl, usernam
 	}
 
 	return changes, nil
+}
+
+// WaitForCondition runs a retry loop that evaluates the provided function, and terminates
+// when the function returns true.
+func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
+
+	waitForSuccess := func() (shouldRetry bool, err error, value interface{}) {
+		if successFunc() {
+			return false, nil, nil
+		}
+		return true, nil, nil
+	}
+
+	sleeper := base.CreateSleeperFunc(200, 100)
+
+	err, _ := base.RetryLoop("Wait for condition", waitForSuccess, sleeper)
+	if err != nil {
+		return err
+	}
+
+	return nil
+
 }
 
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
@@ -569,7 +606,7 @@ func requestByUser(method, resource, body, username string) *http.Request {
 	return r
 }
 
-func assertStatus(t *testing.T, response *TestResponse, expectedStatus int) {
+func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 	require.Equalf(t, expectedStatus, response.Code,
 		"Response status %d %q (expected %d %q)\nfor %s <%s> : %s",
 		response.Code, http.StatusText(response.Code),

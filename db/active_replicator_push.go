@@ -70,7 +70,7 @@ func (apr *ActivePushReplicator) Start() error {
 	}
 
 	go func() {
-		bh.sendChanges(apr.blipSender, &sendChangesOptions{
+		isComplete := bh.sendChanges(apr.blipSender, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,
 			since:             seq,
 			continuous:        apr.config.Continuous,
@@ -80,7 +80,10 @@ func (apr *ActivePushReplicator) Start() error {
 			clientType:        clientTypeSGR2,
 			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
 		})
-		apr.Complete()
+		// On a normal completion, call complete for the replication
+		if isComplete {
+			apr.Complete()
+		}
 	}()
 
 	apr._setState(ReplicationStateRunning)

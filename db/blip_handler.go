@@ -198,7 +198,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		}()
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
-		bh.sendChanges(rq.Sender, &sendChangesOptions{
+		_ = bh.sendChanges(rq.Sender, &sendChangesOptions{
 			docIDs:     subChangesParams.docIDs(),
 			since:      subChangesParams.Since(),
 			continuous: continuous,
@@ -232,7 +232,7 @@ type sendChangesOptions struct {
 }
 
 // Sends all changes since the given sequence
-func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) {
+func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (isComplete bool) {
 	defer func() {
 		if panicked := recover(); panicked != nil {
 			base.Warnf("[%s] PANIC sending changes: %v\n%s", bh.blipContext.ID, panicked, debug.Stack())
@@ -307,6 +307,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	if forceClose && bh.db.User() != nil {
 		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.db.User().Name())
 	}
+	return !forceClose
 
 }
 
