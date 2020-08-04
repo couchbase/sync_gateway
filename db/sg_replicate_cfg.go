@@ -145,8 +145,8 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
 	remoteURL, err := url.Parse(rc.Remote)
 	if err != nil {
-		base.Debugf(base.KeyReplicate, "Failed to parse replication remote URL [%s]: %v", remoteURL, err)
-		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL is invalid")
+		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v",
+			base.RedactBasicAuthURL(rc.Remote), base.RedactBasicAuthURL(err.Error()))
 	}
 
 	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {

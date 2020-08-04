@@ -938,7 +938,7 @@ func TestValidateReplication(t *testing.T) {
 			},
 			errExpected: &base.HTTPError{
 				Status:  http.StatusBadRequest,
-				Message: "Replication remote URL is invalid",
+				Message: "Replication remote URL [http://****:****@remote:4984/db] is invalid: parse http://****:****@remote:4984/db: net/url: invalid userinfo",
 			},
 		},
 		{
