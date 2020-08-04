@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"testing"
 	"time"
 
@@ -874,8 +875,12 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 	var allStatusResponse []*db.ReplicationStatus
 	require.NoError(t, json.Unmarshal(response.BodyBytes(), &allStatusResponse))
-
 	require.Equal(t, 2, len(allStatusResponse), "Replication count mismatch")
+
+	// Sort replications by replication ID before assertion
+	sort.Slice(allStatusResponse[:], func(i, j int) bool {
+		return allStatusResponse[i].Config.ID < allStatusResponse[j].Config.ID
+	})
 	checkReplicationConfig(&replication1Config, allStatusResponse[0].Config)
 	checkReplicationConfig(&replication2Config, allStatusResponse[1].Config)
 
