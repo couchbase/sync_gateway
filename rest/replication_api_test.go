@@ -88,35 +88,59 @@ func TestValidateReplicationAPI(t *testing.T) {
 	var rt = NewRestTester(t, nil)
 	defer rt.Close()
 
-	replicationID := "replication1"
-
 	tests := []struct {
 		name                  string
+		ID                    string
 		config                db.ReplicationConfig
 		expectedResponseCode  int
 		expectedErrorContains string
 	}{
 		{
 			name:                  "ID Mismatch",
-			config:                db.ReplicationConfig{ID: "replication2"},
+			ID:                    "ID_Mismatch",
+			config:                db.ReplicationConfig{ID: "ID_Mismatch_foo"},
 			expectedResponseCode:  http.StatusBadRequest,
 			expectedErrorContains: "does not match request URI",
 		},
 		{
 			name:                  "Missing Remote",
-			config:                db.ReplicationConfig{ID: "replication1"},
+			ID:                    "Missing_Remote",
+			config:                db.ReplicationConfig{ID: "Missing_Remote"},
 			expectedResponseCode:  http.StatusBadRequest,
 			expectedErrorContains: "remote must be specified",
 		},
 		{
 			name:                  "Missing Direction",
-			config:                db.ReplicationConfig{ID: "replication1", Remote: "http://remote:4985/db"},
+			ID:                    "Missing_Direction",
+			config:                db.ReplicationConfig{Remote: "http://remote:4985/db"},
 			expectedResponseCode:  http.StatusBadRequest,
 			expectedErrorContains: "direction must be specified",
 		},
 		{
 			name:                  "Valid Replication",
-			config:                db.ReplicationConfig{ID: "replication1", Remote: "http://remote:4985/db", Direction: "pull"},
+			ID:                    "Valid_Replication",
+			config:                db.ReplicationConfig{Remote: "http://remote:4985/db", Direction: "pull"},
+			expectedResponseCode:  http.StatusCreated,
+			expectedErrorContains: "",
+		},
+		{
+			name:                  "Started adhoc",
+			ID:                    "Started_adhoc",
+			config:                db.ReplicationConfig{Remote: "http://remote:4985/db", Direction: "pull", Adhoc: true, State: "started"},
+			expectedResponseCode:  http.StatusCreated,
+			expectedErrorContains: "",
+		},
+		{
+			name:                  "Stopped adhoc",
+			ID:                    "Stopped_adhoc",
+			config:                db.ReplicationConfig{Remote: "http://remote:4985/db", Direction: "pull", Adhoc: true, State: "stopped"},
+			expectedResponseCode:  http.StatusBadRequest,
+			expectedErrorContains: "state=stopped is not valid for replications specifying adhoc=true",
+		},
+		{
+			name:                  "Stopped non-adhoc",
+			ID:                    "Stopped_non_adhoc",
+			config:                db.ReplicationConfig{Remote: "http://remote:4985/db", Direction: "pull", State: "stopped"},
 			expectedResponseCode:  http.StatusCreated,
 			expectedErrorContains: "",
 		},
@@ -124,7 +148,7 @@ func TestValidateReplicationAPI(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", replicationID), marshalConfig(t, test.config))
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", test.ID), marshalConfig(t, test.config))
 			assertStatus(t, response, test.expectedResponseCode)
 			if test.expectedErrorContains != "" {
 				assert.Contains(t, string(response.Body.Bytes()), test.expectedErrorContains)
