@@ -136,36 +136,14 @@
   <project name="pprof" path="godeps/src/github.com/google/pprof" remote="couchbasedeps" revision="03e1cf38a040dd596c700aa260c3eddc2bf38987"/>
 
   <!-- prometheus -->
-  <remote fetch="https://github.com/prometheus/" name="prometheus"/>
-  <remote fetch="https://github.com/golang/" name="golang"/>
-  <remote fetch="https://github.com/protocolbuffers/" name="protocolbuffers"/>
-  <remote fetch="https://github.com/beorn7/" name="beorn7"/>
-  <remote fetch="https://github.com/cespare/" name="cespare"/>
-  <remote fetch="https://github.com/matttproud/" name="matttproud"/>
-
-  <project name="golang_protobuf_extensions" path="godeps/src/github.com/matttproud/golang_protobuf_extensions" revision="master" remote="matttproud" />
-  <project name="client_golang" path="godeps/src/github.com/prometheus/client_golang" revision="master" remote="prometheus" />
-  <project name="client_model" path="godeps/src/github.com/prometheus/client_model" revision="master" remote="prometheus" />
-  <project name="common" path="godeps/src/github.com/prometheus/common" revision="master" remote="prometheus" />
-  <project name="procfs" path="godeps/src/github.com/prometheus/procfs" revision="master" remote="prometheus" />
-  <project name="perks" path="godeps/src/github.com/beorn7/perks" revision="master" remote="beorn7" />
-  <project name="xxhash" path="godeps/src/github.com/cespare/xxhash" revision="master" remote="cespare" />
-  <project name="protobuf" path="godeps/src/github.com/golang/protobuf" revision="master" remote="golang" />
-  <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" revision="master" remote="protocolbuffers" />
-
-  <!-- Missing:
-   - matttproud/golang_protobuf_extensions        https://github.com/matttproud/golang_protobuf_extensions
-   - prometheus/client_golang                     https://github.com/prometheus/client_golang
-   - prometheus/client_model                      https://github.com/prometheus/client_model
-   - prometheus/common                            https://github.com/prometheus/common
-   - prometheus/procfs                            https://github.com/prometheus/procfs
-   - beorn7/perks                                 https://github.com/beorn7/perks
-   - cespare/xxhash                               https://github.com/cespare/xxhash
-   - protobuf-go                                  https://github.com/protocolbuffers/protobuf-go
-  -->
-
-  <!-- Have:
-   - golang/protobuf                              https://github.com/couchbasedeps/protobuf
-  -->
+  <project name="golang_protobuf_extensions" path="godeps/src/github.com/matttproud/golang_protobuf_extensions" remote="couchbasedeps" revision="c182affec369e30f25d3eb8cd8a478dee585ae7d"/>
+  <project name="client_golang" path="godeps/src/github.com/prometheus/client_golang" remote="couchbasedeps" revision="d3accfda2168b0e253f98cff3ef81586e8b88d9f"/>
+  <project name="client_model" path="godeps/src/github.com/prometheus/client_model" remote="couchbasedeps" revision="60555c9708c786597e6b07bf846d0dc5c2a46f54"/>
+  <project name="common" path="godeps/src/github.com/prometheus/common" remote="couchbasedeps" revision="546f1fd8d7df61d94633b254641f9f8f48248ada"/>
+  <project name="procfs" path="godeps/src/github.com/prometheus/procfs" remote="couchbasedeps" revision="869cfc74c3b4eea1f80f29819f1dab68ed3c780e"/>
+  <project name="perks" path="godeps/src/github.com/beorn7/perks" remote="couchbasedeps" revision="37c8de3658fcb183f997c4e13e8337516ab753e6"/>
+  <project name="xxhash" path="godeps/src/github.com/cespare/xxhash" remote="couchbasedeps" revision="d7df74196a9e781ede915320c11c378c1b2f3a1f"/>
+  <project name="protobuf" path="godeps/src/github.com/golang/protobuf" remote="couchbasedeps" revision="b5d812f8a3706043e23a9cd5babf2e5423744d30"/>
+  <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="1ecb1f411c1f2ce65a2db6ea4a8ae927182d342e"/>
 
 </manifest>

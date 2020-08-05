@@ -70,7 +70,7 @@ type DbStats struct {
 	DatabaseStats           *DatabaseStats                `json:"database,omitempty"`
 	DeltaSyncStats          *DeltaSyncStats               `json:"delta_sync,omitempty"`
 	QueryStats              *QueryStats                   `json:"gsi_views,omitempty"`
-	DbReplicatorStats       map[string]*DbReplicatorStats `json:"db_replicator_stats"`
+	DbReplicatorStats       map[string]*DbReplicatorStats `json:"replications"`
 	SecurityStats           *SecurityStats                `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 }
@@ -235,27 +235,27 @@ type QueryStats struct {
 }
 
 type DbReplicatorStats struct {
-	NumAttachmentBytesPushed *SgwIntStat `json:"num_attachment_bytes_pushed"`
-	NumAttachmentPushed      *SgwIntStat `json:"num_attachment_pushed"`
-	NumDocPushed             *SgwIntStat `json:"num_doc_pushed"`
-	NumDocsFailedToPush      *SgwIntStat `json:"num_docs_failed_to_push"`
-	PushConflictCount        *SgwIntStat `json:"push_conflict_count"`
-	PushRejectedCount        *SgwIntStat `json:"push_rejected_count"`
-	PushDeltaSentCount       *SgwIntStat `json:"push_delta_sent_count"`
-	DocsCheckedSent          *SgwIntStat `json:"docs_checked_sent" `
+	NumAttachmentBytesPushed *SgwIntStat `json:"sgr_num_attachment_bytes_pushed"`
+	NumAttachmentPushed      *SgwIntStat `json:"sgr_num_attachments_pushed"`
+	NumDocPushed             *SgwIntStat `json:"sgr_num_docs_pushed"`
+	NumDocsFailedToPush      *SgwIntStat `json:"sgr_num_docs_failed_to_push"`
+	PushConflictCount        *SgwIntStat `json:"sgr_push_conflict_count"`
+	PushRejectedCount        *SgwIntStat `json:"sgr_push_rejected_count"`
+	PushDeltaSentCount       *SgwIntStat `json:"sgr_deltas_sent"`
+	DocsCheckedSent          *SgwIntStat `json:"sgr_docs_checked_sent" `
 
-	NumAttachmentBytesPulled *SgwIntStat `json:"num_attachment_bytes_pulled"`
-	NumAttachmentsPulled     *SgwIntStat `json:"num_attachments_pulled"`
-	PulledCount              *SgwIntStat `json:"pulled_count"`
-	PurgedCount              *SgwIntStat `json:"purged_count"`
-	FailedToPullCount        *SgwIntStat `json:"failed_to_pull_count"`
-	DeltaReceviedCount       *SgwIntStat `json:"delta_recevied_count"`
-	DeltaRequestedCount      *SgwIntStat `json:"delta_requested_count"`
-	DocsCheckedRecevied      *SgwIntStat `json:"docs_checked_recevied"`
+	NumAttachmentBytesPulled *SgwIntStat `json:"sgr_num_attachment_bytes_pulled"`
+	NumAttachmentsPulled     *SgwIntStat `json:"sgr_num_attachments_pulled"`
+	PulledCount              *SgwIntStat `json:"sgr_num_docs_pulled"`
+	PurgedCount              *SgwIntStat `json:"sgr_num_docs_purged"`
+	FailedToPullCount        *SgwIntStat `json:"sgr_num_docs_failed_to_pull"`
+	DeltaReceivedCount       *SgwIntStat `json:"sgr_deltas_recv"`
+	DeltaRequestedCount      *SgwIntStat `json:"sgr_deltas_requested"`
+	DocsCheckedReceived      *SgwIntStat `json:"sgr_docs_checked_recv"`
 
-	ConflictResolvedLocalCount  *SgwIntStat `json:"conflict_resolved_local_count"`
-	ConflictResolvedRemoteCount *SgwIntStat `json:"conflict_resolved_remote_count"`
-	ConflictResolvedMergedCount *SgwIntStat `json:"conflict_resolved_merged_count"`
+	ConflictResolvedLocalCount  *SgwIntStat `json:"sgr_conflict_resolved_local_count"`
+	ConflictResolvedRemoteCount *SgwIntStat `json:"sgr_conflict_resolved_remote_count"`
+	ConflictResolvedMergedCount *SgwIntStat `json:"sgr_conflict_resolved_merge_count"`
 }
 
 type SecurityStats struct {
@@ -278,7 +278,7 @@ type SharedBucketImportStats struct {
 type SgwStat struct {
 	statFQN       string
 	statDesc      *prometheus.Desc
-	dbName        string
+	labels        map[string]string
 	statValueType prometheus.ValueType
 	mutex         sync.Mutex
 }
@@ -299,19 +299,21 @@ type SgwBoolStat struct {
 }
 
 func NewIntStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue int64) *SgwIntStat {
-	var label []string
+	var labels map[string]string
 	if dbName != "" {
-		label = []string{"database"}
+		// It would be possible to supply labels directly into the constructor but as we will only take dbName for now
+		// we can do this to make the constructor more convenient to use.
+		labels = map[string]string{"database": dbName}
 	}
 
 	name := prometheus.BuildFQName("sgw", subsystem, key)
-	desc := prometheus.NewDesc(name, key, label, nil)
+	desc := prometheus.NewDesc(name, key, getKeys(labels), nil)
 
 	stat := &SgwIntStat{
 		SgwStat: SgwStat{
 			statFQN:       name,
 			statDesc:      desc,
-			dbName:        dbName,
+			labels:        labels,
 			statValueType: statValueType,
 		},
 		Val: initialValue,
@@ -325,11 +327,7 @@ func (s *SgwIntStat) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
-	var labelVals []string
-	if s.dbName != "" {
-		labelVals = append(labelVals, s.dbName)
-	}
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Val), labelVals...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Val), getValues(s.labels)...)
 }
 
 func (s *SgwIntStat) Set(newV int64) {
@@ -369,19 +367,21 @@ func (s *SgwIntStat) Value() int64 {
 }
 
 func NewFloatStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue float64) *SgwFloatStat {
-	var label []string
+	var labels map[string]string
 	if dbName != "" {
-		label = []string{"database"}
+		// It would be possible to supply labels directly into the constructor but as we will only take dbName for now
+		// we can do this to make the constructor more convenient to use.
+		labels = map[string]string{"database": dbName}
 	}
 
 	name := prometheus.BuildFQName("sgw", subsystem, key)
-	desc := prometheus.NewDesc(name, key, label, nil)
+	desc := prometheus.NewDesc(name, key, getKeys(labels), nil)
 
 	stat := &SgwFloatStat{
 		SgwStat: SgwStat{
 			statFQN:       name,
 			statDesc:      desc,
-			dbName:        dbName,
+			labels:        labels,
 			statValueType: statValueType,
 		},
 		Val: initialValue,
@@ -395,28 +395,32 @@ func (s *SgwFloatStat) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
-	var labelVals []string
-	if s.dbName != "" {
-		labelVals = append(labelVals, s.dbName)
-	}
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, s.Val, labelVals...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, s.Val, getValues(s.labels)...)
 }
 
 func (s *SgwFloatStat) Set(newV float64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.Val = newV
 }
 
 func (s *SgwFloatStat) SetIfMax(newV float64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	if newV > s.Val {
 		s.Val = newV
 	}
 }
 
 func (s *SgwFloatStat) Add(newV float64) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	s.Val += newV
 }
 
 func (s *SgwFloatStat) MarshalJSON() ([]byte, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	return []byte(fmt.Sprintf("%v", s.Val)), nil
 }
 
@@ -425,6 +429,8 @@ func (s *SgwFloatStat) String() string {
 }
 
 func (s *SgwFloatStat) Value() float64 {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	return s.Val
 }
 
@@ -629,9 +635,9 @@ func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
 			PulledCount:                 NewIntStat("replication", "sgr_num_docs_pulled", d.dbName, prometheus.CounterValue, 0),
 			PurgedCount:                 NewIntStat("replication", "sgr_num_docs_purged", d.dbName, prometheus.CounterValue, 0),
 			FailedToPullCount:           NewIntStat("replication", "sgr_num_docs_failed_to_pull", d.dbName, prometheus.CounterValue, 0),
-			DeltaReceviedCount:          NewIntStat("replication", "sgr_deltas_recv", d.dbName, prometheus.CounterValue, 0),
+			DeltaReceivedCount:          NewIntStat("replication", "sgr_deltas_recv", d.dbName, prometheus.CounterValue, 0),
 			DeltaRequestedCount:         NewIntStat("replication", "sgr_deltas_requested", d.dbName, prometheus.CounterValue, 0),
-			DocsCheckedRecevied:         NewIntStat("replication", "sgr_docs_checked_recv", d.dbName, prometheus.CounterValue, 0),
+			DocsCheckedReceived:         NewIntStat("replication", "sgr_docs_checked_recv", d.dbName, prometheus.CounterValue, 0),
 			ConflictResolvedLocalCount:  NewIntStat("replication", "sgr_conflict_resolved_local_count", d.dbName, prometheus.CounterValue, 0),
 			ConflictResolvedRemoteCount: NewIntStat("replication", "sgr_conflict_resolved_remote_count", d.dbName, prometheus.CounterValue, 0),
 			ConflictResolvedMergedCount: NewIntStat("replication", "sgr_conflict_resolved_merge_count", d.dbName, prometheus.CounterValue, 0),
@@ -711,4 +717,20 @@ func (g *QueryStats) MarshalJSON() ([]byte, error) {
 	}
 
 	return JSONMarshal(ret)
+}
+
+func getKeys(myMap map[string]string) []string {
+	keys := make([]string, 0, len(myMap))
+	for k := range myMap {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func getValues(myMap map[string]string) []string {
+	vals := make([]string, 0, len(myMap))
+	for _, v := range myMap {
+		vals = append(vals, v)
+	}
+	return vals
 }

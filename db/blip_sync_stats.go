@@ -157,9 +157,9 @@ func BlipSyncStatsForSGRPull(replicationStats *base.DbReplicatorStats) *BlipSync
 	blipStats.HandleRevCount = replicationStats.PulledCount
 	blipStats.HandleRevDocsPurgedCount = replicationStats.PurgedCount
 	blipStats.HandleRevErrorCount = replicationStats.FailedToPullCount
-	blipStats.HandleRevDeltaRecvCount = replicationStats.DeltaReceviedCount
+	blipStats.HandleRevDeltaRecvCount = replicationStats.DeltaReceivedCount
 	blipStats.HandleChangesDeltaRequestedCount = replicationStats.DeltaRequestedCount
-	blipStats.HandleChangesCount = replicationStats.DocsCheckedRecevied
+	blipStats.HandleChangesCount = replicationStats.DocsCheckedReceived
 
 	return blipStats
 }
