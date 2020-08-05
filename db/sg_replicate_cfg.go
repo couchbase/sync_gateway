@@ -64,6 +64,8 @@ func NewSGNode(uuid string, host string) *SGNode {
 type ReplicationConfig struct {
 	ID                     string                    `json:"replication_id"`
 	Remote                 string                    `json:"remote"`
+	Username               string                    `json:"username,omitempty"`
+	Password               string                    `json:"password,omitempty"`
 	Direction              ActiveReplicatorDirection `json:"direction"`
 	ConflictResolutionType ConflictResolverType      `json:"conflict_resolution_type,omitempty"`
 	ConflictResolutionFn   string                    `json:"custom_conflict_resolver,omitempty"`
@@ -102,6 +104,8 @@ type ReplicationCfg struct {
 type ReplicationUpsertConfig struct {
 	ID                     string      `json:"replication_id"`
 	Remote                 *string     `json:"remote"`
+	Username               *string     `json:"username,omitempty"`
+	Password               *string     `json:"password,omitempty"`
 	Direction              *string     `json:"direction"`
 	ConflictResolutionType *string     `json:"conflict_resolution_type,omitempty"`
 	ConflictResolutionFn   *string     `json:"custom_conflict_resolver,omitempty"`
@@ -120,14 +124,12 @@ type ReplicationUpsertConfig struct {
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
 	// Cancel is only supported via the REST API
-	if rc.Cancel {
-		if fromConfig {
-			return base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
-		}
+	if rc.Cancel && fromConfig {
+		return base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
 	}
 
-	// Adhoc is only supported via the REST API
 	if rc.Adhoc {
+		// Adhoc is only supported via the REST API
 		if fromConfig {
 			return base.HTTPErrorf(http.StatusBadRequest, "adhoc=true is invalid for replication in Sync Gateway configuration")
 		}
@@ -141,6 +143,17 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote must be specified.")
 	}
 
+	remoteURL, err := url.Parse(rc.Remote)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v",
+			base.RedactBasicAuthURL(rc.Remote), base.RedactBasicAuthURL(err.Error()))
+	}
+
+	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {
+		return base.HTTPErrorf(http.StatusBadRequest,
+			"Auth credentials can be specified either in replication config or remote URL but not allowed in both")
+	}
+
 	if rc.Direction == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication direction must be specified")
 	}
@@ -148,11 +161,6 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 	if !rc.Direction.IsValid() {
 		return base.HTTPErrorf(http.StatusBadRequest, "Invalid replication direction %q, valid values are %s/%s/%s",
 			rc.Direction, ActiveReplicatorTypePush, ActiveReplicatorTypePull, ActiveReplicatorTypePushAndPull)
-	}
-
-	remoteURL, err := url.Parse(rc.Remote)
-	if err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v", remoteURL, err)
 	}
 
 	if rc.Filter == base.ByChannelFilter {
@@ -177,6 +185,14 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 
 	if c.Remote != nil {
 		rc.Remote = *c.Remote
+	}
+
+	if c.Username != nil {
+		rc.Username = *c.Username
+	}
+
+	if c.Username != nil {
+		rc.Password = *c.Password
 	}
 
 	if c.Direction != nil {
@@ -254,6 +270,20 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 		return false, err
 	}
 	return bytes.Equal(currentBytes, compareToBytes), nil
+}
+
+// Redact returns the ReplicationCfg with auth credentials of the remote database
+// redacted. Credentials will be redacted from replication config and remote URL.
+func (r *ReplicationConfig) Redact() *ReplicationConfig {
+	config := *r
+	if config.Username != "" {
+		config.Username = "****"
+	}
+	if config.Password != "" {
+		config.Password = "****"
+	}
+	config.Remote = base.RedactBasicAuthURL(config.Remote)
+	return &config
 }
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
@@ -436,6 +466,12 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	rc.PassiveDBURL, err = url.Parse(config.Remote)
 	if err != nil {
 		return nil, err
+	}
+
+	// If auth credentials are explicitly defined in the replication configuration,
+	// enrich remote database URL connection string with the supplied auth credentials.
+	if config.Username != "" {
+		rc.PassiveDBURL.User = url.UserPassword(config.Username, config.Password)
 	}
 
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval
@@ -1026,7 +1062,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 		}
 	}
 
-	// Add the replicaiton config if requested
+	// Add the replication config if requested
 	if options.IncludeConfig {
 		if remoteCfg == nil {
 			var err error
@@ -1035,7 +1071,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 				return nil, err
 			}
 		}
-		status.Config = &remoteCfg.ReplicationConfig
+		status.Config = remoteCfg.ReplicationConfig.Redact()
 	}
 
 	if !options.IncludeError && status.Status == ReplicationStateError {
