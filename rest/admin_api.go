@@ -147,6 +147,8 @@ func (h *handler) handleReplicate() error {
 		return err
 	}
 
+	base.Warnf("The /_replicate API is deprecated - use /{db}/_replication instead.")
+
 	params, cancel, _, err := h.readReplicateV1ParametersFromJSON(body)
 	if err != nil {
 		return err
@@ -325,6 +327,8 @@ func validateReplicateV1Parameters(requestParams ReplicateV1Config, paramsFromCo
 }
 
 func (h *handler) handleActiveTasks() error {
+
+	base.Warnf("The /_active_tasks API is deprecated - use /{db}/_replicationStatus instead.")
 	h.writeJSON(h.server.replicator.ActiveTasks())
 	return nil
 }
