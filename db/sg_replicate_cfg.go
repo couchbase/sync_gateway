@@ -131,6 +131,10 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		if fromConfig {
 			return base.HTTPErrorf(http.StatusBadRequest, "adhoc=true is invalid for replication in Sync Gateway configuration")
 		}
+
+		if rc.State == ReplicationStateStopped {
+			return base.HTTPErrorf(http.StatusBadRequest, "Setting state=stopped is not valid for replications specifying adhoc=true")
+		}
 	}
 
 	if rc.Remote == "" {
