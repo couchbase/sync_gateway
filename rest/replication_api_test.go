@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
@@ -937,16 +938,6 @@ func TestValidateReplication(t *testing.T) {
 			},
 		},
 		{
-			name: "replication config with invalid remote URL specified",
-			replicationConfig: db.ReplicationConfig{
-				Remote: "http://user:foo{bar=pass@remote:4984/db",
-			},
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "Replication remote URL [http://****:****@remote:4984/db] is invalid: parse http://****:****@remote:4984/db: net/url: invalid userinfo",
-			},
-		},
-		{
 			name: "auth credentials specified in both replication config and remote URL",
 			replicationConfig: db.ReplicationConfig{
 				Remote:   "http://bob:pass@remote:4984/db",
@@ -1045,4 +1036,20 @@ func TestValidateReplication(t *testing.T) {
 			assert.Equal(t, tc.errExpected, err)
 		})
 	}
+
+}
+
+func TestValidateReplicationWithInvalidURL(t *testing.T) {
+	// Replication config with credentials in an invalid remote URL
+	replicationConfig := db.ReplicationConfig{Remote: "http://user:foo{bar=pass@remote:4984/db"}
+	err := replicationConfig.ValidateReplication(false)
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+	assert.Contains(t, err.Error(), "http://****:****@remote:4984/db")
+	assert.NotContains(t, err.Error(), "user:foo{bar=pass")
+
+	// Replication config with no credentials in an invalid remote URL
+	replicationConfig = db.ReplicationConfig{Remote: "http://{unknown@remote:4984/db"}
+	err = replicationConfig.ValidateReplication(false)
+	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
+	assert.Contains(t, err.Error(), "http://{unknown@remote:4984/db")
 }
