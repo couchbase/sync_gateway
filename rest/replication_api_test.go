@@ -570,6 +570,10 @@ func TestReplicationRebalancePull(t *testing.T) {
 	docDEF1Body := activeRT.getDoc(docDEF1)
 	assert.Equal(t, "remoteRT", docDEF1Body["source"])
 
+	// Get Replication Status
+	activeRT.assertReplicationStat("rep_ABC", "docs_read", 1)
+	activeRT.assertReplicationStat("rep_DEF", "docs_read", 1)
+
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.TestBucket)
 	defer activeRT2.Close()
@@ -597,6 +601,12 @@ func TestReplicationRebalancePull(t *testing.T) {
 	assert.Equal(t, "remoteRT", docABC2Body2["source"])
 	docDEF2Body2 := activeRT2.getDoc(docDEF2)
 	assert.Equal(t, "remoteRT", docDEF2Body2["source"])
+
+	// Identify rebalanced replication, and validate stats are preserved
+	replicationStatuses := activeRT2.GetReplicationStatuses("?localOnly=true")
+	assert.Equal(t, 1, len(replicationStatuses))
+	rebalancedReplicationID := replicationStatuses[0].ID
+	activeRT2.assertReplicationStat(rebalancedReplicationID, "docs_read", 2)
 }
 
 // TestReplicationRebalancePush
@@ -754,6 +764,21 @@ func (rt *RestTester) assertReplicationState(replicationID string, expectedState
 	var status db.ReplicationStatus
 	require.NoError(rt.tb, json.Unmarshal(resp.Body.Bytes(), &status))
 	assert.Equal(rt.tb, expectedState, status.Status)
+}
+
+// assertReplicationState retrieves _replicationStatus via the REST API for the specified replicationID
+func (rt *RestTester) assertReplicationStat(replicationID string, statName string, expectedValue int64) {
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/_replicationStatus/"+replicationID, "")
+	assertStatus(rt.tb, resp, http.StatusOK)
+	var status db.ReplicationStatus
+	require.NoError(rt.tb, json.Unmarshal(resp.Body.Bytes(), &status))
+	switch statName {
+	case "docs_read":
+		assert.Equal(rt.tb, expectedValue, status.DocsRead)
+	default:
+		rt.tb.Errorf("assertReplicationStat doesn't support stat %s", statName)
+	}
+
 }
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter

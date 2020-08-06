@@ -21,11 +21,12 @@ const (
 
 // ActiveReplicator is a wrapper to encapsulate separate push and pull active replicators.
 type ActiveReplicator struct {
-	ID        string
-	Push      *ActivePushReplicator
-	Pull      *ActivePullReplicator
-	config    *ActiveReplicatorConfig
-	statusKey string // key used when persisting replication status
+	ID            string
+	Push          *ActivePushReplicator
+	Pull          *ActivePullReplicator
+	config        *ActiveReplicatorConfig
+	statusKey     string // key used when persisting replication status
+	initialStatus *ReplicationStatus
 }
 
 // NewActiveReplicator returns a bidirectional active replicator for the given config.
@@ -59,6 +60,8 @@ func (ar *ActiveReplicator) Start() error {
 	if ar.Push == nil && ar.Pull == nil {
 		return fmt.Errorf("Attempted to start activeReplicator for %s with neither Push nor Pull defined", base.UD(ar.ID))
 	}
+
+	ar.initStatus()
 
 	var pushErr error
 	if ar.Push != nil {
@@ -203,6 +206,8 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 		}
 	}
 
+	// add the stats from the current replicator to the initial stats
+	status.AddStats(ar.initialStatus)
 	return status
 }
 
@@ -311,6 +316,18 @@ func (ar *ActiveReplicator) publishStatus() error {
 	base.Debugf(base.KeyReplicate, "Persisting replication status for replicationID %v (%v)", ar.ID, ar.statusKey)
 	err := ar.config.ActiveDB.Bucket.Set(ar.statusKey, 0, status)
 	return err
+}
+
+func (ar *ActiveReplicator) initStatus() error {
+	status, err := LoadReplicationStatus(ar.config.ActiveDB.DatabaseContext, ar.ID)
+	if base.IsKeyNotFoundError(ar.config.ActiveDB.Bucket, err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	ar.initialStatus = status
+	return nil
 }
 
 func (ar *ActiveReplicator) purgeStatus() error {

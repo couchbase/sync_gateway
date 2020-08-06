@@ -1160,6 +1160,22 @@ func (m *sgReplicateManager) PublishReplicationStatus() {
 	}
 }
 
+func (status *ReplicationStatus) AddStats(s *ReplicationStatus) {
+	if s == nil {
+		return
+	}
+	status.DocsRead += s.DocsRead
+	status.DocsWritten += s.DocsWritten
+	status.DocsPurged += s.DocsPurged
+	status.DocWriteFailures += s.DocWriteFailures
+	status.DocWriteConflict += s.DocWriteConflict
+	status.RejectedRemote += s.RejectedRemote
+	status.RejectedLocal += s.RejectedLocal
+	status.DeltasSent += s.DeltasSent
+	status.DeltasRecv += s.DeltasRecv
+	status.DeltasRequested += s.DeltasRequested
+}
+
 // ImportHeartbeatListener uses replication cfg to manage node list
 type ReplicationHeartbeatListener struct {
 	mgr        *sgReplicateManager
