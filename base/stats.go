@@ -31,7 +31,12 @@ func (s *SgwStats) ReplicationStats() *expvar.Map {
 	s.registeredReplicatorStats.Do(func() {
 		if s.ReplicatorStats == nil {
 			s.ReplicatorStats = &ReplicatorStats{
-				toplevelMap: new(expvar.Map).Init(),
+				checkedSentDesc:               prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_docs_checked_sent"), "sgr_docs_checked_sent", []string{"replication"}, nil),
+				numAttachmentBytesTransferred: prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", []string{"replication"}, nil),
+				numAttachmentsTransferred:     prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", []string{"replication"}, nil),
+				numDocsFailedToPush:           prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", []string{"replication"}, nil),
+				numDocsPushed:                 prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_docs_pushed"), "sgr_num_docs_pushed", []string{"replication"}, nil),
+				toplevelMap:                   new(expvar.Map).Init(),
 			}
 		}
 		prometheus.MustRegister(s.ReplicatorStats)
@@ -70,7 +75,7 @@ type DbStats struct {
 	DatabaseStats           *DatabaseStats                `json:"database,omitempty"`
 	DeltaSyncStats          *DeltaSyncStats               `json:"delta_sync,omitempty"`
 	QueryStats              *QueryStats                   `json:"gsi_views,omitempty"`
-	DbReplicatorStats       map[string]*DbReplicatorStats `json:"replications"`
+	DbReplicatorStats       map[string]*DbReplicatorStats `json:"replications,omitempty"`
 	SecurityStats           *SecurityStats                `json:"security,omitempty"`
 	SharedBucketImportStats *SharedBucketImportStats      `json:"shared_bucket_import,omitempty"`
 }
@@ -174,6 +179,12 @@ func (wrapper *ExpVarMapWrapper) MarshalJSON() ([]byte, error) {
 }
 
 type ReplicatorStats struct {
+	checkedSentDesc,
+	numAttachmentBytesTransferred,
+	numAttachmentsTransferred,
+	numDocsFailedToPush,
+	numDocsPushed *prometheus.Desc
+
 	toplevelMap *expvar.Map
 }
 
@@ -188,31 +199,31 @@ func (rs *ReplicatorStats) Describe(ch chan<- *prometheus.Desc) {
 func (rs *ReplicatorStats) Collect(ch chan<- prometheus.Metric) {
 	rs.toplevelMap.Do(func(value expvar.KeyValue) {
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_docs_checked_sent"), "sgr_docs_checked_sent", []string{"replication"}, nil),
+			rs.checkedSentDesc,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_docs_checked_sent").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", []string{"replication"}, nil),
+			rs.numAttachmentBytesTransferred,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_attachment_bytes_transferred").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", []string{"replication"}, nil),
+			rs.numAttachmentsTransferred,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_attachments_transferred").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", []string{"replication"}, nil),
+			rs.numDocsFailedToPush,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_failed_to_push").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc(prometheus.BuildFQName("sgw", "replication", "sgr_num_docs_pushed"), "sgr_num_docs_pushed", []string{"replication"}, nil),
+			rs.numDocsPushed,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_pushed").(*expvar.Int).Value()),
 			value.Key,
@@ -298,6 +309,18 @@ type SgwBoolStat struct {
 	Val bool
 }
 
+func newSGWStat(subsystem string, key string, labels map[string]string, statValueType prometheus.ValueType) *SgwStat {
+	name := prometheus.BuildFQName("sgw", subsystem, key)
+	desc := prometheus.NewDesc(name, key, getKeys(labels), nil)
+
+	return &SgwStat{
+		statFQN:       name,
+		statDesc:      desc,
+		labels:        labels,
+		statValueType: statValueType,
+	}
+}
+
 func NewIntStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue int64) *SgwIntStat {
 	var labels map[string]string
 	if dbName != "" {
@@ -306,17 +329,9 @@ func NewIntStat(subsystem string, key string, dbName string, statValueType prome
 		labels = map[string]string{"database": dbName}
 	}
 
-	name := prometheus.BuildFQName("sgw", subsystem, key)
-	desc := prometheus.NewDesc(name, key, getKeys(labels), nil)
-
 	stat := &SgwIntStat{
-		SgwStat: SgwStat{
-			statFQN:       name,
-			statDesc:      desc,
-			labels:        labels,
-			statValueType: statValueType,
-		},
-		Val: initialValue,
+		SgwStat: *newSGWStat(subsystem, key, labels, statValueType),
+		Val:     initialValue,
 	}
 	prometheus.MustRegister(stat)
 	return stat
@@ -374,17 +389,9 @@ func NewFloatStat(subsystem string, key string, dbName string, statValueType pro
 		labels = map[string]string{"database": dbName}
 	}
 
-	name := prometheus.BuildFQName("sgw", subsystem, key)
-	desc := prometheus.NewDesc(name, key, getKeys(labels), nil)
-
 	stat := &SgwFloatStat{
-		SgwStat: SgwStat{
-			statFQN:       name,
-			statDesc:      desc,
-			labels:        labels,
-			statValueType: statValueType,
-		},
-		Val: initialValue,
+		SgwStat: *newSGWStat(subsystem, key, labels, statValueType),
+		Val:     initialValue,
 	}
 	prometheus.MustRegister(stat)
 	return stat
