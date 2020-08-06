@@ -38,6 +38,7 @@ import (
 var (
 	DefaultInterface              = ":4984"
 	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
+	DefaultMetricsInterface       = "127.0.0.1:4986" // Only accessible on localhost!
 	DefaultServer                 = "walrus:"
 	DefaultPool                   = "default"
 	DefaultMinimumTLSVersionConst = tls.VersionTLS10
@@ -98,6 +99,7 @@ type ServerConfig struct {
 	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`            // Config for unsupported features
 	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
 	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
+	MetricsInterface           *string                  `json:"metrics_interface,omitempty"`      // Interface to bind metrics to, default ":4986"
 }
 
 // Bucket configuration elements - used by db, index
@@ -1024,6 +1026,10 @@ func RunServer(config *ServerConfig) {
 		}
 	}
 
+	if config.MetricsInterface == nil {
+		config.MetricsInterface = &DefaultMetricsInterface
+	}
+
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
@@ -1042,8 +1048,8 @@ func RunServer(config *ServerConfig) {
 
 	go sc.PostStartup()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "")
-	go config.Serve(":1234", CreateMetricHandler(sc))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s")
+	go config.Serve(*config.MetricsInterface, CreateMetricHandler(sc))
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
