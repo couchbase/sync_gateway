@@ -80,12 +80,12 @@ func (h *handler) handleGetDoc() error {
 		}
 		h.setHeader("Etag", strconv.Quote(value[db.BodyRev].(string)))
 
-		h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
+		h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		hasBodies := attachmentsSince != nil && value[db.BodyAttachments] != nil
 		if h.requestAccepts("multipart/") && (hasBodies || !h.requestAccepts("application/json")) {
 			canCompress := strings.Contains(h.rq.Header.Get("X-Accept-Part-Encoding"), "gzip")
 			return h.writeMultipart("related", func(writer *multipart.Writer) error {
-				WriteMultipartDocument(h.rq.Context(), h.db.DatabaseContext.DbStats.NewStats.CBLReplicationPull(), value, writer, canCompress)
+				WriteMultipartDocument(h.rq.Context(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), value, writer, canCompress)
 				return nil
 			})
 		} else {
@@ -120,8 +120,8 @@ func (h *handler) handleGetDoc() error {
 					if err != nil {
 						revBody = db.Body{"missing": revid} //TODO: More specific error
 					}
-					_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.NewStats.CBLReplicationPull(), revBody, err != nil, false, writer)
-					h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
+					_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), revBody, err != nil, false, writer)
+					h.db.DbStats.Database().NumDocReadsRest.Add(1)
 				}
 				return nil
 			})
@@ -146,7 +146,7 @@ func (h *handler) handleGetDoc() error {
 				}
 			}
 			_, _ = h.response.Write([]byte(`]`))
-			h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
+			h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		}
 	}
 	return nil
@@ -173,7 +173,7 @@ func (h *handler) handleGetDocReplicator2(docid, revid string) error {
 
 	h.setHeader("Content-Type", "application/json")
 	_, _ = h.response.Write(bodyBytes)
-	h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
+	h.db.DbStats.Database().NumDocReadsRest.Add(1)
 
 	return nil
 }
@@ -260,8 +260,8 @@ func (h *handler) handleGetAttachment() error {
 		h.setHeader("Content-Disposition", "attachment")
 
 	}
-	h.db.DbStats.NewStats.CBLReplicationPull().AttachmentPullCount.Add(1)
-	h.db.DbStats.NewStats.CBLReplicationPull().AttachmentPullBytes.Add(int64(len(data)))
+	h.db.DbStats.CBLReplicationPull().AttachmentPullCount.Add(1)
+	h.db.DbStats.CBLReplicationPull().AttachmentPullBytes.Add(int64(len(data)))
 	h.response.WriteHeader(status)
 	_, _ = h.response.Write(data)
 	return nil
@@ -332,7 +332,7 @@ func (h *handler) handlePutDoc() error {
 
 	startTime := time.Now()
 	defer func() {
-		h.db.DbStats.NewStats.CBLReplicationPush().WriteProcessingTime.Add(time.Since(startTime).Nanoseconds())
+		h.db.DbStats.CBLReplicationPush().WriteProcessingTime.Add(time.Since(startTime).Nanoseconds())
 	}()
 
 	docid := h.PathVar("docid")

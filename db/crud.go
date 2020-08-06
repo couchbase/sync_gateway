@@ -60,7 +60,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 
 		isSgWrite, crc32Match := doc.IsSGWrite(rawBucketDoc.Body)
 		if crc32Match {
-			db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
+			db.DbStats.Database().Crc32MatchCount.Add(1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
@@ -140,7 +140,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 
 		isSgWrite, crc32Match := doc.IsSGWrite(rawDoc)
 		if crc32Match {
-			db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
+			db.DbStats.Database().Crc32MatchCount.Add(1)
 		}
 
 		// If existing doc wasn't an SG Write, import the doc.
@@ -313,7 +313,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
 			// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
-			db.DbStats.NewStats.DeltaSync().DeltaCacheHit.Add(1)
+			db.DbStats.DeltaSync().DeltaCacheHit.Add(1)
 			return fromRevision.Delta, nil, nil
 		} else {
 			// TODO: Recurse and merge deltas when gen(revCacheDelta.toRevID) < gen(toRevId)
@@ -325,7 +325,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 	if fromRevision.BodyBytes != nil {
 
 		// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheMisses, 1)
-		db.DbStats.NewStats.DeltaSync().DeltaCacheMiss.Add(1)
+		db.DbStats.DeltaSync().DeltaCacheMiss.Add(1)
 		toRevision, err := db.revisionCache.Get(docID, toRevID, RevCacheOmitBody, RevCacheIncludeDelta)
 		if err != nil {
 			return nil, nil, err
@@ -808,7 +808,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		if doc != nil {
 			isSgWrite, crc32Match = doc.IsSGWrite(nil)
 			if crc32Match {
-				db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
+				db.DbStats.Database().Crc32MatchCount.Add(1)
 			}
 		}
 
@@ -911,7 +911,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		if doc != nil {
 			isSgWrite, crc32Match = doc.IsSGWrite(nil)
 			if crc32Match {
-				db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
+				db.DbStats.Database().Crc32MatchCount.Add(1)
 			}
 		}
 
@@ -1639,7 +1639,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if xattrBytesThreshold := db.Options.UnsupportedOptions.WarningThresholds.XattrSize; xattrBytesThreshold != nil {
 				xattrBytes = len(rawXattr)
 				if uint32(xattrBytes) >= *xattrBytesThreshold {
-					db.DbStats.NewStats.Database().WarnXattrSizeCount.Add(1)
+					db.DbStats.Database().WarnXattrSizeCount.Add(1)
 					base.WarnfCtx(db.Ctx, "Doc id: %v sync metadata size: %d bytes exceeds %d bytes for sync metadata warning threshold", base.UD(doc.ID), xattrBytes, *xattrBytesThreshold)
 				}
 			}
@@ -1683,11 +1683,11 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		return nil, "", err
 	}
 
-	db.DbStats.NewStats.Database().NumDocWrites.Add(1)
-	db.DbStats.NewStats.Database().DocWritesBytes.Add(int64(docBytes))
-	db.DbStats.NewStats.Database().DocWritesXattrBytes.Add(int64(xattrBytes))
+	db.DbStats.Database().NumDocWrites.Add(1)
+	db.DbStats.Database().DocWritesBytes.Add(int64(docBytes))
+	db.DbStats.Database().DocWritesXattrBytes.Add(int64(xattrBytes))
 	if inConflict {
-		db.DbStats.NewStats.Database().ConflictWriteCount.Add(1)
+		db.DbStats.Database().ConflictWriteCount.Add(1)
 	}
 
 	if doc.History[newRevID] != nil {
@@ -1748,7 +1748,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 	if channelCountThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; channelCountThreshold != nil {
 		channelCount := len(channels)
 		if uint32(channelCount) >= *channelCountThreshold {
-			db.DbStats.NewStats.Database().WarnChannelsPerDocCount.Add(1)
+			db.DbStats.Database().WarnChannelsPerDocCount.Add(1)
 			base.WarnfCtx(db.Ctx, "Doc id: %v channel count: %d exceeds %d for channels per doc warning threshold", base.UD(docID), channelCount, *channelCountThreshold)
 		}
 	}
@@ -1757,7 +1757,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 	if grantThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; grantThreshold != nil {
 		grantCount := len(accessGrants) + len(roleGrants)
 		if uint32(grantCount) >= *grantThreshold {
-			db.DbStats.NewStats.Database().WarnGrantsPerDocCount.Add(1)
+			db.DbStats.Database().WarnGrantsPerDocCount.Add(1)
 			base.WarnfCtx(db.Ctx, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
 		}
 	}
@@ -1877,13 +1877,13 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 	if db.ChannelMapper != nil {
 		// Call the ChannelMapper:
 		startTime := time.Now()
-		db.DbStats.NewStats.CBLReplicationPush().SyncFunctionCount.Add(1)
+		db.DbStats.CBLReplicationPush().SyncFunctionCount.Add(1)
 
 		var output *channels.ChannelMapperOutput
 		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
 			makeUserCtx(db.user))
 
-		db.DbStats.NewStats.CBLReplicationPush().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
+		db.DbStats.CBLReplicationPush().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())
 
 		if err == nil {
 			result = output.Channels
@@ -1894,9 +1894,9 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 			if err != nil {
 				base.InfofCtx(db.Ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
 				base.DebugfCtx(db.Ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
-				db.DbStats.NewStats.Security().NumDocsRejected.Add(1)
+				db.DbStats.Security().NumDocsRejected.Add(1)
 				if isAccessError(err) {
-					db.DbStats.NewStats.Security().NumAccessErrors.Add(1)
+					db.DbStats.Security().NumAccessErrors.Add(1)
 				}
 			} else if !validateAccessMap(access) || !validateRoleAccessMap(roles) {
 				err = base.HTTPErrorf(500, "Error in JS sync function")

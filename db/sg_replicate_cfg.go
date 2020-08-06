@@ -496,7 +496,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	rc.onComplete = m.replicationComplete
 
 	// Retrieve or create an entry in db.replications expvar for this replication
-	allReplicationsStatsMap := m.dbContext.DbStats.NewStats.DBReplicatorStats(rc.ID)
+	allReplicationsStatsMap := m.dbContext.DbStats.DBReplicatorStats(rc.ID)
 	rc.ReplicationStatsMap = allReplicationsStatsMap
 
 	// TODO: review whether there's a more appropriate context to use here

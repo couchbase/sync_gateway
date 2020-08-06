@@ -50,31 +50,31 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats("test").DBReplicatorStats(t.Name()),
 	})
 
-	startNumReplicationsTotal := rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsTotal.Value()
-	startNumReplicationsActive := rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsActive.Value()
+	startNumReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
+	startNumReplicationsActive := rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
 
 	// Start the replicator (implicit connect)
 	assert.NoError(t, ar.Start())
 
 	// Check total stat
-	numReplicationsTotal := rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsTotal.Value()
+	numReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
 	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 
 	// Check active stat
-	assert.Equal(t, startNumReplicationsActive+2, rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsActive.Value())
+	assert.Equal(t, startNumReplicationsActive+2, rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value())
 
 	// Close the replicator (implicit disconnect)
 	assert.NoError(t, ar.Stop())
 
 	// Wait for active stat to drop to original value
 	numReplicationsActive, ok := base.WaitForStat(func() int64 {
-		return rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsActive.Value()
+		return rt.GetDatabase().DbStats.Database().NumReplicationsActive.Value()
 	}, startNumReplicationsActive)
 	assert.True(t, ok)
 	assert.Equal(t, startNumReplicationsActive, numReplicationsActive)
 
 	// Verify total stat has not been decremented
-	numReplicationsTotal = rt.GetDatabase().DbStats.NewStats.Database().NumReplicationsTotal.Value()
+	numReplicationsTotal = rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
 	assert.Equal(t, startNumReplicationsTotal+2, numReplicationsTotal)
 }
 
@@ -294,8 +294,8 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	// Create the first active replicator to pull from seq:0
 	ar := db.NewActiveReplicator(&arConfig)
 
-	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	startNumRevsSentTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().RevSendCount.Value()
+	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 
 	assert.NoError(t, ar.Start())
 
@@ -317,11 +317,11 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
-	numRevsSentTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().RevSendCount.Value()
+	numRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 	assert.Equal(t, startNumRevsSentTotal+numRT2DocsInitial, numRevsSentTotal)
 	assert.Equal(t, int64(numRT2DocsInitial), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(numRT2DocsInitial), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
@@ -367,11 +367,11 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	}
 
 	// Make sure we've not started any more since:0 replications on rt2 since the first one
-	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
 
 	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
-	numRevsSentTotal = rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().RevSendCount.Value()
+	numRevsSentTotal = rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 	assert.Equal(t, startNumRevsSentTotal+numRT2DocsTotal, numRevsSentTotal)
 	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(numRT2DocsTotal-numRT2DocsInitial), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
@@ -464,7 +464,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	// Create the first active replicator to pull from seq:0
 	ar := db.NewActiveReplicator(&arConfig)
 
-	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 
 	assert.NoError(t, ar.Start())
 
@@ -490,11 +490,11 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	}
 
 	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
-	numRevsSentTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().RevSendCount.Value()
+	numRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 	assert.Equal(t, int64(0), numRevsSentTotal)
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
@@ -531,11 +531,11 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	assert.True(t, ok)
 
 	// Make sure we've not started any more since:0 replications on rt2 since the first one
-	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
 
 	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
-	numRevsSentTotal = rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().RevSendCount.Value()
+	numRevsSentTotal = rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 	assert.Equal(t, int64(0), numRevsSentTotal)
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
@@ -805,7 +805,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name() + "1").DBReplicatorStats(t.Name())
 	ar := db.NewActiveReplicator(&arConfig)
 
-	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 
 	assert.NoError(t, ar.Start())
@@ -828,7 +828,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
@@ -876,7 +876,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Make sure we've not started any more since:0 replications on rt1 since the first one
-	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
 
 	// make sure the new replicator has only sent new mutations
@@ -974,7 +974,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	// Create the first active replicator to pull from seq:0
 	ar := db.NewActiveReplicator(&arConfig)
 
-	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 
 	assert.NoError(t, ar.Start())
 
@@ -984,7 +984,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	assert.True(t, ok)
 
 	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
@@ -1022,7 +1022,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	assert.True(t, ok)
 
 	// Make sure we've not started any more since:0 replications on rt1 since the first one
-	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, numChangesRequestedFromZeroTotal, endNumChangesRequestedFromZeroTotal)
 
 	// make sure rt1 thinks it has sent all of the revs via a 2.x replicator
@@ -1937,8 +1937,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	ar := db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
-	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
-	startNumRevsSentTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().RevSendCount.Value()
+	startNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	startNumRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 
 	assert.NoError(t, ar.Start())
 
@@ -1953,11 +1953,11 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
-	numRevsSentTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().RevSendCount.Value()
+	numRevsSentTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 	assert.Equal(t, startNumRevsSentTotal+1, numRevsSentTotal)
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
@@ -2005,11 +2005,11 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
-	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
 
 	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
-	numRevsSentTotal = rt2.GetDatabase().DbStats.NewStats.CBLReplicationPull().RevSendCount.Value()
+	numRevsSentTotal = rt2.GetDatabase().DbStats.CBLReplicationPull().RevSendCount.Value()
 	assert.Equal(t, startNumRevsSentTotal+2, numRevsSentTotal)
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
@@ -2093,7 +2093,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	ar := db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
-	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	//startNumRevsSentTotal := ar.Pull.GetStats().SendRevCount.Value()
 	startNumRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
 
@@ -2110,7 +2110,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
-	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
@@ -2174,7 +2174,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
-	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Value()
+	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
 	assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
 
 	// make sure the replicator has resent the rev

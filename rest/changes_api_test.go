@@ -255,7 +255,7 @@ func TestPostChangesUserTiming(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/pbs3", `{"value":3, "channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	caughtUpCount := rt.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
 	wg.Add(1)
 	go func() {
@@ -999,7 +999,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	require.Len(t, changes.Results, 2)
 	assert.Equal(t, "5::12", changes.Last_Seq)
 
-	caughtUpCount := rt.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 	// Issue a longpoll changes request.  Will block.
 	var longpollWg sync.WaitGroup
 	longpollWg.Add(1)
@@ -3312,7 +3312,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	caughtUpCount := rt.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
 	// Issue longpoll changes request
 	var longpollWg sync.WaitGroup
@@ -3358,7 +3358,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	caughtUpCount := rt.GetDatabase().DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+	caughtUpCount := rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
 	// Get 100 changes requests into wait mode (each for a different channel)
 	changesURLPattern := "/db/_changes?filter=sync_gateway/bychannel&feed=longpoll&since=0&channels=%s"
@@ -3391,7 +3391,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 
 	// Validate that cache has been compacted to LWM <= size <= HWM.  Actual size will vary, as
 	// channels may be added after initial compaction to LWM (but not enough to retrigger compaction).
-	cacheSize := rt.GetDatabase().DbStats.NewStats.Cache().ChannelCacheNumChannels.Value()
+	cacheSize := rt.GetDatabase().DbStats.Cache().ChannelCacheNumChannels.Value()
 	log.Printf("Cache size after compaction: %v", cacheSize)
 	assert.True(t, cacheSize >= 60)
 	assert.True(t, cacheSize <= 80)
@@ -3453,13 +3453,13 @@ func TestTombstoneCompaction(t *testing.T) {
 		rt.SendAdminRequest("POST", "/db/_compact", "")
 
 		compactionTotal += numDocs
-		assert.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.NewStats.Database().NumTombstonesCompacted.Value()))
+		assert.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()))
 
 		var actualBatches int64
 		if base.TestsDisableGSI() {
-			actualBatches = rt.GetDatabase().DbStats.NewStats.Query(fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncHousekeeping(), db.ViewTombstones)).QueryCount.Value()
+			actualBatches = rt.GetDatabase().DbStats.Query(fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncHousekeeping(), db.ViewTombstones)).QueryCount.Value()
 		} else {
-			actualBatches = rt.GetDatabase().DbStats.NewStats.Query(db.QueryTypeTombstones).QueryCount.Value()
+			actualBatches = rt.GetDatabase().DbStats.Query(db.QueryTypeTombstones).QueryCount.Value()
 		}
 
 		expectedBatches += numDocs/db.QueryTombstoneBatch + 1

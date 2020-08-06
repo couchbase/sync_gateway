@@ -374,7 +374,7 @@ func TestLateSequenceHandlingDuringCompact(t *testing.T) {
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
-	caughtUpStart := db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+	caughtUpStart := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 
 	terminator := make(chan bool)
 	var changesFeedsWg sync.WaitGroup
@@ -1020,7 +1020,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 		assert.Fail(t, "Changes goroutine failed to initiate view query in 10 seconds.")
 	}
 
-	initialPendingQueries := db.DbStats.NewStats.Cache().ChannelCachePendingQueries.Value()
+	initialPendingQueries := db.DbStats.Cache().ChannelCachePendingQueries.Value()
 
 	// Start a second goroutine that should block waiting for the view lock
 	changesTerminator := make(chan bool)
@@ -1040,7 +1040,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	// wait for second goroutine to be queued for the view lock (based on expvar)
 	var pendingQueries int64
 	for i := 0; i < 1000; i++ {
-		pendingQueries = db.DbStats.NewStats.Cache().ChannelCachePendingQueries.Value()
+		pendingQueries = db.DbStats.Cache().ChannelCachePendingQueries.Value()
 		if pendingQueries > initialPendingQueries {
 			break
 		}

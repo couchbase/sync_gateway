@@ -434,9 +434,9 @@ func (h *handler) handleBulkGet() error {
 				}
 			}
 
-			_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.NewStats.CBLReplicationPull(), body, err != nil, canCompressParts, writer)
+			_ = WriteRevisionAsPart(h.rq.Context(), h.db.DatabaseContext.DbStats.CBLReplicationPull(), body, err != nil, canCompressParts, writer)
 
-			h.db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
+			h.db.DbStats.Database().NumDocReadsRest.Add(1)
 		}
 		return nil
 	})
@@ -447,7 +447,7 @@ func (h *handler) handleBulkDocs() error {
 
 	startTime := time.Now()
 	defer func() {
-		h.db.DbStats.NewStats.CBLReplicationPush().WriteProcessingTime.Add(time.Since(startTime).Nanoseconds())
+		h.db.DbStats.CBLReplicationPush().WriteProcessingTime.Add(time.Since(startTime).Nanoseconds())
 	}()
 
 	body, err := h.readJSON()

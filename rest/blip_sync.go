@@ -20,9 +20,9 @@ func (h *handler) handleBLIPSync() error {
 		return base.HTTPErrorf(http.StatusUpgradeRequired, "Can't upgrade this request to websocket connection")
 	}
 
-	h.db.DatabaseContext.DbStats.NewStats.Database().NumReplicationsActive.Add(1)
-	h.db.DatabaseContext.DbStats.NewStats.Database().NumReplicationsTotal.Add(1)
-	defer h.db.DatabaseContext.DbStats.NewStats.Database().NumReplicationsActive.Add(-1)
+	h.db.DatabaseContext.DbStats.Database().NumReplicationsActive.Add(1)
+	h.db.DatabaseContext.DbStats.Database().NumReplicationsTotal.Add(1)
+	defer h.db.DatabaseContext.DbStats.Database().NumReplicationsActive.Add(-1)
 
 	if c := h.server.GetConfig().ReplicatorCompression; c != nil {
 		blip.CompressionLevel = *c

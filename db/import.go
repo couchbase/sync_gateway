@@ -205,7 +205,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// Is this doc an SG Write?
 		isSgWrite, crc32Match := doc.IsSGWrite(existingDoc.Body)
 		if crc32Match {
-			db.DbStats.NewStats.Database().Crc32MatchCount.Add(1)
+			db.DbStats.Database().Crc32MatchCount.Add(1)
 		}
 
 		// If the current version of the doc is an SG write, document has been updated by SG subsequent to the update that triggered this import.
@@ -300,9 +300,9 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// If the doc was already imported, we want to return the imported version
 		docOut = alreadyImportedDoc
 	case nil:
-		db.DbStats.NewStats.SharedBucketImport().ImportCount.Add(1)
-		db.DbStats.NewStats.SharedBucketImport().ImportHighSeq.Set(int64(docOut.SyncData.Sequence))
-		db.DbStats.NewStats.SharedBucketImport().ImportProcessingTime.Add(time.Since(importStartTime).Nanoseconds())
+		db.DbStats.SharedBucketImport().ImportCount.Add(1)
+		db.DbStats.SharedBucketImport().ImportHighSeq.Set(int64(docOut.SyncData.Sequence))
+		db.DbStats.SharedBucketImport().ImportProcessingTime.Add(time.Since(importStartTime).Nanoseconds())
 		base.Debugf(base.KeyImport, "Imported %s (delete=%v) as rev %s", base.UD(newDoc.ID), isDelete, newRev)
 	case base.ErrImportCancelled:
 		// Import was cancelled (SG purge) - don't return error.
@@ -311,14 +311,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		return nil, err
 	case base.ErrImportCasFailure:
 		// Import was cancelled due to CAS failure.
-		db.DbStats.NewStats.SharedBucketImport().ImportCancelCAS.Add(1)
+		db.DbStats.SharedBucketImport().ImportCancelCAS.Add(1)
 		return nil, err
 	case base.ErrImportCancelledPurged:
 		// Import ignored
 		return nil, err
 	default:
 		base.Infof(base.KeyImport, "Error importing doc %q: %v", base.UD(newDoc.ID), err)
-		db.DbStats.NewStats.SharedBucketImport().ImportErrorCount.Add(1)
+		db.DbStats.SharedBucketImport().ImportErrorCount.Add(1)
 		return nil, err
 
 	}

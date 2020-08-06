@@ -236,7 +236,7 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
 	}
 
-	queryStat := context.DbStats.NewStats.Query(queryName)
+	queryStat := context.DbStats.Query(queryName)
 
 	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
 	if err != nil {
@@ -257,12 +257,14 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 		defer base.SlowQueryLog(startTime, threshold, "View Query (%s.%s)", ddoc, viewName)
 	}
 
+	queryStat := context.DbStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName))
+
 	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
 	if err != nil {
-		context.DbStats.NewStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName)).QueryErrorCount.Add(1)
+		queryStat.QueryErrorCount.Add(1)
 	}
-	context.DbStats.NewStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName)).QueryCount.Add(1)
-	context.DbStats.NewStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName)).QueryTime.Add(time.Since(startTime).Nanoseconds())
+	queryStat.QueryCount.Add(1)
+	queryStat.QueryTime.Add(time.Since(startTime).Nanoseconds())
 
 	return results, err
 }

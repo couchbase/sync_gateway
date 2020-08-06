@@ -308,11 +308,11 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	// Record Auth stats
 	defer func(t time.Time) {
 		delta := time.Since(t).Nanoseconds()
-		context.DbStats.NewStats.Security().TotalAuthTime.Add(delta)
+		context.DbStats.Security().TotalAuthTime.Add(delta)
 		if err != nil {
-			context.DbStats.NewStats.Security().AuthFailedCount.Add(1)
+			context.DbStats.Security().AuthFailedCount.Add(1)
 		} else {
-			context.DbStats.NewStats.Security().AuthSuccessCount.Add(1)
+			context.DbStats.Security().AuthSuccessCount.Add(1)
 		}
 
 	}(time.Now())

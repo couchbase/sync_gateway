@@ -83,7 +83,7 @@ type channelCacheImpl struct {
 }
 
 func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
-	return newChannelCache(context.Name, terminator, options, context, context.activeChannels, context.DbStats.NewStats.Cache())
+	return newChannelCache(context.Name, terminator, options, context, context.activeChannels, context.DbStats.Cache())
 }
 
 func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOptions,
