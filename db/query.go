@@ -259,10 +259,10 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 
 	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
 	if err != nil {
-		context.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryErrorCount.Add(1)
+		context.DbStats.NewStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName)).QueryErrorCount.Add(1)
 	}
-	context.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryCount.Add(1)
-	context.DbStats.NewStats.Query(fmt.Sprintf("%s.%s", ddoc, viewName)).QueryTime.Add(time.Since(startTime).Nanoseconds())
+	context.DbStats.NewStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName)).QueryCount.Add(1)
+	context.DbStats.NewStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName)).QueryTime.Add(time.Since(startTime).Nanoseconds())
 
 	return results, err
 }
