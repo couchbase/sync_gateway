@@ -1053,3 +1053,82 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 	assert.Contains(t, err.Error(), "http://{unknown@remote:4984/db")
 }
+
+func TestReplicationClusterAPI(t *testing.T) {
+	var rt = NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create a replication
+	config1 := db.ReplicationConfig{
+		ID:        "replication1",
+		Remote:    "http://remote:4984/db",
+		Username:  "alice",
+		Password:  "pass",
+		Direction: db.ActiveReplicatorTypePull,
+		Adhoc:     true,
+	}
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, config1))
+	assertStatus(t, response, http.StatusCreated)
+
+	// Create another replication
+	config2 := db.ReplicationConfig{
+		ID:        "replication2",
+		Remote:    "http://bob:pass@remote:4984/db",
+		Direction: db.ActiveReplicatorTypePull,
+		Adhoc:     true,
+	}
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication2", marshalConfig(t, config2))
+	assertStatus(t, response, http.StatusCreated)
+
+	// Check _cluster response
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_cluster/", "")
+	assertStatus(t, response, http.StatusOK)
+	var sgrCluster db.SGRCluster
+	err := json.Unmarshal(response.BodyBytes(), &sgrCluster)
+	require.NoError(t, err, "Error un-marshalling replication response")
+	assert.Equal(t, 2, len(sgrCluster.Replications), "Replication count mismatch")
+	assert.Equal(t, 0, len(sgrCluster.Nodes), "Replication node count mismatch")
+
+	assertReplication := func(expected db.ReplicationConfig, actual *db.ReplicationCfg) {
+		assert.Equal(t, expected.ID, actual.ID)
+		assert.Equal(t, expected.Remote, actual.Remote)
+		assert.Equal(t, expected.Username, actual.Username)
+		assert.Equal(t, expected.Password, actual.Password)
+		assert.Equal(t, expected.Direction, actual.Direction)
+		assert.Equal(t, expected.Adhoc, actual.Adhoc)
+	}
+
+	// Check replication1 details in cluster response
+	repl, ok := sgrCluster.Replications[config1.ID]
+	assert.True(t, ok, "Error getting replication")
+	config1.Username = "****"
+	config1.Password = "****"
+	assertReplication(config1, repl)
+
+	// Check replication2 details in cluster response
+	repl, ok = sgrCluster.Replications[config2.ID]
+	assert.True(t, ok, "Error getting replication")
+	config2.Remote = "http://****:****@remote:4984/db"
+	assertReplication(config2, repl)
+
+	// Delete both replications
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication2", "")
+	assertStatus(t, response, http.StatusOK)
+
+	// Verify deletes were successful
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusNotFound)
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	// Check _cluster response after replications are removed
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_cluster/", "")
+	assertStatus(t, response, http.StatusOK)
+	sgrCluster = db.SGRCluster{}
+	err = json.Unmarshal(response.BodyBytes(), &sgrCluster)
+	require.NoError(t, err, "Error un-marshalling replication response")
+	assert.Equal(t, 0, len(sgrCluster.Replications), "Replication count mismatch")
+	assert.Equal(t, 0, len(sgrCluster.Nodes), "Replication node count mismatch")
+}

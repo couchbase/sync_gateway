@@ -919,3 +919,16 @@ func (h *handler) putReplicationStatus() error {
 	h.writeJSON(updatedStatus)
 	return nil
 }
+
+// getReplicationCluster responds to the request against _cluster endpoint.
+func (h *handler) getReplicationCluster() error {
+	cluster, err := h.db.SGReplicateMgr.GetSGRCluster()
+	if err != nil {
+		return err
+	}
+	for _, replication := range cluster.Replications {
+		replication.ReplicationConfig = *replication.Redact()
+	}
+	h.writeJSON(cluster)
+	return nil
+}
