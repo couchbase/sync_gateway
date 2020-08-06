@@ -2,7 +2,6 @@ package db
 
 import (
 	"expvar"
-	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -13,21 +12,9 @@ import (
 //    - Initialize all stats in a stat group to their zero values
 //
 type DatabaseStats struct {
-
-	// The expvars map the stats for this db will be stored in
-	storage *expvar.Map
-
-	statsDatabaseMapSync sync.Once
-	statsDatabaseMap     *expvar.Map
+	statsDatabaseMap *expvar.Map
 
 	NewStats *base.DbStats
-}
-
-func NewDatabaseStats() *DatabaseStats {
-	dbStats := DatabaseStats{
-		storage: new(expvar.Map).Init(),
-	}
-	return &dbStats
 }
 
 // Update database-specific stats that are more efficiently calculated at stats collection time

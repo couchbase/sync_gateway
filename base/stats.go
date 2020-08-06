@@ -9,6 +9,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+const (
+	StatViewFormat = "%s.%s"
+)
+
 type SgwStats struct {
 	GlobalStats     GlobalStat          `json:"global"`
 	DbStats         map[string]*DbStats `json:"per_db"`

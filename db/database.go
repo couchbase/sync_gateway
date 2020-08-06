@@ -238,8 +238,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	dbStats := NewDatabaseStats()
-	dbStats.NewStats = base.SyncGatewayStats.NewDBStats(dbName)
+	dbStats := &DatabaseStats{
+		NewStats: base.SyncGatewayStats.NewDBStats(dbName),
+	}
 
 	if options.DeltaSyncOptions.Enabled {
 		dbStats.NewStats.InitDeltaSyncStats()
@@ -252,16 +253,16 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if options.UseViews {
 		dbStats.NewStats.InitQueryStats(
 			true,
-			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewAccess),
-			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewAccessVbSeq),
-			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewChannels),
-			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewPrincipals),
-			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewRoleAccess),
-			fmt.Sprintf("%s.%s", DesignDocSyncGateway(), ViewRoleAccessVbSeq),
-			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewAllDocs),
-			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewImport),
-			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewSessions),
-			fmt.Sprintf("%s.%s", DesignDocSyncHousekeeping(), ViewTombstones))
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccess),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewImport),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewSessions),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewTombstones))
 	} else {
 		dbStats.NewStats.InitQueryStats(
 			false,
