@@ -87,7 +87,7 @@ func (db *DatabaseContext) CacheCompactActive() bool {
 func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
 	for i := 0; i < 100; i++ {
 		// caughtUpCount := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
-		caughtUpCount := db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
+		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 		if caughtUpCount >= targetCount {
 			return nil
 		}
@@ -123,15 +123,15 @@ func (db *DatabaseContext) NewNewStatWaiter(stat *base.SgwIntStat, tb testing.TB
 }
 
 func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
-	return db.NewNewStatWaiter(db.DbStats.NewStats.Database().DCPCachingCount, tb)
+	return db.NewNewStatWaiter(db.DbStats.Database().DCPCachingCount, tb)
 }
 
 func (db *DatabaseContext) NewPullReplicationCaughtUpWaiter(tb testing.TB) *StatWaiter {
-	return db.NewNewStatWaiter(db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp, tb)
+	return db.NewNewStatWaiter(db.DbStats.CBLReplicationPull().NumPullReplCaughtUp, tb)
 }
 
 func (db *DatabaseContext) NewCacheRevsActiveWaiter(tb testing.TB) *StatWaiter {
-	return db.NewNewStatWaiter(db.DbStats.NewStats.Cache().ChannelCacheRevsActive, tb)
+	return db.NewNewStatWaiter(db.DbStats.Cache().ChannelCacheRevsActive, tb)
 }
 
 func (sw *StatWaiter) Add(count int) {
@@ -304,10 +304,10 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 
 func (db *DatabaseContext) GetChannelQueryCount() int64 {
 	if db.UseViews() {
-		return db.DbStats.NewStats.Query(fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
+		return db.DbStats.Query(fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
 	}
 
-	return db.DbStats.NewStats.Query(QueryTypeChannels).QueryCount.Value()
+	return db.DbStats.Query(QueryTypeChannels).QueryCount.Value()
 }
 
 // GetLocalActiveReplicatorForTest is a test util for retrieving an Active Replicator for deeper introspection/assertions.

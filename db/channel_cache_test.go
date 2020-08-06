@@ -52,7 +52,7 @@ func TestChannelCacheMaxSize(t *testing.T) {
 
 	context.UpdateCalculatedStats()
 
-	maxEntries := context.DbStats.NewStats.Cache().ChannelCacheMaxEntries.Value()
+	maxEntries := context.DbStats.Cache().ChannelCacheMaxEntries.Value()
 	assert.Equal(t, 4, int(maxEntries))
 }
 

@@ -26,20 +26,20 @@ func NewImportListener() *importListener {
 
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
-func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseStats, dbContext *DatabaseContext) (err error) {
+func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
 
 	base.Infof(base.KeyDCP, "Attempting to start import DCP feed...")
 
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
-	il.stats = dbStats.NewStats.Database()
+	il.stats = dbStats.Database()
 	feedArgs := sgbucket.FeedArguments{
 		ID:         base.DCPImportFeedID,
 		Backfill:   sgbucket.FeedResume,
 		Terminator: il.terminator,
 	}
 
-	importFeedStatsMap := dbContext.DbStats.NewStats.Database().ImportFeedMapStats
+	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Register cbgt PIndex to support sharded import.
 	il.RegisterImportPindexImpl()

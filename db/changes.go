@@ -163,7 +163,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 	if options.IncludeDocs {
 		var err error
 		entry.Doc, _, err = db.get1xRevFromDoc(doc, revID, false)
-		db.DbStats.NewStats.Database().NumDocReadsRest.Add(1)
+		db.DbStats.Database().NumDocReadsRest.Add(1)
 		if err != nil {
 			base.WarnfCtx(db.Ctx, "Changes feed: error getting doc %q/%q: %v", base.UD(doc.ID), revID, err)
 		}
@@ -735,11 +735,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					break waitForChanges
 				}
 
-				// db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, 1)
-				db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Add(1)
+				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(1)
 				waitResponse := changeWaiter.Wait()
-				// db.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsCaughtUp, -1)
-				db.DbStats.NewStats.CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
+				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
 
 				if waitResponse == WaiterClosed {
 					break outer
@@ -1092,7 +1090,7 @@ func GenerateChanges(cancelCtx context.Context, database *Database, inChannels b
 	}
 
 	if !options.Since.IsNonZero() {
-		database.DatabaseContext.DbStats.NewStats.CBLReplicationPull().NumPullReplSinceZero.Add(1)
+		database.DatabaseContext.DbStats.CBLReplicationPull().NumPullReplSinceZero.Add(1)
 	}
 
 	var lastSeq SequenceID
