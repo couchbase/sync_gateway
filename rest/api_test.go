@@ -2587,13 +2587,13 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	resp = rt.Send(request("DELETE", "/db/"+testDocID+"?rev="+rev3aID, `{}`))
 	assertStatus(t, resp, 200)
 
-	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.String())
+	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 	// tombstone at 3-b
 	resp = rt.Send(request("DELETE", "/db/"+testDocID+"?rev="+rev2bID, `{}`))
 	assertStatus(t, resp, 200)
 
-	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.String())
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
@@ -4060,13 +4060,13 @@ func TestImportingPurgedDocument(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.String())
+	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	response := rt.SendRequest("GET", "/db/key", "")
 	fmt.Println(response.Body)
 
-	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.String())
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	assert.Equal(t, numErrors, numErrorsAfter)
@@ -4138,13 +4138,13 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 	// Wait for the DB to be ready before attempting to get initial error count
 	assert.NoError(t, rt.WaitForDBOnline())
 
-	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.String())
+	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	response := rt.SendRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.String())
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	assert.Equal(t, numErrors+1, numErrorsAfter)

@@ -1104,8 +1104,8 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
-	xattrCasProperty := fmt.Sprintf(StatViewFormat, xattrKey, xattrMacroCas)
-	xattrBodyHashProperty := fmt.Sprintf(StatViewFormat, xattrKey, xattrMacroValueCrc32c)
+	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
+	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
 
 	crc32cMacroExpansionSupported := bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion)
 	if err != nil {
@@ -1191,8 +1191,8 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
-	xattrCasProperty := fmt.Sprintf(StatViewFormat, xattrKey, xattrMacroCas)
-	xattrBodyHashProperty := fmt.Sprintf(StatViewFormat, xattrKey, xattrMacroValueCrc32c)
+	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
+	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		var mutateFlag gocb.SubdocDocFlag

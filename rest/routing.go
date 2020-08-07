@@ -322,7 +322,7 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r, _ := createHandler(sc, publicPrivs)
 
 	r.Handle("/_metrics", makeHandler(sc, publicPrivs, (*handler).handleMetrics)).Methods("GET")
-	r.Handle("/_expvar", makeHandler(sc, publicPrivs, (*handler).handleExpvar)).Methods("GET")
+	r.Handle(kDebugURLPathPrefix, makeHandler(sc, publicPrivs, (*handler).handleExpvar)).Methods("GET")
 
 	return r
 }

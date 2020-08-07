@@ -453,9 +453,9 @@ func logTo(ctx context.Context, logLevel LogLevel, logKey LogKey, format string,
 	}
 
 	if logLevel == LevelError {
-		SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount.Add(1)
+		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Add(1)
 	} else if logLevel == LevelWarn {
-		SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount.Add(1)
+		SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Add(1)
 	}
 
 	shouldLogConsole := consoleLogger.shouldLog(logLevel, logKey)
