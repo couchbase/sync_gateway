@@ -1054,7 +1054,7 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 	assert.Contains(t, err.Error(), "http://{unknown@remote:4984/db")
 }
 
-func TestReplicationClusterAPI(t *testing.T) {
+func TestGetStatusWithReplication(t *testing.T) {
 	var rt = NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -1080,15 +1080,26 @@ func TestReplicationClusterAPI(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication2", marshalConfig(t, config2))
 	assertStatus(t, response, http.StatusCreated)
 
-	// Check _cluster response
-	response = rt.SendAdminRequest(http.MethodGet, "/db/_cluster/", "")
+	// Check _status response
+	response = rt.SendAdminRequest(http.MethodGet, "/_status", "")
 	assertStatus(t, response, http.StatusOK)
-	var sgrCluster db.SGRCluster
-	err := json.Unmarshal(response.BodyBytes(), &sgrCluster)
+	var status Status
+	err := json.Unmarshal(response.BodyBytes(), &status)
 	require.NoError(t, err, "Error un-marshalling replication response")
-	assert.Equal(t, 2, len(sgrCluster.Replications), "Replication count mismatch")
-	assert.Equal(t, 0, len(sgrCluster.Nodes), "Replication node count mismatch")
+	database := status.Databases["db"]
+	require.Equal(t, 2, len(database.ReplicationStatus), "Replication count mismatch")
 
+	// Sort replications by replication ID before asserting replication status
+	sort.Slice(database.ReplicationStatus[:], func(i, j int) bool {
+		return database.ReplicationStatus[i].ID < database.ReplicationStatus[j].ID
+	})
+	assert.Equal(t, config1.ID, database.ReplicationStatus[0].ID)
+	assert.Equal(t, config2.ID, database.ReplicationStatus[1].ID)
+	assert.Equal(t, "running", database.ReplicationStatus[0].Status)
+	assert.Equal(t, "running", database.ReplicationStatus[1].Status)
+
+	assert.Equal(t, 2, len(database.SGRCluster.Replications), "Replication count mismatch")
+	assert.Equal(t, 0, len(database.SGRCluster.Nodes), "Replication node count mismatch")
 	assertReplication := func(expected db.ReplicationConfig, actual *db.ReplicationCfg) {
 		assert.Equal(t, expected.ID, actual.ID)
 		assert.Equal(t, expected.Remote, actual.Remote)
@@ -1099,14 +1110,14 @@ func TestReplicationClusterAPI(t *testing.T) {
 	}
 
 	// Check replication1 details in cluster response
-	repl, ok := sgrCluster.Replications[config1.ID]
+	repl, ok := database.SGRCluster.Replications[config1.ID]
 	assert.True(t, ok, "Error getting replication")
 	config1.Username = "****"
 	config1.Password = "****"
 	assertReplication(config1, repl)
 
 	// Check replication2 details in cluster response
-	repl, ok = sgrCluster.Replications[config2.ID]
+	repl, ok = database.SGRCluster.Replications[config2.ID]
 	assert.True(t, ok, "Error getting replication")
 	config2.Remote = "http://****:****@remote:4984/db"
 	assertReplication(config2, repl)
@@ -1124,11 +1135,8 @@ func TestReplicationClusterAPI(t *testing.T) {
 	assertStatus(t, response, http.StatusNotFound)
 
 	// Check _cluster response after replications are removed
-	response = rt.SendAdminRequest(http.MethodGet, "/db/_cluster/", "")
-	assertStatus(t, response, http.StatusOK)
-	sgrCluster = db.SGRCluster{}
-	err = json.Unmarshal(response.BodyBytes(), &sgrCluster)
+	status = Status{}
+	err = json.Unmarshal(response.BodyBytes(), &status)
 	require.NoError(t, err, "Error un-marshalling replication response")
-	assert.Equal(t, 0, len(sgrCluster.Replications), "Replication count mismatch")
-	assert.Equal(t, 0, len(sgrCluster.Nodes), "Replication node count mismatch")
+	require.Equal(t, 0, len(status.Databases["db"].ReplicationStatus))
 }

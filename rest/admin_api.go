@@ -405,9 +405,11 @@ func (h *handler) handleGetLogging() error {
 }
 
 type DatabaseStatus struct {
-	SequenceNumber uint64 `json:"seq"`
-	ServerUUID     string `json:"server_uuid"`
-	State          string `json:"state"`
+	SequenceNumber    uint64                  `json:"seq"`
+	ServerUUID        string                  `json:"server_uuid"`
+	State             string                  `json:"state"`
+	ReplicationStatus []*db.ReplicationStatus `json:"replication_status"`
+	SGRCluster        *db.SGRCluster          `json:"cluster"`
 }
 
 type Vendor struct {
@@ -443,10 +445,25 @@ func (h *handler) handleGetStatus() error {
 			lastSeq, _ = database.LastSequence()
 		}
 
+		// Add replication status and configuration to the status response, per database.
+		replicationsStatus, err := database.SGReplicateMgr.GetReplicationStatusAll(h.getReplicationStatusOptions())
+		if err != nil {
+			return err
+		}
+		cluster, err := database.SGReplicateMgr.GetSGRCluster()
+		if err != nil {
+			return err
+		}
+		for _, replication := range cluster.Replications {
+			replication.ReplicationConfig = *replication.Redact()
+		}
+
 		status.Databases[database.Name] = DatabaseStatus{
-			SequenceNumber: lastSeq,
-			State:          runState,
-			ServerUUID:     database.GetServerUUID(),
+			SequenceNumber:    lastSeq,
+			State:             runState,
+			ServerUUID:        database.GetServerUUID(),
+			ReplicationStatus: replicationsStatus,
+			SGRCluster:        cluster,
 		}
 	}
 
@@ -917,18 +934,5 @@ func (h *handler) putReplicationStatus() error {
 		return err
 	}
 	h.writeJSON(updatedStatus)
-	return nil
-}
-
-// getReplicationCluster responds to the request against _cluster endpoint.
-func (h *handler) getReplicationCluster() error {
-	cluster, err := h.db.SGReplicateMgr.GetSGRCluster()
-	if err != nil {
-		return err
-	}
-	for _, replication := range cluster.Replications {
-		replication.ReplicationConfig = *replication.Redact()
-	}
-	h.writeJSON(cluster)
 	return nil
 }

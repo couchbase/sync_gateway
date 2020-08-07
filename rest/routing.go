@@ -206,8 +206,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_replication/{replicationID}",
 		makeHandler(sc, adminPrivs, (*handler).deleteReplication)).Methods("DELETE")
 
-	dbr.Handle("/_cluster/",
-		makeHandler(sc, adminPrivs, (*handler).getReplicationCluster)).Methods("GET", "HEAD")
 	dbr.Handle("/_replicationStatus/",
 		makeHandler(sc, adminPrivs, (*handler).getReplicationsStatus)).Methods("GET", "HEAD")
 	dbr.Handle("/_replicationStatus/{replicationID}",

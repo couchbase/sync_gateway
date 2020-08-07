@@ -518,23 +518,6 @@ def make_sg_tasks(zip_dir, sg_url, sync_gateway_config_path_option, sync_gateway
         ]
     )
 
-    databases = get_db_list(sg_url)
-    for database in databases:
-
-        # Collect replication status, per database.
-        sg_tasks.append(make_curl_task(
-            name="Collect replication status: {0}".format(database),
-            url="{0}/{1}/_replicationStatus".format(sg_url, database),
-            log_file="sync_gateway.log",
-            content_postprocessors=[password_remover.pretty_print_json]))
-
-        # Collect the set of nodes participating in replication distribution, per database.
-        sg_tasks.append(make_curl_task(
-            name="Collect replication distribution: {0}".format(database),
-            url="{0}/{1}/_cluster".format(sg_url, database),
-            log_file="sync_gateway.log",
-            content_postprocessors=[password_remover.pretty_print_json]))
-
     return sg_tasks
 
 
