@@ -15,8 +15,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -37,202 +35,26 @@ const (
 	StatKeySgrDocsCheckedSent     = "sgr_docs_checked_sent"
 )
 
-const (
-	StatsGroupKeySyncGateway = "syncgateway"
-)
+const StatsGroupKeySyncGateway = "syncgateway"
 
-var (
-	SyncGatewayStats SgwStats
-)
+var SyncGatewayStats SgwStats
 
 func init() {
+	// Initialize Sync Gateway Stats
 
-	// Create the expvars structure:
-	//
-	// {
-	//    "syncgateway": {
-	//      "global": {..}
-	//      "per_db": {
-	//         "db1": {..}
-	//      }
-	//      "per_replication": {
-	//         "repl1": {..}
-	//      }
-	// }
+	// All stats will be stored as part of this struct. Global variable accessible everywhere. To add stats see stats.go
+	SyncGatewayStats = *NewSyncGatewayStats()
 
-	// All stats will be stored in expvars under the "syncgateway" key.
-	SyncGatewayStats = SgwStats{}
-
-	// SyncGatewayStats.InitialiseReplicationStats(SyncGatewayStats.ReplicationStats())
-
-	NewStatsResourceUtilization()
+	// Publish our stats to expvars. This will run String method on SyncGatewayStats ( type SgwStats ) which will
+	// marshal the stats to JSON
 	expvar.Publish(StatsGroupKeySyncGateway, &SyncGatewayStats)
 }
 
-func NewStatsResourceUtilization() *expvar.Map {
-	stats := new(expvar.Map).Init()
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesReceived = NewIntStat(
-		"resource_utilization",
-		"admin_net_bytes_recv",
-		"",
-		prometheus.CounterValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.AdminNetworkInterfaceBytesSent = NewIntStat(
-		"resource_utilization",
-		"admin_net_bytes_sent",
-		"",
-		prometheus.CounterValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.ErrorCount = NewIntStat(
-		"resource_utilization",
-		"error_count",
-		"",
-		prometheus.CounterValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapAlloc = NewIntStat(
-		"resource_utilization",
-		"go_memstats_heapalloc",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapIdle = NewIntStat(
-		"resource_utilization",
-		"go_memstats_heapidle",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapInUse = NewIntStat(
-		"resource_utilization",
-		"go_memstats_heapinuse",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsHeapReleased = NewIntStat(
-		"resource_utilization",
-		"go_memstats_heapreleased",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsPauseTotalNS = NewIntStat(
-		"resource_utilization",
-		"go_memstats_pausetotalns",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackInUse = NewIntStat(
-		"resource_utilization",
-		"go_memstats_stackinuse",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsStackSys = NewIntStat(
-		"resource_utilization",
-		"go_memstats_stacksys",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoMemstatsSys = NewIntStat(
-		"resource_utilization",
-		"go_memstats_sys",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.GoroutinesHighWatermark = NewIntStat(
-		"resource_utilization",
-		"goroutines_high_watermark",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.NumGoroutines = NewIntStat(
-		"resource_utilization",
-		"num_goroutines",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.ProcessMemoryResident = NewIntStat(
-		"resource_utilization",
-		"process_memory_resident",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesReceived = NewIntStat(
-		"resource_utilization",
-		"pub_net_bytes_recv",
-		"",
-		prometheus.CounterValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.PublicNetworkInterfaceBytesSent = NewIntStat(
-		"resource_utilization",
-		"pub_net_bytes_sent",
-		"",
-		prometheus.CounterValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.SystemMemoryTotal = NewIntStat(
-		"resource_utilization",
-		"system_memory_total",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.WarnCount = NewIntStat(
-		"resource_utilization",
-		"warn_count",
-		"",
-		prometheus.CounterValue,
-		0,
-	)
-
-	SyncGatewayStats.GlobalStats.ResourceUtilization.CpuPercentUtil = NewFloatStat(
-		"resource_utilization",
-		"process_cpu_percent_utilization",
-		"",
-		prometheus.GaugeValue,
-		0,
-	)
-
-	return stats
-}
-
-// Removes the per-database stats for this database by
-// regenerating a new expvar map without that particular dbname
+// Removes the per-database stats for this database by removing the database from the map
 func RemovePerDbStats(dbName string) {
 
 	// Clear out the stats for this db since they will no longer be updated.
-	SyncGatewayStats.NewDBStats(dbName)
+	SyncGatewayStats.ClearDBStats(dbName)
 
 }
 
