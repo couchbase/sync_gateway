@@ -149,6 +149,7 @@ func (ar *ActiveReplicator) _onReplicationComplete() {
 	}
 
 	if allReplicationsComplete {
+		_ = ar.publishStatus()
 		ar.config.onComplete(ar.ID)
 	}
 
