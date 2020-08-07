@@ -445,8 +445,7 @@ func (h *handler) handleGetStatus() error {
 			lastSeq, _ = database.LastSequence()
 		}
 
-		// Add replication status and configuration to the status response, per database.
-		replicationsStatus, err := database.SGReplicateMgr.GetReplicationStatusAll(h.getReplicationStatusOptions())
+		replicationsStatus, err := database.SGReplicateMgr.GetReplicationStatusAll(db.DefaultReplicationStatusOptions())
 		if err != nil {
 			return err
 		}
