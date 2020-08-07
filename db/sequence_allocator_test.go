@@ -14,7 +14,7 @@ func TestSequenceAllocator(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	sgw := base.SgwStats{}
+	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("").Database()
 
 	// Create a sequence allocator without using constructor, to test without a releaseSequenceMonitor
@@ -79,7 +79,7 @@ func TestReleaseSequencesOnStop(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	sgw := base.SgwStats{}
+	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("").Database()
 
 	oldFrequency := MaxSequenceIncrFrequency
@@ -153,7 +153,7 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	bucket := base.NewLeakyBucket(base.GetTestBucket(t), base.LeakyBucketConfig{IncrCallback: incrCallback})
 	defer bucket.Close()
 
-	sgw := base.SgwStats{}
+	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("").Database()
 
 	oldFrequency := MaxSequenceIncrFrequency

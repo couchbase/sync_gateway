@@ -119,7 +119,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	context := setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 	defer context.Close()
 
-	stats := &base.SgwStats{}
+	stats := base.NewSyncGatewayStats()
 	cacheStats := stats.NewDBStats("").CacheStats
 
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
@@ -189,7 +189,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	require.NoError(t, err)
 	defer context.Close()
 
-	stats := &base.SgwStats{}
+	stats := base.NewSyncGatewayStats()
 	cacheStats := stats.NewDBStats("").CacheStats
 
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)

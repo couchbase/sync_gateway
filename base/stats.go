@@ -31,6 +31,7 @@ type SgwStats struct {
 	DbStats         map[string]*DbStats `json:"per_db"`
 	ReplicatorStats *ReplicatorStats    `json:"per_replication,omitempty"`
 
+	mutex                     sync.Mutex
 	registeredReplicatorStats sync.Once
 }
 
