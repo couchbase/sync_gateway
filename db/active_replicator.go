@@ -223,7 +223,7 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		bsc.sgCanUseDeltas = false
 	}
 
-	blipSender, err = blipSync(*arc.config.PassiveDBURL, blipContext, arc.config.InsecureSkipVerify)
+	blipSender, err = blipSync(*arc.config.RemoteDBURL, blipContext, arc.config.InsecureSkipVerify)
 	if err != nil {
 		return nil, nil, err
 	}

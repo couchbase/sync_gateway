@@ -294,3 +294,12 @@ func (db *DatabaseContext) GetChannelQueryCount() int64 {
 	return base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
 
 }
+
+// GetLocalActiveReplicatorForTest is a test util for retrieving an Active Replicator for deeper introspection/assertions.
+func (m *sgReplicateManager) GetLocalActiveReplicatorForTest(t testing.TB, replicationID string) (ar *ActiveReplicator, ok bool) {
+	// Check if replication is assigned locally
+	m.activeReplicatorsLock.RLock()
+	replication, isLocal := m.activeReplicators[replicationID]
+	m.activeReplicatorsLock.RUnlock()
+	return replication, isLocal
+}

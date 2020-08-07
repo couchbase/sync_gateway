@@ -2,7 +2,11 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -37,30 +41,47 @@ type Checkpointer struct {
 	// lastCheckpointSeq is the last checkpointed sequence
 	lastCheckpointSeq string
 
+	// SGR1 Checkpoint Migration:
+	// sgr1CheckpointID can be set to be used as a fallback checkpoint if none are found
+	sgr1CheckpointID string
+	// sgr1CheckpointOnRemote determines which end of the replication to fetch the SGR1 checkpoint from.
+	// For SGR1 pull replications, the checkpoints are stored on the source, for push they're stored on the target.
+	sgr1CheckpointOnRemote bool
+	// InsecureSkipVerify skips TLS verification when fetching a remote SGR1 checkpoint.
+	sgr1RemoteInsecureSkipVerify bool
+	// remoteDBURL is used to fetch local SGR1 checkpoints.
+	remoteDBURL *url.URL
+
 	stats CheckpointerStats
 }
 
 type CheckpointerStats struct {
-	ExpectedSequenceCount     int64
-	ProcessedSequenceCount    int64
-	AlreadyKnownSequenceCount int64
-	SetCheckpointCount        int64
-	GetCheckpointHitCount     int64
-	GetCheckpointMissCount    int64
+	ExpectedSequenceCount              int64
+	ProcessedSequenceCount             int64
+	AlreadyKnownSequenceCount          int64
+	SetCheckpointCount                 int64
+	GetCheckpointHitCount              int64
+	GetCheckpointMissCount             int64
+	GetCheckpointSGR1FallbackHitCount  int64
+	GetCheckpointSGR1FallbackMissCount int64
 }
 
-func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, activeDB *Database, checkpointInterval time.Duration) *Checkpointer {
+func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, replicatorConfig *ActiveReplicatorConfig) *Checkpointer {
 	return &Checkpointer{
-		clientID:           clientID,
-		configHash:         configHash,
-		blipSender:         blipSender,
-		activeDB:           activeDB,
-		expectedSeqs:       make([]string, 0),
-		processedSeqs:      make(map[string]struct{}),
-		idAndRevLookup:     make(map[IDAndRev]string),
-		checkpointInterval: checkpointInterval,
-		ctx:                ctx,
-		stats:              CheckpointerStats{},
+		clientID:                     clientID,
+		configHash:                   configHash,
+		blipSender:                   blipSender,
+		activeDB:                     replicatorConfig.ActiveDB,
+		expectedSeqs:                 make([]string, 0),
+		processedSeqs:                make(map[string]struct{}),
+		idAndRevLookup:               make(map[IDAndRev]string),
+		checkpointInterval:           replicatorConfig.CheckpointInterval,
+		ctx:                          ctx,
+		stats:                        CheckpointerStats{},
+		sgr1CheckpointID:             replicatorConfig.SGR1CheckpointID,
+		sgr1CheckpointOnRemote:       replicatorConfig.Direction == ActiveReplicatorTypePush,
+		remoteDBURL:                  replicatorConfig.RemoteDBURL,
+		sgr1RemoteInsecureSkipVerify: replicatorConfig.InsecureSkipVerify,
 	}
 }
 
@@ -309,8 +330,36 @@ func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
 	}
 }
 
-// fetchCheckpoints tries to fetch since values for the given replication by requesting a checkpoint on the local and remote.
-// If we fetch missing, or mismatched checkpoints, we'll pick the lower of the two, and roll back the higher checkpoint.
+func (c *Checkpointer) fetchSGR1Checkpoint() (sgr1CheckpointSeq string) {
+	base.Infof(base.KeyReplicate, "Attempting to fetch SGR1 checkpoint as fallback: %v", c.sgr1CheckpointID)
+	var err error
+
+	if c.sgr1CheckpointOnRemote {
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "getting SGR1 checkpoint from remote (passive)")
+		sgr1CheckpointSeq, _, err = c.getRemoteSGR1Checkpoint()
+	} else {
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "getting SGR1 checkpoint from local (active)")
+		sgr1CheckpointSeq, _, err = c.getLocalSGR1Checkpoint()
+	}
+
+	if err != nil || sgr1CheckpointSeq == "" {
+		c.stats.GetCheckpointSGR1FallbackMissCount++
+		base.Warnf("Unable to get SGR1 checkpoint, continuing without: %v", err)
+		return ""
+	}
+
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "using upgraded sg-replicate checkpoint seq: %q", sgr1CheckpointSeq)
+	c.stats.GetCheckpointSGR1FallbackHitCount++
+	return sgr1CheckpointSeq
+}
+
+// fetchCheckpoints sets lastCheckpointSeq for the given Checkpointer by requesting various checkpoints on the local and remote.
+// Various scenarios this function handles:
+// - Matching checkpoints from local and remote. Use that sequence.
+// - Both SGR2 checkpoints are missing, and there's no SGR1 checkpoint to fall back on, we'll start the replication from zero.
+// - Mismatched config hashes, use a zero value for sequence, so the replication can restart.
+// - Mismatched sequences, we'll pick the lower of the two, and attempt to roll back the higher checkpoint to that point.
+// - Both SGR2 checkpoints missing, use the sequence from SGR1CheckpointID.
 func (c *Checkpointer) fetchCheckpoints() error {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchCheckpoints()")
 
@@ -319,7 +368,7 @@ func (c *Checkpointer) fetchCheckpoints() error {
 		return err
 	}
 
-	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %q %q", localCheckpoint.LastSeq, localCheckpoint.Rev)
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %v", localCheckpoint)
 	c.lastLocalCheckpointRevID = localCheckpoint.Rev
 
 	remoteCheckpoint, err := c.getRemoteCheckpoint()
@@ -329,19 +378,20 @@ func (c *Checkpointer) fetchCheckpoints() error {
 	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %v", remoteCheckpoint)
 	c.lastRemoteCheckpointRevID = remoteCheckpoint.Rev
 
-	// If checkpoint hash has changed, reset checkpoint to zero.  Shouldn't need to persist the updated checkpoints in
-	// the case both get rolled back to zero, can wait for next persistence
-	if localCheckpoint.ConfigHash != c.configHash {
-		localCheckpoint.LastSeq = ""
-	}
-
-	if remoteCheckpoint.ConfigHash != c.configHash {
-		remoteCheckpoint.LastSeq = ""
-	}
-
-	// If localSeq and remoteSeq match, we'll use this value.
 	localSeq := localCheckpoint.LastSeq
 	remoteSeq := remoteCheckpoint.LastSeq
+
+	// If both local and remote SGR2 checkpoints are missing, fetch SGR1 checkpoint as fallback as a one-time upgrade.
+	// Explicit checkpoint resets are expected to only reset one side of the checkpoints, so shouldn't fall into this handling.
+	if localSeq == "" && remoteSeq == "" && c.sgr1CheckpointID != "" {
+		if seq := c.fetchSGR1Checkpoint(); seq != "" {
+			c.stats.GetCheckpointHitCount++
+			c.lastCheckpointSeq = seq
+			return nil
+		}
+	}
+
+	// If localSeq and remoteSeq match, we'll use localSeq as the value.
 	checkpointSeq := localSeq
 
 	// Determine the lowest sequence if they don't match
@@ -367,6 +417,7 @@ func (c *Checkpointer) fetchCheckpoints() error {
 				base.WarnfCtx(c.ctx, "Unable to roll back local checkpoint: %v", err)
 			}
 		} else {
+			// checkpointSeq already set above for localSeq value
 			newRemoteCheckpoint := localCheckpoint.Copy()
 			newRemoteCheckpoint.Rev = c.lastRemoteCheckpointRevID
 			c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpoint(newRemoteCheckpoint)
@@ -376,15 +427,22 @@ func (c *Checkpointer) fetchCheckpoints() error {
 		}
 	}
 
+	// If checkpoint hash has changed, reset checkpoint to zero. Shouldn't need to persist the updated checkpoints in
+	// the case both get rolled back to zero, can wait for next persistence.
+	if localCheckpoint.ConfigHash != c.configHash || remoteCheckpoint.ConfigHash != c.configHash {
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "replicator config changed, unable to use previous checkpoint")
+		checkpointSeq = ""
+	}
+
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", checkpointSeq)
+
 	if checkpointSeq == "" {
 		c.stats.GetCheckpointMissCount++
 	} else {
 		c.stats.GetCheckpointHitCount++
 	}
 
-	base.DebugfCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", checkpointSeq)
 	c.lastCheckpointSeq = checkpointSeq
-
 	return nil
 }
 
@@ -453,13 +511,69 @@ func (c *Checkpointer) setLocalCheckpointWithRetry(checkpoint *replicationCheckp
 	)
 }
 
+// resetLocalCheckpoint forces the local checkpoint to an empty sequence to roll back the replication.
+// avoids deletion to prevent SGR1 checkpoint fallback from being invoked for reset replications.
 func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
 	key := RealSpecialDocID(DocTypeLocal, checkpointDocIDPrefix+checkpointID)
-	err := activeDB.Bucket.Delete(key)
-	if err == nil || base.IsDocNotFoundError(err) {
-		return nil
+	return activeDB.Bucket.Set(key, 0, Body{
+		checkpointBodyLastSeq: "",
+		checkpointBodyHash:    "",
+		checkpointBodyRev:     "0-1",
+	})
+}
+
+// getRemoteSGR1Checkpoint returns the sequence and rev for the remote SGR1 checkpoint.
+// if the checkpoint does not exist, returns empty sequence and rev.
+func (c *Checkpointer) getRemoteSGR1Checkpoint() (seq, rev string, err error) {
+	// SGR1 checkpoints do not have a "checkpoint/" prefix, which SG adds to keys in BLIP-based getCheckpoint requests,
+	// so we'll have to use the REST API to retrieve the checkpoint directly.
+
+	req, err := http.NewRequest(http.MethodGet, c.remoteDBURL.String()+"/_local/"+c.sgr1CheckpointID, nil)
+	if err != nil {
+		return "", "", err
 	}
-	return err
+	client := base.GetHttpClient(c.sgr1RemoteInsecureSkipVerify)
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		var body struct {
+			LastSequence string `json:"lastSequence,omitempty"`
+			RevID        string `json:"_rev"`
+		}
+		err := json.NewDecoder(resp.Body).Decode(&body)
+		if err != nil {
+			return "", "", err
+		}
+		return body.LastSequence, body.RevID, nil
+	case http.StatusNotFound:
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find fallback SGR1 checkpoint for client %q with SGR1 ID: %q", c.clientID, c.sgr1CheckpointID)
+		return "", "", nil
+	default:
+		return "", "", fmt.Errorf("unexpected status code %d from target database", resp.StatusCode)
+	}
+}
+
+// getLocalSGR1Checkpoint returns the sequence and rev for the local SGR1 checkpoint.
+// if the checkpoint does not exist, returns empty sequence and rev.
+func (c *Checkpointer) getLocalSGR1Checkpoint() (seq, rev string, err error) {
+	body, err := c.activeDB.GetSpecial("local", c.sgr1CheckpointID)
+	if err != nil {
+		if !base.IsKeyNotFoundError(c.activeDB.Bucket, err) {
+			return "", "", err
+		}
+		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing local checkpoint for client %q", c.sgr1CheckpointID)
+		return "", "", nil
+	}
+
+	seq, _ = body["lastSequence"].(string)
+	rev, _ = body[BodyRev].(string)
+	return seq, rev, nil
 }
 
 // getRemoteCheckpoint returns the sequence and rev for the remote checkpoint.

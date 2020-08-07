@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1188,4 +1189,302 @@ func TestGetStatusWithReplication(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &status)
 	require.NoError(t, err, "Error un-marshalling replication response")
 	require.Equal(t, 0, len(status.Databases["db"].ReplicationStatus))
+}
+
+// TestSGR1CheckpointMigrationPull defines an SGR1 replication, which replicates and checkpoints a single doc,
+// and then restarts with a matching SGR2 replication, which should migrate the SGR1 checkpoint,
+// and also prevent the SGR1 replication from starting up.
+func TestSGR1CheckpointMigrationPull(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCluster, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	oldFrequency := db.MaxSequenceIncrFrequency
+	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
+	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+
+	remoteRT := NewRestTester(t, nil)
+	defer remoteRT.Close()
+	remoteRTHTTPServer := httptest.NewServer(remoteRT.TestAdminHandler())
+	defer remoteRTHTTPServer.Close()
+
+	// Create docs on remote
+	docABC1 := t.Name() + "ABC1"
+	docDEF1 := t.Name() + "DEF1"
+	_ = remoteRT.putDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.putDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
+
+	// Bucket for activeRTSGR1 and activeRTSGR2
+	activeBucket := base.GetTestBucket(t)
+	defer activeBucket.Close()
+
+	// listen on a random available port for activeRTSGR1. The address is needed before
+	// creating activeRTSGR1 due to the presence of it in the server config.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = l.Close() }()
+
+	const replicationID = "TestSGR1CheckpointMigrationPull"
+
+	// create activeRTSGR1 with SGR1 replication defined
+	activeRTSGR1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket:     activeBucket.NoCloseClone(),
+		adminInterface: l.Addr().String(),
+		sgr1Replications: []*ReplicateV1Config{
+			{
+				ReplicationId: replicationID,
+				Target:        "db",
+				Source:        remoteRTHTTPServer.URL + "/db",
+				Continuous:    true,
+			},
+		},
+		sgReplicateEnabled: true,
+	})
+
+	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
+	// deleted when bucket.Close() is called during DatabaseContext.Close().
+	// Using IgnoreClose in leakyBucket to no-op the close operation.
+	// Because RestTester has Sync Gateway create the database context and bucket based on the bucketSpec, we can't
+	// set up the leakyBucket wrapper prior to bucket creation.
+	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
+	leakyBucket, ok := activeRTSGR1.GetDatabase().Bucket.(*base.LeakyBucket)
+	if ok {
+		underlyingBucket := leakyBucket.GetUnderlyingBucket()
+		if _, ok := underlyingBucket.(*walrus.WalrusBucket); ok {
+			leakyBucket.SetIgnoreClose(true)
+		}
+	}
+
+	activeRTSGR1HTTPServer := NewHTTPTestServerOnListener(activeRTSGR1.TestAdminHandler(), l)
+
+	activeRTSGR1.ServerContext().startReplicators()
+
+	// wait for documents originally written to remoteRT to arrive at activeRT
+	changesResults := activeRTSGR1.RequireWaitChanges(2, "0")
+	changesResults.requireDocIDs(t, []string{docABC1, docDEF1})
+
+	// Validate doc contents
+	docABC1Body := activeRTSGR1.getDoc(docABC1)
+	assert.Equal(t, "remoteRT", docABC1Body["source"])
+	docDEF1Body := activeRTSGR1.getDoc(docDEF1)
+	assert.Equal(t, "remoteRT", docDEF1Body["source"])
+
+	// Stop activeRTSGR1, and create a copy of it also running a matching SGR2 replication.
+	activeRTSGR1.Close()
+	activeRTSGR1HTTPServer.Close()
+
+	// Create 2 more docs on remote
+	docABC2 := t.Name() + "ABC2"
+	docDEF2 := t.Name() + "DEF2"
+	_ = remoteRT.putDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.putDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
+
+	require.NoError(t, remoteRT.WaitForPendingChanges())
+
+	// create activeRTSGR1 with SGR1 replication defined
+	activeRTSGR2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket:     activeBucket.NoCloseClone(),
+		adminInterface: l.Addr().String(),
+		DatabaseConfig: &DbConfig{Replications: map[string]*db.ReplicationConfig{
+			replicationID: {
+				Remote:     remoteRTHTTPServer.URL + "/db",
+				Direction:  "pull",
+				Continuous: true,
+			},
+		}},
+		sgr1Replications: []*ReplicateV1Config{
+			{
+				ReplicationId: replicationID,
+				Target:        "db",
+				Source:        remoteRTHTTPServer.URL + "/db",
+				Continuous:    true,
+			},
+		},
+		sgReplicateEnabled: true,
+	})
+	defer activeRTSGR2.Close()
+	activeRTSGR2HTTPServer := NewHTTPTestServerOnListener(activeRTSGR2.TestAdminHandler(), l)
+	defer activeRTSGR2HTTPServer.Close()
+
+	activeRTSGR2.ServerContext().startReplicators()
+	require.NoError(t, activeRTSGR2.GetDatabase().SGReplicateMgr.StartReplications())
+
+	// wait for documents originally written to remoteRT to arrive at activeRT
+	changesResults = activeRTSGR2.RequireWaitChanges(4, "0")
+	changesResults.requireDocIDs(t, []string{docABC1, docDEF1, docABC2, docDEF2})
+
+	// Validate doc contents
+	docABC2Body := activeRTSGR2.getDoc(docABC2)
+	assert.Equal(t, "remoteRT", docABC2Body["source"])
+	docDEF2Body := activeRTSGR2.getDoc(docDEF2)
+	assert.Equal(t, "remoteRT", docDEF2Body["source"])
+
+	r, ok := activeRTSGR2.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, replicationID)
+	require.True(t, ok)
+	assert.Equal(t, int64(1), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackHitCount)
+	assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount)
+	assert.Equal(t, int64(1), r.Pull.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointMissCount)
+
+	// Reset SGR2 checkpoints, and ensure the SGR1 checkpoint hasn't been picked up again.
+	assert.NoError(t, r.Stop())
+	assert.NoError(t, r.Reset())
+
+	assert.NoError(t, r.Start())
+	assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackHitCount)
+	assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount)
+	assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), r.Pull.Checkpointer.Stats().GetCheckpointMissCount)
+}
+
+// TestSGR1CheckpointMigrationPush defines an SGR1 replication, which replicates and checkpoints a single doc,
+// and then restarts with a matching SGR2 replication, which should migrate the SGR1 checkpoint,
+// and also prevent the SGR1 replication from starting up.
+func TestSGR1CheckpointMigrationPush(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCluster, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	oldFrequency := db.MaxSequenceIncrFrequency
+	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
+	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+
+	remoteRT := NewRestTester(t, nil)
+	defer remoteRT.Close()
+	remoteRTHTTPServer := httptest.NewServer(remoteRT.TestAdminHandler())
+	defer remoteRTHTTPServer.Close()
+
+	// Bucket for activeRTSGR1 and activeRTSGR2
+	activeBucket := base.GetTestBucket(t)
+	defer activeBucket.Close()
+
+	// listen on a random available port for activeRTSGR1. The address is needed before
+	// creating activeRTSGR1 due to the presence of it in the server config.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = l.Close() }()
+
+	const replicationID = "TestSGR1CheckpointMigrationPush"
+
+	// create activeRTSGR1 with SGR1 replication defined
+	activeRTSGR1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket:     activeBucket.NoCloseClone(),
+		adminInterface: l.Addr().String(),
+		sgr1Replications: []*ReplicateV1Config{
+			{
+				ReplicationId: replicationID,
+				Source:        "db",
+				Target:        remoteRTHTTPServer.URL + "/db",
+				Continuous:    true,
+			},
+		},
+		sgReplicateEnabled: true,
+	})
+
+	// If this is a walrus bucket, we need to jump through some hoops to ensure the shared in-memory walrus bucket isn't
+	// deleted when bucket.Close() is called during DatabaseContext.Close().
+	// Using IgnoreClose in leakyBucket to no-op the close operation.
+	// Because RestTester has Sync Gateway create the database context and bucket based on the bucketSpec, we can't
+	// set up the leakyBucket wrapper prior to bucket creation.
+	// Instead, we need to modify the leaky bucket config (created for vbno handling) after the fact.
+	leakyBucket, ok := activeRTSGR1.GetDatabase().Bucket.(*base.LeakyBucket)
+	if ok {
+		underlyingBucket := leakyBucket.GetUnderlyingBucket()
+		if _, ok := underlyingBucket.(*walrus.WalrusBucket); ok {
+			leakyBucket.SetIgnoreClose(true)
+		}
+	}
+
+	activeRTSGR1HTTPServer := NewHTTPTestServerOnListener(activeRTSGR1.TestAdminHandler(), l)
+
+	// Create docs on active
+	docABC1 := t.Name() + "ABC1"
+	docDEF1 := t.Name() + "DEF1"
+	_ = activeRTSGR1.putDoc(docABC1, `{"source":"activeRTSGR1","channels":["ABC"]}`)
+	_ = activeRTSGR1.putDoc(docDEF1, `{"source":"activeRTSGR1","channels":["DEF"]}`)
+
+	activeRTSGR1.ServerContext().startReplicators()
+
+	// wait for documents originally written to remoteRT to arrive at activeRT
+	changesResults := remoteRT.RequireWaitChanges(2, "0")
+	changesResults.requireDocIDs(t, []string{docABC1, docDEF1})
+
+	// Validate doc contents
+	docABC1Body := remoteRT.getDoc(docABC1)
+	assert.Equal(t, "activeRTSGR1", docABC1Body["source"])
+	docDEF1Body := remoteRT.getDoc(docDEF1)
+	assert.Equal(t, "activeRTSGR1", docDEF1Body["source"])
+
+	// Stop activeRTSGR1, and create a copy of it also running a matching SGR2 replication.
+	activeRTSGR1.Close()
+	activeRTSGR1HTTPServer.Close()
+
+	// create activeRTSGR1 with SGR1 replication defined
+	activeRTSGR2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket:     activeBucket.NoCloseClone(),
+		adminInterface: l.Addr().String(),
+		DatabaseConfig: &DbConfig{Replications: map[string]*db.ReplicationConfig{
+			replicationID: {
+				Remote:     remoteRTHTTPServer.URL + "/db",
+				Direction:  "push",
+				Continuous: true,
+			},
+		}},
+		sgr1Replications: []*ReplicateV1Config{
+			{
+				ReplicationId: replicationID,
+				Source:        "db",
+				Target:        remoteRTHTTPServer.URL + "/db",
+				Continuous:    true,
+			},
+		},
+		sgReplicateEnabled: true,
+	})
+	defer activeRTSGR2.Close()
+	activeRTSGR2HTTPServer := NewHTTPTestServerOnListener(activeRTSGR2.TestAdminHandler(), l)
+	defer activeRTSGR2HTTPServer.Close()
+
+	// Create 2 more docs on active
+	docABC2 := t.Name() + "ABC2"
+	docDEF2 := t.Name() + "DEF2"
+	_ = activeRTSGR2.putDoc(docABC2, `{"source":"activeRTSGR2","channels":["ABC"]}`)
+	_ = activeRTSGR2.putDoc(docDEF2, `{"source":"activeRTSGR2","channels":["DEF"]}`)
+
+	require.NoError(t, activeRTSGR2.WaitForPendingChanges())
+
+	activeRTSGR2.ServerContext().startReplicators()
+	require.NoError(t, activeRTSGR2.GetDatabase().SGReplicateMgr.StartReplications())
+
+	// wait for documents originally written to remoteRT to arrive at activeRT
+	changesResults = remoteRT.RequireWaitChanges(4, "0")
+	changesResults.requireDocIDs(t, []string{docABC1, docDEF1, docABC2, docDEF2})
+
+	// Validate doc contents
+	docABC2Body := remoteRT.getDoc(docABC2)
+	assert.Equal(t, "activeRTSGR2", docABC2Body["source"])
+	docDEF2Body := remoteRT.getDoc(docDEF2)
+	assert.Equal(t, "activeRTSGR2", docDEF2Body["source"])
+
+	r, ok := activeRTSGR2.GetDatabase().SGReplicateMgr.GetLocalActiveReplicatorForTest(t, replicationID)
+	require.True(t, ok)
+	assert.Equal(t, int64(1), r.Push.Checkpointer.Stats().GetCheckpointSGR1FallbackHitCount)
+	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount)
+	assert.Equal(t, int64(1), r.Push.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointMissCount)
+
+	// Reset SGR2 checkpoints, and ensure the SGR1 checkpoint hasn't been picked up again.
+	assert.NoError(t, r.Stop())
+	assert.NoError(t, r.Reset())
+
+	assert.NoError(t, r.Start())
+	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointSGR1FallbackHitCount)
+	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount)
+	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), r.Push.Checkpointer.Stats().GetCheckpointMissCount)
 }

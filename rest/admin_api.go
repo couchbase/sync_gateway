@@ -217,6 +217,7 @@ type ReplicateV1Config struct {
 	Async            bool        `json:"async"`
 	ChangesFeedLimit *int        `json:"changes_feed_limit"`
 	ReplicationId    string      `json:"replication_id"`
+	upgradedToSGR2   bool        // upgradedToSGR2 is set to true when an equivalent SGR2 replication is found, which prevents this v1 replication from starting.
 }
 
 func (h *handler) readReplicateV1ParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
