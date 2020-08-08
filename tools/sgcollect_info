@@ -238,11 +238,13 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
 
     # Find log file path from old style top level config
     guessed_log_path = extract_element_from_config('LogFilePath', config_str)
-    if guessed_log_path:
+    if guessed_log_path and os.path.isfile(guessed_log_path):
         # Add the directory where the log file is so that it will be searched
         os_home_dirs.append(os.path.dirname(guessed_log_path))
         # Add the filename, in case it's different
         sg_log_files[os.path.basename(guessed_log_path)] = os.path.basename(guessed_log_path)
+    elif guessed_log_path and os.path.isdir(guessed_log_path):
+        os_home_dirs.append(os.path.dirname(guessed_log_path))
 
     # Keep a dictionary of log file paths we've added, to avoid adding duplicates
     sg_log_file_paths = {}
@@ -263,7 +265,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
 
     # Find log file path from logging.["default"] style config
     guessed_logging_path = extract_element_from_default_logging_config('LogFilePath', config_str)
-    if guessed_logging_path:
+    if guessed_logging_path and os.path.isfile(guessed_logging_path):
         # Get the parent directory and the log file name
         log_file_parent_dir = os.path.abspath(os.path.join(guessed_logging_path, os.pardir))
         log_file_name = os.path.basename(guessed_logging_path)
