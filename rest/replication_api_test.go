@@ -1112,3 +1112,90 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 	assert.Contains(t, err.Error(), "http://{unknown@remote:4984/db")
 }
+
+func TestGetStatusWithReplication(t *testing.T) {
+	var rt = NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create a replication
+	config1 := db.ReplicationConfig{
+		ID:        "replication1",
+		Remote:    "http://remote:4984/db",
+		Username:  "alice",
+		Password:  "pass",
+		Direction: db.ActiveReplicatorTypePull,
+		Adhoc:     true,
+	}
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication1", marshalConfig(t, config1))
+	assertStatus(t, response, http.StatusCreated)
+
+	// Create another replication
+	config2 := db.ReplicationConfig{
+		ID:        "replication2",
+		Remote:    "http://bob:pass@remote:4984/db",
+		Direction: db.ActiveReplicatorTypePull,
+		Adhoc:     true,
+	}
+	response = rt.SendAdminRequest(http.MethodPut, "/db/_replication/replication2", marshalConfig(t, config2))
+	assertStatus(t, response, http.StatusCreated)
+
+	// Check _status response
+	response = rt.SendAdminRequest(http.MethodGet, "/_status", "")
+	assertStatus(t, response, http.StatusOK)
+	var status Status
+	err := json.Unmarshal(response.BodyBytes(), &status)
+	require.NoError(t, err, "Error un-marshalling replication response")
+	database := status.Databases["db"]
+	require.Equal(t, 2, len(database.ReplicationStatus), "Replication count mismatch")
+
+	// Sort replications by replication ID before asserting replication status
+	sort.Slice(database.ReplicationStatus[:], func(i, j int) bool {
+		return database.ReplicationStatus[i].ID < database.ReplicationStatus[j].ID
+	})
+	assert.Equal(t, config1.ID, database.ReplicationStatus[0].ID)
+	assert.Equal(t, config2.ID, database.ReplicationStatus[1].ID)
+	assert.Equal(t, "running", database.ReplicationStatus[0].Status)
+	assert.Equal(t, "running", database.ReplicationStatus[1].Status)
+
+	assert.Equal(t, 2, len(database.SGRCluster.Replications), "Replication count mismatch")
+	assert.Equal(t, 0, len(database.SGRCluster.Nodes), "Replication node count mismatch")
+	assertReplication := func(expected db.ReplicationConfig, actual *db.ReplicationCfg) {
+		assert.Equal(t, expected.ID, actual.ID)
+		assert.Equal(t, expected.Remote, actual.Remote)
+		assert.Equal(t, expected.Username, actual.Username)
+		assert.Equal(t, expected.Password, actual.Password)
+		assert.Equal(t, expected.Direction, actual.Direction)
+		assert.Equal(t, expected.Adhoc, actual.Adhoc)
+	}
+
+	// Check replication1 details in cluster response
+	repl, ok := database.SGRCluster.Replications[config1.ID]
+	assert.True(t, ok, "Error getting replication")
+	config1.Username = "****"
+	config1.Password = "****"
+	assertReplication(config1, repl)
+
+	// Check replication2 details in cluster response
+	repl, ok = database.SGRCluster.Replications[config2.ID]
+	assert.True(t, ok, "Error getting replication")
+	config2.Remote = "http://****:****@remote:4984/db"
+	assertReplication(config2, repl)
+
+	// Delete both replications
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusOK)
+	response = rt.SendAdminRequest(http.MethodDelete, "/db/_replication/replication2", "")
+	assertStatus(t, response, http.StatusOK)
+
+	// Verify deletes were successful
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication1", "")
+	assertStatus(t, response, http.StatusNotFound)
+	response = rt.SendAdminRequest(http.MethodGet, "/db/_replication/replication2", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	// Check _cluster response after replications are removed
+	status = Status{}
+	err = json.Unmarshal(response.BodyBytes(), &status)
+	require.NoError(t, err, "Error un-marshalling replication response")
+	require.Equal(t, 0, len(status.Databases["db"].ReplicationStatus))
+}

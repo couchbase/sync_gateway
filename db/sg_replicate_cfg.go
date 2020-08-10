@@ -718,6 +718,15 @@ func (m *sgReplicateManager) getNodes() (nodes map[string]*SGNode, err error) {
 	return sgrCluster.Nodes, nil
 }
 
+// GetSGRCluster returns SGReplicate configuration including nodes participating in
+// replication distribution, per database.
+func (m *sgReplicateManager) GetSGRCluster() (sgrCluster *SGRCluster, err error) {
+	if sgrCluster, _, err = m.loadSGRCluster(); err != nil {
+		return nil, err
+	}
+	return sgrCluster, nil
+}
+
 // GET _replication/{replicationID}
 func (m *sgReplicateManager) GetReplication(replicationID string) (*ReplicationCfg, error) {
 	sgrCluster, _, err := m.loadSGRCluster()

@@ -405,9 +405,11 @@ func (h *handler) handleGetLogging() error {
 }
 
 type DatabaseStatus struct {
-	SequenceNumber uint64 `json:"seq"`
-	ServerUUID     string `json:"server_uuid"`
-	State          string `json:"state"`
+	SequenceNumber    uint64                  `json:"seq"`
+	ServerUUID        string                  `json:"server_uuid"`
+	State             string                  `json:"state"`
+	ReplicationStatus []*db.ReplicationStatus `json:"replication_status"`
+	SGRCluster        *db.SGRCluster          `json:"cluster"`
 }
 
 type Vendor struct {
@@ -443,10 +445,24 @@ func (h *handler) handleGetStatus() error {
 			lastSeq, _ = database.LastSequence()
 		}
 
+		replicationsStatus, err := database.SGReplicateMgr.GetReplicationStatusAll(db.DefaultReplicationStatusOptions())
+		if err != nil {
+			return err
+		}
+		cluster, err := database.SGReplicateMgr.GetSGRCluster()
+		if err != nil {
+			return err
+		}
+		for _, replication := range cluster.Replications {
+			replication.ReplicationConfig = *replication.Redact()
+		}
+
 		status.Databases[database.Name] = DatabaseStatus{
-			SequenceNumber: lastSeq,
-			State:          runState,
-			ServerUUID:     database.GetServerUUID(),
+			SequenceNumber:    lastSeq,
+			State:             runState,
+			ServerUUID:        database.GetServerUUID(),
+			ReplicationStatus: replicationsStatus,
+			SGRCluster:        cluster,
 		}
 	}
 
