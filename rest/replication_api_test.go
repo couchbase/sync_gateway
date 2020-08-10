@@ -458,7 +458,7 @@ func TestPushReplicationAPI(t *testing.T) {
 
 	// Create push replication, verify running
 	replicationID := t.Name()
-	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil)
+	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePush, nil, true)
 	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
 
 	// wait for document originally written to rt1 to arrive at rt2
@@ -503,7 +503,7 @@ func TestPullReplicationAPI(t *testing.T) {
 
 	// Create pull replication, verify running
 	replicationID := t.Name()
-	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil)
+	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true)
 	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
 
 	// wait for document originally written to rt2 to arrive at rt1
@@ -555,9 +555,9 @@ func TestReplicationRebalancePull(t *testing.T) {
 	_ = remoteRT.putDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
 
 	// Create pull replications, verify running
-	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"})
+	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true)
 	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
-	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"})
+	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true)
 	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
@@ -627,9 +627,9 @@ func TestReplicationRebalancePush(t *testing.T) {
 	_ = activeRT.putDoc(docDEF1, `{"source":"activeRT","channels":["DEF"]}`)
 
 	// Create push replications, verify running
-	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"})
+	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true)
 	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
-	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"})
+	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true)
 	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents to be pushed to remote
@@ -665,6 +665,58 @@ func TestReplicationRebalancePush(t *testing.T) {
 	assert.Equal(t, "activeRT", docABC2Body["source"])
 	docDEF2Body := remoteRT.getDoc(docDEF2)
 	assert.Equal(t, "activeRT", docDEF2Body["source"])
+}
+
+// TestPullReplicationAPI
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates documents on rt2.
+//   - Creates a one-shot pull replication on rt1 via the REST API
+//   - Validates documents are replicated to rt1
+//   - Validates replication status count when replication is local and non-local
+func TestPullOneshotReplicationAPI(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Create 20 docs on rt2
+	docCount := 20
+	docIDs := make([]string, 20)
+	for i := 0; i < 20; i++ {
+		docID := fmt.Sprintf("%s%s%d", t.Name(), "rt2doc", i)
+		_ = remoteRT.putDoc(docID, `{"source":"rt2","channels":["alice"]}`)
+		docIDs[i] = docID
+	}
+
+	// Create oneshot replication, verify running
+	replicationID := t.Name()
+	activeRT.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, false)
+	activeRT.assertReplicationState(replicationID, db.ReplicationStateRunning)
+
+	// wait for documents originally written to rt2 to arrive at rt1
+	changesResults := activeRT.RequireWaitChanges(docCount, "0")
+	changesResults.requireDocIDs(t, docIDs)
+
+	// Validate sample doc contents
+	doc1Body := activeRT.getDoc(docIDs[0])
+	assert.Equal(t, "rt2", doc1Body["source"])
+
+	// Get replication status from active
+	status := activeRT.GetReplicationStatus(replicationID)
+	assert.Equal(t, int64(docCount), status.DocsRead)
+
+	// Add another node to the active cluster
+	activeRT2 := addActiveRT(t, activeRT.TestBucket)
+	defer activeRT2.Close()
+
+	// Get replication status for non-local replication
+	remoteStatus := activeRT2.GetReplicationStatus(replicationID)
+	assert.Equal(t, int64(docCount), remoteStatus.DocsRead)
+
 }
 
 // Helper functions for SGR testing
@@ -758,12 +810,12 @@ func (rt *RestTester) assertReplicationState(replicationID string, expectedState
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter
 func (rt *RestTester) createReplication(replicationID string, remoteURLString string,
-	direction db.ActiveReplicatorDirection, channels []string) {
+	direction db.ActiveReplicatorDirection, channels []string, continuous bool) {
 	replicationConfig := &db.ReplicationConfig{
 		ID:         replicationID,
 		Direction:  direction,
 		Remote:     remoteURLString,
-		Continuous: true,
+		Continuous: continuous,
 	}
 	if len(channels) > 0 {
 		replicationConfig.Filter = base.ByChannelFilter
@@ -788,6 +840,13 @@ func (rt *RestTester) GetReplications() (replications map[string]db.ReplicationC
 	assertStatus(rt.tb, rawResponse, 200)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &replications))
 	return replications
+}
+
+func (rt *RestTester) GetReplicationStatus(replicationID string) (status db.ReplicationStatus) {
+	rawResponse := rt.SendAdminRequest("GET", "/db/_replicationStatus/"+replicationID, "")
+	assertStatus(rt.tb, rawResponse, 200)
+	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &status))
+	return status
 }
 
 func (rt *RestTester) GetReplicationStatuses(queryString string) (statuses []db.ReplicationStatus) {
