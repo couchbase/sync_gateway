@@ -38,6 +38,8 @@ type SgwStats struct {
 	GlobalStats     *GlobalStat         `json:"global"`
 	DbStats         map[string]*DbStats `json:"per_db"`
 	ReplicatorStats *ReplicatorStats    `json:"per_replication,omitempty"`
+
+	dbStatsMapMutex sync.Mutex
 }
 
 func NewSyncGatewayStats() *SgwStats {
@@ -60,7 +62,9 @@ func NewSyncGatewayStats() *SgwStats {
 
 // This String() is to satisfy the expvar.Var interface which is used to produce the expvar endpoint output.
 func (s *SgwStats) String() string {
+	s.dbStatsMapMutex.Lock()
 	bytes, err := JSONMarshalCanonical(s)
+	s.dbStatsMapMutex.Unlock()
 	if err != nil {
 		Errorf("Unable to Marshal SgwStats: %v", err)
 		return "null"
@@ -510,6 +514,8 @@ type QueryStat struct {
 }
 
 func (s *SgwStats) NewDBStats(name string) *DbStats {
+	s.dbStatsMapMutex.Lock()
+	defer s.dbStatsMapMutex.Unlock()
 	s.DbStats[name] = &DbStats{
 		dbName: name,
 	}
@@ -525,6 +531,8 @@ func (s *SgwStats) NewDBStats(name string) *DbStats {
 }
 
 func (s *SgwStats) ClearDBStats(name string) {
+	s.dbStatsMapMutex.Lock()
+	defer s.dbStatsMapMutex.Unlock()
 	delete(s.DbStats, name)
 }
 
