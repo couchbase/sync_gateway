@@ -961,39 +961,30 @@ func TestValidateReplication(t *testing.T) {
 		name              string
 		replicationConfig db.ReplicationConfig
 		fromConfig        bool
-		errExpected       error
+		expectedErrorMsg  string
 	}{
 		{
 			name: "replication config unsupported Cancel option",
 			replicationConfig: db.ReplicationConfig{
 				Cancel: true,
 			},
-			fromConfig: true,
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "cancel=true is invalid for replication in Sync Gateway configuration",
-			},
+			fromConfig:       true,
+			expectedErrorMsg: db.ConfigErrorConfigBasedCancel,
 		},
 		{
 			name: "replication config unsupported Adhoc option",
 			replicationConfig: db.ReplicationConfig{
 				Adhoc: true,
 			},
-			fromConfig: true,
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "adhoc=true is invalid for replication in Sync Gateway configuration",
-			},
+			fromConfig:       true,
+			expectedErrorMsg: db.ConfigErrorConfigBasedAdhoc,
 		},
 		{
 			name: "replication config with no remote URL specified",
 			replicationConfig: db.ReplicationConfig{
 				Remote: "",
 			},
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "Replication remote must be specified.",
-			},
+			expectedErrorMsg: db.ConfigErrorMissingRemote,
 		},
 		{
 			name: "auth credentials specified in both replication config and remote URL",
@@ -1002,10 +993,7 @@ func TestValidateReplication(t *testing.T) {
 				Username: "alice",
 				Password: "pass",
 			},
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "Auth credentials can be specified either in replication config or remote URL but not allowed in both",
-			},
+			expectedErrorMsg: db.ConfigErrorDuplicateCredentials,
 		},
 		{
 			name: "auth credentials specified in replication config",
@@ -1032,10 +1020,7 @@ func TestValidateReplication(t *testing.T) {
 			replicationConfig: db.ReplicationConfig{
 				Remote: "http://bob:pass@remote:4984/db",
 			},
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "Replication direction must be specified",
-			},
+			expectedErrorMsg: db.ConfigErrorMissingDirection,
 		},
 		{
 			name: "replication config with invalid direction",
@@ -1043,10 +1028,8 @@ func TestValidateReplication(t *testing.T) {
 				Remote:    "http://bob:pass@remote:4984/db",
 				Direction: "UpAndDown",
 			},
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "Invalid replication direction \"UpAndDown\", valid values are push/pull/pushAndPull",
-			},
+			expectedErrorMsg: fmt.Sprintf(db.ConfigErrorInvalidDirectionFmt,
+				"UpAndDown", db.ActiveReplicatorTypePush, db.ActiveReplicatorTypePull, db.ActiveReplicatorTypePushAndPull),
 		},
 		{
 			name: "replication config with unknown filter",
@@ -1056,10 +1039,7 @@ func TestValidateReplication(t *testing.T) {
 				Direction:   db.ActiveReplicatorTypePull,
 				Filter:      "unknownFilter",
 			},
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "Unknown replication filter; try sync_gateway/bychannel",
-			},
+			expectedErrorMsg: db.ConfigErrorUnknownFilter,
 		},
 		{
 			name: "replication config with channel filter but no query params",
@@ -1068,10 +1048,7 @@ func TestValidateReplication(t *testing.T) {
 				Filter:    base.ByChannelFilter,
 				Direction: db.ActiveReplicatorTypePull,
 			},
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "Replication specifies sync_gateway/bychannel filter but is missing query_params",
-			},
+			expectedErrorMsg: db.ConfigErrorMissingQueryParams,
 		},
 		{
 			name: "replication config with channel filter and invalid query params",
@@ -1081,17 +1058,30 @@ func TestValidateReplication(t *testing.T) {
 				QueryParams: []string{"E", "A", "D", "G", "B", "e"},
 				Direction:   db.ActiveReplicatorTypePull,
 			},
-			errExpected: &base.HTTPError{
-				Status:  http.StatusBadRequest,
-				Message: "Bad channels array in query_params for sync_gateway/bychannel filter",
+			expectedErrorMsg: db.ConfigErrorBadChannelsArray,
+		},
+		{
+			name: "replication config replicationID too long",
+			replicationConfig: db.ReplicationConfig{
+				ID: "0123456789012345678901234567890123456789012345678901234567890123456789" +
+					"0123456789012345678901234567890123456789012345678901234567890123456789" +
+					"0123456789012345678901234567890123456789012345678901234567890123456789",
+				Remote: "http://bob:pass@remote:4984/db",
 			},
+			expectedErrorMsg: db.ConfigErrorIDTooLong,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.replicationConfig.ValidateReplication(tc.fromConfig)
-			assert.Equal(t, tc.errExpected, err)
+			if tc.expectedErrorMsg != "" {
+				expectedError := &base.HTTPError{
+					Status:  http.StatusBadRequest,
+					Message: tc.expectedErrorMsg,
+				}
+				assert.Equal(t, expectedError, err)
+			}
 		})
 	}
 
