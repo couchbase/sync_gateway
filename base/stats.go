@@ -26,13 +26,18 @@ const (
 	SubsystemSharedBucketImport = "shared_bucket_import"
 )
 
+var (
+	checkedSentDesc               *prometheus.Desc
+	numAttachmentBytesTransferred *prometheus.Desc
+	numAttachmentsTransferred     *prometheus.Desc
+	numDocsFailedToPush           *prometheus.Desc
+	numDocsPushed                 *prometheus.Desc
+)
+
 type SgwStats struct {
 	GlobalStats     *GlobalStat         `json:"global"`
 	DbStats         map[string]*DbStats `json:"per_db"`
 	ReplicatorStats *ReplicatorStats    `json:"per_replication,omitempty"`
-
-	mutex                     sync.Mutex
-	registeredReplicatorStats sync.Once
 }
 
 func NewSyncGatewayStats() *SgwStats {
@@ -41,11 +46,19 @@ func NewSyncGatewayStats() *SgwStats {
 		DbStats:     map[string]*DbStats{},
 	}
 
+	checkedSentDesc = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_docs_checked_sent"), "sgr_docs_checked_sent", []string{"replication"}, nil)
+	numAttachmentBytesTransferred = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", []string{"replication"}, nil)
+	numAttachmentsTransferred = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", []string{"replication"}, nil)
+	numDocsFailedToPush = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", []string{"replication"}, nil)
+	numDocsPushed = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_pushed"), "sgr_num_docs_pushed", []string{"replication"}, nil)
+
 	sgwStats.GlobalStats.initResourceUtilizationStats()
+	sgwStats.initReplicationStats()
 
 	return &sgwStats
 }
 
+// This String() is to satisfy the expvar.Var interface which is used to produce the expvar endpoint output.
 func (s *SgwStats) String() string {
 	bytes, err := JSONMarshalCanonical(s)
 	if err != nil {
@@ -87,22 +100,15 @@ func (g *GlobalStat) ResourceUtilizationStats() *ResourceUtilization {
 	return g.ResourceUtilization
 }
 
-func (s *SgwStats) ReplicationStats() *expvar.Map {
-	s.registeredReplicatorStats.Do(func() {
-		if s.ReplicatorStats == nil {
-			s.ReplicatorStats = &ReplicatorStats{
-				checkedSentDesc:               prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_docs_checked_sent"), "sgr_docs_checked_sent", []string{"replication"}, nil),
-				numAttachmentBytesTransferred: prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", []string{"replication"}, nil),
-				numAttachmentsTransferred:     prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", []string{"replication"}, nil),
-				numDocsFailedToPush:           prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", []string{"replication"}, nil),
-				numDocsPushed:                 prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_pushed"), "sgr_num_docs_pushed", []string{"replication"}, nil),
-				toplevelMap:                   new(expvar.Map).Init(),
-			}
-		}
-		prometheus.MustRegister(s.ReplicatorStats)
-	})
+func (s *SgwStats) initReplicationStats() {
+	s.ReplicatorStats = &ReplicatorStats{
+		new(expvar.Map).Init(),
+	}
+	prometheus.MustRegister(s.ReplicatorStats)
+}
 
-	return s.ReplicatorStats.toplevelMap
+func (s *SgwStats) ReplicationStats() *expvar.Map {
+	return s.ReplicatorStats.Map
 }
 
 type ResourceUtilization struct {
@@ -241,17 +247,11 @@ func (wrapper *ExpVarMapWrapper) MarshalJSON() ([]byte, error) {
 }
 
 type ReplicatorStats struct {
-	checkedSentDesc               *prometheus.Desc
-	numAttachmentBytesTransferred *prometheus.Desc
-	numAttachmentsTransferred     *prometheus.Desc
-	numDocsFailedToPush           *prometheus.Desc
-	numDocsPushed                 *prometheus.Desc
-
-	toplevelMap *expvar.Map
+	*expvar.Map
 }
 
 func (rs *ReplicatorStats) MarshalJSON() ([]byte, error) {
-	return []byte(rs.toplevelMap.String()), nil
+	return []byte(rs.String()), nil
 }
 
 func (rs *ReplicatorStats) Describe(ch chan<- *prometheus.Desc) {
@@ -259,33 +259,33 @@ func (rs *ReplicatorStats) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (rs *ReplicatorStats) Collect(ch chan<- prometheus.Metric) {
-	rs.toplevelMap.Do(func(value expvar.KeyValue) {
+	rs.Do(func(value expvar.KeyValue) {
 		ch <- prometheus.MustNewConstMetric(
-			rs.checkedSentDesc,
+			checkedSentDesc,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_docs_checked_sent").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			rs.numAttachmentBytesTransferred,
+			numAttachmentBytesTransferred,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_attachment_bytes_transferred").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			rs.numAttachmentsTransferred,
+			numAttachmentsTransferred,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_attachments_transferred").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			rs.numDocsFailedToPush,
+			numDocsFailedToPush,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_failed_to_push").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			rs.numDocsPushed,
+			numDocsPushed,
 			prometheus.GaugeValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_pushed").(*expvar.Int).Value()),
 			value.Key,
