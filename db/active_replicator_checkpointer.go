@@ -15,6 +15,7 @@ import (
 // Periodically (based on a time interval), these two lists are used to calculate the highest sequence number which we've not had a gap for yet, and send a SetCheckpoint message for this sequence.
 type Checkpointer struct {
 	clientID           string
+	configHash         string
 	blipSender         *blip.Sender
 	activeDB           *Database
 	checkpointInterval time.Duration
@@ -48,9 +49,10 @@ type CheckpointerStats struct {
 	GetCheckpointMissCount    int64
 }
 
-func NewCheckpointer(ctx context.Context, clientID string, blipSender *blip.Sender, activeDB *Database, checkpointInterval time.Duration) *Checkpointer {
+func NewCheckpointer(ctx context.Context, clientID string, configHash string, blipSender *blip.Sender, activeDB *Database, checkpointInterval time.Duration) *Checkpointer {
 	return &Checkpointer{
 		clientID:           clientID,
+		configHash:         configHash,
 		blipSender:         blipSender,
 		activeDB:           activeDB,
 		expectedSeqs:       make([]string, 0),
@@ -262,30 +264,72 @@ func (c *Checkpointer) calculateSafeProcessedSeq() string {
 }
 
 const (
-	checkpointDocIDPrefix   = "checkpoint/"
-	checkpointDocLastSeqKey = "last_sequence"
+	checkpointDocIDPrefix    = "checkpoint/"
+	xcheckpointDocLastSeqKey = "last_sequence"
+	checkpointBodyRev        = "_rev"
+	checkpointBodyLastSeq    = "last_sequence"
+	checkpointBodyHash       = "config_hash"
 )
+
+type replicationCheckpoint struct {
+	Rev        string `json:"_rev"`
+	ConfigHash string `json:"config_hash"`
+	LastSeq    string `json:"last_sequence"`
+}
+
+func (r *replicationCheckpoint) AsBody() Body {
+	return Body{
+		checkpointBodyRev:     r.Rev,
+		checkpointBodyLastSeq: r.LastSeq,
+		checkpointBodyHash:    r.ConfigHash,
+	}
+}
+
+func NewReplicationCheckpoint(revID string, body Body) *replicationCheckpoint {
+	checkpoint := &replicationCheckpoint{
+		Rev: revID,
+	}
+	lastSeq, ok := body[checkpointBodyLastSeq].(string)
+	if ok {
+		checkpoint.LastSeq = lastSeq
+	}
+	configHash, ok := body[checkpointBodyHash].(string)
+	if ok {
+		checkpoint.ConfigHash = configHash
+	}
+	return checkpoint
+}
+
+func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
+	return &replicationCheckpoint{
+		Rev:        r.Rev,
+		LastSeq:    r.LastSeq,
+		ConfigHash: r.ConfigHash,
+	}
+}
 
 // fetchCheckpoints tries to fetch since values for the given replication by requesting a checkpoint on the local and remote.
 // If we fetch missing, or mismatched checkpoints, we'll pick the lower of the two, and roll back the higher checkpoint.
 func (c *Checkpointer) fetchCheckpoints() error {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "fetchCheckpoints()")
 
-	localSeq, localRev, err := c.getLocalCheckpoint()
+	localCheckpoint, err := c.getLocalCheckpoint()
 	if err != nil {
 		return err
 	}
-	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %q %q", localSeq, localRev)
-	c.lastLocalCheckpointRevID = localRev
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %q %q", localCheckpoint.LastSeq, localCheckpoint.Rev)
+	c.lastLocalCheckpointRevID = localCheckpoint.Rev
 
-	remoteSeq, remoteRev, err := c.getRemoteCheckpoint()
+	remoteCheckpoint, err := c.getRemoteCheckpoint()
 	if err != nil {
 		return err
 	}
-	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %q %q", remoteSeq, remoteRev)
-	c.lastRemoteCheckpointRevID = remoteRev
+	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %v", remoteCheckpoint)
+	c.lastRemoteCheckpointRevID = remoteCheckpoint.Rev
 
 	// If localSeq and remoteSeq match, we'll use this value.
+	localSeq := localCheckpoint.LastSeq
+	remoteSeq := remoteCheckpoint.LastSeq
 	checkpointSeq := localSeq
 
 	// Determine the lowest sequence if they don't match
@@ -304,13 +348,16 @@ func (c *Checkpointer) fetchCheckpoints() error {
 		// roll local/remote checkpoint back to lowest of the two
 		if remoteSeqVal.Before(localSeqVal) {
 			checkpointSeq = remoteSeq
-			c.lastLocalCheckpointRevID, err = c.setLocalCheckpoint(checkpointSeq, c.lastLocalCheckpointRevID)
+			newLocalCheckpoint := remoteCheckpoint.Copy()
+			newLocalCheckpoint.Rev = c.lastLocalCheckpointRevID
+			c.lastLocalCheckpointRevID, err = c.setLocalCheckpoint(newLocalCheckpoint)
 			if err != nil {
 				base.WarnfCtx(c.ctx, "Unable to roll back local checkpoint: %v", err)
 			}
 		} else {
-			checkpointSeq = localSeq
-			c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpoint(checkpointSeq, c.lastRemoteCheckpointRevID)
+			newRemoteCheckpoint := localCheckpoint.Copy()
+			newRemoteCheckpoint.Rev = c.lastRemoteCheckpointRevID
+			c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpoint(newRemoteCheckpoint)
 			if err != nil {
 				base.WarnfCtx(c.ctx, "Unable to roll back remote checkpoint: %v", err)
 			}
@@ -332,12 +379,22 @@ func (c *Checkpointer) fetchCheckpoints() error {
 func (c *Checkpointer) _setCheckpoints(seq string) (err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setCheckpoints(%v)", seq)
 
-	c.lastLocalCheckpointRevID, err = c.setLocalCheckpointWithRetry(seq, c.lastLocalCheckpointRevID)
+	c.lastLocalCheckpointRevID, err = c.setLocalCheckpointWithRetry(
+		&replicationCheckpoint{
+			LastSeq:    seq,
+			Rev:        c.lastLocalCheckpointRevID,
+			ConfigHash: c.configHash,
+		})
 	if err != nil {
 		return err
 	}
 
-	c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpointWithRetry(seq, c.lastRemoteCheckpointRevID)
+	c.lastRemoteCheckpointRevID, err = c.setRemoteCheckpointWithRetry(
+		&replicationCheckpoint{
+			LastSeq:    seq,
+			Rev:        c.lastRemoteCheckpointRevID,
+			ConfigHash: c.configHash,
+		})
 	if err != nil {
 		return err
 	}
@@ -350,25 +407,26 @@ func (c *Checkpointer) _setCheckpoints(seq string) (err error) {
 
 // getLocalCheckpoint returns the sequence and rev for the local checkpoint.
 // if the checkpoint does not exist, returns empty sequence and rev.
-func (c *Checkpointer) getLocalCheckpoint() (seq, rev string, err error) {
+func (c *Checkpointer) getLocalCheckpoint() (checkpoint *replicationCheckpoint, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getLocalCheckpoint")
 
-	checkpointBody, err := c.activeDB.GetSpecial(DocTypeLocal, checkpointDocIDPrefix+c.clientID)
+	checkpointBytes, err := c.activeDB.GetSpecialBytes(DocTypeLocal, checkpointDocIDPrefix+c.clientID)
 	if err != nil {
 		if !base.IsKeyNotFoundError(c.activeDB.Bucket, err) {
-			return "", "", err
+			return &replicationCheckpoint{}, err
 		}
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing local checkpoint for client %q", c.clientID)
-		return "", "", nil
+		return &replicationCheckpoint{}, nil
 	}
 
-	return checkpointBody[checkpointDocLastSeqKey].(string), checkpointBody[BodyRev].(string), nil
+	err = base.JSONUnmarshal(checkpointBytes, &checkpoint)
+	return checkpoint, err
 }
 
-func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string, err error) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpoint(%v, %v)", seq, parentRev)
+func (c *Checkpointer) setLocalCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
 
-	newRev, err = c.activeDB.putSpecial(DocTypeLocal, checkpointDocIDPrefix+c.clientID, parentRev, Body{checkpointDocLastSeqKey: seq})
+	newRev, err = c.activeDB.putSpecial(DocTypeLocal, checkpointDocIDPrefix+c.clientID, checkpoint.Rev, checkpoint.AsBody())
 	if err != nil {
 		return "", err
 	}
@@ -376,8 +434,8 @@ func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string,
 }
 
 // setLocalCheckpointWithRetry attempts to rewrite the checkpoint if the rev ID is mismatched, or the checkpoint has since been deleted.
-func (c *Checkpointer) setLocalCheckpointWithRetry(seq, existingRevID string) (newRevID string, err error) {
-	return c.setRetry(seq, existingRevID,
+func (c *Checkpointer) setLocalCheckpointWithRetry(checkpoint *replicationCheckpoint) (newRevID string, err error) {
+	return c.setRetry(checkpoint,
 		c.setLocalCheckpoint,
 		c.getLocalCheckpoint,
 	)
@@ -390,7 +448,7 @@ func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
 
 // getRemoteCheckpoint returns the sequence and rev for the remote checkpoint.
 // if the checkpoint does not exist, returns empty sequence and rev.
-func (c *Checkpointer) getRemoteCheckpoint() (seq, rev string, err error) {
+func (c *Checkpointer) getRemoteCheckpoint() (checkpoint *replicationCheckpoint, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getRemoteCheckpoint")
 
 	rq := GetSGR2CheckpointRequest{
@@ -398,33 +456,33 @@ func (c *Checkpointer) getRemoteCheckpoint() (seq, rev string, err error) {
 	}
 
 	if err := rq.Send(c.blipSender); err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	resp, err := rq.Response()
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	if resp == nil {
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find existing remote checkpoint for client %q", c.clientID)
-		return "", "", nil
+		return &replicationCheckpoint{}, nil
 	}
 
-	return resp.LastSeq, resp.RevID, nil
+	return NewReplicationCheckpoint(resp.RevID, resp.Body), nil
 }
 
-func (c *Checkpointer) setRemoteCheckpoint(seq, parentRev string) (newRev string, err error) {
-	base.TracefCtx(c.ctx, base.KeyReplicate, "setRemoteCheckpoint(%v, %v)", seq, parentRev)
+func (c *Checkpointer) setRemoteCheckpoint(checkpoint *replicationCheckpoint) (newRev string, err error) {
+	base.TracefCtx(c.ctx, base.KeyReplicate, "setRemoteCheckpoint(%v)", checkpoint)
 
+	checkpointBody := checkpoint.AsBody()
 	rq := SetSGR2CheckpointRequest{
-		Client: c.clientID,
-		Checkpoint: SGR2CheckpointDoc{
-			LastSequence: seq,
-		},
+		Client:     c.clientID,
+		Checkpoint: checkpoint.AsBody(),
 	}
 
-	if parentRev != "" {
+	parentRev, ok := checkpointBody[BodyRev].(string)
+	if ok {
 		rq.RevID = &parentRev
 	}
 
@@ -441,8 +499,8 @@ func (c *Checkpointer) setRemoteCheckpoint(seq, parentRev string) (newRev string
 }
 
 // setRemoteCheckpointWithRetry attempts to rewrite the checkpoint if the rev ID is mismatched, or the checkpoint has since been deleted.
-func (c *Checkpointer) setRemoteCheckpointWithRetry(seq, existingRevID string) (newRevID string, err error) {
-	return c.setRetry(seq, existingRevID,
+func (c *Checkpointer) setRemoteCheckpointWithRetry(checkpoint *replicationCheckpoint) (newRevID string, err error) {
+	return c.setRetry(checkpoint,
 		c.setRemoteCheckpoint,
 		c.getRemoteCheckpoint,
 	)
@@ -482,26 +540,27 @@ func (c *Checkpointer) waitForExpectedSequences() error {
 	return errors.New("checkpointer waitForExpectedSequences failed to complete after waiting 10s")
 }
 
-type setCheckpointFn func(seq, parentRevID string) (revID string, err error)
-type getCheckpointFn func() (seq string, revID string, err error)
+type setCheckpointFn func(checkpoint *replicationCheckpoint) (revID string, err error)
+type getCheckpointFn func() (checkpoint *replicationCheckpoint, err error)
 
+// TODO: why is setRetry ignoring rev conflicts and just overwriting with an updated rev?
 // setRetry is a retry loop for a setCheckpointFn, which will fetch a new RevID from a getCheckpointFn in the event of a write conflict.
-func (c *Checkpointer) setRetry(seq, existingRevID string, setFn setCheckpointFn, getFn getCheckpointFn) (newRevID string, err error) {
+func (c *Checkpointer) setRetry(checkpoint *replicationCheckpoint, setFn setCheckpointFn, getFn getCheckpointFn) (newRevID string, err error) {
 	for numAttempts := 0; numAttempts < 10; numAttempts++ {
-		newRevID, err = setFn(seq, existingRevID)
+		newRevID, err = setFn(checkpoint)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "409") {
 				base.WarnfCtx(c.ctx, "rev mismatch from setCheckpoint - updating last known rev ID: %v", err)
-				_, rev, getErr := getFn()
+				existingCheckpoint, getErr := getFn()
 				if getErr == nil {
-					base.InfofCtx(c.ctx, base.KeyReplicate, "using new rev from checkpoint: %v", rev)
-					existingRevID = rev
+					base.InfofCtx(c.ctx, base.KeyReplicate, "using new rev from existing checkpoint: %v", existingCheckpoint.Rev)
+					checkpoint.Rev = existingCheckpoint.Rev
 				} else {
 					// fall through to retry
 				}
 			} else if strings.HasPrefix(err.Error(), "404") {
 				base.WarnfCtx(c.ctx, "checkpoint did not exist for attempted update - removing last known rev ID: %v", err)
-				existingRevID = ""
+				checkpoint.Rev = ""
 			} else {
 				base.WarnfCtx(c.ctx, "got unexpected error from setCheckpoint: %v", err)
 			}

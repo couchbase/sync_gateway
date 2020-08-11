@@ -32,7 +32,7 @@ const (
 
 // Replication config validation error messages
 const (
-	ConfigErrorIDTooLong            = "Replication ID must be less than 200 characters"
+	ConfigErrorIDTooLong            = "Replication ID must be less than 160 characters"
 	ConfigErrorUnknownFilter        = "Unknown replication filter; try sync_gateway/bychannel"
 	ConfigErrorMissingQueryParams   = "Replication specifies sync_gateway/bychannel filter but is missing query_params"
 	ConfigErrorMissingRemote        = "Replication remote must be specified"
@@ -137,7 +137,10 @@ type ReplicationUpsertConfig struct {
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
-	if len(rc.ID) > 200 {
+	// Checkpoint keys are prefixed with 35 characters:  _sync:local:checkpoint/sgr2cp:pull:
+	// Setting length limit for replication ID to 160 characters to retain some room for future
+	// key-related enhancements
+	if len(rc.ID) > 160 {
 		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorIDTooLong)
 	}
 

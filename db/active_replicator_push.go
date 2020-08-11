@@ -159,14 +159,14 @@ func (apr *ActivePushReplicator) _stop() error {
 }
 
 func (apr *ActivePushReplicator) _initCheckpointer() error {
-	checkpointID, err := apr.CheckpointID()
-	if err != nil {
-		return err
+
+	checkpointHash, hashErr := apr.config.CheckpointHash()
+	if hashErr != nil {
+		return hashErr
 	}
+	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID(), checkpointHash, apr.blipSender, apr.config.ActiveDB, apr.config.CheckpointInterval)
 
-	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, checkpointID, apr.blipSender, apr.config.ActiveDB, apr.config.CheckpointInterval)
-
-	err = apr.Checkpointer.fetchCheckpoints()
+	err := apr.Checkpointer.fetchCheckpoints()
 	if err != nil {
 		return err
 	}
@@ -178,12 +178,8 @@ func (apr *ActivePushReplicator) _initCheckpointer() error {
 }
 
 // CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
-func (apr *ActivePushReplicator) CheckpointID() (string, error) {
-	checkpointHash, err := apr.config.CheckpointHash()
-	if err != nil {
-		return "", err
-	}
-	return "sgr2cp:push:" + checkpointHash, nil
+func (apr *ActivePushReplicator) CheckpointID() string {
+	return "sgr2cp:push:" + apr.config.ID
 }
 
 // reset performs a reset on the replication by removing the local checkpoint document.
@@ -191,11 +187,7 @@ func (apr *ActivePushReplicator) reset() error {
 	if apr.state != ReplicationStateStopped {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
-	checkpointID, err := apr.CheckpointID()
-	if err != nil {
-		return err
-	}
-	return resetLocalCheckpoint(apr.config.ActiveDB, checkpointID)
+	return resetLocalCheckpoint(apr.config.ActiveDB, apr.CheckpointID())
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.

@@ -2260,7 +2260,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	ar.Push.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().SetCheckpointCount)
 
-	cID, err := ar.Push.CheckpointID()
+	cID := ar.Push.CheckpointID()
 	require.NoError(t, err)
 	checkpointDocID := base.SyncPrefix + "local:checkpoint/" + cID
 
@@ -2381,13 +2381,13 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 	assert.NoError(t, ar.Start())
 
-	pushCheckpointID, err := ar.Push.CheckpointID()
+	pushCheckpointID := ar.Push.CheckpointID()
 	require.NoError(t, err)
 	pushCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pushCheckpointID
 	err = rt2.Bucket().SetRaw(pushCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
 	require.NoError(t, err)
 
-	pullCheckpointID, err := ar.Pull.CheckpointID()
+	pullCheckpointID := ar.Pull.CheckpointID()
 	require.NoError(t, err)
 	pullCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pullCheckpointID
 	err = rt1.Bucket().SetRaw(pullCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))

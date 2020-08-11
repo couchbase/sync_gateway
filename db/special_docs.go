@@ -19,28 +19,37 @@ import (
 const DocTypeLocal = "local"
 
 func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
+
+	body := Body{}
+	bytes, err := db.GetSpecialBytes(doctype, docid)
+	if err != nil {
+		return nil, err
+	}
+	err = body.Unmarshal(bytes)
+	if err != nil {
+		return nil, err
+	}
+	return body, err
+}
+
+func (db *Database) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
 	key := RealSpecialDocID(doctype, docid)
+
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
-	body := Body{}
-
-	if doctype == DocTypeLocal && db.DatabaseContext.Options.LocalDocExpirySecs > 0 {
-		rawDocBytes, _, err := db.Bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs)))
-		if err != nil {
-			return nil, err
-		}
-		if err := body.Unmarshal(rawDocBytes); err != nil {
-			return nil, err
-		}
+	var rawDocBytes []byte
+	var err error
+	if doctype == "local" && db.DatabaseContext.Options.LocalDocExpirySecs > 0 {
+		rawDocBytes, _, err = db.Bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs)))
 	} else {
-		if _, err := db.Bucket.Get(key, &body); err != nil {
-			return nil, err
-		}
+		rawDocBytes, _, err = db.Bucket.GetRaw(key)
 	}
-
-	return body, nil
+	if err != nil {
+		return nil, err
+	}
+	return rawDocBytes, nil
 }
 
 // Updates or deletes a special document.
