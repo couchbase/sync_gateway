@@ -191,8 +191,8 @@ func (h *handler) handleGetAttachment() error {
 		return kNotFoundError
 	}
 
-	meta, contentTypeSet := rev.Attachments[attachmentName].(map[string]interface{})
-	if !contentTypeSet {
+	meta, ok := rev.Attachments[attachmentName].(map[string]interface{})
+	if !ok {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
 	digest := meta["digest"].(string)
