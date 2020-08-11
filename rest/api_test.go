@@ -5130,12 +5130,7 @@ func TestAttachmentContentType(t *testing.T) {
 		},
 		{
 			setContentType:                true,
-			putContentType:                "application/xml",
-			expectedContentDispositionSet: true,
-		},
-		{
-			setContentType:                true,
-			putContentType:                "text/xml",
+			putContentType:                "image/svg+xml",
 			expectedContentDispositionSet: true,
 		},
 		{
@@ -5155,6 +5150,7 @@ func TestAttachmentContentType(t *testing.T) {
 		},
 	}
 
+	// Tests will be ran against default config
 	for index, test := range tests {
 		contentType := ""
 		if test.setContentType {
@@ -5172,5 +5168,14 @@ func TestAttachmentContentType(t *testing.T) {
 		} else {
 			assert.Equal(t, "", contentDisposition)
 		}
+	}
+
+	// Ran against allow insecure
+	rt.DatabaseConfig.ServeInsecureAttachmentTypes = true
+	for index, _ := range tests {
+		response := rt.SendRequest("GET", fmt.Sprintf("/db/doc_allow_insecure_%d/login.aspx", index), "")
+		contentDisposition := response.Header().Get("Content-Disposition")
+
+		assert.Equal(t, "", contentDisposition)
 	}
 }

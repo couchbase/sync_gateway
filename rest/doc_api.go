@@ -223,11 +223,19 @@ func (h *handler) handleGetAttachment() error {
 		h.setHeader("Content-Type", contentType)
 	}
 
-	if !h.db.ServeAllAttachmentContentType {
-		if contentTypeSet && (contentType == "text/html" || contentType == "application/xhtml+xml" || contentType == "application/xml" || contentType == "text/xml" || contentType == "") {
-			setContentDisposition = true
-		}
-		if !contentTypeSet {
+	if !h.db.ServeInsecureAttachmentTypes {
+
+		if contentTypeSet {
+			contentTypeFirst := strings.Split(contentType, ";")[0]
+			switch contentTypeFirst {
+			case
+				"",
+				"text/html",
+				"application/xhtml+xml",
+				"image/svg+xml":
+				setContentDisposition = true
+			}
+		} else {
 			setContentDisposition = true
 		}
 	}

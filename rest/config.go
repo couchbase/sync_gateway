@@ -200,7 +200,7 @@ type DbConfig struct {
 	SGReplicateEnabled               *bool                            `json:"sgreplicate_enabled,omitempty"`                  // When false, node will not be assigned replications
 	SGReplicateWebsocketPingInterval *int                             `json:"sgreplicate_websocket_heartbeat_secs,omitempty"` // If set, uses this duration as a custom heartbeat interval for websocket ping frames
 	Replications                     map[string]*db.ReplicationConfig `json:"replications,omitempty"`                         // sg-replicate replication definitions
-	ServeAllAttachmentContentType    bool                             `json:"serve_all_attachment_content_type, omitempty"`   // Attachment content type will bypass the content-disposition handling, default false
+	ServeInsecureAttachmentTypes     bool                             `json:"serve_insecure_attachment_types,omitempty"`      // Attachment content type will bypass the content-disposition handling, default false
 }
 
 type DeltaSyncConfig struct {

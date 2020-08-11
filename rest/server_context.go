@@ -453,7 +453,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
-	dbcontext.ServeAllAttachmentContentType = config.ServeAllAttachmentContentType
+	dbcontext.ServeInsecureAttachmentTypes = config.ServeInsecureAttachmentTypes
 
 	if dbcontext.ChannelMapper == nil {
 		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
