@@ -191,8 +191,8 @@ func (h *handler) handleGetAttachment() error {
 		return kNotFoundError
 	}
 
-	meta, ok := rev.Attachments[attachmentName].(map[string]interface{})
-	if !ok {
+	meta, contentTypeSet := rev.Attachments[attachmentName].(map[string]interface{})
+	if !contentTypeSet {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
 	digest := meta["digest"].(string)
@@ -209,10 +209,29 @@ func (h *handler) handleGetAttachment() error {
 	}
 	h.setHeader("Content-Length", strconv.FormatUint(uint64(len(data)), 10))
 
+	// #720
+	setContentDisposition := h.privs == adminPrivs
+
 	h.setHeader("Etag", strconv.Quote(digest))
-	if contentType, ok := meta["content_type"].(string); ok {
+
+	// Request will be returned with the same content type as is set on the attachment. The caveat to this is if the
+	// attachment has a content type which is vulnerable to a phishing attack. If this is the case we will return with
+	// the Content Disposition header so that browsers will download the attachment rather than attempt to render it
+	// unless overridden by config option. CBG-1004
+	contentType, contentTypeSet := meta["content_type"].(string)
+	if contentTypeSet {
 		h.setHeader("Content-Type", contentType)
 	}
+
+	if !h.db.ServeAllAttachmentContentType {
+		if contentTypeSet && (contentType == "text/html" || contentType == "application/xhtml+xml" || contentType == "application/xml" || contentType == "text/xml" || contentType == "") {
+			setContentDisposition = true
+		}
+		if !contentTypeSet {
+			setContentDisposition = true
+		}
+	}
+
 	if encoding, ok := meta["encoding"].(string); ok {
 		if result, _ := h.getOptBoolQuery("content_encoding", true); result {
 			h.setHeader("Content-Encoding", encoding)
@@ -226,7 +245,7 @@ func (h *handler) handleGetAttachment() error {
 			h.setHeader("Content-Type", "application/gzip")
 		}
 	}
-	if h.privs == adminPrivs { // #720
+	if setContentDisposition {
 		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
 
 	}
