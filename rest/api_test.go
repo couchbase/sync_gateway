@@ -639,7 +639,7 @@ func TestManualAttachment(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
 	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.True(t, response.Header().Get("Content-Disposition") == `attachment; filename="attach1"`)
+	goassert.True(t, response.Header().Get("Content-Disposition") == `attachment`)
 	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// try to overwrite that attachment
