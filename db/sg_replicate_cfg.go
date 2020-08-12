@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"sort"
 	"sync"
 
@@ -145,8 +146,11 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
 	remoteURL, err := url.Parse(rc.Remote)
 	if err != nil {
+		redact := func(url string) string {
+			return regexp.MustCompilePOSIX(":[^@/]+@").ReplaceAllString(url, ":xxxxx@")
+		}
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v",
-			base.RedactBasicAuthURL(rc.Remote), base.RedactBasicAuthURL(err.Error()))
+			redact(rc.Remote), redact(err.Error()))
 	}
 
 	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {
@@ -272,17 +276,22 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 	return bytes.Equal(currentBytes, compareToBytes), nil
 }
 
-// Redact returns the ReplicationCfg with auth credentials of the remote database
-// redacted. Credentials will be redacted from replication config and remote URL.
-func (r *ReplicationConfig) Redact() *ReplicationConfig {
+// Redacted returns the ReplicationCfg with password of the remote database redacted from
+// both replication config and remote URL, i.e., any password will be replaced with xxxxx.
+func (r *ReplicationConfig) Redacted() *ReplicationConfig {
 	config := *r
-	if config.Username != "" {
-		config.Username = "****"
-	}
 	if config.Password != "" {
-		config.Password = "****"
+		config.Password = "xxxxx"
 	}
-	config.Remote = base.RedactBasicAuthURL(config.Remote)
+	remote, err := url.Parse(config.Remote)
+	if err != nil {
+		base.Warnf("Error redacting password on remote URL [%s], %v", config.Remote, err)
+		return &config
+	}
+	if _, has := remote.User.Password(); has {
+		remote.User = url.UserPassword(remote.User.Username(), "xxxxx")
+	}
+	config.Remote = remote.String()
 	return &config
 }
 
@@ -1080,7 +1089,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 				return nil, err
 			}
 		}
-		status.Config = remoteCfg.ReplicationConfig.Redact()
+		status.Config = remoteCfg.ReplicationConfig.Redacted()
 	}
 
 	if !options.IncludeError && status.Status == ReplicationStateError {

@@ -454,7 +454,7 @@ func (h *handler) handleGetStatus() error {
 			return err
 		}
 		for _, replication := range cluster.Replications {
-			replication.ReplicationConfig = *replication.Redact()
+			replication.ReplicationConfig = *replication.Redacted()
 		}
 
 		status.Databases[database.Name] = DatabaseStatus{
@@ -830,7 +830,7 @@ func (h *handler) getReplications() error {
 		} else {
 			replication.AssignedNode = replication.AssignedNode + " (non-local)"
 		}
-		replication.ReplicationConfig = *replication.Redact()
+		replication.ReplicationConfig = *replication.Redacted()
 	}
 
 	h.writeJSON(replications)
@@ -847,7 +847,7 @@ func (h *handler) getReplication() error {
 		return err
 	}
 
-	h.writeJSON(replication.Redact())
+	h.writeJSON(replication.Redacted())
 	return nil
 }
 
