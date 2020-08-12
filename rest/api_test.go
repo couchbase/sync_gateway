@@ -5125,6 +5125,11 @@ func TestAttachmentContentType(t *testing.T) {
 		},
 		{
 			setContentType:                true,
+			putContentType:                "text/html; charset=utf-8",
+			expectedContentDispositionSet: true,
+		},
+		{
+			setContentType:                true,
 			putContentType:                "application/xhtml+xml",
 			expectedContentDispositionSet: true,
 		},
@@ -5164,7 +5169,7 @@ func TestAttachmentContentType(t *testing.T) {
 		contentDisposition := response.Header().Get("Content-Disposition")
 
 		if test.expectedContentDispositionSet {
-			assert.Equal(t, `attachment; filename="login.aspx"`, contentDisposition, fmt.Sprintf("Failed with doc_%d", index))
+			assert.Equal(t, `attachment`, contentDisposition, fmt.Sprintf("Failed with doc_%d", index))
 		} else {
 			assert.Equal(t, "", contentDisposition)
 		}

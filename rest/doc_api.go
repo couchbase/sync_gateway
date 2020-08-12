@@ -254,7 +254,7 @@ func (h *handler) handleGetAttachment() error {
 		}
 	}
 	if setContentDisposition {
-		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
+		h.setHeader("Content-Disposition", "attachment")
 
 	}
 	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)
