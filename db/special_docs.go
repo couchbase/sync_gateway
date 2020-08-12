@@ -16,15 +16,17 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+const DocTypeLocal = "local"
+
 func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
-	key := db.realSpecialDocID(doctype, docid)
+	key := RealSpecialDocID(doctype, docid)
 	if key == "" {
 		return nil, base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
 	body := Body{}
 
-	if doctype == "local" && db.DatabaseContext.Options.LocalDocExpirySecs > 0 {
+	if doctype == DocTypeLocal && db.DatabaseContext.Options.LocalDocExpirySecs > 0 {
 		rawDocBytes, _, err := db.Bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs)))
 		if err != nil {
 			return nil, err
@@ -43,21 +45,17 @@ func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
 
 // Updates or deletes a special document.
 func (db *Database) putSpecial(doctype string, docid string, matchRev string, body Body) (string, error) {
-	key := db.realSpecialDocID(doctype, docid)
+	key := RealSpecialDocID(doctype, docid)
 	if key == "" {
 		return "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 	var revid string
 
-	expiry, expPresent, err := body.getExpiry()
-	if err != nil {
-		return "", base.HTTPErrorf(http.StatusBadRequest, "Invalid expiry: %v", err)
+	var expiry uint32
+	if doctype == DocTypeLocal {
+		expiry = base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs))
 	}
-
-	if expPresent && expiry == 0 && doctype == "local" {
-		expiry = uint32(base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs)))
-	}
-	_, err = db.Bucket.Update(key, expiry, func(value []byte) ([]byte, *uint32, error) {
+	_, err := db.Bucket.Update(key, expiry, func(value []byte) ([]byte, *uint32, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
 				return nil, nil, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
@@ -102,6 +100,6 @@ func (db *Database) DeleteSpecial(doctype string, docid string, revid string) er
 	return err
 }
 
-func (db *Database) realSpecialDocID(doctype string, docid string) string {
+func RealSpecialDocID(doctype string, docid string) string {
 	return base.SyncPrefix + doctype + ":" + docid
 }

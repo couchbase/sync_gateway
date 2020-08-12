@@ -1618,6 +1618,45 @@ func TestLocalDocs(t *testing.T) {
 	assertStatus(t, response, 404)
 }
 
+func TestLocalDocExpiry(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server bucket for expiry")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	timeNow := uint32(time.Now().Unix())
+	oneMoreHour := uint32(time.Now().Add(time.Hour).Unix())
+
+	// set localDocExpiry to 30m
+	rt.GetDatabase().Options.LocalDocExpirySecs = uint32(60 * 30)
+	log.Printf("Expiry expected between %d and %d", timeNow, oneMoreHour)
+
+	response := rt.SendRequest("PUT", "/db/_local/loc1", `{"hi": "there"}`)
+	assertStatus(t, response, 201)
+
+	goCBBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	require.True(t, ok)
+
+	localDocKey := db.RealSpecialDocID(db.DocTypeLocal, "loc1")
+	expiry, getMetaError := goCBBucket.GetExpiry(localDocKey)
+	log.Printf("Expiry after PUT is %v", expiry)
+	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
+	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
+	assert.NoError(t, getMetaError)
+
+	// Retrieve local doc, ensure non-zero expiry is preserved
+	response = rt.SendRequest("GET", "/db/_local/loc1", "")
+	assertStatus(t, response, 200)
+	expiry, getMetaError = goCBBucket.GetExpiry(localDocKey)
+	log.Printf("Expiry after GET is %v", expiry)
+	assert.True(t, expiry > timeNow, "expiry is not greater than current time")
+	assert.True(t, expiry < oneMoreHour, "expiry is not greater than current time")
+	assert.NoError(t, getMetaError)
+}
+
 func TestResponseEncoding(t *testing.T) {
 	// Make a doc longer than 1k so the HTTP response will be compressed:
 	str := "DORKY "

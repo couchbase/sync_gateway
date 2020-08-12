@@ -353,7 +353,7 @@ func (c *Checkpointer) _setCheckpoints(seq string) (err error) {
 func (c *Checkpointer) getLocalCheckpoint() (seq, rev string, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "getLocalCheckpoint")
 
-	checkpointBody, err := c.activeDB.GetSpecial("local", checkpointDocIDPrefix+c.clientID)
+	checkpointBody, err := c.activeDB.GetSpecial(DocTypeLocal, checkpointDocIDPrefix+c.clientID)
 	if err != nil {
 		if !base.IsKeyNotFoundError(c.activeDB.Bucket, err) {
 			return "", "", err
@@ -368,7 +368,7 @@ func (c *Checkpointer) getLocalCheckpoint() (seq, rev string, err error) {
 func (c *Checkpointer) setLocalCheckpoint(seq, parentRev string) (newRev string, err error) {
 	base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpoint(%v, %v)", seq, parentRev)
 
-	newRev, err = c.activeDB.putSpecial("local", checkpointDocIDPrefix+c.clientID, parentRev, Body{checkpointDocLastSeqKey: seq})
+	newRev, err = c.activeDB.putSpecial(DocTypeLocal, checkpointDocIDPrefix+c.clientID, parentRev, Body{checkpointDocLastSeqKey: seq})
 	if err != nil {
 		return "", err
 	}
@@ -384,7 +384,7 @@ func (c *Checkpointer) setLocalCheckpointWithRetry(seq, existingRevID string) (n
 }
 
 func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
-	key := activeDB.realSpecialDocID("local", checkpointDocIDPrefix+checkpointID)
+	key := RealSpecialDocID(DocTypeLocal, checkpointDocIDPrefix+checkpointID)
 	return activeDB.Bucket.Delete(key)
 }
 
