@@ -537,7 +537,7 @@ func (h *handler) handleBulkDocs() error {
 		offset := len("_local/")
 		docid, _ := doc[db.BodyId].(string)
 		idslug := docid[offset:]
-		revid, err = h.db.PutSpecial("local", idslug, doc)
+		revid, err = h.db.PutSpecial(db.DocTypeLocal, idslug, doc)
 		status := db.Body{}
 		status["id"] = docid
 		if err != nil {

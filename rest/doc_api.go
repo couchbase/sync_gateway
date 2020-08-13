@@ -477,7 +477,7 @@ func (h *handler) handleDeleteDoc() error {
 // HTTP handler for a GET of a _local document
 func (h *handler) handleGetLocalDoc() error {
 	docid := h.PathVar("docid")
-	value, err := h.db.GetSpecial("local", docid)
+	value, err := h.db.GetSpecial(db.DocTypeLocal, docid)
 	if err != nil {
 		return err
 	}
@@ -495,7 +495,7 @@ func (h *handler) handlePutLocalDoc() error {
 	body, err := h.readJSON()
 	if err == nil {
 		var revid string
-		revid, err = h.db.PutSpecial("local", docid, body)
+		revid, err = h.db.PutSpecial(db.DocTypeLocal, docid, body)
 		if err == nil {
 			h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":"_local/`+docid+`","ok":true,"rev":"`+revid+`"}`))
 		}
@@ -506,5 +506,5 @@ func (h *handler) handlePutLocalDoc() error {
 // HTTP handler for a DELETE of a _local document
 func (h *handler) handleDelLocalDoc() error {
 	docid := h.PathVar("docid")
-	return h.db.DeleteSpecial("local", docid, h.getQuery("rev"))
+	return h.db.DeleteSpecial(db.DocTypeLocal, docid, h.getQuery("rev"))
 }
