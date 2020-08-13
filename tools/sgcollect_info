@@ -278,7 +278,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
            log_file_pattern
         )
 
-        for log_file_item_name in glob.iglob(rotated_logs_pattern):
+        for log_file_item_name in glob.glob(rotated_logs_pattern) + glob.glob(rotated_logs_pattern + ".gz"):
             log_file_item_path = os.path.join(log_file_parent_dir, log_file_item_name)
             # As long as a task that monitors this log file path has not already been added, add a new task
             if log_file_item_path not in sg_log_file_paths:
@@ -288,6 +288,19 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
 
             # Track which log file paths have been added so far
             sg_log_file_paths[log_file_item_path] = log_file_item_path
+    elif guessed_logging_path and os.path.isdir(guessed_logging_path):
+        for _, sg_log_file in sg_log_files.items():
+            name, ext = os.path.splitext(sg_log_file)
+            log_file_pattern = "{0}*{1}".format(name, ext)
+            rotated_logs_pattern = os.path.join(guessed_logging_path, log_file_pattern)
+            for log_file_item_name in glob.glob(rotated_logs_pattern) + glob.glob(rotated_logs_pattern + ".gz"):
+                log_file_item_path = os.path.join(guessed_logging_path, log_file_item_name)
+                if log_file_item_path not in sg_log_file_paths:
+                    print('Capturing rotated log file {0}'.format(sg_log_file_path))
+                    task = add_file_task(sourcefile_path=log_file_item_path)
+                    task.no_header = True
+                    sg_tasks.append(task)
+                sg_log_file_paths[log_file_item_path] = log_file_item_path
 
     # Find log file path from SGW 2.1 style logging config
     guessed_log_file_path = extract_element_from_logging_config('log_file_path', config_str)
