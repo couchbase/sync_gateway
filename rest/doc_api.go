@@ -226,6 +226,9 @@ func (h *handler) handleGetAttachment() error {
 	if !h.db.ServeInsecureAttachmentTypes {
 
 		if contentTypeSet {
+			// This split is required as the content type field can have other elements after a ; such as charset,
+			// however, we only care about checking the first part. In the event that there is no ';' strings.Split just
+			// takes the full contentType string
 			contentTypeFirst := strings.Split(contentType, ";")[0]
 			switch contentTypeFirst {
 			case
