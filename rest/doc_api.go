@@ -209,10 +209,40 @@ func (h *handler) handleGetAttachment() error {
 	}
 	h.setHeader("Content-Length", strconv.FormatUint(uint64(len(data)), 10))
 
+	// #720
+	setContentDisposition := h.privs == adminPrivs
+
 	h.setHeader("Etag", strconv.Quote(digest))
-	if contentType, ok := meta["content_type"].(string); ok {
+
+	// Request will be returned with the same content type as is set on the attachment. The caveat to this is if the
+	// attachment has a content type which is vulnerable to a phishing attack. If this is the case we will return with
+	// the Content Disposition header so that browsers will download the attachment rather than attempt to render it
+	// unless overridden by config option. CBG-1004
+	contentType, contentTypeSet := meta["content_type"].(string)
+	if contentTypeSet {
 		h.setHeader("Content-Type", contentType)
 	}
+
+	if !h.db.ServeInsecureAttachmentTypes {
+
+		if contentTypeSet {
+			// This split is required as the content type field can have other elements after a ; such as charset,
+			// however, we only care about checking the first part. In the event that there is no ';' strings.Split just
+			// takes the full contentType string
+			contentTypeFirst := strings.Split(contentType, ";")[0]
+			switch contentTypeFirst {
+			case
+				"",
+				"text/html",
+				"application/xhtml+xml",
+				"image/svg+xml":
+				setContentDisposition = true
+			}
+		} else {
+			setContentDisposition = true
+		}
+	}
+
 	if encoding, ok := meta["encoding"].(string); ok {
 		if result, _ := h.getOptBoolQuery("content_encoding", true); result {
 			h.setHeader("Content-Encoding", encoding)
@@ -226,8 +256,8 @@ func (h *handler) handleGetAttachment() error {
 			h.setHeader("Content-Type", "application/gzip")
 		}
 	}
-	if h.privs == adminPrivs { // #720
-		h.setHeader("Content-Disposition", fmt.Sprintf("attachment; filename=%q", attachmentName))
+	if setContentDisposition {
+		h.setHeader("Content-Disposition", "attachment")
 
 	}
 	h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyAttachmentPullCount, 1)

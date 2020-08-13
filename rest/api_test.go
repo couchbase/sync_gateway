@@ -639,7 +639,7 @@ func TestManualAttachment(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/doc1/attach1", "")
 	assertStatus(t, response, 200)
 	goassert.Equals(t, string(response.Body.Bytes()), attachmentBody)
-	goassert.True(t, response.Header().Get("Content-Disposition") == `attachment; filename="attach1"`)
+	goassert.True(t, response.Header().Get("Content-Disposition") == `attachment`)
 	goassert.True(t, response.Header().Get("Content-Type") == attachmentContentType)
 
 	// try to overwrite that attachment
@@ -5144,4 +5144,82 @@ func TestImportOnWriteMigration(t *testing.T) {
 	// Update doc with xattr - successful update
 	response = rt.SendAdminRequest("PUT", "/db/doc1?rev=2-44ad6f128a2b1f75d0d0bb49b1fc0019", `{"value":"newer"}`)
 	assertStatus(t, response, http.StatusCreated)
+}
+
+func TestAttachmentContentType(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	type attTest struct {
+		setContentType                bool
+		putContentType                string
+		expectedContentDispositionSet bool
+	}
+
+	tests := []attTest{
+		{
+			setContentType:                true,
+			putContentType:                "text/html",
+			expectedContentDispositionSet: true,
+		},
+		{
+			setContentType:                true,
+			putContentType:                "text/html; charset=utf-8",
+			expectedContentDispositionSet: true,
+		},
+		{
+			setContentType:                true,
+			putContentType:                "application/xhtml+xml",
+			expectedContentDispositionSet: true,
+		},
+		{
+			setContentType:                true,
+			putContentType:                "image/svg+xml",
+			expectedContentDispositionSet: true,
+		},
+		{
+			setContentType:                true,
+			putContentType:                "",
+			expectedContentDispositionSet: true,
+		},
+		{
+			setContentType:                true,
+			putContentType:                "application/json",
+			expectedContentDispositionSet: false,
+		},
+		{
+			setContentType:                false,
+			putContentType:                "",
+			expectedContentDispositionSet: true,
+		},
+	}
+
+	// Tests will be ran against default config
+	for index, test := range tests {
+		contentType := ""
+		if test.setContentType {
+			contentType = fmt.Sprintf(`, "content_type":"%s"`, test.putContentType)
+		}
+		attachmentBody := fmt.Sprintf(`{"key":"val", "_attachments": {"login.aspx": {"data": "PGgxPllvdXJCYW5rIExvZ2luPC9oMT4KPGlucHV0Lz4KPGlucHV0Lz4KPGlucHV0IHR5cGU9InN1Ym1pdCIvPg=="%s}}}`, contentType)
+		response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc_%d", index), attachmentBody)
+		assertStatus(t, response, http.StatusCreated)
+
+		response = rt.SendRequest("GET", fmt.Sprintf("/db/doc_%d/login.aspx", index), "")
+		contentDisposition := response.Header().Get("Content-Disposition")
+
+		if test.expectedContentDispositionSet {
+			assert.Equal(t, `attachment`, contentDisposition, fmt.Sprintf("Failed with doc_%d", index))
+		} else {
+			assert.Equal(t, "", contentDisposition)
+		}
+	}
+
+	// Ran against allow insecure
+	rt.DatabaseConfig.ServeInsecureAttachmentTypes = true
+	for index, _ := range tests {
+		response := rt.SendRequest("GET", fmt.Sprintf("/db/doc_allow_insecure_%d/login.aspx", index), "")
+		contentDisposition := response.Header().Get("Content-Disposition")
+
+		assert.Equal(t, "", contentDisposition)
+	}
 }
