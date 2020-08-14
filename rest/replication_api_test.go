@@ -889,7 +889,6 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 		assert.Equal(t, expected.Username, actual.Username, "Couldn't redact username")
 		assert.Equal(t, expected.Password, actual.Password, "Couldn't redact password")
 	}
-	replication1Config.Username = "****"
 	replication1Config.Password = "****"
 	checkReplicationConfig(&replication1Config, &configResponse)
 
@@ -909,7 +908,7 @@ func TestReplicationAPIWithAuthCredentials(t *testing.T) {
 	configResponse = db.ReplicationConfig{}
 	err = json.Unmarshal(response.BodyBytes(), &configResponse)
 	require.NoError(t, err, "Error un-marshalling replication response")
-	replication2Config.Remote = "http://****:****@remote:4984/db"
+	replication2Config.Remote = "http://bob:****@remote:4984/db"
 	//checkReplicationConfig(&replication2Config, &configResponse)
 
 	// Check whether auth are credentials redacted from all replications response
@@ -1103,7 +1102,7 @@ func TestValidateReplicationWithInvalidURL(t *testing.T) {
 	replicationConfig := db.ReplicationConfig{Remote: "http://user:foo{bar=pass@remote:4984/db"}
 	err := replicationConfig.ValidateReplication(false)
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
-	assert.Contains(t, err.Error(), "http://****:****@remote:4984/db")
+	assert.Contains(t, err.Error(), "http://user:****@remote:4984/db")
 	assert.NotContains(t, err.Error(), "user:foo{bar=pass")
 
 	// Replication config with no credentials in an invalid remote URL
@@ -1171,14 +1170,13 @@ func TestGetStatusWithReplication(t *testing.T) {
 	// Check replication1 details in cluster response
 	repl, ok := database.SGRCluster.Replications[config1.ID]
 	assert.True(t, ok, "Error getting replication")
-	config1.Username = "****"
 	config1.Password = "****"
 	assertReplication(config1, repl)
 
 	// Check replication2 details in cluster response
 	repl, ok = database.SGRCluster.Replications[config2.ID]
 	assert.True(t, ok, "Error getting replication")
-	config2.Remote = "http://****:****@remote:4984/db"
+	config2.Remote = "http://bob:****@remote:4984/db"
 	assertReplication(config2, repl)
 
 	// Delete both replications

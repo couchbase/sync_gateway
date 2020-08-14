@@ -55,6 +55,18 @@ func RedactBasicAuthURL(url string) string {
 	return basicAuthURLRegexp.ReplaceAllLiteralString(url, "://****:****@")
 }
 
+// basicAuthURLPasswordRegexp is used to match the HTTP basic auth credentials component of a URL
+var basicAuthURLPasswordRegexp = regexp.MustCompile(`:\/\/(?P<username>[^:/]+):(?P<password>[^@/]+)@`)
+
+// RedactBasicAuthURL returns the given string, with a redacted HTTP basic auth password component.
+func RedactBasicAuthURLPassword(url string) string {
+	if basicAuthURLPasswordRegexp.MatchString(url) {
+		redacted := fmt.Sprintf("://${%s}:****@", basicAuthURLPasswordRegexp.SubexpNames()[1])
+		return basicAuthURLPasswordRegexp.ReplaceAllString(url, redacted)
+	}
+	return url
+}
+
 // GenerateRandomSecret returns a cryptographically-secure 160-bit random number encoded as a hex string.
 func GenerateRandomSecret() string {
 	val, err := randCryptoHex(160)

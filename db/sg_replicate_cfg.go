@@ -146,7 +146,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 	remoteURL, err := url.Parse(rc.Remote)
 	if err != nil {
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v",
-			base.RedactBasicAuthURL(rc.Remote), base.RedactBasicAuthURL(err.Error()))
+			base.RedactBasicAuthURLPassword(rc.Remote), base.RedactBasicAuthURLPassword(err.Error()))
 	}
 
 	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {
@@ -272,17 +272,14 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 	return bytes.Equal(currentBytes, compareToBytes), nil
 }
 
-// Redact returns the ReplicationCfg with auth credentials of the remote database
-// redacted. Credentials will be redacted from replication config and remote URL.
-func (r *ReplicationConfig) Redact() *ReplicationConfig {
+// Redacted returns the ReplicationCfg with password of the remote database redacted from
+// both replication config and remote URL, i.e., any password will be replaced with xxxxx.
+func (r *ReplicationConfig) Redacted() *ReplicationConfig {
 	config := *r
-	if config.Username != "" {
-		config.Username = "****"
-	}
 	if config.Password != "" {
 		config.Password = "****"
 	}
-	config.Remote = base.RedactBasicAuthURL(config.Remote)
+	config.Remote = base.RedactBasicAuthURLPassword(config.Remote)
 	return &config
 }
 
@@ -1080,7 +1077,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 				return nil, err
 			}
 		}
-		status.Config = remoteCfg.ReplicationConfig.Redact()
+		status.Config = remoteCfg.ReplicationConfig.Redacted()
 	}
 
 	if !options.IncludeError && status.Status == ReplicationStateError {
