@@ -720,6 +720,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 				base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
 			})
 			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
+			// SGCollect relies on this directory path to pick up the standard and rotated log files.
 			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
 		}
 

@@ -264,6 +264,11 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
     lookup_std_log_files(sg_log_files, os_home_dirs)
 
     # Find log file path from logging.["default"] style config
+    # When the log file path from the default style config is a directory, we need to look for all
+    # standard SG log files inside the directory including rotated log files. But that handling is
+    # not included here, it relies on the fall through to the 2.1 style handling to pick up those
+    # log files that were written to the directory path instead; SG exposes the log_file_path as
+    # the parent directory of the file specified against LogFilePath through /_config endpoint.
     guessed_logging_path = extract_element_from_default_logging_config('LogFilePath', config_str)
     if guessed_logging_path and os.path.isfile(guessed_logging_path):
         # Get the parent directory and the log file name
@@ -285,21 +290,6 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
 
         # Lookup standard SG log files inside the parent directory.
         lookup_std_log_files(sg_log_files, [log_file_parent_dir])
-    elif guessed_logging_path and os.path.isdir(guessed_logging_path):
-        for _, sg_log_file in sg_log_files.items():
-            name, ext = os.path.splitext(sg_log_file)
-
-            # Lookup standard SG log files inside the directory, including rotated log files.
-            rotated_logs_pattern = os.path.join(guessed_logging_path, "{0}*{1}".format(name, ext))
-            for log_file_item_name in glob.iglob(rotated_logs_pattern):
-                log_file_item_path = os.path.join(guessed_logging_path, log_file_item_name)
-                if log_file_item_path not in sg_log_file_paths:
-                    print('Capturing rotated log file {0}'.format(log_file_item_path))
-                    task = add_file_task(sourcefile_path=log_file_item_path)
-                    task.no_header = True
-                    sg_tasks.append(task)
-                    # Track which log file paths have been added so far.
-                    sg_log_file_paths[log_file_item_path] = log_file_item_path
 
     # Find log file path from SGW 2.1 style logging config
     guessed_log_file_path = extract_element_from_logging_config('log_file_path', config_str)
