@@ -18,9 +18,7 @@ func TestDuplicateDocID(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 
@@ -67,9 +65,7 @@ func TestLateArrivingSequence(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
@@ -101,9 +97,7 @@ func TestLateSequenceAsFirst(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
@@ -135,9 +129,7 @@ func TestDuplicateLateArrivingSequence(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
@@ -210,9 +202,7 @@ func TestPrependChanges(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	// 1. Test prepend to empty cache
@@ -395,9 +385,7 @@ func TestChannelCacheRemove(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Test1", 0, &expvar.Map{})
@@ -436,9 +424,7 @@ func TestChannelCacheStats(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	testStats := &expvar.Map{}
@@ -508,9 +494,7 @@ func TestChannelCacheStatsOnPrune(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	testStats := &expvar.Map{}
@@ -540,9 +524,7 @@ func TestChannelCacheStatsOnPrepend(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	b := base.GetTestBucket(t)
-	defer b.Close()
-	context, err := NewDatabaseContext("db", b.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	testStats := &expvar.Map{}

@@ -16,11 +16,10 @@ const (
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
-func testBucketWithViewsAndBrokenDoc(t testing.TB) (tBucket *base.TestBucket, numDocs int) {
+func testBucketWithViewsAndBrokenDoc(t testing.TB) (bucket *base.TestBucket, numDocs int) {
 
 	numDocsAdded := 0
-	tBucket = base.GetTestBucket(t)
-	bucket := tBucket.Bucket
+	bucket = base.GetTestBucket(t)
 
 	err := installViews(bucket)
 	require.NoError(t, err)
@@ -51,7 +50,7 @@ func testBucketWithViewsAndBrokenDoc(t testing.TB) (tBucket *base.TestBucket, nu
 	require.NoError(t, err)
 	numDocsAdded++
 
-	return tBucket, numDocsAdded
+	return bucket, numDocsAdded
 
 }
 

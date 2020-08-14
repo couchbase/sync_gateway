@@ -1970,8 +1970,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			b.StopTimer()
-			testBucket := base.GetTestBucket(b)
-			context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+			context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			changeCache := &changeCache{}
 			if err := changeCache.Init(context, nil, nil); err != nil {
@@ -2196,8 +2195,7 @@ func BenchmarkDocChanged(b *testing.B) {
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			b.StopTimer()
-			testBucket := base.GetTestBucket(b)
-			context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+			context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
 			changeCache := &changeCache{}
 			if err := changeCache.Init(context, nil, nil); err != nil {

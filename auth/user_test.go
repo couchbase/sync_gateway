@@ -19,9 +19,8 @@ func TestUserAuthenticateDisabled(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 
-	gTestBucket := base.GetTestBucket(t)
-	defer gTestBucket.Close()
-	bucket := gTestBucket.Bucket
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
 
 	// Create user
 	auth := NewAuthenticator(bucket, nil)
@@ -55,9 +54,8 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 
-	gTestBucket := base.GetTestBucket(t)
-	defer gTestBucket.Close()
-	bucket := gTestBucket.Bucket
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
 
 	// Reset bcrypt cost after test
 	defer func() { require.NoError(t, SetBcryptCost(bcryptDefaultCost)) }()

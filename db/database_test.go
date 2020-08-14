@@ -1683,7 +1683,7 @@ func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
 			}
 			AddOptionsFromEnvironmentVariables(&options)
 
-			context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
+			context, err := NewDatabaseContext("db", testBucket, false, options)
 			assert.Error(t, err, "Couldn't create context for database 'db'")
 			assert.Contains(t, err.Error(), tc.expectedError)
 			assert.Nil(t, context, "Database context shouldn't be created")
@@ -1694,7 +1694,6 @@ func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
 }
 
 func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
 	tests := []struct {
 		name          string
 		inputOptions  *auth.OIDCOptions
@@ -1736,8 +1735,9 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 				OIDCOptions: tc.inputOptions,
 			}
 			AddOptionsFromEnvironmentVariables(&options)
-			context, err := NewDatabaseContext("db", testBucket.Bucket, false, options)
+			context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, options)
 			assert.NoError(t, err, "Couldn't create context for database 'db'")
+			defer context.Close()
 			assert.NotNil(t, context, "Database context should be created")
 
 			database, err := CreateDatabase(context)
@@ -1745,7 +1745,6 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 			assert.NoError(t, err, "Couldn't create database 'db'")
 		})
 	}
-	testBucket.Close()
 }
 
 func TestGetOIDCProvider(t *testing.T) {
