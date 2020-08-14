@@ -18,17 +18,16 @@ func TestInitializeIndexes(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
-	goCbBucket, isGoCBBucket := base.AsGoCBBucket(testBucket)
+	goCbBucket, isGoCBBucket := base.AsGoCBBucket(db.Bucket)
 	require.True(t, isGoCBBucket)
 
 	dropErr := base.DropAllBucketIndexes(goCbBucket)
 	assert.NoError(t, dropErr, "Error dropping all indexes")
 
-	initErr := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	initErr := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
 	assert.NoError(t, initErr, "Error initializing all indexes")
 
 	if !base.TestsDisableGSI() {
@@ -36,7 +35,7 @@ func TestInitializeIndexes(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	validateErr := validateAllIndexesOnline(testBucket)
+	validateErr := validateAllIndexesOnline(db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }
@@ -79,11 +78,10 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
+	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	assert.True(t, ok)
 
 	// We have one xattr-only index - adjust expected indexes accordingly
@@ -98,7 +96,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	err := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
@@ -117,7 +115,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
-	err = InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	err = InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 }
 
@@ -127,11 +125,10 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
+	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	assert.True(t, ok)
 
 	copiedIndexes := copySGIndexes(sgIndexes)
@@ -160,10 +157,10 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
 	// Restore indexes after test
-	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	err := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(testBucket)
+	validateErr := validateAllIndexesOnline(db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }
@@ -174,13 +171,12 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	copiedIndexes := copySGIndexes(sgIndexes)
 
-	gocbBucket, ok := base.AsGoCBBucket(testBucket.Bucket)
+	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	assert.True(t, ok)
 
 	_, err := removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), db.UseViews())
@@ -217,10 +213,10 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Restore indexes after test
-	err = InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	err = InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(testBucket)
+	validateErr := validateAllIndexesOnline(db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
@@ -230,11 +226,10 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
-	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
+	leakyBucket := base.NewLeakyBucket(db.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 	copiedIndexes := copySGIndexes(sgIndexes)
 
 	//Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
@@ -263,10 +258,10 @@ func TestRemoveObsoleteIndexOnFail(t *testing.T) {
 	}
 
 	// Restore indexes after test
-	err := InitializeIndexes(testBucket, db.UseXattrs(), 0)
+	err := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
-	validateErr := validateAllIndexesOnline(testBucket)
+	validateErr := validateAllIndexesOnline(db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
 
 }

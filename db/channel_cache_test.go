@@ -29,9 +29,9 @@ func TestChannelCacheMaxSize(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	bucket := base.GetTestBucket(t)
+
+	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	require.NoError(t, err)
 	defer context.Close()
 	cache := context.changeCache.getChannelCache()

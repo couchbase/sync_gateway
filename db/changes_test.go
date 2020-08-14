@@ -30,8 +30,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
@@ -131,8 +130,7 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -216,8 +214,7 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 		t.Skip("This test is known to be failing against couchbase server with XATTRS enabled.  Same error as TestDocDeletionFromChannelCoalescedRemoved")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -289,9 +286,8 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 
 func TestActiveOnlyCacheUpdate(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	db := setupTestDB(t)
+	defer db.Close()
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
 	// Create 10 documents
@@ -354,8 +350,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 func BenchmarkChangesFeedDocUnmarshalling(b *testing.B) {
 	defer base.SetUpBenchmarkLogging(base.LevelWarn, base.KeyHTTP)()
 
-	db, testBucket := setupTestDB(b)
-	defer testBucket.Close()
+	db := setupTestDB(b)
 	defer db.Close()
 
 	fieldVal := func(valSizeBytes int) string {

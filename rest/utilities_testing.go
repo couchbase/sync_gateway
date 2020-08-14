@@ -232,12 +232,12 @@ func (rt *RestTester) Close() {
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
+	if rt.RestTesterServerContext != nil {
+		rt.RestTesterServerContext.Close()
+	}
 	if rt.testBucket != nil {
 		rt.testBucket.Close()
 		rt.testBucket = nil
-	}
-	if rt.RestTesterServerContext != nil {
-		rt.RestTesterServerContext.Close()
 	}
 }
 

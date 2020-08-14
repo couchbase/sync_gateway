@@ -73,6 +73,10 @@ type TestBucketPool struct {
 
 	// verbose flag controls debug test pool logging.
 	verbose AtomicBool
+
+	// keep track of tests that don't close their buckets, map of test names to bucket names
+	unclosedBuckets     map[string]map[string]struct{}
+	unclosedBucketsLock sync.Mutex
 }
 
 // NewTestBucketPool initializes a new TestBucketPool. To be called from TestMain for packages requiring test buckets.
@@ -80,7 +84,8 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	// We can safely skip setup when we want Walrus buckets to be used. They'll be created on-demand via GetTestBucketAndSpec.
 	if !TestUseCouchbaseServer() {
 		tbp := TestBucketPool{
-			bucketInitFunc: bucketInitFunc,
+			bucketInitFunc:  bucketInitFunc,
+			unclosedBuckets: make(map[string]map[string]struct{}),
 		}
 		tbp.verbose.Set(tbpVerbose())
 		return &tbp
@@ -112,6 +117,7 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 		defaultBucketSpec:      tbpDefaultBucketSpec,
 		preserveBuckets:        preserveBuckets,
 		bucketInitFunc:         bucketInitFunc,
+		unclosedBuckets:        make(map[string]map[string]struct{}),
 	}
 
 	tbp.verbose.Set(tbpVerbose())
@@ -154,6 +160,30 @@ func (tbp *TestBucketPool) Logf(ctx context.Context, format string, args ...inte
 	_, _ = fmt.Fprintf(consoleFOutput, format+"\n", args...)
 }
 
+func (tbp *TestBucketPool) markBucketOpened(t testing.TB, b Bucket) {
+	tbp.unclosedBucketsLock.Lock()
+	defer tbp.unclosedBucketsLock.Unlock()
+
+	_, ok := tbp.unclosedBuckets[t.Name()]
+	if !ok {
+		tbp.unclosedBuckets[t.Name()] = make(map[string]struct{})
+	}
+
+	tbp.unclosedBuckets[t.Name()][b.GetName()] = struct{}{}
+}
+
+func (tbp *TestBucketPool) markBucketClosed(t testing.TB, b Bucket) {
+	tbp.unclosedBucketsLock.Lock()
+	defer tbp.unclosedBucketsLock.Unlock()
+
+	if tMap, ok := tbp.unclosedBuckets[t.Name()]; ok {
+		delete(tMap, b.GetName())
+		if len(tMap) == 0 {
+			delete(tbp.unclosedBuckets, t.Name())
+		}
+	}
+}
+
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
@@ -182,6 +212,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		}
 		atomic.AddInt32(&tbp.stats.TotalBucketInitCount, 1)
 		atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(initFuncStart).Nanoseconds())
+		tbp.markBucketOpened(t, b)
 
 		atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 		openedStart := time.Now()
@@ -195,6 +226,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
 			atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 			atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
+			tbp.markBucketClosed(t, b)
 			b.Close()
 		}
 	}
@@ -217,6 +249,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 	atomic.AddInt64(&tbp.stats.TotalWaitingForReadyBucketNano, time.Since(waitingBucketStart).Nanoseconds())
 	ctx = bucketCtx(ctx, gocbBucket)
 	tbp.Logf(ctx, "Got test bucket from pool")
+	tbp.markBucketOpened(t, gocbBucket)
 
 	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
 	bucketOpenStart := time.Now()
@@ -230,6 +263,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		tbp.Logf(ctx, "Teardown called - closing bucket")
 		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
 		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(bucketOpenStart).Nanoseconds())
+		tbp.markBucketClosed(t, gocbBucket)
 		gocbBucket.Close()
 
 		if tbp.preserveBuckets && t.Failed() {
@@ -317,6 +351,14 @@ func (tbp *TestBucketPool) printStats() {
 		tbp.Logf(ctx, "Total time tests using buckets: %s", totalBucketUseTime)
 	}
 	tbp.Logf(ctx, "==========================")
+
+	tbp.unclosedBucketsLock.Lock()
+	for testName, buckets := range tbp.unclosedBuckets {
+		for bucketName := range buckets {
+			tbp.Logf(ctx, "WARNING: %s left %s bucket unclosed!", testName, bucketName)
+		}
+	}
+	tbp.unclosedBucketsLock.Unlock()
 
 	tbp.verbose.Set(origVerbose)
 }

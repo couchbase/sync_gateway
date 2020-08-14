@@ -16,11 +16,10 @@ const (
 	docIdProblematicRevTree2 = "docIdProblematicRevTree2"
 )
 
-func testBucketWithViewsAndBrokenDoc(t testing.TB) (tBucket *base.TestBucket, numDocs int) {
+func testBucketWithViewsAndBrokenDoc(t testing.TB) (bucket *base.TestBucket, numDocs int) {
 
 	numDocsAdded := 0
-	tBucket = base.GetTestBucket(t)
-	bucket := tBucket.Bucket
+	bucket = base.GetTestBucket(t)
 
 	err := installViews(bucket)
 	require.NoError(t, err)
@@ -51,7 +50,7 @@ func testBucketWithViewsAndBrokenDoc(t testing.TB) (tBucket *base.TestBucket, nu
 	require.NoError(t, err)
 	numDocsAdded++
 
-	return tBucket, numDocsAdded
+	return bucket, numDocsAdded
 
 }
 
@@ -62,9 +61,8 @@ func TestRepairBucket(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 
-	testBucket, numDocs := testBucketWithViewsAndBrokenDoc(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket, numDocs := testBucketWithViewsAndBrokenDoc(t)
+	defer bucket.Close()
 
 	repairJob := func(docId string, originalCBDoc []byte) (transformedCBDoc []byte, transformed bool, err error) {
 		log.Printf("repairJob called back")
@@ -94,9 +92,8 @@ func TestRepairBucketRevTreeCycles(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 
-	testBucket, _ := testBucketWithViewsAndBrokenDoc(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket, _ := testBucketWithViewsAndBrokenDoc(t)
+	defer bucket.Close()
 
 	repairBucket := NewRepairBucket(bucket)
 
@@ -144,9 +141,8 @@ func TestRepairBucketDryRun(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 
-	testBucket, _ := testBucketWithViewsAndBrokenDoc(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket, _ := testBucketWithViewsAndBrokenDoc(t)
+	defer bucket.Close()
 
 	repairBucket := NewRepairBucket(bucket)
 

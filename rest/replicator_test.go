@@ -143,7 +143,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DbConfig{
@@ -178,7 +178,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb1,
 	})
@@ -558,7 +558,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DbConfig{
@@ -593,7 +593,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb1,
 	})
@@ -650,7 +650,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DbConfig{
@@ -667,7 +667,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb1,
 	})
@@ -1044,7 +1044,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DbConfig{
@@ -1061,7 +1061,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb1,
 	})
@@ -1138,7 +1138,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DbConfig{
@@ -1170,7 +1170,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb1,
 	})
@@ -1237,7 +1237,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
+
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DbConfig{
@@ -1269,7 +1269,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
 	// Active
 	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
+
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb1,
 	})
@@ -1387,7 +1387,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			// Passive
 			tb2 := base.GetTestBucket(t)
-			defer tb2.Close()
+
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: tb2,
 				DatabaseConfig: &DbConfig{
@@ -1422,7 +1422,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			// Active
 			tb1 := base.GetTestBucket(t)
-			defer tb1.Close()
+
 			rt1 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: tb1,
 			})
@@ -1575,10 +1575,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)()
 
 			// Passive
-			tb2 := base.GetTestBucket(t)
-			defer tb2.Close()
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: tb2,
+				TestBucket: base.GetTestBucket(t),
 				DatabaseConfig: &DbConfig{
 					Users: map[string]*db.PrincipalConfig{
 						"alice": {
@@ -1610,10 +1608,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			passiveDBURL.User = url.UserPassword("alice", "pass")
 
 			// Active
-			tb1 := base.GetTestBucket(t)
-			defer tb1.Close()
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: tb1,
+				TestBucket: base.GetTestBucket(t),
 			})
 			defer rt1.Close()
 
@@ -1730,10 +1726,8 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
@@ -1747,10 +1741,8 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		TestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 
@@ -1810,10 +1802,8 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
@@ -1827,10 +1817,8 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		TestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 
@@ -1880,9 +1868,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
@@ -1912,9 +1899,8 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		TestBucket: base.GetTestBucket(t),
 	})
 
 	arConfig := db.ActiveReplicatorConfig{
@@ -2203,9 +2189,8 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
@@ -2228,9 +2213,8 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		TestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 
@@ -2349,9 +2333,8 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
@@ -2374,9 +2357,8 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
-	tb1 := base.GetTestBucket(t)
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		TestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 
@@ -2456,10 +2438,8 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
-	tb2 := base.GetTestBucket(t)
-	defer tb2.Close()
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
+		TestBucket: base.GetTestBucket(t),
 		DatabaseConfig: &DbConfig{
 			AllowConflicts: base.BoolPtr(false),
 			Users: map[string]*db.PrincipalConfig{
@@ -2474,10 +2454,8 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	defer rt2.Close()
 
 	// Active
-	tb1 := base.GetTestBucket(t)
-	defer tb1.Close()
 	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
+		TestBucket: base.GetTestBucket(t),
 	})
 	defer rt1.Close()
 

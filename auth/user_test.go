@@ -19,9 +19,8 @@ func TestUserAuthenticateDisabled(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 
-	gTestBucket := base.GetTestBucket(t)
-	defer gTestBucket.Close()
-	bucket := gTestBucket.Bucket
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
 
 	// Create user
 	auth := NewAuthenticator(bucket, nil)
@@ -55,9 +54,8 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
 
-	gTestBucket := base.GetTestBucket(t)
-	defer gTestBucket.Close()
-	bucket := gTestBucket.Bucket
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
 
 	// Reset bcrypt cost after test
 	defer func() { require.NoError(t, SetBcryptCost(bcryptDefaultCost)) }()
@@ -152,7 +150,7 @@ func TestCanSeeChannelSince(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+	auth := NewAuthenticator(testBucket, nil)
 	freeChannels := base.SetFromArray([]string{"ESPN", "HBO", "FX", "AMC"})
 	user, err := auth.NewUser("user", "password", freeChannels)
 	assert.Nil(t, err)
@@ -180,7 +178,7 @@ func TestGetAddedChannels(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+	auth := NewAuthenticator(testBucket, nil)
 
 	role, err := auth.NewRole("music", channels.SetOf(t, "Spotify", "Youtube"))
 	assert.Nil(t, err)
@@ -222,7 +220,8 @@ func TestUserAuthenticateWithDisabledUserAccount(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	auth := NewAuthenticator(testBucket, nil)
 
 	user, err := auth.NewUser(username, password, base.Set{})
 	assert.NoError(t, err)
@@ -243,7 +242,8 @@ func TestUserAuthenticateWithOldPasswordHash(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	auth := NewAuthenticator(testBucket, nil)
 
 	user, err := auth.NewUser(username, password, base.Set{})
 	assert.NoError(t, err)
@@ -263,7 +263,8 @@ func TestUserAuthenticateWithBadPasswordHash(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	auth := NewAuthenticator(testBucket, nil)
 
 	user, err := auth.NewUser(username, password, base.Set{})
 	assert.NoError(t, err)
@@ -282,7 +283,8 @@ func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	auth := NewAuthenticator(testBucket, nil)
 
 	user, err := auth.NewUser(username, password, base.Set{})
 	assert.NoError(t, err)

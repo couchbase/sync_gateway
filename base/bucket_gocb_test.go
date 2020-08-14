@@ -58,9 +58,8 @@ func TestTranscoder(t *testing.T) {
 
 func TestSetGetRaw(t *testing.T) {
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key := t.Name()
 	val := []byte("bar")
@@ -87,9 +86,8 @@ func TestSetGetRaw(t *testing.T) {
 
 func TestAddRaw(t *testing.T) {
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key := t.Name()
 	val := []byte("bar")
@@ -129,11 +127,10 @@ func TestAddRaw(t *testing.T) {
 //   (see CBG-463)
 func TestAddRawTimeoutRetry(t *testing.T) {
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
-	gocbBucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	gocbBucket, ok := bucket.Bucket.(*CouchbaseBucketGoCB)
 	if ok {
 		gocbBucket.Bucket.SetOperationTimeout(250 * time.Millisecond)
 	}
@@ -164,9 +161,8 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 
 func TestBulkGetRaw(t *testing.T) {
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	keySet := make([]string, 1000)
 	valueSet := make(map[string][]byte, 1000)
@@ -189,7 +185,7 @@ func TestBulkGetRaw(t *testing.T) {
 		valueSet[key] = val
 
 		_, _, err := bucket.GetRaw(key)
-		require.Truef(t, IsKeyNotFoundError(testBucket.Bucket, err), "Key [%s] should not exist yet, expected error but didn't get one.", key)
+		require.Truef(t, IsKeyNotFoundError(bucket, err), "Key [%s] should not exist yet, expected error but didn't get one.", key)
 		require.NoError(t, bucket.SetRaw(key, 0, val))
 	}
 
@@ -230,9 +226,8 @@ func TestBulkGetRaw(t *testing.T) {
 
 func TestWriteCasBasic(t *testing.T) {
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key := t.Name()
 	val := []byte("bar2")
@@ -272,9 +267,8 @@ func TestWriteCasBasic(t *testing.T) {
 
 func TestWriteCasAdvanced(t *testing.T) {
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key := t.Name()
 
@@ -316,9 +310,8 @@ func TestSetBulk(t *testing.T) {
 	// However, there's no commented code in isRecoverableGoCBError()
 	t.Skip("TestSetBulk is currently not passing against both walrus and couchbase server.  Error logs: https://gist.github.com/tleyden/22d69ff9e627d7ad37043200614a3cc5")
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key1 := t.Name() + "1"
 	key2 := t.Name() + "2"
@@ -418,9 +411,8 @@ func numNonNilErrors(entries []*sgbucket.BulkSetEntry) int {
 
 func TestUpdate(t *testing.T) {
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key := t.Name()
 	valInitial := []byte("initial")
@@ -474,9 +466,8 @@ func TestUpdate(t *testing.T) {
 
 func TestIncrCounter(t *testing.T) {
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key := t.Name()
 
@@ -520,9 +511,8 @@ func TestGetAndTouchRaw(t *testing.T) {
 	key := t.Name()
 	val := []byte("bar")
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	defer func() {
 		err := bucket.Delete(key)
@@ -627,9 +617,8 @@ func TestXattrWriteCasSimple(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -761,9 +750,8 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	key := t.Name()
 	xattrName := SyncXattrName
@@ -2062,9 +2050,8 @@ func TestCouchbaseServerVersion(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
 	major, _, _ := bucket.CouchbaseServerVersion()
 	assert.NotZero(t, major)
@@ -2076,11 +2063,10 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
-	gocbBucket := bucket.(*CouchbaseBucketGoCB)
+	gocbBucket := bucket.Bucket.(*CouchbaseBucketGoCB)
 	maxTTL, err := gocbBucket.GetMaxTTL()
 	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, maxTTL, 0)
@@ -2271,10 +2257,10 @@ func verifyDocDeletedXattrExists(bucket *CouchbaseBucketGoCB, key, xattrName str
 func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
-	testBucket := GetTestBucket(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
-	defer testBucket.Close()
-	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	bucketGoCB, ok := bucket.Bucket.(*CouchbaseBucketGoCB)
 	require.True(t, ok, "Can't cast to bucket")
 
 	// Create a document with extended attributes
@@ -2297,9 +2283,9 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 	updatedXattrVal["rev"] = "2-EmDC"
 
 	// Attempt to delete the document body (deleteBody = true); isDelete is true to mark this doc as a tombstone.
-	_, errDelete := bucket.UpdateXattr(key, xattrKey, 0, cas, &updatedXattrVal, true, true)
+	_, errDelete := bucketGoCB.UpdateXattr(key, xattrKey, 0, cas, &updatedXattrVal, true, true)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-	assert.True(t, verifyDocDeletedXattrExists(bucket, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
+	assert.True(t, verifyDocDeletedXattrExists(bucketGoCB, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
 	var docResult map[string]interface{}
 	var xattrResult map[string]interface{}
@@ -2312,10 +2298,10 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 func TestUpdateXattrWithDeleteBodyAndIsNotDelete(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
-	testBucket := GetTestBucket(t)
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
 
-	defer testBucket.Close()
-	bucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
+	bucketGoCB, ok := bucket.Bucket.(*CouchbaseBucketGoCB)
 	require.True(t, ok, "Can't cast to bucket")
 
 	// Create a document with extended attributes
@@ -2338,9 +2324,9 @@ func TestUpdateXattrWithDeleteBodyAndIsNotDelete(t *testing.T) {
 	updatedXattrVal["rev"] = "2-EmDC"
 
 	// Attempt to delete the document body (deleteBody = true); isDelete is false
-	_, errDelete := bucket.UpdateXattr(key, xattrKey, 0, cas, &updatedXattrVal, true, false)
+	_, errDelete := bucketGoCB.UpdateXattr(key, xattrKey, 0, cas, &updatedXattrVal, true, false)
 	assert.NoError(t, errDelete, fmt.Sprintf("Unexpected error deleting %s", key))
-	assert.True(t, verifyDocDeletedXattrExists(bucket, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
+	assert.True(t, verifyDocDeletedXattrExists(bucketGoCB, key, xattrKey), fmt.Sprintf("Expected doc %s to be deleted", key))
 
 	var docResult map[string]interface{}
 	var xattrResult map[string]interface{}

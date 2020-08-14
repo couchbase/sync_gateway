@@ -743,16 +743,15 @@ func BoolPtr(b bool) *bool {
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string, connSpec *gocbconnstr.ConnSpec) (httpUrls []string, err error) {
 
 	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
-	switch typedBucket := bucket.(type) {
-	case *CouchbaseBucketGoCB:
+	typedBucket, ok := AsGoCBBucket(bucket)
+	if ok {
 		if typedBucket.IoRouter() != nil {
 			mgmtEps := typedBucket.IoRouter().MgmtEps()
 			return mgmtEps, nil
 		}
-	default:
-		// No bucket-based handling, fall back to URI parsing
-
 	}
+
+	// No bucket-based handling, fall back to URI parsing
 
 	// First try to do a simple URL parse, which will only work for http:// and https:// urls where there
 	// is a single host.  If that works, return the result

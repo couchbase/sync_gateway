@@ -807,14 +807,19 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 }
 
 func TestValidateServerContext(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
 
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()
+
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close()
 
@@ -860,6 +865,7 @@ func TestValidateServerContext(t *testing.T) {
 	require.Len(t, config.setupAndValidateDatabases(), 0, "Unexpected error while validating databases")
 
 	sc := NewServerContext(config)
+	defer sc.Close()
 	for _, dbConfig := range config.Databases {
 		_, err := sc.AddDatabaseFromConfig(dbConfig)
 		require.NoError(t, err, "Couldn't add database from config")
@@ -923,6 +929,8 @@ func TestConfigToDatabaseOptions(t *testing.T) {
 	require.NoError(t, unmarshalErr)
 
 	sc := NewServerContext(&config)
+	defer sc.Close()
+
 	database, addDatabaseError := sc.AddDatabaseFromConfig(config.Databases["db"])
 	require.NoError(t, addDatabaseError)
 

@@ -54,8 +54,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	db, testBucket := setupTestDBWithViewsEnabled(t)
-	defer testBucket.Close()
+	db := setupTestDBWithViewsEnabled(t)
 	defer db.Close()
 
 	base.TestExternalRevStorage = true
@@ -98,8 +97,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	base.TestExternalRevStorage = true
@@ -282,8 +280,7 @@ func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 // TestRevisionStoragePruneTombstone - tests cleanup of external tombstone bodies when pruned.
 func TestRevisionStoragePruneTombstone(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	base.TestExternalRevStorage = true
@@ -440,8 +437,7 @@ func TestRevisionStoragePruneTombstone(t *testing.T) {
 // Checks for unwanted interaction between old revision body backups and revision cache
 func TestOldRevisionStorage(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	prop_1000_bytes := base.CreateProperty(1000)
@@ -602,8 +598,7 @@ func TestOldRevisionStorageError(t *testing.T) {
 	leakyConfig := base.LeakyBucketConfig{
 		ForceErrorSetRawKeys: []string{forceErrorKey},
 	}
-	db, testBucket := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
-	defer testBucket.Close()
+	db := setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), leakyConfig)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
@@ -731,9 +726,8 @@ func TestOldRevisionStorageError(t *testing.T) {
 // Validate JSON number handling for large sequence values
 func TestLargeSequence(t *testing.T) {
 
-	db, testBucket := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
+	db := setupTestDBWithCustomSyncSeq(t, 9223372036854775807)
 	defer db.Close()
-	defer testBucket.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 
@@ -771,8 +765,7 @@ const rawDocMalformedRevisionStorage = `
     }`
 
 func TestMalformedRevisionStorageRecovery(t *testing.T) {
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {channel(doc.channels);}`)
@@ -822,8 +815,7 @@ func TestMalformedRevisionStorageRecovery(t *testing.T) {
 func BenchmarkDatabaseGet1xRev(b *testing.B) {
 	defer base.DisableTestLogging()()
 
-	db, testBucket := setupTestDB(b)
-	defer testBucket.Close()
+	db := setupTestDB(b)
 	defer db.Close()
 
 	body := Body{"foo": "bar", "rev": "1-a"}
@@ -879,8 +871,7 @@ func BenchmarkDatabaseGet1xRev(b *testing.B) {
 func BenchmarkDatabaseGetRev(b *testing.B) {
 	defer base.DisableTestLogging()()
 
-	db, testBucket := setupTestDB(b)
-	defer testBucket.Close()
+	db := setupTestDB(b)
 	defer db.Close()
 
 	body := Body{"foo": "bar", "rev": "1-a"}
@@ -937,8 +928,7 @@ func BenchmarkDatabaseGetRev(b *testing.B) {
 func BenchmarkHandleRevDelta(b *testing.B) {
 	defer base.DisableTestLogging()()
 
-	db, testBucket := setupTestDB(b)
-	defer testBucket.Close()
+	db := setupTestDB(b)
 	defer db.Close()
 
 	body := Body{"foo": "bar"}
@@ -985,11 +975,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 }
 
 func TestGetAvailableRevAttachments(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
 	db, err := CreateDatabase(context)
@@ -1029,11 +1015,7 @@ func TestGetAvailableRevAttachments(t *testing.T) {
 }
 
 func TestGet1xRevAndChannels(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
 	db, err := CreateDatabase(context)
@@ -1096,11 +1078,7 @@ func TestGet1xRevAndChannels(t *testing.T) {
 }
 
 func TestGet1xRevFromDoc(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
-	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
 	db, err := CreateDatabase(context)

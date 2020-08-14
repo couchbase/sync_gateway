@@ -287,7 +287,8 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	defer testBucket.Close()
 
 	// Initialize cfgCB
-	cfgCB, err := initCfgCB(testBucket.Bucket, testBucket.BucketSpec)
+	cfgCB, err := initCfgCB(testBucket, testBucket.BucketSpec)
+	require.NoError(t, err)
 
 	// Simulate the three nodes self-registering into the cfg
 	nodeDefs := cbgt.NewNodeDefs("1.0.0")
