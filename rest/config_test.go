@@ -527,7 +527,8 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl}
 	sc := &ServerConfig{Logging: lc, DeprecatedLogFilePath: &dlfPath, DeprecatedLog: deprecatedLog}
 
-	warns := sc.deprecatedConfigLoggingFallback()
+	warns, err := sc.deprecatedConfigLoggingFallback()
+	require.NoError(t, err, "Error setting up deprecated logging config")
 	assert.Equal(t, filepath.Dir(*sc.Logging.DeprecatedDefaultLog.LogFilePath), sc.Logging.LogFilePath)
 	assert.Equal(t, sc.Logging.DeprecatedDefaultLog.LogKeys, sc.Logging.Console.LogKeys)
 	assert.Equal(t, base.ToLogLevel(sc.Logging.DeprecatedDefaultLog.LogLevel), sc.Logging.Console.LogLevel)
@@ -536,7 +537,8 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 
 	// Call deprecatedConfigLoggingFallback without DeprecatedDefaultLog
 	sc = &ServerConfig{Logging: &base.LoggingConfig{}, DeprecatedLogFilePath: &dlfPath, DeprecatedLog: deprecatedLog}
-	warns = sc.deprecatedConfigLoggingFallback()
+	warns, err = sc.deprecatedConfigLoggingFallback()
+	require.NoError(t, err, "Error setting up deprecated logging config")
 
 	assert.Equal(t, *sc.DeprecatedLogFilePath, sc.Logging.LogFilePath)
 	assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)

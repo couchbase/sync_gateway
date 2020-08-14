@@ -689,7 +689,10 @@ func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredL
 	}
 
 	// populate values from deprecated logging config options if not set
-	warnings = config.deprecatedConfigLoggingFallback()
+	warnings, err = config.deprecatedConfigLoggingFallback()
+	if err != nil {
+		return warnings, err
+	}
 
 	base.SetRedaction(config.Logging.RedactionLevel)
 
@@ -709,7 +712,7 @@ func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredL
 // deprecatedConfigLoggingFallback will parse the ServerConfig and try to
 // use older logging config options for backwards compatibility.
 // It will return a slice of deferred warnings to log at a later time.
-func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.DeferredLogFn) {
+func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.DeferredLogFn, err error) {
 
 	warningMsgFmt := "Using deprecated config option: %q. Use %q instead."
 
@@ -719,8 +722,16 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 			warnings = append(warnings, func() {
 				base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
 			})
-			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
+
 			// SGCollect relies on this directory path to pick up the standard and rotated log files.
+			// Enforce setting absolute or relative path on the filesystem to the log file, not directory.
+			if info, statErr := os.Stat(*config.Logging.DeprecatedDefaultLog.LogFilePath); statErr == nil && info.Mode().IsDir() {
+				err = fmt.Errorf("logging.[\"default\"].LogFilePath must not be a  directory, " +
+					"specify absolute or relative path on the filesystem to the log file instead")
+				return
+			}
+
+			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
 			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
 		}
 
@@ -757,7 +768,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 		config.Logging.Console.LogKeys = config.DeprecatedLog
 	}
 
-	return warnings
+	return warnings, nil
 }
 
 func (self *ServerConfig) MergeWith(other *ServerConfig) error {
