@@ -31,8 +31,7 @@ func TestMigrateMetadata(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyMigrate, base.KeyImport)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	key := "TestMigrateMetadata"
@@ -44,7 +43,7 @@ func TestMigrateMetadata(t *testing.T) {
 	// Create via the SDK with sync metadata intact
 	expirySeconds := time.Second * 30
 	syncMetaExpiry := time.Now().Add(expirySeconds)
-	_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
+	_, err = db.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
 	assert.NoError(t, err, "Error writing doc w/ expiry")
 
 	// Get the existing bucket doc
@@ -62,7 +61,7 @@ func TestMigrateMetadata(t *testing.T) {
 		exp := uint32(laterSyncMetaExpiry.Unix())
 		return bodyBytes, &exp, nil
 	}
-	_, err = testBucket.Bucket.Update(
+	_, err = db.Bucket.Update(
 		key,
 		uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 		updateCallbackFn,
@@ -102,8 +101,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyMigrate, base.KeyImport)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	type testcase struct {
@@ -136,7 +134,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			// Create via the SDK
 			expiryDuration := time.Minute * 30
 			syncMetaExpiry := time.Now().Add(expiryDuration)
-			_, err = testBucket.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
+			_, err = db.Bucket.Add(key, uint32(syncMetaExpiry.Unix()), bodyBytes)
 			assert.NoError(t, err, "Error writing doc w/ expiry")
 
 			// Get the existing bucket doc
@@ -159,7 +157,7 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 				exp := uint32(laterSyncMetaExpiry.Unix())
 				return bodyBytes, &exp, nil
 			}
-			_, err = testBucket.Bucket.Update(
+			_, err = db.Bucket.Update(
 				key,
 				uint32(laterSyncMetaExpiry.Unix()), // it's a bit confusing why the expiry needs to be passed here AND via the callback fn
 				updateCallbackFn,
@@ -171,10 +169,10 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, errImportDoc, "Unexpected error")
 
 			// Make sure the doc in the bucket has expected XATTR
-			assertXattrSyncMetaRevGeneration(t, testBucket.Bucket, key, testCase.expectedGeneration)
+			assertXattrSyncMetaRevGeneration(t, db.Bucket, key, testCase.expectedGeneration)
 
 			// Verify the expiry has been preserved after the import
-			gocbBucket, _ := base.AsGoCBBucket(testBucket.Bucket)
+			gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 			expiry, err := gocbBucket.GetExpiry(key)
 			assert.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
@@ -189,7 +187,6 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 	}
 
 	var db *Database
-	var testBucket *base.TestBucket
 	var existingBucketDoc *sgbucket.BucketDocument
 	var runOnce bool
 
@@ -231,8 +228,8 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				}
 			}`
 
-			cas, _ := testBucket.Get(key, &body)
-			_, err := testBucket.WriteCas(key, 0, 0, cas, []byte(valStr), sgbucket.Raw)
+			cas, _ := db.Bucket.Get(key, &body)
+			_, err := db.Bucket.WriteCas(key, 0, 0, cas, []byte(valStr), sgbucket.Raw)
 			assert.NoError(t, err)
 		}
 	}
@@ -272,8 +269,8 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				"time_saved": "2017-11-29T12:46:13.456631-08:00"
 			}`
 
-			cas, _ := testBucket.GetWithXattr(key, base.SyncXattrName, &body, &xattr)
-			_, err := testBucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, []byte(valStr), []byte(xattrStr))
+			cas, _ := db.Bucket.GetWithXattr(key, base.SyncXattrName, &body, &xattr)
+			_, err := db.Bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, []byte(valStr), []byte(xattrStr))
 			assert.NoError(t, err)
 		}
 	}
@@ -291,14 +288,16 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 
 	for _, testcase := range testcases {
 		t.Run(fmt.Sprintf("%s", testcase.docname), func(t *testing.T) {
-			db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
+			db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteWithXattrCallback: testcase.callback})
+			defer db.Close()
+
 			bodyBytes := rawDocWithSyncMeta()
 			body := Body{}
 			err := body.Unmarshal(bodyBytes)
 			assert.NoError(t, err, "Error unmarshalling body")
 
 			// Put a doc with inline sync data via sdk
-			_, err = testBucket.Bucket.Add(testcase.docname, 0, bodyBytes)
+			_, err = db.Bucket.Add(testcase.docname, 0, bodyBytes)
 			assert.NoError(t, err)
 
 			// Get the existing bucket doc
@@ -320,14 +319,11 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			var bodyOut map[string]interface{}
 			var xattrOut map[string]interface{}
 
-			_, err = testBucket.Bucket.GetWithXattr(testcase.docname, base.SyncXattrName, &bodyOut, &xattrOut)
+			_, err = db.Bucket.GetWithXattr(testcase.docname, base.SyncXattrName, &bodyOut, &xattrOut)
 			assert.NoError(t, err)
 
 			assert.Equal(t, "2-abc", xattrOut["rev"])
 			assert.Equal(t, "val2", bodyOut["field2"])
-
-			testBucket.Close()
-			db.Close()
 		})
 	}
 }
@@ -375,8 +371,7 @@ func TestImportNullDoc(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	key := "TestImportNullDoc"
@@ -393,8 +388,7 @@ func TestImportNullDoc(t *testing.T) {
 func TestImportNullDocRaw(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Feed import of null doc
@@ -417,8 +411,7 @@ func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key stri
 
 func TestEvaluateFunction(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Simulate unexpected error invoking import filter for document

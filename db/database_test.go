@@ -37,27 +37,25 @@ func init() {
 	underscore.Disable() // It really slows down unit tests (by making otto.New take a lot longer)
 }
 
-// Its important to call tearDownTestDB() on the database and .Close() on the TestBucket that is returned by this helper.
-// For example, if .Close() is not called on the TestBucket before the test is finished, it will be detected and
-// the next test will fail.
-func setupTestDB(t testing.TB) (*Database, *base.TestBucket) {
+// Note: It is important to call db.Close() on the returned database.
+func setupTestDB(t testing.TB) *Database {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
 // Sets up test db with the specified database context options.  Note that environment variables can
 // override somedbcOptions properties.
-func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) (*Database, *base.TestBucket) {
+func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) *Database {
 
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := base.GetTestBucket(t)
-	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
+	context, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
-	return db, tBucket
+	return db
 }
 
-func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database, *base.TestBucket) {
+func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
@@ -67,7 +65,7 @@ func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) (*Database,
 
 // Forces UseViews:true in the database context.  Useful for testing w/ views while running
 // tests against Couchbase Server
-func setupTestDBWithViewsEnabled(t testing.TB) (*Database, *base.TestBucket) {
+func setupTestDBWithViewsEnabled(t testing.TB) *Database {
 
 	dbcOptions := DatabaseContextOptions{
 		UseViews: true,
@@ -77,7 +75,7 @@ func setupTestDBWithViewsEnabled(t testing.TB) (*Database, *base.TestBucket) {
 
 // Sets up a test bucket with _sync:seq initialized to a high value prior to database creation.  Used to test
 // issues with custom _sync:seq values without triggering skipped sequences between 0 and customSeq
-func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, *base.TestBucket) {
+func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) *Database {
 
 	dbcOptions := DatabaseContextOptions{}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
@@ -87,25 +85,25 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) (*Database, *b
 	_, incrErr := tBucket.Incr(base.SyncSeqKey, customSeq, customSeq, 0)
 	assert.NoError(t, incrErr, fmt.Sprintf("Couldn't increment %s seq by %d", base.SyncSeqPrefix, customSeq))
 
-	context, err := NewDatabaseContext("db", tBucket.Bucket, false, dbcOptions)
+	context, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
-	return db, tBucket
+	return db
 }
 
-func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) (*Database, *base.TestBucket) {
+func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyOptions base.LeakyBucketConfig) *Database {
 	dbcOptions := DatabaseContextOptions{
 		CacheOptions: &options,
 	}
 	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	testBucket := base.GetTestBucket(t)
-	leakyBucket := base.NewLeakyBucket(testBucket.Bucket, leakyOptions)
+	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
 	context, err := NewDatabaseContext("db", leakyBucket, false, dbcOptions)
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
-	return db, testBucket
+	return db
 }
 
 // If certain environemnt variables are set, for example to turn on XATTR support, then update
@@ -118,10 +116,6 @@ func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	if base.TestsDisableGSI() {
 		dbcOptions.UseViews = true
 	}
-}
-
-func tearDownTestDB(t testing.TB, db *Database) {
-	db.Close()
 }
 
 func assertHTTPError(t *testing.T, err error, status int) {
@@ -137,8 +131,7 @@ func TestDatabase(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Test creating & updating a document:
@@ -232,8 +225,7 @@ func TestDatabase(t *testing.T) {
 
 func TestGetDeleted(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	body := Body{"key1": 1234}
@@ -273,8 +265,7 @@ func TestGetDeleted(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAsUser(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	rev1body := Body{
@@ -358,8 +349,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemoved(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	rev1body := Body{
@@ -434,8 +424,7 @@ func TestGetRemoved(t *testing.T) {
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemovedAndDeleted(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	rev1body := Body{
@@ -539,8 +528,7 @@ func TestAllDocsOnly(t *testing.T) {
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.ChannelCacheMaxLength = 50
 
-	db, testBucket := setupTestDBWithCacheOptions(t, cacheOptions)
-	defer testBucket.Close()
+	db := setupTestDBWithCacheOptions(t, cacheOptions)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -645,8 +633,7 @@ func TestUpdatePrincipal(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -678,8 +665,7 @@ func TestUpdatePrincipal(t *testing.T) {
 // Re-apply one of the conflicting changes to make sure that PutExistingRevWithBody() treats it as a no-op (SG Issue #3048)
 func TestRepeatedConflict(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Create rev 1 of "doc":
@@ -719,8 +705,7 @@ func TestConflicts(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -827,38 +812,33 @@ func TestConflicts(t *testing.T) {
 func TestConflictRevLimit(t *testing.T) {
 
 	//Test Default Is the higher of the two
-	db, bucket := setupTestDB(t)
+	db := setupTestDB(t)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
-
-	bucket.Close()
-	tearDownTestDB(t, db)
+	db.Close()
 
 	//Test AllowConflicts
 	dbOptions := DatabaseContextOptions{
 		AllowConflicts: base.BoolPtr(true),
 	}
 
-	db, bucket = setupTestDBWithOptions(t, dbOptions)
+	db = setupTestDBWithOptions(t, dbOptions)
 	assert.Equal(t, uint32(DefaultRevsLimitConflicts), db.RevsLimit)
-	bucket.Close()
-	tearDownTestDB(t, db)
+	db.Close()
 
 	//Test AllowConflicts false
 	dbOptions = DatabaseContextOptions{
 		AllowConflicts: base.BoolPtr(false),
 	}
 
-	db, bucket = setupTestDBWithOptions(t, dbOptions)
+	db = setupTestDBWithOptions(t, dbOptions)
 	assert.Equal(t, uint32(DefaultRevsLimitNoConflicts), db.RevsLimit)
-	bucket.Close()
-	tearDownTestDB(t, db)
+	db.Close()
 
 }
 
 func TestNoConflictsMode(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 	// Strictly speaking, this flag should be set before opening the database, but it only affects
 	// Put operations and replication, so it doesn't make a difference if we do it afterwards.
@@ -925,8 +905,7 @@ func TestNoConflictsMode(t *testing.T) {
 
 // Test tombstoning of existing conflicts after AllowConflicts is set to false via Put
 func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Create documents with multiple non-deleted branches
@@ -1002,8 +981,7 @@ func TestAllowConflictsFalseTombstoneExistingConflict(t *testing.T) {
 
 // Test tombstoning of existing conflicts after AllowConflicts is set to false via PutExistingRev
 func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T) {
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Create documents with multiple non-deleted branches
@@ -1071,8 +1049,7 @@ func TestAllowConflictsFalseTombstoneExistingConflictNewEditsFalse(t *testing.T)
 
 func TestSyncFnOnPush(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
@@ -1109,8 +1086,7 @@ func TestSyncFnOnPush(t *testing.T) {
 
 func TestInvalidChannel(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
@@ -1122,8 +1098,7 @@ func TestInvalidChannel(t *testing.T) {
 
 func TestAccessFunctionValidation(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	var err error
@@ -1156,8 +1131,7 @@ func TestAccessFunctionValidation(t *testing.T) {
 
 func TestAccessFunctionDb(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
@@ -1202,8 +1176,7 @@ func TestDocIDs(t *testing.T) {
 
 func TestUpdateDesignDoc(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	mapFunction := `function (doc, meta) { emit(); }`
@@ -1238,8 +1211,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 func TestPostWithExistingId(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Test creating a document with existing id property:
@@ -1274,8 +1246,7 @@ func TestPostWithExistingId(t *testing.T) {
 // Unit test for issue #507
 func TestPutWithUserSpecialProperty(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Test creating a document with existing id property:
@@ -1291,8 +1262,7 @@ func TestPutWithUserSpecialProperty(t *testing.T) {
 // Unit test for issue #976
 func TestWithNullPropertyKey(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Test creating a document with null property key
@@ -1307,8 +1277,7 @@ func TestWithNullPropertyKey(t *testing.T) {
 // Unit test for issue #507
 func TestPostWithUserSpecialProperty(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Test creating a document with existing id property:
@@ -1342,8 +1311,7 @@ func TestPostWithUserSpecialProperty(t *testing.T) {
 
 func TestRecentSequenceHistory(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	seqTracker := uint64(0)
@@ -1419,8 +1387,7 @@ func TestRecentSequenceHistory(t *testing.T) {
 
 func TestChannelView(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Create doc
@@ -1459,8 +1426,7 @@ func TestConcurrentImport(t *testing.T) {
 		t.Skip("Test only works with a Couchbase server and XATTRS")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport)()
@@ -1494,8 +1460,7 @@ func TestViewCustom(t *testing.T) {
 		t.Skip("This test may not pass under non-walrus, if views aren't enabled, as ViewAllDocs won't exist")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// add some docs
@@ -1785,9 +1750,8 @@ func TestNewDatabaseContextWithOIDCProviderOptions(t *testing.T) {
 
 func TestGetOIDCProvider(t *testing.T) {
 	options := DatabaseContextOptions{OIDCOptions: mockOIDCOptions()}
-	context, testBucket := setupTestDBWithOptions(t, options)
+	context := setupTestDBWithOptions(t, options)
 	defer context.Close()
-	defer testBucket.Close()
 
 	// Lookup default provider by empty name, which exists in database context
 	provider, err := context.GetOIDCProvider("")
@@ -1810,8 +1774,7 @@ func TestGetOIDCProvider(t *testing.T) {
 // TestSyncFnMutateBody ensures that any mutations made to the body by the sync function aren't persisted
 func TestSyncFnMutateBody(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
@@ -1857,10 +1820,9 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket *base.TestBucket
-	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer db.Close()
+
 	enableCallback = true
 
 	body := Body{"name": "Bob", "age": 52}
@@ -1895,10 +1857,8 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket *base.TestBucket
-	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer db.Close()
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
@@ -1952,10 +1912,8 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket *base.TestBucket
-	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer db.Close()
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
@@ -2009,10 +1967,8 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket *base.TestBucket
-	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
+	defer db.Close()
 
 	body := Body{"name": "Olivia", "age": 80}
 	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)

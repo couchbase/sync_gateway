@@ -167,8 +167,7 @@ func TestBackingStore(t *testing.T) {
 // Ensure internal properties aren't being incorrectly stored in revision cache
 func TestRevisionCacheInternalProperties(t *testing.T) {
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Invalid _revisions property will be stripped.  Should also not be present in the rev cache.
@@ -181,7 +180,7 @@ func TestRevisionCacheInternalProperties(t *testing.T) {
 
 	// Get the raw document directly from the bucket, validate _revisions property isn't found
 	var bucketBody Body
-	_, err = testBucket.Bucket.Get("doc1", &bucketBody)
+	_, err = db.Bucket.Get("doc1", &bucketBody)
 	require.NoError(t, err)
 	_, ok := bucketBody[BodyRevisions]
 	if ok {
@@ -216,8 +215,7 @@ func TestBypassRevisionCache(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	docBody := Body{
@@ -278,8 +276,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	rev1body := Body{
@@ -292,7 +289,7 @@ func TestPutRevisionCacheAttachmentProperty(t *testing.T) {
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
 	var bucketBody Body
-	_, err = testBucket.Bucket.Get(rev1key, &bucketBody)
+	_, err = db.Bucket.Get(rev1key, &bucketBody)
 	assert.NoError(t, err, "Unexpected error calling bucket.Get")
 	_, ok := bucketBody[BodyAttachments]
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)
@@ -320,8 +317,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	docKey := "doc1"
@@ -341,7 +337,7 @@ func TestPutExistingRevRevisionCacheAttachmentProperty(t *testing.T) {
 
 	// Get the raw document directly from the bucket, validate _attachments property isn't found
 	var bucketBody Body
-	_, err = testBucket.Bucket.Get(docKey, &bucketBody)
+	_, err = db.Bucket.Get(docKey, &bucketBody)
 	assert.NoError(t, err, "Unexpected error calling bucket.Get")
 	_, ok := bucketBody[BodyAttachments]
 	assert.False(t, ok, "_attachments property still present in document body retrieved from bucket: %#v", bucketBody)

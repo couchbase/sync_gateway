@@ -152,7 +152,7 @@ func TestCanSeeChannelSince(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+	auth := NewAuthenticator(testBucket, nil)
 	freeChannels := base.SetFromArray([]string{"ESPN", "HBO", "FX", "AMC"})
 	user, err := auth.NewUser("user", "password", freeChannels)
 	assert.Nil(t, err)
@@ -180,7 +180,7 @@ func TestGetAddedChannels(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+	auth := NewAuthenticator(testBucket, nil)
 
 	role, err := auth.NewRole("music", channels.SetOf(t, "Spotify", "Youtube"))
 	assert.Nil(t, err)
@@ -222,7 +222,8 @@ func TestUserAuthenticateWithDisabledUserAccount(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	auth := NewAuthenticator(testBucket, nil)
 
 	user, err := auth.NewUser(username, password, base.Set{})
 	assert.NoError(t, err)
@@ -243,7 +244,8 @@ func TestUserAuthenticateWithOldPasswordHash(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	auth := NewAuthenticator(testBucket, nil)
 
 	user, err := auth.NewUser(username, password, base.Set{})
 	assert.NoError(t, err)
@@ -263,7 +265,8 @@ func TestUserAuthenticateWithBadPasswordHash(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	auth := NewAuthenticator(testBucket, nil)
 
 	user, err := auth.NewUser(username, password, base.Set{})
 	assert.NoError(t, err)
@@ -282,7 +285,8 @@ func TestUserAuthenticateWithNoHashAndBadPassword(t *testing.T) {
 	)
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+
+	auth := NewAuthenticator(testBucket, nil)
 
 	user, err := auth.NewUser(username, password, base.Set{})
 	assert.NoError(t, err)

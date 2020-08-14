@@ -28,7 +28,7 @@ func TestInitRole(t *testing.T) {
 func TestAuthorizeChannelsRole(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket.Bucket, nil)
+	auth := NewAuthenticator(testBucket, nil)
 
 	role, err := auth.NewRole("root", channels.SetOf(t, "superuser"))
 	assert.NoError(t, err)

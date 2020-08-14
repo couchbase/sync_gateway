@@ -16,9 +16,8 @@ func TestReplicateManagerReplications(t *testing.T) {
 
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	bucket := testBucket.Bucket
 
-	testCfg, err := base.NewCfgSG(bucket)
+	testCfg, err := base.NewCfgSG(testBucket)
 	require.NoError(t, err)
 
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
@@ -79,9 +78,8 @@ func TestReplicateManagerNodes(t *testing.T) {
 
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	bucket := testBucket.Bucket
 
-	testCfg, err := base.NewCfgSG(bucket)
+	testCfg, err := base.NewCfgSG(testBucket)
 	require.NoError(t, err)
 
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
@@ -134,9 +132,8 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	bucket := testBucket.Bucket
 
-	testCfg, err := base.NewCfgSG(bucket)
+	testCfg, err := base.NewCfgSG(testBucket)
 	require.NoError(t, err)
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
@@ -177,9 +174,8 @@ func TestReplicateManagerConcurrentReplicationOperations(t *testing.T) {
 
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	bucket := testBucket.Bucket
 
-	testCfg, err := base.NewCfgSG(bucket)
+	testCfg, err := base.NewCfgSG(testBucket)
 	require.NoError(t, err)
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)

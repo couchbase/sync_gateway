@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -162,27 +163,45 @@ func (client *MockClient) RespondToGET(url string, response *http.Response) {
 	tripper.getURLs[url] = response
 }
 
+// convenience function to get a BucketConfig for a given TestBucket.
+func bucketConfigFromTestBucket(tb *base.TestBucket) BucketConfig {
+	tbUser, tbPassword, _ := tb.BucketSpec.Auth.GetCredentials()
+	return BucketConfig{
+		Server:     &tb.BucketSpec.Server,
+		Pool:       &tb.BucketSpec.PoolName,
+		Bucket:     &tb.BucketSpec.BucketName,
+		Username:   tbUser,
+		Password:   tbPassword,
+		CertPath:   tb.BucketSpec.Certpath,
+		KeyPath:    tb.BucketSpec.Keypath,
+		CACertPath: tb.BucketSpec.CACertPath,
+		KvTLSPort:  tb.BucketSpec.KvTLSPort,
+	}
+}
+
 func TestAllDatabaseNames(t *testing.T) {
-	server := "walrus:"
-	bucketName := "imbucket"
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	tb1 := base.GetTestBucket(t)
+	defer tb1.Close()
+	tb2 := base.GetTestBucket(t)
+	defer tb2.Close()
 
 	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface}
 	serverContext := NewServerContext(serverConfig)
-	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
+	defer serverContext.Close()
 
-	dbConfig := &DbConfig{BucketConfig: bucketConfig, Name: "imdb1", AllowEmptyPassword: true}
-	dbContext, err := serverContext.AddDatabaseFromConfig(dbConfig)
+	dbConfig := &DbConfig{BucketConfig: bucketConfigFromTestBucket(tb1), Name: "imdb1", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0)}
+	_, err := serverContext.AddDatabaseFromConfig(dbConfig)
 	assert.NoError(t, err, "No error while adding database to server context")
-	assert.Equal(t, server, dbContext.BucketSpec.Server)
-	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 
-	dbConfig = &DbConfig{BucketConfig: bucketConfig, Name: "imdb2", AllowEmptyPassword: true}
-	dbContext, err = serverContext.AddDatabaseFromConfig(dbConfig)
+	dbConfig = &DbConfig{BucketConfig: bucketConfigFromTestBucket(tb2), Name: "imdb2", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0)}
+	_, err = serverContext.AddDatabaseFromConfig(dbConfig)
 	assert.NoError(t, err, "No error while adding database to server context")
-	assert.Equal(t, server, dbContext.BucketSpec.Server)
-	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 	assert.Len(t, serverContext.AllDatabaseNames(), 2)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb2")
@@ -192,12 +211,13 @@ func TestAllDatabaseNames(t *testing.T) {
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 	assert.NotContains(t, serverContext.AllDatabaseNames(), "imdb2")
-	serverContext.Close()
 }
 
 func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface}
 	serverContext := NewServerContext(serverConfig)
+	defer serverContext.Close()
+
 	oldRevExpirySeconds := uint32(600)
 	localDocExpirySecs := uint32(60 * 60 * 24 * 10) // 10 days in seconds
 
@@ -251,5 +271,4 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.NoError(t, err, "No error while trying to get the existing database name")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
-	dbContext.Close()
 }

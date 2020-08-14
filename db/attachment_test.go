@@ -45,10 +45,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext(
 		"db",
 		bucket,
@@ -111,10 +108,7 @@ func TestBackupOldRevisionWithAttachments(t *testing.T) {
 
 func TestAttachments(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
@@ -226,10 +220,7 @@ func TestAttachments(t *testing.T) {
 
 func TestAttachmentForRejectedDocument(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
@@ -256,10 +247,7 @@ func TestAttachmentForRejectedDocument(t *testing.T) {
 
 func TestAttachmentRetrievalUsingRevCache(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
@@ -341,9 +329,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket *base.TestBucket
-	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer testBucket.Close()
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close()
 
 	// Test creating & updating a document:
@@ -402,9 +388,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 		WriteUpdateCallback: writeUpdateCallback,
 	}
 
-	var testBucket *base.TestBucket
-	db, testBucket = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
-	defer testBucket.Close()
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
 	defer db.Close()
 
 	// Test creating & updating a document:
@@ -441,10 +425,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 }
 
 func TestForEachStubAttachmentErrors(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	defer context.Close()
@@ -569,10 +550,7 @@ func TestDecodeAttachmentError(t *testing.T) {
 }
 
 func TestSetAttachment(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "The database context should be created for database 'db'")
 	defer context.Close()
@@ -590,10 +568,7 @@ func TestSetAttachment(t *testing.T) {
 }
 
 func TestRetrieveAncestorAttachments(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "The database context should be created for database 'db'")
 	defer context.Close()
@@ -662,10 +637,7 @@ func TestRetrieveAncestorAttachments(t *testing.T) {
 }
 
 func TestStoreAttachments(t *testing.T) {
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{})
 	assert.NoError(t, err, "The database context should be created for database 'db'")
 	defer context.Close()
@@ -780,9 +752,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 	const docKey = "TestAttachmentMigrate"
 
 	setupFn := func(t *testing.T) (db *Database, teardownFn func()) {
-		testBucket := base.GetTestBucket(t)
-		bucket := testBucket.Bucket
-
+		bucket := base.GetTestBucket(t)
 		context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
 			EnableXattr: base.TestUseXattrs(),
 		})
@@ -886,7 +856,6 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		return db, func() {
 			context.Close()
-			testBucket.Close()
 		}
 	}
 
@@ -1062,18 +1031,15 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 
 	const docKey = "TestAttachmentMigrate"
 
-	testBucket := base.GetTestBucket(t)
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
 		EnableXattr: base.TestUseXattrs(),
 	})
 	require.NoError(t, err, "The database context should be created for database 'db'")
+	defer context.Close()
 
 	db, err := CreateDatabase(context)
 	require.NoError(t, err, "The database 'db' should be created")
-	defer testBucket.Close()
-	defer context.Close()
 
 	// Put a document 2 attachments, to write attachment to the bucket
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="}}}`
@@ -1228,18 +1194,15 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 
 	const docKey = "TestAttachmentMigrate"
 
-	testBucket := base.GetTestBucket(t)
-	bucket := testBucket.Bucket
-
+	bucket := base.GetTestBucket(t)
 	context, err := NewDatabaseContext("db", bucket, false, DatabaseContextOptions{
 		EnableXattr: base.TestUseXattrs(),
 	})
 	require.NoError(t, err, "The database context should be created for database 'db'")
+	defer context.Close()
 
 	db, err := CreateDatabase(context)
 	require.NoError(t, err, "The database 'db' should be created")
-	defer testBucket.Close()
-	defer context.Close()
 
 	// Put a document with 3 attachments, to write attachments to the bucket
 	rev1input := `{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="},"bye.txt": {"data":"Z29vZGJ5ZSBjcnVlbCB3b3JsZA=="},"new.txt": {"data":"bmV3IGRhdGE="}}}`

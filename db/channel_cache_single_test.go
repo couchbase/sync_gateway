@@ -630,9 +630,8 @@ func TestBypassSingleChannelCache(t *testing.T) {
 func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	testBucket := base.GetTestBucket(b)
-	defer testBucket.Close()
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+
+	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
@@ -650,9 +649,8 @@ func BenchmarkChannelCacheUniqueDocs_Ordered(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	testBucket := base.GetTestBucket(b)
-	defer testBucket.Close()
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+
+	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
@@ -668,9 +666,8 @@ func BenchmarkChannelCacheRepeatedDocs5(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	testBucket := base.GetTestBucket(b)
-	defer testBucket.Close()
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+
+	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
@@ -686,9 +683,8 @@ func BenchmarkChannelCacheRepeatedDocs20(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	testBucket := base.GetTestBucket(b)
-	defer testBucket.Close()
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+
+	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
@@ -704,9 +700,8 @@ func BenchmarkChannelCacheRepeatedDocs50(b *testing.B) {
 func BenchmarkChannelCacheRepeatedDocs80(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	testBucket := base.GetTestBucket(b)
-	defer testBucket.Close()
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+
+	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
@@ -723,9 +718,7 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 
 	defer base.SetUpBenchmarkLogging(base.LevelInfo, base.KeyHTTP)()
 
-	testBucket := base.GetTestBucket(b)
-	defer testBucket.Close()
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})
@@ -741,9 +734,8 @@ func BenchmarkChannelCacheRepeatedDocs95(b *testing.B) {
 func BenchmarkChannelCacheUniqueDocs_Unordered(b *testing.B) {
 
 	defer base.DisableTestLogging()()
-	testBucket := base.GetTestBucket(b)
-	defer testBucket.Close()
-	context, err := NewDatabaseContext("db", testBucket.Bucket, false, DatabaseContextOptions{})
+
+	context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 	require.NoError(b, err)
 	defer context.Close()
 	cache := newSingleChannelCache(context, "Benchmark", 0, &expvar.Map{})

@@ -11,9 +11,9 @@ import (
 
 func TestRemoveObsoleteDesignDocs(t *testing.T) {
 
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := testBucket.Bucket
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
 	mapFunction := `function (doc, meta) { emit(); }`
 
 	// Add some design docs in the old format
@@ -73,31 +73,30 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	const DesignDocVersion = "2.1"
 	DesignDocPreviousVersions = []string{"2.0"}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	mapFunction := `function (doc, meta){ emit(); }`
 
-	err := testBucket.PutDDoc(DesignDocSyncGatewayPrefix+"_2.0", sgbucket.DesignDoc{
+	err := db.Bucket.PutDDoc(DesignDocSyncGatewayPrefix+"_2.0", sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	assert.NoError(t, err)
-	err = testBucket.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.0", sgbucket.DesignDoc{
+	err = db.Bucket.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.0", sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	assert.NoError(t, err)
-	err = testBucket.PutDDoc(DesignDocSyncGatewayPrefix+"_2.1", sgbucket.DesignDoc{
+	err = db.Bucket.PutDDoc(DesignDocSyncGatewayPrefix+"_2.1", sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
 	})
 	assert.NoError(t, err)
-	err = testBucket.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.1", sgbucket.DesignDoc{
+	err = db.Bucket.PutDDoc(DesignDocSyncHousekeepingPrefix+"_2.1", sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			"channels": sgbucket.ViewDef{Map: mapFunction},
 		},
@@ -105,19 +104,19 @@ func TestRemoveDesignDocsUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, err)
 
 	useViewsTrueRemovalPreview := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
-	removedDDocsPreview, _ := removeObsoleteDesignDocs(testBucket, true, true)
+	removedDDocsPreview, _ := removeObsoleteDesignDocs(db.Bucket, true, true)
 	assert.Equal(t, useViewsTrueRemovalPreview, removedDDocsPreview)
 
 	useViewsFalseRemovalPreview := []string{"sync_gateway_2.0", "sync_housekeeping_2.0", "sync_gateway_2.1", "sync_housekeeping_2.1"}
-	removedDDocsPreview, _ = removeObsoleteDesignDocs(testBucket, true, false)
+	removedDDocsPreview, _ = removeObsoleteDesignDocs(db.Bucket, true, false)
 	assert.Equal(t, useViewsFalseRemovalPreview, removedDDocsPreview)
 
 	useViewsTrueRemoval := []string{"sync_gateway_2.0", "sync_housekeeping_2.0"}
-	removedDDocs, _ := removeObsoleteDesignDocs(testBucket, false, true)
+	removedDDocs, _ := removeObsoleteDesignDocs(db.Bucket, false, true)
 	assert.Equal(t, useViewsTrueRemoval, removedDDocs)
 
 	useViewsTrueRemoval = []string{"sync_gateway_2.1", "sync_housekeeping_2.1"}
-	removedDDocs, _ = removeObsoleteDesignDocs(testBucket, false, false)
+	removedDDocs, _ = removeObsoleteDesignDocs(db.Bucket, false, false)
 	assert.Equal(t, useViewsTrueRemoval, removedDDocs)
 }
 
@@ -130,9 +129,9 @@ func TestRemoveObsoleteDesignDocsErrors(t *testing.T) {
 		DDocGetErrorCount:    1,
 		DDocDeleteErrorCount: 1,
 	}
-	testBucket := base.GetTestBucket(t)
-	defer testBucket.Close()
-	bucket := base.NewLeakyBucket(testBucket.Bucket, leakyBucketConfig)
+
+	bucket := base.NewLeakyBucket(base.GetTestBucket(t), leakyBucketConfig)
+	defer bucket.Close()
 
 	mapFunction := `function (doc, meta){ emit(); }`
 

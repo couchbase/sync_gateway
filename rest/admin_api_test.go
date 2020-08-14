@@ -1786,7 +1786,7 @@ func TestHandleCreateDB(t *testing.T) {
 	resource := fmt.Sprintf("/%s/", bucket)
 
 	bucketConfig := BucketConfig{Server: &server, Pool: &pool, Bucket: &bucket, KvTLSPort: kvTLSPort}
-	dbConfig := &DbConfig{BucketConfig: bucketConfig}
+	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
 	var respBody db.Body
 
 	reqBody, err := base.JSONMarshal(dbConfig)
@@ -1824,6 +1824,23 @@ func TestHandleDBConfig(t *testing.T) {
 	password := "QWxpY2U="
 	resource := fmt.Sprintf("/%s/", bucket)
 
+	// Create a database with no config
+	resp := rt.SendAdminRequest(http.MethodPut, resource, "{}")
+	assertStatus(t, resp, http.StatusCreated)
+	assert.Empty(t, resp.Body.String())
+
+	// Get database config before putting any config.
+	resp = rt.SendAdminRequest(http.MethodGet, resource, "")
+	assertStatus(t, resp, http.StatusOK)
+	var respBody db.Body
+	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.Nil(t, respBody["bucket"])
+	assert.Equal(t, bucket, respBody["db_name"].(string))
+	assert.Equal(t, "Online", respBody["state"].(string))
+
+	// Put database config
+	resource = fmt.Sprintf("/%v/_config", bucket)
+
 	bucketConfig := BucketConfig{
 		Server:     &server,
 		Pool:       &pool,
@@ -1833,35 +1850,19 @@ func TestHandleDBConfig(t *testing.T) {
 		CertPath:   certPath,
 		KeyPath:    keyPath,
 		CACertPath: caCertPath,
-		KvTLSPort:  kvTLSPort}
-
-	dbConfig := &DbConfig{BucketConfig: bucketConfig}
-	var respBody db.Body
+		KvTLSPort:  kvTLSPort,
+	}
+	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
-
-	// Create a database
-	resp := rt.SendAdminRequest(http.MethodPut, resource, "{}")
-	assertStatus(t, resp, http.StatusCreated)
-	assert.Empty(t, resp.Body.String())
-
-	// Get database config before putting any config.
-	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
-	assertStatus(t, resp, http.StatusOK)
-	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
-	assert.Nil(t, respBody["bucket"])
-
-	// Put database config
-	resource = fmt.Sprintf("/%v/_config", bucket)
 	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
 	assertStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
-	assert.Equal(t, bucket, respBody["db_name"].(string))
-	assert.Equal(t, "Online", respBody["state"].(string))
 
 	// Get database config after putting valid database config
-	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
+	resp = rt.SendAdminRequest(http.MethodGet, resource, "")
 	assertStatus(t, resp, http.StatusOK)
+	respBody = nil
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 
 	assert.Equal(t, bucket, respBody["bucket"].(string))

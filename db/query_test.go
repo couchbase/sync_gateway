@@ -20,8 +20,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 		t.Skip("This test is Walrus and UseViews=true only")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// docID -> Sequence
@@ -72,8 +71,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// docID -> Sequence
@@ -120,8 +118,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 // Validate query and stats for sequence view query
 func TestQuerySequencesStatsView(t *testing.T) {
 
-	db, testBucket := setupTestDBWithViewsEnabled(t)
-	defer testBucket.Close()
+	db := setupTestDBWithViewsEnabled(t)
 	defer db.Close()
 
 	// docID -> Sequence
@@ -217,8 +214,7 @@ func TestQuerySequencesStatsN1ql(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// docID -> Sequence
@@ -314,11 +310,10 @@ func TestCoveringQueries(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(testBucket)
+	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	if !ok {
 		t.Errorf("Unable to get gocbBucket for testBucket")
 	}
@@ -369,8 +364,7 @@ func TestAllDocsQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	// Add docs with channel assignment
@@ -432,8 +426,7 @@ func TestAccessQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
@@ -483,8 +476,7 @@ func TestRoleAccessQuery(t *testing.T) {
 		t.Skip("This test is Couchbase Server only")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
+	db := setupTestDB(t)
 	defer db.Close()
 
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc, oldDoc) {
@@ -575,9 +567,8 @@ func TestQueryChannelsActiveOnlyWithLimit(t *testing.T) {
 		t.Skip("This test is Couchbase Server and UseViews=false only")
 	}
 
-	db, testBucket := setupTestDB(t)
-	defer testBucket.Close()
-	defer tearDownTestDB(t, db)
+	db := setupTestDB(t)
+	defer db.Close()
 
 	docIdFlagMap := make(map[string]uint8)
 	var startSeq, endSeq uint64
