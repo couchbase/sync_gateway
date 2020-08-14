@@ -2508,6 +2508,177 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
 }
 
+// TestActiveReplicatorPullFromCheckpointModifiedHash:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates enough documents on rt2 which can be pulled by a replicator running in rt1 to start setting checkpoints.
+//   - Insert the second batch of docs into rt2.
+//   - Starts the pull replication again with a config change, validate checkpoint is reset
+func TestActiveReplicatorPullModifiedHash(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	const (
+		changesBatchSize         = 10
+		numDocsPerChannelInitial = 13 // 2 batches of changes
+		numDocsPerChannelTotal   = 24 // 2 more batches
+		numChannels              = 2  // two channels
+	)
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("chan1", "chan2"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	// Create first batch of docs, creating numRT2DocsInitial in each channel
+	docIDPrefix := t.Name() + "rt2doc"
+	for i := 0; i < numDocsPerChannelInitial; i++ {
+		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
+		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
+	}
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	arConfig := db.ActiveReplicatorConfig{
+		ID:           t.Name(),
+		Direction:    db.ActiveReplicatorTypePull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:       true,
+		ChangesBatchSize: changesBatchSize,
+		Filter:           base.ByChannelFilter,
+		FilterChannels:   []string{"chan1"},
+		// test isn't long running enough to worry about time-based checkpoints,
+		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
+		CheckpointInterval: time.Minute * 5,
+	}
+
+	// Create the first active replicator to pull chan1 from seq:0
+	ar := db.NewActiveReplicator(&arConfig)
+
+	startNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	startNumRevsSentTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+
+	assert.NoError(t, ar.Start())
+
+	// wait for all of the documents originally written to rt2 to arrive at rt1
+	changesResults, err := rt1.WaitForChanges(numDocsPerChannelInitial, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, numDocsPerChannelInitial)
+	docIDsSeen := make(map[string]bool, numDocsPerChannelInitial)
+	for _, result := range changesResults.Results {
+		docIDsSeen[result.ID] = true
+	}
+	for i := 0; i < numDocsPerChannelInitial; i++ {
+		docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i)
+		assert.True(t, docIDsSeen[docID])
+		doc := rt1.getDoc(docID)
+		assert.Equal(t, "rt2", doc["source"])
+	}
+
+	// one _changes from seq:0 with initial number of docs sent
+	numChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
+
+	// rev assertions
+	numRevsSentTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	assert.Equal(t, startNumRevsSentTotal+int64(numDocsPerChannelInitial), numRevsSentTotal)
+	assert.Equal(t, int64(numDocsPerChannelInitial), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
+	assert.Equal(t, int64(numDocsPerChannelInitial), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
+
+	// checkpoint assertions
+	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().GetCheckpointMissCount)
+
+	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
+	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().SetCheckpointCount)
+	ar.Pull.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().SetCheckpointCount)
+
+	assert.NoError(t, ar.Stop())
+
+	// Second batch of docs, both channels
+	for i := numDocsPerChannelInitial; i < numDocsPerChannelTotal; i++ {
+		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
+		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
+	}
+
+	// Create a new replicator using the same replicationID but different channel filter, which should reset the checkpoint
+	arConfig.FilterChannels = []string{"chan2"}
+	ar = db.NewActiveReplicator(&arConfig)
+	defer func() { assert.NoError(t, ar.Stop()) }()
+	assert.NoError(t, ar.Start())
+
+	// wait for all of the documents originally written to rt2 to arrive at rt1
+	expectedChan1Docs := numDocsPerChannelInitial
+	expectedChan2Docs := numDocsPerChannelTotal
+	expectedTotalDocs := expectedChan1Docs + expectedChan2Docs
+	changesResults, err = rt1.WaitForChanges(expectedTotalDocs, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, expectedTotalDocs)
+
+	docIDsSeen = make(map[string]bool, expectedTotalDocs)
+	for _, result := range changesResults.Results {
+		docIDsSeen[result.ID] = true
+	}
+
+	for i := 0; i < numDocsPerChannelTotal; i++ {
+		docID := fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i)
+		assert.True(t, docIDsSeen[docID])
+
+		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+		assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+	}
+
+	// Should have two replications since zero
+	endNumChangesRequestedFromZeroTotal := base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsSinceZero))
+	assert.Equal(t, startNumChangesRequestedFromZeroTotal+2, endNumChangesRequestedFromZeroTotal)
+
+	// make sure rt2 thinks it has sent all of the revs via a 2.x replicator
+	numRevsSentTotal = base.ExpvarVar2Int(rt2.GetDatabase().DbStats.StatsCblReplicationPull().Get(base.StatKeyRevSendCount))
+	assert.Equal(t, startNumRevsSentTotal+int64(expectedTotalDocs), numRevsSentTotal)
+	assert.Equal(t, int64(expectedChan2Docs), ar.Pull.Checkpointer.Stats().ProcessedSequenceCount)
+	assert.Equal(t, int64(expectedChan2Docs), ar.Pull.Checkpointer.Stats().ExpectedSequenceCount)
+
+	// assert the second active replicator stats
+	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().GetCheckpointHitCount)
+	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().GetCheckpointMissCount)
+	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().SetCheckpointCount)
+	ar.Pull.Checkpointer.CheckpointNow()
+	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().SetCheckpointCount)
+}
+
 func waitForCondition(t *testing.T, fn func() bool) {
 	for i := 0; i <= 20; i++ {
 		if i == 20 {

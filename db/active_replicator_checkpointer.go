@@ -264,11 +264,10 @@ func (c *Checkpointer) calculateSafeProcessedSeq() string {
 }
 
 const (
-	checkpointDocIDPrefix    = "checkpoint/"
-	xcheckpointDocLastSeqKey = "last_sequence"
-	checkpointBodyRev        = "_rev"
-	checkpointBodyLastSeq    = "last_sequence"
-	checkpointBodyHash       = "config_hash"
+	checkpointDocIDPrefix = "checkpoint/"
+	checkpointBodyRev     = "_rev"
+	checkpointBodyLastSeq = "last_sequence"
+	checkpointBodyHash    = "config_hash"
 )
 
 type replicationCheckpoint struct {
@@ -277,6 +276,7 @@ type replicationCheckpoint struct {
 	LastSeq    string `json:"last_sequence"`
 }
 
+// AsBody returns a Body representation of replicationCheckpoint for use with putSpecial
 func (r *replicationCheckpoint) AsBody() Body {
 	return Body{
 		checkpointBodyRev:     r.Rev,
@@ -285,6 +285,7 @@ func (r *replicationCheckpoint) AsBody() Body {
 	}
 }
 
+// NewReplicationCheckpoint converts a revID and checkpoint body into a replicationCheckpoint
 func NewReplicationCheckpoint(revID string, body Body) *replicationCheckpoint {
 	checkpoint := &replicationCheckpoint{
 		Rev: revID,
@@ -317,6 +318,7 @@ func (c *Checkpointer) fetchCheckpoints() error {
 	if err != nil {
 		return err
 	}
+
 	base.DebugfCtx(c.ctx, base.KeyReplicate, "got local checkpoint: %q %q", localCheckpoint.LastSeq, localCheckpoint.Rev)
 	c.lastLocalCheckpointRevID = localCheckpoint.Rev
 
@@ -326,6 +328,16 @@ func (c *Checkpointer) fetchCheckpoints() error {
 	}
 	base.DebugfCtx(c.ctx, base.KeyReplicate, "got remote checkpoint: %v", remoteCheckpoint)
 	c.lastRemoteCheckpointRevID = remoteCheckpoint.Rev
+
+	// If checkpoint hash has changed, reset checkpoint to zero.  Shouldn't need to persist the updated checkpoints in
+	// the case both get rolled back to zero, can wait for next persistence
+	if localCheckpoint.ConfigHash != c.configHash {
+		localCheckpoint.LastSeq = ""
+	}
+
+	if remoteCheckpoint.ConfigHash != c.configHash {
+		remoteCheckpoint.LastSeq = ""
+	}
 
 	// If localSeq and remoteSeq match, we'll use this value.
 	localSeq := localCheckpoint.LastSeq
@@ -456,12 +468,12 @@ func (c *Checkpointer) getRemoteCheckpoint() (checkpoint *replicationCheckpoint,
 	}
 
 	if err := rq.Send(c.blipSender); err != nil {
-		return nil, err
+		return &replicationCheckpoint{}, err
 	}
 
 	resp, err := rq.Response()
 	if err != nil {
-		return nil, err
+		return &replicationCheckpoint{}, err
 	}
 
 	if resp == nil {
