@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 	"sort"
 	"sync"
 
@@ -146,11 +145,8 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
 	remoteURL, err := url.Parse(rc.Remote)
 	if err != nil {
-		redact := func(url string) string {
-			return regexp.MustCompilePOSIX(":[^@/]+@").ReplaceAllString(url, ":xxxxx@")
-		}
 		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v",
-			redact(rc.Remote), redact(err.Error()))
+			base.RedactBasicAuthURLPassword(rc.Remote), base.RedactBasicAuthURLPassword(err.Error()))
 	}
 
 	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {
@@ -281,17 +277,9 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 func (r *ReplicationConfig) Redacted() *ReplicationConfig {
 	config := *r
 	if config.Password != "" {
-		config.Password = "xxxxx"
+		config.Password = "****"
 	}
-	remote, err := url.Parse(config.Remote)
-	if err != nil {
-		base.Warnf("Error redacting password on remote URL [%s], %v", config.Remote, err)
-		return &config
-	}
-	if _, has := remote.User.Password(); has {
-		remote.User = url.UserPassword(remote.User.Username(), "xxxxx")
-	}
-	config.Remote = remote.String()
+	config.Remote = base.RedactBasicAuthURLPassword(config.Remote)
 	return &config
 }
 
