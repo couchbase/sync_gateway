@@ -723,16 +723,18 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 				base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
 			})
 
-			// SGCollect relies on this directory path to pick up the standard and rotated log files.
-			// Enforce setting absolute or relative path on the filesystem to the log file, not directory.
-			logFilePath := *config.Logging.DeprecatedDefaultLog.LogFilePath
-			if info, statErr := os.Stat(logFilePath); statErr == nil && info.Mode().IsDir() {
-				return warnings, fmt.Errorf("logging.[\"default\"].LogFilePath %q must be a file, not directory. "+
-					"Specify absolute or relative path on the filesystem to the log file instead", logFilePath)
+			// Ensures existence of the default logging.["default"].LogFilePath if specified.
+			// SGCollect relies on this path to pick up the standard and rotated log files.
+			info, err := os.Stat(*config.Logging.DeprecatedDefaultLog.LogFilePath)
+			if os.IsNotExist(err) {
+				return warnings, fmt.Errorf("the specified logging.[\"default\"].LogFilePath %q does not exist",
+					*config.Logging.DeprecatedDefaultLog.LogFilePath)
 			}
-
 			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
-			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
+			if err == nil && info.Mode().IsRegular() {
+				config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
+			}
+			config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
 		}
 
 		// Fall back to the old logging.["default"].LogKeys option
