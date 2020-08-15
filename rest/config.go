@@ -725,10 +725,10 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 
 			// SGCollect relies on this directory path to pick up the standard and rotated log files.
 			// Enforce setting absolute or relative path on the filesystem to the log file, not directory.
-			if info, statErr := os.Stat(*config.Logging.DeprecatedDefaultLog.LogFilePath); statErr == nil && info.Mode().IsDir() {
-				err = fmt.Errorf("logging.[\"default\"].LogFilePath must not be a  directory, " +
-					"specify absolute or relative path on the filesystem to the log file instead")
-				return
+			logFilePath := *config.Logging.DeprecatedDefaultLog.LogFilePath
+			if info, statErr := os.Stat(logFilePath); statErr == nil && info.Mode().IsDir() {
+				return warnings, fmt.Errorf("logging.[\"default\"].LogFilePath %q must be a file, not directory. "+
+					"Specify absolute or relative path on the filesystem to the log file instead", logFilePath)
 			}
 
 			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
