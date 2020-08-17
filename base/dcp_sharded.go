@@ -420,7 +420,7 @@ func (l *importHeartbeatListener) Name() string {
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
 func (l *importHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 
-	Debugf(KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
+	Infof(KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
 	err := cbgt.UnregisterNodes(l.cfg, l.mgrVersion, []string{nodeUUID})
 	if err != nil {
 		Warnf("Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)

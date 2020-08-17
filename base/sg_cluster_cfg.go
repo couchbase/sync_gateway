@@ -50,7 +50,7 @@ func sgCfgBucketKey(cfgKey string) string {
 func (c *CfgSG) Get(cfgKey string, cas uint64) (
 	[]byte, uint64, error) {
 
-	InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
+	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Get, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := sgCfgBucketKey(cfgKey)
 	var value []byte
 	casOut, err := c.bucket.Get(bucketKey, &value)
@@ -69,7 +69,7 @@ func (c *CfgSG) Get(cfgKey string, cas uint64) (
 
 func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 
-	InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, key: %s, cas: %d", cfgKey, cas)
+	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Set, key: %s, cas: %d", cfgKey, cas)
 	var err error
 	bucketKey := sgCfgBucketKey(cfgKey)
 
@@ -88,7 +88,7 @@ func (c *CfgSG) Set(cfgKey string, val []byte, cas uint64) (uint64, error) {
 
 func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 
-	InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
+	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Del, key: %s, cas: %d", cfgKey, cas)
 	bucketKey := sgCfgBucketKey(cfgKey)
 	_, err := c.bucket.Remove(bucketKey, cas)
 	if IsCasMismatch(err) {
@@ -102,7 +102,7 @@ func (c *CfgSG) Del(cfgKey string, cas uint64) error {
 
 func (c *CfgSG) Subscribe(cfgKey string, ch chan cbgt.CfgEvent) error {
 
-	InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Subscribe, key: %s", cfgKey)
+	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Subscribe, key: %s", cfgKey)
 	c.lock.Lock()
 	a, exists := c.subscriptions[cfgKey]
 	if !exists || a == nil {
@@ -119,7 +119,7 @@ func (c *CfgSG) FireEvent(docID string, cas uint64, err error) {
 
 	cfgKey := strings.TrimPrefix(docID, SGCfgPrefix)
 	c.lock.Lock()
-	InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: FireEvent, key: %s, cas %d", cfgKey, cas)
+	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: FireEvent, key: %s, cas %d", cfgKey, cas)
 	for _, ch := range c.subscriptions[cfgKey] {
 		go func(ch chan<- cbgt.CfgEvent) {
 			ch <- cbgt.CfgEvent{
@@ -132,7 +132,7 @@ func (c *CfgSG) FireEvent(docID string, cas uint64, err error) {
 
 func (c *CfgSG) Refresh() error {
 
-	InfofCtx(c.loggingCtx, KeyCluster, "cfg_sg: Refresh")
+	DebugfCtx(c.loggingCtx, KeyCluster, "cfg_sg: Refresh")
 	c.lock.Lock()
 	for cfgKey, cs := range c.subscriptions {
 		event := cbgt.CfgEvent{Key: cfgKey}
