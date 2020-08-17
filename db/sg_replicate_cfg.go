@@ -1207,7 +1207,7 @@ func (l *ReplicationHeartbeatListener) Name() string {
 // When we detect other nodes have stopped pushing heartbeats, use manager to remove from cfg
 func (l *ReplicationHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 
-	base.Debugf(base.KeyCluster, "StaleHeartbeatDetected by sg-replicate listener for node: %v", nodeUUID)
+	base.Infof(base.KeyCluster, "StaleHeartbeatDetected by sg-replicate listener for node: %v", nodeUUID)
 	err := l.mgr.RemoveNode(nodeUUID)
 	if err != nil {
 		base.Warnf("Attempt to remove node %v from sg-replicate cfg got error: %v", nodeUUID, err)
