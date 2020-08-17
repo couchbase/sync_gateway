@@ -1081,6 +1081,8 @@ func TestValidateReplication(t *testing.T) {
 					Message: tc.expectedErrorMsg,
 				}
 				assert.Equal(t, expectedError, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
