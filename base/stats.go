@@ -740,12 +740,12 @@ func (d *DbStats) InitQueryStats(useViews bool, queryNames ...string) {
 	}
 	d.QueryStats.mutex.Lock()
 	for _, queryName := range queryNames {
-		d.initQueryStat(useViews, queryName)
+		d._initQueryStat(useViews, queryName)
 	}
 	d.QueryStats.mutex.Unlock()
 }
 
-func (d *DbStats) initQueryStat(useViews bool, queryName string) {
+func (d *DbStats) _initQueryStat(useViews bool, queryName string) {
 	if _, ok := d.QueryStats.Stats[queryName]; !ok {
 		dbName := d.dbName
 
