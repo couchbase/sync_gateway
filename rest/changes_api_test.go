@@ -186,17 +186,12 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assert.Equal(t, 200, response.Code)
 }
 
-func TestPostChangesInteger(t *testing.T) {
+func TestPostChanges(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
-
-	postChanges(t, rt)
-}
-
-func postChanges(t *testing.T, rt *RestTester) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -464,7 +459,7 @@ func postChangesChannelFilter(t *testing.T, rt *RestTester) {
 
 }
 
-func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
+func TestPostChangesAdminChannelGrant(t *testing.T) {
 
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
@@ -474,11 +469,6 @@ func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
-	postChangesAdminChannelGrant(t, rt)
-}
-
-// _changes with admin-based channel grant
-func postChangesAdminChannelGrant(t *testing.T, rt *RestTester) {
 
 	// Create user with access to channel ABC:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -532,6 +522,138 @@ func postChangesAdminChannelGrant(t *testing.T, rt *RestTester) {
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 	}
+	require.Len(t, changes.Results, 5) // 4 PBS docs, plus the updated user doc
+
+	// Write a few more docs
+	response = rt.SendAdminRequest("PUT", "/db/pbs-5", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/abc-2", `{"channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+
+	cacheWaiter.AddAndWait(2)
+
+	// Issue another changes request - ensure we don't backfill again
+	changesResponse = rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq),
+		"", "bernard"))
+	assertStatus(t, changesResponse, 200)
+	log.Printf("Response:%+v", changesResponse.Body)
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+	require.Len(t, changes.Results, 2) // 2 docs
+
+}
+
+func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
+
+	if testing.Short() {
+		t.Skip("skipping test in short mode")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	defer rt.Close()
+
+	// Create user with access to channel ABC:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
+
+	// Put several documents in channel ABC and PBS
+	response := rt.SendAdminRequest("PUT", "/db/pbs-1", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	pbs2 := rt.putDoc("pbs-2", `{"channel":["PBS"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/pbs-3", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/pbs-4", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	rt.putDoc("hbo-1", `{"channel":["HBO"]}`)
+	mix1 := rt.putDoc("mix-1", `{"channel":["PBS","HBO"]}`)
+	mix2 := rt.putDoc("mix-2", `{"channel":["PBS","HBO"]}`)
+	rt.putDoc("mix-3", `{"channel":["PBS","HBO"]}`)
+	mix4 := rt.putDoc("mix-4", `{"channel":["PBS","HBO"]}`)
+	rt.putDoc("hbo-2", `{"channel":["HBO"]}`)
+	response = rt.SendAdminRequest("PUT", "/db/abc-1", `{"channel":["ABC"]}`)
+	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(5)
+
+	// Update some docs to remove channel
+	_ = rt.putDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.Rev))
+	_ = rt.putDoc("mix-1", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, mix1.Rev))
+	_ = rt.putDoc("mix-2", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix2.Rev))
+	_ = rt.putDoc("mix-4", fmt.Sprintf(`{"_rev":%q}`, mix4.Rev))
+
+	// TODO: Validate that tombstones are also not sent as part of backfill:
+	//    case 1: delete a document in a single channel (e.g. pbs-3), and validate it doesn't get included in backfill
+	//    case 2: delete a document in a multiple channels (e.g. mix-3), and validate it doesn't get included in backfill
+
+	// TODO: Test this scenario:
+	//    Document mix-5 is in channels PBS, HBO (rev 1)
+	//    Document is deleted (rev 2)
+	//    Document is recreated, only in channel PBS (rev 3)
+	//       - I think what is actually going to happen here is we'll get two entries for the doc in the backfill:
+	//   {"seq":"16:13","id":"mix-5","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}
+	//   {"seq":"16:14","id":"mix-5","changes":[{"rev":"3-0321dde33081a5ef566eecbe42ca3583"}]}
+	//  I don't think there's a way to avoid this, won't see performance improvement in this case, but need to make
+	//  sure this doesn't cause any errors.
+
+	// TODO: Similar to the above:
+	//    Document mix-5 is in channels PBS, HBO (rev 1)
+	//    Document is updated only be in channel HBO (rev 2)
+	//    Document is updated AGAIN to remove all channels (rev 3)
+	//       - I think what will happen here is we'll get rev 2 but not rev 3.
+	//   {"seq":"16:13","id":"mix-5","removed":["PBS"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}
+	//  This is the intended behaviour - when sending rev 2, we don't know that the doc is going to be
+	//  removed from HBO in future.
+
+	// TODO: Test this scenario:
+	//    Document mix-5 is in channels PBS, HBO
+	//    Document is deleted
+	//    Document is recreated, only in channel PBS
+	//    Validate that it is sent properly (as rev 3 only)
+
+	// TODO: Try to come up with scenarios that aren't currently being tested, validate they work as expected
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Issue simple changes request
+	changesResponse := rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
+	assertStatus(t, changesResponse, 200)
+
+	log.Printf("Response:%+v", changesResponse.Body)
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	require.Len(t, changes.Results, 1)
+
+	// Update the user doc to grant access to PBS
+	response = rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"admin_channels":["ABC", "PBS", "HBO"]}`)
+	assertStatus(t, response, 200)
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Issue a new changes request with since=last_seq ensure that user receives all records for channel PBS
+	changesResponse = rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq),
+		"", "bernard"))
+	assertStatus(t, changesResponse, 200)
+
+	log.Printf("Response:%+v", changesResponse.Body)
+	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+	assert.NoError(t, err, "Error unmarshalling changes response")
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+	}
+
+	// TODO: desired result is len(changes.Results) = 4
+	//      also verify that none of the changes results have "removed" entry
 	require.Len(t, changes.Results, 5) // 4 PBS docs, plus the updated user doc
 
 	// Write a few more docs
