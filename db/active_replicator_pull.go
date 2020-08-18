@@ -36,7 +36,7 @@ func (apr *ActivePullReplicator) Start() error {
 
 	err := apr._connect()
 	if err != nil {
-		_ = apr._setError(err)
+		_ = apr.setError(err)
 		base.WarnfCtx(apr.ctx, "Couldn't connect. Attempting to reconnect in background: %v", err)
 		go apr.reconnect(apr._connect)
 	}
@@ -85,7 +85,8 @@ func (apr *ActivePullReplicator) _connect() error {
 		return err
 	}
 
-	apr._setState(ReplicationStateRunning)
+	apr.setState(ReplicationStateRunning)
+	apr.publishStatus()
 	return nil
 }
 
@@ -107,13 +108,15 @@ func (apr *ActivePullReplicator) Complete() {
 	if stopErr != nil {
 		base.InfofCtx(apr.ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
 	}
-	apr._setState(ReplicationStateStopped)
+	apr.setState(ReplicationStateStopped)
 
 	// unlock the replication before triggering callback, in case callback attempts to access replication information
 	// from the replicator
 	onCompleteCallback := apr.onReplicatorComplete
+
 	apr.lock.Unlock()
 
+	apr.publishStatus()
 	if onCompleteCallback != nil {
 		onCompleteCallback()
 	}
@@ -126,8 +129,11 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 		return hashErr
 	}
 
-	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID(), checkpointHash, apr.blipSender, apr.config)
-	err := apr.Checkpointer.fetchCheckpoints()
+	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID, checkpointHash, apr.blipSender, apr.config, apr.getPullStatus)
+
+	var err error
+	apr.initialStatus, err = apr.Checkpointer.fetchCheckpoints()
+	base.InfofCtx(apr.ctx, base.KeyReplicate, "Initialized pull replication status: %+v", apr.initialStatus)
 	if err != nil {
 		return err
 	}
@@ -138,16 +144,41 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 	return nil
 }
 
-// CheckpointID returns a unique ID to be used for the checkpoint client (which is used as part of the checkpoint Doc ID on the recipient)
-func (apr *ActivePullReplicator) CheckpointID() string {
-	return "sgr2cp:pull:" + apr.config.ID
+// GetStatus is used externally to retrieve pull replication status.  Combines current running stats with
+// initialStatus.
+func (apr *ActivePullReplicator) GetStatus() *ReplicationStatus {
+	var lastSeqPulled string
+	if apr.Checkpointer != nil {
+		lastSeqPulled = apr.Checkpointer.calculateSafeProcessedSeq()
+	}
+	status := apr.getPullStatus(lastSeqPulled)
+	return status
+}
+
+// getPullStatus is used internally, and passed as statusCallback to checkpointer
+func (apr *ActivePullReplicator) getPullStatus(lastSeqPulled string) *ReplicationStatus {
+	status := &ReplicationStatus{}
+	status.Status, status.ErrorMessage = apr.getStateWithErrorMessage()
+
+	pullStats := apr.replicationStats
+	status.DocsRead = pullStats.HandleRevCount.Value()
+	status.DocsCheckedPull = pullStats.HandleChangesCount.Value()
+	status.DocsPurged = pullStats.HandleRevDocsPurgedCount.Value()
+	status.RejectedLocal = pullStats.HandleRevErrorCount.Value()
+	status.DeltasRecv = pullStats.HandleRevDeltaRecvCount.Value()
+	status.DeltasRequested = pullStats.HandleChangesDeltaRequestedCount.Value()
+	status.LastSeqPull = lastSeqPulled
+	if apr.initialStatus != nil {
+		status.PullReplicationStatus.Add(apr.initialStatus.PullReplicationStatus)
+	}
+	return status
 }
 
 func (apr *ActivePullReplicator) reset() error {
 	if apr.state != ReplicationStateStopped {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
-	return resetLocalCheckpoint(apr.config.ActiveDB, apr.CheckpointID())
+	return resetLocalCheckpoint(apr.config.ActiveDB, apr.CheckpointID)
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.
@@ -166,5 +197,4 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 			go apr.Complete()
 		}
 	}
-
 }

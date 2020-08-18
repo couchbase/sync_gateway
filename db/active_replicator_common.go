@@ -25,8 +25,11 @@ type activeReplicatorCommon struct {
 	Checkpointer          *Checkpointer
 	checkpointerCtx       context.Context
 	checkpointerCtxCancel context.CancelFunc
+	CheckpointID          string // Used for checkpoint retrieval when Checkpointer isn't available
+	initialStatus         *ReplicationStatus
 	state                 string
 	lastError             error
+	stateErrorLock        sync.RWMutex // state and lastError share their own mutex to support retrieval while holding the main lock
 	replicationStats      *BlipSyncStats
 	onReplicatorComplete  ReplicatorCompleteFunc
 	lock                  sync.RWMutex
@@ -37,16 +40,20 @@ type activeReplicatorCommon struct {
 func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
 
 	var replicationStats *BlipSyncStats
+	var checkpointID string
 	if direction == ActiveReplicatorTypePush {
 		replicationStats = BlipSyncStatsForSGRPush(config.ReplicationStatsMap)
+		checkpointID = PushCheckpointID(config.ID)
 	} else {
 		replicationStats = BlipSyncStatsForSGRPull(config.ReplicationStatsMap)
+		checkpointID = PullCheckpointID(config.ID)
 	}
 
 	return &activeReplicatorCommon{
 		config:           config,
 		state:            ReplicationStateStopped,
 		replicationStats: replicationStats,
+		CheckpointID:     checkpointID,
 	}
 }
 
@@ -124,7 +131,8 @@ func (a *activeReplicatorCommon) Stop() error {
 	a.lock.Lock()
 	err := a._disconnect()
 	a._stop()
-	a._setState(ReplicationStateStopped)
+	a.setState(ReplicationStateStopped)
+	a.publishStatus()
 	a.lock.Unlock()
 	return err
 }
@@ -167,8 +175,10 @@ type ReplicatorCompleteFunc func()
 // _setError updates state and lastError, and
 // returns the error provided.  Expects callers to be holding
 // a.lock
-func (a *activeReplicatorCommon) _setError(err error) (passThrough error) {
+func (a *activeReplicatorCommon) setError(err error) (passThrough error) {
 	base.InfofCtx(a.ctx, base.KeyReplicate, "ActiveReplicator had error state set with err: %v", err)
+	a.stateErrorLock.Lock()
+	defer a.stateErrorLock.Unlock()
 	a.state = ReplicationStateError
 	a.lastError = err
 	return err
@@ -176,26 +186,28 @@ func (a *activeReplicatorCommon) _setError(err error) (passThrough error) {
 
 // setState updates replicator state and resets lastError to nil.  Expects callers
 // to be holding a.lock
-func (a *activeReplicatorCommon) _setState(state string) {
+func (a *activeReplicatorCommon) setState(state string) {
+	a.stateErrorLock.Lock()
+	defer a.stateErrorLock.Unlock()
 	a.state = state
 	a.lastError = nil
 }
 
 func (a *activeReplicatorCommon) getState() string {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
+	a.stateErrorLock.RLock()
+	defer a.stateErrorLock.RUnlock()
 	return a.state
 }
 
 func (a *activeReplicatorCommon) getLastError() error {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
+	a.stateErrorLock.RLock()
+	defer a.stateErrorLock.RUnlock()
 	return a.lastError
 }
 
 func (a *activeReplicatorCommon) getStateWithErrorMessage() (state string, lastErrorMessage string) {
-	a.lock.RLock()
-	defer a.lock.RUnlock()
+	a.stateErrorLock.RLock()
+	defer a.stateErrorLock.RUnlock()
 	if a.lastError == nil {
 		return a.state, ""
 	} else {
@@ -207,4 +219,12 @@ func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
 	a.lock.RLock()
 	defer a.lock.RUnlock()
 	return a.replicationStats
+}
+
+func (a *activeReplicatorCommon) publishStatus() {
+	status, errorMessage := a.getStateWithErrorMessage()
+	newRev := setLocalCheckpointStatus(a.config.ActiveDB, a.CheckpointID, status, errorMessage)
+	if newRev != "" && a.Checkpointer != nil {
+		a.Checkpointer.lastLocalCheckpointRevID = newRev
+	}
 }

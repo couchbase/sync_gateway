@@ -541,6 +541,9 @@ func TestReplicationRebalancePull(t *testing.T) {
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
+
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	oldFrequency := db.MaxSequenceIncrFrequency
 	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
@@ -557,8 +560,9 @@ func TestReplicationRebalancePull(t *testing.T) {
 
 	// Create pull replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true)
-	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
 	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true)
+	activeRT.waitForAssignedReplications(2)
+	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
 	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
@@ -579,6 +583,8 @@ func TestReplicationRebalancePull(t *testing.T) {
 	activeRT.waitForAssignedReplications(1)
 	activeRT2.waitForAssignedReplications(1)
 
+	log.Printf("==============replication rebalance is done================")
+
 	// Create additional docs on remoteRT
 	docABC2 := t.Name() + "ABC2"
 	_ = remoteRT.putDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
@@ -598,6 +604,13 @@ func TestReplicationRebalancePull(t *testing.T) {
 	assert.Equal(t, "remoteRT", docABC2Body2["source"])
 	docDEF2Body2 := activeRT2.getDoc(docDEF2)
 	assert.Equal(t, "remoteRT", docDEF2Body2["source"])
+
+	// Validate replication stats across rebalance, on both active nodes
+	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_ABC").DocsRead == 2 })
+	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsRead == 2 })
+	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsRead == 2 })
+	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsRead == 2 })
+
 }
 
 // TestReplicationRebalancePush
@@ -612,6 +625,8 @@ func TestReplicationRebalancePush(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	oldFrequency := db.MaxSequenceIncrFrequency
@@ -666,6 +681,20 @@ func TestReplicationRebalancePush(t *testing.T) {
 	assert.Equal(t, "activeRT", docABC2Body["source"])
 	docDEF2Body := remoteRT.getDoc(docDEF2)
 	assert.Equal(t, "activeRT", docDEF2Body["source"])
+
+	// Validate replication stats across rebalance, on both active nodes
+	// Checking DocsCheckedPush here, as DocsWritten isn't necessarily going to be 2, due to a
+	// potential for race updating status during replication rebalance:
+	//     1. active node 1 writes document 1 to passive
+	//     2. replication is rebalanced prior to checkpoint being persisted
+	//     3. active node 2 is assigned replication, starts from zero (since checkpoint wasn't persisted)
+	//     4. active node 2 attempts to write document 1, passive already has it.  DocsCheckedPush is incremented, but not DocsWritten
+	// Note that we can't wait for checkpoint persistence prior to rebalance, as the node initiating the rebalance
+	// isn't necessarily the one running the replication.
+	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
+	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
+	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
+	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
 }
 
 // TestPullReplicationAPI
@@ -679,7 +708,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -706,7 +735,10 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	doc1Body := activeRT.getDoc(docIDs[0])
 	assert.Equal(t, "rt2", doc1Body["source"])
 
-	// Get replication status from active
+	// Wait for replication to stop
+	activeRT.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+	// Validate docs read from active
 	status := activeRT.GetReplicationStatus(replicationID)
 	assert.Equal(t, int64(docCount), status.DocsRead)
 
@@ -832,6 +864,14 @@ func (rt *RestTester) waitForAssignedReplications(count int) {
 	successFunc := func() bool {
 		replicationStatuses := rt.GetReplicationStatuses("?localOnly=true")
 		return len(replicationStatuses) == count
+	}
+	require.NoError(rt.tb, rt.WaitForCondition(successFunc))
+}
+
+func (rt *RestTester) waitForReplicationStatus(replicationID string, targetStatus string) {
+	successFunc := func() bool {
+		status := rt.GetReplicationStatus(replicationID)
+		return status.Status == targetStatus
 	}
 	require.NoError(rt.tb, rt.WaitForCondition(successFunc))
 }
@@ -1487,4 +1527,12 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount)
 	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointHitCount)
 	assert.Equal(t, int64(1), r.Push.Checkpointer.Stats().GetCheckpointMissCount)
+}
+
+func SetDefaultCheckpointInterval(d time.Duration) func() {
+	previousInterval := db.DefaultCheckpointInterval
+	db.DefaultCheckpointInterval = d
+	return func() {
+		db.DefaultCheckpointInterval = previousInterval
+	}
 }
