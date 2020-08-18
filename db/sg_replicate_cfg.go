@@ -18,11 +18,10 @@ import (
 )
 
 const (
-	cfgKeySGRCluster            = "sgrCluster" // key used for sgrCluster information in a cbgt.Cfg-based key value store
-	maxSGRClusterCasRetries     = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
-	sgrClusterMgrContextID      = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
-	defaultChangesBatchSize     = 200          // default changes batch size if replication batch_size is unset
-	defaultMaxReconnectInterval = time.Minute * 5
+	cfgKeySGRCluster        = "sgrCluster" // key used for sgrCluster information in a cbgt.Cfg-based key value store
+	maxSGRClusterCasRetries = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
+	sgrClusterMgrContextID  = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
+	defaultChangesBatchSize = 200          // default changes batch size if replication batch_size is unset
 )
 
 const (
@@ -462,8 +461,11 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		rc.MaxReconnectInterval = time.Duration(config.MaxBackoff) * time.Minute
 	}
 
-	// TODO: Calculate based on given max interval.
-	// rc.TotalReconnectTimeout =
+	// If maxBackoff is zero, retry up to ~MaxReconnectInterval and then give up.
+	// If non-zero, reconnect is indefinite.
+	if config.MaxBackoff == 0 {
+		rc.TotalReconnectTimeout = rc.MaxReconnectInterval * 2
+	}
 
 	rc.ChangesBatchSize = defaultChangesBatchSize
 	if config.BatchSize > 0 {
