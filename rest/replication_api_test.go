@@ -805,7 +805,7 @@ func (rt *RestTester) assertReplicationState(replicationID string, expectedState
 	assertStatus(rt.tb, resp, http.StatusOK)
 	var status db.ReplicationStatus
 	require.NoError(rt.tb, json.Unmarshal(resp.Body.Bytes(), &status))
-	assert.Equal(rt.tb, expectedState, status.Status)
+	assert.Equalf(rt.tb, expectedState, status.Status, "status: %v", status)
 }
 
 // createReplication creates a replication via the REST API with the specified ID, remoteURL, direction and channel filter

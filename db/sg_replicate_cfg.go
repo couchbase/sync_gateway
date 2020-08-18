@@ -11,16 +11,18 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
 )
 
 const (
-	cfgKeySGRCluster        = "sgrCluster" // key used for sgrCluster information in a cbgt.Cfg-based key value store
-	maxSGRClusterCasRetries = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
-	sgrClusterMgrContextID  = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
-	defaultChangesBatchSize = 200          // default changes batch size if replication batch_size is unset
+	cfgKeySGRCluster            = "sgrCluster" // key used for sgrCluster information in a cbgt.Cfg-based key value store
+	maxSGRClusterCasRetries     = 100          // Maximum number of CAS retries when attempting to update the sgr cluster configuration
+	sgrClusterMgrContextID      = "sgr-mgr-"   // logging context ID prefix for sgreplicate manager
+	defaultChangesBatchSize     = 200          // default changes batch size if replication batch_size is unset
+	defaultMaxReconnectInterval = time.Minute * 5
 )
 
 const (
@@ -454,6 +456,14 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
 	}
+
+	rc.MaxReconnectInterval = defaultMaxReconnectInterval
+	if config.MaxBackoff != 0 {
+		rc.MaxReconnectInterval = time.Duration(config.MaxBackoff) * time.Minute
+	}
+
+	// TODO: Calculate based on given max interval.
+	// rc.TotalReconnectTimeout =
 
 	rc.ChangesBatchSize = defaultChangesBatchSize
 	if config.BatchSize > 0 {
