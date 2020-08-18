@@ -521,13 +521,17 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 
-	removeDirs := func(dirs ...string) {
-		for _, dir := range dirs {
-			require.NoErrorf(t, os.RemoveAll(dir), "Error removing dir %q", dir)
-			_, err := os.Stat(dir)
-			require.True(t, os.IsNotExist(err), "Removed dir %q shouldn't exist", dir)
-		}
+	removeAll := func(path string) {
+		require.NoErrorf(t, os.RemoveAll(path), "Error removing path %q", path)
+		_, err := os.Stat(path)
+		require.True(t, os.IsNotExist(err), "Removed path %q shouldn't exist", path)
 	}
+
+	deprecatedDefaultLogFilePathAsDir, err := ioutil.TempDir("", "deprecatedDefaultLogFilePathAsDir")
+	require.NoErrorf(t, err, "Error creating temp dir %q", deprecatedDefaultLogFilePathAsDir)
+	deprecatedDefaultLogFilePathAsFile, err := ioutil.TempFile(deprecatedDefaultLogFilePathAsDir, "sg-trace-*.log")
+	require.NoErrorf(t, err, "Error creating temp file %q", deprecatedDefaultLogFilePathAsFile)
+	defer removeAll(deprecatedDefaultLogFilePathAsDir)
 
 	serverConfig := func() *ServerConfig {
 		return &ServerConfig{
@@ -541,75 +545,52 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 		}
 	}
 
-	t.Run("call deprecatedConfigLoggingFallback with default log file path as a directory", func(t *testing.T) {
-		logFilePath, err := ioutil.TempDir("", "logFilePath")
-		require.NoErrorf(t, err, "Error creating temp dir %q", logFilePath)
-		dlfPath, err := ioutil.TempDir("", "dlfPath")
-		require.NoErrorf(t, err, "Error creating temp dir %q", dlfPath)
-		defer removeDirs(logFilePath, dlfPath)
+	tests := []struct {
+		name                  string
+		deprecatedLogFilePath string
+		expectedLogFilePath   string
+	}{
+		{
+			name:                  "specify deprecated default log file path as directory",
+			deprecatedLogFilePath: deprecatedDefaultLogFilePathAsDir,
+			expectedLogFilePath:   deprecatedDefaultLogFilePathAsDir,
+		},
+		{
+			name:                  "specify deprecated default log file path as file",
+			deprecatedLogFilePath: deprecatedDefaultLogFilePathAsFile.Name(),
+			expectedLogFilePath:   filepath.Dir(deprecatedDefaultLogFilePathAsFile.Name()),
+		},
+		{
+			name:                  "specify deprecated default log file path as file or dir that doesn't exist",
+			deprecatedLogFilePath: deprecatedDefaultLogFilePathAsDir + "/doesNotExist",
+			expectedLogFilePath:   deprecatedDefaultLogFilePathAsDir,
+		},
+	}
 
-		sc := serverConfig()
-		sc.Logging.DeprecatedDefaultLog.LogFilePath = &logFilePath
-		sc.DeprecatedLogFilePath = &dlfPath
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			config := serverConfig()
+			config.Logging.DeprecatedDefaultLog.LogFilePath = &test.deprecatedLogFilePath
+			warns := config.deprecatedConfigLoggingFallback()
+			require.NoError(t, err, "Error setting up deprecated logging config")
+			assert.Equal(t, test.expectedLogFilePath, config.Logging.LogFilePath, "Error setting log_file_path")
+			assert.Equal(t, config.Logging.DeprecatedDefaultLog.LogKeys, config.Logging.Console.LogKeys)
+			assert.Equal(t, base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel), config.Logging.Console.LogLevel)
+			assert.Equal(t, config.DeprecatedLog, config.Logging.Console.LogKeys)
+			assert.Len(t, warns, 3)
+		})
+	}
 
-		warns, err := sc.deprecatedConfigLoggingFallback()
-		require.NoError(t, err, "Error setting up deprecated logging config")
-		assert.Equal(t, *sc.Logging.DeprecatedDefaultLog.LogFilePath, sc.Logging.LogFilePath)
-		assert.Equal(t, sc.Logging.DeprecatedDefaultLog.LogKeys, sc.Logging.Console.LogKeys)
-		assert.Equal(t, base.ToLogLevel(sc.Logging.DeprecatedDefaultLog.LogLevel), sc.Logging.Console.LogLevel)
-		assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
-		assert.Len(t, warns, 3)
-	})
-
-	t.Run("call deprecatedConfigLoggingFallback with default log file path as a file", func(t *testing.T) {
-		dlfPath, err := ioutil.TempDir("", "dlfPath")
-		require.NoErrorf(t, err, "Error creating temp dir %q", dlfPath)
-		dlfPathFile, err := ioutil.TempFile(dlfPath, "sg-trace-*.log")
-		require.NoErrorf(t, err, "Error creating temp file %q", dlfPathFile)
-		defer removeDirs(dlfPath)
-
-		sc := serverConfig()
-		sc.Logging.DeprecatedDefaultLog.LogFilePath = base.StringPtr(dlfPathFile.Name())
-
-		warns, err := sc.deprecatedConfigLoggingFallback()
-		require.NoError(t, err, "Error setting up deprecated logging config")
-		assert.Equal(t, filepath.Dir(*sc.Logging.DeprecatedDefaultLog.LogFilePath), sc.Logging.LogFilePath)
-		assert.Equal(t, sc.Logging.DeprecatedDefaultLog.LogKeys, sc.Logging.Console.LogKeys)
-		assert.Equal(t, base.ToLogLevel(sc.Logging.DeprecatedDefaultLog.LogLevel), sc.Logging.Console.LogLevel)
-		assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
-		assert.Len(t, warns, 3)
-	})
-
-	t.Run("call deprecatedConfigLoggingFallback with default log file path that doesn't exist", func(t *testing.T) {
-		dlfPath, err := ioutil.TempDir("", "dlfPath")
-		require.NoErrorf(t, err, "Error creating temp dir %q", dlfPath)
-		defer removeDirs(dlfPath)
-
-		sc := serverConfig()
-		sc.Logging.DeprecatedDefaultLog.LogFilePath = base.StringPtr(dlfPath + "unknown.log")
-
-		warns, err := sc.deprecatedConfigLoggingFallback()
-		require.Error(t, err, "Error setting up deprecated logging config")
-		require.Contains(t, err.Error(), "does not exist")
-		assert.Len(t, warns, 1)
-	})
-
-	t.Run("call deprecatedConfigLoggingFallback without specifying DeprecatedDefaultLog", func(t *testing.T) {
-		dlfPath, err := ioutil.TempDir("", "dlfPath")
-		require.NoErrorf(t, err, "Error creating temp dir %q", dlfPath)
-		defer removeDirs(dlfPath)
-		sc := &ServerConfig{
-			Logging:               &base.LoggingConfig{},
-			DeprecatedLogFilePath: &dlfPath,
-			DeprecatedLog:         deprecatedLog,
-		}
-
-		warns, err := sc.deprecatedConfigLoggingFallback()
-		require.NoError(t, err, "Error setting up deprecated logging config")
-		assert.Equal(t, *sc.DeprecatedLogFilePath, sc.Logging.LogFilePath)
-		assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
-		assert.Len(t, warns, 2)
-	})
+	// Call deprecatedConfigLoggingFallback with DeprecatedLogFilePath and without DeprecatedDefaultLog
+	config = &ServerConfig{
+		Logging:               &base.LoggingConfig{},
+		DeprecatedLogFilePath: base.StringPtr(deprecatedDefaultLogFilePathAsFile.Name()),
+		DeprecatedLog:         deprecatedLog,
+	}
+	warns := config.deprecatedConfigLoggingFallback()
+	assert.Equal(t, *config.DeprecatedLogFilePath, config.Logging.LogFilePath)
+	assert.Equal(t, config.DeprecatedLog, config.Logging.Console.LogKeys)
+	assert.Len(t, warns, 2)
 }
 
 func TestSetupAndValidateLogging(t *testing.T) {

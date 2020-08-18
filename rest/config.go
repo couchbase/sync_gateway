@@ -681,7 +681,7 @@ func (config *ServerConfig) validate() []error {
 }
 
 // setupAndValidateLogging sets up and validates logging,
-// and returns a slice of defferred logs to execute later.
+// and returns a slice of deferred logs to execute later.
 func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredLogFn, err error) {
 
 	if config.Logging == nil {
@@ -689,10 +689,7 @@ func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredL
 	}
 
 	// populate values from deprecated logging config options if not set
-	warnings, err = config.deprecatedConfigLoggingFallback()
-	if err != nil {
-		return warnings, err
-	}
+	warnings = config.deprecatedConfigLoggingFallback()
 
 	base.SetRedaction(config.Logging.RedactionLevel)
 
@@ -712,7 +709,7 @@ func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredL
 // deprecatedConfigLoggingFallback will parse the ServerConfig and try to
 // use older logging config options for backwards compatibility.
 // It will return a slice of deferred warnings to log at a later time.
-func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.DeferredLogFn, err error) {
+func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.DeferredLogFn) {
 
 	warningMsgFmt := "Using deprecated config option: %q. Use %q instead."
 
@@ -723,24 +720,17 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 				base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
 			})
 
-			// Ensures existence of the default logging.["default"].LogFilePath if specified.
+			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
 			// SGCollect relies on this path to pick up the standard and rotated log files.
 			info, err := os.Stat(*config.Logging.DeprecatedDefaultLog.LogFilePath)
-			if os.IsNotExist(err) {
-				return warnings, fmt.Errorf("specified logging.[\"default\"].LogFilePath %q does not exist, Error: %v",
-					*config.Logging.DeprecatedDefaultLog.LogFilePath, err)
-			} else if err != nil {
-				warnings = append(warnings, func() {
-					base.Warnf("Unexpected error setting logging.log_file_path by using the "+
-						"path specified against logging.[\"default\"].LogFilePath, Error: %v", err)
-				})
+			if err != nil {
+				base.Infof(base.KeyAll, "Detected error retrieving stats of logging.[\"default\"].LogFilePath %q, "+
+					"Error: %v", *config.Logging.DeprecatedDefaultLog.LogFilePath, err)
+			}
+			if !os.IsNotExist(err) && info.IsDir() {
+				config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
 			} else {
-				// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
-				if info.IsDir() {
-					config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
-				} else {
-					config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
-				}
+				config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
 			}
 		}
 
@@ -777,7 +767,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 		config.Logging.Console.LogKeys = config.DeprecatedLog
 	}
 
-	return warnings, nil
+	return warnings
 }
 
 func (self *ServerConfig) MergeWith(other *ServerConfig) error {
