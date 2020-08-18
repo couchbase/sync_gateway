@@ -62,16 +62,11 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 	return msg, nil
 }
 
-// SGR2CheckpointDoc is the body of the checkpoint stored in the bucket.
-type SGR2CheckpointDoc struct {
-	LastSequence string `json:"last_sequence,omitempty"`
-}
-
 // SetSGR2CheckpointRequest is a strongly typed 'setCheckpoint' request for SG-Replicate 2.
 type SetSGR2CheckpointRequest struct {
-	Client     string            // Client is the unique ID of client checkpoint to retrieve
-	RevID      *string           // RevID of the previous checkpoint, if known.
-	Checkpoint SGR2CheckpointDoc // Checkpoint is the actual checkpoint we're sending.
+	Client     string  // Client is the unique ID of client checkpoint to retrieve
+	RevID      *string // RevID of the previous checkpoint, if known.
+	Checkpoint Body    // Checkpoint is the actual checkpoint body we're sending.
 
 	msg *blip.Message
 }
@@ -165,8 +160,8 @@ func (rq *GetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
 }
 
 type SGR2Checkpoint struct {
-	RevID   string // The RevID of the checkpoint.
-	LastSeq string // The last_sequence of the checkpoint.
+	RevID string // The RevID of the checkpoint.
+	Body  Body   // The checkpoint body
 }
 
 func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
@@ -187,13 +182,13 @@ func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
 		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
 	}
 
-	var c SGR2CheckpointDoc
-	if err := respMsg.ReadJSONBody(&c); err != nil {
+	var checkpointBody Body
+	if err := respMsg.ReadJSONBody(&checkpointBody); err != nil {
 		return nil, err
 	}
 
 	return &SGR2Checkpoint{
-		RevID:   respMsg.Properties[GetCheckpointResponseRev],
-		LastSeq: c.LastSequence,
+		RevID: respMsg.Properties[GetCheckpointResponseRev],
+		Body:  checkpointBody,
 	}, nil
 }

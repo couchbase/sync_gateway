@@ -30,6 +30,20 @@ const (
 	ReplicationStateError     = "error"
 )
 
+// Replication config validation error messages
+const (
+	ConfigErrorIDTooLong            = "Replication ID must be less than 160 characters"
+	ConfigErrorUnknownFilter        = "Unknown replication filter; try sync_gateway/bychannel"
+	ConfigErrorMissingQueryParams   = "Replication specifies sync_gateway/bychannel filter but is missing query_params"
+	ConfigErrorMissingRemote        = "Replication remote must be specified"
+	ConfigErrorMissingDirection     = "Replication direction must be specified"
+	ConfigErrorDuplicateCredentials = "Auth credentials can be specified using username/password config properties or remote URL, but not both"
+	ConfigErrorConfigBasedAdhoc     = "adhoc=true is invalid for replication in Sync Gateway configuration"
+	ConfigErrorConfigBasedCancel    = "cancel=true is invalid for replication in Sync Gateway configuration"
+	ConfigErrorInvalidDirectionFmt  = "Invalid replication direction %q, valid values are %s/%s/%s"
+	ConfigErrorBadChannelsArray     = "Bad channels array in query_params for sync_gateway/bychannel filter"
+)
+
 // ClusterUpdateFunc is callback signature used when updating the cluster configuration
 type ClusterUpdateFunc func(cluster *SGRCluster) (cancel bool, err error)
 
@@ -123,15 +137,22 @@ type ReplicationUpsertConfig struct {
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
+	// Checkpoint keys are prefixed with 35 characters:  _sync:local:checkpoint/sgr2cp:pull:
+	// Setting length limit for replication ID to 160 characters to retain some room for future
+	// key-related enhancements
+	if len(rc.ID) > 160 {
+		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorIDTooLong)
+	}
+
 	// Cancel is only supported via the REST API
 	if rc.Cancel && fromConfig {
-		return base.HTTPErrorf(http.StatusBadRequest, "cancel=true is invalid for replication in Sync Gateway configuration")
+		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorConfigBasedCancel)
 	}
 
 	if rc.Adhoc {
 		// Adhoc is only supported via the REST API
 		if fromConfig {
-			return base.HTTPErrorf(http.StatusBadRequest, "adhoc=true is invalid for replication in Sync Gateway configuration")
+			return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorConfigBasedAdhoc)
 		}
 
 		if rc.State == ReplicationStateStopped {
@@ -140,7 +161,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 	}
 
 	if rc.Remote == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote must be specified.")
+		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorMissingRemote)
 	}
 
 	remoteURL, err := url.Parse(rc.Remote)
@@ -151,21 +172,21 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
 	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {
 		return base.HTTPErrorf(http.StatusBadRequest,
-			"Auth credentials can be specified either in replication config or remote URL but not allowed in both")
+			ConfigErrorDuplicateCredentials)
 	}
 
 	if rc.Direction == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "Replication direction must be specified")
+		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorMissingDirection)
 	}
 
 	if !rc.Direction.IsValid() {
-		return base.HTTPErrorf(http.StatusBadRequest, "Invalid replication direction %q, valid values are %s/%s/%s",
+		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorInvalidDirectionFmt,
 			rc.Direction, ActiveReplicatorTypePush, ActiveReplicatorTypePull, ActiveReplicatorTypePushAndPull)
 	}
 
 	if rc.Filter == base.ByChannelFilter {
 		if rc.QueryParams == nil {
-			return base.HTTPErrorf(http.StatusBadRequest, "Replication specifies sync_gateway/bychannel filter but is missing query_params")
+			return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorMissingQueryParams)
 		}
 
 		_, invalidChannelsErr := ChannelsFromQueryParams(rc.QueryParams)
@@ -174,7 +195,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		}
 
 	} else if rc.Filter != "" {
-		return base.HTTPErrorf(http.StatusBadRequest, "Unknown replication filter; try sync_gateway/bychannel")
+		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorUnknownFilter)
 	}
 	return nil
 }

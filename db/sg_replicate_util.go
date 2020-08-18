@@ -21,7 +21,7 @@ func ChannelsFromQueryParams(queryParams interface{}) (channels []string, err er
 	} else if chanarray, ok = queryParams.([]interface{}); ok {
 		// query params is an array and chanarray has been set, now drop out of if-then-else for processing
 	} else {
-		return nil, base.HTTPErrorf(http.StatusBadRequest, "Bad channels array in query_params for sync_gateway/bychannel filter")
+		return nil, base.HTTPErrorf(http.StatusBadRequest, ConfigErrorBadChannelsArray)
 	}
 	if len(chanarray) > 0 {
 		channels = make([]string, len(chanarray))
