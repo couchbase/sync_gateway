@@ -734,10 +734,8 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 					base.Warnf("Unexpected error setting logging.log_file_path by using the "+
 						"path specified against logging.[\"default\"].LogFilePath, Error: %v", err)
 				})
-			}
-
-			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
-			if err == nil {
+			} else {
+				// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
 				if info.IsDir() {
 					config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
 				} else {
