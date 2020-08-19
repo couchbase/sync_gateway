@@ -580,8 +580,10 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	mix3 := rt.putDoc("mix-3", `{"channel":["PBS","HBO"]}`)
 	mix4 := rt.putDoc("mix-4", `{"channel":["PBS","HBO"]}`)
 
-	// PUT a single document in channel ABC
+	// Put several documents in channel ABC
 	_ = rt.putDoc("abc-1", `{"channel":["ABC"]}`)
+	abc2 := rt.putDoc("abc-2", `{"channel":["ABC"]}`)
+	abc3 := rt.putDoc("abc-3", `{"channel":["ABC"]}`)
 	cacheWaiter.AddAndWait(5)
 
 	// Update some docs to remove channel
@@ -596,10 +598,10 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	rt.deleteDoc(pbs3.ID, pbs3.Rev)
 	rt.deleteDoc(mix3.ID, mix3.Rev)
 
-	// TODO: Test this scenario:
-	//    Document mix-5 is in channels PBS, HBO (rev 1)
-	//    Document is deleted (rev 2)
-	//    Document is recreated, only in channel PBS (rev 3)
+	// Test Scenario:
+	//   1. Document mix-5 is in channels PBS, HBO (rev 1)
+	//   2. Document is deleted (rev 2)
+	//   3. Document is recreated, only in channel PBS (rev 3)
 	//       - I think what is actually going to happen here is we'll get two entries for the doc in the backfill:
 	//   {"seq":"16:13","id":"mix-5","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}
 	//   {"seq":"16:14","id":"mix-5","changes":[{"rev":"3-0321dde33081a5ef566eecbe42ca3583"}]}
@@ -609,11 +611,11 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	rt.deleteDoc(mix5.ID, mix5.Rev)
 	_ = rt.putDoc(mix5.ID, `{"channel":["PBS"]}`)
 
-	// TODO: Similar to the above:
-	//    Document mix-5 is in channels PBS, HBO (rev 1)
-	//    Document is updated only be in channel HBO (rev 2)
-	//    Document is updated AGAIN to remove all channels (rev 3)
-	//       - I think what will happen here is we'll get rev 2 but not rev 3.
+	// Test Scenario:
+	//   1. Document mix-5 is in channels PBS, HBO (rev 1)
+	//   2. Document is updated only be in channel HBO (rev 2)
+	//   3. Document is updated AGAIN to remove all channels (rev 3)
+	//   I think what will happen here is we'll get rev 2 but not rev 3.
 	//   {"seq":"16:13","id":"mix-5","removed":["PBS"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}
 	//  This is the intended behaviour - when sending rev 2, we don't know that the doc is going to be
 	//  removed from HBO in future.
@@ -621,27 +623,35 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	mix6 = rt.putDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6.Rev))
 	_ = rt.putDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q}`, mix6.Rev))
 
-	// TODO: Test this scenario:
-	//    Document mix-5 is in channels PBS, HBO
-	//    Document is deleted
-	//    Document is recreated, only in channel PBS
-	//    Validate that it is sent properly (as rev 3 only)
-
-	// TODO: Try to come up with scenarios that aren't currently being tested, validate they work as expected
-
-	var changes struct {
-		Results []db.ChangeEntry `json:"results"`
-		LastSeq interface{}      `json:"last_seq"`
-	}
+	// Test Scenario:
+	//   1. Delete abc-2 from channel ABC
+	//   2. Update abc-3 to remove from channel ABC
+	rt.deleteDoc(abc2.ID, abc2.Rev)
+	_ = rt.putDoc(abc3.ID, fmt.Sprintf(`{"_rev":%q}`, abc3.Rev))
 
 	// Issue simple changes request
 	changesResponse := rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
 	assertStatus(t, changesResponse, 200)
-
 	log.Printf("Response:%+v", changesResponse.Body)
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Failed to unmarshal changes response")
-	require.Len(t, changes.Results, 1)
+
+	expectedResults := []string{
+		`{"seq":11,"id":"abc-1","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+		`{"seq":26,"id":"abc-2","deleted":true,"removed":["ABC"],"changes":[{"rev":"2-6055be21d970eb690f48452505ea02ed"}]}`,
+		`{"seq":27,"id":"abc-3","removed":["ABC"],"changes":[{"rev":"2-09b89154aa9a0e1620da0d86528d406a"}]}`,
+	}
+	var changes changesResults
+	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
+	require.Equal(t, len(expectedResults), len(changes.Results))
+
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+	}
 
 	// Update the user doc to grant access to PBS
 	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"admin_channels":["ABC", "PBS", "HBO"]}`)
@@ -650,43 +660,68 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Issue a new changes request with since=last_seq ensure that user receives all records for channel PBS
-	changesResponse = rt.Send(requestByUser("GET", fmt.Sprintf("/db/_changes?since=%s", changes.LastSeq),
-		"", "bernard"))
+	changesResponse = rt.Send(requestByUser("GET",
+		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", "bernard"))
 	assertStatus(t, changesResponse, 200)
-
 	log.Printf("Response:%+v", changesResponse.Body)
+
+	expectedResults = []string{
+		`{"seq":"28:1","id":"pbs-1","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":"28:4","id":"pbs-4","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":"28:5","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":"28:6","id":"hbo-2","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":"28:15","id":"mix-1","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}`,
+		`{"seq":"28:16","id":"mix-2","removed":["PBS"],"changes":[{"rev":"2-5dcb551a0eb59eef3d98c64c29033d02"}]}`,
+		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
+		`{"seq":28,"id":"_user/bernard","changes":[]}`,
+	}
+	// Desired result is len(changes.Results) = 8
+	// None of the changes results should have "removed" entry
 	changes.Results = nil
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Failed to unmarshal changes response")
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
+	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
+	require.Equal(t, len(expectedResults), len(changes.Results)) // 8 PBS docs, plus the updated user doc
+
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
 	}
 
-	// TODO: desired result is len(changes.Results) = 8
-	//      also verify that none of the changes results have "removed" entry
-	require.Len(t, changes.Results, 8) // 8 PBS docs, plus the updated user doc
-
 	// Write a few more docs
-	response = rt.SendAdminRequest("PUT", "/db/pbs-5", `{"channel":["PBS"]}`)
-	assertStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/abc-2", `{"channel":["ABC"]}`)
-	assertStatus(t, response, 201)
+	_ = rt.putDoc("pbs-5", `{"channel":["PBS"]}`)
+	_ = rt.putDoc("abc-4", `{"channel":["ABC"]}`)
 
 	cacheWaiter.AddAndWait(2)
 
 	// Issue another changes request - ensure we don't backfill again
 	changesResponse = rt.Send(requestByUser("GET",
-		fmt.Sprintf("/db/_changes?since=%s", changes.LastSeq), "", "bernard"))
+		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", "bernard"))
 	assertStatus(t, changesResponse, 200)
 	log.Printf("Response:%+v", changesResponse.Body)
-	changes.Results = nil
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Failed to unmarshal changes response")
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-	}
-	require.Len(t, changes.Results, 2) // 2 docs
 
+	expectedResults = []string{
+		`{"seq":29,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":30,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+	}
+
+	changes.Results = nil
+	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
+	require.Equal(t, len(expectedResults), len(changes.Results))
+
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+		assert.Equal(t, expectedChange.Err, result.Err)
+	}
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, ensuring that
