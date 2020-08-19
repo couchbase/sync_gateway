@@ -220,7 +220,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 	assert.NoError(t, validateErr, "Error validating indexes online")
 }
 
-func TestRemoveObsoleteIndexOnFail(t *testing.T) {
+func TestRemoveObsoleteIndexOnError(t *testing.T) {
 
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
