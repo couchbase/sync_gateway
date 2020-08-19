@@ -9,7 +9,6 @@ import (
 )
 
 func TestActiveChannelsConcurrency(t *testing.T) {
-
 	activeChannelStat := &base.SgwIntStat{}
 	ac := NewActiveChannels(activeChannelStat)
 	var wg sync.WaitGroup

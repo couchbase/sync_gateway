@@ -3,8 +3,10 @@ package base
 import (
 	"expvar"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -357,7 +359,6 @@ type SgwStat struct {
 	statDesc      *prometheus.Desc
 	labels        map[string]string
 	statValueType prometheus.ValueType
-	mutex         sync.Mutex
 }
 
 type SgwIntStat struct {
@@ -365,9 +366,10 @@ type SgwIntStat struct {
 	Val int64
 }
 
+// uint64 is used here because atomic ints do not support floats. Floats are encoded to uint64
 type SgwFloatStat struct {
 	SgwStat
-	Val float64
+	Val uint64
 }
 
 // Just a bool wrapper. Prometheus doesn't support boolean metrics and so this just goes to expvars
@@ -408,33 +410,29 @@ func (s *SgwIntStat) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(s.Val), getValues(s.labels)...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(atomic.LoadInt64(&s.Val)), getValues(s.labels)...)
 }
 
 func (s *SgwIntStat) Set(newV int64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.Val = newV
+	atomic.StoreInt64(&s.Val, newV)
 }
 
 func (s *SgwIntStat) SetIfMax(newV int64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	if newV > s.Val {
-		s.Val = newV
+	for {
+		cur := atomic.LoadInt64(&s.Val)
+		nxtVal := cur + newV
+		if atomic.CompareAndSwapInt64(&s.Val, cur, nxtVal) {
+			return
+		}
 	}
 }
 
 func (s *SgwIntStat) Add(newV int64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.Val += newV
+	atomic.AddInt64(&s.Val, newV)
 }
 
 func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return []byte(fmt.Sprintf("%v", s.Val)), nil
+	return []byte(fmt.Sprintf("%v", atomic.LoadInt64(&s.Val))), nil
 }
 
 func (s *SgwIntStat) String() string {
@@ -442,9 +440,7 @@ func (s *SgwIntStat) String() string {
 }
 
 func (s *SgwIntStat) Value() int64 {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.Val
+	return atomic.LoadInt64(&s.Val)
 }
 
 func NewFloatStat(subsystem string, key string, dbName string, statValueType prometheus.ValueType, initialValue float64) *SgwFloatStat {
@@ -457,7 +453,7 @@ func NewFloatStat(subsystem string, key string, dbName string, statValueType pro
 
 	stat := &SgwFloatStat{
 		SgwStat: *newSGWStat(subsystem, key, labels, statValueType),
-		Val:     initialValue,
+		Val:     math.Float64bits(initialValue),
 	}
 	prometheus.MustRegister(stat)
 	return stat
@@ -468,33 +464,39 @@ func (s *SgwFloatStat) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, s.Val, getValues(s.labels)...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, math.Float64frombits(atomic.LoadUint64(&s.Val)), getValues(s.labels)...)
 }
 
 func (s *SgwFloatStat) Set(newV float64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.Val = newV
+	atomic.StoreUint64(&s.Val, math.Float64bits(newV))
 }
 
 func (s *SgwFloatStat) SetIfMax(newV float64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	if newV > s.Val {
-		s.Val = newV
+	for {
+		cur := atomic.LoadUint64(&s.Val)
+		curVal := math.Float64frombits(cur)
+		nxtVal := curVal + newV
+		nxt := math.Float64bits(nxtVal)
+		if atomic.CompareAndSwapUint64(&s.Val, cur, nxt) {
+			return
+		}
 	}
 }
 
-func (s *SgwFloatStat) Add(newV float64) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.Val += newV
+func (s *SgwFloatStat) Add(delta float64) {
+	for {
+		cur := atomic.LoadUint64(&s.Val)
+		curVal := math.Float64frombits(cur)
+		nxtVal := curVal + delta
+		nxt := math.Float64bits(nxtVal)
+		if atomic.CompareAndSwapUint64(&s.Val, cur, nxt) {
+			return
+		}
+	}
 }
 
 func (s *SgwFloatStat) MarshalJSON() ([]byte, error) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return []byte(fmt.Sprintf("%v", s.Val)), nil
+	return []byte(fmt.Sprintf("%v", math.Float64frombits(atomic.LoadUint64(&s.Val)))), nil
 }
 
 func (s *SgwFloatStat) String() string {
@@ -502,9 +504,7 @@ func (s *SgwFloatStat) String() string {
 }
 
 func (s *SgwFloatStat) Value() float64 {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.Val
+	return math.Float64frombits(atomic.LoadUint64(&s.Val))
 }
 
 type QueryStat struct {
