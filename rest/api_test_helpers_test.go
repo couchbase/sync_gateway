@@ -2,10 +2,11 @@ package rest
 
 import (
 	"fmt"
+	"net/http"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
-	"net/http"
 )
 
 type putDocResponse struct {
