@@ -2884,10 +2884,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	assert.NoError(t, ar.Stop())
 }
 
-// TestActiveReplicatorReconnectOnStart ensures ActiveReplicators retry their initial connection for cases like:
-// - Incorrect credentials
-// - Unroutable remote address
-// Will test both indefinite retry, and a timeout.
+// TestActiveReplicatorReconnectSendActions ensures ActiveReplicator reconnect retry loops exit when the replicator is stopped
 func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
