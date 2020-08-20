@@ -2,8 +2,8 @@ package base
 
 import (
 	"expvar"
-	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -432,11 +432,11 @@ func (s *SgwIntStat) Add(newV int64) {
 }
 
 func (s *SgwIntStat) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("%v", atomic.LoadInt64(&s.Val))), nil
+	return []byte(strconv.FormatInt(atomic.LoadInt64(&s.Val), 10)), nil
 }
 
 func (s *SgwIntStat) String() string {
-	return fmt.Sprintf("%v", s.Val)
+	return strconv.FormatInt(atomic.LoadInt64(&s.Val), 10)
 }
 
 func (s *SgwIntStat) Value() int64 {
@@ -496,11 +496,11 @@ func (s *SgwFloatStat) Add(delta float64) {
 }
 
 func (s *SgwFloatStat) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("%v", math.Float64frombits(atomic.LoadUint64(&s.Val)))), nil
+	return []byte(strconv.FormatFloat(math.Float64frombits(atomic.LoadUint64(&s.Val)), 'g', -1, 64)), nil
 }
 
 func (s *SgwFloatStat) String() string {
-	return fmt.Sprintf("%v", s.Val)
+	return strconv.FormatFloat(math.Float64frombits(atomic.LoadUint64(&s.Val)), 'g', -1, 64)
 }
 
 func (s *SgwFloatStat) Value() float64 {
