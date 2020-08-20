@@ -602,23 +602,14 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	//   1. Document mix-5 is in channels PBS, HBO (rev 1)
 	//   2. Document is deleted (rev 2)
 	//   3. Document is recreated, only in channel PBS (rev 3)
-	//       - I think what is actually going to happen here is we'll get two entries for the doc in the backfill:
-	//   {"seq":"16:13","id":"mix-5","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}
-	//   {"seq":"16:14","id":"mix-5","changes":[{"rev":"3-0321dde33081a5ef566eecbe42ca3583"}]}
-	//  I don't think there's a way to avoid this, won't see performance improvement in this case, but need to make
-	//  sure this doesn't cause any errors.
 	mix5 := rt.putDoc("mix-5", `{"channel":["PBS","HBO"]}`)
 	rt.deleteDoc(mix5.ID, mix5.Rev)
 	_ = rt.putDoc(mix5.ID, `{"channel":["PBS"]}`)
 
 	// Test Scenario:
-	//   1. Document mix-5 is in channels PBS, HBO (rev 1)
+	//   1. Document mix-6 is in channels PBS, HBO (rev 1)
 	//   2. Document is updated only be in channel HBO (rev 2)
 	//   3. Document is updated AGAIN to remove all channels (rev 3)
-	//   I think what will happen here is we'll get rev 2 but not rev 3.
-	//   {"seq":"16:13","id":"mix-5","removed":["PBS"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}
-	//  This is the intended behaviour - when sending rev 2, we don't know that the doc is going to be
-	//  removed from HBO in future.
 	mix6 := rt.putDoc("mix-6", `{"channel":["PBS","HBO"]}`)
 	mix6 = rt.putDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6.Rev))
 	_ = rt.putDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q}`, mix6.Rev))
@@ -630,8 +621,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	_ = rt.putDoc(abc3.ID, fmt.Sprintf(`{"_rev":%q}`, abc3.Rev))
 
 	// Issue simple changes request
-	changesResponse := rt.Send(requestByUser("GET", "/db/_changes", "", "bernard"))
-	assertStatus(t, changesResponse, 200)
+	changesResponse := rt.Send(requestByUser(http.MethodGet, "/db/_changes", "", "bernard"))
+	assertStatus(t, changesResponse, http.StatusOK)
 	log.Printf("Response:%+v", changesResponse.Body)
 
 	expectedResults := []string{
@@ -653,16 +644,16 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		assert.Equal(t, expectedChange.Removed, result.Removed)
 	}
 
-	// Update the user doc to grant access to PBS
-	response := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"admin_channels":["ABC", "PBS", "HBO"]}`)
-	assertStatus(t, response, 200)
+	// Update the user doc to grant access to PBS, HBO in addition to ABC
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/bernard", `{"admin_channels":["ABC", "PBS", "HBO"]}`)
+	assertStatus(t, response, http.StatusOK)
 
 	time.Sleep(500 * time.Millisecond)
 
 	// Issue a new changes request with since=last_seq ensure that user receives all records for channel PBS
-	changesResponse = rt.Send(requestByUser("GET",
+	changesResponse = rt.Send(requestByUser(http.MethodGet,
 		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", "bernard"))
-	assertStatus(t, changesResponse, 200)
+	assertStatus(t, changesResponse, http.StatusOK)
 	log.Printf("Response:%+v", changesResponse.Body)
 
 	expectedResults = []string{
@@ -675,8 +666,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
 		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 	}
+
 	// Desired result is len(changes.Results) = 8
-	// None of the changes results should have "removed" entry
 	changes.Results = nil
 	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
 	require.Equal(t, len(expectedResults), len(changes.Results)) // 8 PBS docs, plus the updated user doc
@@ -694,18 +685,22 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	// Write a few more docs
 	_ = rt.putDoc("pbs-5", `{"channel":["PBS"]}`)
 	_ = rt.putDoc("abc-4", `{"channel":["ABC"]}`)
+	_ = rt.putDoc("hbo-3", `{"channel":["HBO"]}`)
+	_ = rt.putDoc("mix-7", `{"channel":["ABC", "PBS", "HBO"]}`)
 
-	cacheWaiter.AddAndWait(2)
+	cacheWaiter.AddAndWait(4)
 
 	// Issue another changes request - ensure we don't backfill again
-	changesResponse = rt.Send(requestByUser("GET",
+	changesResponse = rt.Send(requestByUser(http.MethodGet,
 		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", "bernard"))
-	assertStatus(t, changesResponse, 200)
+	assertStatus(t, changesResponse, http.StatusOK)
 	log.Printf("Response:%+v", changesResponse.Body)
 
 	expectedResults = []string{
 		`{"seq":29,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
 		`{"seq":30,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+		`{"seq":31,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
 
 	changes.Results = nil
@@ -720,7 +715,6 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		assert.Equal(t, expectedChange.Changes, result.Changes)
 		assert.Equal(t, expectedChange.Deleted, result.Deleted)
 		assert.Equal(t, expectedChange.Removed, result.Removed)
-		assert.Equal(t, expectedChange.Err, result.Err)
 	}
 }
 
