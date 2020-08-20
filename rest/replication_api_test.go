@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/couchbaselabs/walrus"
 
@@ -542,9 +541,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	oldFrequency := db.MaxSequenceIncrFrequency
-	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
-	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+	db.SuspendSequenceBatching()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -614,9 +611,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	oldFrequency := db.MaxSequenceIncrFrequency
-	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
-	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+	db.SuspendSequenceBatching()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
