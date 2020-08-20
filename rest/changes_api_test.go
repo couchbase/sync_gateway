@@ -584,7 +584,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	_ = rt.putDoc("abc-1", `{"channel":["ABC"]}`)
 	abc2 := rt.putDoc("abc-2", `{"channel":["ABC"]}`)
 	abc3 := rt.putDoc("abc-3", `{"channel":["ABC"]}`)
-	cacheWaiter.AddAndWait(5)
+	cacheWaiter.AddAndWait(13)
 
 	// Update some docs to remove channel
 	_ = rt.putDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.Rev))
@@ -697,10 +697,10 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	log.Printf("Response:%+v", changesResponse.Body)
 
 	expectedResults = []string{
-		`{"seq":29,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
-		`{"seq":30,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
-		`{"seq":31,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
-		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
+		`{"seq":36,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":37,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+		`{"seq":38,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":39,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
 
 	changes.Results = nil

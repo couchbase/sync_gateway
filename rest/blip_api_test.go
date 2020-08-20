@@ -1833,7 +1833,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	// Try to get rev 3 via BLIP API and assert that _removed == true
 	resultDoc, err = bt2.GetDocAtRev("foo", "3-cde")
 	assert.NoError(t, err, "Unexpected Error")
-	goassert.True(t, resultDoc.IsRemoved())
+	assert.False(t, resultDoc.IsRemoved())
 
 	// Try to get rev 3 via REST API, and assert that _removed == true
 	headers := map[string]string{}
