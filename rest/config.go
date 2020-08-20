@@ -726,7 +726,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 			if err == nil && info.IsDir() {
 				config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
 			} else {
-				base.Infof(base.KeyAll, "Writing logs into the parent directory of the path specified")
+				base.Infof(base.KeyAll, "Using %v as log file path (parent directory of deprecated logging.["default"].LogFilePath)", config.Logging.LogFilePath)
 				config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
 			}
 		}
