@@ -620,19 +620,14 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	rt.deleteDoc(abc2.ID, abc2.Rev)
 	_ = rt.putDoc(abc3.ID, fmt.Sprintf(`{"_rev":%q}`, abc3.Rev))
 
-	// Issue simple changes request
-	changesResponse := rt.Send(requestByUser(http.MethodGet, "/db/_changes", "", "bernard"))
-	assertStatus(t, changesResponse, http.StatusOK)
-	log.Printf("Response:%+v", changesResponse.Body)
-
+	// Issue changes request and check the results
 	expectedResults := []string{
 		`{"seq":11,"id":"abc-1","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
 		`{"seq":26,"id":"abc-2","deleted":true,"removed":["ABC"],"changes":[{"rev":"2-6055be21d970eb690f48452505ea02ed"}]}`,
 		`{"seq":27,"id":"abc-3","removed":["ABC"],"changes":[{"rev":"2-09b89154aa9a0e1620da0d86528d406a"}]}`,
 	}
-	var changes changesResults
-	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
-	require.Equal(t, len(expectedResults), len(changes.Results))
+	changes, err := rt.WaitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -648,14 +643,7 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/bernard", `{"admin_channels":["ABC", "PBS", "HBO"]}`)
 	assertStatus(t, response, http.StatusOK)
 
-	time.Sleep(500 * time.Millisecond)
-
-	// Issue a new changes request with since=last_seq ensure that user receives all records for channel PBS
-	changesResponse = rt.Send(requestByUser(http.MethodGet,
-		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", "bernard"))
-	assertStatus(t, changesResponse, http.StatusOK)
-	log.Printf("Response:%+v", changesResponse.Body)
-
+	// Issue a new changes request with since=last_seq ensure that user receives all records for channels PBS, HBO.
 	expectedResults = []string{
 		`{"seq":"28:1","id":"pbs-1","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
 		`{"seq":"28:4","id":"pbs-4","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
@@ -666,11 +654,9 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
 		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 	}
-
-	// Desired result is len(changes.Results) = 8
-	changes.Results = nil
-	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
-	require.Equal(t, len(expectedResults), len(changes.Results)) // 8 PBS docs, plus the updated user doc
+	changes, err = rt.WaitForChanges(len(expectedResults),
+		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
@@ -691,21 +677,15 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	cacheWaiter.AddAndWait(4)
 
 	// Issue another changes request - ensure we don't backfill again
-	changesResponse = rt.Send(requestByUser(http.MethodGet,
-		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "", "bernard"))
-	assertStatus(t, changesResponse, http.StatusOK)
-	log.Printf("Response:%+v", changesResponse.Body)
-
 	expectedResults = []string{
-		`{"seq":36,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
-		`{"seq":37,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
-		`{"seq":38,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
-		`{"seq":39,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
+		`{"seq":29,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":30,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+		`{"seq":31,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
-
-	changes.Results = nil
-	assert.NoError(t, base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes))
-	require.Equal(t, len(expectedResults), len(changes.Results))
+	changes, err = rt.WaitForChanges(len(expectedResults),
+		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
 		var expectedChange db.ChangeEntry
