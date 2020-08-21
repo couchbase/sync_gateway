@@ -2804,6 +2804,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 						InitialReconnectInterval: time.Millisecond,
 						MaxReconnectInterval:     time.Millisecond * 50,
 						TotalReconnectTimeout:    timeoutVal,
+						ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
 					}
 
 					// Create the first active replicator to pull from seq:0
@@ -2892,6 +2893,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 		// aggressive reconnect intervals for testing purposes
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
+		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -2978,6 +2980,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
 		TotalReconnectTimeout:    time.Second * 5,
+		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
