@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -1397,4 +1398,21 @@ func GetHttpClient(insecureSkipVerify bool) *http.Client {
 		return &http.Client{Transport: transport}
 	}
 	return http.DefaultClient
+}
+
+// IsConnectionRefusedError returns true if the given error is due to a connection being actively refused.
+func IsConnectionRefusedError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var errorMessage string
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		errorMessage = "connection refused"
+	case "windows":
+		errorMessage = "target machine actively refused"
+	}
+
+	return strings.Contains(err.Error(), errorMessage)
 }

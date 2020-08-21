@@ -2689,10 +2689,11 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                  string
-		usernameOverride      string
-		remoteURLHostOverride string
-		expectedErrorContains string
+		name                             string
+		usernameOverride                 string
+		remoteURLHostOverride            string
+		expectedErrorContains            string
+		expectedErrorIsConnectionRefused bool
 	}{
 		{
 			name:                  "wrong user",
@@ -2700,9 +2701,9 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 			expectedErrorContains: "unexpected status code 401 from target database",
 		},
 		{
-			name:                  "invalid port", // fails faster than unroutable address (connection refused vs. connect timeout)
-			remoteURLHostOverride: "127.0.0.1:1234",
-			expectedErrorContains: "connection refused",
+			name:                             "invalid port", // fails faster than unroutable address (connection refused vs. connect timeout)
+			remoteURLHostOverride:            "127.0.0.1:1234",
+			expectedErrorIsConnectionRefused: true,
 		},
 	}
 	for _, test := range tests {
@@ -2784,8 +2785,15 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
 
 					err = ar.Start()
-					assert.Error(t, err)
-					assert.True(t, strings.Contains(err.Error(), test.expectedErrorContains))
+					assert.Error(t, err, "expecting ar.Start() to return error, but it didn't")
+
+					if test.expectedErrorIsConnectionRefused {
+						assert.True(t, base.IsConnectionRefusedError(err))
+					}
+
+					if test.expectedErrorContains != "" {
+						assert.True(t, strings.Contains(err.Error(), test.expectedErrorContains))
+					}
 
 					// wait for an arbitrary number of reconnect attempts
 					waitForCondition(t, func() bool {
