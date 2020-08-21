@@ -99,7 +99,7 @@ type ServerConfig struct {
 	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`            // Config for unsupported features
 	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
 	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
-	MetricsInterface           *string                  `json:"metrics_interface,omitempty"`      // Interface to bind metrics to, default ":4986"
+	MetricsInterface           *string                  `json:"metricsInterface,omitempty"`       // Interface to bind metrics to, default ":4986"
 }
 
 // Bucket configuration elements - used by db, index
