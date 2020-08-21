@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -2683,6 +2684,10 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 // - Unroutable remote address
 // Will test both indefinite retry, and a timeout.
 func TestActiveReplicatorReconnectOnStart(t *testing.T) {
+
+	if runtime.GOOS == "windows" {
+		t.Skip("Temporarily disabled on windows")
+	}
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
