@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -517,6 +518,10 @@ func TestMergeWith(t *testing.T) {
 }
 
 func TestDeprecatedConfigLoggingFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Temporarily disabled on windows")
+	}
+
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
