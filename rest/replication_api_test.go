@@ -1197,9 +1197,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 	}
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	oldFrequency := db.MaxSequenceIncrFrequency
-	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
-	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+	defer db.SuspendSequenceBatching()()
 
 	remoteRT := NewRestTester(t, nil)
 	defer remoteRT.Close()
@@ -1346,9 +1344,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	}
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	oldFrequency := db.MaxSequenceIncrFrequency
-	defer func() { db.MaxSequenceIncrFrequency = oldFrequency }()
-	db.MaxSequenceIncrFrequency = 0 * time.Millisecond
+	defer db.SuspendSequenceBatching()()
 
 	remoteRT := NewRestTester(t, nil)
 	defer remoteRT.Close()
