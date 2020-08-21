@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -82,8 +83,8 @@ func (apr *ActivePushReplicator) _connect() error {
 		channels = base.SetFromArray(apr.config.FilterChannels)
 	}
 
-	go func() {
-		isComplete := bh.sendChanges(apr.blipSender, &sendChangesOptions{
+	go func(s *blip.Sender) {
+		isComplete := bh.sendChanges(s, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,
 			since:             seq,
 			continuous:        apr.config.Continuous,
@@ -97,7 +98,7 @@ func (apr *ActivePushReplicator) _connect() error {
 		if isComplete {
 			apr.Complete()
 		}
-	}()
+	}(apr.blipSender)
 
 	apr._setState(ReplicationStateRunning)
 	return nil
@@ -113,7 +114,7 @@ func (apr *ActivePushReplicator) Complete() {
 	}
 
 	// Wait for any pending changes responses to arrive and be processed
-	err := apr.waitForPendingChangesResponse()
+	err := apr._waitForPendingChangesResponse()
 	if err != nil {
 		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout waiting for pending changes response for replication %s - stopping: %v", apr.config.ID, err)
 	}
@@ -183,7 +184,7 @@ func (apr *ActivePushReplicator) registerCheckpointerCallbacks() {
 // to drain to zero.  Intended to be used once the replication has been stopped, to wait for
 // in-flight changes responses to arrive.
 // Waits up to 10s, polling every 100ms.
-func (apr *ActivePushReplicator) waitForPendingChangesResponse() error {
+func (apr *ActivePushReplicator) _waitForPendingChangesResponse() error {
 	waitCount := 0
 	for waitCount < 100 {
 		if apr.blipSyncContext == nil {
@@ -196,5 +197,5 @@ func (apr *ActivePushReplicator) waitForPendingChangesResponse() error {
 		time.Sleep(100 * time.Millisecond)
 		waitCount++
 	}
-	return errors.New("checkpointer waitForPendingChangesResponse failed to complete after waiting 10s")
+	return errors.New("checkpointer _waitForPendingChangesResponse failed to complete after waiting 10s")
 }
