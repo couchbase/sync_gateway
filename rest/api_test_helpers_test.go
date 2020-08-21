@@ -34,7 +34,6 @@ func (rt *RestTester) putDoc(docID string, body string) (response putDocResponse
 func (rt *RestTester) deleteDoc(docID, revID string) {
 	assertStatus(rt.tb, rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/db/%s?rev=%s", docID, revID), ""), http.StatusOK)
-	assertStatus(rt.tb, rt.SendAdminRequest(http.MethodGet, "/db/"+docID, ""), http.StatusNotFound)
 }
 
 func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) changesResults {
