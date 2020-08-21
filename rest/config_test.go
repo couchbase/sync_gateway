@@ -518,28 +518,78 @@ func TestMergeWith(t *testing.T) {
 
 func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	logFilePath := "/var/log/sync_gateway"
-	dlfPath := "/tmp/log/sync_gateway"
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 
-	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
-	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl}
-	sc := &ServerConfig{Logging: lc, DeprecatedLogFilePath: &dlfPath, DeprecatedLog: deprecatedLog}
+	removeAll := func(path string) {
+		require.NoErrorf(t, os.RemoveAll(path), "Error removing path %q", path)
+		_, err := os.Stat(path)
+		require.True(t, os.IsNotExist(err), "Removed path %q shouldn't exist", path)
+	}
 
-	warns := sc.deprecatedConfigLoggingFallback()
-	assert.Equal(t, filepath.Dir(*sc.Logging.DeprecatedDefaultLog.LogFilePath), sc.Logging.LogFilePath)
-	assert.Equal(t, sc.Logging.DeprecatedDefaultLog.LogKeys, sc.Logging.Console.LogKeys)
-	assert.Equal(t, base.ToLogLevel(sc.Logging.DeprecatedDefaultLog.LogLevel), sc.Logging.Console.LogLevel)
-	assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
-	assert.Len(t, warns, 3)
+	deprecatedDefaultLogFilePathAsDir, err := ioutil.TempDir("", "deprecatedDefaultLogFilePathAsDir")
+	require.NoErrorf(t, err, "Error creating temp dir %q", deprecatedDefaultLogFilePathAsDir)
+	deprecatedDefaultLogFilePathAsFile, err := ioutil.TempFile(deprecatedDefaultLogFilePathAsDir, "sg-trace-*.log")
+	require.NoErrorf(t, err, "Error creating temp file %q", deprecatedDefaultLogFilePathAsFile)
+	defer removeAll(deprecatedDefaultLogFilePathAsDir)
 
-	// Call deprecatedConfigLoggingFallback without DeprecatedDefaultLog
-	sc = &ServerConfig{Logging: &base.LoggingConfig{}, DeprecatedLogFilePath: &dlfPath, DeprecatedLog: deprecatedLog}
-	warns = sc.deprecatedConfigLoggingFallback()
+	serverConfig := func() *ServerConfig {
+		return &ServerConfig{
+			Logging: &base.LoggingConfig{
+				DeprecatedDefaultLog: &base.LogAppenderConfig{
+					LogKeys:  logKeys,
+					LogLevel: base.PanicLevel,
+				},
+			},
+			DeprecatedLog: deprecatedLog,
+		}
+	}
 
-	assert.Equal(t, *sc.DeprecatedLogFilePath, sc.Logging.LogFilePath)
-	assert.Equal(t, sc.DeprecatedLog, sc.Logging.Console.LogKeys)
+	tests := []struct {
+		name                  string
+		deprecatedLogFilePath string
+		expectedLogFilePath   string
+	}{
+		{
+			name:                  "specify deprecated default log file path as directory",
+			deprecatedLogFilePath: deprecatedDefaultLogFilePathAsDir,
+			expectedLogFilePath:   deprecatedDefaultLogFilePathAsDir,
+		},
+		{
+			name:                  "specify deprecated default log file path as file",
+			deprecatedLogFilePath: deprecatedDefaultLogFilePathAsFile.Name(),
+			expectedLogFilePath:   filepath.Dir(deprecatedDefaultLogFilePathAsFile.Name()),
+		},
+		{
+			name:                  "specify deprecated default log file path as file or dir that doesn't exist",
+			deprecatedLogFilePath: deprecatedDefaultLogFilePathAsDir + "/doesNotExist",
+			expectedLogFilePath:   deprecatedDefaultLogFilePathAsDir,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(tt *testing.T) {
+			config := serverConfig()
+			config.Logging.DeprecatedDefaultLog.LogFilePath = &test.deprecatedLogFilePath
+			warns := config.deprecatedConfigLoggingFallback()
+			require.NoError(t, err, "Error setting up deprecated logging config")
+			assert.Equal(t, test.expectedLogFilePath, config.Logging.LogFilePath, "Error setting log_file_path")
+			assert.Equal(t, config.Logging.DeprecatedDefaultLog.LogKeys, config.Logging.Console.LogKeys)
+			assert.Equal(t, base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel), config.Logging.Console.LogLevel)
+			assert.Equal(t, config.DeprecatedLog, config.Logging.Console.LogKeys)
+			assert.Len(t, warns, 3)
+		})
+	}
+
+	// Call deprecatedConfigLoggingFallback with DeprecatedLogFilePath and without DeprecatedDefaultLog
+	config = &ServerConfig{
+		Logging:               &base.LoggingConfig{},
+		DeprecatedLogFilePath: base.StringPtr(deprecatedDefaultLogFilePathAsFile.Name()),
+		DeprecatedLog:         deprecatedLog,
+	}
+	warns := config.deprecatedConfigLoggingFallback()
+	assert.Equal(t, *config.DeprecatedLogFilePath, config.Logging.LogFilePath)
+	assert.Equal(t, config.DeprecatedLog, config.Logging.Console.LogKeys)
 	assert.Len(t, warns, 2)
 }
 

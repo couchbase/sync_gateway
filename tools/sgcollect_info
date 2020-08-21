@@ -238,44 +238,46 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
 
     # Find log file path from old style top level config
     guessed_log_path = extract_element_from_config('LogFilePath', config_str)
-    if guessed_log_path:
-        # Add the directory where the log file is so that it will be searched
+    if guessed_log_path and os.path.isfile(guessed_log_path):
+        # If the specified log path is a file, add filename to standard SG log files list
+        # and parent directory path of the file to standard SG log directories list to
+        # eventually look for all permutations of SG log files and directories.
         os_home_dirs.append(os.path.dirname(guessed_log_path))
-        # Add the filename, in case it's different
         sg_log_files[os.path.basename(guessed_log_path)] = os.path.basename(guessed_log_path)
+    elif guessed_log_path and os.path.isdir(guessed_log_path):
+        # If the specified log path is a directory, add that path to the standard
+        # SG log directories list to eventually look for the standard SG log files.
+        os_home_dirs.append(guessed_log_path)
 
     # Keep a dictionary of log file paths we've added, to avoid adding duplicates
     sg_log_file_paths = {}
 
     sg_tasks = []
 
-    for _, path in sg_log_files.items():
-        for os_home_dir in os_home_dirs:
-            sg_log_file_path = os.path.join(os_home_dir, path)
+    def lookup_std_log_files(files, dirs):
+        for std_log_file in [os.path.join(d, f) for f in files for d in dirs]:
+            if std_log_file not in sg_log_file_paths:
+                sg_tasks.append(add_file_task(sourcefile_path=std_log_file))
+                sg_log_file_paths[std_log_file] = std_log_file
 
-            # As long as a task that monitors this log file path has not already been added, add a new task
-            if sg_log_file_path not in sg_log_file_paths:
-                task = add_file_task(sourcefile_path=sg_log_file_path)
-                sg_tasks.append(task)
-
-            # Track which log file paths have been added so far
-            sg_log_file_paths[sg_log_file_path] = sg_log_file_path
+    # Lookup each standard SG log files in each standard SG log directories.
+    lookup_std_log_files(sg_log_files, os_home_dirs)
 
     # Find log file path from logging.["default"] style config
+    # When the log file path from the default style config is a directory, we need to look for all
+    # standard SG log files inside the directory including rotated log files. But that handling is
+    # not included here, it relies on the fall through to the 2.1 style handling to pick up those
+    # log files that were written to the directory path instead; SG exposes the log_file_path as
+    # the parent directory of the file specified against LogFilePath through /_config endpoint.
     guessed_logging_path = extract_element_from_default_logging_config('LogFilePath', config_str)
-    if guessed_logging_path:
+    if guessed_logging_path and os.path.isfile(guessed_logging_path):
         # Get the parent directory and the log file name
         log_file_parent_dir = os.path.abspath(os.path.join(guessed_logging_path, os.pardir))
         log_file_name = os.path.basename(guessed_logging_path)
         name, ext = os.path.splitext(log_file_name)
 
-        # iterate over all log files, including those with a timestamp prefix
-        log_file_pattern = "{0}*{1}".format(name, ext)
-        rotated_logs_pattern = os.path.join(
-           log_file_parent_dir,
-           log_file_pattern
-        )
-
+        # Lookup SG log files inside the parent directory, including rotated log files.
+        rotated_logs_pattern = os.path.join(log_file_parent_dir, "{0}*{1}".format(name, ext))
         for log_file_item_name in glob.iglob(rotated_logs_pattern):
             log_file_item_path = os.path.join(log_file_parent_dir, log_file_item_name)
             # As long as a task that monitors this log file path has not already been added, add a new task
@@ -283,9 +285,11 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
                 print('Capturing rotated log file {0}'.format(log_file_item_path))
                 task = add_file_task(sourcefile_path=log_file_item_path)
                 sg_tasks.append(task)
+                # Track which log file paths have been added so far.
+                sg_log_file_paths[log_file_item_path] = log_file_item_path
 
-            # Track which log file paths have been added so far
-            sg_log_file_paths[log_file_item_path] = log_file_item_path
+        # Lookup standard SG log files inside the parent directory.
+        lookup_std_log_files(sg_log_files, [log_file_parent_dir])
 
     # Find log file path from SGW 2.1 style logging config
     guessed_log_file_path = extract_element_from_logging_config('log_file_path', config_str)
@@ -297,10 +301,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
             # e.g: sg_info-2018-12-31T13-33-41.055.log
             name, ext = os.path.splitext(log_file_name)
             log_file_pattern = "{0}*{1}".format(name, ext)
-            rotated_logs_pattern = os.path.join(
-               log_file_path,
-               log_file_pattern
-            )
+            rotated_logs_pattern = os.path.join(log_file_path, log_file_pattern)
 
             for log_file_item_name in glob.iglob(rotated_logs_pattern):
                 log_file_item_path = os.path.join(log_file_path, log_file_item_name)
@@ -310,16 +311,13 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
                     task = add_file_task(sourcefile_path=log_file_item_path)
                     sg_tasks.append(task)
 
-                # Track which log file paths have been added so far
-                sg_log_file_paths[log_file_item_path] = log_file_item_path
+                    # Track which log file paths have been added so far
+                    sg_log_file_paths[log_file_item_path] = log_file_item_path
 
             # try gzipped logs too
             # e.g: sg_info-2018-12-31T13-33-41.055.log.gz
             log_file_pattern = "{0}*{1}.gz".format(name, ext)
-            rotated_logs_pattern = os.path.join(
-               log_file_path,
-               log_file_pattern
-            )
+            rotated_logs_pattern = os.path.join(log_file_path, log_file_pattern)
 
             for log_file_item_name in glob.iglob(rotated_logs_pattern):
                 log_file_item_path = os.path.join(log_file_path, log_file_item_name)
@@ -336,8 +334,8 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
                         task.no_header = True
                         sg_tasks.append(task)
 
-                # Track which log file paths have been added so far
-                sg_log_file_paths[log_file_item_path] = log_file_item_path
+                    # Track which log file paths have been added so far
+                    sg_log_file_paths[log_file_item_path] = log_file_item_path
 
     return sg_tasks
 

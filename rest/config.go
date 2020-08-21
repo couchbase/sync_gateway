@@ -681,7 +681,7 @@ func (config *ServerConfig) validate() []error {
 }
 
 // setupAndValidateLogging sets up and validates logging,
-// and returns a slice of defferred logs to execute later.
+// and returns a slice of deferred logs to execute later.
 func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredLogFn, err error) {
 
 	if config.Logging == nil {
@@ -719,8 +719,17 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 			warnings = append(warnings, func() {
 				base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
 			})
+
 			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
-			config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
+			// SGCollect relies on this path to pick up the standard and rotated log files.
+			info, err := os.Stat(*config.Logging.DeprecatedDefaultLog.LogFilePath)
+			if err == nil && info.IsDir() {
+				config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
+			} else {
+				config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
+				base.Infof(base.KeyAll, "Using %v as log file path (parent directory of deprecated logging."+
+					"[\"default\"].LogFilePath)", config.Logging.LogFilePath)
+			}
 		}
 
 		// Fall back to the old logging.["default"].LogKeys option
