@@ -9,21 +9,17 @@ import (
 
 // ActivePullReplicator is a unidirectional pull active replicator.
 type ActivePullReplicator struct {
-	activeReplicatorCommon
+	*activeReplicatorCommon
 }
 
 func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
+	arc := newActiveReplicatorCommon(config, ActiveReplicatorTypePull)
 	return &ActivePullReplicator{
-		activeReplicatorCommon: activeReplicatorCommon{
-			config:           config,
-			replicationStats: BlipSyncStatsForSGRPull(config.ReplicationStatsMap),
-			state:            ReplicationStateStopped,
-		},
+		activeReplicatorCommon: arc,
 	}
 }
 
 func (apr *ActivePullReplicator) Start() error {
-
 	apr.lock.Lock()
 	defer apr.lock.Unlock()
 
@@ -31,14 +27,27 @@ func (apr *ActivePullReplicator) Start() error {
 		return fmt.Errorf("nil ActivePullReplicator, can't start")
 	}
 
-	if apr.checkpointerCtx != nil {
+	if apr.ctx != nil && apr.ctx.Err() == nil {
 		return fmt.Errorf("ActivePullReplicator already running")
 	}
 
-	var err error
-	apr.blipSender, apr.blipSyncContext, err = connect("-pull", apr.config, apr.replicationStats)
+	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePull)})
+	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
+
+	err := apr._connect()
 	if err != nil {
-		return apr._setError(err)
+		_ = apr._setError(err)
+		base.WarnfCtx(apr.ctx, "Couldn't connect. Attempting to reconnect in background: %v", err)
+		go apr.reconnect(apr._connect)
+	}
+	return err
+}
+
+func (apr *ActivePullReplicator) _connect() error {
+	var err error
+	apr.blipSender, apr.blipSyncContext, err = connect(apr.activeReplicatorCommon, "-pull")
+	if err != nil {
+		return err
 	}
 
 	if apr.config.ConflictResolverFunc != nil {
@@ -46,10 +55,14 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 	apr.blipSyncContext.purgeOnRemoval = apr.config.PurgeOnRemoval
 
-	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(context.Background())
+	// wrap the replicator context with a cancelFunc that can be called to abort the checkpointer from _disconnect
+	apr.checkpointerCtx, apr.checkpointerCtxCancel = context.WithCancel(apr.ctx)
 	if err := apr._initCheckpointer(); err != nil {
+		// clean up anything we've opened so far
 		apr.checkpointerCtx = nil
-		return apr._setError(err)
+		apr.blipSender.Close()
+		apr.blipSyncContext.Close()
+		return err
 	}
 
 	subChangesRequest := SubChangesRequest{
@@ -64,9 +77,12 @@ func (apr *ActivePullReplicator) Start() error {
 	}
 
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {
+		// clean up anything we've opened so far
 		apr.checkpointerCtxCancel()
 		apr.checkpointerCtx = nil
-		return apr._setError(err)
+		apr.blipSender.Close()
+		apr.blipSyncContext.Close()
+		return err
 	}
 
 	apr._setState(ReplicationStateRunning)
@@ -76,7 +92,6 @@ func (apr *ActivePullReplicator) Start() error {
 // Complete gracefully shuts down a replication, waiting for all in-flight revisions to be processed
 // before stopping the replication
 func (apr *ActivePullReplicator) Complete() {
-
 	apr.lock.Lock()
 	if apr == nil {
 		apr.lock.Unlock()
@@ -85,13 +100,14 @@ func (apr *ActivePullReplicator) Complete() {
 
 	err := apr.Checkpointer.waitForExpectedSequences()
 	if err != nil {
-		base.Infof(base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
+		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
 	}
 
-	stopErr := apr._stop()
+	stopErr := apr._disconnect()
 	if stopErr != nil {
-		base.Infof(base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
+		base.InfofCtx(apr.ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
 	}
+	apr._setState(ReplicationStateStopped)
 
 	// unlock the replication before triggering callback, in case callback attempts to access replication information
 	// from the replicator
@@ -101,39 +117,6 @@ func (apr *ActivePullReplicator) Complete() {
 	if onCompleteCallback != nil {
 		onCompleteCallback()
 	}
-}
-
-func (apr *ActivePullReplicator) Stop() error {
-
-	apr.lock.Lock()
-	defer apr.lock.Unlock()
-	return apr._stop()
-}
-
-func (apr *ActivePullReplicator) _stop() error {
-	if apr == nil {
-		// noop
-		return nil
-	}
-
-	if apr.checkpointerCtx != nil {
-		apr.checkpointerCtxCancel()
-		apr.Checkpointer.CheckpointNow()
-	}
-	apr.checkpointerCtx = nil
-
-	if apr.blipSender != nil {
-		apr.blipSender.Close()
-		apr.blipSender = nil
-	}
-
-	if apr.blipSyncContext != nil {
-		apr.blipSyncContext.Close()
-		apr.blipSyncContext = nil
-	}
-	apr._setState(ReplicationStateStopped)
-
-	return nil
 }
 
 func (apr *ActivePullReplicator) _initCheckpointer() error {

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -2675,6 +2676,308 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	assert.Equal(t, int64(0), ar.Pull.Checkpointer.Stats().SetCheckpointCount)
 	ar.Pull.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), ar.Pull.Checkpointer.Stats().SetCheckpointCount)
+}
+
+// TestActiveReplicatorReconnectOnStart ensures ActiveReplicators retry their initial connection for cases like:
+// - Incorrect credentials
+// - Unroutable remote address
+// Will test both indefinite retry, and a timeout.
+func TestActiveReplicatorReconnectOnStart(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	tests := []struct {
+		name                  string
+		usernameOverride      string
+		remoteURLHostOverride string
+		expectedErrorContains string
+	}{
+		{
+			name:                  "wrong user",
+			usernameOverride:      "bob",
+			expectedErrorContains: "unexpected status code 401 from target database",
+		},
+		{
+			name:                  "invalid port", // fails faster than unroutable address (connection refused vs. connect timeout)
+			remoteURLHostOverride: "127.0.0.1:1234",
+			expectedErrorContains: "connection refused",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// test cases with and without a timeout. Ensure replicator retry loop is stopped in both cases.
+			timeoutVals := []time.Duration{
+				0,
+				time.Millisecond * 100,
+			}
+
+			for _, timeoutVal := range timeoutVals {
+				t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
+
+					defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)()
+
+					// Passive
+					tb2 := base.GetTestBucket(t)
+					rt2 := NewRestTester(t, &RestTesterConfig{
+						TestBucket: tb2,
+						DatabaseConfig: &DbConfig{
+							Users: map[string]*db.PrincipalConfig{
+								"alice": {
+									Password:         base.StringPtr("pass"),
+									ExplicitChannels: base.SetOf("alice"),
+								},
+							},
+						},
+						noAdminParty: true,
+					})
+					defer rt2.Close()
+
+					// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+					srv := httptest.NewServer(rt2.TestPublicHandler())
+					defer srv.Close()
+
+					// Build passiveDBURL with basic auth creds
+					passiveDBURL, err := url.Parse(srv.URL + "/db")
+					require.NoError(t, err)
+
+					// Add basic auth creds to target db URL
+					username := "alice"
+					if test.usernameOverride != "" {
+						username = test.usernameOverride
+					}
+					passiveDBURL.User = url.UserPassword(username, "pass")
+
+					if test.remoteURLHostOverride != "" {
+						passiveDBURL.Host = test.remoteURLHostOverride
+					}
+
+					// Active
+					tb1 := base.GetTestBucket(t)
+					rt1 := NewRestTester(t, &RestTesterConfig{
+						TestBucket: tb1,
+					})
+					defer rt1.Close()
+
+					arConfig := db.ActiveReplicatorConfig{
+						ID:           base.GenerateRandomID(),
+						Direction:    db.ActiveReplicatorTypePushAndPull,
+						PassiveDBURL: passiveDBURL,
+						ActiveDB: &db.Database{
+							DatabaseContext: rt1.GetDatabase(),
+						},
+						Continuous: true,
+						// test isn't long running enough to worry about time-based checkpoints,
+						// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
+						CheckpointInterval: time.Minute * 5,
+						// aggressive reconnect intervals for testing purposes
+						InitialReconnectInterval: time.Millisecond,
+						MaxReconnectInterval:     time.Millisecond * 50,
+						TotalReconnectTimeout:    timeoutVal,
+					}
+
+					// Create the first active replicator to pull from seq:0
+					ar := db.NewActiveReplicator(&arConfig)
+					require.NoError(t, err)
+
+					assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
+
+					err = ar.Start()
+					assert.Error(t, err)
+					assert.True(t, strings.Contains(err.Error(), test.expectedErrorContains))
+
+					// wait for an arbitrary number of reconnect attempts
+					waitForCondition(t, func() bool {
+						return ar.Push.GetStats().NumConnectAttempts.Value() > 3
+					})
+
+					if timeoutVal > 0 {
+						// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
+						waitForCondition(t, func() bool {
+							return ar.Push.GetStats().NumReconnectsAborted.Value() > 0
+						})
+					}
+
+					assert.NoError(t, ar.Stop())
+				})
+			}
+		})
+	}
+}
+
+// TestActiveReplicatorReconnectOnStartEventualSuccess ensures an active replicator with invalid creds retries,
+// but succeeds once the user is created on the remote.
+func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket:   tb2,
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	arConfig := db.ActiveReplicatorConfig{
+		ID:           base.GenerateRandomID(),
+		Direction:    db.ActiveReplicatorTypePushAndPull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous: true,
+		// test isn't long running enough to worry about time-based checkpoints,
+		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
+		CheckpointInterval: time.Minute * 5,
+		// aggressive reconnect intervals for testing purposes
+		InitialReconnectInterval: time.Millisecond,
+		MaxReconnectInterval:     time.Millisecond * 50,
+	}
+
+	// Create the first active replicator to pull from seq:0
+	ar := db.NewActiveReplicator(&arConfig)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(0), ar.Push.GetStats().NumConnectAttempts.Value())
+
+	err = ar.Start()
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
+
+	// wait for an arbitrary number of reconnect attempts
+	waitForCondition(t, func() bool {
+		return ar.Push.GetStats().NumConnectAttempts.Value() > 3
+	})
+
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password":"pass"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	waitForCondition(t, func() bool {
+		state, _ := ar.State()
+		return state == db.ReplicationStateRunning
+	})
+
+	assert.NoError(t, ar.Stop())
+}
+
+// TestActiveReplicatorReconnectSendActions ensures ActiveReplicator reconnect retry loops exit when the replicator is stopped
+func TestActiveReplicatorReconnectSendActions(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	// Build passiveDBURL with basic auth creds
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add incorrect basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("bob", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	arConfig := db.ActiveReplicatorConfig{
+		ID:           base.GenerateRandomID(),
+		Direction:    db.ActiveReplicatorTypePull,
+		PassiveDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous: true,
+		// test isn't long running enough to worry about time-based checkpoints,
+		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
+		CheckpointInterval: time.Minute * 5,
+		// aggressive reconnect intervals for testing purposes
+		InitialReconnectInterval: time.Millisecond,
+		MaxReconnectInterval:     time.Millisecond * 50,
+		TotalReconnectTimeout:    time.Second * 5,
+	}
+
+	// Create the first active replicator to pull from seq:0
+	ar := db.NewActiveReplicator(&arConfig)
+	require.NoError(t, err)
+
+	assert.Equal(t, int64(0), ar.Pull.GetStats().NumConnectAttempts.Value())
+
+	err = ar.Start()
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
+
+	// wait for an arbitrary number of reconnect attempts
+	waitForCondition(t, func() bool {
+		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
+	})
+
+	assert.NoError(t, ar.Stop())
+	reconnectAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
+
+	// wait for a bit to see if the reconnect loop has stopped
+	time.Sleep(time.Millisecond * 100)
+	assert.Equal(t, reconnectAttempts, ar.Pull.GetStats().NumConnectAttempts.Value())
+
+	assert.NoError(t, ar.Reset())
+
+	err = ar.Start()
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
+
+	// wait for another set of reconnect attempts
+	waitForCondition(t, func() bool {
+		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
+	})
+
+	assert.NoError(t, ar.Stop())
 }
 
 func waitForCondition(t *testing.T, fn func() bool) {

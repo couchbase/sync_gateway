@@ -511,7 +511,7 @@ func (context *DatabaseContext) GetServerUUID() string {
 	if context.serverUUID == "" {
 		b, ok := base.AsGoCBBucket(context.Bucket)
 		if !ok {
-			base.Warnf("Database %v: Unable to get server UUID. Bucket was type: %T, not GoCBBucket.", base.MD(context.Name), context.Bucket)
+			base.Warnf("Database %v: Unable to get server UUID. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
 			return ""
 		}
 

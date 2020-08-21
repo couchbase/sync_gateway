@@ -11,6 +11,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/couchbase/cbgt"
 	"github.com/couchbase/sync_gateway/base"
@@ -24,10 +25,11 @@ const (
 )
 
 const (
-	ReplicationStateStopped   = "stopped"
-	ReplicationStateRunning   = "running"
-	ReplicationStateResetting = "resetting"
-	ReplicationStateError     = "error"
+	ReplicationStateStopped      = "stopped"
+	ReplicationStateRunning      = "running"
+	ReplicationStateReconnecting = "reconnecting"
+	ReplicationStateResetting    = "resetting"
+	ReplicationStateError        = "error"
 )
 
 // Replication config validation error messages
@@ -341,6 +343,10 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 			return fmt.Errorf("Unable to gracefully stop active replicator for replication %s: %v", ar.ID, stopErr)
 		}
 	case ReplicationStateRunning:
+		if currentState == ReplicationStateReconnecting {
+			// a replicator in a reconnecting state is already running
+			return nil
+		}
 		base.Infof(base.KeyReplicate, "Starting replication %s - previous state %s", ar.ID, currentState)
 		startErr := ar.Start()
 		if startErr != nil {
@@ -450,6 +456,17 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
 	}
 
+	rc.MaxReconnectInterval = defaultMaxReconnectInterval
+	if config.MaxBackoff != 0 {
+		rc.MaxReconnectInterval = time.Duration(config.MaxBackoff) * time.Minute
+	}
+
+	// If maxBackoff is zero, retry up to ~MaxReconnectInterval and then give up.
+	// If non-zero, reconnect is indefinite.
+	if config.MaxBackoff == 0 {
+		rc.TotalReconnectTimeout = rc.MaxReconnectInterval * 2
+	}
+
 	rc.ChangesBatchSize = defaultChangesBatchSize
 	if config.BatchSize > 0 {
 		rc.ChangesBatchSize = uint16(config.BatchSize)
@@ -508,7 +525,6 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	}
 	rc.ReplicationStatsMap = statsMap
 
-	// TODO: review whether there's a more appropriate context to use here
 	replicator = NewActiveReplicator(rc)
 
 	return replicator, nil
@@ -575,7 +591,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
 			stateErr := activeReplicator.alignState(replicationCfg.State)
 			if stateErr != nil {
-				base.Warnf("Error updating active replication %s to state %s: %v", replicationID, replicationCfg.State, err)
+				base.Warnf("Error updating active replication %s to state %s: %v", replicationID, replicationCfg.State, stateErr)
 			}
 			// Reset is synchronous - after completion the replication state should be updated to stopped
 			if replicationCfg.State == ReplicationStateResetting {
@@ -604,7 +620,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 				if replicationCfg.State == "" || replicationCfg.State == ReplicationStateRunning {
 					base.Infof(base.KeyReplicate, "Starting newly assigned replication %s", replicationID)
 					if startErr := replicator.Start(); startErr != nil {
-						base.Warnf("Unable to start replication %s: %v", replicationID, startErr)
+						base.Warnf("Unable to start replication after refresh %s: %v", replicationID, startErr)
 					}
 				}
 			}

@@ -455,7 +455,11 @@ func (c *Checkpointer) setLocalCheckpointWithRetry(checkpoint *replicationCheckp
 
 func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
 	key := RealSpecialDocID(DocTypeLocal, checkpointDocIDPrefix+checkpointID)
-	return activeDB.Bucket.Delete(key)
+	err := activeDB.Bucket.Delete(key)
+	if err == nil || base.IsDocNotFoundError(err) {
+		return nil
+	}
+	return err
 }
 
 // getRemoteCheckpoint returns the sequence and rev for the remote checkpoint.
