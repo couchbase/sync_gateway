@@ -2,13 +2,13 @@ package rest
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"log"
 	"strings"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/require"
 )
 
 var doc_1k_format = `{%s

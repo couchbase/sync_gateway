@@ -43,11 +43,11 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePushAndPull,
-		ActiveDB:     &db.Database{DatabaseContext: rt.GetDatabase()},
-		PassiveDBURL: passiveDBURL,
-		Continuous:   true,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePushAndPull,
+		ActiveDB:    &db.Database{DatabaseContext: rt.GetDatabase()},
+		RemoteDBURL: passiveDBURL,
+		Continuous:  true,
 	})
 
 	startNumReplicationsTotal := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumReplicationsTotal))
@@ -106,7 +106,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		ID:                    t.Name(),
 		Direction:             db.ActiveReplicatorTypePush,
 		ActiveDB:              &db.Database{DatabaseContext: rt.GetDatabase()},
-		PassiveDBURL:          passiveDBURL,
+		RemoteDBURL:           passiveDBURL,
 		WebsocketPingInterval: time.Millisecond * 10,
 		Continuous:            true,
 	})
@@ -186,9 +186,9 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	defer rt1.Close()
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -275,9 +275,9 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	defer rt1.Close()
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -444,9 +444,9 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -601,9 +601,9 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	defer rt1.Close()
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -693,9 +693,9 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -782,9 +782,9 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -949,9 +949,9 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -1087,9 +1087,9 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -1178,9 +1178,9 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	defer rt1.Close()
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -1277,9 +1277,9 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	defer rt1.Close()
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -1440,9 +1440,9 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			require.NoError(t, err)
 			replicationStats := new(expvar.Map).Init()
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-				ID:           t.Name(),
-				Direction:    db.ActiveReplicatorTypePull,
-				PassiveDBURL: passiveDBURL,
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePull,
+				RemoteDBURL: passiveDBURL,
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
@@ -1624,9 +1624,9 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-				ID:           t.Name(),
-				Direction:    db.ActiveReplicatorTypePushAndPull,
-				PassiveDBURL: passiveDBURL,
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: passiveDBURL,
 				ActiveDB: &db.Database{
 					DatabaseContext: rt1.GetDatabase(),
 				},
@@ -1763,9 +1763,9 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -1838,9 +1838,9 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -1905,9 +1905,9 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	})
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -2060,9 +2060,9 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -2135,7 +2135,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	passiveDBURL, err = url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
 	passiveDBURL.User = url.UserPassword("alice", "pass")
-	arConfig.PassiveDBURL = passiveDBURL
+	arConfig.RemoteDBURL = passiveDBURL
 
 	ar = db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
@@ -2227,9 +2227,9 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.NoError(t, rt1.WaitForPendingChanges())
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -2363,9 +2363,9 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	defer rt1.Close()
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePushAndPull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePushAndPull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -2477,9 +2477,9 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 
 	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePush,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -2567,9 +2567,9 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	defer rt1.Close()
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           t.Name(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -2738,8 +2738,8 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					srv := httptest.NewServer(rt2.TestPublicHandler())
 					defer srv.Close()
 
-					// Build passiveDBURL with basic auth creds
-					passiveDBURL, err := url.Parse(srv.URL + "/db")
+					// Build remoteDBURL with basic auth creds
+					remoteDBURL, err := url.Parse(srv.URL + "/db")
 					require.NoError(t, err)
 
 					// Add basic auth creds to target db URL
@@ -2747,10 +2747,10 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					if test.usernameOverride != "" {
 						username = test.usernameOverride
 					}
-					passiveDBURL.User = url.UserPassword(username, "pass")
+					remoteDBURL.User = url.UserPassword(username, "pass")
 
 					if test.remoteURLHostOverride != "" {
-						passiveDBURL.Host = test.remoteURLHostOverride
+						remoteDBURL.Host = test.remoteURLHostOverride
 					}
 
 					// Active
@@ -2761,9 +2761,9 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					defer rt1.Close()
 
 					arConfig := db.ActiveReplicatorConfig{
-						ID:           base.GenerateRandomID(),
-						Direction:    db.ActiveReplicatorTypePushAndPull,
-						PassiveDBURL: passiveDBURL,
+						ID:          base.GenerateRandomID(),
+						Direction:   db.ActiveReplicatorTypePushAndPull,
+						RemoteDBURL: remoteDBURL,
 						ActiveDB: &db.Database{
 							DatabaseContext: rt1.GetDatabase(),
 						},
@@ -2828,12 +2828,12 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
 
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	// Build remoteDBURL with basic auth creds
+	remoteDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
 
 	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword("alice", "pass")
+	remoteDBURL.User = url.UserPassword("alice", "pass")
 
 	// Active
 	tb1 := base.GetTestBucket(t)
@@ -2843,9 +2843,9 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	defer rt1.Close()
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           base.GenerateRandomID(),
-		Direction:    db.ActiveReplicatorTypePushAndPull,
-		PassiveDBURL: passiveDBURL,
+		ID:          base.GenerateRandomID(),
+		Direction:   db.ActiveReplicatorTypePushAndPull,
+		RemoteDBURL: remoteDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
@@ -2913,12 +2913,12 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
 
-	// Build passiveDBURL with basic auth creds
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	// Build remoteDBURL with basic auth creds
+	remoteDBURL, err := url.Parse(srv.URL + "/db")
 	require.NoError(t, err)
 
 	// Add incorrect basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword("bob", "pass")
+	remoteDBURL.User = url.UserPassword("bob", "pass")
 
 	// Active
 	tb1 := base.GetTestBucket(t)
@@ -2928,9 +2928,9 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	defer rt1.Close()
 
 	arConfig := db.ActiveReplicatorConfig{
-		ID:           base.GenerateRandomID(),
-		Direction:    db.ActiveReplicatorTypePull,
-		PassiveDBURL: passiveDBURL,
+		ID:          base.GenerateRandomID(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: remoteDBURL,
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},

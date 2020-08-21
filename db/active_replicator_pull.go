@@ -126,7 +126,7 @@ func (apr *ActivePullReplicator) _initCheckpointer() error {
 		return hashErr
 	}
 
-	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID(), checkpointHash, apr.blipSender, apr.config.ActiveDB, apr.config.CheckpointInterval)
+	apr.Checkpointer = NewCheckpointer(apr.checkpointerCtx, apr.CheckpointID(), checkpointHash, apr.blipSender, apr.config)
 	err := apr.Checkpointer.fetchCheckpoints()
 	if err != nil {
 		return err

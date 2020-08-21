@@ -47,8 +47,8 @@ type ActiveReplicatorConfig struct {
 	Direction ActiveReplicatorDirection
 	// Continuous specifies whether the replication should be continuous or one-shot.
 	Continuous bool
-	// PassiveDBURL represents the full Sync Gateway URL, including database path, and basic auth credentials of the target.
-	PassiveDBURL *url.URL
+	// RemoteDBURL represents the full Sync Gateway URL, including database path, and basic auth credentials of the target.
+	RemoteDBURL *url.URL
 	// PurgeOnRemoval will purge the document on the active side if we pull a removal from the remote.
 	PurgeOnRemoval bool
 	// ActiveDB is a reference to the active database context.
@@ -57,6 +57,8 @@ type ActiveReplicatorConfig struct {
 	WebsocketPingInterval time.Duration
 	// Conflict resolver
 	ConflictResolverFunc ConflictResolverFunc
+	// SGR1CheckpointID can be used as a fallback when SGR2 checkpoints can't be found.
+	SGR1CheckpointID string
 	// InitialReconnectInterval is the initial time to wait for exponential backoff reconnects.
 	InitialReconnectInterval time.Duration
 	// MaxReconnectInterval is the maximum amount of time to wait between exponential backoff reconnect attempts.
@@ -110,7 +112,7 @@ func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 	if _, err := hash.Write([]byte(arc.Direction)); err != nil {
 		return "", err
 	}
-	if _, err := hash.Write([]byte(arc.PassiveDBURL.String())); err != nil {
+	if _, err := hash.Write([]byte(arc.RemoteDBURL.String())); err != nil {
 		return "", err
 	}
 	bucketUUID, err := arc.ActiveDB.Bucket.UUID()

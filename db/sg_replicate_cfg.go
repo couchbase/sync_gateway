@@ -113,7 +113,8 @@ func DefaultReplicationConfig() ReplicationConfig {
 // ReplicationCfg represents a replication definition as stored in the cluster config.
 type ReplicationCfg struct {
 	ReplicationConfig
-	AssignedNode string `json:"assigned_node"` // UUID of node assigned to this replication
+	SGR1CheckpointID string `json:"sgr1_checkpoint_id,omitempty"` // can be set to fall back to when SGR2 checkpoints can't be found
+	AssignedNode     string `json:"assigned_node"`                // UUID of node assigned to this replication
 }
 
 // ReplicationUpsertConfig is used for operations that support upsert of a subset of replication properties.
@@ -135,6 +136,7 @@ type ReplicationUpsertConfig struct {
 	Cancel                 *bool       `json:"cancel,omitempty"`
 	Adhoc                  *bool       `json:"adhoc,omitempty"`
 	BatchSize              *int        `json:"batch_size,omitempty"`
+	SGR1CheckpointID       *string     `json:"sgr1_checkpoint_id,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -454,6 +456,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
+		SGR1CheckpointID:   config.SGR1CheckpointID,
 	}
 
 	rc.MaxReconnectInterval = defaultMaxReconnectInterval
@@ -498,7 +501,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 		return nil, fmt.Errorf("Replication remote must not be empty")
 	}
 
-	rc.PassiveDBURL, err = url.Parse(config.Remote)
+	rc.RemoteDBURL, err = url.Parse(config.Remote)
 	if err != nil {
 		return nil, err
 	}
@@ -506,7 +509,7 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	// If auth credentials are explicitly defined in the replication configuration,
 	// enrich remote database URL connection string with the supplied auth credentials.
 	if config.Username != "" {
-		rc.PassiveDBURL.User = url.UserPassword(config.Username, config.Password)
+		rc.RemoteDBURL.User = url.UserPassword(config.Username, config.Password)
 	}
 
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval
@@ -810,7 +813,7 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 }
 
 // PutReplications sets the value of one or more replications in the config
-func (m *sgReplicateManager) PutReplications(replications map[string]*ReplicationConfig) error {
+func (m *sgReplicateManager) PutReplications(replications map[string]*ReplicationConfig, sgr1CheckpointIDs map[string]string) error {
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		if len(replications) == 0 {
 			return true, nil
@@ -820,6 +823,9 @@ func (m *sgReplicateManager) PutReplications(replications map[string]*Replicatio
 			replicationCfg := &ReplicationCfg{}
 			if exists {
 				replicationCfg.AssignedNode = existingCfg.AssignedNode
+			}
+			if sgr1CheckpointID, ok := sgr1CheckpointIDs[replicationID]; ok {
+				replicationCfg.SGR1CheckpointID = sgr1CheckpointID
 			}
 			replicationCfg.ReplicationConfig = *replication
 			cluster.Replications[replicationID] = replicationCfg

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -31,14 +32,16 @@ import (
 // file, they wouldn't be publicly exported to other packages)
 
 type RestTesterConfig struct {
-	noAdminParty          bool             // Unless this is true, Admin Party is in full effect
-	SyncFn                string           // put the sync() function source in here (optional)
-	DatabaseConfig        *DbConfig        // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	InitSyncSeq           uint64           // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode bool             // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	distributedIndex      bool             // Test with walrus-based index bucket
-	TestBucket            *base.TestBucket // If set, use this bucket instead of requesting a new one.
-	sgReplicateEnabled    bool             // sgReplicateManager disabled by default for RestTester
+	noAdminParty          bool                 // Unless this is true, Admin Party is in full effect
+	SyncFn                string               // put the sync() function source in here (optional)
+	DatabaseConfig        *DbConfig            // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	InitSyncSeq           uint64               // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode bool                 // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	distributedIndex      bool                 // Test with walrus-based index bucket
+	TestBucket            *base.TestBucket     // If set, use this bucket instead of requesting a new one.
+	adminInterface        string               // adminInterface overrides the default admin interface.
+	sgReplicateEnabled    bool                 // sgReplicateManager disabled by default for RestTester
+	sgr1Replications      []*ReplicateV1Config // sgr1Replications are a list of replications to enable on the server context.
 }
 
 type RestTester struct {
@@ -104,10 +107,15 @@ func (rt *RestTester) Bucket() base.Bucket {
 		MaxAge:      1728000,
 	}
 
+	adminInterface := &DefaultAdminInterface
+	if rt.RestTesterConfig.adminInterface != "" {
+		adminInterface = &rt.RestTesterConfig.adminInterface
+	}
 	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
 		CORS:           corsConfig,
 		Facebook:       &FacebookConfig{},
-		AdminInterface: &DefaultAdminInterface,
+		AdminInterface: adminInterface,
+		Replications:   rt.RestTesterConfig.sgr1Replications,
 	})
 
 	useXattrs := base.TestUseXattrs()
@@ -1504,4 +1512,15 @@ func WaitWithTimeout(wg *sync.WaitGroup, timeout time.Duration) error {
 		return fmt.Errorf("Timed out waiting after %v", timeout)
 	}
 
+}
+
+// NewHTTPTestServerOnListener returns a new httptest server, which is configured to listen on the given listener.
+// This is useful when you need to know the listen address before you start up a server.
+func NewHTTPTestServerOnListener(h http.Handler, l net.Listener) *httptest.Server {
+	s := &httptest.Server{
+		Config:   &http.Server{Handler: h},
+		Listener: l,
+	}
+	s.Start()
+	return s
 }
