@@ -59,6 +59,10 @@ func NewSyncGatewayStats() *SgwStats {
 	sgwStats.GlobalStats.initResourceUtilizationStats()
 	sgwStats.initReplicationStats()
 
+	// This provides a stat for sgw_up where the value will be fixed to one. This is to allow backwards compatibility
+	// where the standalone exporter would export a value of 1 if it has contact with SGW.
+	NewIntStat("", "up", "", prometheus.GaugeValue, 1)
+
 	return &sgwStats
 }
 
