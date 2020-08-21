@@ -611,7 +611,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	db.SuspendSequenceBatching()
+	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
