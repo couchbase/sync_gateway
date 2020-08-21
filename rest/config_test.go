@@ -521,17 +521,19 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 
-	removeAll := func(path string) {
-		require.NoErrorf(t, os.RemoveAll(path), "Error removing path %q", path)
-		_, err := os.Stat(path)
-		require.True(t, os.IsNotExist(err), "Removed path %q shouldn't exist", path)
+	removeAll := func(paths ...string) {
+		for _, path := range paths {
+			require.NoErrorf(t, os.RemoveAll(path), "Error removing path %q", path)
+			_, err := os.Stat(path)
+			require.True(t, os.IsNotExist(err), "Removed path %q shouldn't exist", path)
+		}
 	}
 
 	deprecatedDefaultLogFilePathAsDir, err := ioutil.TempDir("", "deprecatedDefaultLogFilePathAsDir")
 	require.NoErrorf(t, err, "Error creating temp dir %q", deprecatedDefaultLogFilePathAsDir)
-	deprecatedDefaultLogFilePathAsFile, err := ioutil.TempFile(deprecatedDefaultLogFilePathAsDir, "sg-trace-*.log")
+	deprecatedDefaultLogFilePathAsFile, err := ioutil.TempFile("", "sg-trace-*.log")
 	require.NoErrorf(t, err, "Error creating temp file %q", deprecatedDefaultLogFilePathAsFile)
-	defer removeAll(deprecatedDefaultLogFilePathAsDir)
+	defer removeAll(deprecatedDefaultLogFilePathAsDir, deprecatedDefaultLogFilePathAsFile.Name())
 
 	serverConfig := func() *ServerConfig {
 		return &ServerConfig{
