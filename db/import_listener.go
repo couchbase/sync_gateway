@@ -1,8 +1,6 @@
 package db
 
 import (
-	"errors"
-	"expvar"
 	"strings"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -12,11 +10,11 @@ import (
 // ImportListener manages the import DCP feed.  ProcessFeedEvent is triggered for each feed events,
 // and invokes ImportFeedEvent for any event that's eligible for import handling.
 type importListener struct {
-	bucketName  string            // Used for logging
-	terminator  chan bool         // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
-	database    Database          // Admin database instance to be used for import
-	stats       *expvar.Map       // Database stats group
-	cbgtContext *base.CbgtContext // Handle to cbgt manager,cfg
+	bucketName  string              // Used for logging
+	terminator  chan bool           // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	database    Database            // Admin database instance to be used for import
+	stats       *base.DatabaseStats // Database stats group
+	cbgtContext *base.CbgtContext   // Handle to cbgt manager,cfg
 }
 
 func NewImportListener() *importListener {
@@ -28,23 +26,20 @@ func NewImportListener() *importListener {
 
 // StartImportFeed starts an import DCP feed.  Always starts the feed based on previous checkpoints (Backfill:FeedResume).
 // Writes DCP stats into the StatKeyImportDcpStats map
-func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseStats, dbContext *DatabaseContext) (err error) {
+func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbStats, dbContext *DatabaseContext) (err error) {
 
 	base.Infof(base.KeyDCP, "Attempting to start import DCP feed...")
 
 	il.bucketName = bucket.GetName()
 	il.database = Database{DatabaseContext: dbContext, user: nil}
-	il.stats = dbStats.statsDatabaseMap
+	il.stats = dbStats.Database()
 	feedArgs := sgbucket.FeedArguments{
 		ID:         base.DCPImportFeedID,
 		Backfill:   sgbucket.FeedResume,
 		Terminator: il.terminator,
 	}
 
-	importFeedStatsMap, ok := dbContext.DbStats.statsDatabaseMap.Get(base.StatKeyImportDcpStats).(*expvar.Map)
-	if !ok {
-		return errors.New("Import feed stats map not initialized")
-	}
+	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
 
 	// Register cbgt PIndex to support sharded import.
 	il.RegisterImportPindexImpl()
@@ -56,7 +51,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *DatabaseS
 	gocbBucket, ok := base.AsGoCBBucket(bucket)
 	if !ok || !base.IsEnterpriseEdition() {
 		// Non-gocb bucket or CE, start a non-sharded feed
-		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap)
+		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	} else {
 		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.UUID, dbContext.Heartbeater, gocbBucket, dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
@@ -115,7 +110,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 	if syncData != nil {
 		isSGWrite, crc32Match = syncData.IsSGWrite(event.Cas, rawBody)
 		if crc32Match {
-			il.stats.Add(base.StatKeyCrc32cMatchCount, 1)
+			il.stats.Crc32MatchCount.Add(1)
 		}
 	}
 

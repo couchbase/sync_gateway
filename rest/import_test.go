@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"expvar"
 	"fmt"
 	"log"
 	"net/http"
@@ -546,7 +545,7 @@ func TestImportFilterLogging(t *testing.T) {
 	assert.True(t, ok)
 
 	//Get number of errors before
-	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	//Attempt to get doc will trigger import
@@ -554,7 +553,7 @@ func TestImportFilterLogging(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 
 	//Get number of errors after
-	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	//Make sure an error was logged
@@ -718,7 +717,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Check expvars before update
-	crcMatchesBefore := base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyCrc32cMatchCount))
+	crcMatchesBefore := rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value()
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
@@ -733,7 +732,7 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Wait until crc match count changes
 	var crcMatchesAfter int64
 	for i := 0; i < 20; i++ {
-		crcMatchesAfter = base.ExpvarVar2Int(rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyCrc32cMatchCount))
+		crcMatchesAfter = rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value()
 		// if they changed, import has been processed
 		if crcMatchesAfter > crcMatchesBefore {
 			break
@@ -1973,8 +1972,7 @@ func TestDcpBackfill(t *testing.T) {
 	backfillComplete := false
 	var expectedBackfill, completedBackfill int
 	for i := 0; i < 20; i++ {
-		importFeedStats, ok := newRt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyImportDcpStats).(*expvar.Map)
-		assert.True(t, ok)
+		importFeedStats := newRt.GetDatabase().DbStats.Database().ImportFeedMapStats
 		expectedBackfill, _ := strconv.Atoi(importFeedStats.Get("dcp_backfill_expected").String())
 		completedBackfill, _ := strconv.Atoi(importFeedStats.Get("dcp_backfill_completed").String())
 		if expectedBackfill > 0 && completedBackfill >= expectedBackfill {

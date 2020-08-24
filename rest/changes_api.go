@@ -281,19 +281,19 @@ func (h *handler) handleChanges() error {
 
 	// Pull replication stats by type
 	if feed == "normal" {
-		h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, 1)
-		h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalOneShot, 1)
-		defer h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveOneShot, -1)
+		h.db.DatabaseContext.DbStats.CBLReplicationPull().NumPullReplActiveOneShot.Add(1)
+		h.db.DatabaseContext.DbStats.CBLReplicationPull().NumPullReplTotalOneShot.Add(1)
+		defer h.db.DatabaseContext.DbStats.CBLReplicationPull().NumPullReplActiveOneShot.Add(-1)
 	} else {
-		h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, 1)
-		h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsTotalContinuous, 1)
-		defer h.db.DatabaseContext.DbStats.StatsCblReplicationPull().Add(base.StatKeyPullReplicationsActiveContinuous, -1)
+		h.db.DbStats.CBLReplicationPull().NumPullReplActiveContinuous.Add(1)
+		h.db.DbStats.CBLReplicationPull().NumPullReplTotalContinuous.Add(1)
+		defer h.db.DbStats.CBLReplicationPull().NumPullReplActiveContinuous.Add(-1)
 	}
 
 	// Overall replication counts
-	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsActive, 1)
-	h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsTotal, 1)
-	defer h.db.DatabaseContext.DbStats.StatsDatabase().Add(base.StatKeyNumReplicationsActive, -1)
+	h.db.DatabaseContext.DbStats.Database().NumReplicationsActive.Add(1)
+	h.db.DatabaseContext.DbStats.Database().NumReplicationsTotal.Add(1)
+	defer h.db.DatabaseContext.DbStats.Database().NumReplicationsActive.Add(-1)
 
 	options.Terminator = make(chan bool)
 

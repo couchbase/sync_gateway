@@ -1,17 +1,17 @@
 package db
 
 import (
-	"expvar"
+	"github.com/couchbase/sync_gateway/base"
 )
 
 // BypassRevisionCache is an implementation of the RevisionCache interface that does not perform any caching.
 // For any Get operation, it will always immediately fetch the requested revision from the backing store.
 type BypassRevisionCache struct {
 	backingStore RevisionCacheBackingStore
-	bypassStat   *expvar.Int
+	bypassStat   *base.SgwIntStat
 }
 
-func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *expvar.Int) *BypassRevisionCache {
+func NewBypassRevisionCache(backingStore RevisionCacheBackingStore, bypassStat *base.SgwIntStat) *BypassRevisionCache {
 	return &BypassRevisionCache{
 		backingStore: backingStore,
 		bypassStat:   bypassStat,

@@ -12,7 +12,6 @@ package db
 import (
 	"context"
 	"errors"
-	"expvar"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -97,7 +96,7 @@ type DatabaseContext struct {
 	OIDCProviders                auth.OIDCProviderMap     // OIDC clients
 	PurgeInterval                int                      // Metadata purge interval, in hours
 	serverUUID                   string                   // UUID of the server, if available
-	DbStats                      *DatabaseStats           // stats that correspond to this database context
+	DbStats                      *base.DbStats            // stats that correspond to this database context
 	CompactState                 uint32                   // Status of database compaction
 	terminator                   chan bool                // Signal termination of background goroutines
 	activeChannels               *channels.ActiveChannels // Tracks active replications by channel
@@ -239,9 +238,43 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	dbStats := NewDatabaseStats()
+	dbStats := base.SyncGatewayStats.NewDBStats(dbName)
 
-	base.PerDbStats.Set(dbName, dbStats.ExpvarMap())
+	if options.DeltaSyncOptions.Enabled {
+		dbStats.InitDeltaSyncStats()
+	}
+
+	if autoImport {
+		dbStats.InitSharedBucketImportStats()
+	}
+
+	if options.UseViews {
+		dbStats.InitQueryStats(
+			true,
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccess),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewImport),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewSessions),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewTombstones))
+	} else {
+		dbStats.InitQueryStats(
+			false,
+			QueryTypeAccess,
+			QueryTypeRoleAccess,
+			QueryTypeChannels,
+			QueryTypeChannelsStar,
+			QueryTypeSequences,
+			QueryTypePrincipals,
+			QueryTypeSessions,
+			QueryTypeTombstones,
+			QueryTypeResync,
+			QueryTypeAllDocs)
+	}
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,
@@ -264,13 +297,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.revisionCache = NewRevisionCache(
 		dbContext.Options.RevisionCacheOptions,
 		dbContext,
-		dbContext.DbStats.StatsCache(),
+		dbContext.DbStats.Cache(),
 	)
 
 	dbContext.EventMgr = NewEventManager()
 
 	var err error
-	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats.StatsDatabase())
+	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats.Database())
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +324,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Initialize the active channel counter
-	dbContext.activeChannels = channels.NewActiveChannels(dbStats.StatsCache().Get(base.StatKeyActiveChannels).(*expvar.Int))
+	dbContext.activeChannels = channels.NewActiveChannels(dbStats.Cache().NumActiveChannels)
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
@@ -357,11 +390,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	// Start DCP feed
 	base.Infof(base.KeyDCP, "Starting mutation feed on bucket %v due to either channel cache mode or doc tracking (auto-import)", base.MD(bucket.GetName()))
-	cacheFeedStatsMap, ok := dbContext.DbStats.statsDatabaseMap.Get(base.StatKeyCachingDcpStats).(*expvar.Map)
-	if !ok {
-		return nil, errors.New("Cache feed stats map not initialized")
-	}
-	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap)
+	cacheFeedStatsMap := dbContext.DbStats.Database().CacheFeedMapStats
+	err = dbContext.mutationListener.Start(bucket, cacheFeedStatsMap.Map)
 
 	// Check if there is an error starting the DCP feed
 	if err != nil {
@@ -572,7 +602,8 @@ func (context *DatabaseContext) RestartListener() error {
 	// Delay needed to properly stop
 	time.Sleep(2 * time.Second)
 	context.mutationListener.Init(context.Bucket.GetName())
-	if err := context.mutationListener.Start(context.Bucket, context.DbStats.statsDatabaseMap); err != nil {
+	cacheFeedStatsMap := context.DbStats.Database().CacheFeedMapStats
+	if err := context.mutationListener.Start(context.Bucket, cacheFeedStatsMap.Map); err != nil {
 		return err
 	}
 	return nil
@@ -929,7 +960,7 @@ func (db *Database) Compact() (int, error) {
 		purgedDocCount += count
 		if count > 0 {
 			db.changeCache.Remove(purgedDocs, startTime)
-			db.DbStats.StatsDatabase().Add(base.StatKeyNumTombstonesCompacted, int64(count))
+			db.DbStats.Database().NumTombstonesCompacted.Add(int64(count))
 		}
 		base.DebugfCtx(ctx, base.KeyAll, "Compacted %v tombstones", count)
 
@@ -1235,7 +1266,7 @@ func (context *DatabaseContext) FlushRevisionCacheForTest() {
 	context.revisionCache = NewRevisionCache(
 		context.Options.RevisionCacheOptions,
 		context,
-		context.DbStats.StatsCache(),
+		context.DbStats.Cache(),
 	)
 
 }

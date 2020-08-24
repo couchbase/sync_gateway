@@ -236,13 +236,16 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
 	}
 
+	queryStat := context.DbStats.Query(queryName)
+
 	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
 	if err != nil {
-		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyN1qlQueryErrorCountExpvarFormat, queryName), 1)
+		queryStat.QueryErrorCount.Add(1)
 	}
 
-	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, queryName), 1)
-	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyN1qlQueryTimeExpvarFormat, queryName), time.Since(startTime).Nanoseconds())
+	queryStat.QueryCount.Add(1)
+	queryStat.QueryTime.Add(time.Since(startTime).Nanoseconds())
+
 	return results, err
 }
 
@@ -254,12 +257,14 @@ func (context *DatabaseContext) ViewQueryWithStats(ddoc string, viewName string,
 		defer base.SlowQueryLog(startTime, threshold, "View Query (%s.%s)", ddoc, viewName)
 	}
 
+	queryStat := context.DbStats.Query(fmt.Sprintf(base.StatViewFormat, ddoc, viewName))
+
 	results, err = context.Bucket.ViewQuery(ddoc, viewName, params)
 	if err != nil {
-		context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyViewQueryErrorCountExpvarFormat, ddoc, viewName), 1)
+		queryStat.QueryErrorCount.Add(1)
 	}
-	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, ddoc, viewName), 1)
-	context.DbStats.StatsGsiViews().Add(fmt.Sprintf(base.StatKeyViewQueryTimeExpvarFormat, ddoc, viewName), time.Since(startTime).Nanoseconds())
+	queryStat.QueryCount.Add(1)
+	queryStat.QueryTime.Add(time.Since(startTime).Nanoseconds())
 
 	return results, err
 }

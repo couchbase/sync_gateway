@@ -2,12 +2,13 @@ package db
 
 import (
 	"crypto/sha1"
-	"expvar"
 	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 type ActiveReplicatorDirection string
@@ -78,7 +79,7 @@ type ActiveReplicatorConfig struct {
 
 	// Map corresponding to db.replications.[replicationID] in Sync Gateway's expvars.  Populated with
 	// replication stats in blip_sync_stats.go
-	ReplicationStatsMap *expvar.Map
+	ReplicationStatsMap *base.DbReplicatorStats
 }
 
 type OnCompleteFunc func(replicationID string)

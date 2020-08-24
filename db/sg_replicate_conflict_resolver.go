@@ -2,7 +2,6 @@ package db
 
 import (
 	"errors"
-	"expvar"
 	"fmt"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -54,30 +53,30 @@ type Conflict struct {
 type ConflictResolverFunc func(conflict Conflict) (winner Body, err error)
 
 type ConflictResolverStats struct {
-	ConflictResultMergeCount  *expvar.Int
-	ConflictResultLocalCount  *expvar.Int
-	ConflictResultRemoteCount *expvar.Int
+	ConflictResultMergeCount  *base.SgwIntStat
+	ConflictResultLocalCount  *base.SgwIntStat
+	ConflictResultRemoteCount *base.SgwIntStat
 }
 
 func DefaultConflictResolverStats() *ConflictResolverStats {
 	return &ConflictResolverStats{
-		ConflictResultMergeCount:  &expvar.Int{},
-		ConflictResultLocalCount:  &expvar.Int{},
-		ConflictResultRemoteCount: &expvar.Int{},
+		ConflictResultMergeCount:  &base.SgwIntStat{},
+		ConflictResultLocalCount:  &base.SgwIntStat{},
+		ConflictResultRemoteCount: &base.SgwIntStat{},
 	}
 }
 
 // NewConflictResolverStats initializes the replications stats inside the provided container, and returns
 // a ConflictResolverStats to manage interaction with those stats.  If the container is not specified, expvar stats
 // will not be published.
-func NewConflictResolverStats(container *expvar.Map) *ConflictResolverStats {
+func NewConflictResolverStats(container *base.DbReplicatorStats) *ConflictResolverStats {
 	if container == nil {
 		return DefaultConflictResolverStats()
 	}
 	return &ConflictResolverStats{
-		ConflictResultMergeCount:  initReplicationStat(container, base.StatKeySgrConflictResolvedMerge),
-		ConflictResultLocalCount:  initReplicationStat(container, base.StatKeySgrConflictResolvedLocal),
-		ConflictResultRemoteCount: initReplicationStat(container, base.StatKeySgrConflictResolvedRemote),
+		ConflictResultMergeCount:  container.ConflictResolvedMergedCount,
+		ConflictResultLocalCount:  container.ConflictResolvedLocalCount,
+		ConflictResultRemoteCount: container.ConflictResolvedRemoteCount,
 	}
 }
 
@@ -86,7 +85,7 @@ type ConflictResolver struct {
 	stats *ConflictResolverStats
 }
 
-func NewConflictResolver(crf ConflictResolverFunc, statsContainer *expvar.Map) *ConflictResolver {
+func NewConflictResolver(crf ConflictResolverFunc, statsContainer *base.DbReplicatorStats) *ConflictResolver {
 	resolver := &ConflictResolver{
 		crf:   crf,
 		stats: NewConflictResolverStats(statsContainer),

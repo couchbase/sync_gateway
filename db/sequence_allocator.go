@@ -11,7 +11,6 @@ package db
 
 import (
 	"encoding/binary"
-	"expvar"
 	"fmt"
 	"math"
 	"sync"
@@ -43,19 +42,19 @@ const (
 var MaxSequenceIncrFrequency = 1000 * time.Millisecond
 
 type sequenceAllocator struct {
-	bucket                  base.Bucket   // Bucket whose counter to use
-	dbStats                 *expvar.Map   // For updating per-db sequence allocation stats
-	mutex                   sync.Mutex    // Makes this object thread-safe
-	last                    uint64        // The last sequence allocated by this allocator.
-	max                     uint64        // The range from (last+1) to max represents previously reserved sequences available for use.
-	terminator              chan struct{} // Terminator for releaseUnusedSequences goroutine
-	reserveNotify           chan struct{} // Channel for reserve notifications
-	sequenceBatchSize       uint64        // Current sequence allocation batch size
-	lastSequenceReserveTime time.Time     // Time of most recent sequence reserve
-	releaseSequenceWait     time.Duration // Supports test customization
+	bucket                  base.Bucket         // Bucket whose counter to use
+	dbStats                 *base.DatabaseStats // For updating per-db sequence allocation stats
+	mutex                   sync.Mutex          // Makes this object thread-safe
+	last                    uint64              // The last sequence allocated by this allocator.
+	max                     uint64              // The range from (last+1) to max represents previously reserved sequences available for use.
+	terminator              chan struct{}       // Terminator for releaseUnusedSequences goroutine
+	reserveNotify           chan struct{}       // Channel for reserve notifications
+	sequenceBatchSize       uint64              // Current sequence allocation batch size
+	lastSequenceReserveTime time.Time           // Time of most recent sequence reserve
+	releaseSequenceWait     time.Duration       // Supports test customization
 }
 
-func newSequenceAllocator(bucket base.Bucket, dbStatsMap *expvar.Map) (*sequenceAllocator, error) {
+func newSequenceAllocator(bucket base.Bucket, dbStatsMap *base.DatabaseStats) (*sequenceAllocator, error) {
 	if dbStatsMap == nil {
 		return nil, fmt.Errorf("dbStatsMap parameter must be non-nil")
 	}
@@ -148,7 +147,7 @@ func (s *sequenceAllocator) lastSequence() (uint64, error) {
 	if lastSeq > 0 {
 		return lastSeq, nil
 	}
-	s.dbStats.Add(base.StatKeySequenceGetCount, 1)
+	s.dbStats.SequenceGetCount.Add(1)
 	last, err := s.getSequence()
 	if err != nil {
 		base.Warnf("Error from Get in getSequence(): %v", err)
@@ -180,7 +179,7 @@ func (s *sequenceAllocator) nextSequence() (sequence uint64, err error) {
 		s.reserveNotify <- struct{}{}
 	}
 
-	s.dbStats.Add(base.StatKeySequenceAssignedCount, 1)
+	s.dbStats.SequenceAssignedCount.Add(1)
 	return sequence, nil
 }
 
@@ -210,7 +209,7 @@ func (s *sequenceAllocator) _reserveSequenceRange() error {
 	s.last = max - s.sequenceBatchSize
 	s.lastSequenceReserveTime = time.Now()
 
-	s.dbStats.Add(base.StatKeySequenceReservedCount, int64(s.sequenceBatchSize))
+	s.dbStats.SequenceReservedCount.Add(int64(s.sequenceBatchSize))
 	return nil
 }
 
@@ -223,7 +222,7 @@ func (s *sequenceAllocator) getSequence() (max uint64, err error) {
 func (s *sequenceAllocator) incrementSequence(numToReserve uint64) (max uint64, err error) {
 	value, err := s.bucket.Incr(base.SyncSeqKey, numToReserve, numToReserve, 0)
 	if err == nil {
-		s.dbStats.Add(base.StatKeySequenceIncrCount, 1)
+		s.dbStats.SequenceIncrCount.Add(1)
 	}
 	return value, err
 }
@@ -238,7 +237,7 @@ func (s *sequenceAllocator) releaseSequence(sequence uint64) error {
 	if err != nil {
 		return err
 	}
-	s.dbStats.Add(base.StatKeySequenceReleasedCount, 1)
+	s.dbStats.SequenceReleasedCount.Add(1)
 	base.Debugf(base.KeyCRUD, "Released unused sequence #%d", sequence)
 	return nil
 }
@@ -255,7 +254,7 @@ func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64
 	if err != nil {
 		return err
 	}
-	s.dbStats.Add(base.StatKeySequenceReleasedCount, int64(toSequence-fromSequence+1))
+	s.dbStats.SequenceReleasedCount.Add(int64(toSequence - fromSequence + 1))
 	base.Debugf(base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
 	return nil
 }

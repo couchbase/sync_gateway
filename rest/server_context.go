@@ -1015,7 +1015,7 @@ func (sc *ServerContext) logStats() error {
 	// Create wrapper expvar map in order to add a timestamp field for logging purposes
 	currentTime := time.Now()
 	wrapper := statsWrapper{
-		Stats:              []byte(base.Stats.String()),
+		Stats:              []byte(base.SyncGatewayStats.String()),
 		UnixEpochTimestamp: currentTime.Unix(),
 		RFC3339:            currentTime.Format(time.RFC3339),
 	}

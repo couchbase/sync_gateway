@@ -2,7 +2,6 @@ package db
 
 import (
 	"encoding/json"
-	"expvar"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -50,7 +49,7 @@ var _ RevisionCache = &ShardedLRURevisionCache{}
 var _ RevisionCache = &BypassRevisionCache{}
 
 // NewRevisionCache returns a RevisionCache implementation for the given config options.
-func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionCacheBackingStore, statsCache *expvar.Map) RevisionCache {
+func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionCacheBackingStore, cacheStats *base.CacheStats) RevisionCache {
 
 	// If cacheOptions is not passed in, use defaults
 	if cacheOptions == nil {
@@ -58,12 +57,13 @@ func NewRevisionCache(cacheOptions *RevisionCacheOptions, backingStore RevisionC
 	}
 
 	if cacheOptions.Size == 0 {
-		bypassStat := statsCache.Get(base.StatKeyRevisionCacheBypass).(*expvar.Int)
+		bypassStat := cacheStats.RevisionCacheBypass
 		return NewBypassRevisionCache(backingStore, bypassStat)
 	}
 
-	cacheHitStat := statsCache.Get(base.StatKeyRevisionCacheHits).(*expvar.Int)
-	cacheMissStat := statsCache.Get(base.StatKeyRevisionCacheMisses).(*expvar.Int)
+	cacheHitStat := cacheStats.RevisionCacheHits
+	cacheMissStat := cacheStats.RevisionCacheMisses
+
 	if cacheOptions.ShardCount > 1 {
 		return NewShardedLRURevisionCache(cacheOptions.ShardCount, cacheOptions.Size, backingStore, cacheHitStat, cacheMissStat)
 	}

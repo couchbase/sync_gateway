@@ -86,7 +86,8 @@ func (db *DatabaseContext) CacheCompactActive() bool {
 
 func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
 	for i := 0; i < 100; i++ {
-		caughtUpCount := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+		// caughtUpCount := base.ExpvarVar2Int(db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp))
+		caughtUpCount := db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value()
 		if caughtUpCount >= targetCount {
 			return nil
 		}
@@ -99,7 +100,8 @@ type StatWaiter struct {
 	initCount   int64       // Document cached count when NewStatWaiter is called
 	targetCount int64       // Target count used when Wait is called
 	stat        *expvar.Int // Expvar to wait on
-	tb          testing.TB  // Raises tb.Fatalf on wait timeout
+	newStat     *base.SgwIntStat
+	tb          testing.TB // Raises tb.Fatalf on wait timeout
 }
 
 func (db *DatabaseContext) NewStatWaiter(stat *expvar.Int, tb testing.TB) *StatWaiter {
@@ -111,28 +113,25 @@ func (db *DatabaseContext) NewStatWaiter(stat *expvar.Int, tb testing.TB) *StatW
 	}
 }
 
-func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
-	stat, ok := db.DbStats.StatsDatabase().Get(base.StatKeyDcpCachingCount).(*expvar.Int)
-	if !ok {
-		tb.Fatalf("Unable to retrieve StatKeyDcpCachingCount during StatWaiter initialization ")
+func (db *DatabaseContext) NewNewStatWaiter(stat *base.SgwIntStat, tb testing.TB) *StatWaiter {
+	return &StatWaiter{
+		initCount:   stat.Value(),
+		targetCount: stat.Value(),
+		newStat:     stat,
+		tb:          tb,
 	}
-	return db.NewStatWaiter(stat, tb)
+}
+
+func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
+	return db.NewNewStatWaiter(db.DbStats.Database().DCPCachingCount, tb)
 }
 
 func (db *DatabaseContext) NewPullReplicationCaughtUpWaiter(tb testing.TB) *StatWaiter {
-	stat, ok := db.DbStats.StatsCblReplicationPull().Get(base.StatKeyPullReplicationsCaughtUp).(*expvar.Int)
-	if !ok {
-		tb.Fatalf("Unable to retrieve StatKeyPullReplicationsCaughtUp during StatWaiter initialization ")
-	}
-	return db.NewStatWaiter(stat, tb)
+	return db.NewNewStatWaiter(db.DbStats.CBLReplicationPull().NumPullReplCaughtUp, tb)
 }
 
 func (db *DatabaseContext) NewCacheRevsActiveWaiter(tb testing.TB) *StatWaiter {
-	stat, ok := db.DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsActive).(*expvar.Int)
-	if !ok {
-		tb.Fatalf("Unable to retrieve StatKeyChannelCacheRevsActive during StatWaiter initialization ")
-	}
-	return db.NewStatWaiter(stat, tb)
+	return db.NewNewStatWaiter(db.DbStats.Cache().ChannelCacheRevsActive, tb)
 }
 
 func (sw *StatWaiter) Add(count int) {
@@ -146,22 +145,41 @@ func (sw *StatWaiter) AddAndWait(count int) {
 
 // Wait uses backoff retry for up to ~27s
 func (sw *StatWaiter) Wait() {
-	actualCount := sw.stat.Value()
-	if actualCount >= sw.targetCount {
-		return
-	}
-
-	waitTime := 1 * time.Millisecond
-	for i := 0; i < 13; i++ {
-		waitTime = waitTime * 2
-		time.Sleep(waitTime)
-		actualCount = sw.stat.Value()
+	if sw.stat != nil {
+		actualCount := sw.stat.Value()
 		if actualCount >= sw.targetCount {
 			return
 		}
-	}
 
-	sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d)", sw.targetCount, actualCount)
+		waitTime := 1 * time.Millisecond
+		for i := 0; i < 13; i++ {
+			waitTime = waitTime * 2
+			time.Sleep(waitTime)
+			actualCount = sw.stat.Value()
+			if actualCount >= sw.targetCount {
+				return
+			}
+		}
+
+		sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d)", sw.targetCount, actualCount)
+	} else {
+		actualCount := sw.newStat.Value()
+		if actualCount >= sw.targetCount {
+			return
+		}
+
+		waitTime := 1 * time.Millisecond
+		for i := 0; i < 13; i++ {
+			waitTime = waitTime * 2
+			time.Sleep(waitTime)
+			actualCount = sw.newStat.Value()
+			if actualCount >= sw.targetCount {
+				return
+			}
+		}
+
+		sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d)", sw.targetCount, actualCount)
+	}
 }
 
 func AssertEqualBodies(t *testing.T, expected, actual Body) {
@@ -285,14 +303,11 @@ func viewBucketReadier(ctx context.Context, b base.Bucket, tbp *base.TestBucketP
 }
 
 func (db *DatabaseContext) GetChannelQueryCount() int64 {
-
-	queryCountExpvar := fmt.Sprintf(base.StatKeyN1qlQueryCountExpvarFormat, QueryTypeChannels)
 	if db.UseViews() {
-		queryCountExpvar = fmt.Sprintf(base.StatKeyViewQueryCountExpvarFormat, DesignDocSyncGateway(), ViewChannels)
+		return db.DbStats.Query(fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels)).QueryCount.Value()
 	}
 
-	return base.ExpvarVar2Int(db.DbStats.StatsGsiViews().Get(queryCountExpvar))
-
+	return db.DbStats.Query(QueryTypeChannels).QueryCount.Value()
 }
 
 // GetLocalActiveReplicatorForTest is a test util for retrieving an Active Replicator for deeper introspection/assertions.

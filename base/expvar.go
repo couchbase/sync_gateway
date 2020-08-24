@@ -23,164 +23,8 @@ const (
 
 var TimingExpvarsEnabled = false
 
-var (
-
-	// Top level stats expvar map
-	Stats *expvar.Map
-
-	// Global Stats
-	GlobalStats *expvar.Map
-
-	// Per-database stats
-	PerDbStats *expvar.Map
-
-	// Per-replication (sg-replicate) stats
-	PerReplicationStats *expvar.Map
-)
-
 const (
-	PerDb          = "per_db"
-	PerReplication = "per_replication"
-	Global         = "global"
-)
-
-const (
-
-	// StatsResourceUtilization
-	StatKeyProcessCpuPercentUtilization   = "process_cpu_percent_utilization"
-	StatKeyProcessMemoryResident          = "process_memory_resident"
-	StatKeySystemMemoryTotal              = "system_memory_total"
-	StatKeyPubNetworkInterfaceBytesSent   = "pub_net_bytes_sent"
-	StatKeyPubNetworkInterfaceBytesRecv   = "pub_net_bytes_recv"
-	StatKeyAdminNetworkInterfaceBytesSent = "admin_net_bytes_sent"
-	StatKeyAdminNetworkInterfaceBytesRecv = "admin_net_bytes_recv"
-	StatKeyNumGoroutines                  = "num_goroutines"
-	StatKeyGoroutinesHighWatermark        = "goroutines_high_watermark"
-	StatKeyGoMemstatsSys                  = "go_memstats_sys"
-	StatKeyGoMemstatsHeapAlloc            = "go_memstats_heapalloc"
-	StatKeyGoMemstatsHeapIdle             = "go_memstats_heapidle"
-	StatKeyGoMemstatsHeapInUse            = "go_memstats_heapinuse"
-	StatKeyGoMemstatsHeapReleased         = "go_memstats_heapreleased"
-	StatKeyGoMemstatsStackInUse           = "go_memstats_stackinuse"
-	StatKeyGoMemstatsStackSys             = "go_memstats_stacksys"
-	StatKeyGoMemstatsPauseTotalNs         = "go_memstats_pausetotalns"
-	StatKeyErrorCount                     = "error_count"
-	StatKeyWarnCount                      = "warn_count"
-
-	// StatsCache
-	StatKeyRevisionCacheHits                   = "rev_cache_hits"
-	StatKeyRevisionCacheMisses                 = "rev_cache_misses"
-	StatKeyRevisionCacheBypass                 = "rev_cache_bypass"
-	StatKeyChannelCacheHits                    = "chan_cache_hits"
-	StatKeyChannelCacheMisses                  = "chan_cache_misses"
-	StatKeyChannelCacheRevsActive              = "chan_cache_active_revs"
-	StatKeyChannelCacheRevsTombstone           = "chan_cache_tombstone_revs"
-	StatKeyChannelCacheRevsRemoval             = "chan_cache_removal_revs"
-	StatKeyChannelCacheNumChannels             = "chan_cache_num_channels"
-	StatKeyChannelCacheMaxEntries              = "chan_cache_max_entries"
-	StatKeyChannelCachePendingQueries          = "chan_cache_pending_queries"
-	StatKeyChannelCacheChannelsAdded           = "chan_cache_channels_added"
-	StatKeyChannelCacheChannelsEvictedInactive = "chan_cache_channels_evicted_inactive"
-	StatKeyChannelCacheChannelsEvictedNRU      = "chan_cache_channels_evicted_nru"
-	StatKeyChannelCacheCompactCount            = "chan_cache_compact_count"
-	StatKeyChannelCacheCompactTime             = "chan_cache_compact_time"
-	StatKeyChannelCacheBypassCount             = "chan_cache_bypass_count"
-	StatKeyActiveChannels                      = "num_active_channels"
-	StatKeyNumSkippedSeqs                      = "num_skipped_seqs"
-	StatKeyAbandonedSeqs                       = "abandoned_seqs"
-	StatKeyHighSeqCached                       = "high_seq_cached"
-	StatKeyHighSeqStable                       = "high_seq_stable"
-	StatKeySkippedSeqLen                       = "skipped_seq_len"
-	StatKeyPendingSeqLen                       = "pending_seq_len"
-
-	// StatsDatabase
-	StatKeySequenceGetCount        = "sequence_get_count"
-	StatKeySequenceIncrCount       = "sequence_incr_count"
-	StatKeySequenceReservedCount   = "sequence_reserved_count"
-	StatKeySequenceAssignedCount   = "sequence_assigned_count"
-	StatKeySequenceReleasedCount   = "sequence_released_count"
-	StatKeyCrc32cMatchCount        = "crc32c_match_count"
-	StatKeyNumReplicationsActive   = "num_replications_active"
-	StatKeyNumReplicationsTotal    = "num_replications_total"
-	StatKeyNumDocWrites            = "num_doc_writes"
-	StatKeyNumTombstonesCompacted  = "num_tombstones_compacted"
-	StatKeyDocWritesBytes          = "doc_writes_bytes"
-	StatKeyDocWritesXattrBytes     = "doc_writes_xattr_bytes"
-	StatKeyNumDocReadsRest         = "num_doc_reads_rest"
-	StatKeyNumDocReadsBlip         = "num_doc_reads_blip"
-	StatKeyDocWritesBytesBlip      = "doc_writes_bytes_blip"
-	StatKeyDocReadsBytesBlip       = "doc_reads_bytes_blip"
-	StatKeyWarnXattrSizeCount      = "warn_xattr_size_count"
-	StatKeyWarnChannelsPerDocCount = "warn_channels_per_doc_count"
-	StatKeyWarnGrantsPerDocCount   = "warn_grants_per_doc_count"
-	StatKeyDcpReceivedCount        = "dcp_received_count"
-	StatKeyHighSeqFeed             = "high_seq_feed"
-	StatKeyDcpReceivedTime         = "dcp_received_time"
-	StatKeyDcpCachingCount         = "dcp_caching_count"
-	StatKeyDcpCachingTime          = "dcp_caching_time"
-	StatKeyCachingDcpStats         = "cache_feed"
-	StatKeyImportDcpStats          = "import_feed"
-
-	// StatsDeltaSync
-	StatKeyDeltasRequested           = "deltas_requested"
-	StatKeyDeltasSent                = "deltas_sent"
-	StatKeyDeltaPullReplicationCount = "delta_pull_replication_count"
-	StatKeyDeltaCacheHits            = "delta_cache_hit"
-	StatKeyDeltaCacheMisses          = "delta_cache_miss"
-	StatKeyDeltaPushDocCount         = "delta_push_doc_count"
-
-	// StatsSharedBucketImport
-	StatKeyImportCount          = "import_count"
-	StatKeyImportCancelCAS      = "import_cancel_cas"
-	StatKeyImportErrorCount     = "import_error_count"
-	StatKeyImportProcessingTime = "import_processing_time"
-	StatKeyImportHighSeq        = "import_high_seq"
-	StatKeyImportPartitions     = "import_partitions"
-
-	// StatsCBLReplicationPush
-	StatKeyDocPushCount        = "doc_push_count"
-	StatKeyWriteProcessingTime = "write_processing_time"
-	StatKeySyncFunctionTime    = "sync_function_time"
-	StatKeySyncFunctionCount   = "sync_function_count"
-	StatKeyProposeChangeTime   = "propose_change_time"
-	StatKeyProposeChangeCount  = "propose_change_count"
-	StatKeyAttachmentPushCount = "attachment_push_count"
-	StatKeyAttachmentPushBytes = "attachment_push_bytes"
-	StatKeyConflictWriteCount  = "conflict_write_count"
-
-	// StatsCBLReplicationPull
-	StatKeyPullReplicationsActiveOneShot    = "num_pull_repl_active_one_shot"
-	StatKeyPullReplicationsActiveContinuous = "num_pull_repl_active_continuous"
-	StatKeyPullReplicationsTotalOneShot     = "num_pull_repl_total_one_shot"
-	StatKeyPullReplicationsTotalContinuous  = "num_pull_repl_total_continuous"
-	StatKeyPullReplicationsSinceZero        = "num_pull_repl_since_zero"
-	StatKeyPullReplicationsCaughtUp         = "num_pull_repl_caught_up"
-	StatKeyRequestChangesCount              = "request_changes_count"
-	StatKeyRequestChangesTime               = "request_changes_time"
-	StatKeyRevSendCount                     = "rev_send_count"
-	StatKeyRevSendLatency                   = "rev_send_latency"
-	StatKeyRevProcessingTime                = "rev_processing_time"
-	StatKeyMaxPending                       = "max_pending"
-	StatKeyAttachmentPullCount              = "attachment_pull_count"
-	StatKeyAttachmentPullBytes              = "attachment_pull_bytes"
-
-	// StatsSecurity
-	StatKeyNumDocsRejected  = "num_docs_rejected"
-	StatKeyNumAccessErrors  = "num_access_errors"
-	StatKeyAuthSuccessCount = "auth_success_count"
-	StatKeyAuthFailedCount  = "auth_failed_count"
-	StatKeyTotalAuthTime    = "total_auth_time"
-
-	// StatsGsiViews
-	// Gsi and View stat names are dynamically generated based on the following patterns
-	StatKeyN1qlQueryCountExpvarFormat      = "%s_count"          // Query name
-	StatKeyN1qlQueryErrorCountExpvarFormat = "%s_error_count"    // Query name
-	StatKeyN1qlQueryTimeExpvarFormat       = "%s_time"           // Query name
-	StatKeyViewQueryCountExpvarFormat      = "%s.%s_count"       // Design doc, view
-	StatKeyViewQueryErrorCountExpvarFormat = "%s.%s_error_count" // Design doc, view
-	StatKeyViewQueryTimeExpvarFormat       = "%s.%s_time"        // Design doc, view
-
-	// StatsReplication (1.x)
+	// StatsReplication (SGR 1.x)
 	StatKeySgrActive                     = "sgr_active"
 	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
 	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
@@ -189,108 +33,28 @@ const (
 	StatKeySgrNumDocsPushed       = "sgr_num_docs_pushed"
 	StatKeySgrNumDocsFailedToPush = "sgr_num_docs_failed_to_push"
 	StatKeySgrDocsCheckedSent     = "sgr_docs_checked_sent"
-
-	// StatsReplication (SGR 2.x)
-	StatKeySgrNumAttachmentsPushed     = "sgr_num_attachments_pushed"
-	StatKeySgrNumAttachmentBytesPushed = "sgr_num_attachment_bytes_pushed"
-	StatKeySgrNumAttachmentsPulled     = "sgr_num_attachments_pulled"
-	StatKeySgrNumAttachmentBytesPulled = "sgr_num_attachment_bytes_pulled"
-	StatKeySgrPulledCount              = "sgr_num_docs_pulled"
-	StatKeySgrPurgedCount              = "sgr_num_docs_purged"
-	StatKeySgrFailedToPullCount        = "sgr_num_docs_failed_to_pull"
-	StatKeySgrPushConflictCount        = "sgr_push_conflict_count"
-	StatKeySgrPushRejectedCount        = "sgr_push_rejected_count"
-	StatKeySgrDocsCheckedRecv          = "sgr_docs_checked_recv"
-	StatKeySgrDeltaRecvCount           = "sgr_deltas_recv"
-	StatKeySgrDeltaRequestedCount      = "sgr_deltas_requested"
-	StatKeySgrPushDeltaSentCount       = "sgr_deltas_sent"
-	StatKeySgrConflictResolvedLocal    = "sgr_conflict_resolved_local_count"
-	StatKeySgrConflictResolvedRemote   = "sgr_conflict_resolved_remote_count"
-	StatKeySgrConflictResolvedMerge    = "sgr_conflict_resolved_merge_count"
 )
 
-const (
-	StatsGroupKeySyncGateway         = "syncgateway"
-	StatsGroupKeyResourceUtilization = "resource_utilization"
-	StatsGroupKeyCache               = "cache"
-	StatsGroupKeyDatabase            = "database"
-	StatsGroupKeyDeltaSync           = "delta_sync"
-	StatsGroupKeySharedBucketImport  = "shared_bucket_import"
-	StatsGroupKeyCblReplicationPush  = "cbl_replication_push"
-	StatsGroupKeyCblReplicationPull  = "cbl_replication_pull"
-	StatsGroupKeySecurity            = "security"
-	StatsGroupKeyGsiViews            = "gsi_views"
-	StatsGroupKeyReplications        = "replications"
-)
+const StatsGroupKeySyncGateway = "syncgateway"
+
+var SyncGatewayStats SgwStats
 
 func init() {
+	// Initialize Sync Gateway Stats
 
-	// Create the expvars structure:
-	//
-	// {
-	//    "syncgateway": {
-	//      "global": {..}
-	//      "per_db": {
-	//         "db1": {..}
-	//      }
-	//      "per_replication": {
-	//         "repl1": {..}
-	//      }
-	// }
+	// All stats will be stored as part of this struct. Global variable accessible everywhere. To add stats see stats.go
+	SyncGatewayStats = *NewSyncGatewayStats()
 
-	// All stats will be stored in expvars under the "syncgateway" key.
-	Stats = expvar.NewMap(StatsGroupKeySyncGateway)
-
-	GlobalStats = new(expvar.Map).Init()
-	Stats.Set(Global, GlobalStats)
-
-	PerDbStats = new(expvar.Map).Init()
-	Stats.Set(PerDb, PerDbStats)
-
-	PerReplicationStats = new(expvar.Map).Init()
-	Stats.Set(PerReplication, PerReplicationStats)
-
-	// Add StatsResourceUtilization under GlobalStats
-	GlobalStats.Set(StatsGroupKeyResourceUtilization, NewStatsResourceUtilization())
-
+	// Publish our stats to expvars. This will run String method on SyncGatewayStats ( type SgwStats ) which will
+	// marshal the stats to JSON
+	expvar.Publish(StatsGroupKeySyncGateway, &SyncGatewayStats)
 }
 
-func StatsResourceUtilization() *expvar.Map {
-	statsResourceUtilizationVar := GlobalStats.Get(StatsGroupKeyResourceUtilization)
-	statsResourceUtilization := statsResourceUtilizationVar.(*expvar.Map)
-	return statsResourceUtilization
-}
-
-func NewStatsResourceUtilization() *expvar.Map {
-	stats := new(expvar.Map).Init()
-	stats.Set(StatKeyProcessCpuPercentUtilization, ExpvarFloatVal(0))
-	stats.Set(StatKeyProcessMemoryResident, ExpvarIntVal(0))
-	stats.Set(StatKeySystemMemoryTotal, ExpvarIntVal(0))
-	stats.Set(StatKeyPubNetworkInterfaceBytesSent, ExpvarIntVal(0))
-	stats.Set(StatKeyPubNetworkInterfaceBytesRecv, ExpvarIntVal(0))
-	stats.Set(StatKeyAdminNetworkInterfaceBytesSent, ExpvarIntVal(0))
-	stats.Set(StatKeyAdminNetworkInterfaceBytesRecv, ExpvarIntVal(0))
-	stats.Set(StatKeyNumGoroutines, ExpvarIntVal(0))
-	stats.Set(StatKeyGoroutinesHighWatermark, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsSys, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsHeapAlloc, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsHeapIdle, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsHeapInUse, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsHeapReleased, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsStackInUse, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsStackSys, ExpvarIntVal(0))
-	stats.Set(StatKeyGoMemstatsPauseTotalNs, ExpvarIntVal(0))
-	stats.Set(StatKeyErrorCount, ExpvarIntVal(0))
-	stats.Set(StatKeyWarnCount, ExpvarIntVal(0))
-	return stats
-}
-
-// Removes the per-database stats for this database by
-// regenerating a new expvar map without that particular dbname
+// Removes the per-database stats for this database by removing the database from the map
 func RemovePerDbStats(dbName string) {
 
 	// Clear out the stats for this db since they will no longer be updated.
-	PerDbStats.Set(dbName, new(expvar.Map).Init())
+	SyncGatewayStats.ClearDBStats(dbName)
 
 }
 

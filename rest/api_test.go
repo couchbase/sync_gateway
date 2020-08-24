@@ -2587,13 +2587,13 @@ func TestSyncFnDocBodyPropertiesSwitchActiveTombstone(t *testing.T) {
 	resp = rt.Send(request("DELETE", "/db/"+testDocID+"?rev="+rev3aID, `{}`))
 	assertStatus(t, resp, 200)
 
-	numErrorsBefore, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrorsBefore, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 	// tombstone at 3-b
 	resp = rt.Send(request("DELETE", "/db/"+testDocID+"?rev="+rev2bID, `{}`))
 	assertStatus(t, resp, 200)
 
-	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, numErrorsAfter-numErrorsBefore, "expecting to see only only 1 error logged")
@@ -4060,13 +4060,13 @@ func TestImportingPurgedDocument(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
-	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	response := rt.SendRequest("GET", "/db/key", "")
 	fmt.Println(response.Body)
 
-	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	assert.Equal(t, numErrors, numErrorsAfter)
@@ -4138,13 +4138,13 @@ func TestSyncFunctionErrorLogging(t *testing.T) {
 	// Wait for the DB to be ready before attempting to get initial error count
 	assert.NoError(t, rt.WaitForDBOnline())
 
-	numErrors, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrors, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	response := rt.SendRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
 	assert.Equal(t, http.StatusCreated, response.Code)
 
-	numErrorsAfter, err := strconv.Atoi(base.StatsResourceUtilization().Get(base.StatKeyErrorCount).String())
+	numErrorsAfter, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.String())
 	assert.NoError(t, err)
 
 	assert.Equal(t, numErrors+1, numErrorsAfter)
@@ -4495,7 +4495,7 @@ func TestChanCacheActiveRevsStat(t *testing.T) {
 	err = rt.WaitForPendingChanges()
 	assert.NoError(t, err)
 
-	assert.Equal(t, base.ExpvarIntVal(0), rt.GetDatabase().DbStats.StatsCache().Get(base.StatKeyChannelCacheRevsActive))
+	assert.Equal(t, 0, int(rt.GetDatabase().DbStats.Cache().ChannelCacheRevsActive.Value()))
 
 }
 
@@ -4634,7 +4634,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, body["ok"].(bool))
 		revID = body["rev"].(string)
-		assert.Equal(t, base.ExpvarIntVal(1), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+		assert.Equal(t, 1, int(rt.GetDatabase().DbStats.Database().NumDocWrites.Value()))
 	} else {
 		assertStatus(t, response, http.StatusNotImplemented)
 	}
@@ -4646,7 +4646,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
 		assert.NoError(t, err)
 		assert.True(t, body["ok"].(bool))
-		assert.Equal(t, base.ExpvarIntVal(2), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+		assert.Equal(t, 2, int(rt.GetDatabase().DbStats.Database().NumDocWrites.Value()))
 	} else {
 		assertStatus(t, response, http.StatusNotImplemented)
 	}
@@ -4657,7 +4657,7 @@ func TestBasicPutReplicator2(t *testing.T) {
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
 		assert.NoError(t, err)
 		assert.Equal(t, "bar", body["foo"])
-		assert.Equal(t, base.ExpvarIntVal(1), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocReadsRest))
+		assert.Equal(t, 1, int(rt.GetDatabase().DbStats.Database().NumDocReadsRest.Value()))
 	} else {
 		assertStatus(t, response, http.StatusNotFound)
 	}
@@ -4675,7 +4675,7 @@ func TestDeletedPutReplicator2(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, body["ok"].(bool))
 	revID := body["rev"].(string)
-	assert.Equal(t, base.ExpvarIntVal(1), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.Database().NumDocWrites.Value())
 
 	response = rt.SendAdminRequest("PUT", "/db/doc1?replicator2=true&rev="+revID+"&deleted=true", "{}")
 	if base.IsEnterpriseEdition() {
@@ -4684,11 +4684,11 @@ func TestDeletedPutReplicator2(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, body["ok"].(bool))
 		revID = body["rev"].(string)
-		assert.Equal(t, base.ExpvarIntVal(2), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+		assert.Equal(t, 2, int(rt.GetDatabase().DbStats.Database().NumDocWrites.Value()))
 
 		response = rt.SendAdminRequest("GET", "/db/doc1", ``)
 		assertStatus(t, response, http.StatusNotFound)
-		assert.Equal(t, base.ExpvarIntVal(0), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocReadsRest))
+		assert.Equal(t, 0, int(rt.GetDatabase().DbStats.Database().NumDocReadsRest.Value()))
 	} else {
 		assertStatus(t, response, http.StatusNotImplemented)
 	}
@@ -4699,11 +4699,11 @@ func TestDeletedPutReplicator2(t *testing.T) {
 		err = base.JSONUnmarshal(response.Body.Bytes(), &body)
 		assert.NoError(t, err)
 		assert.True(t, body["ok"].(bool))
-		assert.Equal(t, base.ExpvarIntVal(3), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocWrites))
+		assert.Equal(t, 3, int(rt.GetDatabase().DbStats.Database().NumDocWrites.Value()))
 
 		response = rt.SendAdminRequest("GET", "/db/doc1", ``)
 		assertStatus(t, response, http.StatusOK)
-		assert.Equal(t, base.ExpvarIntVal(1), rt.GetDatabase().DbStats.StatsDatabase().Get(base.StatKeyNumDocReadsRest))
+		assert.Equal(t, 1, int(rt.GetDatabase().DbStats.Database().NumDocReadsRest.Value()))
 	} else {
 		assertStatus(t, response, http.StatusNotImplemented)
 	}
