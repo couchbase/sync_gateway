@@ -275,6 +275,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
+	// Get current value of _sync:seq
+	initialSequence, seqErr := dbContext.sequences.lastSequence()
+	if seqErr != nil {
+		return nil, seqErr
+	}
+	initialSequenceTime := time.Now()
+
 	// In-memory channel cache
 	dbContext.changeCache = &changeCache{}
 
@@ -370,8 +377,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	// Unlock change cache
-	err = dbContext.changeCache.Start()
+	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
+	// before starting
+	if initialSequence > 0 {
+		_ = dbContext.sequences.waitForReleasedSequences(initialSequenceTime)
+	}
+
+	err = dbContext.changeCache.Start(initialSequence)
 	if err != nil {
 		return nil, err
 	}

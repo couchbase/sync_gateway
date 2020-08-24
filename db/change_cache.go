@@ -193,22 +193,16 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	return nil
 }
 
-func (c *changeCache) Start() error {
+func (c *changeCache) Start(initialSequence uint64) error {
 
 	// Unlock the cache after this function returns.
 	defer c.lock.Unlock()
 
-	// Find the current global doc sequence and use that for the initial sequence for the change cache
-	lastSequence, err := c.context.LastSequence()
-	if err != nil {
-		return err
-	}
-
 	// Set initial sequence for sequence buffering
-	c._setInitialSequence(lastSequence)
+	c._setInitialSequence(initialSequence)
 
 	// Set initial sequence for cache (validFrom)
-	c.channelCache.Init(lastSequence)
+	c.channelCache.Init(initialSequence)
 
 	return nil
 }

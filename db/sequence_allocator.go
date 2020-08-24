@@ -259,3 +259,16 @@ func (s *sequenceAllocator) releaseSequenceRange(fromSequence, toSequence uint64
 	base.Debugf(base.KeyCRUD, "Released unused sequences #%d-#%d", fromSequence, toSequence)
 	return nil
 }
+
+// waitForReleasedSequences blocks for 'releaseSequenceWait' past the provided startTime.
+// Used to guarantee assignment of allocated sequences on other nodes.
+func (s *sequenceAllocator) waitForReleasedSequences(startTime time.Time) (waitedFor time.Duration) {
+
+	requiredWait := s.releaseSequenceWait - time.Since(startTime)
+	if requiredWait < 0 {
+		return 0
+	}
+	base.Infof(base.KeyCache, "Waiting %v for sequence allocation...", requiredWait)
+	time.Sleep(requiredWait)
+	return requiredWait
+}
