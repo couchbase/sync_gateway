@@ -65,7 +65,7 @@ func (apr *ActivePushReplicator) _connect() error {
 		// clean up anything we've opened so far
 		apr.blipSender.Close()
 		apr.blipSyncContext.Close()
-		return apr.setError(err)
+		return err
 	}
 
 	bh := blipHandler{
