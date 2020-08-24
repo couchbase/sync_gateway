@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/couchbaselabs/walrus"
 
