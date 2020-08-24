@@ -1777,46 +1777,6 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
-	// Add rev-1 in channel user1
-	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
-	goassert.True(t, sent)
-	assert.NoError(t, err)                                // no error
-	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
-
-	// Add rev-2 in channel user1
-	history := []string{"1-abc"}
-	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"noconflicts": "true"})
-	goassert.True(t, sent)
-	assert.NoError(t, err)                                // no error
-	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
-
-	// Try to get rev 2 via BLIP API and assert that _removed == false
-	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
-	assert.NoError(t, err, "Unexpected Error")
-	goassert.False(t, resultDoc.IsRemoved())
-
-	// Add rev-3, remove from channel user1 and put into channel another_channel
-	history = []string{"2-bcd", "1-abc"}
-	sent, _, resp, err = bt.SendRevWithHistory("foo", "3-cde", history, []byte(`{"key": "val", "channels": ["another_channel"]}`), blip.Properties{"noconflicts": "true"})
-	goassert.True(t, sent)
-	assert.NoError(t, err)                                // no error
-	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
-
-	// Add rev-4, keeping it in channel another_channel
-	history = []string{"3-cde", "2-bcd", "1-abc"}
-	sent, _, resp, err = bt.SendRevWithHistory("foo", "4-def", history, []byte("{}"), blip.Properties{"noconflicts": "true", "deleted": "true"})
-	goassert.True(t, sent)
-	assert.NoError(t, err)                                // no error
-	goassert.Equals(t, resp.Properties["Error-Code"], "") // no error
-
-	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
-	rt.GetDatabase().FlushRevisionCacheForTest()
-
-	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
-	tempRevisionDocId := base.RevPrefix + "foo:5:3-cde"
-	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocId)
-	assert.NoError(t, err, "Unexpected Error")
-
 	// Workaround data race (https://gist.github.com/tleyden/0ace70b8a38b76a7beee95529610b6cf) that happens because
 	// there are multiple goroutines accessing the bt.blipContext.HandlerForProfile map.
 	// The workaround uses a separate blipTester, and therefore a separate context.  It uses a different
@@ -1829,18 +1789,59 @@ func TestGetRemovedDoc(t *testing.T) {
 	}
 	bt2, err := NewBlipTesterFromSpec(t, btSpec2)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	defer bt2.Close()
+
+	// Add rev-1 in channel user1
+	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{})
+	assert.True(t, sent)
+	assert.NoError(t, err)                         // no error
+	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+
+	// Add rev-2 in channel user1
+	history := []string{"1-abc"}
+	sent, _, resp, err = bt.SendRevWithHistory("foo", "2-bcd", history, []byte(`{"key": "val", "channels": ["user1"]}`), blip.Properties{"noconflicts": "true"})
+	assert.True(t, sent)
+	assert.NoError(t, err)                         // no error
+	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+
+	// Try to get rev 2 via BLIP API and assert that _removed == false
+	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
+	assert.NoError(t, err, "Unexpected Error")
+	assert.False(t, resultDoc.IsRemoved())
+
+	// Add rev-3, remove from channel user1 and put into channel another_channel
+	history = []string{"2-bcd", "1-abc"}
+	sent, _, resp, err = bt.SendRevWithHistory("foo", "3-cde", history, []byte(`{"key": "val", "channels": ["another_channel"]}`), blip.Properties{"noconflicts": "true"})
+	assert.True(t, sent)
+	assert.NoError(t, err)                         // no error
+	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+
+	// Add rev-4, keeping it in channel another_channel
+	history = []string{"3-cde", "2-bcd", "1-abc"}
+	sent, _, resp, err = bt.SendRevWithHistory("foo", "4-def", history, []byte("{}"), blip.Properties{"noconflicts": "true", "deleted": "true"})
+	assert.True(t, sent)
+	assert.NoError(t, err)                         // no error
+	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+
+	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
+	rt.GetDatabase().FlushRevisionCacheForTest()
+
+	// Delete any temp revisions in case this prevents the bug from showing up (didn't make a difference)
+	tempRevisionDocId := base.RevPrefix + "foo:5:3-cde"
+	err = rt.GetDatabase().Bucket.Delete(tempRevisionDocId)
+	assert.NoError(t, err, "Unexpected Error")
 
 	// Try to get rev 3 via BLIP API and assert that _removed == true
 	resultDoc, err = bt2.GetDocAtRev("foo", "3-cde")
 	assert.NoError(t, err, "Unexpected Error")
-	goassert.True(t, resultDoc.IsRemoved())
+	assert.True(t, resultDoc.IsRemoved())
 
 	// Try to get rev 3 via REST API, and assert that _removed == true
 	headers := map[string]string{}
 	headers["Authorization"] = "Basic " + base64.StdEncoding.EncodeToString([]byte(btSpec.connectingUsername+":"+btSpec.connectingPassword))
 	response := rt.SendRequestWithHeaders("GET", "/db/foo?rev=3-cde", "", headers)
 	restDocument := response.GetRestDocument()
-	goassert.True(t, restDocument.IsRemoved())
+	assert.True(t, restDocument.IsRemoved())
 
 }
 

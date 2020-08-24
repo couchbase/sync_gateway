@@ -649,7 +649,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 
-				if options.ActiveOnly {
+				if options.ActiveOnly || minEntry.Seq.TriggeredBy > 0 {
 					if minEntry.Deleted || minEntry.allRemoved {
 						continue
 					}

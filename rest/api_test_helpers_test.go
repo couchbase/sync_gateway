@@ -1,6 +1,9 @@
 package rest
 
 import (
+	"fmt"
+	"net/http"
+
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/require"
@@ -26,6 +29,11 @@ func (rt *RestTester) putDoc(docID string, body string) (response putDocResponse
 	require.True(rt.tb, response.Ok)
 	require.NotEmpty(rt.tb, response.Rev)
 	return response
+}
+
+func (rt *RestTester) deleteDoc(docID, revID string) {
+	assertStatus(rt.tb, rt.SendAdminRequest(http.MethodDelete,
+		fmt.Sprintf("/db/%s?rev=%s", docID, revID), ""), http.StatusOK)
 }
 
 func (rt *RestTester) RequireWaitChanges(numChangesExpected int, since string) changesResults {

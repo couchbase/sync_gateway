@@ -303,3 +303,10 @@ func (m *sgReplicateManager) GetLocalActiveReplicatorForTest(t testing.TB, repli
 	m.activeReplicatorsLock.RUnlock()
 	return replication, isLocal
 }
+
+// SuspendSequenceBatching disables sequence batching for multi-RT tests (pending CBG-1000)
+func SuspendSequenceBatching() func() {
+	oldFrequency := MaxSequenceIncrFrequency
+	MaxSequenceIncrFrequency = 0 * time.Millisecond
+	return func() { MaxSequenceIncrFrequency = oldFrequency }
+}

@@ -186,17 +186,12 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	assert.Equal(t, 200, response.Code)
 }
 
-func TestPostChangesInteger(t *testing.T) {
+func TestPostChanges(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
-
-	postChanges(t, rt)
-}
-
-func postChanges(t *testing.T, rt *RestTester) {
 
 	// Create user:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -464,7 +459,7 @@ func postChangesChannelFilter(t *testing.T, rt *RestTester) {
 
 }
 
-func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
+func TestPostChangesAdminChannelGrant(t *testing.T) {
 
 	if testing.Short() {
 		t.Skip("skipping test in short mode")
@@ -474,11 +469,6 @@ func TestPostChangesAdminChannelGrantInteger(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
-	postChangesAdminChannelGrant(t, rt)
-}
-
-// _changes with admin-based channel grant
-func postChangesAdminChannelGrant(t *testing.T, rt *RestTester) {
 
 	// Create user with access to channel ABC:
 	a := rt.ServerContext().Database("db").Authenticator()
@@ -554,6 +544,156 @@ func postChangesAdminChannelGrant(t *testing.T, rt *RestTester) {
 	}
 	require.Len(t, changes.Results, 2) // 2 docs
 
+}
+
+func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	defer rt.Close()
+
+	// Create user with access to channel ABC:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
+
+	// Put several documents in channel PBS
+	_ = rt.putDoc("pbs-1", `{"channel":["PBS"]}`)
+	pbs2 := rt.putDoc("pbs-2", `{"channel":["PBS"]}`)
+	pbs3 := rt.putDoc("pbs-3", `{"channel":["PBS"]}`)
+	_ = rt.putDoc("pbs-4", `{"channel":["PBS"]}`)
+
+	// Put several documents in channel HBO
+	rt.putDoc("hbo-1", `{"channel":["HBO"]}`)
+	_ = rt.putDoc("hbo-2", `{"channel":["HBO"]}`)
+
+	// Put several documents in channel PBS and HBO
+	mix1 := rt.putDoc("mix-1", `{"channel":["PBS","HBO"]}`)
+	mix2 := rt.putDoc("mix-2", `{"channel":["PBS","HBO"]}`)
+	mix3 := rt.putDoc("mix-3", `{"channel":["PBS","HBO"]}`)
+	mix4 := rt.putDoc("mix-4", `{"channel":["PBS","HBO"]}`)
+
+	// Put several documents in channel ABC
+	_ = rt.putDoc("abc-1", `{"channel":["ABC"]}`)
+	abc2 := rt.putDoc("abc-2", `{"channel":["ABC"]}`)
+	abc3 := rt.putDoc("abc-3", `{"channel":["ABC"]}`)
+	cacheWaiter.AddAndWait(13)
+
+	// Update some docs to remove channel
+	_ = rt.putDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.Rev))
+	_ = rt.putDoc("mix-1", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, mix1.Rev))
+	_ = rt.putDoc("mix-2", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix2.Rev))
+	_ = rt.putDoc("mix-4", fmt.Sprintf(`{"_rev":%q}`, mix4.Rev))
+
+	// Validate that tombstones are also not sent as part of backfill:
+	//  Case 1: Delete a document in a single channel (e.g. pbs-3), and validate it doesn't get included in backfill
+	//  Case 2: Delete a document in a multiple channels (e.g. mix-3), and validate it doesn't get included in backfill
+	rt.deleteDoc(pbs3.ID, pbs3.Rev)
+	rt.deleteDoc(mix3.ID, mix3.Rev)
+
+	// Test Scenario:
+	//   1. Document mix-5 is in channels PBS, HBO (rev 1)
+	//   2. Document is deleted (rev 2)
+	//   3. Document is recreated, only in channel PBS (rev 3)
+	mix5 := rt.putDoc("mix-5", `{"channel":["PBS","HBO"]}`)
+	rt.deleteDoc(mix5.ID, mix5.Rev)
+	_ = rt.putDoc(mix5.ID, `{"channel":["PBS"]}`)
+
+	// Test Scenario:
+	//   1. Document mix-6 is in channels PBS, HBO (rev 1)
+	//   2. Document is updated only be in channel HBO (rev 2)
+	//   3. Document is updated AGAIN to remove all channels (rev 3)
+	mix6 := rt.putDoc("mix-6", `{"channel":["PBS","HBO"]}`)
+	mix6 = rt.putDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, mix6.Rev))
+	_ = rt.putDoc(mix6.ID, fmt.Sprintf(`{"_rev":%q}`, mix6.Rev))
+
+	// Test Scenario:
+	//   1. Delete abc-2 from channel ABC
+	//   2. Update abc-3 to remove from channel ABC
+	rt.deleteDoc(abc2.ID, abc2.Rev)
+	_ = rt.putDoc(abc3.ID, fmt.Sprintf(`{"_rev":%q}`, abc3.Rev))
+
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	defer db.SuspendSequenceBatching()()
+
+	// Issue changes request and check the results
+	expectedResults := []string{
+		`{"seq":11,"id":"abc-1","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+		`{"seq":26,"id":"abc-2","deleted":true,"removed":["ABC"],"changes":[{"rev":"2-6055be21d970eb690f48452505ea02ed"}]}`,
+		`{"seq":27,"id":"abc-3","removed":["ABC"],"changes":[{"rev":"2-09b89154aa9a0e1620da0d86528d406a"}]}`,
+	}
+	changes, err := rt.WaitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
+
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+	}
+
+	// Update the user doc to grant access to PBS, HBO in addition to ABC
+	response := rt.SendAdminRequest(http.MethodPut, "/db/_user/bernard", `{"admin_channels":["ABC", "PBS", "HBO"]}`)
+	assertStatus(t, response, http.StatusOK)
+
+	// Issue a new changes request with since=last_seq ensure that user receives all records for channels PBS, HBO.
+	expectedResults = []string{
+		`{"seq":"28:1","id":"pbs-1","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":"28:4","id":"pbs-4","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":"28:5","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":"28:6","id":"hbo-2","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":"28:15","id":"mix-1","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}`,
+		`{"seq":"28:16","id":"mix-2","removed":["PBS"],"changes":[{"rev":"2-5dcb551a0eb59eef3d98c64c29033d02"}]}`,
+		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
+		`{"seq":28,"id":"_user/bernard","changes":[]}`,
+	}
+	changes, err = rt.WaitForChanges(len(expectedResults),
+		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
+
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+	}
+
+	// Write a few more docs
+	_ = rt.putDoc("pbs-5", `{"channel":["PBS"]}`)
+	_ = rt.putDoc("abc-4", `{"channel":["ABC"]}`)
+	_ = rt.putDoc("hbo-3", `{"channel":["HBO"]}`)
+	_ = rt.putDoc("mix-7", `{"channel":["ABC", "PBS", "HBO"]}`)
+
+	cacheWaiter.AddAndWait(4)
+
+	// Issue another changes request - ensure we don't backfill again
+	expectedResults = []string{
+		`{"seq":29,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":30,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+		`{"seq":31,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
+	}
+	changes, err = rt.WaitForChanges(len(expectedResults),
+		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
+
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		assert.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange.Seq, result.Seq)
+		assert.Equal(t, expectedChange.ID, result.ID)
+		assert.Equal(t, expectedChange.Changes, result.Changes)
+		assert.Equal(t, expectedChange.Deleted, result.Deleted)
+		assert.Equal(t, expectedChange.Removed, result.Removed)
+	}
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, ensuring that
