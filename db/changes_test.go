@@ -56,7 +56,8 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	_, err = db.UpdatePrincipal(*userInfo, true, true)
 	assert.NoError(t, err, "UpdatePrincipal failed")
 
-	db.WaitForPendingChanges(context.Background())
+	err = db.WaitForPendingChanges(context.Background())
+	assert.NoError(t, err)
 
 	// Check the _changes feed:
 	db.user, _ = authenticator.GetUser("naomi")
