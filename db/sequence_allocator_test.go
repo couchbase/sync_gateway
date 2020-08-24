@@ -177,6 +177,28 @@ func TestSequenceAllocatorDeadlock(t *testing.T) {
 	a.Stop()
 }
 
+func TestReleaseSequenceWait(t *testing.T) {
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	testStats := new(expvar.Map).Init()
+
+	a, err := newSequenceAllocator(bucket, testStats)
+	assert.NoError(t, err)
+
+	startTime := time.Now().Add(-1 * time.Second)
+	amountWaited := a.waitForReleasedSequences(startTime)
+	// Time will be a little less than a.releaseSequenceWait - 1*time.Second - validate
+	// there's a non-zero wait that's less than releaseSequenceWait
+	assert.True(t, amountWaited > 0)
+	assert.True(t, amountWaited < a.releaseSequenceWait)
+
+	// Validate no wait for a time in the past longer than releaseSequenceWait
+	noWaitTime := time.Now().Add(-5 * time.Second)
+	amountWaited = a.waitForReleasedSequences(noWaitTime)
+	assert.Equal(t, time.Duration(0), amountWaited)
+}
+
 func assertAllocatorStats(t *testing.T, stats *expvar.Map, incr, reserved, assigned, released int) {
 	assertAllocatorStat(t, stats, base.StatKeySequenceIncrCount, incr)
 	assertAllocatorStat(t, stats, base.StatKeySequenceReservedCount, reserved)

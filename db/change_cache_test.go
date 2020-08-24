@@ -1977,7 +1977,7 @@ func BenchmarkProcessEntry(b *testing.B) {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
-			if err := changeCache.Start(); err != nil {
+			if err := changeCache.Start(0); err != nil {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
@@ -2202,7 +2202,7 @@ func BenchmarkDocChanged(b *testing.B) {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
-			if err := changeCache.Start(); err != nil {
+			if err := changeCache.Start(0); err != nil {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
