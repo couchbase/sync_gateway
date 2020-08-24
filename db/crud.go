@@ -1035,16 +1035,31 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 		return "", nil, errors.New("Conflict resolution function is nil for resolveConflict")
 	}
 
+	// Local doc (localDoc) is persisted in the bucket unlike the incoming remote doc (remoteDoc).
+	// Internal properties of the localDoc can be accessed from syc metadata.
 	localRevID := localDoc.SyncData.CurrentRev
+	localAttachments := localDoc.SyncData.Attachments
+	localExpiry := localDoc.SyncData.Expiry
+
 	remoteRevID := remoteDoc.RevID
+	remoteAttachments := remoteDoc.DocAttachments
+
+	// TODO: Make doc expiry (_exp) available over replication.
+	remoteExpiry := remoteDoc.Expiry
 
 	localDocBody := localDoc.GetDeepMutableBody()
 	localDocBody[BodyId] = localDoc.ID
 	localDocBody[BodyRev] = localRevID
+	localDocBody[BodyAttachments] = localAttachments
+	localDocBody[BodyExpiry] = localExpiry
+	localDocBody[BodyDeleted] = localDoc.IsDeleted()
 
 	remoteDocBody := remoteDoc.GetDeepMutableBody()
 	remoteDocBody[BodyId] = remoteDoc.ID
 	remoteDocBody[BodyRev] = remoteRevID
+	remoteDocBody[BodyAttachments] = remoteAttachments
+	remoteDocBody[BodyExpiry] = remoteExpiry
+	remoteDocBody[BodyDeleted] = remoteDoc.Deleted
 
 	conflict := Conflict{
 		LocalDocument:  localDocBody,
