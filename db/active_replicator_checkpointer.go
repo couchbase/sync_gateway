@@ -720,6 +720,38 @@ func (c *Checkpointer) setRetry(checkpoint *replicationCheckpoint, setFn setChec
 	return "", errors.New("failed to write checkpoint after 10 attempts")
 }
 
+// setLocalCheckpointStatus updates status in a replication checkpoint without a checkpointer.  Increments existing
+// rev, preserves non-status fields (seq).  Requires lock to update checkpoint
+func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage string) {
+
+	// getCheckpoint to obtain the current status
+	checkpoint, err := c.getLocalCheckpoint()
+	if err != nil {
+		base.Infof(base.KeyReplicate, "Unable to persist status update to checkpoint: %v", err)
+	}
+	if checkpoint == nil {
+		checkpoint = &replicationCheckpoint{}
+	}
+
+	if checkpoint.Status == nil {
+		checkpoint.Status = &ReplicationStatus{}
+	}
+
+	checkpoint.Status.Status = status
+	checkpoint.Status.ErrorMessage = errorMessage
+	base.Tracef(base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
+	newRev, setErr := c.setLocalCheckpoint(checkpoint)
+	if setErr != nil {
+		base.Warnf("Unable to persist status in local checkpoint for %s, status not updated: %v", c.clientID, setErr)
+	} else {
+		base.Tracef(base.KeyReplicate, "setLocalCheckpointStatus successful for %s, newRev: %s: %+v %+v", c.clientID, newRev, checkpoint, checkpoint.Status)
+	}
+	c.lock.Lock()
+	c.lastLocalCheckpointRevID = newRev
+	c.lock.Unlock()
+	return
+}
+
 func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheckpoint, error) {
 	base.Tracef(base.KeyReplicate, "getLocalCheckpoint for %s", clientID)
 
@@ -736,15 +768,15 @@ func getLocalCheckpoint(db *DatabaseContext, clientID string) (*replicationCheck
 	return checkpoint, err
 }
 
-// setLocalCheckpoint updates status in a replication checkpoint without a checkpointer.  Increments existing
+// setLocalCheckpointStatus updates status in a replication checkpoint without a checkpointer.  Increments existing
 // rev, preserves non-status fields (seq)
-func setLocalCheckpointStatus(db *Database, clientID string, status string, errorMessage string) string {
+func setLocalCheckpointStatus(db *Database, clientID string, status string, errorMessage string) {
 
 	// getCheckpoint to obtain the current rev
 	checkpoint, err := getLocalCheckpoint(db.DatabaseContext, clientID)
 	if err != nil {
 		base.Warnf("Unable to retrieve local checkpoint for %s, status not updated", clientID)
-		return ""
+		return
 	}
 	if checkpoint == nil {
 		checkpoint = &replicationCheckpoint{}
@@ -763,5 +795,5 @@ func setLocalCheckpointStatus(db *Database, clientID string, status string, erro
 	} else {
 		base.Tracef(base.KeyReplicate, "setLocalCheckpointStatus successful for %s, newRev: %s: %+v %+v", clientID, newRev, checkpoint, checkpoint.Status)
 	}
-	return newRev
+	return
 }

@@ -86,7 +86,7 @@ func (apr *ActivePullReplicator) _connect() error {
 	}
 
 	apr.setState(ReplicationStateRunning)
-	apr.publishStatus()
+	apr._publishStatus()
 	return nil
 }
 
@@ -114,9 +114,9 @@ func (apr *ActivePullReplicator) Complete() {
 	// from the replicator
 	onCompleteCallback := apr.onReplicatorComplete
 
+	apr._publishStatus()
 	apr.lock.Unlock()
 
-	apr.publishStatus()
 	if onCompleteCallback != nil {
 		onCompleteCallback()
 	}

@@ -95,7 +95,7 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 		a.lock.Lock()
 
 		// preserve lastError from the previous connect attempt
-		a.state = ReplicationStateReconnecting
+		a.setState(ReplicationStateReconnecting)
 
 		// disconnect no-ops if nothing is active, but will close any checkpointer processes, blip contexts, etc, if active.
 		err = a._disconnect()
@@ -105,7 +105,7 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 
 		// set lastError, but don't set an error state inside the reconnect loop
 		err = _connectFn()
-		a.lastError = err
+		a.setLastError(err)
 
 		a.lock.Unlock()
 
@@ -132,7 +132,7 @@ func (a *activeReplicatorCommon) Stop() error {
 	err := a._disconnect()
 	a._stop()
 	a.setState(ReplicationStateStopped)
-	a.publishStatus()
+	a._publishStatus()
 	a.lock.Unlock()
 	return err
 }
@@ -178,19 +178,25 @@ type ReplicatorCompleteFunc func()
 func (a *activeReplicatorCommon) setError(err error) (passThrough error) {
 	base.InfofCtx(a.ctx, base.KeyReplicate, "ActiveReplicator had error state set with err: %v", err)
 	a.stateErrorLock.Lock()
-	defer a.stateErrorLock.Unlock()
 	a.state = ReplicationStateError
 	a.lastError = err
+	a.stateErrorLock.Unlock()
 	return err
+}
+
+func (a *activeReplicatorCommon) setLastError(err error) {
+	a.stateErrorLock.Lock()
+	a.lastError = err
+	a.stateErrorLock.Unlock()
 }
 
 // setState updates replicator state and resets lastError to nil.  Expects callers
 // to be holding a.lock
 func (a *activeReplicatorCommon) setState(state string) {
 	a.stateErrorLock.Lock()
-	defer a.stateErrorLock.Unlock()
 	a.state = state
 	a.lastError = nil
+	a.stateErrorLock.Unlock()
 }
 
 func (a *activeReplicatorCommon) getState() string {
@@ -221,10 +227,12 @@ func (a *activeReplicatorCommon) GetStats() *BlipSyncStats {
 	return a.replicationStats
 }
 
-func (a *activeReplicatorCommon) publishStatus() {
+func (a *activeReplicatorCommon) _publishStatus() {
 	status, errorMessage := a.getStateWithErrorMessage()
-	newRev := setLocalCheckpointStatus(a.config.ActiveDB, a.CheckpointID, status, errorMessage)
-	if newRev != "" && a.Checkpointer != nil {
-		a.Checkpointer.lastLocalCheckpointRevID = newRev
+	if a.Checkpointer != nil {
+		a.Checkpointer.setLocalCheckpointStatus(status, errorMessage)
+	} else {
+		setLocalCheckpointStatus(a.config.ActiveDB, a.CheckpointID, status, errorMessage)
 	}
+
 }

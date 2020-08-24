@@ -103,7 +103,7 @@ func (apr *ActivePushReplicator) _connect() error {
 
 	apr.setState(ReplicationStateRunning)
 
-	apr.publishStatus()
+	apr._publishStatus()
 
 	return nil
 }
@@ -136,9 +136,8 @@ func (apr *ActivePushReplicator) Complete() {
 
 	// unlock the replication before triggering callback, in case callback attempts to re-acquire the lock
 	onCompleteCallback := apr.onReplicatorComplete
+	apr._publishStatus()
 	apr.lock.Unlock()
-
-	apr.publishStatus()
 
 	if onCompleteCallback != nil {
 		onCompleteCallback()
