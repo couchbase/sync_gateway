@@ -182,7 +182,7 @@ func TestReleaseSequenceWait(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	sgw := base.SgwStats{}
+	sgw := base.NewSyncGatewayStats()
 	testStats := sgw.NewDBStats("").Database()
 
 	a, err := newSequenceAllocator(bucket, testStats)
