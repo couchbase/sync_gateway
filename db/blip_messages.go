@@ -160,8 +160,8 @@ func (rq *GetSGR2CheckpointRequest) marshalBLIPRequest() *blip.Message {
 }
 
 type SGR2Checkpoint struct {
-	RevID string // The RevID of the checkpoint.
-	Body  Body   // The checkpoint body
+	RevID     string // The RevID of the checkpoint.
+	BodyBytes []byte // The checkpoint body
 }
 
 func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
@@ -182,13 +182,13 @@ func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
 		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
 	}
 
-	var checkpointBody Body
-	if err := respMsg.ReadJSONBody(&checkpointBody); err != nil {
+	bodyBytes, err := respMsg.Body()
+	if err != nil {
 		return nil, err
 	}
 
 	return &SGR2Checkpoint{
-		RevID: respMsg.Properties[GetCheckpointResponseRev],
-		Body:  checkpointBody,
+		RevID:     respMsg.Properties[GetCheckpointResponseRev],
+		BodyBytes: bodyBytes,
 	}, nil
 }

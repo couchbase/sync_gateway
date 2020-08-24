@@ -1457,7 +1457,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start())
 
-			waitForCondition(t, func() bool { return ar.GetStatus().DocsRead == 1 })
+			waitAndRequireCondition(t, func() bool { return ar.GetStatus().DocsRead == 1 })
 			switch test.expectedResolutionType {
 			case db.ConflictResolutionLocal:
 				assert.Equal(t, "1", replicationStats.Get(base.StatKeySgrConflictResolvedLocal).String())
@@ -2262,7 +2262,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	ar.Push.Checkpointer.CheckpointNow()
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().SetCheckpointCount)
 
-	cID := ar.Push.CheckpointID()
+	cID := ar.Push.CheckpointID
 	checkpointDocID := base.SyncPrefix + "local:checkpoint/" + cID
 
 	firstCheckpoint, _, err := rt2.Bucket().GetRaw(checkpointDocID)
@@ -2382,12 +2382,12 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 	assert.NoError(t, ar.Start())
 
-	pushCheckpointID := ar.Push.CheckpointID()
+	pushCheckpointID := ar.Push.CheckpointID
 	pushCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pushCheckpointID
 	err = rt2.Bucket().SetRaw(pushCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
 	require.NoError(t, err)
 
-	pullCheckpointID := ar.Pull.CheckpointID()
+	pullCheckpointID := ar.Pull.CheckpointID
 	require.NoError(t, err)
 	pullCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pullCheckpointID
 	err = rt1.Bucket().SetRaw(pullCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
@@ -2801,13 +2801,13 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					}
 
 					// wait for an arbitrary number of reconnect attempts
-					waitForCondition(t, func() bool {
+					waitAndRequireCondition(t, func() bool {
 						return ar.Push.GetStats().NumConnectAttempts.Value() > 3
 					})
 
 					if timeoutVal > 0 {
 						// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
-						waitForCondition(t, func() bool {
+						waitAndRequireCondition(t, func() bool {
 							return ar.Push.GetStats().NumReconnectsAborted.Value() > 0
 						})
 					}
@@ -2882,14 +2882,14 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
 
 	// wait for an arbitrary number of reconnect attempts
-	waitForCondition(t, func() bool {
+	waitAndRequireCondition(t, func() bool {
 		return ar.Push.GetStats().NumConnectAttempts.Value() > 3
 	})
 
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password":"pass"}`)
 	assertStatus(t, resp, http.StatusCreated)
 
-	waitForCondition(t, func() bool {
+	waitAndRequireCondition(t, func() bool {
 		state, _ := ar.State()
 		return state == db.ReplicationStateRunning
 	})
@@ -2968,7 +2968,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
 
 	// wait for an arbitrary number of reconnect attempts
-	waitForCondition(t, func() bool {
+	waitAndRequireCondition(t, func() bool {
 		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
 	})
 
@@ -2986,17 +2986,29 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	assert.True(t, strings.Contains(err.Error(), "unexpected status code 401 from target database"))
 
 	// wait for another set of reconnect attempts
-	waitForCondition(t, func() bool {
+	waitAndRequireCondition(t, func() bool {
 		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
 	})
 
 	assert.NoError(t, ar.Stop())
 }
 
-func waitForCondition(t *testing.T, fn func() bool) {
+func waitAndRequireCondition(t *testing.T, fn func() bool) {
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
-			t.Fatalf("Condition failed to be satisfied")
+			require.Fail(t, "Condition failed to be satisfied")
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
+}
+
+func waitAndAssertCondition(t *testing.T, fn func() bool) {
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			assert.Fail(t, "Condition failed to be satisfied")
 		}
 		if fn() {
 			break

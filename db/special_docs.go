@@ -32,7 +32,7 @@ func (db *Database) GetSpecial(doctype string, docid string) (Body, error) {
 	return body, err
 }
 
-func (db *Database) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
+func (db *DatabaseContext) GetSpecialBytes(doctype string, docid string) ([]byte, error) {
 	key := RealSpecialDocID(doctype, docid)
 
 	if key == "" {
@@ -41,8 +41,8 @@ func (db *Database) GetSpecialBytes(doctype string, docid string) ([]byte, error
 
 	var rawDocBytes []byte
 	var err error
-	if doctype == "local" && db.DatabaseContext.Options.LocalDocExpirySecs > 0 {
-		rawDocBytes, _, err = db.Bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs)))
+	if doctype == "local" && db.Options.LocalDocExpirySecs > 0 {
+		rawDocBytes, _, err = db.Bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.Options.LocalDocExpirySecs)))
 	} else {
 		rawDocBytes, _, err = db.Bucket.GetRaw(key)
 	}
