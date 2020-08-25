@@ -1107,6 +1107,41 @@ func TestValidateReplication(t *testing.T) {
 			},
 			expectedErrorMsg: db.ConfigErrorIDTooLong,
 		},
+		{
+			name: "custom conflict resolution without func",
+			replicationConfig: db.ReplicationConfig{
+				ID:                     "replication1",
+				Remote:                 "http://remote:4984/db",
+				Direction:              "pull",
+				Adhoc:                  true,
+				ConflictResolutionType: db.ConflictResolverCustom,
+			},
+			expectedErrorMsg: "Custom conflict resolution type has been set but no conflict resolution function has been defined",
+		},
+		{
+			name: "custom conflict resolution with func",
+			replicationConfig: db.ReplicationConfig{
+				ID:                     "replication2",
+				Remote:                 "http://remote:4984/db",
+				Direction:              "pull",
+				Adhoc:                  true,
+				ConflictResolutionType: db.ConflictResolverCustom,
+				ConflictResolutionFn:   "func(){}",
+			},
+		},
+		{
+			name: "bad conflict resolution type",
+			replicationConfig: db.ReplicationConfig{
+				ID:                     "replication2",
+				Remote:                 "http://remote:4984/db",
+				Direction:              "pull",
+				Adhoc:                  true,
+				ConflictResolutionType: "random",
+				ConflictResolutionFn:   "func(){}",
+			},
+			expectedErrorMsg: fmt.Sprintf(db.ConfigErrorInvalidConflictResolutionTypeFmt, db.ConflictResolverLocalWins,
+				db.ConflictResolverRemoteWins, db.ConflictResolverDefault, db.ConflictResolverCustom),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1519,40 +1554,6 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount)
 	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointHitCount)
 	assert.Equal(t, int64(1), r.Push.Checkpointer.Stats().GetCheckpointMissCount)
-}
-
-func TestReplicationConfig(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	invalidReplicationConfig := db.ReplicationConfig{
-		ID:                     "replication1",
-		Remote:                 "http://remote:4984/db",
-		Direction:              "pull",
-		Adhoc:                  true,
-		ConflictResolutionType: db.ConflictResolverCustom,
-	}
-
-	validReplicationConfig := db.ReplicationConfig{
-		ID:                     "replication2",
-		Remote:                 "http://remote:4984/db",
-		Direction:              "pull",
-		Adhoc:                  true,
-		ConflictResolutionType: db.ConflictResolverCustom,
-		ConflictResolutionFn:   "func(){}",
-	}
-
-	// Attempt to put replication where custom conflict is set without a function (invalid)
-	replicationPayload, err := base.JSONMarshal(invalidReplicationConfig)
-	require.NoError(t, err)
-	response := rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationPayload))
-	assertStatus(t, response, http.StatusBadRequest)
-
-	// Attempt to put replication where custom conflict is set with a function (valid)
-	replicationPayload, err = base.JSONMarshal(validReplicationConfig)
-	require.NoError(t, err)
-	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationPayload))
-	assertStatus(t, response, http.StatusCreated)
 }
 
 func SetDefaultCheckpointInterval(d time.Duration) func() {

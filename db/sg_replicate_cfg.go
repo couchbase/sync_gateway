@@ -33,16 +33,17 @@ const (
 
 // Replication config validation error messages
 const (
-	ConfigErrorIDTooLong            = "Replication ID must be less than 160 characters"
-	ConfigErrorUnknownFilter        = "Unknown replication filter; try sync_gateway/bychannel"
-	ConfigErrorMissingQueryParams   = "Replication specifies sync_gateway/bychannel filter but is missing query_params"
-	ConfigErrorMissingRemote        = "Replication remote must be specified"
-	ConfigErrorMissingDirection     = "Replication direction must be specified"
-	ConfigErrorDuplicateCredentials = "Auth credentials can be specified using username/password config properties or remote URL, but not both"
-	ConfigErrorConfigBasedAdhoc     = "adhoc=true is invalid for replication in Sync Gateway configuration"
-	ConfigErrorConfigBasedCancel    = "cancel=true is invalid for replication in Sync Gateway configuration"
-	ConfigErrorInvalidDirectionFmt  = "Invalid replication direction %q, valid values are %s/%s/%s"
-	ConfigErrorBadChannelsArray     = "Bad channels array in query_params for sync_gateway/bychannel filter"
+	ConfigErrorIDTooLong                        = "Replication ID must be less than 160 characters"
+	ConfigErrorUnknownFilter                    = "Unknown replication filter; try sync_gateway/bychannel"
+	ConfigErrorMissingQueryParams               = "Replication specifies sync_gateway/bychannel filter but is missing query_params"
+	ConfigErrorMissingRemote                    = "Replication remote must be specified"
+	ConfigErrorMissingDirection                 = "Replication direction must be specified"
+	ConfigErrorDuplicateCredentials             = "Auth credentials can be specified using username/password config properties or remote URL, but not both"
+	ConfigErrorConfigBasedAdhoc                 = "adhoc=true is invalid for replication in Sync Gateway configuration"
+	ConfigErrorConfigBasedCancel                = "cancel=true is invalid for replication in Sync Gateway configuration"
+	ConfigErrorInvalidConflictResolutionTypeFmt = "Conflict resolution type is invalid, valid values are %s/%s/%s/%s"
+	ConfigErrorInvalidDirectionFmt              = "Invalid replication direction %q, valid values are %s/%s/%s"
+	ConfigErrorBadChannelsArray                 = "Bad channels array in query_params for sync_gateway/bychannel filter"
 )
 
 // ClusterUpdateFunc is callback signature used when updating the cluster configuration
@@ -163,16 +164,17 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		}
 	}
 
-	if !rc.ConflictResolutionType.IsValid() {
-		return base.HTTPErrorf(http.StatusBadRequest, "Conflict resolution type is invalid")
+	if rc.Remote == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorMissingRemote)
+	}
+
+	if !rc.ConflictResolutionType.IsValid() && rc.ConflictResolutionType != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorInvalidConflictResolutionTypeFmt,
+			ConflictResolverLocalWins, ConflictResolverRemoteWins, ConflictResolverDefault, ConflictResolverCustom)
 	}
 
 	if rc.ConflictResolutionType == ConflictResolverCustom && rc.ConflictResolutionFn == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Custom conflict resolution type has been set but no conflict resolution function has been defined")
-	}
-
-	if rc.Remote == "" {
-		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorMissingRemote)
 	}
 
 	remoteURL, err := url.Parse(rc.Remote)
