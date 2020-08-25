@@ -837,6 +837,16 @@ func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertCon
 			replicationConfig.ID = replication.ID
 			cluster.Replications[replication.ID] = &ReplicationCfg{ReplicationConfig: replicationConfig}
 		}
+
+		state, err := m.GetReplicationStatus(replication.ID, DefaultReplicationStatusOptions())
+		errNotFound := errors.Is(err, base.ErrNotFound)
+		if err != nil && !errNotFound {
+			return true, err
+		}
+		if !errNotFound && state.Status != ReplicationStateStopped {
+			return true, base.HTTPErrorf(http.StatusBadRequest, "Replication must be stopped before updating config")
+		}
+
 		cluster.Replications[replication.ID].Upsert(replication)
 
 		validateErr := cluster.Replications[replication.ID].ValidateReplication(false)
@@ -873,6 +883,7 @@ func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state 
 			ID:    replicationID,
 			State: &state,
 		}
+
 		cluster.Replications[replicationID].Upsert(upsertReplication)
 
 		validateErr := cluster.Replications[replicationID].ValidateReplication(false)

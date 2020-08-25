@@ -1521,6 +1521,55 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	assert.Equal(t, int64(1), r.Push.Checkpointer.Stats().GetCheckpointMissCount)
 }
 
+func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Make rt listen on an actual HTTP port, so it can receive the blipsync request.
+	srv := httptest.NewServer(rt.TestPublicHandler())
+	defer srv.Close()
+
+	replicationConfig := `{
+		"replication_id": "replication1",
+		"remote": "http://remote:4985/db",
+		"direction":"` + db.ActiveReplicatorTypePushAndPull + `",
+		"conflict_resolution_type":"default",
+		"max_backoff":100
+	}`
+
+	response := rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfig))
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("GET", "/db/_replicationStatus/", "")
+	assertStatus(t, response, http.StatusOK)
+
+	var body []map[string]interface{}
+	err := base.JSONUnmarshal(response.BodyBytes(), &body)
+	fmt.Println(string(response.BodyBytes()))
+	assert.NoError(t, err)
+	assert.Equal(t, "running", body[0]["status"])
+
+	replicationConfigUpdate := `{
+		"replication_id": "replication1",
+		"remote": "http://remote:4985/db",
+		"direction":"` + db.ActiveReplicatorTypePush + `",
+		"conflict_resolution_type":"default",
+		"max_backoff":100
+	}`
+
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfigUpdate))
+	assertStatus(t, response, http.StatusBadRequest)
+
+	response = rt.SendAdminRequest("PUT", "/db/_replicationStatus/replication1?action=stop", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("PUT", "/db/_replication/replication1", string(replicationConfigUpdate))
+	assertStatus(t, response, http.StatusOK)
+
+}
+
 func SetDefaultCheckpointInterval(d time.Duration) func() {
 	previousInterval := db.DefaultCheckpointInterval
 	db.DefaultCheckpointInterval = d
