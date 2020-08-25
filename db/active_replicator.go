@@ -189,7 +189,10 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 	blipContext := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
 	blipContext.OnExitCallback = func() {
-		go arc.reconnectLoop()
+		// fall into a reconnect loop only if the connection is unexpectedly closed.
+		if arc.ctx.Err() != nil {
+			go arc.reconnectLoop()
+		}
 	}
 
 	bsc = NewBlipSyncContext(blipContext, arc.config.ActiveDB, blipContext.ID, arc.replicationStats)
