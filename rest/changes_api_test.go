@@ -548,6 +548,10 @@ func TestPostChangesAdminChannelGrant(t *testing.T) {
 
 func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	defer db.SuspendSequenceBatching()()
+
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
 
@@ -614,9 +618,6 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	//   2. Update abc-3 to remove from channel ABC
 	rt.deleteDoc(abc2.ID, abc2.Rev)
 	_ = rt.putDoc(abc3.ID, fmt.Sprintf(`{"_rev":%q}`, abc3.Rev))
-
-	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	defer db.SuspendSequenceBatching()()
 
 	// Issue changes request and check the results
 	expectedResults := []string{
