@@ -163,6 +163,14 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		}
 	}
 
+	if !rc.ConflictResolutionType.IsValid() {
+		return base.HTTPErrorf(http.StatusBadRequest, "Conflict resolution type is invalid")
+	}
+
+	if rc.ConflictResolutionType == ConflictResolverCustom && rc.ConflictResolutionFn == "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "Custom conflict resolution type has been set but no conflict resolution function has been defined")
+	}
+
 	if rc.Remote == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorMissingRemote)
 	}
