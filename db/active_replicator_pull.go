@@ -13,10 +13,11 @@ type ActivePullReplicator struct {
 }
 
 func NewPullReplicator(config *ActiveReplicatorConfig) *ActivePullReplicator {
-	arc := newActiveReplicatorCommon(config, ActiveReplicatorTypePull)
-	return &ActivePullReplicator{
-		activeReplicatorCommon: arc,
+	apr := ActivePullReplicator{
+		activeReplicatorCommon: newActiveReplicatorCommon(config, ActiveReplicatorTypePull),
 	}
+	apr.replicatorConnectFn = apr._connect
+	return &apr
 }
 
 func (apr *ActivePullReplicator) Start() error {
@@ -40,7 +41,7 @@ func (apr *ActivePullReplicator) Start() error {
 		_ = apr.setError(err)
 		base.WarnfCtx(apr.ctx, "Couldn't connect. Attempting to reconnect in background: %v", err)
 		apr.reconnectActive.Set(true)
-		go apr.reconnect(apr._connect)
+		go apr.reconnectLoop()
 	}
 	apr._publishStatus()
 	return err
