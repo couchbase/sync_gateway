@@ -256,7 +256,7 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
 	for i := 0; i <= maxI; i++ {
 		removeSeq := c.expectedSeqs[i]
 		delete(c.processedSeqs, removeSeq)
-		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map %v", removeSeq, c.processedSeqs)
+		base.TracefCtx(c.ctx, base.KeyReplicate, "checkpointer: _updateCheckpointLists removed seq %v from processedSeqs map", removeSeq)
 	}
 
 	// trim expectedSeqs list for all processed seqs
