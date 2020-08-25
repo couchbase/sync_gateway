@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -518,15 +517,12 @@ func TestMergeWith(t *testing.T) {
 }
 
 func TestDeprecatedConfigLoggingFallback(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Temporarily disabled on windows")
-	}
-
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 	deprecatedLog := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
 
-	removeAll := func(path string) {
+	removeAll := func(path string, file *os.File) {
+		require.NoError(t, file.Close())
 		require.NoErrorf(t, os.RemoveAll(path), "Error removing path %q", path)
 		_, err := os.Stat(path)
 		require.True(t, os.IsNotExist(err), "Removed path %q shouldn't exist", path)
@@ -536,7 +532,7 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	require.NoErrorf(t, err, "Error creating temp dir %q", deprecatedDefaultLogFilePathAsDir)
 	deprecatedDefaultLogFilePathAsFile, err := ioutil.TempFile(deprecatedDefaultLogFilePathAsDir, "sg-trace-*.log")
 	require.NoErrorf(t, err, "Error creating temp file %q", deprecatedDefaultLogFilePathAsFile)
-	defer removeAll(deprecatedDefaultLogFilePathAsDir)
+	defer removeAll(deprecatedDefaultLogFilePathAsDir, deprecatedDefaultLogFilePathAsFile)
 
 	serverConfig := func() *ServerConfig {
 		return &ServerConfig{
