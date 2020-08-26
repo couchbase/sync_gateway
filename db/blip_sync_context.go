@@ -204,19 +204,22 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 		}
 	}()
 
+	respBody, err := response.Body()
+	if err != nil {
+		return err
+	}
+
 	if response.Type() == blip.ErrorType {
-		errorBody, _ := response.Body()
-		base.InfofCtx(bsc.loggingCtx, base.KeyAll, "Client returned error in changesResponse: %s", errorBody)
+		base.InfofCtx(bsc.loggingCtx, base.KeyAll, "Client returned error in changesResponse: %s", respBody)
 		return nil
 	}
 
 	var answer []interface{}
-	if err := response.ReadJSONBody(&answer); err != nil {
-		body, _ := response.Body()
+	if err := base.JSONUnmarshal(respBody, &answer); err != nil {
 		if err == io.EOF {
-			base.DebugfCtx(bsc.loggingCtx, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
+			base.DebugfCtx(bsc.loggingCtx, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, respBody)
 		} else {
-			base.ErrorfCtx(bsc.loggingCtx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
+			base.ErrorfCtx(bsc.loggingCtx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, respBody)
 		}
 		return nil
 	}
