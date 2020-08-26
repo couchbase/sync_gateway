@@ -832,19 +832,18 @@ func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertCon
 		_, exists := cluster.Replications[replication.ID]
 		if exists {
 			created = false
+			// If replication already exists ensure its in the stopped state before allowing upsert
+			state, err := m.GetReplicationStatus(replication.ID, DefaultReplicationStatusOptions())
+			if err != nil {
+				return true, err
+			}
+			if state.Status != ReplicationStateStopped {
+				return true, base.HTTPErrorf(http.StatusBadRequest, "Replication must be stopped before updating config")
+			}
 		} else {
 			replicationConfig := DefaultReplicationConfig()
 			replicationConfig.ID = replication.ID
 			cluster.Replications[replication.ID] = &ReplicationCfg{ReplicationConfig: replicationConfig}
-		}
-
-		state, err := m.GetReplicationStatus(replication.ID, DefaultReplicationStatusOptions())
-		errNotFound := errors.Is(err, base.ErrNotFound)
-		if err != nil && !errNotFound {
-			return true, err
-		}
-		if !errNotFound && state.Status != ReplicationStateStopped {
-			return true, base.HTTPErrorf(http.StatusBadRequest, "Replication must be stopped before updating config")
 		}
 
 		cluster.Replications[replication.ID].Upsert(replication)
