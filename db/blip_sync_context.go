@@ -204,19 +204,23 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 		}
 	}()
 
+	respBody, err := response.Body()
+	if err != nil {
+		base.ErrorfCtx(bsc.loggingCtx, "Couldn't get body for 'changes' response message: %s -- %s", response, err)
+		return err
+	}
+
 	if response.Type() == blip.ErrorType {
-		errorBody, _ := response.Body()
-		base.InfofCtx(bsc.loggingCtx, base.KeyAll, "Client returned error in changesResponse: %s", errorBody)
+		base.InfofCtx(bsc.loggingCtx, base.KeyAll, "Client returned error in changesResponse: %s", respBody)
 		return nil
 	}
 
 	var answer []interface{}
-	if err := response.ReadJSONBody(&answer); err != nil {
-		body, _ := response.Body()
+	if err := base.JSONUnmarshal(respBody, &answer); err != nil {
 		if err == io.EOF {
-			base.DebugfCtx(bsc.loggingCtx, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
+			base.DebugfCtx(bsc.loggingCtx, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, respBody)
 		} else {
-			base.ErrorfCtx(bsc.loggingCtx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, body)
+			base.ErrorfCtx(bsc.loggingCtx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, respBody)
 		}
 		return nil
 	}
@@ -366,11 +370,15 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 			resp := outrq.Response() // blocks till reply is received
 
+			respBody, err := resp.Body()
+			if err != nil {
+				base.WarnfCtx(bsc.loggingCtx, "couldn't get response body for rev: %v", err)
+			}
+
 			base.TracefCtx(bsc.loggingCtx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
 
 			if resp.Type() == blip.ErrorType {
 				bsc.replicationStats.SendRevErrorTotal.Add(1)
-				respBody, _ := resp.Body()
 				base.InfofCtx(bsc.loggingCtx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
 
 				if resp.Properties["Error-Domain"] == "HTTP" {
