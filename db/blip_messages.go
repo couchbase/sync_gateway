@@ -113,15 +113,19 @@ func (rq *SetSGR2CheckpointRequest) Response() (*SetSGR2CheckpointResponse, erro
 
 	respMsg := rq.msg.Response()
 
-	if respMsg.Type() != blip.ResponseType {
-		respBody, _ := respMsg.Body()
-		if respMsg.Type() == blip.ErrorType &&
+	respBody, err := respMsg.Body()
+	if err != nil {
+		return nil, err
+	}
+
+	if msgType := respMsg.Type(); msgType != blip.ResponseType {
+		if msgType == blip.ErrorType &&
 			respMsg.Properties["Error-Domain"] == "HTTP" &&
 			respMsg.Properties["Error-Code"] == "409" {
 			// conflict writing checkpoint
 			return nil, base.HTTPErrorf(http.StatusConflict, "Document update conflict")
 		}
-		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
+		return nil, fmt.Errorf("unknown response type: %v - %s", msgType, respBody)
 	}
 
 	return &SetSGR2CheckpointResponse{
@@ -171,15 +175,19 @@ func (rq *GetSGR2CheckpointRequest) Response() (*SGR2Checkpoint, error) {
 
 	respMsg := rq.msg.Response()
 
-	if respMsg.Type() != blip.ResponseType {
-		if respMsg.Type() == blip.ErrorType &&
+	respBody, err := respMsg.Body()
+	if err != nil {
+		return nil, err
+	}
+
+	if msgType := respMsg.Type(); msgType != blip.ResponseType {
+		if msgType == blip.ErrorType &&
 			respMsg.Properties["Error-Domain"] == "HTTP" &&
 			respMsg.Properties["Error-Code"] == "404" {
 			// no checkpoint found
 			return nil, nil
 		}
-		respBody, _ := respMsg.Body()
-		return nil, fmt.Errorf("unknown response type: %v - %s", respMsg.Type(), respBody)
+		return nil, fmt.Errorf("unknown response type: %v - %s", msgType, respBody)
 	}
 
 	bodyBytes, err := respMsg.Body()

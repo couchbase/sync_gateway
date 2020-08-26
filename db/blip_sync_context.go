@@ -206,6 +206,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 	respBody, err := response.Body()
 	if err != nil {
+		base.ErrorfCtx(bsc.loggingCtx, "Couldn't get body for 'changes' response message: %s -- %s", response, err)
 		return err
 	}
 
