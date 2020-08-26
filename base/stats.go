@@ -26,6 +26,9 @@ const (
 	SubsystemReplicationPush    = "replication_push"
 	SubsystemSecurity           = "security"
 	SubsystemSharedBucketImport = "shared_bucket_import"
+
+	DatabaseLabelKey    = "database"
+	ReplicationLabelKey = "replication"
 )
 
 var (
@@ -50,11 +53,11 @@ func NewSyncGatewayStats() *SgwStats {
 		DbStats:     map[string]*DbStats{},
 	}
 
-	checkedSentDesc = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_docs_checked_sent"), "sgr_docs_checked_sent", []string{"replication"}, nil)
-	numAttachmentBytesTransferred = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", []string{"replication"}, nil)
-	numAttachmentsTransferred = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", []string{"replication"}, nil)
-	numDocsFailedToPush = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", []string{"replication"}, nil)
-	numDocsPushed = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_pushed"), "sgr_num_docs_pushed", []string{"replication"}, nil)
+	checkedSentDesc = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_docs_checked_sent"), "sgr_docs_checked_sent", []string{ReplicationLabelKey}, nil)
+	numAttachmentBytesTransferred = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", []string{ReplicationLabelKey}, nil)
+	numAttachmentsTransferred = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", []string{ReplicationLabelKey}, nil)
+	numDocsFailedToPush = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", []string{ReplicationLabelKey}, nil)
+	numDocsPushed = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_pushed"), "sgr_num_docs_pushed", []string{ReplicationLabelKey}, nil)
 
 	sgwStats.GlobalStats.initResourceUtilizationStats()
 	sgwStats.initReplicationStats()
@@ -527,7 +530,7 @@ func (s *SgwStats) ClearDBStats(name string) {
 }
 
 func (d *DbStats) initCacheStats() {
-	labels := map[string]string{"database": d.dbName}
+	labels := map[string]string{DatabaseLabelKey: d.dbName}
 	d.CacheStats = &CacheStats{
 		AbandonedSeqs:                       NewIntStat(SubsystemCacheKey, "abandoned_seqs", labels, prometheus.CounterValue, 0),
 		ChannelCacheRevsActive:              NewIntStat(SubsystemCacheKey, "chan_cache_active_revs", labels, prometheus.GaugeValue, 0),
@@ -561,7 +564,7 @@ func (d *DbStats) Cache() *CacheStats {
 }
 
 func (d *DbStats) initCBLReplicationPullStats() {
-	labels := map[string]string{"database": d.dbName}
+	labels := map[string]string{DatabaseLabelKey: d.dbName}
 	d.CBLReplicationPullStats = &CBLReplicationPullStats{
 		AttachmentPullBytes:         NewIntStat(SubsystemReplicationPull, "attachment_pull_bytes", labels, prometheus.CounterValue, 0),
 		AttachmentPullCount:         NewIntStat(SubsystemReplicationPull, "attachment_pull_count", labels, prometheus.CounterValue, 0),
@@ -586,7 +589,7 @@ func (d *DbStats) CBLReplicationPull() *CBLReplicationPullStats {
 }
 
 func (d *DbStats) initCBLReplicationPushStats() {
-	labels := map[string]string{"database": d.dbName}
+	labels := map[string]string{DatabaseLabelKey: d.dbName}
 	d.CBLReplicationPushStats = &CBLReplicationPushStats{
 		AttachmentPushBytes: NewIntStat(SubsystemReplicationPush, "attachment_push_bytes", labels, prometheus.CounterValue, 0),
 		AttachmentPushCount: NewIntStat(SubsystemReplicationPush, "attachment_push_count", labels, prometheus.CounterValue, 0),
@@ -604,7 +607,7 @@ func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
 }
 
 func (d *DbStats) initDatabaseStats() {
-	labels := map[string]string{"database": d.dbName}
+	labels := map[string]string{DatabaseLabelKey: d.dbName}
 	d.DatabaseStats = &DatabaseStats{
 		AbandonedSeqs:           NewIntStat(SubsystemDatabaseKey, "abandoned_seqs", labels, prometheus.CounterValue, 0),
 		ConflictWriteCount:      NewIntStat(SubsystemDatabaseKey, "conflict_write_count", labels, prometheus.CounterValue, 0),
@@ -642,7 +645,7 @@ func (d *DbStats) Database() *DatabaseStats {
 }
 
 func (d *DbStats) InitDeltaSyncStats() {
-	labels := map[string]string{"database": d.dbName}
+	labels := map[string]string{DatabaseLabelKey: d.dbName}
 	d.DeltaSyncStats = &DeltaSyncStats{
 		DeltasRequested:           NewIntStat(SubsystemDeltaSyncKey, "deltas_requested", labels, prometheus.CounterValue, 0),
 		DeltasSent:                NewIntStat(SubsystemDeltaSyncKey, "deltas_sent", labels, prometheus.CounterValue, 0),
@@ -659,7 +662,7 @@ func (d *DbStats) DeltaSync() *DeltaSyncStats {
 
 func (d *DbStats) initSecurityStats() {
 	if d.SecurityStats == nil {
-		labels := map[string]string{"database": d.dbName}
+		labels := map[string]string{DatabaseLabelKey: d.dbName}
 		d.SecurityStats = &SecurityStats{
 			AuthFailedCount:  NewIntStat(SubsystemSecurity, "auth_failed_count", labels, prometheus.CounterValue, 0),
 			AuthSuccessCount: NewIntStat(SubsystemSecurity, "auth_success_count", labels, prometheus.CounterValue, 0),
@@ -676,7 +679,7 @@ func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
 	}
 
 	if _, ok := d.DbReplicatorStats[replicationID]; !ok {
-		labels := map[string]string{"database": d.dbName, "replication": replicationID}
+		labels := map[string]string{DatabaseLabelKey: d.dbName, ReplicationLabelKey: replicationID}
 		d.DbReplicatorStats[replicationID] = &DbReplicatorStats{
 			NumAttachmentBytesPushed:    NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pushed", labels, prometheus.CounterValue, 0),
 			NumAttachmentPushed:         NewIntStat(SubsystemReplication, "sgr_num_attachments_pushed", labels, prometheus.CounterValue, 0),
@@ -709,7 +712,7 @@ func (d *DbStats) Security() *SecurityStats {
 
 func (d *DbStats) InitSharedBucketImportStats() {
 	if d.SharedBucketImportStats == nil {
-		labels := map[string]string{"database": d.dbName}
+		labels := map[string]string{DatabaseLabelKey: d.dbName}
 		d.SharedBucketImportStats = &SharedBucketImportStats{
 			ImportCount:          NewIntStat(SubsystemSharedBucketImport, "import_count", labels, prometheus.CounterValue, 0),
 			ImportCancelCAS:      NewIntStat(SubsystemSharedBucketImport, "import_cancel_cas", labels, prometheus.CounterValue, 0),
@@ -738,7 +741,7 @@ func (d *DbStats) InitQueryStats(useViews bool, queryNames ...string) {
 
 func (d *DbStats) _initQueryStat(useViews bool, queryName string) {
 	if _, ok := d.QueryStats.Stats[queryName]; !ok {
-		labels := map[string]string{"database": d.dbName}
+		labels := map[string]string{DatabaseLabelKey: d.dbName}
 
 		// Prometheus isn't happy with '.'s in the name and the '.'s come from the design doc version. Design doc isn't
 		// reported to prometheus. Only the view name.
