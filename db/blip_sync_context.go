@@ -370,11 +370,15 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 			resp := outrq.Response() // blocks till reply is received
 
+			respBody, err := resp.Body()
+			if err != nil {
+				base.WarnfCtx(bsc.loggingCtx, "couldn't get response body for rev: %v", err)
+			}
+
 			base.TracefCtx(bsc.loggingCtx, base.KeySync, "Received response for sendRevisionWithProperties rev message %s/%s", base.UD(docID), revID)
 
 			if resp.Type() == blip.ErrorType {
 				bsc.replicationStats.SendRevErrorTotal.Add(1)
-				respBody, _ := resp.Body()
 				base.InfofCtx(bsc.loggingCtx, base.KeySync, "error %s in response to rev: %s", resp.Properties["Error-Code"], respBody)
 
 				if resp.Properties["Error-Domain"] == "HTTP" {
