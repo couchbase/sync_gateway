@@ -1052,8 +1052,8 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 	}
 
 	resolvedBody, resolutionType, resolveFuncError := resolver.Resolve(conflict)
-	if resolveError != nil {
-		base.Infof(base.KeyReplicate, "Error when running conflict resolution for doc %s: %v", base.UD(localDoc.ID), resolveError)
+	if resolveFuncError != nil {
+		base.Infof(base.KeyReplicate, "Error when running conflict resolution for doc %s: %v", base.UD(localDoc.ID), resolveFuncError)
 		return "", nil, resolveFuncError
 	}
 
