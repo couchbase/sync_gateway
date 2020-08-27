@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -2707,13 +2706,12 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 // - Unroutable remote address
 // Will test both indefinite retry, and a timeout.
 func TestActiveReplicatorReconnectOnStart(t *testing.T) {
-
-	if runtime.GOOS == "windows" {
-		t.Skip("Temporarily disabled on windows")
-	}
-
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	if testing.Short() {
+		t.Skipf("Test skipped in short mode")
 	}
 
 	tests := []struct {
@@ -2739,7 +2737,9 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 			// test cases with and without a timeout. Ensure replicator retry loop is stopped in both cases.
 			timeoutVals := []time.Duration{
 				0,
-				time.Millisecond * 100,
+				// This 5 second timeout is required due to the fact that reconnects are spaced 2 seconds apart on
+				// Windows.
+				time.Second * 5,
 			}
 
 			for _, timeoutVal := range timeoutVals {
@@ -2791,7 +2791,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 					arConfig := db.ActiveReplicatorConfig{
 						ID:          base.GenerateRandomID(),
-						Direction:   db.ActiveReplicatorTypePushAndPull,
+						Direction:   db.ActiveReplicatorTypePush,
 						RemoteDBURL: remoteDBURL,
 						ActiveDB: &db.Database{
 							DatabaseContext: rt1.GetDatabase(),
@@ -2826,10 +2826,11 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 
 					// wait for an arbitrary number of reconnect attempts
 					waitAndRequireCondition(t, func() bool {
-						return ar.Push.GetStats().NumConnectAttempts.Value() > 3
+						return ar.Push.GetStats().NumConnectAttempts.Value() > 2
 					})
 
 					if timeoutVal > 0 {
+						time.Sleep(timeoutVal)
 						// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
 						waitAndRequireCondition(t, func() bool {
 							return ar.Push.GetStats().NumReconnectsAborted.Value() > 0
