@@ -3103,11 +3103,15 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 		expectedLocalRevID string
 	}{
 		{
-			name:               "mergeReadWriteIntlProps",
-			localRevisionBody:  db.Body{"source": "local"},
-			localRevID:         "1-a",
-			remoteRevisionBody: db.Body{"source": "remote"},
-			remoteRevID:        "1-b",
+			name: "mergeReadWriteIntlProps",
+			localRevisionBody: db.Body{
+				"source": "local",
+			},
+			localRevID: "1-a",
+			remoteRevisionBody: db.Body{
+				"source": "remote",
+			},
+			remoteRevID: "1-b",
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
@@ -3115,15 +3119,15 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				mergedDoc.remoteRevId = conflict.RemoteDocument._rev;
 				mergedDoc.localDocId = conflict.LocalDocument._id;
 				mergedDoc.localRevId = conflict.LocalDocument._rev;
-                mergedDoc._id = "foo";
-                mergedDoc._rev = "2-c";
-                mergedDoc._exp = 100;
+				mergedDoc._id = "foo";
+				mergedDoc._rev = "2-c";
+				mergedDoc._exp = 100;
 				return mergedDoc;
 			}`,
 			expectedLocalBody: db.Body{
-				"_id":         "foo",
-				"_rev":        "2-c",
-				"_exp":        json.Number("100"),
+				db.BodyId:     "foo",
+				db.BodyRev:    "2-c",
+				db.BodyExpiry: json.Number("100"),
 				"localDocId":  "mergeReadWriteIntlProps",
 				"localRevId":  "1-a",
 				"remoteDocId": "mergeReadWriteIntlProps",
@@ -3131,9 +3135,9 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				"source":      "merged",
 			},
 			expectedLocalRevID: createRevID(2, "1-b", db.Body{
-				"_id":         "foo",
-				"_rev":        "2-c",
-				"_exp":        json.Number("100"),
+				db.BodyId:     "foo",
+				db.BodyRev:    "2-c",
+				db.BodyExpiry: json.Number("100"),
 				"localDocId":  "mergeReadWriteIntlProps",
 				"localRevId":  "1-a",
 				"remoteDocId": "mergeReadWriteIntlProps",
@@ -3144,13 +3148,19 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 		{
 			name: "mergeReadWriteAttachments",
 			localRevisionBody: map[string]interface{}{
-				"_attachments": map[string]interface{}{"A": map[string]interface{}{"data": "QQo="}},
-				"source":       "local",
+				db.BodyAttachments: map[string]interface{}{
+					"A": map[string]interface{}{
+						"data": "QQo=",
+					}},
+				"source": "local",
 			},
 			localRevID: "1-a",
 			remoteRevisionBody: map[string]interface{}{
-				"_attachments": map[string]interface{}{"B": map[string]interface{}{"data": "Qgo="}},
-				"source":       "remote",
+				db.BodyAttachments: map[string]interface{}{
+					"B": map[string]interface{}{
+						"data": "Qgo=",
+					}},
+				"source": "remote",
 			},
 			remoteRevID: "1-b",
 			conflictResolver: `function(conflict) {
@@ -3170,7 +3180,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				return mergedDoc;
 			}`,
 			expectedLocalBody: map[string]interface{}{
-				"_attachments": map[string]interface{}{
+				db.BodyAttachments: map[string]interface{}{
 					"A": map[string]interface{}{
 						"digest": "sha1-fRV9fAAK4n2xRldcCM4w34k9OmQ=",
 						"length": json.Number("2"),
@@ -3187,7 +3197,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				"source": "merged",
 			},
 			expectedLocalRevID: createRevID(2, "1-b", db.Body{
-				"_attachments": map[string]interface{}{
+				db.BodyAttachments: map[string]interface{}{
 					"A": map[string]interface{}{
 						"digest": "sha1-fRV9fAAK4n2xRldcCM4w34k9OmQ=",
 						"length": 2,
@@ -3205,8 +3215,11 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			}),
 		},
 		{
-			name:               "mergeReadIntlPropsLocalExpiry",
-			localRevisionBody:  db.Body{"source": "local", db.BodyExpiry: "2020-08-24T17:08:29-07:00"},
+			name: "mergeReadIntlPropsLocalExpiry",
+			localRevisionBody: db.Body{
+				"source":      "local",
+				db.BodyExpiry: "2020-08-24T17:08:29-07:00",
+			},
 			localRevID:         "1-a",
 			remoteRevisionBody: db.Body{"source": "remote"},
 			remoteRevID:        "1-b",
@@ -3226,11 +3239,16 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			}),
 		},
 		{
-			name:               "mergeWriteIntlPropsLocalExpiry",
-			localRevisionBody:  db.Body{"source": "local", db.BodyExpiry: "2020-08-24T17:08:29-07:00"},
-			localRevID:         "1-a",
-			remoteRevisionBody: db.Body{"source": "remote"},
-			remoteRevID:        "1-b",
+			name: "mergeWriteIntlPropsLocalExpiry",
+			localRevisionBody: db.Body{
+				"source":      "local",
+				db.BodyExpiry: "2020-08-24T17:08:29-07:00",
+			},
+			localRevID: "1-a",
+			remoteRevisionBody: db.Body{
+				"source": "remote",
+			},
+			remoteRevID: "1-b",
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
@@ -3247,11 +3265,16 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			}),
 		},
 		{
-			name:               "mergeReadIntlPropsDeletedWithLocalTombstone",
-			localRevisionBody:  db.Body{"source": "local", db.BodyDeleted: true},
-			localRevID:         "1-a",
-			remoteRevisionBody: db.Body{"source": "remote"},
-			remoteRevID:        "1-b",
+			name: "mergeReadIntlPropsDeletedWithLocalTombstone",
+			localRevisionBody: db.Body{
+				"source":       "local",
+				db.BodyDeleted: true,
+			},
+			localRevID: "1-a",
+			remoteRevisionBody: db.Body{
+				"source": "remote",
+			},
+			remoteRevID: "1-b",
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
@@ -3383,7 +3406,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				}
 			}
 			assert.Equal(t, 1, activeCount)
-
 		})
 	}
 }
