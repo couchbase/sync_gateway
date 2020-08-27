@@ -244,7 +244,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		dbStats.InitDeltaSyncStats()
 	}
 
-	if autoImport {
+	if autoImport || options.EnableXattr {
 		dbStats.InitSharedBucketImportStats()
 	}
 

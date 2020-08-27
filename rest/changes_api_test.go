@@ -3604,7 +3604,7 @@ func TestTombstoneCompaction(t *testing.T) {
 		}
 
 		expectedBatches += numDocs/db.QueryTombstoneBatch + 1
-		assert.Equal(t, expectedBatches, actualBatches)
+		assert.Equal(t, expectedBatches, int(actualBatches))
 	}
 
 	// Multiples of Batch Size
