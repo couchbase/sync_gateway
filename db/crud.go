@@ -838,7 +838,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
-		// be done before calling createRevID (the ID is based on the digest of the body.)
+		// be done before calling CreateRevID (the ID is based on the digest of the body.)
 		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, matchRev, nil)
 		if err != nil {
 			return nil, nil, nil, err
@@ -1157,7 +1157,7 @@ func (db *Database) resolveDocMerge(localDoc *Document, remoteDoc *Document, con
 
 	remoteRevID := conflict.RemoteDocument.ExtractRev()
 	remoteGeneration, _ := ParseRevID(remoteRevID)
-	mergedRevID, err := createRevID(remoteGeneration+1, remoteRevID, mergedBody)
+	mergedRevID, err := CreateRevID(remoteGeneration+1, remoteRevID, mergedBody)
 	if err != nil {
 		return "", nil, err
 	}

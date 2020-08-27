@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"bytes"
 	"encoding/json"
 	"expvar"
 	"fmt"
@@ -3086,10 +3085,10 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 //   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
 func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
-	bodyBytes := func(body string) []byte {
-		buffer := new(bytes.Buffer)
-		require.NoError(t, json.Compact(buffer, []byte(body)))
-		return buffer.Bytes()
+	createRevID := func(generation int, parentRevID string, body db.Body) string {
+		rev, err := db.CreateRevID(generation, parentRevID, body)
+		require.NoError(t, err, "Error creating revision")
+		return rev
 	}
 
 	// scenarios
@@ -3112,25 +3111,35 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
-				mergedDoc.incomingDocId = conflict.RemoteDocument._id;
-				mergedDoc.incomingRevId = conflict.RemoteDocument._rev;
-				mergedDoc.outgoingDocId = conflict.LocalDocument._id;
-				mergedDoc.outgoingRevId = conflict.LocalDocument._rev;
+				mergedDoc.remoteDocId = conflict.RemoteDocument._id;
+				mergedDoc.remoteRevId = conflict.RemoteDocument._rev;
+				mergedDoc.localDocId = conflict.LocalDocument._id;
+				mergedDoc.localRevId = conflict.LocalDocument._rev;
+                mergedDoc._id = "foo";
+                mergedDoc._rev = "2-c";
+                mergedDoc._exp = 100;
 				return mergedDoc;
 			}`,
 			expectedLocalBody: db.Body{
-				"incomingDocId": "mergeReadWriteIntlProps",
-				"incomingRevId": "1-b",
-				"outgoingDocId": "mergeReadWriteIntlProps",
-				"outgoingRevId": "1-a",
-				"source":        "merged",
+				"_id":         "foo",
+				"_rev":        "2-c",
+				"_exp":        json.Number("100"),
+				"localDocId":  "mergeReadWriteIntlProps",
+				"localRevId":  "1-a",
+				"remoteDocId": "mergeReadWriteIntlProps",
+				"remoteRevId": "1-b",
+				"source":      "merged",
 			},
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", bodyBytes(`{
-				"incomingDocId":"mergeReadWriteIntlProps",
-				"incomingRevId":"1-b",
-				"outgoingDocId":"mergeReadWriteIntlProps",
-				"outgoingRevId":"1-a",
-				"source":"merged"}`)),
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				"_id":         "foo",
+				"_rev":        "2-c",
+				"_exp":        json.Number("100"),
+				"localDocId":  "mergeReadWriteIntlProps",
+				"localRevId":  "1-a",
+				"remoteDocId": "mergeReadWriteIntlProps",
+				"remoteRevId": "1-b",
+				"source":      "merged",
+			}),
 		},
 		{
 			name: "mergeReadWriteAttachments",
@@ -3147,10 +3156,17 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
+				var mergedAttachments = new Object();
+
 				dst = conflict.RemoteDocument._attachments;
+				for (var key in dst) {
+					mergedAttachments[key] = dst[key];
+				}
 				src = conflict.LocalDocument._attachments;
-				for (var key in src) { dst[key] = src[key]; }
-				mergedDoc._attachments = dst;
+				for (var key in src) {
+					mergedAttachments[key] = src[key];
+				}
+				mergedDoc._attachments = mergedAttachments;
 				return mergedDoc;
 			}`,
 			expectedLocalBody: map[string]interface{}{
@@ -3162,73 +3178,94 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 						"stub":   true,
 					},
 					"B": map[string]interface{}{
+						"data":   "Qgo=",
 						"digest": "sha1-MYNq6qsi3ElVWpfttMdTiBQy4B0=",
 						"length": json.Number("2"),
 						"revpos": json.Number("1"),
-						"stub":   true,
 					},
 				},
 				"source": "merged",
 			},
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", bodyBytes(`{
-				"_attachments": {
-				   "A": {
-				      "digest": "sha1-fRV9fAAK4n2xRldcCM4w34k9OmQ=",
-				      "length": 2,
-				      "revpos": 1,
-				      "stub": true
-				   },
-				   "B": {
-				      "data": "Qgo=",
-				      "digest": "sha1-MYNq6qsi3ElVWpfttMdTiBQy4B0=",
-				      "length": 2,
-				      "revpos": 1
-				   }
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				"_attachments": map[string]interface{}{
+					"A": map[string]interface{}{
+						"digest": "sha1-fRV9fAAK4n2xRldcCM4w34k9OmQ=",
+						"length": 2,
+						"revpos": 1,
+						"stub":   true,
+					},
+					"B": map[string]interface{}{
+						"data":   "Qgo=",
+						"digest": "sha1-MYNq6qsi3ElVWpfttMdTiBQy4B0=",
+						"length": 2,
+						"revpos": 1,
+					},
 				},
-				"source": "merged"}`)),
+				"source": "merged",
+			}),
 		},
 		{
-			name:               "mergeReadWriteIntlPropsExpiry",
+			name:               "mergeReadIntlPropsLocalExpiry",
 			localRevisionBody:  db.Body{"source": "local", db.BodyExpiry: "2020-08-24T17:08:29-07:00"},
 			localRevID:         "1-a",
-			remoteRevisionBody: db.Body{"source": "remote", db.BodyExpiry: "2020-08-24T17:08:29-08:00"},
+			remoteRevisionBody: db.Body{"source": "remote"},
 			remoteRevID:        "1-b",
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
-				mergedDoc.outgoingDocExp = conflict.LocalDocument._exp;
+				mergedDoc.localDocExp = conflict.LocalDocument._exp;
 				return mergedDoc;
 			}`,
 			expectedLocalBody: db.Body{
-				"outgoingDocExp": "2020-08-24T17:08:29-07:00",
-				"source":         "merged",
+				"localDocExp": "2020-08-24T17:08:29-07:00",
+				"source":      "merged",
 			},
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", bodyBytes(`{
-				"outgoingDocExp":"2020-08-24T17:08:29-07:00",
-				"source":"merged"}`)),
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				"localDocExp": "2020-08-24T17:08:29-07:00",
+				"source":      "merged",
+			}),
 		},
 		{
-			name:               "mergeReadWriteIntlPropsDelete",
-			localRevisionBody:  db.Body{"source": "local", db.BodyDeleted: true},
+			name:               "mergeWriteIntlPropsLocalExpiry",
+			localRevisionBody:  db.Body{"source": "local", db.BodyExpiry: "2020-08-24T17:08:29-07:00"},
 			localRevID:         "1-a",
-			remoteRevisionBody: db.Body{"source": "remote", db.BodyDeleted: false},
+			remoteRevisionBody: db.Body{"source": "remote"},
 			remoteRevID:        "1-b",
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
-				mergedDoc.outgoingDeleted = conflict.LocalDocument._deleted;
-				mergedDoc.incomingDeleted = conflict.RemoteDocument._deleted;
+				mergedDoc.localDocExp = "2021-08-24T17:08:29-07:00";
 				return mergedDoc;
 			}`,
 			expectedLocalBody: db.Body{
-				"incomingDeleted": false,
-				"outgoingDeleted": false,
-				"source":          "merged",
+				"localDocExp": "2021-08-24T17:08:29-07:00",
+				"source":      "merged",
 			},
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", bodyBytes(`{
-				"incomingDeleted":false, 
-				"outgoingDeleted":false, 
-				"source":"merged"}`)),
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				"localDocExp": "2021-08-24T17:08:29-07:00",
+				"source":      "merged",
+			}),
+		},
+		{
+			name:               "mergeReadIntlPropsDeletedWithLocalTombstone",
+			localRevisionBody:  db.Body{"source": "local", db.BodyDeleted: true},
+			localRevID:         "1-a",
+			remoteRevisionBody: db.Body{"source": "remote"},
+			remoteRevID:        "1-b",
+			conflictResolver: `function(conflict) {
+				var mergedDoc = new Object();
+				mergedDoc.source = "merged";
+				mergedDoc.localDeleted = conflict.LocalDocument._deleted;
+				return mergedDoc;
+			}`,
+			expectedLocalBody: db.Body{
+				"localDeleted": true,
+				"source":       "merged",
+			},
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				"localDeleted": true,
+				"source":       "merged",
+			}),
 		},
 	}
 
@@ -3237,7 +3274,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			if base.GTestBucketPool.NumUsableBuckets() < 2 {
 				t.Skipf("test requires at least 2 usable test buckets")
 			}
-			defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)()
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 			// Passive
 			tb2 := base.GetTestBucket(t)
