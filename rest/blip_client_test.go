@@ -670,8 +670,9 @@ func (btc *BlipTesterClient) GetRev(docID, revID string) (data []byte, found boo
 	defer btc.docsLock.RUnlock()
 
 	if rev, ok := btc.docs[docID]; ok {
-		data, found := rev[revID]
-		return data.body, found
+		if data, ok := rev[revID]; ok && data != nil {
+			return data.body, true
+		}
 	}
 
 	return nil, false
