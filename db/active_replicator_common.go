@@ -106,6 +106,7 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 		// set lastError, but don't set an error state inside the reconnect loop
 		err = _connectFn()
 		a.setLastError(err)
+		a._publishStatus()
 
 		a.lock.Unlock()
 
@@ -195,7 +196,9 @@ func (a *activeReplicatorCommon) setLastError(err error) {
 func (a *activeReplicatorCommon) setState(state string) {
 	a.stateErrorLock.Lock()
 	a.state = state
-	a.lastError = nil
+	if state == ReplicationStateRunning {
+		a.lastError = nil
+	}
 	a.stateErrorLock.Unlock()
 }
 

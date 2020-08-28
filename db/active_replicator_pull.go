@@ -31,6 +31,7 @@ func (apr *ActivePullReplicator) Start() error {
 		return fmt.Errorf("ActivePullReplicator already running")
 	}
 
+	apr.state = ReplicationStateStarting
 	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePull)})
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
@@ -40,6 +41,7 @@ func (apr *ActivePullReplicator) Start() error {
 		base.WarnfCtx(apr.ctx, "Couldn't connect. Attempting to reconnect in background: %v", err)
 		go apr.reconnect(apr._connect)
 	}
+	apr._publishStatus()
 	return err
 }
 
@@ -86,7 +88,6 @@ func (apr *ActivePullReplicator) _connect() error {
 	}
 
 	apr.setState(ReplicationStateRunning)
-	apr._publishStatus()
 	return nil
 }
 
