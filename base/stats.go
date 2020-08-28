@@ -329,6 +329,8 @@ type DbReplicatorStats struct {
 	PushRejectedCount        *SgwIntStat `json:"sgr_push_rejected_count"`
 	PushDeltaSentCount       *SgwIntStat `json:"sgr_deltas_sent"`
 	DocsCheckedSent          *SgwIntStat `json:"sgr_docs_checked_sent" `
+	NumConnectAttemptsPull   *SgwIntStat `json:"num_connects_pull"`
+	NumReconnectsAbortedPull *SgwIntStat `json:"num_reconnects_aborted_pull"`
 
 	NumAttachmentBytesPulled *SgwIntStat `json:"sgr_num_attachment_bytes_pulled"`
 	NumAttachmentsPulled     *SgwIntStat `json:"sgr_num_attachments_pulled"`
@@ -338,6 +340,8 @@ type DbReplicatorStats struct {
 	DeltaReceivedCount       *SgwIntStat `json:"sgr_deltas_recv"`
 	DeltaRequestedCount      *SgwIntStat `json:"sgr_deltas_requested"`
 	DocsCheckedReceived      *SgwIntStat `json:"sgr_docs_checked_recv"`
+	NumConnectAttemptsPush   *SgwIntStat `json:"num_connects_push"`
+	NumReconnectsAbortedPush *SgwIntStat `json:"num_reconnects_aborted_push"`
 
 	ConflictResolvedLocalCount  *SgwIntStat `json:"sgr_conflict_resolved_local_count"`
 	ConflictResolvedRemoteCount *SgwIntStat `json:"sgr_conflict_resolved_remote_count"`
@@ -689,6 +693,8 @@ func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
 			PushRejectedCount:           NewIntStat(SubsystemReplication, "sgr_push_rejected_count", labels, prometheus.CounterValue, 0),
 			PushDeltaSentCount:          NewIntStat(SubsystemReplication, "sgr_deltas_sent", labels, prometheus.CounterValue, 0),
 			DocsCheckedSent:             NewIntStat(SubsystemReplication, "sgr_docs_checked_sent", labels, prometheus.CounterValue, 0),
+			NumConnectAttemptsPush:      NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_push", labels, prometheus.CounterValue, 0),
+			NumReconnectsAbortedPush:    NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_push", labels, prometheus.CounterValue, 0),
 			NumAttachmentBytesPulled:    NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pulled", labels, prometheus.CounterValue, 0),
 			NumAttachmentsPulled:        NewIntStat(SubsystemReplication, "sgr_num_attachments_pulled", labels, prometheus.CounterValue, 0),
 			PulledCount:                 NewIntStat(SubsystemReplication, "sgr_num_docs_pulled", labels, prometheus.CounterValue, 0),
@@ -700,6 +706,8 @@ func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
 			ConflictResolvedLocalCount:  NewIntStat(SubsystemReplication, "sgr_conflict_resolved_local_count", labels, prometheus.CounterValue, 0),
 			ConflictResolvedRemoteCount: NewIntStat(SubsystemReplication, "sgr_conflict_resolved_remote_count", labels, prometheus.CounterValue, 0),
 			ConflictResolvedMergedCount: NewIntStat(SubsystemReplication, "sgr_conflict_resolved_merge_count", labels, prometheus.CounterValue, 0),
+			NumConnectAttemptsPull:      NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_pull", labels, prometheus.CounterValue, 0),
+			NumReconnectsAbortedPull:    NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_pull", labels, prometheus.CounterValue, 0),
 		}
 	}
 
