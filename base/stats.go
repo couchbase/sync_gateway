@@ -275,31 +275,31 @@ func (rs *ReplicatorStats) Collect(ch chan<- prometheus.Metric) {
 	rs.Do(func(value expvar.KeyValue) {
 		ch <- prometheus.MustNewConstMetric(
 			checkedSentDesc,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_docs_checked_sent").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			numAttachmentBytesTransferred,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_attachment_bytes_transferred").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			numAttachmentsTransferred,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_attachments_transferred").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			numDocsFailedToPush,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_failed_to_push").(*expvar.Int).Value()),
 			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
 			numDocsPushed,
-			prometheus.GaugeValue,
+			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_pushed").(*expvar.Int).Value()),
 			value.Key,
 		)
