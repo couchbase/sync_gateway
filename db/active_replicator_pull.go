@@ -39,6 +39,7 @@ func (apr *ActivePullReplicator) Start() error {
 	if err != nil {
 		_ = apr.setError(err)
 		base.WarnfCtx(apr.ctx, "Couldn't connect. Attempting to reconnect in background: %v", err)
+		apr.reconnectActive.Set(true)
 		go apr.reconnect(apr._connect)
 	}
 	apr._publishStatus()
