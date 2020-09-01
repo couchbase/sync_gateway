@@ -102,8 +102,12 @@ type BlipSyncContext struct {
 	conflictResolver                 *ConflictResolver                         // Conflict resolver for active replications
 	changesPendingResponseCount      int64                                     // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
-	sendRevNoConflicts bool // Whether to set noconflicts=true when sending revisions
+	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions
+	clientType         BLIPSyncContextClientType // can perform client-specific replication behaviour based on this field
+}
 
+func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
+	bsc.clientType = clientType
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.

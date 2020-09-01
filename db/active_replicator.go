@@ -195,6 +195,8 @@ func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sen
 		base.LogContext{CorrelationID: arc.config.ID + idSuffix},
 	)
 
+	bsc.clientType = BLIPClientTypeSGR2
+
 	// NewBlipSyncContext has already set deltas as disabled/enabled based on config.ActiveDB.
 	// If deltas have been disabled in the replication config, override this value
 	if arc.config.DeltasEnabled == false {
@@ -238,7 +240,7 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		target.Scheme = "wss"
 	}
 
-	config, err := websocket.NewConfig(target.String()+"/_blipsync", "http://localhost")
+	config, err := websocket.NewConfig(target.String()+"/_blipsync?"+BLIPSyncClientTypeQueryParam+"="+string(BLIPClientTypeSGR2), "http://localhost")
 	if err != nil {
 		return nil, err
 	}

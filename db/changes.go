@@ -26,18 +26,18 @@ import (
 // Options for changes-feeds.  ChangesOptions must not contain any mutable pointer references, as
 // changes processing currently assumes a deep copy when doing chanOpts := changesOptions.
 type ChangesOptions struct {
-	Since       SequenceID      // sequence # to start _after_
-	Limit       int             // Max number of changes to return, if nonzero
-	Conflicts   bool            // Show all conflicting revision IDs, not just winning one?
-	IncludeDocs bool            // Include doc body of each change?
-	Wait        bool            // Wait for results, instead of immediately returning empty result?
-	Continuous  bool            // Run continuously until terminated?
-	Terminator  chan bool       // Caller can close this channel to terminate the feed
-	HeartbeatMs uint64          // How often to send a heartbeat to the client
-	TimeoutMs   uint64          // After this amount of time, close the longpoll connection
-	ActiveOnly  bool            // If true, only return information on non-deleted, non-removed revisions
-	clientType  clientType      // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
-	Ctx         context.Context // Used for adding context to logs
+	Since                SequenceID      // sequence # to start _after_
+	Limit                int             // Max number of changes to return, if nonzero
+	Conflicts            bool            // Show all conflicting revision IDs, not just winning one?
+	IncludeDocs          bool            // Include doc body of each change?
+	Wait                 bool            // Wait for results, instead of immediately returning empty result?
+	Continuous           bool            // Run continuously until terminated?
+	Terminator           chan bool       // Caller can close this channel to terminate the feed
+	HeartbeatMs          uint64          // How often to send a heartbeat to the client
+	TimeoutMs            uint64          // After this amount of time, close the longpoll connection
+	ActiveOnly           bool            // If true, only return information on non-deleted, non-removed revisions
+	PersistentActiveOnly bool            // CBL 2.x clients expect ActiveOnly to flip to false after the initial replication has caught up, but this can be set to true to force ActiveOnly to stay enabled.
+	Ctx                  context.Context // Used for adding context to logs
 }
 
 // A changes entry; Database.GetChanges returns an array of these.
@@ -714,8 +714,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			base.DebugfCtx(db.Ctx, base.KeyChanges, "MultiChangesFeed waiting... %s", base.UD(to))
 			output <- nil
 
-			// If this is an initial replication using CBL 2.x (active only), flip activeOnly now the client has caught up.
-			if options.clientType == clientTypeCBL2 && options.ActiveOnly {
+			// If this is an initial replication flip activeOnly now the client has caught up.
+			if !options.PersistentActiveOnly && options.ActiveOnly {
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "%v MultiChangesFeed initial replication caught up - setting ActiveOnly to false... %s", options.Since, base.UD(to))
 				options.ActiveOnly = false
 			}

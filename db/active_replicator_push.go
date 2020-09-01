@@ -92,7 +92,6 @@ func (apr *ActivePushReplicator) _connect() error {
 			activeOnly:        apr.config.ActiveOnly,
 			batchSize:         int(apr.config.ChangesBatchSize),
 			channels:          channels,
-			clientType:        clientTypeSGR2,
 			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
 		})
 		// On a normal completion, call complete for the replication

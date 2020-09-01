@@ -73,7 +73,6 @@ func (apr *ActivePullReplicator) _connect() error {
 		FilterChannels: apr.config.FilterChannels,
 		DocIDs:         apr.config.DocIDs,
 		ActiveOnly:     apr.config.ActiveOnly,
-		clientType:     clientTypeSGR2,
 	}
 
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {

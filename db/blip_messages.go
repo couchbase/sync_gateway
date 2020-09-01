@@ -22,7 +22,6 @@ type SubChangesRequest struct {
 	FilterChannels []string // FilterChannels are a set of channels used with a 'sync_gateway/bychannel' filter (optional)
 	DocIDs         []string // DocIDs specifies which doc IDs the recipient should send changes for (optional)
 	ActiveOnly     bool     // ActiveOnly is set to `true` if the requester doesn't want to be sent tombstones. (optional)
-	clientType     clientType
 }
 
 var _ BLIPMessageSender = &SubChangesRequest{}
@@ -43,7 +42,6 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 	msg := blip.NewRequest()
 	msg.SetProfile(MessageSubChanges)
 
-	setOptionalProperty(msg.Properties, "client_sgr2", rq.clientType == clientTypeSGR2)
 	setOptionalProperty(msg.Properties, SubChangesContinuous, rq.Continuous)
 	setOptionalProperty(msg.Properties, SubChangesBatch, rq.Batch)
 	setOptionalProperty(msg.Properties, SubChangesSince, rq.Since)

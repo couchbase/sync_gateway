@@ -40,6 +40,12 @@ func (h *handler) handleBLIPSync() error {
 	ctx := db.NewBlipSyncContext(blipContext, h.db, h.formatSerialNumber(), db.BlipSyncStatsForCBL(h.db.DbStats))
 	defer ctx.Close()
 
+	if string(db.BLIPClientTypeSGR2) == h.getQuery(db.BLIPSyncClientTypeQueryParam) {
+		ctx.SetClientType(db.BLIPClientTypeSGR2)
+	} else {
+		ctx.SetClientType(db.BLIPClientTypeCBL2)
+	}
+
 	// Create a BLIP WebSocket handler and have it handle the request:
 	server := blipContext.WebSocketServer()
 	defaultHandler := server.Handler

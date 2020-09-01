@@ -34,6 +34,15 @@ type blipHandler struct {
 	serialNumber uint64    // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
+type BLIPSyncContextClientType string
+
+const (
+	BLIPSyncClientTypeQueryParam = "client"
+
+	BLIPClientTypeCBL2 BLIPSyncContextClientType = "cbl2"
+	BLIPClientTypeSGR2 BLIPSyncContextClientType = "sgr2"
+)
+
 type blipHandlerFunc func(*blipHandler, *blip.Message) error
 
 // userBlipHandler wraps another blip handler with code that reloads the user object when the user
@@ -174,11 +183,6 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown filter; try sync_gateway/bychannel")
 	}
 
-	clientType := clientTypeCBL2
-	if rq.Properties["client_sgr2"] == "true" {
-		clientType = clientTypeSGR2
-	}
-
 	continuous := subChangesParams.continuous()
 	// used for stats tracking
 	bh.continuous = continuous
@@ -205,20 +209,13 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			activeOnly: subChangesParams.activeOnly(),
 			batchSize:  subChangesParams.batchSize(),
 			channels:   channels,
-			clientType: clientType,
+			clientType: bh.clientType,
 		})
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
 
 	return nil
 }
-
-type clientType uint8
-
-const (
-	clientTypeCBL2 clientType = iota
-	clientTypeSGR2
-)
 
 type sendChangesOptions struct {
 	docIDs            []string
@@ -227,7 +224,7 @@ type sendChangesOptions struct {
 	activeOnly        bool
 	batchSize         int
 	channels          base.Set
-	clientType        clientType
+	clientType        BLIPSyncContextClientType
 	ignoreNoConflicts bool
 }
 
@@ -242,13 +239,13 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	base.InfofCtx(bh.loggingCtx, base.KeySync, "Sending changes since %v", opts.since)
 
 	options := ChangesOptions{
-		Since:      opts.since,
-		Conflicts:  false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
-		Continuous: opts.continuous,
-		ActiveOnly: opts.activeOnly,
-		Terminator: bh.BlipSyncContext.terminator,
-		Ctx:        bh.loggingCtx,
-		clientType: opts.clientType,
+		Since:                opts.since,
+		Conflicts:            false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
+		Continuous:           opts.continuous,
+		ActiveOnly:           opts.activeOnly,
+		Terminator:           bh.BlipSyncContext.terminator,
+		Ctx:                  bh.loggingCtx,
+		PersistentActiveOnly: bh.clientType == BLIPClientTypeSGR2,
 	}
 
 	channelSet := opts.channels
@@ -797,7 +794,12 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string) error {
 	return bh.db.ForEachStubAttachment(body, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
-			if knownData != nil {
+
+			// SGR2 must fall back to the full getAttachment handling, because SG cannot handle receiving proveAttachment messages.
+			canUseProveAttachment := bh.clientType != BLIPClientTypeSGR2
+			haveAttachment := knownData != nil
+
+			if haveAttachment && canUseProveAttachment {
 				// If I have the attachment already I don't need the client to send it, but for
 				// security purposes I do need the client to _prove_ it has the data, otherwise if
 				// it knew the digest it could acquire the data by uploading a document with the
@@ -849,6 +851,13 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 
 				bh.replicationStats.GetAttachment.Add(1)
 				bh.replicationStats.GetAttachmentBytes.Add(metaLength)
+
+				// If we already have the attachment, return nil, nil to avoid the attachment from being saved again.
+				// We've already done the necessary checks above to ensure the attachment we received is the same as the one we already have.
+				if haveAttachment {
+					return nil, nil
+				}
+
 				return attBody, nil
 			}
 		})
