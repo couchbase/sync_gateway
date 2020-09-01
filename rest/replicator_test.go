@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -1469,7 +1470,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start())
 
-			waitAndRequireCondition(t, func() bool { return ar.GetStatus().DocsRead == 1 })
+			waitAndRequireCondition(t, func() bool { return ar.GetStatus().DocsRead == 1 }, "Expecting DocsRead == 1")
 			switch test.expectedResolutionType {
 			case db.ConflictResolutionLocal:
 				assert.Equal(t, 1, int(replicationStats.ConflictResolvedLocalCount.Value()))
@@ -2734,18 +2735,22 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+
+			var abortTimeout = time.Millisecond * 500
+			if runtime.GOOS == "windows" {
+				// A longer timeout is required on Windows as connection refused errors take approx 2 seconds vs. instantaneous on Linux.
+				abortTimeout = time.Second * 5
+			}
 			// test cases with and without a timeout. Ensure replicator retry loop is stopped in both cases.
 			timeoutVals := []time.Duration{
 				0,
-				// This 5 second timeout is required due to the fact that reconnects are spaced 2 seconds apart on
-				// Windows.
-				time.Second * 5,
+				abortTimeout,
 			}
 
 			for _, timeoutVal := range timeoutVals {
 				t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
 
-					defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp)()
+					defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 					// Passive
 					tb2 := base.GetTestBucket(t)
@@ -2827,14 +2832,14 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					// wait for an arbitrary number of reconnect attempts
 					waitAndRequireCondition(t, func() bool {
 						return ar.Push.GetStats().NumConnectAttempts.Value() > 2
-					})
+					}, "Expecting NumConnectAttempts > 2")
 
 					if timeoutVal > 0 {
-						time.Sleep(timeoutVal)
+						time.Sleep(timeoutVal + time.Millisecond*250)
 						// wait for the retry loop to hit the TotalReconnectTimeout and give up retrying
 						waitAndRequireCondition(t, func() bool {
 							return ar.Push.GetStats().NumReconnectsAborted.Value() > 0
-						})
+						}, "Expecting NumReconnectsAborted > 0")
 					}
 
 					assert.NoError(t, ar.Stop())
@@ -2910,7 +2915,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	// wait for an arbitrary number of reconnect attempts
 	waitAndRequireCondition(t, func() bool {
 		return ar.Push.GetStats().NumConnectAttempts.Value() > 3
-	})
+	}, "Expecting NumConnectAttempts > 3")
 
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password":"pass"}`)
 	assertStatus(t, resp, http.StatusCreated)
@@ -2918,7 +2923,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	waitAndRequireCondition(t, func() bool {
 		state, _ := ar.State()
 		return state == db.ReplicationStateRunning
-	})
+	}, "Expecting replication state to be running")
 
 	assert.NoError(t, ar.Stop())
 }
@@ -2997,7 +3002,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	// wait for an arbitrary number of reconnect attempts
 	waitAndRequireCondition(t, func() bool {
 		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
-	})
+	}, "Expecting NumConnectAttempts > 3")
 
 	assert.NoError(t, ar.Stop())
 	reconnectAttempts := ar.Pull.GetStats().NumConnectAttempts.Value()
@@ -3015,15 +3020,15 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	// wait for another set of reconnect attempts
 	waitAndRequireCondition(t, func() bool {
 		return ar.Pull.GetStats().NumConnectAttempts.Value() > 3
-	})
+	}, "Expecting NumConnectAttempts > 3")
 
 	assert.NoError(t, ar.Stop())
 }
 
-func waitAndRequireCondition(t *testing.T, fn func() bool) {
+func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
-			require.Fail(t, "Condition failed to be satisfied")
+			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
 		}
 		if fn() {
 			break
@@ -3032,10 +3037,10 @@ func waitAndRequireCondition(t *testing.T, fn func() bool) {
 	}
 }
 
-func waitAndAssertCondition(t *testing.T, fn func() bool) {
+func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
-			assert.Fail(t, "Condition failed to be satisfied")
+			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
 		}
 		if fn() {
 			break
