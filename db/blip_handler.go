@@ -18,14 +18,15 @@ import (
 
 // kHandlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
 var kHandlersByProfile = map[string]blipHandlerFunc{
-	MessageGetCheckpoint:  (*blipHandler).handleGetCheckpoint,
-	MessageSetCheckpoint:  (*blipHandler).handleSetCheckpoint,
-	MessageSubChanges:     userBlipHandler((*blipHandler).handleSubChanges),
-	MessageChanges:        userBlipHandler((*blipHandler).handleChanges),
-	MessageRev:            userBlipHandler((*blipHandler).handleRev),
-	MessageNoRev:          (*blipHandler).handleNoRev,
-	MessageGetAttachment:  userBlipHandler((*blipHandler).handleGetAttachment),
-	MessageProposeChanges: (*blipHandler).handleProposeChanges,
+	MessageGetCheckpoint:   (*blipHandler).handleGetCheckpoint,
+	MessageSetCheckpoint:   (*blipHandler).handleSetCheckpoint,
+	MessageSubChanges:      userBlipHandler((*blipHandler).handleSubChanges),
+	MessageChanges:         userBlipHandler((*blipHandler).handleChanges),
+	MessageRev:             userBlipHandler((*blipHandler).handleRev),
+	MessageNoRev:           (*blipHandler).handleNoRev,
+	MessageGetAttachment:   userBlipHandler((*blipHandler).handleGetAttachment),
+	MessageProveAttachment: userBlipHandler((*blipHandler).handleProveAttachment),
+	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
 }
 
 type blipHandler struct {
@@ -760,6 +761,34 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 }
 
 //////// ATTACHMENTS:
+
+func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
+	nonce, err := rq.Body()
+	if err != nil {
+		return err
+	}
+
+	if len(nonce) == 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "no nonce sent with proveAttachment")
+	}
+
+	digest, ok := rq.Properties[ProveAttachmentDigest]
+	if !ok {
+		return base.HTTPErrorf(http.StatusBadRequest, "no digest sent with proveAttachment")
+	}
+
+	attData, err := bh.db.GetAttachment(AttachmentKey(digest))
+	if err != nil {
+		panic(fmt.Sprintf("error getting client attachment: %v", err))
+	}
+
+	proof := ProveAttachment(attData, nonce)
+
+	resp := rq.Response()
+	resp.SetBody([]byte(proof))
+
+	return nil
+}
 
 // Received a "getAttachment" request
 func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
