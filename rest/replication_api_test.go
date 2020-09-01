@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -551,6 +552,22 @@ func TestReplicationStatusActions(t *testing.T) {
 	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true)
 	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
 
+	// Start goroutine to continuously poll for status of replication on rt1 to detect race conditions
+	doneChan := make(chan struct{})
+	var statusWg sync.WaitGroup
+	statusWg.Add(1)
+	go func() {
+		for {
+			select {
+			case <-doneChan:
+				statusWg.Done()
+				return
+			default:
+			}
+			_ = rt1.GetReplicationStatus(replicationID)
+		}
+	}()
+
 	// wait for document originally written to rt2 to arrive at rt1
 	changesResults := rt1.RequireWaitChanges(1, "0")
 	changesResults.requireDocIDs(t, []string{docID1})
@@ -576,10 +593,11 @@ func TestReplicationStatusActions(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 
 	// Wait for stopped.  Non-instant as config change needs to arrive over DCP
-	rt1.WaitForCondition(func() bool {
+	stateError := rt1.WaitForCondition(func() bool {
 		status := rt1.GetReplicationStatus(replicationID)
 		return status.Status == db.ReplicationStateStopped
 	})
+	assert.NoError(t, stateError)
 
 	// Reset replication
 	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=reset", "")
@@ -588,7 +606,23 @@ func TestReplicationStatusActions(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	status := rt1.GetReplicationStatus(replicationID)
 	assert.Equal(t, db.ReplicationStateStopped, status.Status)
-	assert.Equal(t, 0, status.LastSeqPull)
+	assert.Equal(t, "", status.LastSeqPull)
+
+	// Restart the replication
+	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+	assertStatus(t, response, http.StatusOK)
+
+	// Verify replication has restarted from zero. Since docs have already been replicated,
+	// expect no docs read, two docs checked.
+	statError := rt1.WaitForCondition(func() bool {
+		status := rt1.GetReplicationStatus(replicationID)
+		return status.DocsCheckedPull == 2 && status.DocsRead == 0
+	})
+	assert.NoError(t, statError)
+
+	// Terminate status goroutine
+	close(doneChan)
+	statusWg.Wait()
 
 }
 
