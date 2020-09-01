@@ -564,6 +564,9 @@ func (m *sgReplicateManager) Stop() {
 	if err := m.RemoveNode(m.localNodeUUID); err != nil {
 		base.WarnfCtx(m.loggingCtx, "Attempt to remove node %v from sg-replicate cfg got error: %v", m.localNodeUUID, err)
 	}
+	if m.heartbeatListener != nil {
+		m.heartbeatListener.Stop()
+	}
 	close(m.clusterUpdateTerminator)
 }
 

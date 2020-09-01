@@ -708,6 +708,11 @@ func TestReplicationRebalancePull(t *testing.T) {
 	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsRead == 2 })
 	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsRead == 2 })
 
+	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
+	activeRT.GetDatabase().SGReplicateMgr.Stop()
+	activeRT.GetDatabase().SGReplicateMgr = nil
+	activeRT2.GetDatabase().SGReplicateMgr.Stop()
+	activeRT2.GetDatabase().SGReplicateMgr = nil
 }
 
 // TestReplicationRebalancePush
@@ -790,6 +795,12 @@ func TestReplicationRebalancePush(t *testing.T) {
 	waitAndAssertCondition(t, func() bool { return activeRT.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
 	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_ABC").DocsCheckedPush == 2 })
 	waitAndAssertCondition(t, func() bool { return activeRT2.GetReplicationStatus("rep_DEF").DocsCheckedPush == 2 })
+
+	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
+	activeRT.GetDatabase().SGReplicateMgr.Stop()
+	activeRT.GetDatabase().SGReplicateMgr = nil
+	activeRT2.GetDatabase().SGReplicateMgr.Stop()
+	activeRT2.GetDatabase().SGReplicateMgr = nil
 }
 
 // TestPullReplicationAPI
