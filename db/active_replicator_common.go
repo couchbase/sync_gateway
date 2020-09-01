@@ -87,7 +87,7 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 
 	retryFunc := func() (shouldRetry bool, err error, _ interface{}) {
 		select {
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 		}
