@@ -160,7 +160,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 		}
 
 		if rc.TargetState == ReplicationStateStopped {
-			return base.HTTPErrorf(http.StatusBadRequest, "Setting state=stopped is not valid for replications specifying adhoc=true")
+			return base.HTTPErrorf(http.StatusBadRequest, "Setting target_state=stopped is not valid for replications specifying adhoc=true")
 		}
 	}
 
