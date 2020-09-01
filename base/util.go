@@ -421,7 +421,6 @@ func RetryLoopCtx(description string, worker RetryWorker, sleeper RetrySleeper, 
 		case <-ctx.Done():
 			return fmt.Errorf("Retry loop for %v closed based on context", description), nil
 		case <-time.After(time.Millisecond * time.Duration(sleepMs)):
-			continue
 		}
 
 		numAttempts += 1
