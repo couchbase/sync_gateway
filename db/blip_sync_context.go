@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"regexp"
 	"runtime/debug"
 	"strconv"
@@ -216,13 +215,13 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	}
 
 	var answer []interface{}
-	if err := base.JSONUnmarshal(respBody, &answer); err != nil {
-		if err == io.EOF {
-			base.DebugfCtx(bsc.loggingCtx, base.KeyAll, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, respBody)
-		} else {
+	if len(respBody) > 0 {
+		if err := base.JSONUnmarshal(respBody, &answer); err != nil {
 			base.ErrorfCtx(bsc.loggingCtx, "Invalid response to 'changes' message: %s -- %s.  Body: %s", response, err, respBody)
+			return nil
 		}
-		return nil
+	} else {
+		base.DebugfCtx(bsc.loggingCtx, base.KeyAll, "Empty response to 'changes' message: %s", response)
 	}
 	changesResponseReceived := time.Now()
 
