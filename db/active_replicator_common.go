@@ -122,7 +122,7 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 	}
 	if err != nil {
 		a.replicationStats.NumReconnectsAborted.Add(1)
-		base.WarnfCtx(a.ctx, "couldn't reconnect replicator: %v", err)
+		base.WarnfCtx(ctx, "couldn't reconnect replicator: %v", err)
 	}
 }
 
