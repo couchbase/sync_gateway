@@ -107,6 +107,8 @@ func (apr *ActivePullReplicator) Complete() {
 		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
 	}
 
+	apr._stop()
+
 	stopErr := apr._disconnect()
 	if stopErr != nil {
 		base.InfofCtx(apr.ctx, base.KeyReplicate, "Error attempting to stop replication %s: %v", apr.config.ID, stopErr)
