@@ -303,6 +303,29 @@ func (tbp *TestBucketPool) Close() {
 	}
 
 	tbp.printStats()
+
+	tbp.failIfUnclosedBuckets()
+}
+func (tbp *TestBucketPool) failIfUnclosedBuckets() {
+	origVerbose := tbp.verbose.IsTrue()
+	tbp.verbose.Set(true)
+	ctx := context.Background()
+
+	exitWithFail := false
+	tbp.unclosedBucketsLock.Lock()
+	for testName, buckets := range tbp.unclosedBuckets {
+		for bucketName := range buckets {
+			tbp.Logf(ctx, color("ERROR: %s left %s bucket unclosed!", LevelError), testName, bucketName)
+			exitWithFail = true
+		}
+	}
+	tbp.unclosedBucketsLock.Unlock()
+
+	tbp.verbose.Set(origVerbose)
+
+	if exitWithFail {
+		os.Exit(1)
+	}
 }
 
 // printStats outputs test bucket stats for the current package's test run.
@@ -351,14 +374,6 @@ func (tbp *TestBucketPool) printStats() {
 		tbp.Logf(ctx, "Total time tests using buckets: %s", totalBucketUseTime)
 	}
 	tbp.Logf(ctx, "==========================")
-
-	tbp.unclosedBucketsLock.Lock()
-	for testName, buckets := range tbp.unclosedBuckets {
-		for bucketName := range buckets {
-			tbp.Logf(ctx, "WARNING: %s left %s bucket unclosed!", testName, bucketName)
-		}
-	}
-	tbp.unclosedBucketsLock.Unlock()
 
 	tbp.verbose.Set(origVerbose)
 }
