@@ -88,7 +88,7 @@ type ReplicationConfig struct {
 	PurgeOnRemoval         bool                      `json:"purge_on_removal,omitempty"`
 	DeltaSyncEnabled       bool                      `json:"enable_delta_sync,omitempty"`
 	MaxBackoff             int                       `json:"max_backoff_time,omitempty"`
-	State                  string                    `json:"state,omitempty"`
+	TargetState            string                    `json:"target_state,omitempty"`
 	Continuous             bool                      `json:"continuous"`
 	Filter                 string                    `json:"filter,omitempty"`
 	QueryParams            interface{}               `json:"query_params,omitempty"`
@@ -103,7 +103,7 @@ func DefaultReplicationConfig() ReplicationConfig {
 		PurgeOnRemoval:         false,
 		MaxBackoff:             5,
 		ConflictResolutionType: ConflictResolverDefault,
-		State:                  ReplicationStateRunning,
+		TargetState:            ReplicationStateRunning,
 		Continuous:             false,
 		Adhoc:                  false,
 		BatchSize:              defaultChangesBatchSize,
@@ -129,7 +129,7 @@ type ReplicationUpsertConfig struct {
 	PurgeOnRemoval         *bool       `json:"purge_on_removal,omitempty"`
 	DeltaSyncEnabled       *bool       `json:"enable_delta_sync,omitempty"`
 	MaxBackoff             *int        `json:"max_backoff_time,omitempty"`
-	State                  *string     `json:"state,omitempty"`
+	TargetState            *string     `json:"target_state,omitempty"`
 	Continuous             *bool       `json:"continuous"`
 	Filter                 *string     `json:"filter,omitempty"`
 	QueryParams            interface{} `json:"query_params,omitempty"`
@@ -159,8 +159,8 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 			return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorConfigBasedAdhoc)
 		}
 
-		if rc.State == ReplicationStateStopped {
-			return base.HTTPErrorf(http.StatusBadRequest, "Setting state=stopped is not valid for replications specifying adhoc=true")
+		if rc.TargetState == ReplicationStateStopped {
+			return base.HTTPErrorf(http.StatusBadRequest, "Setting target_state=stopped is not valid for replications specifying adhoc=true")
 		}
 	}
 
@@ -249,8 +249,8 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 	if c.MaxBackoff != nil {
 		rc.MaxBackoff = *c.MaxBackoff
 	}
-	if c.State != nil {
-		rc.State = *c.State
+	if c.TargetState != nil {
+		rc.TargetState = *c.TargetState
 	}
 	if c.Continuous != nil {
 		rc.Continuous = *c.Continuous
@@ -437,7 +437,7 @@ func (m *sgReplicateManager) StartReplications() error {
 			m.activeReplicatorsLock.Lock()
 			m.activeReplicators[replicationID] = activeReplicator
 			m.activeReplicatorsLock.Unlock()
-			if replicationCfg.State == "" || replicationCfg.State == ReplicationStateRunning {
+			if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
 				if startErr := activeReplicator.Start(); startErr != nil {
 					base.Warnf("Unable to start replication %s: %v", replicationID, startErr)
 				}
@@ -590,12 +590,12 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 		} else {
 			// Check for replications assigned to this node with updated state
 			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
-			stateErr := activeReplicator.alignState(replicationCfg.State)
+			stateErr := activeReplicator.alignState(replicationCfg.TargetState)
 			if stateErr != nil {
-				base.Warnf("Error updating active replication %s to state %s: %v", replicationID, replicationCfg.State, stateErr)
+				base.Warnf("Error updating active replication %s to state %s: %v", replicationID, replicationCfg.TargetState, stateErr)
 			}
 			// Reset is synchronous - after completion the replication state should be updated to stopped
-			if replicationCfg.State == ReplicationStateResetting {
+			if replicationCfg.TargetState == ReplicationStateResetting {
 				postResetErr := m.UpdateReplicationState(replicationCfg.ID, ReplicationStateStopped)
 				if postResetErr != nil {
 					base.Warnf("Error updating replication state to stopped after successful reset: %v", postResetErr)
@@ -618,7 +618,7 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 				}
 				m.activeReplicators[replicationID] = replicator
 
-				if replicationCfg.State == "" || replicationCfg.State == ReplicationStateRunning {
+				if replicationCfg.TargetState == "" || replicationCfg.TargetState == ReplicationStateRunning {
 					base.Infof(base.KeyReplicate, "Starting newly assigned replication %s", replicationID)
 					if startErr := replicator.Start(); startErr != nil {
 						base.Warnf("Unable to start replication after refresh %s: %v", replicationID, startErr)
@@ -877,7 +877,7 @@ func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state 
 			return true, base.ErrNotFound
 		}
 
-		stateChangeErr := isValidStateChange(replicationCfg.State, state)
+		stateChangeErr := isValidStateChange(replicationCfg.TargetState, state)
 		if stateChangeErr != nil {
 			return true, stateChangeErr
 		}
@@ -889,8 +889,8 @@ func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state 
 		}
 
 		upsertReplication := &ReplicationUpsertConfig{
-			ID:    replicationID,
-			State: &state,
+			ID:          replicationID,
+			TargetState: &state,
 		}
 
 		cluster.Replications[replicationID].Upsert(upsertReplication)
@@ -1153,7 +1153,7 @@ func (m *sgReplicateManager) GetReplicationStatus(replicationID string, options 
 			}
 			status = &ReplicationStatus{
 				ID:     replicationID,
-				Status: remoteCfg.State,
+				Status: remoteCfg.TargetState,
 			}
 		}
 	}
