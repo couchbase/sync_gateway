@@ -3239,7 +3239,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			}),
 		},
 		{
-			name: "mergeWriteIntlPropsLocalExpiry",
+			name: "mergeWriteIntlPropsExpiry",
 			localRevisionBody: db.Body{
 				"source":      "local",
 				db.BodyExpiry: "2020-08-24T17:08:29-07:00",
@@ -3252,15 +3252,15 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
-				mergedDoc.localDocExp = "2021-08-24T17:08:29-07:00";
+				mergedDoc._exp = "2021-08-24T17:08:29-07:00";
 				return mergedDoc;
 			}`,
 			expectedLocalBody: db.Body{
-				"localDocExp": "2021-08-24T17:08:29-07:00",
+				db.BodyExpiry: "2021-08-24T17:08:29-07:00",
 				"source":      "merged",
 			},
 			expectedLocalRevID: createRevID(2, "1-b", db.Body{
-				"localDocExp": "2021-08-24T17:08:29-07:00",
+				db.BodyExpiry: "2021-08-24T17:08:29-07:00",
 				"source":      "merged",
 			}),
 		},
