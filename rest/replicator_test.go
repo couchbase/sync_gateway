@@ -3090,6 +3090,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 		require.NoError(t, err, "Error creating revision")
 		return rev
 	}
+	docExpiry := time.Now().Local().Add(time.Hour * time.Duration(4)).Format(time.RFC3339)
 
 	// scenarios
 	conflictResolutionTests := []struct {
@@ -3218,7 +3219,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			name: "mergeReadIntlPropsLocalExpiry",
 			localRevisionBody: db.Body{
 				"source":      "local",
-				db.BodyExpiry: "2020-08-24T17:08:29-07:00",
+				db.BodyExpiry: docExpiry,
 			},
 			localRevID:         "1-a",
 			remoteRevisionBody: db.Body{"source": "remote"},
@@ -3230,11 +3231,11 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				return mergedDoc;
 			}`,
 			expectedLocalBody: db.Body{
-				"localDocExp": "2020-08-24T17:08:29-07:00",
+				"localDocExp": docExpiry,
 				"source":      "merged",
 			},
 			expectedLocalRevID: createRevID(2, "1-b", db.Body{
-				"localDocExp": "2020-08-24T17:08:29-07:00",
+				"localDocExp": docExpiry,
 				"source":      "merged",
 			}),
 		},
@@ -3242,25 +3243,25 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			name: "mergeWriteIntlPropsExpiry",
 			localRevisionBody: db.Body{
 				"source":      "local",
-				db.BodyExpiry: "2020-08-24T17:08:29-07:00",
+				db.BodyExpiry: docExpiry,
 			},
 			localRevID: "1-a",
 			remoteRevisionBody: db.Body{
 				"source": "remote",
 			},
 			remoteRevID: "1-b",
-			conflictResolver: `function(conflict) {
+			conflictResolver: fmt.Sprintf(`function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
-				mergedDoc._exp = "2021-08-24T17:08:29-07:00";
+				mergedDoc._exp = %q;
 				return mergedDoc;
-			}`,
+			}`, docExpiry),
 			expectedLocalBody: db.Body{
-				db.BodyExpiry: "2021-08-24T17:08:29-07:00",
+				db.BodyExpiry: docExpiry,
 				"source":      "merged",
 			},
 			expectedLocalRevID: createRevID(2, "1-b", db.Body{
-				db.BodyExpiry: "2021-08-24T17:08:29-07:00",
+				db.BodyExpiry: docExpiry,
 				"source":      "merged",
 			}),
 		},
