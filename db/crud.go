@@ -1045,7 +1045,7 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 	remoteAttachments := remoteDoc.DocAttachments
 
 	// TODO: Make doc expiry (_exp) available over replication.
-	remoteExpiry := remoteDoc.Expiry
+	// remoteExpiry := remoteDoc.Expiry
 
 	localDocBody := localDoc.GetDeepMutableBody()
 	localDocBody[BodyId] = localDoc.ID
@@ -1058,7 +1058,7 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 	remoteDocBody[BodyId] = remoteDoc.ID
 	remoteDocBody[BodyRev] = remoteRevID
 	remoteDocBody[BodyAttachments] = remoteAttachments
-	remoteDocBody[BodyExpiry] = remoteExpiry
+	// remoteDocBody[BodyExpiry] = remoteExpiry
 	remoteDocBody[BodyDeleted] = remoteDoc.Deleted
 
 	conflict := Conflict{
