@@ -1974,18 +1974,21 @@ func BenchmarkProcessEntry(b *testing.B) {
 
 	for _, bm := range processEntryBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
-			b.StopTimer()
 			context, err := NewDatabaseContext("db", base.GetTestBucket(b), false, DatabaseContextOptions{})
 			require.NoError(b, err)
+			defer context.Close()
+
 			changeCache := &changeCache{}
 			if err := changeCache.Init(context, nil, nil); err != nil {
 				log.Printf("Init failed for changeCache: %v", err)
 				b.Fail()
 			}
+
 			if err := changeCache.Start(0); err != nil {
 				log.Printf("Start error for changeCache: %v", err)
 				b.Fail()
 			}
+			defer changeCache.Stop()
 
 			if bm.warmCacheCount > 0 {
 				for i := 0; i < bm.warmCacheCount; i++ {
@@ -1999,14 +2002,12 @@ func BenchmarkProcessEntry(b *testing.B) {
 
 			}
 			bm.feed.reset()
-			b.StartTimer()
 
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				entry := bm.feed.Next()
 				_ = changeCache.processEntry(entry)
 			}
-
-			context.Close()
 		})
 	}
 }
