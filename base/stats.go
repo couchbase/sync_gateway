@@ -329,7 +329,7 @@ type DbReplicatorStats struct {
 	PushRejectedCount        *SgwIntStat `json:"sgr_push_rejected_count"`
 	PushDeltaSentCount       *SgwIntStat `json:"sgr_deltas_sent"`
 	DocsCheckedSent          *SgwIntStat `json:"sgr_docs_checked_sent" `
-	NumConnectAttemptsPull   *SgwIntStat `json:"sgr_num_connects_pull"`
+	NumConnectAttemptsPull   *SgwIntStat `json:"sgr_num_connect_attempts_pull"`
 	NumReconnectsAbortedPull *SgwIntStat `json:"sgr_num_reconnects_aborted_pull"`
 
 	NumAttachmentBytesPulled *SgwIntStat `json:"sgr_num_attachment_bytes_pulled"`
@@ -340,7 +340,7 @@ type DbReplicatorStats struct {
 	DeltaReceivedCount       *SgwIntStat `json:"sgr_deltas_recv"`
 	DeltaRequestedCount      *SgwIntStat `json:"sgr_deltas_requested"`
 	DocsCheckedReceived      *SgwIntStat `json:"sgr_docs_checked_recv"`
-	NumConnectAttemptsPush   *SgwIntStat `json:"sgr_num_connects_push"`
+	NumConnectAttemptsPush   *SgwIntStat `json:"sgr_num_connect_attempts_push"`
 	NumReconnectsAbortedPush *SgwIntStat `json:"sgr_num_reconnects_aborted_push"`
 
 	ConflictResolvedLocalCount  *SgwIntStat `json:"sgr_conflict_resolved_local_count"`
