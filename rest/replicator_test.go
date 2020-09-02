@@ -3040,7 +3040,7 @@ func waitAndRequireCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...
 func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
 	for i := 0; i <= 20; i++ {
 		if i == 20 {
-			require.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
 		}
 		if fn() {
 			break
