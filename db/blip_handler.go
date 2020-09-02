@@ -862,7 +862,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 }
 
 // sendProveAttachment asks the peer to prove they have the attachment, without actually sending it.
-// This is to prevent clients from creating a doc with a digest for an attachment they don't otherwise can't access to download it.
+// This is to prevent clients from creating a doc with a digest for an attachment they otherwise can't access, in order to download it.
 func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, digest string, knownData []byte) error {
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 	nonce, proof := GenerateProofOfAttachment(knownData)
