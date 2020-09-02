@@ -603,10 +603,11 @@ func TestReplicationStatusActions(t *testing.T) {
 	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=reset", "")
 	assertStatus(t, response, http.StatusOK)
 
-	time.Sleep(1 * time.Second)
-	status := rt1.GetReplicationStatus(replicationID)
-	assert.Equal(t, db.ReplicationStateStopped, status.Status)
-	assert.Equal(t, "", status.LastSeqPull)
+	resetErr := rt1.WaitForCondition(func() bool {
+		status := rt1.GetReplicationStatus(replicationID)
+		return status.Status == db.ReplicationStateStopped && status.LastSeqPull == ""
+	})
+	assert.NoError(t, resetErr)
 
 	// Restart the replication
 	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
