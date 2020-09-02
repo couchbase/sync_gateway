@@ -825,8 +825,8 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
 var NoBLIPHandlerError = fmt.Errorf("404 - No handler for BLIP request")
 
+// sendGetAttachment requests the full attachment from the peer.
 func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
-	// If I don't have the attachment, I will request it from the client:
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 	outrq := blip.NewRequest()
 	outrq.Properties = map[string]string{BlipProfile: MessageGetAttachment, GetAttachmentDigest: digest}
@@ -861,11 +861,9 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	return respBody, nil
 }
 
+// sendProveAttachment asks the peer to prove they have the attachment, without actually sending it.
+// This is to prevent clients from creating a doc with a digest for an attachment they don't otherwise can't access to download it.
 func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, digest string, knownData []byte) error {
-	// If I have the attachment already I don't need the client to send it, but for
-	// security purposes I do need the client to _prove_ it has the data, otherwise if
-	// it knew the digest it could acquire the data by uploading a document with the
-	// claimed attachment, then downloading it.
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 	nonce, proof := GenerateProofOfAttachment(knownData)
 	outrq := blip.NewRequest()
@@ -905,25 +903,28 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string) error {
 	return bh.db.ForEachStubAttachment(body, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
-
-			haveAttachment := knownData != nil
-
-			if !haveAttachment {
+			// request attachment if we don't have it
+			if knownData == nil {
 				return bh.sendGetAttachment(sender, docID, name, digest, meta)
 			}
 
+			// ask client to prove they have the attachemnt without sending it
 			proveAttErr := bh.sendProveAttachment(sender, docID, name, digest, knownData)
-			if proveAttErr == NoBLIPHandlerError {
-				// fall back to getAttachment (we're probably replicating with a pre-Hydrogen SG, which doesn't support proveAttachment)
-				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
-				if getAttErr != nil {
-					return nil, getAttErr
-				}
-			} else if proveAttErr != nil {
-				return nil, proveAttErr
+			if proveAttErr == nil {
+				return nil, nil
 			}
 
-			return nil, nil
+			// peer doesn't support proveAttachment... Fall back to using getAttachment as proof.
+			if proveAttErr == NoBLIPHandlerError {
+				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer doesn't support proveAttachment, falling back to getAttachment for proof in doc %s (digest %s)", base.UD(docID), digest)
+				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
+				if getAttErr == nil {
+					return nil, nil
+				}
+				return nil, getAttErr
+			}
+
+			return nil, proveAttErr
 		})
 }
 
