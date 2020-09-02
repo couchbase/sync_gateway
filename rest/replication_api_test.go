@@ -1266,7 +1266,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 // and then restarts with a matching SGR2 replication, which should migrate the SGR1 checkpoint,
 // and also prevent the SGR1 replication from starting up.
 func TestSGR1CheckpointMigrationPull(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCluster, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCluster, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame)()
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
@@ -1413,7 +1413,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 // and then restarts with a matching SGR2 replication, which should migrate the SGR1 checkpoint,
 // and also prevent the SGR1 replication from starting up.
 func TestSGR1CheckpointMigrationPush(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCluster, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCluster, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg, base.KeyWebSocket, base.KeyWebSocketFrame)()
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
