@@ -392,6 +392,10 @@ func (r *RetryTimeoutError) Error() string {
 }
 
 func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (error, interface{}) {
+	return RetryLoopCtx(description, worker, sleeper, context.Background())
+}
+
+func RetryLoopCtx(description string, worker RetryWorker, sleeper RetrySleeper, ctx context.Context) (error, interface{}) {
 
 	numAttempts := 1
 
@@ -413,7 +417,11 @@ func RetryLoop(description string, worker RetryWorker, sleeper RetrySleeper) (er
 		}
 		Debugf(KeyAll, "RetryLoop retrying %v after %v ms.", description, sleepMs)
 
-		<-time.After(time.Millisecond * time.Duration(sleepMs))
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("Retry loop for %v closed based on context", description), nil
+		case <-time.After(time.Millisecond * time.Duration(sleepMs)):
+		}
 
 		numAttempts += 1
 

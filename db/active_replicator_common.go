@@ -35,6 +35,7 @@ type activeReplicatorCommon struct {
 	lock                  sync.RWMutex
 	ctx                   context.Context
 	ctxCancel             context.CancelFunc
+	reconnectActive       base.AtomicBool // Tracks whether reconnect goroutine is active
 }
 
 func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
@@ -60,6 +61,9 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 // reconnect synchronously calls the given _connectFn until successful, or times out trying. Retry loop can be stopped by cancelling a.ctx
 func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 	base.DebugfCtx(a.ctx, base.KeyReplicate, "starting reconnector")
+	defer func() {
+		a.reconnectActive.Set(false)
+	}()
 
 	initialReconnectInterval := defaultInitialReconnectInterval
 	if a.config.InitialReconnectInterval != 0 {
@@ -106,6 +110,7 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 		// set lastError, but don't set an error state inside the reconnect loop
 		err = _connectFn()
 		a.setLastError(err)
+		a._publishStatus()
 
 		a.lock.Unlock()
 
@@ -115,7 +120,7 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 		return err != nil, err, nil
 	}
 
-	err, _ := base.RetryLoop("replicator reconnect", retryFunc, sleeperFunc)
+	err, _ := base.RetryLoopCtx("replicator reconnect", retryFunc, sleeperFunc, ctx)
 	// release timer associated with context deadline
 	if deadlineCancel != nil {
 		deadlineCancel()
@@ -134,6 +139,12 @@ func (a *activeReplicatorCommon) Stop() error {
 	a.setState(ReplicationStateStopped)
 	a._publishStatus()
 	a.lock.Unlock()
+
+	// Wait for up to 10s for reconnect goroutine to exit
+	teardownStart := time.Now()
+	for a.reconnectActive.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	return err
 }
 
@@ -195,7 +206,9 @@ func (a *activeReplicatorCommon) setLastError(err error) {
 func (a *activeReplicatorCommon) setState(state string) {
 	a.stateErrorLock.Lock()
 	a.state = state
-	a.lastError = nil
+	if state == ReplicationStateRunning {
+		a.lastError = nil
+	}
 	a.stateErrorLock.Unlock()
 }
 

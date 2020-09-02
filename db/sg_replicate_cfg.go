@@ -29,6 +29,7 @@ const (
 	ReplicationStateReconnecting = "reconnecting"
 	ReplicationStateResetting    = "resetting"
 	ReplicationStateError        = "error"
+	ReplicationStateStarting     = "starting"
 )
 
 // Replication config validation error messages
