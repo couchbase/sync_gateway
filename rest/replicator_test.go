@@ -219,6 +219,117 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
+// TestActiveReplicatorPullAttachments:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a document with an attachment on rt2 which can be pulled by the replicator running in rt1.
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
+//   - Creates a second doc which references the same attachment.
+func TestActiveReplicatorPullAttachments(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
+
+	docID := t.Name() + "rt2doc1"
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:    200,
+		Continuous:          true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+	})
+	defer func() { assert.NoError(t, ar.Stop()) }()
+
+	assert.Equal(t, int64(0), ar.Pull.GetStats().GetAttachment.Value())
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start())
+
+	// wait for the document originally written to rt2 to arrive at rt1
+	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, revID, doc.SyncData.CurrentRev)
+	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
+
+	docID = t.Name() + "rt2doc2"
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","doc_num":2,`+attachment+`,"channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID = respRevID(t, resp)
+
+	// wait for the new document written to rt2 to arrive at rt1
+	changesResults, err = rt1.WaitForChanges(2, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 2)
+	assert.Equal(t, docID, changesResults.Results[1].ID)
+
+	doc2, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
+	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	// Because we're targeting a Hydrogen node that supports proveAttachment, we only end up sending the attachment once.
+	// If targeting a pre-hydrogen node, GetAttachment would be 2.
+	assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
+	assert.Equal(t, int64(1), ar.Pull.GetStats().ProveAttachment.Value())
+}
+
 // TestActiveReplicatorPullFromCheckpoint:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates enough documents on rt2 which can be pulled by a replicator running in rt1 to start setting checkpoints.
@@ -728,6 +839,115 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 
 	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
+}
+
+// TestActiveReplicatorPushAttachments:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a document with an attachment on rt1 which can be pushed by the replicator running in rt1.
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for pull to start pushing changes to rt2.
+//   - Creates a second doc which references the same attachment.
+func TestActiveReplicatorPushAttachments(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+
+	// Active
+	tb1 := base.GetTestBucket(t)
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb1,
+	})
+	defer rt1.Close()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			Users: map[string]*db.PrincipalConfig{
+				"alice": {
+					Password:         base.StringPtr("pass"),
+					ExplicitChannels: base.SetOf("alice"),
+				},
+			},
+		},
+		noAdminParty: true,
+	})
+	defer rt2.Close()
+
+	attachment := `"_attachments":{"hi.txt":{"data":"aGk=","content_type":"text/plain"}}`
+
+	docID := t.Name() + "rt1doc1"
+	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	// Add basic auth creds to target db URL
+	passiveDBURL.User = url.UserPassword("alice", "pass")
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		ChangesBatchSize:    200,
+		Continuous:          true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+	})
+	defer func() { assert.NoError(t, ar.Stop()) }()
+
+	assert.Equal(t, int64(0), ar.Push.GetStats().HandleGetAttachment.Value())
+
+	// Start the replicator (implicit connect)
+	assert.NoError(t, ar.Start())
+
+	// wait for the document originally written to rt1 to arrive at rt2
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+
+	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, revID, doc.SyncData.CurrentRev)
+	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
+
+	docID = t.Name() + "rt1doc2"
+	resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","doc_num":2,`+attachment+`,"channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID = respRevID(t, resp)
+
+	// wait for the new document written to rt1 to arrive at rt2
+	changesResults, err = rt2.WaitForChanges(2, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 2)
+	assert.Equal(t, docID, changesResults.Results[1].ID)
+
+	doc2, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+
+	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
+	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	// Because we're targeting a Hydrogen node that supports proveAttachment, we only end up sending the attachment once.
+	// If targeting a pre-hydrogen node, HandleGetAttachment would be 2.
+	assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
+	assert.Equal(t, int64(1), ar.Push.GetStats().HandleProveAttachment.Value())
 }
 
 // TestActiveReplicatorPushFromCheckpoint:
