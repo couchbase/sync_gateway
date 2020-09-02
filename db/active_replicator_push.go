@@ -169,9 +169,11 @@ func (apr *ActivePushReplicator) _initCheckpointer() error {
 // initialStatus.
 func (apr *ActivePushReplicator) GetStatus() *ReplicationStatus {
 	var lastSeqPushed string
+	apr.lock.RLock()
 	if apr.Checkpointer != nil {
 		lastSeqPushed = apr.Checkpointer.calculateSafeProcessedSeq()
 	}
+	apr.lock.RUnlock()
 	status := apr.getPushStatus(lastSeqPushed)
 	return status
 }
@@ -200,7 +202,15 @@ func (apr *ActivePushReplicator) reset() error {
 	if apr.state != ReplicationStateStopped {
 		return fmt.Errorf("reset invoked for replication %s when the replication was not stopped", apr.config.ID)
 	}
-	return resetLocalCheckpoint(apr.config.ActiveDB, apr.CheckpointID)
+	if err := resetLocalCheckpoint(apr.config.ActiveDB, apr.CheckpointID); err != nil {
+		return err
+	}
+
+	apr.lock.Lock()
+	apr.Checkpointer = nil
+	apr.lock.Unlock()
+
+	return nil
 }
 
 // registerCheckpointerCallbacks registers appropriate callback functions for checkpointing.

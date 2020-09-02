@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -526,6 +527,104 @@ func TestPullReplicationAPI(t *testing.T) {
 	// Validate doc2 contents
 	doc2Body := rt1.getDoc(docID2)
 	assert.Equal(t, "rt2", doc2Body["source"])
+}
+
+// TestPullReplicationAPI
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates a continuous pull replication on rt1 via the REST API
+//   - Validates stop/start/reset actions on the replicationStatus endpoint
+func TestReplicationStatusActions(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Create doc1 on rt2
+	docID1 := t.Name() + "rt2doc"
+	_ = rt2.putDoc(docID1, `{"source":"rt2","channels":["alice"]}`)
+
+	// Create pull replication, verify running
+	replicationID := t.Name()
+	rt1.createReplication(replicationID, remoteURLString, db.ActiveReplicatorTypePull, nil, true)
+	rt1.assertReplicationState(replicationID, db.ReplicationStateRunning)
+
+	// Start goroutine to continuously poll for status of replication on rt1 to detect race conditions
+	doneChan := make(chan struct{})
+	var statusWg sync.WaitGroup
+	statusWg.Add(1)
+	go func() {
+		for {
+			select {
+			case <-doneChan:
+				statusWg.Done()
+				return
+			default:
+			}
+			_ = rt1.GetReplicationStatus(replicationID)
+		}
+	}()
+
+	// wait for document originally written to rt2 to arrive at rt1
+	changesResults := rt1.RequireWaitChanges(1, "0")
+	changesResults.requireDocIDs(t, []string{docID1})
+
+	// Validate doc1 contents
+	doc1Body := rt1.getDoc(docID1)
+	assert.Equal(t, "rt2", doc1Body["source"])
+
+	// Create doc2 on rt2
+	docID2 := t.Name() + "rt2doc2"
+	_ = rt2.putDoc(docID2, `{"source":"rt2","channels":["alice"]}`)
+
+	// wait for new document to arrive at rt1
+	changesResults = rt1.RequireWaitChanges(1, changesResults.Last_Seq.(string))
+	changesResults.requireDocIDs(t, []string{docID2})
+
+	// Validate doc2 contents
+	doc2Body := rt1.getDoc(docID2)
+	assert.Equal(t, "rt2", doc2Body["source"])
+
+	// Stop replication
+	response := rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
+	assertStatus(t, response, http.StatusOK)
+
+	// Wait for stopped.  Non-instant as config change needs to arrive over DCP
+	stateError := rt1.WaitForCondition(func() bool {
+		status := rt1.GetReplicationStatus(replicationID)
+		return status.Status == db.ReplicationStateStopped
+	})
+	assert.NoError(t, stateError)
+
+	// Reset replication
+	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=reset", "")
+	assertStatus(t, response, http.StatusOK)
+
+	resetErr := rt1.WaitForCondition(func() bool {
+		status := rt1.GetReplicationStatus(replicationID)
+		return status.Status == db.ReplicationStateStopped && status.LastSeqPull == ""
+	})
+	assert.NoError(t, resetErr)
+
+	// Restart the replication
+	response = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+	assertStatus(t, response, http.StatusOK)
+
+	// Verify replication has restarted from zero. Since docs have already been replicated,
+	// expect no docs read, two docs checked.
+	statError := rt1.WaitForCondition(func() bool {
+		status := rt1.GetReplicationStatus(replicationID)
+		return status.DocsCheckedPull == 2 && status.DocsRead == 0
+	})
+	assert.NoError(t, statError)
+
+	// Terminate status goroutine
+	close(doneChan)
+	statusWg.Wait()
+
 }
 
 // TestReplicationRebalancePull

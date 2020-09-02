@@ -714,6 +714,29 @@ func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
 	return d.DbReplicatorStats[replicationID]
 }
 
+// Reset replication stats to zero
+func (dbr *DbReplicatorStats) Reset() {
+	dbr.NumAttachmentBytesPushed.Set(0)
+	dbr.NumAttachmentPushed.Set(0)
+	dbr.NumDocPushed.Set(0)
+	dbr.NumDocsFailedToPush.Set(0)
+	dbr.PushConflictCount.Set(0)
+	dbr.PushRejectedCount.Set(0)
+	dbr.PushDeltaSentCount.Set(0)
+	dbr.DocsCheckedSent.Set(0)
+	dbr.NumAttachmentBytesPulled.Set(0)
+	dbr.NumAttachmentsPulled.Set(0)
+	dbr.PulledCount.Set(0)
+	dbr.PurgedCount.Set(0)
+	dbr.FailedToPullCount.Set(0)
+	dbr.DeltaReceivedCount.Set(0)
+	dbr.DeltaRequestedCount.Set(0)
+	dbr.DocsCheckedReceived.Set(0)
+	dbr.ConflictResolvedLocalCount.Set(0)
+	dbr.ConflictResolvedRemoteCount.Set(0)
+	dbr.ConflictResolvedMergedCount.Set(0)
+}
+
 func (d *DbStats) Security() *SecurityStats {
 	return d.SecurityStats
 }

@@ -123,6 +123,10 @@ func (ar *ActiveReplicator) Reset() error {
 		return pullErr
 	}
 
+	if ar.config.ReplicationStatsMap != nil {
+		ar.config.ReplicationStatsMap.Reset()
+	}
+
 	return nil
 }
 
@@ -170,16 +174,10 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 
 	if ar.Pull != nil {
 		status.PullReplicationStatus = ar.Pull.GetStatus().PullReplicationStatus
-		if ar.Pull.Checkpointer != nil {
-			status.LastSeqPull = ar.Pull.Checkpointer.calculateSafeProcessedSeq()
-		}
 	}
 
 	if ar.Push != nil {
 		status.PushReplicationStatus = ar.Push.GetStatus().PushReplicationStatus
-		if ar.Push.Checkpointer != nil {
-			status.LastSeqPush = ar.Push.Checkpointer.calculateSafeProcessedSeq()
-		}
 	}
 
 	return status
