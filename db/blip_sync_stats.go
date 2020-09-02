@@ -1,11 +1,11 @@
 package db
 
 import (
-	"expvar"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
+// Note: To have any of these appear in expvars they must be connected to a stat inside of stats.go - This is done via
+// the BlipSyncStatsForCBL, BlipSyncStatsForSGRPush and BlipSyncStatsForSGRPull functions.
 type BlipSyncStats struct {
 	DeltaEnabledPullReplicationCount *base.SgwIntStat // global
 	HandleRevCount                   *base.SgwIntStat // handleRev
@@ -123,17 +123,6 @@ func BlipSyncStatsForCBL(dbStats *base.DbStats) *BlipSyncStats {
 	return blipStats
 }
 
-func initReplicationStat(statMap *expvar.Map, key string) (stat *expvar.Int) {
-	expvarVar := statMap.Get(key)
-	if expvarVar == nil {
-		stat = base.ExpvarIntVal(0)
-		statMap.Set(key, stat)
-	} else {
-		stat = expvarVar.(*expvar.Int)
-	}
-	return stat
-}
-
 func BlipSyncStatsForSGRPush(replicationStats *base.DbReplicatorStats) *BlipSyncStats {
 	blipStats := NewBlipSyncStats()
 
@@ -146,6 +135,9 @@ func BlipSyncStatsForSGRPush(replicationStats *base.DbReplicatorStats) *BlipSync
 	blipStats.SendRevErrorRejectedCount = replicationStats.PushRejectedCount
 	blipStats.SendRevDeltaSentCount = replicationStats.PushDeltaSentCount
 	blipStats.SendChangesCount = replicationStats.DocsCheckedSent
+	blipStats.NumConnectAttempts = replicationStats.NumConnectAttemptsPush
+	blipStats.NumReconnectsAborted = replicationStats.NumReconnectsAbortedPush
+
 	return blipStats
 }
 
@@ -160,6 +152,8 @@ func BlipSyncStatsForSGRPull(replicationStats *base.DbReplicatorStats) *BlipSync
 	blipStats.HandleRevDeltaRecvCount = replicationStats.DeltaReceivedCount
 	blipStats.HandleChangesDeltaRequestedCount = replicationStats.DeltaRequestedCount
 	blipStats.HandleChangesCount = replicationStats.DocsCheckedReceived
+	blipStats.NumConnectAttempts = replicationStats.NumConnectAttemptsPull
+	blipStats.NumReconnectsAborted = replicationStats.NumReconnectsAbortedPull
 
 	return blipStats
 }
