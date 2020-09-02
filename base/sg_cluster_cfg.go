@@ -20,6 +20,8 @@ type CfgSG struct {
 	lock          sync.Mutex                        // mutex for subscriptions
 }
 
+type CfgEventNotifyFunc func(docID string, cas uint64, err error)
+
 var ErrCfgCasError = &cbgt.CfgCASError{}
 
 // NewCfgSG returns a Cfg implementation that reads/writes its entries

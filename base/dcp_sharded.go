@@ -19,7 +19,7 @@ const DefaultImportPartitions = 16
 // CbgtContext holds the two handles we have for CBGT-related functionality.
 type CbgtContext struct {
 	Manager           *cbgt.Manager            // Manager is main entry point for initialization, registering indexes
-	Cfg               *CfgSG                   // Cfg manages storage of the current pindex set and node assignment
+	Cfg               cbgt.Cfg                 // Cfg manages storage of the current pindex set and node assignment
 	heartbeater       Heartbeater              // Heartbeater used for failed node detection
 	heartbeatListener *importHeartbeatListener // Listener subscribed to failed node alerts from heartbeater
 	loggingCtx        context.Context          // Context for cbgt logging
@@ -27,7 +27,7 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bucket *CouchbaseBucketGoCB, numPartitions uint16, cfg *CfgSG) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bucket *CouchbaseBucketGoCB, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
 
 	cbgtContext, err := initCBGTManager(bucket, bucket.Spec, cfg, uuid)
 	if err != nil {
@@ -202,7 +202,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG *CfgSG, dbUUID string) (*CbgtContext, error) {
+func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string) (*CbgtContext, error) {
 
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove

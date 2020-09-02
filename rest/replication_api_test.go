@@ -635,6 +635,10 @@ func TestReplicationStatusActions(t *testing.T) {
 //   - Creates more documents, validates they are replicated
 func TestReplicationRebalancePull(t *testing.T) {
 
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only (replication rebalance)")
+	}
+
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
@@ -722,6 +726,10 @@ func TestReplicationRebalancePull(t *testing.T) {
 //   - adds another active node
 //   - Creates more documents, validates they are replicated
 func TestReplicationRebalancePush(t *testing.T) {
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only (replication rebalance)")
+	}
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")

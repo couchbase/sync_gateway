@@ -48,21 +48,22 @@ func init() {
 //    - Propagating DCP changes down to appropriate channel caches
 type changeCache struct {
 	context            *DatabaseContext
-	logsDisabled       bool                 // If true, ignore incoming tap changes
-	nextSequence       uint64               // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
-	initialSequence    uint64               // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
-	receivedSeqs       map[uint64]struct{}  // Set of all sequences received
-	pendingLogs        LogPriorityQueue     // Out-of-sequence entries waiting to be cached
-	notifyChange       func(base.Set)       // Client callback that notifies of channel changes
-	stopped            bool                 // Set by the Stop method
-	skippedSeqs        *SkippedSequenceList // Skipped sequences still pending on the TAP feed
-	lock               sync.RWMutex         // Coordinates access to struct fields
-	options            CacheOptions         // Cache config
-	terminator         chan bool            // Signal termination of background goroutines
-	initTime           time.Time            // Cache init time - used for latency calculations
-	channelCache       ChannelCache         // Underlying channel cache
-	lastAddPendingTime int64                // The most recent time _addPendingLogs was run, as epoch time
-	internalStats      changeCacheStats     // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+	logsDisabled       bool                    // If true, ignore incoming tap changes
+	nextSequence       uint64                  // Next consecutive sequence number to add.  State variable for sequence buffering tracking.  Should use getNextSequence() rather than accessing directly.
+	initialSequence    uint64                  // DB's current sequence at startup time. Should use getInitialSequence() rather than accessing directly.
+	receivedSeqs       map[uint64]struct{}     // Set of all sequences received
+	pendingLogs        LogPriorityQueue        // Out-of-sequence entries waiting to be cached
+	notifyChange       func(base.Set)          // Client callback that notifies of channel changes
+	stopped            bool                    // Set by the Stop method
+	skippedSeqs        *SkippedSequenceList    // Skipped sequences still pending on the TAP feed
+	lock               sync.RWMutex            // Coordinates access to struct fields
+	options            CacheOptions            // Cache config
+	terminator         chan bool               // Signal termination of background goroutines
+	initTime           time.Time               // Cache init time - used for latency calculations
+	channelCache       ChannelCache            // Underlying channel cache
+	lastAddPendingTime int64                   // The most recent time _addPendingLogs was run, as epoch time
+	internalStats      changeCacheStats        // Running stats for the change cache.  Only applied to expvars on a call to changeCache.updateStats
+	cfgEventCallback   base.CfgEventNotifyFunc // Callback for Cfg updates recieved over the caching feed
 }
 
 type changeCacheStats struct {
@@ -397,8 +398,8 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 	}
 
 	if strings.HasPrefix(docID, base.SGCfgPrefix) {
-		if c.context.CfgSG != nil {
-			c.context.CfgSG.FireEvent(docID, event.Cas, nil)
+		if c.cfgEventCallback != nil {
+			c.cfgEventCallback(docID, event.Cas, nil)
 		}
 	}
 

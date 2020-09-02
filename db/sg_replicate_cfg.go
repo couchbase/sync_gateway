@@ -379,7 +379,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 
 }
 
-func NewSGReplicateManager(dbContext *DatabaseContext, cfg *base.CfgSG) (*sgReplicateManager, error) {
+func NewSGReplicateManager(dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplicateManager, error) {
 	if cfg == nil {
 		return nil, errors.New("Cfg must be provided for SGReplicateManager")
 	}
