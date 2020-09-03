@@ -115,22 +115,23 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		ReplicationStatsMap:   base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
 	})
 
-	assert.Equal(t, int64(0), base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count")))
+	pingCountStart := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count"))
+	pingGoroutinesStart := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
 
 	assert.NoError(t, ar.Start())
 
 	time.Sleep(time.Millisecond * 50)
 
 	pingGoroutines := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
-	assert.Equal(t, int64(1), pingGoroutines)
+	assert.Equal(t, 1+pingGoroutinesStart, pingGoroutines, "Expected ping sender goroutine to be 1 more than start")
 
 	pingCount := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count"))
-	assert.Truef(t, pingCount > 0, "Expected ping count to be >0")
+	assert.Truef(t, pingCount > pingCountStart, "Expected ping count to be > pingCountStart")
 
 	assert.NoError(t, ar.Stop())
 
 	pingGoroutines = base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("goroutines_sender_ping"))
-	assert.Equal(t, int64(0), pingGoroutines)
+	assert.Equal(t, pingGoroutinesStart, pingGoroutines, "Expected ping sender goroutine to return to start count after stop")
 }
 
 // TestActiveReplicatorPullBasic:

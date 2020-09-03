@@ -36,6 +36,7 @@ type activeReplicatorCommon struct {
 	ctx                   context.Context
 	ctxCancel             context.CancelFunc
 	reconnectActive       base.AtomicBool // Tracks whether reconnect goroutine is active
+	replicatorConnectFn   func() error    // the function called inside reconnectLoop.
 }
 
 func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
@@ -58,8 +59,8 @@ func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveR
 	}
 }
 
-// reconnect synchronously calls the given _connectFn until successful, or times out trying. Retry loop can be stopped by cancelling a.ctx
-func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
+// reconnectLoop synchronously calls replicatorConnectFn until successful, or times out trying. Retry loop can be stopped by cancelling ctx
+func (a *activeReplicatorCommon) reconnectLoop() {
 	base.DebugfCtx(a.ctx, base.KeyReplicate, "starting reconnector")
 	defer func() {
 		a.reconnectActive.Set(false)
@@ -108,7 +109,7 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 		}
 
 		// set lastError, but don't set an error state inside the reconnect loop
-		err = _connectFn()
+		err = a.replicatorConnectFn()
 		a.setLastError(err)
 		a._publishStatus()
 
@@ -134,8 +135,8 @@ func (a *activeReplicatorCommon) reconnect(_connectFn func() error) {
 // Stop runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
 func (a *activeReplicatorCommon) Stop() error {
 	a.lock.Lock()
-	err := a._disconnect()
 	a._stop()
+	err := a._disconnect()
 	a.setState(ReplicationStateStopped)
 	a._publishStatus()
 	a.lock.Unlock()

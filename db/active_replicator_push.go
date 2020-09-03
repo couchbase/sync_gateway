@@ -17,10 +17,11 @@ type ActivePushReplicator struct {
 }
 
 func NewPushReplicator(config *ActiveReplicatorConfig) *ActivePushReplicator {
-	arc := newActiveReplicatorCommon(config, ActiveReplicatorTypePush)
-	return &ActivePushReplicator{
-		activeReplicatorCommon: arc,
+	apr := ActivePushReplicator{
+		activeReplicatorCommon: newActiveReplicatorCommon(config, ActiveReplicatorTypePush),
 	}
+	apr.replicatorConnectFn = apr._connect
+	return &apr
 }
 
 func (apr *ActivePushReplicator) Start() error {
@@ -44,7 +45,7 @@ func (apr *ActivePushReplicator) Start() error {
 		_ = apr.setError(err)
 		base.WarnfCtx(apr.ctx, "Couldn't connect. Attempting to reconnect in background: %v", err)
 		apr.reconnectActive.Set(true)
-		go apr.reconnect(apr._connect)
+		go apr.reconnectLoop()
 	}
 	apr._publishStatus()
 	return err
@@ -127,6 +128,8 @@ func (apr *ActivePushReplicator) Complete() {
 	if err != nil {
 		base.InfofCtx(apr.ctx, base.KeyReplicate, "Timeout draining replication %s - stopping: %v", apr.config.ID, err)
 	}
+
+	apr._stop()
 
 	stopErr := apr._disconnect()
 	if stopErr != nil {
