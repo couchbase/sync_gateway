@@ -1839,7 +1839,7 @@ func TestHandleDBConfig(t *testing.T) {
 	assert.Equal(t, "Online", respBody["state"].(string))
 
 	// Put database config
-	resource = fmt.Sprintf("/%v/_config", bucket)
+	resource = fmt.Sprintf("/%v/_config?redact=false", bucket)
 
 	bucketConfig := BucketConfig{
 		Server:     &server,
