@@ -320,14 +320,15 @@ func (r *ReplicationConfig) Redacted() *ReplicationConfig {
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
 type sgReplicateManager struct {
-	cfg                   cbgt.Cfg                      // Key-value store implementation
-	loggingCtx            context.Context               // logging context for manager operations
-	heartbeatListener     *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
-	localNodeUUID         string                        // nodeUUID for this SG node
-	activeReplicators     map[string]*ActiveReplicator  // currently assigned replications
-	activeReplicatorsLock sync.RWMutex                  // Mutex for activeReplications
-	terminator            chan struct{}
-	dbContext             *DatabaseContext
+	cfg                        cbgt.Cfg                      // Key-value store implementation
+	loggingCtx                 context.Context               // logging context for manager operations
+	heartbeatListener          *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
+	localNodeUUID              string                        // nodeUUID for this SG node
+	activeReplicators          map[string]*ActiveReplicator  // currently assigned replications
+	activeReplicatorsLock      sync.RWMutex                  // Mutex for activeReplications
+	clusterUpdateTerminator    chan struct{}                 // Terminator for cluster update retry
+	clusterSubscribeTerminator chan struct{}                 // Terminator for cluster change monitoring
+	dbContext                  *DatabaseContext
 }
 
 // alignState attempts to update the current replicator state to align with the provided targetState, if
@@ -387,9 +388,10 @@ func NewSGReplicateManager(dbContext *DatabaseContext, cfg *base.CfgSG) (*sgRepl
 		cfg: cfg,
 		loggingCtx: context.WithValue(context.Background(), base.LogContextKey{},
 			base.LogContext{CorrelationID: sgrClusterMgrContextID + dbContext.Name}),
-		terminator:        make(chan struct{}),
-		dbContext:         dbContext,
-		activeReplicators: make(map[string]*ActiveReplicator),
+		clusterUpdateTerminator:    make(chan struct{}),
+		clusterSubscribeTerminator: make(chan struct{}),
+		dbContext:                  dbContext,
+		activeReplicators:          make(map[string]*ActiveReplicator),
 	}, nil
 
 }
@@ -544,8 +546,14 @@ func (m *sgReplicateManager) replicationComplete(replicationID string) {
 }
 
 func (m *sgReplicateManager) Stop() {
+
+	// Close subscribe terminator first to stop subscribing/responding to cluster config changes prior to
+	// stopping replications and removing node
+	close(m.clusterSubscribeTerminator)
+
 	// Stop active replications
 	m.activeReplicatorsLock.Lock()
+
 	for _, repl := range m.activeReplicators {
 		err := repl.Stop()
 		if err != nil {
@@ -556,7 +564,7 @@ func (m *sgReplicateManager) Stop() {
 	if err := m.RemoveNode(m.localNodeUUID); err != nil {
 		base.WarnfCtx(m.loggingCtx, "Attempt to remove node %v from sg-replicate cfg got error: %v", m.localNodeUUID, err)
 	}
-	close(m.terminator)
+	close(m.clusterUpdateTerminator)
 }
 
 // RefreshReplicationCfg is called when the cfg changes.  Checks whether replications
@@ -643,12 +651,15 @@ func (m *sgReplicateManager) SubscribeCfgChanges() error {
 		defer base.FatalPanicHandler()
 		for {
 			select {
-			case <-cfgEvents:
+			case _, ok := <-cfgEvents:
+				if !ok {
+					return
+				}
 				err := m.RefreshReplicationCfg()
 				if err != nil {
 					base.Warnf("Error while updating replications based on latest cfg: %v", err)
 				}
-			case <-m.terminator:
+			case <-m.clusterSubscribeTerminator:
 				return
 			}
 		}
@@ -682,7 +693,7 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
 	for i := 1; i <= maxSGRClusterCasRetries; i++ {
 		select {
-		case <-m.terminator:
+		case <-m.clusterUpdateTerminator:
 			base.DebugfCtx(m.loggingCtx, base.KeyReplicate, "manager terminated, bailing out of update retry loop")
 			return nil
 		default:
