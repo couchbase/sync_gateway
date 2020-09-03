@@ -2136,3 +2136,42 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
 }
+
+func TestConfigRedaction(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{Users: map[string]*db.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}})
+	defer rt.Close()
+
+	// Test default db config redaction
+	var unmarshaledConfig DbConfig
+	response := rt.SendAdminRequest("GET", "/db/_config", "")
+	err := json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
+	require.NoError(t, err)
+
+	assert.Equal(t, "****", unmarshaledConfig.Password)
+	assert.Equal(t, "****", *unmarshaledConfig.Users["alice"].Password)
+
+	// Test default db config redaction when redaction disabled
+	response = rt.SendAdminRequest("GET", "/db/_config?redact=false", "")
+	err = json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
+	require.NoError(t, err)
+
+	assert.Equal(t, "password", unmarshaledConfig.Password)
+	assert.Equal(t, "password", *unmarshaledConfig.Users["alice"].Password)
+
+	// Test default server config redaction
+	var unmarshaledServerConfig ServerConfig
+	response = rt.SendAdminRequest("GET", "/_config", "")
+	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
+	require.NoError(t, err)
+
+	assert.Equal(t, "****", unmarshaledServerConfig.Databases["db"].Password)
+	assert.Equal(t, "****", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+
+	// Test default server config redaction when redaction disabled
+	response = rt.SendAdminRequest("GET", "/_config?redact=false", "")
+	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
+	require.NoError(t, err)
+
+	assert.Equal(t, "password", unmarshaledServerConfig.Databases["db"].Password)
+	assert.Equal(t, "password", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+}
