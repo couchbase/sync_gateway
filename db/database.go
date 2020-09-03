@@ -365,8 +365,8 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	importEnabled := dbContext.UseXattrs() && dbContext.autoImport
 	sgReplicateEnabled := dbContext.Options.SGReplicateOptions.Enabled
 
-	// Initialize node heartbeater if sg-replicate or import enabled on the node
-	if importEnabled || sgReplicateEnabled {
+	// Initialize node heartbeater in EE mode if sg-replicate or import enabled on the node
+	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
 		// Create heartbeater
 		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, base.SyncPrefix, dbContext.UUID)
 		if err != nil {

@@ -167,6 +167,68 @@ func TestValidateReplicationAPI(t *testing.T) {
 
 }
 
+func TestValidateReplicationAPI_CE(t *testing.T) {
+
+	var rt = NewRestTester(t, nil)
+	defer rt.Close()
+
+	tests := []struct {
+		name   string
+		ID     string
+		config db.ReplicationConfig
+	}{
+		{
+			name: "Non-default conflict resolver",
+			ID:   "non-default_resolver",
+			config: db.ReplicationConfig{
+				Remote:                 "http://remote:4985/db",
+				Direction:              "pull",
+				ConflictResolutionType: db.ConflictResolverLocalWins,
+			},
+		},
+		{
+			name: "Custom conflict resolver",
+			ID:   "custom_resolver",
+			config: db.ReplicationConfig{
+				Remote:                 "http://remote:4985/db",
+				Direction:              "pull",
+				ConflictResolutionType: db.ConflictResolverCustom,
+				ConflictResolutionFn:   `func(conflict) { return; }`,
+			},
+		},
+		{
+			name: "Delta sync enabled",
+			ID:   "delta_sync_enabled",
+			config: db.ReplicationConfig{
+				Remote:           "http://remote:4985/db",
+				Direction:        "pull",
+				DeltaSyncEnabled: true,
+			},
+		},
+		{
+			name: "Custom batch size",
+			ID:   "custom_batch_size",
+			config: db.ReplicationConfig{
+				Remote:    "http://remote:4985/db",
+				Direction: "pull",
+				BatchSize: 1,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_replication/%s", test.ID), marshalConfig(t, test.config))
+			if base.IsEnterpriseEdition() {
+				assertStatus(t, response, 201)
+			} else {
+				assertStatus(t, response, 400)
+			}
+		})
+	}
+
+}
+
 func TestReplicationStatusAPI(t *testing.T) {
 
 	var rt = NewRestTester(t, nil)
@@ -357,6 +419,9 @@ func marshalConfig(t *testing.T, config db.ReplicationConfig) string {
 // Upserts replications via config, validates using _replication response
 func TestReplicationsFromConfig(t *testing.T) {
 
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("Requires EE for some config properties")
+	}
 	replicationConfig1String := `{
 		"replication_id": "replication1",
 		"remote": "http://remote:4985/db",
@@ -1117,6 +1182,7 @@ func TestValidateReplication(t *testing.T) {
 		replicationConfig db.ReplicationConfig
 		fromConfig        bool
 		expectedErrorMsg  string
+		eeOnly            bool
 	}{
 		{
 			name: "replication config unsupported Cancel option",
@@ -1235,6 +1301,7 @@ func TestValidateReplication(t *testing.T) {
 				ConflictResolutionType: db.ConflictResolverCustom,
 			},
 			expectedErrorMsg: "Custom conflict resolution type has been set but no conflict resolution function has been defined",
+			eeOnly:           true,
 		},
 		{
 			name: "custom conflict resolution with func",
@@ -1246,6 +1313,7 @@ func TestValidateReplication(t *testing.T) {
 				ConflictResolutionType: db.ConflictResolverCustom,
 				ConflictResolutionFn:   "func(){}",
 			},
+			eeOnly: true,
 		},
 		{
 			name: "bad conflict resolution type",
@@ -1257,6 +1325,7 @@ func TestValidateReplication(t *testing.T) {
 				ConflictResolutionType: "random",
 				ConflictResolutionFn:   "func(){}",
 			},
+			eeOnly: true,
 			expectedErrorMsg: fmt.Sprintf(db.ConfigErrorInvalidConflictResolutionTypeFmt, db.ConflictResolverLocalWins,
 				db.ConflictResolverRemoteWins, db.ConflictResolverDefault, db.ConflictResolverCustom),
 		},
@@ -1264,6 +1333,9 @@ func TestValidateReplication(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.eeOnly && !base.IsEnterpriseEdition() {
+				return
+			}
 			err := tc.replicationConfig.ValidateReplication(tc.fromConfig)
 			if tc.expectedErrorMsg != "" {
 				expectedError := &base.HTTPError{
