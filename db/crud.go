@@ -838,7 +838,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		}
 
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
-		// be done before calling createRevID (the ID is based on the digest of the body.)
+		// be done before calling CreateRevID (the ID is based on the digest of the body.)
 		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, matchRev, nil)
 		if err != nil {
 			return nil, nil, nil, err
@@ -1035,16 +1035,31 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 		return "", nil, errors.New("Conflict resolution function is nil for resolveConflict")
 	}
 
+	// Local doc (localDoc) is persisted in the bucket unlike the incoming remote doc (remoteDoc).
+	// Internal properties of the localDoc can be accessed from syc metadata.
 	localRevID := localDoc.SyncData.CurrentRev
+	localAttachments := localDoc.SyncData.Attachments
+	localExpiry := localDoc.SyncData.Expiry
+
 	remoteRevID := remoteDoc.RevID
+	remoteAttachments := remoteDoc.DocAttachments
+
+	// TODO: Make doc expiry (_exp) available over replication.
+	// remoteExpiry := remoteDoc.Expiry
 
 	localDocBody := localDoc.GetDeepMutableBody()
 	localDocBody[BodyId] = localDoc.ID
 	localDocBody[BodyRev] = localRevID
+	localDocBody[BodyAttachments] = localAttachments
+	localDocBody[BodyExpiry] = localExpiry
+	localDocBody[BodyDeleted] = localDoc.IsDeleted()
 
 	remoteDocBody := remoteDoc.GetDeepMutableBody()
 	remoteDocBody[BodyId] = remoteDoc.ID
 	remoteDocBody[BodyRev] = remoteRevID
+	remoteDocBody[BodyAttachments] = remoteAttachments
+	// remoteDocBody[BodyExpiry] = remoteExpiry
+	remoteDocBody[BodyDeleted] = remoteDoc.Deleted
 
 	conflict := Conflict{
 		LocalDocument:  localDocBody,
@@ -1142,7 +1157,7 @@ func (db *Database) resolveDocMerge(localDoc *Document, remoteDoc *Document, con
 
 	remoteRevID := conflict.RemoteDocument.ExtractRev()
 	remoteGeneration, _ := ParseRevID(remoteRevID)
-	mergedRevID, err := createRevID(remoteGeneration+1, remoteRevID, mergedBody)
+	mergedRevID, err := CreateRevID(remoteGeneration+1, remoteRevID, mergedBody)
 	if err != nil {
 		return "", nil, err
 	}

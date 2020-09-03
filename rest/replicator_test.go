@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"log"
@@ -3295,4 +3296,337 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 	response, err := http.DefaultClient.Do(request)
 	require.NoError(t, err, "Error sending request")
 	require.Equal(t, http.StatusUpgradeRequired, response.StatusCode)
+}
+
+// TestActiveReplicatorPullConflictReadWriteIntlProps:
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Create the same document id with different content on rt1 and rt2
+//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
+//   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
+func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
+
+	createRevID := func(generation int, parentRevID string, body db.Body) string {
+		rev, err := db.CreateRevID(generation, parentRevID, body)
+		require.NoError(t, err, "Error creating revision")
+		return rev
+	}
+	docExpiry := time.Now().Local().Add(time.Hour * time.Duration(4)).Format(time.RFC3339)
+
+	// scenarios
+	conflictResolutionTests := []struct {
+		name               string
+		localRevisionBody  db.Body
+		localRevID         string
+		remoteRevisionBody db.Body
+		remoteRevID        string
+		conflictResolver   string
+		expectedLocalBody  db.Body
+		expectedLocalRevID string
+	}{
+		{
+			name: "mergeReadWriteIntlProps",
+			localRevisionBody: db.Body{
+				"source": "local",
+			},
+			localRevID: "1-a",
+			remoteRevisionBody: db.Body{
+				"source": "remote",
+			},
+			remoteRevID: "1-b",
+			conflictResolver: `function(conflict) {
+				var mergedDoc = new Object();
+				mergedDoc.source = "merged";
+				mergedDoc.remoteDocId = conflict.RemoteDocument._id;
+				mergedDoc.remoteRevId = conflict.RemoteDocument._rev;
+				mergedDoc.localDocId = conflict.LocalDocument._id;
+				mergedDoc.localRevId = conflict.LocalDocument._rev;
+				mergedDoc._id = "foo";
+				mergedDoc._rev = "2-c";
+				mergedDoc._exp = 100;
+				return mergedDoc;
+			}`,
+			expectedLocalBody: db.Body{
+				db.BodyId:     "foo",
+				db.BodyRev:    "2-c",
+				db.BodyExpiry: json.Number("100"),
+				"localDocId":  "mergeReadWriteIntlProps",
+				"localRevId":  "1-a",
+				"remoteDocId": "mergeReadWriteIntlProps",
+				"remoteRevId": "1-b",
+				"source":      "merged",
+			},
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				db.BodyId:     "foo",
+				db.BodyRev:    "2-c",
+				db.BodyExpiry: json.Number("100"),
+				"localDocId":  "mergeReadWriteIntlProps",
+				"localRevId":  "1-a",
+				"remoteDocId": "mergeReadWriteIntlProps",
+				"remoteRevId": "1-b",
+				"source":      "merged",
+			}),
+		},
+		{
+			name: "mergeReadWriteAttachments",
+			localRevisionBody: map[string]interface{}{
+				db.BodyAttachments: map[string]interface{}{
+					"A": map[string]interface{}{
+						"data": "QQo=",
+					}},
+				"source": "local",
+			},
+			localRevID: "1-a",
+			remoteRevisionBody: map[string]interface{}{
+				db.BodyAttachments: map[string]interface{}{
+					"B": map[string]interface{}{
+						"data": "Qgo=",
+					}},
+				"source": "remote",
+			},
+			remoteRevID: "1-b",
+			conflictResolver: `function(conflict) {
+				var mergedDoc = new Object();
+				mergedDoc.source = "merged";
+				var mergedAttachments = new Object();
+
+				dst = conflict.RemoteDocument._attachments;
+				for (var key in dst) {
+					mergedAttachments[key] = dst[key];
+				}
+				src = conflict.LocalDocument._attachments;
+				for (var key in src) {
+					mergedAttachments[key] = src[key];
+				}
+				mergedDoc._attachments = mergedAttachments;
+				return mergedDoc;
+			}`,
+			expectedLocalBody: map[string]interface{}{
+				db.BodyAttachments: map[string]interface{}{
+					"A": map[string]interface{}{
+						"digest": "sha1-fRV9fAAK4n2xRldcCM4w34k9OmQ=",
+						"length": json.Number("2"),
+						"revpos": json.Number("1"),
+						"stub":   true,
+					},
+					"B": map[string]interface{}{
+						"data":   "Qgo=",
+						"digest": "sha1-MYNq6qsi3ElVWpfttMdTiBQy4B0=",
+						"length": json.Number("2"),
+						"revpos": json.Number("1"),
+					},
+				},
+				"source": "merged",
+			},
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				db.BodyAttachments: map[string]interface{}{
+					"A": map[string]interface{}{
+						"digest": "sha1-fRV9fAAK4n2xRldcCM4w34k9OmQ=",
+						"length": 2,
+						"revpos": 1,
+						"stub":   true,
+					},
+					"B": map[string]interface{}{
+						"data":   "Qgo=",
+						"digest": "sha1-MYNq6qsi3ElVWpfttMdTiBQy4B0=",
+						"length": 2,
+						"revpos": 1,
+					},
+				},
+				"source": "merged",
+			}),
+		},
+		{
+			name: "mergeReadIntlPropsLocalExpiry",
+			localRevisionBody: db.Body{
+				"source":      "local",
+				db.BodyExpiry: docExpiry,
+			},
+			localRevID:         "1-a",
+			remoteRevisionBody: db.Body{"source": "remote"},
+			remoteRevID:        "1-b",
+			conflictResolver: `function(conflict) {
+				var mergedDoc = new Object();
+				mergedDoc.source = "merged";
+				mergedDoc.localDocExp = conflict.LocalDocument._exp;
+				return mergedDoc;
+			}`,
+			expectedLocalBody: db.Body{
+				"localDocExp": docExpiry,
+				"source":      "merged",
+			},
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				"localDocExp": docExpiry,
+				"source":      "merged",
+			}),
+		},
+		{
+			name: "mergeWriteIntlPropsExpiry",
+			localRevisionBody: db.Body{
+				"source":      "local",
+				db.BodyExpiry: docExpiry,
+			},
+			localRevID: "1-a",
+			remoteRevisionBody: db.Body{
+				"source": "remote",
+			},
+			remoteRevID: "1-b",
+			conflictResolver: fmt.Sprintf(`function(conflict) {
+				var mergedDoc = new Object();
+				mergedDoc.source = "merged";
+				mergedDoc._exp = %q;
+				return mergedDoc;
+			}`, docExpiry),
+			expectedLocalBody: db.Body{
+				db.BodyExpiry: docExpiry,
+				"source":      "merged",
+			},
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				db.BodyExpiry: docExpiry,
+				"source":      "merged",
+			}),
+		},
+		{
+			name: "mergeReadIntlPropsDeletedWithLocalTombstone",
+			localRevisionBody: db.Body{
+				"source":       "local",
+				db.BodyDeleted: true,
+			},
+			localRevID: "1-a",
+			remoteRevisionBody: db.Body{
+				"source": "remote",
+			},
+			remoteRevID: "1-b",
+			conflictResolver: `function(conflict) {
+				var mergedDoc = new Object();
+				mergedDoc.source = "merged";
+				mergedDoc.localDeleted = conflict.LocalDocument._deleted;
+				return mergedDoc;
+			}`,
+			expectedLocalBody: db.Body{
+				"localDeleted": true,
+				"source":       "merged",
+			},
+			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+				"localDeleted": true,
+				"source":       "merged",
+			}),
+		},
+	}
+
+	for _, test := range conflictResolutionTests {
+		t.Run(test.name, func(t *testing.T) {
+			if base.GTestBucketPool.NumUsableBuckets() < 2 {
+				t.Skipf("test requires at least 2 usable test buckets")
+			}
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+			// Passive
+			tb2 := base.GetTestBucket(t)
+
+			rt2 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: tb2,
+				DatabaseConfig: &DbConfig{
+					Users: map[string]*db.PrincipalConfig{
+						"alice": {
+							Password:         base.StringPtr("pass"),
+							ExplicitChannels: base.SetOf("*"),
+						},
+					},
+				},
+				noAdminParty: true,
+			})
+			defer rt2.Close()
+
+			// Create revision on rt2 (remote)
+			docID := test.name
+			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, "", test.remoteRevisionBody)
+			assert.NoError(t, err)
+			assertStatus(t, resp, http.StatusCreated)
+			rt2revID := respRevID(t, resp)
+			assert.Equal(t, test.remoteRevID, rt2revID)
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+			srv := httptest.NewServer(rt2.TestPublicHandler())
+			defer srv.Close()
+
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+
+			// Add basic auth creds to target db URL
+			passiveDBURL.User = url.UserPassword("alice", "pass")
+
+			// Active
+			tb1 := base.GetTestBucket(t)
+
+			rt1 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: tb1,
+			})
+			defer rt1.Close()
+
+			// Create revision on rt1 (local)
+			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, "", test.localRevisionBody)
+			assert.NoError(t, err)
+			assertStatus(t, resp, http.StatusCreated)
+			rt1revID := respRevID(t, resp)
+			assert.Equal(t, test.localRevID, rt1revID)
+
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
+			require.NoError(t, err)
+			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name())
+			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePull,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				ChangesBatchSize:     200,
+				ConflictResolverFunc: customConflictResolver,
+				Continuous:           true,
+				ReplicationStatsMap:  replicationStats,
+			})
+			defer func() { assert.NoError(t, ar.Stop()) }()
+
+			// Start the replicator (implicit connect)
+			assert.NoError(t, ar.Start())
+			waitAndRequireCondition(t, func() bool { return ar.GetStatus().DocsRead == 1 })
+			assert.Equal(t, 1, int(replicationStats.ConflictResolvedMergedCount.Value()))
+
+			// Wait for the document originally written to rt2 to arrive at rt1.
+			// Should end up as winner under default conflict resolution.
+			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?&since=0", "", true)
+			require.NoError(t, err)
+			require.Len(t, changesResults.Results, 1)
+			assert.Equal(t, docID, changesResults.Results[0].ID)
+			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
+			log.Printf("Changes response is %+v", changesResults)
+
+			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
+			log.Printf("doc.Body(): %v", doc.Body())
+			assert.Equal(t, test.expectedLocalBody, doc.Body())
+			log.Printf("Doc %s is %+v", docID, doc)
+			for revID, revInfo := range doc.SyncData.History {
+				log.Printf("doc revision [%s]: %+v", revID, revInfo)
+			}
+
+			// Validate only one active leaf node remains after conflict resolution, and that all parents
+			// of leaves have empty bodies
+			activeCount := 0
+			for _, revID := range doc.SyncData.History.GetLeaves() {
+				revInfo, ok := doc.SyncData.History[revID]
+				require.True(t, ok)
+				if !revInfo.Deleted {
+					activeCount++
+				}
+				if revInfo.Parent != "" {
+					parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+					require.True(t, ok)
+					assert.True(t, parentRevInfo.Body == nil)
+				}
+			}
+			assert.Equal(t, 1, activeCount)
+		})
+	}
 }

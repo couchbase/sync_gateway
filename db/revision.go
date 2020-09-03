@@ -333,7 +333,7 @@ func (body Body) FixJSONNumbers() {
 	}
 }
 
-func createRevID(generation int, parentRevID string, body Body) (string, error) {
+func CreateRevID(generation int, parentRevID string, body Body) (string, error) {
 	// This should produce the same results as TouchDB.
 	strippedBody, _ := stripSpecialProperties(body)
 	encoding, err := base.JSONMarshalCanonical(strippedBody)
@@ -450,6 +450,7 @@ func containsUserSpecialProperties(b Body) bool {
 				BodyDeleted,
 				BodyAttachments,
 				BodyRevisions,
+				BodyExpiry,
 			}, k) {
 			// body contains special property that isn't one of the above... must be user's
 			return true
