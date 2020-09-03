@@ -599,6 +599,23 @@ func (dbConfig *DbConfig) UseXattrs() bool {
 	return base.DefaultUseXattrs
 }
 
+func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
+	var config DbConfig
+
+	err := base.DeepCopyInefficient(&config, dbConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	config.Password = "****"
+
+	for i := range config.Users {
+		config.Users[i].Password = base.StringPtr("****")
+	}
+
+	return &config, nil
+}
+
 // Implementation of AuthHandler interface for ClusterConfig
 func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
@@ -810,6 +827,27 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 		self.Databases[name] = db
 	}
 	return nil
+}
+
+func (sc *ServerConfig) Redacted() (*ServerConfig, error) {
+	var config ServerConfig
+
+	err := base.DeepCopyInefficient(&config, sc)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range config.Databases {
+		config.Databases[i], err = config.Databases[i].Redacted()
+		if err != nil {
+			return nil, err
+		}
+		for j, _ := range config.Databases[i].Replications {
+			config.Databases[i].Replications[j] = config.Databases[i].Replications[j].Redacted()
+		}
+	}
+
+	return &config, nil
 }
 
 // Reads the command line flags and the optional config file.

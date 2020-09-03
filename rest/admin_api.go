@@ -99,13 +99,31 @@ func (h *handler) handleDbOffline() error {
 
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
-	h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
+	redact, _ := h.getOptBoolQuery("redact", true)
+	if redact {
+		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Redacted()
+		if err != nil {
+			return err
+		}
+		h.writeJSON(cfg)
+	} else {
+		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
+	}
 	return nil
 }
 
 // Get admin config info
 func (h *handler) handleGetConfig() error {
-	h.writeJSON(h.server.GetConfig())
+	redact, _ := h.getOptBoolQuery("redact", true)
+	if redact {
+		cfg, err := h.server.GetConfig().Redacted()
+		if err != nil {
+			return err
+		}
+		h.writeJSON(cfg)
+	} else {
+		h.writeJSON(h.server.GetConfig())
+	}
 	return nil
 }
 
