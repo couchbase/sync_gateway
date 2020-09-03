@@ -3,7 +3,6 @@ package base
 import (
 	"expvar"
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,7 +64,7 @@ func NewSyncGatewayStats() *SgwStats {
 
 	// This provides a stat for sgw_up where the value will be fixed to one. This is to allow backwards compatibility
 	// where the standalone exporter would export a value of 1 if it has contact with SGW.
-	NewIntStat("", "up", nil, prometheus.GaugeValue, 1)
+	NewIntStat("", "up", nil, nil, prometheus.GaugeValue, 1)
 
 	return &sgwStats
 }
@@ -88,25 +87,25 @@ type GlobalStat struct {
 
 func (g *GlobalStat) initResourceUtilizationStats() {
 	g.ResourceUtilization = &ResourceUtilization{
-		AdminNetworkInterfaceBytesReceived:  NewIntStat(ResourceUtilizationSubsystem, "admin_net_bytes_recv", nil, prometheus.CounterValue, 0),
-		AdminNetworkInterfaceBytesSent:      NewIntStat(ResourceUtilizationSubsystem, "admin_net_bytes_sent", nil, prometheus.CounterValue, 0),
-		ErrorCount:                          NewIntStat(ResourceUtilizationSubsystem, "error_count", nil, prometheus.CounterValue, 0),
-		GoMemstatsHeapAlloc:                 NewIntStat(ResourceUtilizationSubsystem, "go_memstats_heapalloc", nil, prometheus.GaugeValue, 0),
-		GoMemstatsHeapIdle:                  NewIntStat(ResourceUtilizationSubsystem, "go_memstats_heapidle", nil, prometheus.GaugeValue, 0),
-		GoMemstatsHeapInUse:                 NewIntStat(ResourceUtilizationSubsystem, "go_memstats_heapinuse", nil, prometheus.GaugeValue, 0),
-		GoMemstatsHeapReleased:              NewIntStat(ResourceUtilizationSubsystem, "go_memstats_heapreleased", nil, prometheus.GaugeValue, 0),
-		GoMemstatsPauseTotalNS:              NewIntStat(ResourceUtilizationSubsystem, "go_memstats_pausetotalns", nil, prometheus.GaugeValue, 0),
-		GoMemstatsStackInUse:                NewIntStat(ResourceUtilizationSubsystem, "go_memstats_stackinuse", nil, prometheus.GaugeValue, 0),
-		GoMemstatsStackSys:                  NewIntStat(ResourceUtilizationSubsystem, "go_memstats_stacksys", nil, prometheus.GaugeValue, 0),
-		GoMemstatsSys:                       NewIntStat(ResourceUtilizationSubsystem, "go_memstats_sys", nil, prometheus.GaugeValue, 0),
-		GoroutinesHighWatermark:             NewIntStat(ResourceUtilizationSubsystem, "goroutines_high_watermark", nil, prometheus.GaugeValue, 0),
-		NumGoroutines:                       NewIntStat(ResourceUtilizationSubsystem, "num_goroutines", nil, prometheus.GaugeValue, 0),
-		ProcessMemoryResident:               NewIntStat(ResourceUtilizationSubsystem, "process_memory_resident", nil, prometheus.GaugeValue, 0),
-		PublicNetworkInterfaceBytesReceived: NewIntStat(ResourceUtilizationSubsystem, "pub_net_bytes_recv", nil, prometheus.CounterValue, 0),
-		PublicNetworkInterfaceBytesSent:     NewIntStat(ResourceUtilizationSubsystem, "pub_net_bytes_sent", nil, prometheus.CounterValue, 0),
-		SystemMemoryTotal:                   NewIntStat(ResourceUtilizationSubsystem, "system_memory_total", nil, prometheus.GaugeValue, 0),
-		WarnCount:                           NewIntStat(ResourceUtilizationSubsystem, "warn_count", nil, prometheus.CounterValue, 0),
-		CpuPercentUtil:                      NewFloatStat(ResourceUtilizationSubsystem, "process_cpu_percent_utilization", nil, prometheus.GaugeValue, 0),
+		AdminNetworkInterfaceBytesReceived:  NewIntStat(ResourceUtilizationSubsystem, "admin_net_bytes_recv", nil, nil, prometheus.CounterValue, 0),
+		AdminNetworkInterfaceBytesSent:      NewIntStat(ResourceUtilizationSubsystem, "admin_net_bytes_sent", nil, nil, prometheus.CounterValue, 0),
+		ErrorCount:                          NewIntStat(ResourceUtilizationSubsystem, "error_count", nil, nil, prometheus.CounterValue, 0),
+		GoMemstatsHeapAlloc:                 NewIntStat(ResourceUtilizationSubsystem, "go_memstats_heapalloc", nil, nil, prometheus.GaugeValue, 0),
+		GoMemstatsHeapIdle:                  NewIntStat(ResourceUtilizationSubsystem, "go_memstats_heapidle", nil, nil, prometheus.GaugeValue, 0),
+		GoMemstatsHeapInUse:                 NewIntStat(ResourceUtilizationSubsystem, "go_memstats_heapinuse", nil, nil, prometheus.GaugeValue, 0),
+		GoMemstatsHeapReleased:              NewIntStat(ResourceUtilizationSubsystem, "go_memstats_heapreleased", nil, nil, prometheus.GaugeValue, 0),
+		GoMemstatsPauseTotalNS:              NewIntStat(ResourceUtilizationSubsystem, "go_memstats_pausetotalns", nil, nil, prometheus.GaugeValue, 0),
+		GoMemstatsStackInUse:                NewIntStat(ResourceUtilizationSubsystem, "go_memstats_stackinuse", nil, nil, prometheus.GaugeValue, 0),
+		GoMemstatsStackSys:                  NewIntStat(ResourceUtilizationSubsystem, "go_memstats_stacksys", nil, nil, prometheus.GaugeValue, 0),
+		GoMemstatsSys:                       NewIntStat(ResourceUtilizationSubsystem, "go_memstats_sys", nil, nil, prometheus.GaugeValue, 0),
+		GoroutinesHighWatermark:             NewIntStat(ResourceUtilizationSubsystem, "goroutines_high_watermark", nil, nil, prometheus.GaugeValue, 0),
+		NumGoroutines:                       NewIntStat(ResourceUtilizationSubsystem, "num_goroutines", nil, nil, prometheus.GaugeValue, 0),
+		ProcessMemoryResident:               NewIntStat(ResourceUtilizationSubsystem, "process_memory_resident", nil, nil, prometheus.GaugeValue, 0),
+		PublicNetworkInterfaceBytesReceived: NewIntStat(ResourceUtilizationSubsystem, "pub_net_bytes_recv", nil, nil, prometheus.CounterValue, 0),
+		PublicNetworkInterfaceBytesSent:     NewIntStat(ResourceUtilizationSubsystem, "pub_net_bytes_sent", nil, nil, prometheus.CounterValue, 0),
+		SystemMemoryTotal:                   NewIntStat(ResourceUtilizationSubsystem, "system_memory_total", nil, nil, prometheus.GaugeValue, 0),
+		WarnCount:                           NewIntStat(ResourceUtilizationSubsystem, "warn_count", nil, nil, prometheus.CounterValue, 0),
+		CpuPercentUtil:                      NewFloatStat(ResourceUtilizationSubsystem, "process_cpu_percent_utilization", nil, nil, prometheus.GaugeValue, 0),
 	}
 }
 
@@ -369,7 +368,7 @@ type SharedBucketImportStats struct {
 type SgwStat struct {
 	statFQN       string
 	statDesc      *prometheus.Desc
-	labels        map[string]string
+	labelValues   []string
 	statValueType prometheus.ValueType
 }
 
@@ -389,21 +388,21 @@ type SgwBoolStat struct {
 	Val bool
 }
 
-func newSGWStat(subsystem string, key string, labels map[string]string, statValueType prometheus.ValueType) *SgwStat {
+func newSGWStat(subsystem string, key string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType) *SgwStat {
 	name := prometheus.BuildFQName(NamespaceKey, subsystem, key)
-	desc := prometheus.NewDesc(name, key, getKeys(labels), nil)
+	desc := prometheus.NewDesc(name, key, labelKeys, nil)
 
 	return &SgwStat{
 		statFQN:       name,
 		statDesc:      desc,
-		labels:        labels,
+		labelValues:   labelVals,
 		statValueType: statValueType,
 	}
 }
 
-func NewIntStat(subsystem string, key string, labels map[string]string, statValueType prometheus.ValueType, initialValue int64) *SgwIntStat {
+func NewIntStat(subsystem string, key string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType, initialValue int64) *SgwIntStat {
 	stat := &SgwIntStat{
-		SgwStat: *newSGWStat(subsystem, key, labels, statValueType),
+		SgwStat: *newSGWStat(subsystem, key, labelKeys, labelVals, statValueType),
 		Val:     initialValue,
 	}
 	prometheus.MustRegister(stat)
@@ -415,7 +414,7 @@ func (s *SgwIntStat) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(atomic.LoadInt64(&s.Val)), getValues(s.labels)...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(atomic.LoadInt64(&s.Val)), s.labelValues...)
 }
 
 func (s *SgwIntStat) Set(newV int64) {
@@ -448,9 +447,9 @@ func (s *SgwIntStat) Value() int64 {
 	return atomic.LoadInt64(&s.Val)
 }
 
-func NewFloatStat(subsystem string, key string, labels map[string]string, statValueType prometheus.ValueType, initialValue float64) *SgwFloatStat {
+func NewFloatStat(subsystem string, key string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType, initialValue float64) *SgwFloatStat {
 	stat := &SgwFloatStat{
-		SgwStat: *newSGWStat(subsystem, key, labels, statValueType),
+		SgwStat: *newSGWStat(subsystem, key, labelKeys, labelVals, statValueType),
 		Val:     math.Float64bits(initialValue),
 	}
 	prometheus.MustRegister(stat)
@@ -462,7 +461,7 @@ func (s *SgwFloatStat) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, math.Float64frombits(atomic.LoadUint64(&s.Val)), getValues(s.labels)...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, math.Float64frombits(atomic.LoadUint64(&s.Val)), s.labelValues...)
 }
 
 func (s *SgwFloatStat) Set(newV float64) {
@@ -535,32 +534,33 @@ func (s *SgwStats) ClearDBStats(name string) {
 }
 
 func (d *DbStats) initCacheStats() {
-	labels := map[string]string{DatabaseLabelKey: d.dbName}
+	labelKeys := []string{DatabaseLabelKey}
+	labelVals := []string{d.dbName}
 	d.CacheStats = &CacheStats{
-		AbandonedSeqs:                       NewIntStat(SubsystemCacheKey, "abandoned_seqs", labels, prometheus.CounterValue, 0),
-		ChannelCacheRevsActive:              NewIntStat(SubsystemCacheKey, "chan_cache_active_revs", labels, prometheus.GaugeValue, 0),
-		ChannelCacheBypassCount:             NewIntStat(SubsystemCacheKey, "chan_cache_bypass_count", labels, prometheus.CounterValue, 0),
-		ChannelCacheChannelsAdded:           NewIntStat(SubsystemCacheKey, "chan_cache_channels_added", labels, prometheus.CounterValue, 0),
-		ChannelCacheChannelsEvictedInactive: NewIntStat(SubsystemCacheKey, "chan_cache_channels_evicted_inactive", labels, prometheus.CounterValue, 0),
-		ChannelCacheChannelsEvictedNRU:      NewIntStat(SubsystemCacheKey, "chan_cache_channels_evicted_nru", labels, prometheus.CounterValue, 0),
-		ChannelCacheCompactCount:            NewIntStat(SubsystemCacheKey, "chan_cache_compact_count", labels, prometheus.CounterValue, 0),
-		ChannelCacheCompactTime:             NewIntStat(SubsystemCacheKey, "chan_cache_compact_time", labels, prometheus.CounterValue, 0),
-		ChannelCacheHits:                    NewIntStat(SubsystemCacheKey, "chan_cache_hits", labels, prometheus.CounterValue, 0),
-		ChannelCacheMaxEntries:              NewIntStat(SubsystemCacheKey, "chan_cache_max_entries", labels, prometheus.GaugeValue, 0),
-		ChannelCacheMisses:                  NewIntStat(SubsystemCacheKey, "chan_cache_misses", labels, prometheus.CounterValue, 0),
-		ChannelCacheNumChannels:             NewIntStat(SubsystemCacheKey, "chan_cache_num_channels", labels, prometheus.GaugeValue, 0),
-		ChannelCachePendingQueries:          NewIntStat(SubsystemCacheKey, "chan_cache_pending_queries", labels, prometheus.GaugeValue, 0),
-		ChannelCacheRevsRemoval:             NewIntStat(SubsystemCacheKey, "chan_cache_removal_revs", labels, prometheus.GaugeValue, 0),
-		ChannelCacheRevsTombstone:           NewIntStat(SubsystemCacheKey, "chan_cache_tombstone_revs", labels, prometheus.GaugeValue, 0),
-		HighSeqCached:                       NewIntStat(SubsystemCacheKey, "high_seq_cached", labels, prometheus.CounterValue, 0),
-		HighSeqStable:                       NewIntStat(SubsystemCacheKey, "high_seq_stable", labels, prometheus.CounterValue, 0),
-		NumActiveChannels:                   NewIntStat(SubsystemCacheKey, "num_active_channels", labels, prometheus.GaugeValue, 0),
-		NumSkippedSeqs:                      NewIntStat(SubsystemCacheKey, "num_skipped_seqs", labels, prometheus.CounterValue, 0),
-		PendingSeqLen:                       NewIntStat(SubsystemCacheKey, "pending_seq_len", labels, prometheus.GaugeValue, 0),
-		RevisionCacheBypass:                 NewIntStat(SubsystemCacheKey, "rev_cache_bypass", labels, prometheus.GaugeValue, 0),
-		RevisionCacheHits:                   NewIntStat(SubsystemCacheKey, "rev_cache_hits", labels, prometheus.CounterValue, 0),
-		RevisionCacheMisses:                 NewIntStat(SubsystemCacheKey, "rev_cache_misses", labels, prometheus.CounterValue, 0),
-		SkippedSeqLen:                       NewIntStat(SubsystemCacheKey, "skipped_seq_len", labels, prometheus.GaugeValue, 0),
+		AbandonedSeqs:                       NewIntStat(SubsystemCacheKey, "abandoned_seqs", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheRevsActive:              NewIntStat(SubsystemCacheKey, "chan_cache_active_revs", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		ChannelCacheBypassCount:             NewIntStat(SubsystemCacheKey, "chan_cache_bypass_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheChannelsAdded:           NewIntStat(SubsystemCacheKey, "chan_cache_channels_added", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheChannelsEvictedInactive: NewIntStat(SubsystemCacheKey, "chan_cache_channels_evicted_inactive", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheChannelsEvictedNRU:      NewIntStat(SubsystemCacheKey, "chan_cache_channels_evicted_nru", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheCompactCount:            NewIntStat(SubsystemCacheKey, "chan_cache_compact_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheCompactTime:             NewIntStat(SubsystemCacheKey, "chan_cache_compact_time", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheHits:                    NewIntStat(SubsystemCacheKey, "chan_cache_hits", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheMaxEntries:              NewIntStat(SubsystemCacheKey, "chan_cache_max_entries", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		ChannelCacheMisses:                  NewIntStat(SubsystemCacheKey, "chan_cache_misses", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ChannelCacheNumChannels:             NewIntStat(SubsystemCacheKey, "chan_cache_num_channels", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		ChannelCachePendingQueries:          NewIntStat(SubsystemCacheKey, "chan_cache_pending_queries", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		ChannelCacheRevsRemoval:             NewIntStat(SubsystemCacheKey, "chan_cache_removal_revs", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		ChannelCacheRevsTombstone:           NewIntStat(SubsystemCacheKey, "chan_cache_tombstone_revs", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		HighSeqCached:                       NewIntStat(SubsystemCacheKey, "high_seq_cached", labelKeys, labelVals, prometheus.CounterValue, 0),
+		HighSeqStable:                       NewIntStat(SubsystemCacheKey, "high_seq_stable", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumActiveChannels:                   NewIntStat(SubsystemCacheKey, "num_active_channels", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumSkippedSeqs:                      NewIntStat(SubsystemCacheKey, "num_skipped_seqs", labelKeys, labelVals, prometheus.CounterValue, 0),
+		PendingSeqLen:                       NewIntStat(SubsystemCacheKey, "pending_seq_len", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		RevisionCacheBypass:                 NewIntStat(SubsystemCacheKey, "rev_cache_bypass", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		RevisionCacheHits:                   NewIntStat(SubsystemCacheKey, "rev_cache_hits", labelKeys, labelVals, prometheus.CounterValue, 0),
+		RevisionCacheMisses:                 NewIntStat(SubsystemCacheKey, "rev_cache_misses", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SkippedSeqLen:                       NewIntStat(SubsystemCacheKey, "skipped_seq_len", labelKeys, labelVals, prometheus.GaugeValue, 0),
 	}
 }
 
@@ -569,23 +569,24 @@ func (d *DbStats) Cache() *CacheStats {
 }
 
 func (d *DbStats) initCBLReplicationPullStats() {
-	labels := map[string]string{DatabaseLabelKey: d.dbName}
+	labelKeys := []string{DatabaseLabelKey}
+	labelVals := []string{d.dbName}
 	d.CBLReplicationPullStats = &CBLReplicationPullStats{
-		AttachmentPullBytes:         NewIntStat(SubsystemReplicationPull, "attachment_pull_bytes", labels, prometheus.CounterValue, 0),
-		AttachmentPullCount:         NewIntStat(SubsystemReplicationPull, "attachment_pull_count", labels, prometheus.CounterValue, 0),
-		MaxPending:                  NewIntStat(SubsystemReplicationPull, "max_pending", labels, prometheus.GaugeValue, 0),
-		NumReplicationsActive:       NewIntStat(SubsystemReplicationPull, "num_pull_repl_active_continuous", labels, prometheus.GaugeValue, 0),
-		NumPullReplActiveContinuous: NewIntStat(SubsystemReplicationPull, "num_pull_repl_active_one_shot", labels, prometheus.GaugeValue, 0),
-		NumPullReplActiveOneShot:    NewIntStat(SubsystemReplicationPull, "num_replications_active", labels, prometheus.GaugeValue, 0),
-		NumPullReplCaughtUp:         NewIntStat(SubsystemReplicationPull, "num_pull_repl_caught_up", labels, prometheus.GaugeValue, 0),
-		NumPullReplSinceZero:        NewIntStat(SubsystemReplicationPull, "num_pull_repl_since_zero", labels, prometheus.CounterValue, 0),
-		NumPullReplTotalContinuous:  NewIntStat(SubsystemReplicationPull, "num_pull_repl_total_continuous", labels, prometheus.GaugeValue, 0),
-		NumPullReplTotalOneShot:     NewIntStat(SubsystemReplicationPull, "num_pull_repl_total_one_shot", labels, prometheus.GaugeValue, 0),
-		RequestChangesCount:         NewIntStat(SubsystemReplicationPull, "request_changes_count", labels, prometheus.CounterValue, 0),
-		RequestChangesTime:          NewIntStat(SubsystemReplicationPull, "request_changes_time", labels, prometheus.CounterValue, 0),
-		RevProcessingTime:           NewIntStat(SubsystemReplicationPull, "rev_processing_time", labels, prometheus.GaugeValue, 0),
-		RevSendCount:                NewIntStat(SubsystemReplicationPull, "rev_send_count", labels, prometheus.CounterValue, 0),
-		RevSendLatency:              NewIntStat(SubsystemReplicationPull, "rev_send_latency", labels, prometheus.CounterValue, 0),
+		AttachmentPullBytes:         NewIntStat(SubsystemReplicationPull, "attachment_pull_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
+		AttachmentPullCount:         NewIntStat(SubsystemReplicationPull, "attachment_pull_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		MaxPending:                  NewIntStat(SubsystemReplicationPull, "max_pending", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumReplicationsActive:       NewIntStat(SubsystemReplicationPull, "num_pull_repl_active_continuous", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumPullReplActiveContinuous: NewIntStat(SubsystemReplicationPull, "num_pull_repl_active_one_shot", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumPullReplActiveOneShot:    NewIntStat(SubsystemReplicationPull, "num_replications_active", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumPullReplCaughtUp:         NewIntStat(SubsystemReplicationPull, "num_pull_repl_caught_up", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumPullReplSinceZero:        NewIntStat(SubsystemReplicationPull, "num_pull_repl_since_zero", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumPullReplTotalContinuous:  NewIntStat(SubsystemReplicationPull, "num_pull_repl_total_continuous", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumPullReplTotalOneShot:     NewIntStat(SubsystemReplicationPull, "num_pull_repl_total_one_shot", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		RequestChangesCount:         NewIntStat(SubsystemReplicationPull, "request_changes_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		RequestChangesTime:          NewIntStat(SubsystemReplicationPull, "request_changes_time", labelKeys, labelVals, prometheus.CounterValue, 0),
+		RevProcessingTime:           NewIntStat(SubsystemReplicationPull, "rev_processing_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		RevSendCount:                NewIntStat(SubsystemReplicationPull, "rev_send_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		RevSendLatency:              NewIntStat(SubsystemReplicationPull, "rev_send_latency", labelKeys, labelVals, prometheus.CounterValue, 0),
 	}
 }
 
@@ -594,16 +595,17 @@ func (d *DbStats) CBLReplicationPull() *CBLReplicationPullStats {
 }
 
 func (d *DbStats) initCBLReplicationPushStats() {
-	labels := map[string]string{DatabaseLabelKey: d.dbName}
+	labelKeys := []string{DatabaseLabelKey}
+	labelVals := []string{d.dbName}
 	d.CBLReplicationPushStats = &CBLReplicationPushStats{
-		AttachmentPushBytes: NewIntStat(SubsystemReplicationPush, "attachment_push_bytes", labels, prometheus.CounterValue, 0),
-		AttachmentPushCount: NewIntStat(SubsystemReplicationPush, "attachment_push_count", labels, prometheus.CounterValue, 0),
-		DocPushCount:        NewIntStat(SubsystemReplicationPush, "doc_push_count", labels, prometheus.GaugeValue, 0),
-		ProposeChangeCount:  NewIntStat(SubsystemReplicationPush, "propose_change_count", labels, prometheus.CounterValue, 0),
-		ProposeChangeTime:   NewIntStat(SubsystemReplicationPush, "propose_change_time", labels, prometheus.CounterValue, 0),
-		SyncFunctionCount:   NewIntStat(SubsystemReplicationPush, "sync_function_count", labels, prometheus.CounterValue, 0),
-		SyncFunctionTime:    NewIntStat(SubsystemReplicationPush, "sync_function_time", labels, prometheus.CounterValue, 0),
-		WriteProcessingTime: NewIntStat(SubsystemReplicationPush, "write_processing_time", labels, prometheus.GaugeValue, 0),
+		AttachmentPushBytes: NewIntStat(SubsystemReplicationPush, "attachment_push_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
+		AttachmentPushCount: NewIntStat(SubsystemReplicationPush, "attachment_push_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DocPushCount:        NewIntStat(SubsystemReplicationPush, "doc_push_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		ProposeChangeCount:  NewIntStat(SubsystemReplicationPush, "propose_change_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ProposeChangeTime:   NewIntStat(SubsystemReplicationPush, "propose_change_time", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SyncFunctionCount:   NewIntStat(SubsystemReplicationPush, "sync_function_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SyncFunctionTime:    NewIntStat(SubsystemReplicationPush, "sync_function_time", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WriteProcessingTime: NewIntStat(SubsystemReplicationPush, "write_processing_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
 	}
 }
 
@@ -612,34 +614,35 @@ func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
 }
 
 func (d *DbStats) initDatabaseStats() {
-	labels := map[string]string{DatabaseLabelKey: d.dbName}
+	labelKeys := []string{DatabaseLabelKey}
+	labelVals := []string{d.dbName}
 	d.DatabaseStats = &DatabaseStats{
-		AbandonedSeqs:           NewIntStat(SubsystemDatabaseKey, "abandoned_seqs", labels, prometheus.CounterValue, 0),
-		ConflictWriteCount:      NewIntStat(SubsystemDatabaseKey, "conflict_write_count", labels, prometheus.CounterValue, 0),
-		Crc32MatchCount:         NewIntStat(SubsystemDatabaseKey, "crc32c_match_count", labels, prometheus.GaugeValue, 0),
-		DCPCachingCount:         NewIntStat(SubsystemDatabaseKey, "dcp_caching_count", labels, prometheus.GaugeValue, 0),
-		DCPCachingTime:          NewIntStat(SubsystemDatabaseKey, "dcp_caching_time", labels, prometheus.GaugeValue, 0),
-		DCPReceivedCount:        NewIntStat(SubsystemDatabaseKey, "dcp_received_count", labels, prometheus.GaugeValue, 0),
-		DCPReceivedTime:         NewIntStat(SubsystemDatabaseKey, "dcp_received_time", labels, prometheus.GaugeValue, 0),
-		DocReadsBytesBlip:       NewIntStat(SubsystemDatabaseKey, "doc_reads_bytes_blip", labels, prometheus.CounterValue, 0),
-		DocWritesBytes:          NewIntStat(SubsystemDatabaseKey, "doc_writes_bytes", labels, prometheus.CounterValue, 0),
-		DocWritesXattrBytes:     NewIntStat(SubsystemDatabaseKey, "doc_writes_xattr_bytes", labels, prometheus.CounterValue, 0),
-		HighSeqFeed:             NewIntStat(SubsystemDatabaseKey, "high_seq_feed", labels, prometheus.CounterValue, 0),
-		DocWritesBytesBlip:      NewIntStat(SubsystemDatabaseKey, "doc_writes_bytes_blip", labels, prometheus.CounterValue, 0),
-		NumDocReadsBlip:         NewIntStat(SubsystemDatabaseKey, "num_doc_reads_blip", labels, prometheus.CounterValue, 0),
-		NumDocReadsRest:         NewIntStat(SubsystemDatabaseKey, "num_doc_reads_rest", labels, prometheus.CounterValue, 0),
-		NumDocWrites:            NewIntStat(SubsystemDatabaseKey, "num_doc_writes", labels, prometheus.CounterValue, 0),
-		NumReplicationsActive:   NewIntStat(SubsystemDatabaseKey, "num_replications_active", labels, prometheus.GaugeValue, 0),
-		NumReplicationsTotal:    NewIntStat(SubsystemDatabaseKey, "num_replications_total", labels, prometheus.CounterValue, 0),
-		NumTombstonesCompacted:  NewIntStat(SubsystemDatabaseKey, "num_tombstones_compacted", labels, prometheus.CounterValue, 0),
-		SequenceAssignedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_assigned_count", labels, prometheus.CounterValue, 0),
-		SequenceGetCount:        NewIntStat(SubsystemDatabaseKey, "sequence_get_count", labels, prometheus.CounterValue, 0),
-		SequenceIncrCount:       NewIntStat(SubsystemDatabaseKey, "sequence_incr_count", labels, prometheus.CounterValue, 0),
-		SequenceReleasedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_released_count", labels, prometheus.CounterValue, 0),
-		SequenceReservedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_reserved_count", labels, prometheus.CounterValue, 0),
-		WarnChannelsPerDocCount: NewIntStat(SubsystemDatabaseKey, "warn_channels_per_doc_count", labels, prometheus.CounterValue, 0),
-		WarnGrantsPerDocCount:   NewIntStat(SubsystemDatabaseKey, "warn_grants_per_doc_count", labels, prometheus.CounterValue, 0),
-		WarnXattrSizeCount:      NewIntStat(SubsystemDatabaseKey, "warn_xattr_size_count", labels, prometheus.CounterValue, 0),
+		AbandonedSeqs:           NewIntStat(SubsystemDatabaseKey, "abandoned_seqs", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ConflictWriteCount:      NewIntStat(SubsystemDatabaseKey, "conflict_write_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		Crc32MatchCount:         NewIntStat(SubsystemDatabaseKey, "crc32c_match_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DCPCachingCount:         NewIntStat(SubsystemDatabaseKey, "dcp_caching_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DCPCachingTime:          NewIntStat(SubsystemDatabaseKey, "dcp_caching_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DCPReceivedCount:        NewIntStat(SubsystemDatabaseKey, "dcp_received_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DCPReceivedTime:         NewIntStat(SubsystemDatabaseKey, "dcp_received_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DocReadsBytesBlip:       NewIntStat(SubsystemDatabaseKey, "doc_reads_bytes_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DocWritesBytes:          NewIntStat(SubsystemDatabaseKey, "doc_writes_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DocWritesXattrBytes:     NewIntStat(SubsystemDatabaseKey, "doc_writes_xattr_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
+		HighSeqFeed:             NewIntStat(SubsystemDatabaseKey, "high_seq_feed", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DocWritesBytesBlip:      NewIntStat(SubsystemDatabaseKey, "doc_writes_bytes_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumDocReadsBlip:         NewIntStat(SubsystemDatabaseKey, "num_doc_reads_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumDocReadsRest:         NewIntStat(SubsystemDatabaseKey, "num_doc_reads_rest", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumDocWrites:            NewIntStat(SubsystemDatabaseKey, "num_doc_writes", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumReplicationsActive:   NewIntStat(SubsystemDatabaseKey, "num_replications_active", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumReplicationsTotal:    NewIntStat(SubsystemDatabaseKey, "num_replications_total", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumTombstonesCompacted:  NewIntStat(SubsystemDatabaseKey, "num_tombstones_compacted", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceAssignedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_assigned_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceGetCount:        NewIntStat(SubsystemDatabaseKey, "sequence_get_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceIncrCount:       NewIntStat(SubsystemDatabaseKey, "sequence_incr_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceReleasedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_released_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceReservedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_reserved_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WarnChannelsPerDocCount: NewIntStat(SubsystemDatabaseKey, "warn_channels_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WarnGrantsPerDocCount:   NewIntStat(SubsystemDatabaseKey, "warn_grants_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WarnXattrSizeCount:      NewIntStat(SubsystemDatabaseKey, "warn_xattr_size_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		ImportFeedMapStats:      &ExpVarMapWrapper{new(expvar.Map).Init()},
 		CacheFeedMapStats:       &ExpVarMapWrapper{new(expvar.Map).Init()},
 	}
@@ -650,14 +653,15 @@ func (d *DbStats) Database() *DatabaseStats {
 }
 
 func (d *DbStats) InitDeltaSyncStats() {
-	labels := map[string]string{DatabaseLabelKey: d.dbName}
+	labelKeys := []string{DatabaseLabelKey}
+	labelVals := []string{d.dbName}
 	d.DeltaSyncStats = &DeltaSyncStats{
-		DeltasRequested:           NewIntStat(SubsystemDeltaSyncKey, "deltas_requested", labels, prometheus.CounterValue, 0),
-		DeltasSent:                NewIntStat(SubsystemDeltaSyncKey, "deltas_sent", labels, prometheus.CounterValue, 0),
-		DeltaPullReplicationCount: NewIntStat(SubsystemDeltaSyncKey, "delta_pull_replication_count", labels, prometheus.CounterValue, 0),
-		DeltaCacheHit:             NewIntStat(SubsystemDeltaSyncKey, "delta_cache_hit", labels, prometheus.CounterValue, 0),
-		DeltaCacheMiss:            NewIntStat(SubsystemDeltaSyncKey, "delta_sync_miss", labels, prometheus.CounterValue, 0),
-		DeltaPushDocCount:         NewIntStat(SubsystemDeltaSyncKey, "delta_push_doc_count", labels, prometheus.CounterValue, 0),
+		DeltasRequested:           NewIntStat(SubsystemDeltaSyncKey, "deltas_requested", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DeltasSent:                NewIntStat(SubsystemDeltaSyncKey, "deltas_sent", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DeltaPullReplicationCount: NewIntStat(SubsystemDeltaSyncKey, "delta_pull_replication_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DeltaCacheHit:             NewIntStat(SubsystemDeltaSyncKey, "delta_cache_hit", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DeltaCacheMiss:            NewIntStat(SubsystemDeltaSyncKey, "delta_sync_miss", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DeltaPushDocCount:         NewIntStat(SubsystemDeltaSyncKey, "delta_push_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 	}
 }
 
@@ -667,13 +671,14 @@ func (d *DbStats) DeltaSync() *DeltaSyncStats {
 
 func (d *DbStats) initSecurityStats() {
 	if d.SecurityStats == nil {
-		labels := map[string]string{DatabaseLabelKey: d.dbName}
+		labelKeys := []string{DatabaseLabelKey}
+		labelVals := []string{d.dbName}
 		d.SecurityStats = &SecurityStats{
-			AuthFailedCount:  NewIntStat(SubsystemSecurity, "auth_failed_count", labels, prometheus.CounterValue, 0),
-			AuthSuccessCount: NewIntStat(SubsystemSecurity, "auth_success_count", labels, prometheus.CounterValue, 0),
-			NumAccessErrors:  NewIntStat(SubsystemSecurity, "num_access_errors", labels, prometheus.CounterValue, 0),
-			NumDocsRejected:  NewIntStat(SubsystemSecurity, "num_docs_rejected", labels, prometheus.CounterValue, 0),
-			TotalAuthTime:    NewIntStat(SubsystemSecurity, "total_auth_time", labels, prometheus.GaugeValue, 0),
+			AuthFailedCount:  NewIntStat(SubsystemSecurity, "auth_failed_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			AuthSuccessCount: NewIntStat(SubsystemSecurity, "auth_success_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumAccessErrors:  NewIntStat(SubsystemSecurity, "num_access_errors", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumDocsRejected:  NewIntStat(SubsystemSecurity, "num_docs_rejected", labelKeys, labelVals, prometheus.CounterValue, 0),
+			TotalAuthTime:    NewIntStat(SubsystemSecurity, "total_auth_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		}
 	}
 }
@@ -684,31 +689,32 @@ func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
 	}
 
 	if _, ok := d.DbReplicatorStats[replicationID]; !ok {
-		labels := map[string]string{DatabaseLabelKey: d.dbName, ReplicationLabelKey: replicationID}
+		labelKeys := []string{DatabaseLabelKey, ReplicationLabelKey}
+		labelVals := []string{d.dbName, replicationID}
 		d.DbReplicatorStats[replicationID] = &DbReplicatorStats{
-			NumAttachmentBytesPushed:    NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pushed", labels, prometheus.CounterValue, 0),
-			NumAttachmentPushed:         NewIntStat(SubsystemReplication, "sgr_num_attachments_pushed", labels, prometheus.CounterValue, 0),
-			NumDocPushed:                NewIntStat(SubsystemReplication, "sgr_num_docs_pushed", labels, prometheus.CounterValue, 0),
-			NumDocsFailedToPush:         NewIntStat(SubsystemReplication, "sgr_num_docs_failed_to_push", labels, prometheus.CounterValue, 0),
-			PushConflictCount:           NewIntStat(SubsystemReplication, "sgr_push_conflict_count", labels, prometheus.CounterValue, 0),
-			PushRejectedCount:           NewIntStat(SubsystemReplication, "sgr_push_rejected_count", labels, prometheus.CounterValue, 0),
-			PushDeltaSentCount:          NewIntStat(SubsystemReplication, "sgr_deltas_sent", labels, prometheus.CounterValue, 0),
-			DocsCheckedSent:             NewIntStat(SubsystemReplication, "sgr_docs_checked_sent", labels, prometheus.CounterValue, 0),
-			NumConnectAttemptsPush:      NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_push", labels, prometheus.CounterValue, 0),
-			NumReconnectsAbortedPush:    NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_push", labels, prometheus.CounterValue, 0),
-			NumAttachmentBytesPulled:    NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pulled", labels, prometheus.CounterValue, 0),
-			NumAttachmentsPulled:        NewIntStat(SubsystemReplication, "sgr_num_attachments_pulled", labels, prometheus.CounterValue, 0),
-			PulledCount:                 NewIntStat(SubsystemReplication, "sgr_num_docs_pulled", labels, prometheus.CounterValue, 0),
-			PurgedCount:                 NewIntStat(SubsystemReplication, "sgr_num_docs_purged", labels, prometheus.CounterValue, 0),
-			FailedToPullCount:           NewIntStat(SubsystemReplication, "sgr_num_docs_failed_to_pull", labels, prometheus.CounterValue, 0),
-			DeltaReceivedCount:          NewIntStat(SubsystemReplication, "sgr_deltas_recv", labels, prometheus.CounterValue, 0),
-			DeltaRequestedCount:         NewIntStat(SubsystemReplication, "sgr_deltas_requested", labels, prometheus.CounterValue, 0),
-			DocsCheckedReceived:         NewIntStat(SubsystemReplication, "sgr_docs_checked_recv", labels, prometheus.CounterValue, 0),
-			ConflictResolvedLocalCount:  NewIntStat(SubsystemReplication, "sgr_conflict_resolved_local_count", labels, prometheus.CounterValue, 0),
-			ConflictResolvedRemoteCount: NewIntStat(SubsystemReplication, "sgr_conflict_resolved_remote_count", labels, prometheus.CounterValue, 0),
-			ConflictResolvedMergedCount: NewIntStat(SubsystemReplication, "sgr_conflict_resolved_merge_count", labels, prometheus.CounterValue, 0),
-			NumConnectAttemptsPull:      NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_pull", labels, prometheus.CounterValue, 0),
-			NumReconnectsAbortedPull:    NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_pull", labels, prometheus.CounterValue, 0),
+			NumAttachmentBytesPushed:    NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pushed", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumAttachmentPushed:         NewIntStat(SubsystemReplication, "sgr_num_attachments_pushed", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumDocPushed:                NewIntStat(SubsystemReplication, "sgr_num_docs_pushed", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumDocsFailedToPush:         NewIntStat(SubsystemReplication, "sgr_num_docs_failed_to_push", labelKeys, labelVals, prometheus.CounterValue, 0),
+			PushConflictCount:           NewIntStat(SubsystemReplication, "sgr_push_conflict_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			PushRejectedCount:           NewIntStat(SubsystemReplication, "sgr_push_rejected_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			PushDeltaSentCount:          NewIntStat(SubsystemReplication, "sgr_deltas_sent", labelKeys, labelVals, prometheus.CounterValue, 0),
+			DocsCheckedSent:             NewIntStat(SubsystemReplication, "sgr_docs_checked_sent", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumConnectAttemptsPush:      NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_push", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumReconnectsAbortedPush:    NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_push", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumAttachmentBytesPulled:    NewIntStat(SubsystemReplication, "sgr_num_attachment_bytes_pulled", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumAttachmentsPulled:        NewIntStat(SubsystemReplication, "sgr_num_attachments_pulled", labelKeys, labelVals, prometheus.CounterValue, 0),
+			PulledCount:                 NewIntStat(SubsystemReplication, "sgr_num_docs_pulled", labelKeys, labelVals, prometheus.CounterValue, 0),
+			PurgedCount:                 NewIntStat(SubsystemReplication, "sgr_num_docs_purged", labelKeys, labelVals, prometheus.CounterValue, 0),
+			FailedToPullCount:           NewIntStat(SubsystemReplication, "sgr_num_docs_failed_to_pull", labelKeys, labelVals, prometheus.CounterValue, 0),
+			DeltaReceivedCount:          NewIntStat(SubsystemReplication, "sgr_deltas_recv", labelKeys, labelVals, prometheus.CounterValue, 0),
+			DeltaRequestedCount:         NewIntStat(SubsystemReplication, "sgr_deltas_requested", labelKeys, labelVals, prometheus.CounterValue, 0),
+			DocsCheckedReceived:         NewIntStat(SubsystemReplication, "sgr_docs_checked_recv", labelKeys, labelVals, prometheus.CounterValue, 0),
+			ConflictResolvedLocalCount:  NewIntStat(SubsystemReplication, "sgr_conflict_resolved_local_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			ConflictResolvedRemoteCount: NewIntStat(SubsystemReplication, "sgr_conflict_resolved_remote_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			ConflictResolvedMergedCount: NewIntStat(SubsystemReplication, "sgr_conflict_resolved_merge_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumConnectAttemptsPull:      NewIntStat(SubsystemReplication, "sgr_num_connect_attempts_pull", labelKeys, labelVals, prometheus.CounterValue, 0),
+			NumReconnectsAbortedPull:    NewIntStat(SubsystemReplication, "sgr_num_reconnects_aborted_pull", labelKeys, labelVals, prometheus.CounterValue, 0),
 		}
 	}
 
@@ -744,14 +750,15 @@ func (d *DbStats) Security() *SecurityStats {
 
 func (d *DbStats) InitSharedBucketImportStats() {
 	if d.SharedBucketImportStats == nil {
-		labels := map[string]string{DatabaseLabelKey: d.dbName}
+		labelKeys := []string{DatabaseLabelKey}
+		labelVals := []string{d.dbName}
 		d.SharedBucketImportStats = &SharedBucketImportStats{
-			ImportCount:          NewIntStat(SubsystemSharedBucketImport, "import_count", labels, prometheus.CounterValue, 0),
-			ImportCancelCAS:      NewIntStat(SubsystemSharedBucketImport, "import_cancel_cas", labels, prometheus.CounterValue, 0),
-			ImportErrorCount:     NewIntStat(SubsystemSharedBucketImport, "import_error_count", labels, prometheus.CounterValue, 0),
-			ImportProcessingTime: NewIntStat(SubsystemSharedBucketImport, "import_processing_time", labels, prometheus.GaugeValue, 0),
-			ImportHighSeq:        NewIntStat(SubsystemSharedBucketImport, "import_high_seq", labels, prometheus.CounterValue, 0),
-			ImportPartitions:     NewIntStat(SubsystemSharedBucketImport, "import_partitions", labels, prometheus.GaugeValue, 0),
+			ImportCount:          NewIntStat(SubsystemSharedBucketImport, "import_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			ImportCancelCAS:      NewIntStat(SubsystemSharedBucketImport, "import_cancel_cas", labelKeys, labelVals, prometheus.CounterValue, 0),
+			ImportErrorCount:     NewIntStat(SubsystemSharedBucketImport, "import_error_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			ImportProcessingTime: NewIntStat(SubsystemSharedBucketImport, "import_processing_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
+			ImportHighSeq:        NewIntStat(SubsystemSharedBucketImport, "import_high_seq", labelKeys, labelVals, prometheus.CounterValue, 0),
+			ImportPartitions:     NewIntStat(SubsystemSharedBucketImport, "import_partitions", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		}
 	}
 }
@@ -773,7 +780,8 @@ func (d *DbStats) InitQueryStats(useViews bool, queryNames ...string) {
 
 func (d *DbStats) _initQueryStat(useViews bool, queryName string) {
 	if _, ok := d.QueryStats.Stats[queryName]; !ok {
-		labels := map[string]string{DatabaseLabelKey: d.dbName}
+		labelKeys := []string{DatabaseLabelKey}
+		labelVals := []string{d.dbName}
 
 		// Prometheus isn't happy with '.'s in the name and the '.'s come from the design doc version. Design doc isn't
 		// reported to prometheus. Only the view name.
@@ -784,9 +792,9 @@ func (d *DbStats) _initQueryStat(useViews bool, queryName string) {
 		}
 
 		d.QueryStats.Stats[queryName] = &QueryStat{
-			QueryCount:      NewIntStat(SubsystemGSIViews, prometheusKey+"_count", labels, prometheus.CounterValue, 0),
-			QueryErrorCount: NewIntStat(SubsystemGSIViews, prometheusKey+"_error_count", labels, prometheus.CounterValue, 0),
-			QueryTime:       NewIntStat(SubsystemGSIViews, prometheusKey+"_time", labels, prometheus.CounterValue, 0),
+			QueryCount:      NewIntStat(SubsystemGSIViews, prometheusKey+"_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			QueryErrorCount: NewIntStat(SubsystemGSIViews, prometheusKey+"_error_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+			QueryTime:       NewIntStat(SubsystemGSIViews, prometheusKey+"_time", labelKeys, labelVals, prometheus.CounterValue, 0),
 		}
 	}
 }
@@ -806,22 +814,4 @@ func (g *QueryStats) MarshalJSON() ([]byte, error) {
 	}
 
 	return JSONMarshalCanonical(ret)
-}
-
-func getKeys(myMap map[string]string) []string {
-	keys := make([]string, 0, len(myMap))
-	for k := range myMap {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func getValues(myMap map[string]string) []string {
-	keys := getKeys(myMap)
-	vals := make([]string, 0, len(myMap))
-	for _, k := range keys {
-		vals = append(vals, myMap[k])
-	}
-	return vals
 }
