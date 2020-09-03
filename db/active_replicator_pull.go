@@ -31,7 +31,7 @@ func (apr *ActivePullReplicator) Start() error {
 		return fmt.Errorf("ActivePullReplicator already running")
 	}
 
-	apr.state = ReplicationStateStarting
+	apr.setState(ReplicationStateStarting)
 	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePull)})
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
