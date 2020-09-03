@@ -3,6 +3,7 @@ package base
 import (
 	"expvar"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -812,13 +813,15 @@ func getKeys(myMap map[string]string) []string {
 	for k := range myMap {
 		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 	return keys
 }
 
 func getValues(myMap map[string]string) []string {
+	keys := getKeys(myMap)
 	vals := make([]string, 0, len(myMap))
-	for _, v := range myMap {
-		vals = append(vals, v)
+	for _, k := range keys {
+		vals = append(vals, myMap[k])
 	}
 	return vals
 }
