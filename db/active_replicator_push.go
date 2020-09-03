@@ -35,7 +35,7 @@ func (apr *ActivePushReplicator) Start() error {
 		return fmt.Errorf("ActivePushReplicator already running")
 	}
 
-	apr.state = ReplicationStateStarting
+	apr.setState(ReplicationStateStarting)
 	logCtx := context.WithValue(context.Background(), base.LogContextKey{}, base.LogContext{CorrelationID: apr.config.ID + "-" + string(ActiveReplicatorTypePush)})
 	apr.ctx, apr.ctxCancel = context.WithCancel(logCtx)
 
