@@ -25,9 +25,11 @@ type BlipSyncStats struct {
 	HandleChangesCount               *base.SgwIntStat // handleChanges/handleProposeChanges
 	HandleChangesTime                *base.SgwIntStat
 	HandleChangesDeltaRequestedCount *base.SgwIntStat
+	HandleProveAttachment            *base.SgwIntStat // handleProveAttachment
 	HandleGetAttachment              *base.SgwIntStat // handleGetAttachment
 	HandleGetAttachmentBytes         *base.SgwIntStat
-	GetAttachment                    *base.SgwIntStat // getAttachment
+	ProveAttachment                  *base.SgwIntStat // sendProveAttachment
+	GetAttachment                    *base.SgwIntStat // sendGetAttachment
 	GetAttachmentBytes               *base.SgwIntStat
 	HandleChangesResponseCount       *base.SgwIntStat // handleChangesResponse
 	HandleChangesResponseTime        *base.SgwIntStat
@@ -63,9 +65,11 @@ func NewBlipSyncStats() *BlipSyncStats {
 		HandleChangesCount:               &base.SgwIntStat{}, // handleChanges/handleProposeChanges
 		HandleChangesTime:                &base.SgwIntStat{},
 		HandleChangesDeltaRequestedCount: &base.SgwIntStat{},
+		HandleProveAttachment:            &base.SgwIntStat{}, // handleProveAttachment
 		HandleGetAttachment:              &base.SgwIntStat{}, // handleGetAttachment
 		HandleGetAttachmentBytes:         &base.SgwIntStat{},
-		GetAttachment:                    &base.SgwIntStat{}, // getAttachment
+		ProveAttachment:                  &base.SgwIntStat{}, // sendProveAttachment
+		GetAttachment:                    &base.SgwIntStat{}, // sendGetAttachment
 		GetAttachmentBytes:               &base.SgwIntStat{},
 		HandleChangesResponseCount:       &base.SgwIntStat{}, // handleChangesResponse
 		HandleChangesResponseTime:        &base.SgwIntStat{},

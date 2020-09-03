@@ -18,14 +18,15 @@ import (
 
 // kHandlersByProfile defines the routes for each message profile (verb) of an incoming request to the function that handles it.
 var kHandlersByProfile = map[string]blipHandlerFunc{
-	MessageGetCheckpoint:  (*blipHandler).handleGetCheckpoint,
-	MessageSetCheckpoint:  (*blipHandler).handleSetCheckpoint,
-	MessageSubChanges:     userBlipHandler((*blipHandler).handleSubChanges),
-	MessageChanges:        userBlipHandler((*blipHandler).handleChanges),
-	MessageRev:            userBlipHandler((*blipHandler).handleRev),
-	MessageNoRev:          (*blipHandler).handleNoRev,
-	MessageGetAttachment:  userBlipHandler((*blipHandler).handleGetAttachment),
-	MessageProposeChanges: (*blipHandler).handleProposeChanges,
+	MessageGetCheckpoint:   (*blipHandler).handleGetCheckpoint,
+	MessageSetCheckpoint:   (*blipHandler).handleSetCheckpoint,
+	MessageSubChanges:      userBlipHandler((*blipHandler).handleSubChanges),
+	MessageChanges:         userBlipHandler((*blipHandler).handleChanges),
+	MessageRev:             userBlipHandler((*blipHandler).handleRev),
+	MessageNoRev:           (*blipHandler).handleNoRev,
+	MessageGetAttachment:   userBlipHandler((*blipHandler).handleGetAttachment),
+	MessageProveAttachment: userBlipHandler((*blipHandler).handleProveAttachment),
+	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
 }
 
 type blipHandler struct {
@@ -764,6 +765,36 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 //////// ATTACHMENTS:
 
+func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
+	nonce, err := rq.Body()
+	if err != nil {
+		return err
+	}
+
+	if len(nonce) == 0 {
+		return base.HTTPErrorf(http.StatusBadRequest, "no nonce sent with proveAttachment")
+	}
+
+	digest, ok := rq.Properties[ProveAttachmentDigest]
+	if !ok {
+		return base.HTTPErrorf(http.StatusBadRequest, "no digest sent with proveAttachment")
+	}
+
+	attData, err := bh.db.GetAttachment(AttachmentKey(digest))
+	if err != nil {
+		panic(fmt.Sprintf("error getting client attachment: %v", err))
+	}
+
+	proof := ProveAttachment(attData, nonce)
+
+	resp := rq.Response()
+	resp.SetBody([]byte(proof))
+
+	bh.replicationStats.HandleProveAttachment.Add(1)
+
+	return nil
+}
+
 // Received a "getAttachment" request
 func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 
@@ -792,65 +823,108 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	return nil
 }
 
+var NoBLIPHandlerError = fmt.Errorf("404 - No handler for BLIP request")
+
+// sendGetAttachment requests the full attachment from the peer.
+func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name string, digest string, meta map[string]interface{}) ([]byte, error) {
+	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
+	outrq := blip.NewRequest()
+	outrq.Properties = map[string]string{BlipProfile: MessageGetAttachment, GetAttachmentDigest: digest}
+	if isCompressible(name, meta) {
+		outrq.Properties[BlipCompress] = "true"
+	}
+	if !bh.sendBLIPMessage(sender, outrq) {
+		return nil, ErrClosedBLIPSender
+	}
+
+	resp := outrq.Response()
+
+	respBody, err := resp.Body()
+	if err != nil {
+		return nil, err
+	}
+
+	lNum, metaLengthOK := meta["length"].(json.Number)
+	metaLength, err := lNum.Int64()
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify that the attachment we received matches the metadata stored in the document
+	if !metaLengthOK || len(respBody) != int(metaLength) || Sha1DigestKey(respBody) != digest {
+		return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s", digest)
+	}
+
+	bh.replicationStats.GetAttachment.Add(1)
+	bh.replicationStats.GetAttachmentBytes.Add(metaLength)
+
+	return respBody, nil
+}
+
+// sendProveAttachment asks the peer to prove they have the attachment, without actually sending it.
+// This is to prevent clients from creating a doc with a digest for an attachment they otherwise can't access, in order to download it.
+func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, digest string, knownData []byte) error {
+	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
+	nonce, proof := GenerateProofOfAttachment(knownData)
+	outrq := blip.NewRequest()
+	outrq.Properties = map[string]string{BlipProfile: MessageProveAttachment, ProveAttachmentDigest: digest}
+	outrq.SetBody(nonce)
+	if !bh.sendBLIPMessage(sender, outrq) {
+		return ErrClosedBLIPSender
+	}
+
+	resp := outrq.Response()
+
+	body, err := resp.Body()
+	if err != nil {
+		base.WarnfCtx(bh.loggingCtx, "Error returned for proveAttachment message for doc %s (digest %s).  Error: %v", base.UD(docID), digest, err)
+		return err
+	}
+
+	if resp.Type() == blip.ErrorType &&
+		resp.Properties["Error-Domain"] == blip.BLIPErrorDomain &&
+		resp.Properties["Error-Code"] == "404" {
+		return NoBLIPHandlerError
+	}
+
+	if string(body) != proof {
+		base.WarnfCtx(bh.loggingCtx, "Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
+		return base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
+	}
+
+	bh.replicationStats.ProveAttachment.Add(1)
+
+	base.InfofCtx(bh.loggingCtx, base.KeySync, "proveAttachment successful for doc %s (digest %s)", base.UD(docID), digest)
+	return nil
+}
+
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string) error {
 	return bh.db.ForEachStubAttachment(body, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
-			if knownData != nil {
-				// If I have the attachment already I don't need the client to send it, but for
-				// security purposes I do need the client to _prove_ it has the data, otherwise if
-				// it knew the digest it could acquire the data by uploading a document with the
-				// claimed attachment, then downloading it.
-				base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
-				nonce, proof := GenerateProofOfAttachment(knownData)
-				outrq := blip.NewRequest()
-				outrq.Properties = map[string]string{BlipProfile: MessageProveAttachment, ProveAttachmentDigest: digest}
-				outrq.SetBody(nonce)
-				if !bh.sendBLIPMessage(sender, outrq) {
-					return nil, ErrClosedBLIPSender
-				}
-				if body, err := outrq.Response().Body(); err != nil {
-					base.WarnfCtx(bh.loggingCtx, "Error returned for proveAttachment message for doc %s (digest %s).  Error: %v", base.UD(docID), digest, err)
-					return nil, err
-				} else if string(body) != proof {
-					base.WarnfCtx(bh.loggingCtx, "Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
-					return nil, base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
-				} else {
-					base.InfofCtx(bh.loggingCtx, base.KeySync, "proveAttachment successful for doc %s (digest %s)", base.UD(docID), digest)
-				}
-				return nil, nil
-			} else {
-				// If I don't have the attachment, I will request it from the client:
-				base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Asking for attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
-				outrq := blip.NewRequest()
-				outrq.Properties = map[string]string{BlipProfile: MessageGetAttachment, GetAttachmentDigest: digest}
-				if isCompressible(name, meta) {
-					outrq.Properties[BlipCompress] = "true"
-				}
-				if !bh.sendBLIPMessage(sender, outrq) {
-					return nil, ErrClosedBLIPSender
-				}
-				attBody, err := outrq.Response().Body()
-				if err != nil {
-					return nil, err
-				}
-
-				lNum, metaLengthOK := meta["length"].(json.Number)
-				metaLength, err := lNum.Int64()
-				if err != nil {
-					return nil, err
-				}
-
-				// Verify that the attachment we received matches the metadata stored in the document
-				if !metaLengthOK || len(attBody) != int(metaLength) || Sha1DigestKey(attBody) != digest {
-					return nil, base.HTTPErrorf(http.StatusBadRequest, "Incorrect data sent for attachment with digest: %s", digest)
-				}
-
-				bh.replicationStats.GetAttachment.Add(1)
-				bh.replicationStats.GetAttachmentBytes.Add(metaLength)
-				return attBody, nil
+			// request attachment if we don't have it
+			if knownData == nil {
+				return bh.sendGetAttachment(sender, docID, name, digest, meta)
 			}
+
+			// ask client to prove they have the attachemnt without sending it
+			proveAttErr := bh.sendProveAttachment(sender, docID, name, digest, knownData)
+			if proveAttErr == nil {
+				return nil, nil
+			}
+
+			// peer doesn't support proveAttachment... Fall back to using getAttachment as proof.
+			if proveAttErr == NoBLIPHandlerError {
+				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer doesn't support proveAttachment, falling back to getAttachment for proof in doc %s (digest %s)", base.UD(docID), digest)
+				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
+				if getAttErr == nil {
+					return nil, nil
+				}
+				return nil, getAttErr
+			}
+
+			return nil, proveAttErr
 		})
 }
 
