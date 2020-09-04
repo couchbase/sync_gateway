@@ -313,7 +313,7 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 	}
 
 	pullCheckpoint, _ := getLocalCheckpoint(dbContext, PullCheckpointID(replicationID))
-	if pullCheckpoint != nil {
+	if pullCheckpoint != nil && pullCheckpoint.Status != nil {
 		status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
 		status.Status = pullCheckpoint.Status.Status
 		status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
@@ -321,7 +321,7 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 	}
 
 	pushCheckpoint, _ := getLocalCheckpoint(dbContext, PushCheckpointID(replicationID))
-	if pushCheckpoint != nil {
+	if pushCheckpoint != nil && pushCheckpoint.Status != nil {
 		status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
 		status.Status = pushCheckpoint.Status.Status
 		status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
