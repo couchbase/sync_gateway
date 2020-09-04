@@ -613,6 +613,10 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 		config.Users[i].Password = base.StringPtr("****")
 	}
 
+	for i, _ := range config.Replications {
+		config.Replications[i] = config.Replications[i].Redacted()
+	}
+
 	return &config, nil
 }
 
@@ -841,9 +845,6 @@ func (sc *ServerConfig) Redacted() (*ServerConfig, error) {
 		config.Databases[i], err = config.Databases[i].Redacted()
 		if err != nil {
 			return nil, err
-		}
-		for j, _ := range config.Databases[i].Replications {
-			config.Databases[i].Replications[j] = config.Databases[i].Replications[j].Redacted()
 		}
 	}
 
