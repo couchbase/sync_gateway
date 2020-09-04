@@ -142,6 +142,19 @@ type ReplicationUpsertConfig struct {
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
+	// Perform EE checks first, to avoid error messages related to EE functionality
+	if !base.IsEnterpriseEdition() {
+		if rc.ConflictResolutionType != "" && rc.ConflictResolutionType != ConflictResolverDefault {
+			return base.HTTPErrorf(http.StatusBadRequest, "Non-default conflict_resolution_type is only supported in enterprise edition")
+		}
+		if rc.DeltaSyncEnabled == true {
+			return base.HTTPErrorf(http.StatusBadRequest, "Delta sync for sg-replicate is only supported in enterprise edition")
+		}
+		if rc.BatchSize > 0 && rc.BatchSize != defaultChangesBatchSize {
+			return base.HTTPErrorf(http.StatusBadRequest, "Replication batch_size can only be configured in enterprise edition")
+		}
+	}
+
 	// Checkpoint keys are prefixed with 35 characters:  _sync:local:checkpoint/sgr2cp:pull:
 	// Setting length limit for replication ID to 160 characters to retain some room for future
 	// key-related enhancements
@@ -379,7 +392,7 @@ func (ar *ActiveReplicator) alignState(targetState string) error {
 
 }
 
-func NewSGReplicateManager(dbContext *DatabaseContext, cfg *base.CfgSG) (*sgReplicateManager, error) {
+func NewSGReplicateManager(dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplicateManager, error) {
 	if cfg == nil {
 		return nil, errors.New("Cfg must be provided for SGReplicateManager")
 	}
@@ -411,6 +424,11 @@ func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.He
 	}
 
 	m.localNodeUUID = nodeUUID
+
+	// Heartbeat registration is EE-only, only register if heartbeater is non-nil
+	if heartbeater == nil {
+		return nil
+	}
 
 	m.heartbeatListener, err = NewReplicationHeartbeatListener(m)
 	if err != nil {
