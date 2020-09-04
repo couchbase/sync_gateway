@@ -31,13 +31,13 @@ func TestDefaultConflictResolver(t *testing.T) {
 			name:           "localDeleted",
 			localDocument:  Body{"_rev": "2-abc", "_deleted": true},
 			remoteDocument: Body{"_rev": "1-abc"},
-			expectedWinner: Body{"_rev": "1-abc"},
+			expectedWinner: Body{"_rev": "2-abc", "_deleted": true},
 		},
 		{
 			name:           "remoteDeleted",
 			localDocument:  Body{"_rev": "1-abc"},
 			remoteDocument: Body{"_rev": "2-abc", "_deleted": true},
-			expectedWinner: Body{"_rev": "1-abc"},
+			expectedWinner: Body{"_rev": "2-abc", "_deleted": true},
 		},
 		{
 			name:           "bothDeleted",
