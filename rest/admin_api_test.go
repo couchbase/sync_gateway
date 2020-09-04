@@ -2155,7 +2155,7 @@ func TestConfigRedaction(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "password", unmarshaledConfig.Password)
+	assert.Equal(t, base.TestClusterPassword(), unmarshaledConfig.Password)
 	assert.Equal(t, "password", *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default server config redaction
@@ -2172,6 +2172,6 @@ func TestConfigRedaction(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "password", unmarshaledServerConfig.Databases["db"].Password)
+	assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Databases["db"].Password)
 	assert.Equal(t, "password", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
 }
