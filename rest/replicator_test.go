@@ -1782,6 +1782,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 		expectedLocalRevID      string
 		expectedTombstonedRevID string
 		expectedResolutionType  db.ConflictResolutionType
+		skipActiveLeafAssertion bool
 	}{
 		{
 			name:                   "remoteWins",
@@ -1819,6 +1820,17 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:      db.Body{"source": "local"},
 			expectedLocalRevID:     db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
 			expectedResolutionType: db.ConflictResolutionLocal,
+		},
+		{
+			name:                    "twoTombstones",
+			localRevisionBody:       db.Body{"_deleted": true, "source": "local"},
+			localRevID:              "1-a",
+			remoteRevisionBody:      db.Body{"_deleted": true, "source": "remote"},
+			remoteRevID:             "1-b",
+			conflictResolver:        `function(conflict){}`,
+			expectedLocalBody:       db.Body{"source": "remote"},
+			expectedLocalRevID:      "1-b",
+			skipActiveLeafAssertion: true,
 		},
 	}
 
@@ -1913,6 +1925,10 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				assert.Equal(t, 0, int(replicationStats.ConflictResolvedLocalCount.Value()))
 				assert.Equal(t, 0, int(replicationStats.ConflictResolvedMergedCount.Value()))
 				assert.Equal(t, 1, int(replicationStats.ConflictResolvedRemoteCount.Value()))
+			default:
+				assert.Equal(t, 0, int(replicationStats.ConflictResolvedLocalCount.Value()))
+				assert.Equal(t, 0, int(replicationStats.ConflictResolvedMergedCount.Value()))
+				assert.Equal(t, 0, int(replicationStats.ConflictResolvedRemoteCount.Value()))
 			}
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
 
@@ -1932,23 +1948,24 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
 			}
 
-			// Validate only one active leaf node remains after conflict resolution, and that all parents
-			// of leaves have empty bodies
-			activeCount := 0
-			for _, revID := range doc.SyncData.History.GetLeaves() {
-				revInfo, ok := doc.SyncData.History[revID]
-				require.True(t, ok)
-				if !revInfo.Deleted {
-					activeCount++
-				}
-				if revInfo.Parent != "" {
-					parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+			if !test.skipActiveLeafAssertion {
+				// Validate only one active leaf node remains after conflict resolution, and that all parents
+				// of leaves have empty bodies
+				activeCount := 0
+				for _, revID := range doc.SyncData.History.GetLeaves() {
+					revInfo, ok := doc.SyncData.History[revID]
 					require.True(t, ok)
-					assert.True(t, parentRevInfo.Body == nil)
+					if !revInfo.Deleted {
+						activeCount++
+					}
+					if revInfo.Parent != "" {
+						parentRevInfo, ok := doc.SyncData.History[revInfo.Parent]
+						require.True(t, ok)
+						assert.True(t, parentRevInfo.Body == nil)
+					}
 				}
+				assert.Equal(t, 1, activeCount)
 			}
-			assert.Equal(t, 1, activeCount)
-
 		})
 	}
 }

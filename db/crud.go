@@ -939,6 +939,31 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
 		}
 
+		addRevisionsToRevTree := func() error {
+			// Add all the new-to-me revisions to the rev tree:
+			for i := currentRevIndex - 1; i >= 0; i-- {
+				err := doc.History.addRevision(newDoc.ID,
+					RevInfo{
+						ID:      docHistory[i],
+						Parent:  parent,
+						Deleted: i == 0 && newDoc.Deleted})
+
+				if err != nil {
+					return err
+				}
+				parent = docHistory[i]
+			}
+			return nil
+		}
+
+		if doc.IsDeleted() && newDoc.Deleted {
+			err = addRevisionsToRevTree()
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			return newDoc, nil, nil, nil
+		}
+
 		// Conflict-free mode check
 		if db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
 			if conflictResolver == nil {
@@ -968,17 +993,9 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
-		for i := currentRevIndex - 1; i >= 0; i-- {
-			err := doc.History.addRevision(newDoc.ID,
-				RevInfo{
-					ID:      docHistory[i],
-					Parent:  parent,
-					Deleted: i == 0 && newDoc.Deleted})
-
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			parent = docHistory[i]
+		err = addRevisionsToRevTree()
+		if err != nil {
+			return nil, nil, nil, err
 		}
 
 		// Process the attachments, replacing bodies with digests.
