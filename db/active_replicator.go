@@ -134,10 +134,10 @@ func (ar *ActiveReplicator) Reset() error {
 // associated with the ActiveReplicator are complete, onComplete is invoked
 func (ar *ActiveReplicator) _onReplicationComplete() {
 	allReplicationsComplete := true
-	if ar.Push != nil && ar.Push.state != ReplicationStateStopped {
+	if ar.Push != nil && ar.Push.getState() != ReplicationStateStopped {
 		allReplicationsComplete = false
 	}
-	if ar.Pull != nil && ar.Pull.state != ReplicationStateStopped {
+	if ar.Pull != nil && ar.Pull.getState() != ReplicationStateStopped {
 		allReplicationsComplete = false
 	}
 
