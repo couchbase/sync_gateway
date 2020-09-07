@@ -437,6 +437,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 1)
 	assert.Equal(t, docID, changesResults.Results[0].ID)
+	lastSeq := changesResults.Last_Seq.(string)
 
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=stop", "")
 	assertStatus(t, resp, http.StatusOK)
@@ -446,7 +447,11 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 	putDocResp = rt1.putDoc(docID, `{"source":"rt1","`+db.BodyAttachments+`":{"localAtt.txt":{"data":"cmVtb3Rl"}},"channels":["alice"],"`+db.BodyRev+`":"`+rev1+`"}`)
 	require.True(t, putDocResp.Ok)
 
-	require.NoError(t, rt1.WaitForPendingChanges())
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+	lastSeq = changesResults.Last_Seq.(string)
 
 	putDocResp = rt2.putDoc(docID, `{"source":"rt2","`+db.BodyAttachments+`":{"remoteAtt.txt":{"data":"bG9jYWw="}},"channels":["alice"],"`+db.BodyRev+`":"`+rev1+`"}`)
 	require.True(t, putDocResp.Ok)
@@ -456,14 +461,15 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 	rt1.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
 
-	// TODO: Wait for replicated rev
-	time.Sleep(time.Second * 1)
+	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 1)
+	assert.Equal(t, docID, changesResults.Results[0].ID)
+	lastSeq = changesResults.Last_Seq.(string)
 
-	// FIXME: Remote att ends up in sync data, local+remote end up in body...
 	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
-	fmt.Printf("%#v\n", doc)
-
+	assert.Equal(t, "3-66afcf971480f1275d4ca94ce226d9c2", doc.SyncData.CurrentRev)
 	assert.Len(t, doc.SyncData.Attachments, 2, "expecting 2 attachments in sync data of resolved doc")
 	assert.Nil(t, doc.Body()[db.BodyAttachments], "expecting no _attachments property in resolved doc body")
 }
