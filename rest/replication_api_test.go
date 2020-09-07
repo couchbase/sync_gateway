@@ -931,6 +931,78 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 
 }
 
+// TestReplicationConcurrentPush
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates two continuous push replications on rt1 via the REST API for two channels
+//   - Write documents to rt1 belonging to both channels
+//   - Write documents to rt1, each belonging to one of the channels (verifies replications are still running)
+//   - Validate replications do not report errors, all docs are replicated
+// Note: This test intermittently reproduced CBG-998 under -race when a 1s sleep was added post-callback to
+//   WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket WriteUpdateCallback.
+func TestReplicationConcurrentPush(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyCRUD, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
+
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	defer db.SuspendSequenceBatching()()
+
+	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Create push replications, verify running
+	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true)
+	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
+	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePush, []string{"DEF"}, true)
+	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
+
+	// Create docs on active
+	docAllChannels1 := t.Name() + "All1"
+	docAllChannels2 := t.Name() + "All2"
+	_ = activeRT.putDoc(docAllChannels1, `{"source":"activeRT1","channels":["ABC","DEF"]}`)
+	_ = activeRT.putDoc(docAllChannels2, `{"source":"activeRT2","channels":["ABC","DEF"]}`)
+
+	// wait for documents to be pushed to remote
+	changesResults := remoteRT.RequireWaitChanges(2, "0")
+	changesResults.requireDocIDs(t, []string{docAllChannels1, docAllChannels2})
+
+	// wait for both replications to have pushed, and total pushed to equal 2
+	assert.NoError(t, activeRT.WaitForCondition(func() bool {
+		abcStatus := activeRT.GetReplicationStatus("rep_ABC")
+		if abcStatus.DocsCheckedPush != 2 {
+			log.Printf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
+			return false
+		}
+		defStatus := activeRT.GetReplicationStatus("rep_DEF")
+		if defStatus.DocsCheckedPush != 2 {
+			log.Printf("abcStatus.DocsCheckedPush not 2, is %v", abcStatus.DocsCheckedPush)
+			return false
+		}
+
+		// DocsWritten is incremented on a successful write, but ALSO in the race scenario where the remote responds
+		// to the changes message to say it needs the rev, but then receives the rev from another source. This means that
+		// in this test, DocsWritten can be any value between 0 and 2 for each replication, but should be at least 2
+		// for both replications
+		totalDocsWritten := abcStatus.DocsWritten + defStatus.DocsWritten
+		if totalDocsWritten < 2 || totalDocsWritten > 4 {
+			log.Printf("Total docs written is not between 2 and 4, is abc=%v, def=%v", abcStatus.DocsWritten, defStatus.DocsWritten)
+			return false
+		}
+		return true
+	}))
+
+	// Validate doc contents
+	docAll1Body := remoteRT.getDoc(docAllChannels1)
+	assert.Equal(t, "activeRT1", docAll1Body["source"])
+	docAll2Body := remoteRT.getDoc(docAllChannels2)
+	assert.Equal(t, "activeRT2", docAll2Body["source"])
+
+}
+
 // Helper functions for SGR testing
 
 // setupSGRPeers sets up two rest testers to be used for sg-replicate testing with the following configuration:
