@@ -328,7 +328,7 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 		status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
 	}
 
-	if pullCheckpoint == nil && pushCheckpoint == nil {
+	if (pullCheckpoint == nil || pullCheckpoint.Status == nil) && (pushCheckpoint == nil || pushCheckpoint.Status == nil) {
 		return nil, errors.New("Replication status not found")
 	}
 

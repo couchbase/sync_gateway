@@ -2199,10 +2199,11 @@ func TestAdhocReplicationStatus(t *testing.T) {
 	err := rt.GetDatabase().SGReplicateMgr.StartReplications()
 	require.NoError(t, err)
 
-	// Requires a loop because it takes a little time for the replication to complete
-	for i := 0; i < 10; i++ {
+	// With the error hitting the replicationStatus endpoint will either return running, if not completed, and once
+	// completed panics. With the fix after running it'll return a 404 as replication no longer exists.
+	stateError := rt.WaitForCondition(func() bool {
 		resp = rt.SendAdminRequest("GET", "/db/_replicationStatus/pushandpull-with-target-oneshot-adhoc", "")
-		time.Sleep(50 * time.Millisecond)
-	}
-	assertStatus(t, resp, http.StatusOK)
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, stateError)
 }
