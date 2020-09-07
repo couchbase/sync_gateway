@@ -3822,6 +3822,56 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 	}
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
+	// startReplication starts the replication tasks and asserts that the start up
+	// operation is successful. It returns a teardown function to stop the replication
+	// that can be called in defer.
+	startReplication := func(ar *db.ActiveReplicator) func() {
+		require.NoError(t, ar.Start(), "Error starting replication")
+		return func() { require.NoError(t, ar.Stop(), "Error stopping replication") }
+	}
+
+	// requireBodyEmpty asserts that the specified document body is empty.
+	requireBodyEmpty := func(rt *RestTester, docID string) {
+		var body []byte
+		_, err := rt.Bucket().Get(docID, &body)
+		require.EqualError(t, err, fmt.Sprintf("Error during Get %s: key not found", docID))
+	}
+
+	// waitForRevision waits until the specified tombstone revision is available
+	// in the bucket backed by the specified RestTester instance.
+	waitForTombstone := func(rt *RestTester, docID, revID string) {
+		require.NoError(t, rt.WaitForCondition(func() bool {
+			doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			return doc.IsDeleted()
+		}))
+		doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		require.NoError(t, err, "Error reading document from bucket")
+		require.Equal(t, revID, doc.SyncData.CurrentRev)
+		require.Empty(t, doc.Body(), "Document body should be empty")
+	}
+
+	// requireBodyEmpty asserts that the specified document body is not empty.
+	requireBodyNotEmpty := func(rt *RestTester, docID, revID, bodyValue string) {
+		doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		require.NoError(t, err, "Error reading document from bucket")
+		require.Equal(t, revID, doc.SyncData.CurrentRev)
+		require.NotEmpty(t, doc.Body(), "Document body shouldn't be empty")
+	}
+
+	// createOrUpdateDoc creates a new document or update an existing document with the
+	// specified document id, revision id and body value in a channel named "alice".
+	createOrUpdateDoc := func(rt *RestTester, docID, revID, bodyValue string) string {
+		body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
+		dbURL := "/db/" + docID
+		if docID != "" {
+			dbURL = "/db/" + docID + "?rev=" + revID
+		}
+		resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
+		assertStatus(t, resp, http.StatusCreated)
+		require.NoError(t, rt.WaitForPendingChanges())
+		return respRevID(t, resp)
+	}
+
 	defaultConflictResolverWithTombstoneTests := []struct {
 		// A unique name to identify the unit test.
 		name string
@@ -3875,211 +3925,120 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 
 	for _, test := range defaultConflictResolverWithTombstoneTests {
 		t.Run(test.name, func(tt *testing.T) {
-			// Bootstrap an ActiveReplicator instance with default conflict resolution
-			// policy enabled and spin up both active and passive RestTester instances.
-			rt1, rt2, _, ar, teardown := bootstrapReplicator(t)
-			defer teardown()
+			// Passive
+			rt2 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: base.GetTestBucket(t),
+				DatabaseConfig: &DbConfig{
+					Users: map[string]*db.PrincipalConfig{
+						"alice": {
+							Password:         base.StringPtr("pass"),
+							ExplicitChannels: base.SetOf("alice"),
+						},
+					},
+				},
+				noAdminParty: true,
+			})
+			defer rt2.Close()
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+			srv := httptest.NewServer(rt2.TestPublicHandler())
+			defer srv.Close()
+
+			// Build passiveDBURL with basic auth creds
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+			passiveDBURL.User = url.UserPassword("alice", "pass")
+
+			// Active
+			rt1 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: base.GetTestBucket(t),
+			})
+			defer rt1.Close()
+
+			defaultConflictResolver, err := db.NewCustomConflictResolver(
+				`function(conflict) { return defaultPolicy(conflict); }`)
+			require.NoError(t, err, "Error creating custom conflict resolver")
+
+			config := db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				Continuous:           true,
+				ConflictResolverFunc: defaultConflictResolver,
+				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+			}
 
 			// Create the first revision of the document on rt1.
 			docID := t.Name() + "foo"
-			rt1RevIDCreated := createOrUpdateDoc(t, rt1, docID, "", "foo")
-			requireBodyNotEmpty(t, rt1, docID, rt1RevIDCreated, "foo")
+			rt1RevIDCreated := createOrUpdateDoc(rt1, docID, "", "foo")
+			requireBodyNotEmpty(rt1, docID, rt1RevIDCreated, "foo")
 
-			// Start replication.
-			defer startReplication(t, ar)()
+			// Create active replicator and start replication.
+			ar := db.NewActiveReplicator(&config)
+			defer startReplication(ar)()
 
 			// Wait for the original document revision written to rt1 to arrive at rt2.
 			rt2RevIDCreated := rt1RevIDCreated
-			waitForRevision(t, rt2, docID, rt2RevIDCreated)
-			requireBodyNotEmpty(t, rt2, docID, rt2RevIDCreated, "foo")
+			require.NoError(t, rt2.WaitForCondition(func() bool {
+				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				return doc != nil && doc.SyncData.CurrentRev == rt2RevIDCreated
+			}))
+			requireBodyNotEmpty(rt2, docID, rt2RevIDCreated, "foo")
 
 			// Stop replication.
-			assert.NoError(t, ar.Stop(), "Error stopping replication")
+			require.NoError(t, ar.Stop(), "Error stopping replication")
 
 			// Update the document on rt1 to build a revision history.
-			rt1RevIDUpdated := createOrUpdateDoc(t, rt1, docID, rt1RevIDCreated, "bar")
-			requireBodyNotEmpty(t, rt1, docID, rt1RevIDUpdated, "bar")
+			rt1RevIDUpdated := createOrUpdateDoc(rt1, docID, rt1RevIDCreated, "bar")
+			requireBodyNotEmpty(rt1, docID, rt1RevIDUpdated, "bar")
 
-			// Tombstone the document on rt1 to mark the tip or leaf node of the revision
-			// history for deletion.
-			rt1RevIDDeleted := deleteDoc(t, rt1, docID, rt1RevIDUpdated)
-			requireTombstone(t, rt1, docID, rt1RevIDDeleted)
+			// Tombstone the document on rt1 to mark the tip of the revision history for deletion.
+			resp := rt1.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt1RevIDUpdated, ``)
+			assertStatus(t, resp, http.StatusOK)
+			rt1RevIDDeleted := respRevID(t, resp)
+
+			// Ensure that the tombstone revision is written to rt1 bucket with an empty body.
+			rt1DocDeleted, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			require.NoError(t, err, "Error reading document from bucket")
+			require.Equal(t, rt1RevIDDeleted, rt1DocDeleted.SyncData.CurrentRev)
+			require.True(t, rt1DocDeleted.IsDeleted(), "Document should be a tombstone")
+			require.Empty(t, rt1DocDeleted.Body(), "Document body should be empty")
 
 			// Update the document on rt2 to branch revision history into a tree (conflict).
-			rt2RevIDUpdated := createOrUpdateDoc(t, rt2, docID, rt2RevIDCreated, "baz")
-			requireBodyNotEmpty(t, rt2, docID, rt2RevIDUpdated, "baz")
+			rt2RevIDUpdated := createOrUpdateDoc(rt2, docID, rt2RevIDCreated, "baz")
+			requireBodyNotEmpty(rt2, docID, rt2RevIDUpdated, "baz")
 
 			if test.revGenHigh {
 				// Update the document twice on rt2 to make the revision generation on rt2 is higher than rt1.
-				rt2RevIDUpdated2 := createOrUpdateDoc(t, rt2, docID, rt2RevIDUpdated, "qux")
-				requireBodyNotEmpty(t, rt2, docID, rt2RevIDUpdated2, "qux")
-				rt2RevIDUpdated3 := createOrUpdateDoc(t, rt2, docID, rt2RevIDUpdated2, "grunt")
-				requireBodyNotEmpty(t, rt2, docID, rt2RevIDUpdated3, "grunt")
+				rt2RevIDUpdated2 := createOrUpdateDoc(rt2, docID, rt2RevIDUpdated, "qux")
+				requireBodyNotEmpty(rt2, docID, rt2RevIDUpdated2, "qux")
+				rt2RevIDUpdated3 := createOrUpdateDoc(rt2, docID, rt2RevIDUpdated2, "grunt")
+				requireBodyNotEmpty(rt2, docID, rt2RevIDUpdated3, "grunt")
 			}
 
 			if test.revGenTie {
 				// Update the document on rt2 to make tie between both local and remote revisions.
-				rt2RevIDUpdated2 := createOrUpdateDoc(t, rt2, docID, rt2RevIDUpdated, test.bodyValue)
-				requireBodyNotEmpty(t, rt2, docID, rt2RevIDUpdated2, test.bodyValue)
+				rt2RevIDUpdated2 := createOrUpdateDoc(rt2, docID, rt2RevIDUpdated, test.bodyValue)
+				requireBodyNotEmpty(rt2, docID, rt2RevIDUpdated2, test.bodyValue)
 			}
 
 			// Start replication.
-			defer startReplication(t, ar)()
+			defer startReplication(ar)()
 
 			// Wait for default conflict resolution policy to be applied through replication and
 			// the winning revision to be written to both rt1 and rt2 buckets. Check whether the
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
-			waitForTombstone(t, rt2, docID, test.tombstoneExpected)
-			waitForTombstone(t, rt1, docID, test.tombstoneExpected)
+			waitForTombstone(rt2, docID, test.tombstoneExpected)
+			waitForTombstone(rt1, docID, test.tombstoneExpected)
 
 			// Ensure that the document body of the winning tombstone revision written to both
 			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
 			// revision via SDK should return a "key not found" error.
-			requireBodyEmpty(t, rt2, docID)
-			requireBodyEmpty(t, rt1, docID)
+			requireBodyEmpty(rt2, docID)
+			requireBodyEmpty(rt1, docID)
 		})
 	}
-}
-
-// deleteDoc deletes the specified document from the bucket backed by the
-// RestTester instance and returns the new revision id of the delete mutation.
-func deleteDoc(t *testing.T, rt *RestTester, docID, revID string) string {
-	resp := rt.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
-	assertStatus(t, resp, http.StatusOK)
-	return respRevID(t, resp)
-}
-
-// requireTombstone asserts that the current/latest revision of the specified
-// document is a tombstone. It asserts that the doc body is empty and specified
-// revision of the doc is the latest revision written into the bucket.
-func requireTombstone(t *testing.T, rt *RestTester, docID, revID string) {
-	doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-	assert.NoError(t, err, "Error reading document from bucket")
-	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.True(t, doc.IsDeleted(), "Document should be a tombstone")
-	assert.Empty(t, doc.Body(), "Document body should be empty")
-	assert.Empty(t, doc.GetDeepMutableBody()["key"])
-}
-
-// createOrUpdateDoc creates a new document or update an existing document with the
-// specified document id, revision id and body value in a channel named "alice".
-func createOrUpdateDoc(t *testing.T, rt *RestTester, docID, revID, bodyValue string) string {
-	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
-	url := "/db/" + docID
-	if docID != "" {
-		url = "/db/" + docID + "?rev=" + revID
-	}
-	resp := rt.SendAdminRequest(http.MethodPut, url, body)
-	assertStatus(t, resp, http.StatusCreated)
-	assert.NoError(t, rt.WaitForPendingChanges())
-	return respRevID(t, resp)
-}
-
-// requireBodyEmpty asserts that the specified document body is not empty.
-func requireBodyNotEmpty(t *testing.T, rt *RestTester, docID, revID, bodyValue string) {
-	doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-	assert.NoError(t, err, "Error reading document from bucket")
-	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.NotEmpty(t, doc.Body(), "Document body shouldn't be empty")
-	assert.Equal(t, bodyValue, doc.GetDeepMutableBody()["key"])
-}
-
-// waitForRevision waits until the specified tombstone revision is available
-// in the bucket backed by the specified RestTester instance.
-func waitForTombstone(t *testing.T, rt *RestTester, docID, revID string) {
-	assert.NoError(t, rt.WaitForCondition(func() bool {
-		doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-		return doc.IsDeleted()
-	}))
-	doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-	assert.NoError(t, err, "Error reading document from bucket")
-	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Empty(t, doc.Body(), "Document body should be empty")
-}
-
-// requireBodyEmpty asserts that the specified document body is empty.
-func requireBodyEmpty(t *testing.T, rt *RestTester, docID string) {
-	var body []byte
-	_, err := rt.Bucket().Get(docID, &body)
-	require.EqualError(t, err, fmt.Sprintf("Error during Get %s: key not found", docID))
-}
-
-// startReplication starts the replication tasks and asserts that the start up
-// operation is successful. It returns a teardown function to stop the replication
-// that can be called from the caller with a defer statement.
-func startReplication(t *testing.T, ar *db.ActiveReplicator) func() {
-	assert.NoError(t, ar.Start(), "Error starting replication")
-	return func() { assert.NoError(t, ar.Stop(), "Error stopping replication") }
-}
-
-// waitForRevision waits until the specified document revision is available
-// in the bucket backed by the specified RestTester instance.
-func waitForRevision(t *testing.T, rt *RestTester, docID, revID string) {
-	assert.NoError(t, rt.WaitForCondition(func() bool {
-		doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-		return doc != nil && doc.SyncData.CurrentRev == revID
-	}))
-}
-
-// bootstrapReplicator bootstraps two RestTester (one for passive and the other for active)
-// instances, an httptest server, and an ActiveReplicator instance with the default conflict
-// resolution policy enabled. The teardown function returned from bootstrapReplicator can be
-// called from the caller to perform the clean-up action such as closing the RestTester and
-// httptest server instances, stopping active replicator instance etc.
-func bootstrapReplicator(t *testing.T) (activeRT, passiveRT *RestTester,
-	srv *httptest.Server, activeReplicator *db.ActiveReplicator, teardown func()) {
-	// Set up passive RestTester (rt2)
-	passiveRT = NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
-			Users: map[string]*db.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
-				},
-			},
-		},
-		noAdminParty: true,
-	})
-
-	// Make passiveRT listen on an actual HTTP port, so it can
-	// receive the blipsync request from activeRT.
-	srv = httptest.NewServer(passiveRT.TestPublicHandler())
-
-	// Build passiveDBURL with basic auth credentials
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
-	passiveDBURL.User = url.UserPassword("alice", "pass")
-
-	// Set up active RestTester (rt1)
-	activeRT = NewRestTester(t, &RestTesterConfig{
-		TestBucket: base.GetTestBucket(t),
-	})
-
-	// Set default conflict resolution policy
-	defaultConflictResolver, err := db.NewCustomConflictResolver(
-		`function(conflict) { return defaultPolicy(conflict); }`)
-	require.NoError(t, err)
-
-	config := db.ActiveReplicatorConfig{
-		ID:          t.Name(),
-		Direction:   db.ActiveReplicatorTypePushAndPull,
-		RemoteDBURL: passiveDBURL,
-		ActiveDB: &db.Database{
-			DatabaseContext: activeRT.GetDatabase(),
-		},
-		Continuous:           true,
-		ConflictResolverFunc: defaultConflictResolver,
-		ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
-	}
-	activeReplicator = db.NewActiveReplicator(&config)
-	require.NoError(t, err, "Error creating active replicator")
-
-	teardown = func() {
-		assert.NoError(t, activeReplicator.Stop())
-		activeRT.Close()
-		srv.Close()
-		passiveRT.Close()
-	}
-	return activeRT, passiveRT, srv, activeReplicator, teardown
 }
