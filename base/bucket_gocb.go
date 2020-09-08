@@ -1714,8 +1714,10 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		switch pkgerrors.Cause(writeErr) {
 		case nil:
 			return casOut, nil
-		case gocb.ErrKeyExists:
-			// Retry on cas failure
+		case gocb.ErrKeyExists, gocb.ErrNotStored:
+			// Retry on cas failure.  ErrNotStored is returned in some concurrent insert races that appear to be related
+			// to the timing of concurrent xattr subdoc operations.  Treating as CAS failure as these will get the usual
+			// conflict/duplicate handling on retry.
 		default:
 			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
 			Warnf("Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
