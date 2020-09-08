@@ -313,19 +313,27 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 	}
 
 	pullCheckpoint, _ := getLocalCheckpoint(dbContext, PullCheckpointID(replicationID))
-	if pullCheckpoint != nil && pullCheckpoint.Status != nil {
-		status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
-		status.Status = pullCheckpoint.Status.Status
-		status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
-		status.LastSeqPull = pullCheckpoint.Status.LastSeqPull
+	if pullCheckpoint != nil {
+		if pullCheckpoint.Status != nil {
+			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
+			status.Status = pullCheckpoint.Status.Status
+			status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
+			status.LastSeqPull = pullCheckpoint.Status.LastSeqPull
+		} else {
+			status.LastSeqPull = pullCheckpoint.LastSeq
+		}
 	}
 
 	pushCheckpoint, _ := getLocalCheckpoint(dbContext, PushCheckpointID(replicationID))
-	if pushCheckpoint != nil && pushCheckpoint.Status != nil {
-		status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
-		status.Status = pushCheckpoint.Status.Status
-		status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
-		status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
+	if pushCheckpoint != nil {
+		if pushCheckpoint.Status != nil {
+			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
+			status.Status = pushCheckpoint.Status.Status
+			status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
+			status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
+		} else {
+			status.LastSeqPush = pushCheckpoint.LastSeq
+		}
 	}
 
 	if (pullCheckpoint == nil || pullCheckpoint.Status == nil) && (pushCheckpoint == nil || pushCheckpoint.Status == nil) {
