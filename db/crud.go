@@ -1148,6 +1148,16 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 //   - Modifies the incoming history to prepend the merged revid (retaining the previous remote revID as its parent)
 func (db *Database) resolveDocMerge(localDoc *Document, remoteDoc *Document, conflict Conflict, docHistory []string, mergedBody Body) (resolvedRevID string, updatedHistory []string, err error) {
 
+	// Move attachments from the merged body to the incoming DocAttachments for normal processing.
+	bodyAtts, ok := mergedBody[BodyAttachments]
+	if ok {
+		attsMap, ok := bodyAtts.(map[string]interface{})
+		if ok {
+			remoteDoc.DocAttachments = attsMap
+			delete(mergedBody, BodyAttachments)
+		}
+	}
+
 	// Tombstone the local revision
 	localRevID := conflict.LocalDocument.ExtractRev()
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)

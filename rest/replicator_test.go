@@ -333,6 +333,213 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	assert.Equal(t, int64(1), ar.Pull.GetStats().ProveAttachment.Value())
 }
 
+// TestActiveReplicatorPullMergeConflictingAttachments:
+//   - Creates an initial revision on rt2 which is replicated to rt1.
+//   - Stops the replicator, and adds different attachments to the doc on both rt1 and rt2 at conflicting revisions.
+//   - Starts the replicator to trigger conflict resolution to merge both attachments in the conflict.
+func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
+
+	if !base.IsEnterpriseEdition() {
+		t.Skip("Test uses EE-only features for custom conflict resolution")
+	}
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	tests := []struct {
+		name                     string
+		initialRevBody           string
+		localConflictingRevBody  string
+		remoteConflictingRevBody string
+		expectedAttachments      int
+	}{
+		{
+			name:                     "merge new conflicting atts",
+			initialRevBody:           `{"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"localAtt.txt":{"data":"cmVtb3Rl"}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"remoteAtt.txt":{"data":"bG9jYWw="}},"channels":["alice"]}`,
+			expectedAttachments:      2,
+		},
+		{
+			name:                     "remove initial attachment",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","channels":["alice"]}`,
+			expectedAttachments:      0,
+		},
+		{
+			name:                     "preserve initial attachment with local",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","channels":["alice"]}`,
+			expectedAttachments:      1,
+		},
+		{
+			name:                     "preserve initial attachment with remote",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
+			expectedAttachments:      1,
+		},
+		{
+			name:                     "preserve initial attachment with new local att",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1},"localAtt.txt":{"data":"cmVtb3Rl"}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","channels":["alice"]}`,
+			expectedAttachments:      2,
+		},
+		{
+			name:                     "preserve initial attachment with new remote att",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"remoteAtt.txt":{"data":"bG9jYWw="}},"channels":["alice"]}`,
+			expectedAttachments:      2,
+		},
+		{
+			name:                     "preserve initial attachment with new conflicting atts",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1},"localAtt.txt":{"data":"cmVtb3Rl"}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"remoteAtt.txt":{"data":"bG9jYWw="}},"channels":["alice"]}`,
+			expectedAttachments:      3,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+			// Increase checkpoint persistence frequency for cross-node status verification
+			defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
+
+			// Disable sequence batching for multi-RT tests (pending CBG-1000)
+			defer db.SuspendSequenceBatching()()
+
+			// Passive
+			rt2 := NewRestTester(t, &RestTesterConfig{
+				DatabaseConfig: &DbConfig{
+					Users: map[string]*db.PrincipalConfig{
+						"alice": {
+							Password:         base.StringPtr("pass"),
+							ExplicitChannels: base.SetOf("alice"),
+						},
+					},
+				},
+				noAdminParty: true,
+			})
+			defer rt2.Close()
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+			srv := httptest.NewServer(rt2.TestPublicHandler())
+			defer srv.Close()
+
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+
+			// Add basic auth creds to target db URL
+			passiveDBURL.User = url.UserPassword("alice", "pass")
+
+			// Active
+			rt1 := NewRestTester(t, &RestTesterConfig{
+				DatabaseConfig: &DbConfig{
+					Replications: map[string]*db.ReplicationConfig{
+						"repl1": {
+							Remote:                 passiveDBURL.String(),
+							Direction:              db.ActiveReplicatorTypePull,
+							Continuous:             true,
+							ConflictResolutionType: db.ConflictResolverCustom,
+							ConflictResolutionFn: `
+					function(conflict) {
+						var mergedDoc = new Object();
+						mergedDoc.source = "merged";
+
+						var mergedAttachments = new Object();
+						dst = conflict.RemoteDocument._attachments;
+						for (var key in dst) {
+							mergedAttachments[key] = dst[key];
+						}
+						src = conflict.LocalDocument._attachments;
+						for (var key in src) {
+							mergedAttachments[key] = src[key];
+						}
+						mergedDoc._attachments = mergedAttachments;
+
+						mergedDoc.channels = ["alice"];
+
+						return mergedDoc;
+					}`},
+					},
+				},
+			})
+			defer rt1.Close()
+
+			err = rt1.GetDatabase().SGReplicateMgr.StartReplications()
+			require.NoError(t, err)
+
+			rt1.waitForAssignedReplications(1)
+
+			docID := test.name + "doc1"
+			putDocResp := rt2.putDoc(docID, test.initialRevBody)
+			require.True(t, putDocResp.Ok)
+			rev1 := putDocResp.Rev
+
+			// wait for the document originally written to rt2 to arrive at rt1
+			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			require.NoError(t, err)
+			require.Len(t, changesResults.Results, 1)
+			assert.Equal(t, docID, changesResults.Results[0].ID)
+			lastSeq := changesResults.Last_Seq.(string)
+
+			resp := rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=stop", "")
+			assertStatus(t, resp, http.StatusOK)
+
+			rt1.waitForReplicationStatus("repl1", db.ReplicationStateStopped)
+
+			resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.localConflictingRevBody)
+			assertStatus(t, resp, http.StatusCreated)
+
+			changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+			require.NoError(t, err)
+			assert.Len(t, changesResults.Results, 1)
+			assert.Equal(t, docID, changesResults.Results[0].ID)
+			lastSeq = changesResults.Last_Seq.(string)
+
+			resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.remoteConflictingRevBody)
+			assertStatus(t, resp, http.StatusCreated)
+
+			resp = rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=start", "")
+			assertStatus(t, resp, http.StatusOK)
+
+			rt1.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
+
+			changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+			require.NoError(t, err)
+			assert.Len(t, changesResults.Results, 1)
+			assert.Equal(t, docID, changesResults.Results[0].ID)
+			lastSeq = changesResults.Last_Seq.(string)
+
+			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			revGen, _ := db.ParseRevID(doc.SyncData.CurrentRev)
+
+			assert.Equal(t, 3, revGen)
+			assert.Equal(t, "merged", doc.Body()["source"].(string))
+
+			assert.Nil(t, doc.Body()[db.BodyAttachments], "_attachments property should not be in resolved doc body")
+
+			assert.Len(t, doc.SyncData.Attachments, test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc")
+			for attName, att := range doc.SyncData.Attachments {
+				attMap := att.(map[string]interface{})
+				assert.Equal(t, true, attMap["stub"].(bool), "attachment %q should be a stub", attName)
+				assert.NotEmpty(t, attMap["digest"].(string), "attachment %q should have digest", attName)
+				assert.True(t, attMap["revpos"].(float64) >= 1, "attachment %q revpos should be at least 1", attName)
+				assert.True(t, attMap["length"].(float64) >= 1, "attachment %q length should be at least 1 byte", attName)
+			}
+		})
+	}
+}
+
 // TestActiveReplicatorPullFromCheckpoint:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates enough documents on rt2 which can be pulled by a replicator running in rt1 to start setting checkpoints.
@@ -3402,37 +3609,9 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				return mergedDoc;
 			}`,
 			expectedLocalBody: map[string]interface{}{
-				db.BodyAttachments: map[string]interface{}{
-					"A": map[string]interface{}{
-						"digest": "sha1-fRV9fAAK4n2xRldcCM4w34k9OmQ=",
-						"length": json.Number("2"),
-						"revpos": json.Number("1"),
-						"stub":   true,
-					},
-					"B": map[string]interface{}{
-						"data":   "Qgo=",
-						"digest": "sha1-MYNq6qsi3ElVWpfttMdTiBQy4B0=",
-						"length": json.Number("2"),
-						"revpos": json.Number("1"),
-					},
-				},
 				"source": "merged",
 			},
 			expectedLocalRevID: createRevID(2, "1-b", db.Body{
-				db.BodyAttachments: map[string]interface{}{
-					"A": map[string]interface{}{
-						"digest": "sha1-fRV9fAAK4n2xRldcCM4w34k9OmQ=",
-						"length": 2,
-						"revpos": 1,
-						"stub":   true,
-					},
-					"B": map[string]interface{}{
-						"data":   "Qgo=",
-						"digest": "sha1-MYNq6qsi3ElVWpfttMdTiBQy4B0=",
-						"length": 2,
-						"revpos": 1,
-					},
-				},
 				"source": "merged",
 			}),
 		},
