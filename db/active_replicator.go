@@ -134,10 +134,10 @@ func (ar *ActiveReplicator) Reset() error {
 // associated with the ActiveReplicator are complete, onComplete is invoked
 func (ar *ActiveReplicator) _onReplicationComplete() {
 	allReplicationsComplete := true
-	if ar.Push != nil && ar.Push.state != ReplicationStateStopped {
+	if ar.Push != nil && ar.Push.getState() != ReplicationStateStopped {
 		allReplicationsComplete = false
 	}
-	if ar.Pull != nil && ar.Pull.state != ReplicationStateStopped {
+	if ar.Pull != nil && ar.Pull.getState() != ReplicationStateStopped {
 		allReplicationsComplete = false
 	}
 
@@ -314,21 +314,29 @@ func LoadReplicationStatus(dbContext *DatabaseContext, replicationID string) (st
 
 	pullCheckpoint, _ := getLocalCheckpoint(dbContext, PullCheckpointID(replicationID))
 	if pullCheckpoint != nil {
-		status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
-		status.Status = pullCheckpoint.Status.Status
-		status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
-		status.LastSeqPull = pullCheckpoint.Status.LastSeqPull
+		if pullCheckpoint.Status != nil {
+			status.PullReplicationStatus = pullCheckpoint.Status.PullReplicationStatus
+			status.Status = pullCheckpoint.Status.Status
+			status.ErrorMessage = pullCheckpoint.Status.ErrorMessage
+			status.LastSeqPull = pullCheckpoint.Status.LastSeqPull
+		} else {
+			status.LastSeqPull = pullCheckpoint.LastSeq
+		}
 	}
 
 	pushCheckpoint, _ := getLocalCheckpoint(dbContext, PushCheckpointID(replicationID))
 	if pushCheckpoint != nil {
-		status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
-		status.Status = pushCheckpoint.Status.Status
-		status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
-		status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
+		if pushCheckpoint.Status != nil {
+			status.PushReplicationStatus = pushCheckpoint.Status.PushReplicationStatus
+			status.Status = pushCheckpoint.Status.Status
+			status.ErrorMessage = pushCheckpoint.Status.ErrorMessage
+			status.LastSeqPush = pushCheckpoint.Status.LastSeqPush
+		} else {
+			status.LastSeqPush = pushCheckpoint.LastSeq
+		}
 	}
 
-	if pullCheckpoint == nil && pushCheckpoint == nil {
+	if (pullCheckpoint == nil || pullCheckpoint.Status == nil) && (pushCheckpoint == nil || pushCheckpoint.Status == nil) {
 		return nil, errors.New("Replication status not found")
 	}
 

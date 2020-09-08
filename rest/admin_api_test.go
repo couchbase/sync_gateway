@@ -2175,3 +2175,35 @@ func TestConfigRedaction(t *testing.T) {
 	assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Databases["db"].Password)
 	assert.Equal(t, "password", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
 }
+
+// Reproduces panic seen in CBG-1053
+func TestAdhocReplicationStatus(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll, base.KeyReplicate)()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	srv := httptest.NewServer(rt.TestAdminHandler())
+	defer srv.Close()
+
+	replConf := `
+	{
+	  "replication_id": "pushandpull-with-target-oneshot-adhoc",
+	  "remote": "` + srv.URL + `/db",
+	  "direction": "pushAndPull",
+	  "adhoc": true
+	}`
+
+	resp := rt.SendAdminRequest("PUT", "/db/_replication/pushandpull-with-target-oneshot-adhoc", replConf)
+	assertStatus(t, resp, http.StatusCreated)
+
+	err := rt.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
+
+	// With the error hitting the replicationStatus endpoint will either return running, if not completed, and once
+	// completed panics. With the fix after running it'll return a 404 as replication no longer exists.
+	stateError := rt.WaitForCondition(func() bool {
+		resp = rt.SendAdminRequest("GET", "/db/_replicationStatus/pushandpull-with-target-oneshot-adhoc", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, stateError)
+}
