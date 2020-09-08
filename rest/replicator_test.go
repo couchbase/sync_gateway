@@ -334,12 +334,9 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 }
 
 // TestActiveReplicatorPullMergeConflictingAttachments:
-//   - Starts 2 RestTesters, one active, and one passive.
-//   - Publishes the REST API on a httptest server for the passive node (so the active can connect to it)
-//   - Uses an ActiveReplicator configured for pull to start pulling changes from rt2.
-//   - Creates an initial revision on rt2 to be replicated to rt1.
-//   - Stops the replicator, and adds different attachments to the doc on both rt1 and rt2.
-//   - Starts the replicator to trigger conflict resolution to merge both attachments.
+//   - Creates an initial revision on rt2 which is replicated to rt1.
+//   - Stops the replicator, and adds different attachments to the doc on both rt1 and rt2 at conflicting revisions.
+//   - Starts the replicator to trigger conflict resolution to merge both attachments in the conflict.
 func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 	if !base.IsEnterpriseEdition() {
@@ -350,54 +347,109 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
-
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
-
-	// Disable sequence batching for multi-RT tests (pending CBG-1000)
-	defer db.SuspendSequenceBatching()()
-
-	// Passive
-	tb2 := base.GetTestBucket(t)
-
-	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
-			Users: map[string]*db.PrincipalConfig{
-				"alice": {
-					Password:         base.StringPtr("pass"),
-					ExplicitChannels: base.SetOf("alice"),
-				},
-			},
+	tests := []struct {
+		name                     string
+		initialRevBody           string
+		localConflictingRevBody  string
+		remoteConflictingRevBody string
+		expectedAttachments      int
+	}{
+		{
+			name:                     "merge new conflicting atts",
+			initialRevBody:           `{"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"localAtt.txt":{"data":"cmVtb3Rl"}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"remoteAtt.txt":{"data":"bG9jYWw="}},"channels":["alice"]}`,
+			expectedAttachments:      2,
 		},
-		noAdminParty: true,
-	})
-	defer rt2.Close()
+		{
+			name:                     "remove initial attachment",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","channels":["alice"]}`,
+			expectedAttachments:      0,
+		},
+		{
+			name:                     "preserve initial attachment with local",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","channels":["alice"]}`,
+			expectedAttachments:      1,
+		},
+		{
+			name:                     "preserve initial attachment with remote",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
+			expectedAttachments:      1,
+		},
+		{
+			name:                     "preserve initial attachment with new local att",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1},"localAtt.txt":{"data":"cmVtb3Rl"}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","channels":["alice"]}`,
+			expectedAttachments:      2,
+		},
+		{
+			name:                     "preserve initial attachment with new remote att",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"remoteAtt.txt":{"data":"bG9jYWw="}},"channels":["alice"]}`,
+			expectedAttachments:      2,
+		},
+		{
+			name:                     "preserve initial attachment with new conflicting atts",
+			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+			localConflictingRevBody:  `{"source":"rt1","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1},"localAtt.txt":{"data":"cmVtb3Rl"}},"channels":["alice"]}`,
+			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"remoteAtt.txt":{"data":"bG9jYWw="}},"channels":["alice"]}`,
+			expectedAttachments:      3,
+		},
+	}
 
-	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
-	srv := httptest.NewServer(rt2.TestPublicHandler())
-	defer srv.Close()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 
-	passiveDBURL, err := url.Parse(srv.URL + "/db")
-	require.NoError(t, err)
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword("alice", "pass")
+			// Increase checkpoint persistence frequency for cross-node status verification
+			defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
 
-	// Active
-	tb1 := base.GetTestBucket(t)
+			// Disable sequence batching for multi-RT tests (pending CBG-1000)
+			defer db.SuspendSequenceBatching()()
 
-	rt1 := NewRestTester(t, &RestTesterConfig{
-		TestBucket: tb1,
-		DatabaseConfig: &DbConfig{
-			Replications: map[string]*db.ReplicationConfig{
-				"repl1": {
-					Remote:                 passiveDBURL.String(),
-					Direction:              db.ActiveReplicatorTypePull,
-					Continuous:             true,
-					ConflictResolutionType: db.ConflictResolverCustom,
-					ConflictResolutionFn: `
+			// Passive
+			rt2 := NewRestTester(t, &RestTesterConfig{
+				DatabaseConfig: &DbConfig{
+					Users: map[string]*db.PrincipalConfig{
+						"alice": {
+							Password:         base.StringPtr("pass"),
+							ExplicitChannels: base.SetOf("alice"),
+						},
+					},
+				},
+				noAdminParty: true,
+			})
+			defer rt2.Close()
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+			srv := httptest.NewServer(rt2.TestPublicHandler())
+			defer srv.Close()
+
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+
+			// Add basic auth creds to target db URL
+			passiveDBURL.User = url.UserPassword("alice", "pass")
+
+			// Active
+			rt1 := NewRestTester(t, &RestTesterConfig{
+				DatabaseConfig: &DbConfig{
+					Replications: map[string]*db.ReplicationConfig{
+						"repl1": {
+							Remote:                 passiveDBURL.String(),
+							Direction:              db.ActiveReplicatorTypePull,
+							Continuous:             true,
+							ConflictResolutionType: db.ConflictResolverCustom,
+							ConflictResolutionFn: `
 					function(conflict) {
 						var mergedDoc = new Object();
 						mergedDoc.source = "merged";
@@ -417,61 +469,75 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 						return mergedDoc;
 					}`},
-			},
-		},
-	})
-	defer rt1.Close()
+					},
+				},
+			})
+			defer rt1.Close()
 
-	err = rt1.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
+			err = rt1.GetDatabase().SGReplicateMgr.StartReplications()
+			require.NoError(t, err)
 
-	rt1.waitForAssignedReplications(1)
+			rt1.waitForAssignedReplications(1)
 
-	docID := t.Name() + "doc1"
-	putDocResp := rt2.putDoc(docID, `{"channels":["alice"]}`)
-	require.True(t, putDocResp.Ok)
-	rev1 := putDocResp.Rev
+			docID := test.name + "doc1"
+			putDocResp := rt2.putDoc(docID, test.initialRevBody)
+			require.True(t, putDocResp.Ok)
+			rev1 := putDocResp.Rev
 
-	// wait for the document originally written to rt2 to arrive at rt1
-	changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
-	require.NoError(t, err)
-	require.Len(t, changesResults.Results, 1)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-	lastSeq := changesResults.Last_Seq.(string)
+			// wait for the document originally written to rt2 to arrive at rt1
+			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			require.NoError(t, err)
+			require.Len(t, changesResults.Results, 1)
+			assert.Equal(t, docID, changesResults.Results[0].ID)
+			lastSeq := changesResults.Last_Seq.(string)
 
-	resp := rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=stop", "")
-	assertStatus(t, resp, http.StatusOK)
+			resp := rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=stop", "")
+			assertStatus(t, resp, http.StatusOK)
 
-	rt1.waitForReplicationStatus("repl1", db.ReplicationStateStopped)
+			rt1.waitForReplicationStatus("repl1", db.ReplicationStateStopped)
 
-	putDocResp = rt1.putDoc(docID, `{"source":"rt1","`+db.BodyAttachments+`":{"localAtt.txt":{"data":"cmVtb3Rl"}},"channels":["alice"],"`+db.BodyRev+`":"`+rev1+`"}`)
-	require.True(t, putDocResp.Ok)
+			resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.localConflictingRevBody)
+			assertStatus(t, resp, http.StatusCreated)
 
-	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
-	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 1)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-	lastSeq = changesResults.Last_Seq.(string)
+			changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+			require.NoError(t, err)
+			assert.Len(t, changesResults.Results, 1)
+			assert.Equal(t, docID, changesResults.Results[0].ID)
+			lastSeq = changesResults.Last_Seq.(string)
 
-	putDocResp = rt2.putDoc(docID, `{"source":"rt2","`+db.BodyAttachments+`":{"remoteAtt.txt":{"data":"bG9jYWw="}},"channels":["alice"],"`+db.BodyRev+`":"`+rev1+`"}`)
-	require.True(t, putDocResp.Ok)
+			resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+rev1, test.remoteConflictingRevBody)
+			assertStatus(t, resp, http.StatusCreated)
 
-	resp = rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=start", "")
-	assertStatus(t, resp, http.StatusOK)
+			resp = rt1.SendAdminRequest(http.MethodPut, "/db/_replicationStatus/repl1?action=start", "")
+			assertStatus(t, resp, http.StatusOK)
 
-	rt1.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
+			rt1.waitForReplicationStatus("repl1", db.ReplicationStateRunning)
 
-	changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
-	require.NoError(t, err)
-	assert.Len(t, changesResults.Results, 1)
-	assert.Equal(t, docID, changesResults.Results[0].ID)
-	lastSeq = changesResults.Last_Seq.(string)
+			changesResults, err = rt1.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+			require.NoError(t, err)
+			assert.Len(t, changesResults.Results, 1)
+			assert.Equal(t, docID, changesResults.Results[0].ID)
+			lastSeq = changesResults.Last_Seq.(string)
 
-	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-	require.NoError(t, err)
-	assert.Equal(t, "3-66afcf971480f1275d4ca94ce226d9c2", doc.SyncData.CurrentRev)
-	assert.Len(t, doc.SyncData.Attachments, 2, "expecting 2 attachments in sync data of resolved doc")
-	assert.Nil(t, doc.Body()[db.BodyAttachments], "expecting no _attachments property in resolved doc body")
+			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+			revGen, _ := db.ParseRevID(doc.SyncData.CurrentRev)
+
+			assert.Equal(t, 3, revGen)
+			assert.Equal(t, "merged", doc.Body()["source"].(string))
+
+			assert.Nil(t, doc.Body()[db.BodyAttachments], "_attachments property should not be in resolved doc body")
+
+			assert.Len(t, doc.SyncData.Attachments, test.expectedAttachments, "mismatch in expected number of attachments in sync data of resolved doc")
+			for attName, att := range doc.SyncData.Attachments {
+				attMap := att.(map[string]interface{})
+				assert.Equal(t, true, attMap["stub"].(bool), "attachment %q should be a stub", attName)
+				assert.NotEmpty(t, attMap["digest"].(string), "attachment %q should have digest", attName)
+				assert.True(t, attMap["revpos"].(float64) >= 1, "attachment %q revpos should be at least 1", attName)
+				assert.True(t, attMap["length"].(float64) >= 1, "attachment %q length should be at least 1 byte", attName)
+			}
+		})
+	}
 }
 
 // TestActiveReplicatorPullFromCheckpoint:
