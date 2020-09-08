@@ -3856,6 +3856,7 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 		require.NoError(t, err, "Error reading document from bucket")
 		require.Equal(t, revID, doc.SyncData.CurrentRev)
 		require.NotEmpty(t, doc.Body(), "Document body shouldn't be empty")
+		require.Equal(t, bodyValue, doc.GetDeepMutableBody()["key"])
 	}
 
 	// createOrUpdateDoc creates a new document or update an existing document with the
