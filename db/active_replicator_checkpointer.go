@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -341,16 +342,16 @@ func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
 	}
 }
 
-func (c *Checkpointer) fetchSGR1Checkpoint() (sgr1CheckpointSeq string) {
+func (c *Checkpointer) fetchAndRemoveSGR1Checkpoint() (sgr1CheckpointSeq string) {
 	base.Infof(base.KeyReplicate, "Attempting to fetch SGR1 checkpoint as fallback: %v", c.sgr1CheckpointID)
 	var err error
 
 	if c.sgr1CheckpointOnRemote {
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "getting SGR1 checkpoint from remote (passive)")
-		sgr1CheckpointSeq, _, err = c.getRemoteSGR1Checkpoint()
+		sgr1CheckpointSeq, _, err = c.getAndRemoveRemoteSGR1Checkpoint()
 	} else {
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "getting SGR1 checkpoint from local (active)")
-		sgr1CheckpointSeq, _, err = c.getLocalSGR1Checkpoint()
+		sgr1CheckpointSeq, _, err = c.getAndRemoveLocalSGR1Checkpoint()
 	}
 
 	if err != nil || sgr1CheckpointSeq == "" {
@@ -396,7 +397,7 @@ func (c *Checkpointer) fetchCheckpoints() (*ReplicationStatus, error) {
 	// If both local and remote SGR2 checkpoints are missing, fetch SGR1 checkpoint as fallback as a one-time upgrade.
 	// Explicit checkpoint resets are expected to only reset one side of the checkpoints, so shouldn't fall into this handling.
 	if localSeq == "" && remoteSeq == "" && c.sgr1CheckpointID != "" {
-		if seq := c.fetchSGR1Checkpoint(); seq != "" {
+		if seq := c.fetchAndRemoveSGR1Checkpoint(); seq != "" {
 			c.stats.GetCheckpointHitCount++
 			c.lastCheckpointSeq = seq
 			return &ReplicationStatus{}, nil
@@ -530,20 +531,18 @@ func (c *Checkpointer) setLocalCheckpointWithRetry(checkpoint *replicationCheckp
 	)
 }
 
-// resetLocalCheckpoint forces the local checkpoint to an empty sequence to roll back the replication.
-// avoids deletion to prevent SGR1 checkpoint fallback from being invoked for reset replications.
+// resetLocalCheckpoint removes the local checkpoint to roll back the replication.
 func resetLocalCheckpoint(activeDB *Database, checkpointID string) error {
 	key := RealSpecialDocID(DocTypeLocal, checkpointDocIDPrefix+checkpointID)
-	return activeDB.Bucket.Set(key, 0, Body{
-		checkpointBodyLastSeq: "",
-		checkpointBodyHash:    "",
-		checkpointBodyRev:     "0-1",
-	})
+	if err := activeDB.Bucket.Delete(key); err != nil && !base.IsDocNotFoundError(err) {
+		return err
+	}
+	return nil
 }
 
-// getRemoteSGR1Checkpoint returns the sequence and rev for the remote SGR1 checkpoint.
+// getAndRemoveRemoteSGR1Checkpoint returns the sequence and rev for the remote SGR1 checkpoint.
 // if the checkpoint does not exist, returns empty sequence and rev.
-func (c *Checkpointer) getRemoteSGR1Checkpoint() (seq, rev string, err error) {
+func (c *Checkpointer) getAndRemoveRemoteSGR1Checkpoint() (seq, rev string, err error) {
 	// SGR1 checkpoints do not have a "checkpoint/" prefix, which SG adds to keys in BLIP-based getCheckpoint requests,
 	// so we'll have to use the REST API to retrieve the checkpoint directly.
 
@@ -569,6 +568,12 @@ func (c *Checkpointer) getRemoteSGR1Checkpoint() (seq, rev string, err error) {
 		if err != nil {
 			return "", "", err
 		}
+
+		// once we've fetched the checkpoint to use, remove it so it's not used again.
+		if err := c.removeRemoteSGR1Checkpoint(); err != nil && !base.IsDocNotFoundError(err) {
+			base.WarnfCtx(c.ctx, "unable to remove SGR1 checkpoint after fetching: %v", err)
+		}
+
 		return body.LastSequence, body.RevID, nil
 	case http.StatusNotFound:
 		base.DebugfCtx(c.ctx, base.KeyReplicate, "couldn't find fallback SGR1 checkpoint for client %q with SGR1 ID: %q", c.clientID, c.sgr1CheckpointID)
@@ -578,9 +583,30 @@ func (c *Checkpointer) getRemoteSGR1Checkpoint() (seq, rev string, err error) {
 	}
 }
 
-// getLocalSGR1Checkpoint returns the sequence and rev for the local SGR1 checkpoint.
+// removeRemoteSGR1Checkpoint deletes the remote SGR1 checkpoint
+func (c *Checkpointer) removeRemoteSGR1Checkpoint() error {
+	req, err := http.NewRequest(http.MethodDelete, c.remoteDBURL.String()+"/_local/"+c.sgr1CheckpointID, nil)
+	if err != nil {
+		return err
+	}
+
+	client := base.GetHttpClient(c.sgr1RemoteInsecureSkipVerify)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := ioutil.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return fmt.Errorf("unable to delete remote SGR1 checkpoint: %v", respBody)
+	}
+	return nil
+}
+
+// getAndRemoveLocalSGR1Checkpoint returns the sequence and rev for the local SGR1 checkpoint.
 // if the checkpoint does not exist, returns empty sequence and rev.
-func (c *Checkpointer) getLocalSGR1Checkpoint() (seq, rev string, err error) {
+func (c *Checkpointer) getAndRemoveLocalSGR1Checkpoint() (seq, rev string, err error) {
 	body, err := c.activeDB.GetSpecial("local", c.sgr1CheckpointID)
 	if err != nil {
 		if !base.IsKeyNotFoundError(c.activeDB.Bucket, err) {
@@ -592,6 +618,12 @@ func (c *Checkpointer) getLocalSGR1Checkpoint() (seq, rev string, err error) {
 
 	seq, _ = body["lastSequence"].(string)
 	rev, _ = body[BodyRev].(string)
+
+	// once we've fetched the checkpoint to use, remove it so it's not used again.
+	if err := c.activeDB.DeleteSpecial("local", c.sgr1CheckpointID, rev); err != nil {
+		base.WarnfCtx(c.ctx, "unable to delete local SGR1 checkpoint: %v", err)
+	}
+
 	return seq, rev, nil
 }
 
