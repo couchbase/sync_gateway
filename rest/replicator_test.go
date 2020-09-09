@@ -3863,7 +3863,7 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 	waitForTombstone := func(rt *RestTester, docID, revID string) {
 		require.NoError(t, rt.WaitForCondition(func() bool {
 			doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-			return doc.IsDeleted() && len(doc.Body()) == 0
+			return doc.IsDeleted() && len(doc.Body()) == 0 && doc.SyncData.CurrentRev == revID
 		}))
 	}
 
@@ -3892,7 +3892,7 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 			//	- e.g. local is 3-a(T), remote is 3-b
 			name:             "revGenTieLocalDigestLower",
 			remoteBodyValues: []string{"baz", "EADGBE"},
-			expectedRevID:    "5-82185c1b8859f7854bff0cd201ba3fbc",
+			expectedRevID:    "4-c6fe7cde8f7187705f9e048322a9c350",
 		},
 		{
 			// Revision tie with local digest is higher than the remote digest.
@@ -3900,7 +3900,7 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 			//	- e.g. local is 3-c(T), remote is 3-b
 			name:             "revGenTieLocalDigestHigher",
 			remoteBodyValues: []string{"baz", "qux"},
-			expectedRevID:    "5-5829b78ea578d88225dcb31fb40cbad9",
+			expectedRevID:    "4-a210e8a790415d7e842e78e1d051cb3d",
 		},
 		{
 			// Local revision generation is lower than remote revision generation.
@@ -3916,7 +3916,7 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 			//	- e.g. local is 3-a(T), remote is 2-b
 			name:             "revGenLocalHigher",
 			remoteBodyValues: []string{"baz"},
-			expectedRevID:    "5-a56584cc3a3de18b723652c3a410a202",
+			expectedRevID:    "4-232b1f34f6b9341c54435eaf5447d85d",
 		},
 	}
 
