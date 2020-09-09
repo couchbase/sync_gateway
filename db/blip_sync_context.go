@@ -356,6 +356,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 	// send the rev
 	if !bsc.sendBLIPMessage(sender, outrq.Message) {
+		bsc.removeAllowedAttachments(attDigests)
 		return ErrClosedBLIPSender
 	}
 
