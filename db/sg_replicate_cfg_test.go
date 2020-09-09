@@ -526,3 +526,93 @@ func TestUpsertReplicationConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestIsCfgChanged(t *testing.T) {
+
+	getInitialCfg := func() *ReplicationCfg {
+		return &ReplicationCfg{
+			ReplicationConfig: ReplicationConfig{
+				ID:                     "foo",
+				Remote:                 "a",
+				Direction:              ActiveReplicatorTypePull,
+				ConflictResolutionType: ConflictResolverCustom,
+				ConflictResolutionFn:   "a",
+				PurgeOnRemoval:         true,
+				DeltaSyncEnabled:       true,
+				MaxBackoff:             5,
+				TargetState:            "a",
+				Continuous:             true,
+				Filter:                 "a",
+				QueryParams:            []interface{}{"ABC"},
+				Cancel:                 true,
+			},
+		}
+	}
+
+	type cfgChangedTest struct {
+		name            string                   // Test name
+		updatedConfig   *ReplicationUpsertConfig // Updated replication config
+		expectedChanged bool
+	}
+	testCases := []cfgChangedTest{
+		{
+			name: "remoteChanged",
+			updatedConfig: &ReplicationUpsertConfig{
+				Remote: base.StringPtr("b"),
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "directionChanged",
+			updatedConfig: &ReplicationUpsertConfig{
+				Direction: base.StringPtr(string(ActiveReplicatorTypePushAndPull)),
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "conflictResolverChanged",
+			updatedConfig: &ReplicationUpsertConfig{
+				ConflictResolutionType: base.StringPtr(string(ConflictResolverDefault)),
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "conflictResolverFnChange",
+			updatedConfig: &ReplicationUpsertConfig{
+				ConflictResolutionFn: base.StringPtr("b"),
+			},
+			expectedChanged: true,
+		},
+		{
+			name: "unchanged",
+			updatedConfig: &ReplicationUpsertConfig{
+				Remote:               base.StringPtr("a"),
+				ConflictResolutionFn: base.StringPtr("a"),
+			},
+			expectedChanged: false,
+		},
+	}
+
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testCfg, err := base.NewCfgSG(testBucket)
+	require.NoError(t, err)
+
+	mgr, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
+	require.NoError(t, err)
+
+	for _, testCase := range testCases {
+		t.Run(fmt.Sprintf("%s", testCase.name), func(t *testing.T) {
+			replicationCfg := getInitialCfg()
+			replicatorConfig, err := mgr.NewActiveReplicatorConfig(replicationCfg)
+
+			replicationCfg.Upsert(testCase.updatedConfig)
+
+			isChanged, err := mgr.isCfgChanged(replicationCfg, replicatorConfig)
+			assert.NoError(t, err)
+			assert.Equal(t, testCase.expectedChanged, isChanged)
+		})
+	}
+
+}

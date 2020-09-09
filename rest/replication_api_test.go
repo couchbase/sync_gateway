@@ -1936,21 +1936,12 @@ func TestReplicationConfigChange(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll, base.KeyReplicate)
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-	// Active
-	tb1 := base.GetTestBucket(t)
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb1})
-	defer rt.Close()
+	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
 
-	// Passive
-	tb2 := base.GetTestBucket(t)
-	rt2 := NewRestTester(t, &RestTesterConfig{TestBucket: tb2})
-	defer rt2.Close()
-
-	srv := httptest.NewServer(rt2.TestAdminHandler())
-	defer srv.Close()
-
+	// Add docs to two channels
 	bulkDocs := `
 	{
 	"docs":
@@ -1966,9 +1957,7 @@ func TestReplicationConfigChange(t *testing.T) {
 		]
 	}
 	`
-
-	// Add a couple docs to each channel
-	resp := rt.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocs)
+	resp := rt1.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocs)
 	assertStatus(t, resp, http.StatusCreated)
 
 	replicationID := "testRepl"
@@ -1976,7 +1965,7 @@ func TestReplicationConfigChange(t *testing.T) {
 	replConf := `
 	{
 	  "replication_id": "` + replicationID + `",
-	  "remote": "` + srv.URL + `/db",
+	  "remote": "` + remoteURLString + `",
 	  "direction": "push",
 	  "continuous": true,
       "filter":"sync_gateway/bychannel",
@@ -1985,35 +1974,35 @@ func TestReplicationConfigChange(t *testing.T) {
       }
 	}`
 
-	resp = rt.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConf)
+	// Create replication for first channel
+	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConf)
 	assertStatus(t, resp, http.StatusCreated)
 
-	err := rt.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
-	rt.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	changesResults, err := rt2.WaitForChanges(4, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 4)
 
-	resp = rt.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
+	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
 	assertStatus(t, resp, http.StatusOK)
-	rt.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
 
+	// Upsert replication to use second channel
 	replConfUpdate := `
-	{
-		"replication_id": "` + replicationID + `",
-		"query_params": {
-          "channels":["ChannelTwo"]
-        }
-	}`
+			{
+				"replication_id": "` + replicationID + `",
+				"query_params": {
+		          "channels":["ChannelTwo"]
+		        }
+			}`
 
-	resp = rt.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConfUpdate)
+	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConfUpdate)
 	assertStatus(t, resp, http.StatusOK)
 
-	resp = rt.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
 	assertStatus(t, resp, http.StatusOK)
-	rt.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
 
 	changesResults, err = rt2.WaitForChanges(8, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
