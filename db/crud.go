@@ -1121,15 +1121,38 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 
 	remoteRevID := conflict.RemoteDocument.ExtractRev()
 	remoteGeneration, _ := ParseRevID(remoteRevID)
-	newRevID := CreateRevIDWithBytes(remoteGeneration+1, remoteRevID, docBodyBytes)
+	var newRevID string
 
-	// Set the incoming document's rev and body to the cloned local revision
-	remoteDoc.RevID = newRevID
-	remoteDoc.RemoveBody()
-	remoteDoc._rawBody = docBodyBytes
+	if !localDoc.Deleted {
+		// If the local doc is not a tombstone, we're just rewriting it as a child of the remote
+		newRevID = CreateRevIDWithBytes(remoteGeneration+1, remoteRevID, docBodyBytes)
+	} else {
+		// If the local doc is a tombstone, we're going to end up with both the local and remote branches tombstoned,
+		// and need to ensure the remote branch is the winning branch. To do that, we inject entries into the remote
+		// branch's history until it's generation is longer than the local branch.
+		remoteDoc.Deleted = localDoc.Deleted
+		localGeneration, _ := ParseRevID(localDoc.CurrentRev)
+
+		// TODO: remove +1 once CBG-1049 is fixed
+		requiredAdditionalRevs := (localGeneration - remoteGeneration) + 1
+		injectedRevBody := []byte("{}")
+		injectedGeneration := remoteGeneration
+		for i := 0; i < requiredAdditionalRevs; i++ {
+			injectedGeneration++
+			remoteLeafRevID := docHistory[0]
+			injectedRevID := CreateRevIDWithBytes(injectedGeneration, remoteLeafRevID, injectedRevBody)
+			docHistory = append([]string{injectedRevID}, docHistory...)
+		}
+		newRevID = CreateRevIDWithBytes(injectedGeneration+1, docHistory[0], docBodyBytes)
+	}
 
 	// Update the history for the incoming doc to prepend the cloned revID
 	docHistory = append([]string{newRevID}, docHistory...)
+	remoteDoc.RevID = newRevID
+
+	// Set the incoming document's rev and body to the cloned local revision
+	remoteDoc.RemoveBody()
+	remoteDoc._rawBody = docBodyBytes
 
 	// Tombstone the local revision
 	localRevID := conflict.LocalDocument.ExtractRev()

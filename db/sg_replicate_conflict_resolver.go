@@ -125,18 +125,18 @@ func (c *ConflictResolver) Resolve(conflict Conflict) (winner Body, resolutionTy
 	return winner, ConflictResolutionMerge, err
 }
 
-// DefaultConflictResolver uses the same logic as revTree.WinningRevision:
-// the revision whose (!deleted, generation, hash) tuple compares the highest.
-// Returns error to satisfy ConflictResolverFunc signature
+// DefaultConflictResolver uses the same logic as revTree.WinningRevision,
+// with the exception that a deleted revision is picked as the winner:
+// the revision whose (deleted, generation, hash) tuple compares the highest.
+// Returns error to satisfy ConflictResolverFunc signature.
 func DefaultConflictResolver(conflict Conflict) (result Body, err error) {
 	localDeleted, _ := conflict.LocalDocument[BodyDeleted].(bool)
 	remoteDeleted, _ := conflict.RemoteDocument[BodyDeleted].(bool)
 	if localDeleted && !remoteDeleted {
-		return conflict.RemoteDocument, nil
-	}
-
-	if remoteDeleted && !localDeleted {
 		return conflict.LocalDocument, nil
+	}
+	if remoteDeleted && !localDeleted {
+		return conflict.RemoteDocument, nil
 	}
 
 	localRevID, _ := conflict.LocalDocument[BodyRev].(string)
