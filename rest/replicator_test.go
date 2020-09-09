@@ -3972,8 +3972,8 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 
 			// Update the document on rt2 with the specified body values.
 			rt2RevID := rt2RevIDCreated
-			for _, bodyKey := range test.remoteBodyValues {
-				rt2RevID = createOrUpdateDoc(rt2, docID, rt2RevID, bodyKey)
+			for _, bodyValue := range test.remoteBodyValues {
+				rt2RevID = createOrUpdateDoc(rt2, docID, rt2RevID, bodyValue)
 			}
 
 			// Start replication.
