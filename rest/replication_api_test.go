@@ -1709,26 +1709,23 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 
 			assert.NoError(t, r.Start())
 
+			assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().SetCheckpointCount, "unexpected set checkpoint count")
+			assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackHitCount, "unexpected SGR1 checkpoint hit")
+
 			if test.resetReplication && test.expireRemoteCheckpoint {
 				// we've expired checkpoints for BOTH sides of the replication,
 				// but since we've already performed the SGR1 checkpoint migration once and then deleted the old checkpoint,
 				// we'll try to get it, and not find it, resulting in a miss stat increase.
-				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().SetCheckpointCount, "unexpected set checkpoint count")
-				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackHitCount, "unexpected SGR1 checkpoint hit")
 				assert.Equal(t, int64(1), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount, "unexpected SGR1 checkpoint miss")
 				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointHitCount, "unexpected checkpoint hit")
 				assert.Equal(t, int64(1), r.Pull.Checkpointer.Stats().GetCheckpointMissCount, "unexpected checkpoint miss")
 			} else if test.resetReplication || test.expireRemoteCheckpoint {
-				// we've expired one checkpoint (or reset the replication), and we shouldn't even attempt to fall back to the SGR1 checkpoint
-				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().SetCheckpointCount, "unexpected set checkpoint count")
-				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackHitCount, "unexpected SGR1 checkpoint hit")
+				// we've expired one checkpoint (or reset the replication), and we shouldn't even attempt to fall back to the SGR1 checkpoint, so only miss SGR2 checkpoint
 				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount, "unexpected SGR1 checkpoint miss")
 				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointHitCount, "unexpected checkpoint hit")
 				assert.Equal(t, int64(1), r.Pull.Checkpointer.Stats().GetCheckpointMissCount, "unexpected checkpoint miss")
 			} else {
 				// haven't rolled back, should start from last SGR2 checkpoint
-				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().SetCheckpointCount, "unexpected set checkpoint count")
-				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackHitCount, "unexpected SGR1 checkpoint hit")
 				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount, "unexpected SGR1 checkpoint miss")
 				assert.Equal(t, int64(1), r.Pull.Checkpointer.Stats().GetCheckpointHitCount, "unexpected checkpoint hit")
 				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointMissCount, "unexpected checkpoint miss")
