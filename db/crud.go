@@ -833,7 +833,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
-		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false) {
+		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false, false) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
@@ -939,33 +939,8 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
 		}
 
-		addRevisionsToRevTree := func() error {
-			// Add all the new-to-me revisions to the rev tree:
-			for i := currentRevIndex - 1; i >= 0; i-- {
-				err := doc.History.addRevision(newDoc.ID,
-					RevInfo{
-						ID:      docHistory[i],
-						Parent:  parent,
-						Deleted: i == 0 && newDoc.Deleted})
-
-				if err != nil {
-					return err
-				}
-				parent = docHistory[i]
-			}
-			return nil
-		}
-
-		if doc.IsDeleted() && newDoc.Deleted {
-			err = addRevisionsToRevTree()
-			if err != nil {
-				return nil, nil, nil, err
-			}
-			return newDoc, nil, nil, nil
-		}
-
 		// Conflict-free mode check
-		if db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
+		if db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts, true) {
 			if conflictResolver == nil {
 				return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
@@ -993,9 +968,17 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		}
 
 		// Add all the new-to-me revisions to the rev tree:
-		err = addRevisionsToRevTree()
-		if err != nil {
-			return nil, nil, nil, err
+		for i := currentRevIndex - 1; i >= 0; i-- {
+			err := doc.History.addRevision(newDoc.ID,
+				RevInfo{
+					ID:      docHistory[i],
+					Parent:  parent,
+					Deleted: i == 0 && newDoc.Deleted})
+
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			parent = docHistory[i]
 		}
 
 		// Process the attachments, replacing bodies with digests.
@@ -1504,7 +1487,7 @@ Truth table for AllowConflicts and noConflicts combinations:
                        AllowConflicts=true     AllowConflicts=false
    noConflicts=true    continue checks         continue checks
    noConflicts=false   return false            continue checks */
-func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted, noConflicts bool) bool {
+func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted, noConflicts bool, newFlag bool) bool {
 
 	if db.AllowConflicts() && !noConflicts {
 		return false
@@ -1521,6 +1504,10 @@ func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted
 	if !deleted {
 		base.DebugfCtx(db.Ctx, base.KeyCRUD, "Conflict - non-tombstone updates to non-winning revisions aren't valid when allow_conflicts=false")
 		return true
+	}
+
+	if newFlag {
+		return false
 	}
 
 	// If it's a tombstone, it's allowed if it's tombstoning an existing non-tombstoned leaf

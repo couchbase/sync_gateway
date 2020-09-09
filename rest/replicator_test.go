@@ -4021,3 +4021,159 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 		})
 	}
 }
+
+func TestSGR2TombstoneConflictHandling(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	tombstoneTests := []struct {
+		name               string
+		longestBranchLocal bool
+		resurrectLocal     bool
+	}{
+		{
+			name:               "RemoteLongResurrectLocal",
+			longestBranchLocal: false,
+			resurrectLocal:     true,
+		},
+		{
+			name:               "RemoteLongResurrectRemote",
+			longestBranchLocal: false,
+			resurrectLocal:     false,
+		},
+		{
+			name:               "LocalLongResurrectLocal",
+			longestBranchLocal: true,
+			resurrectLocal:     true,
+		},
+		{
+			name:               "LocalLongResurrectRemote",
+			longestBranchLocal: true,
+			resurrectLocal:     false,
+		},
+	}
+
+	for _, test := range tombstoneTests {
+		t.Run(test.name, func(t *testing.T) {
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+
+			makeDoc := func(rt *RestTester, docid string, rev string, value string) string {
+				var body db.Body
+				resp := rt.SendAdminRequest("PUT", "/db/"+docid+"?rev="+rev, value)
+				assertStatus(t, resp, http.StatusCreated)
+				err := json.Unmarshal(resp.BodyBytes(), &body)
+				assert.NoError(t, err)
+				return body["rev"].(string)
+			}
+
+			// Passive
+			tb2 := base.GetTestBucket(t)
+			remotePassiveRT := NewRestTester(t, &RestTesterConfig{
+				TestBucket: tb2,
+			})
+			defer remotePassiveRT.Close()
+
+			srv := httptest.NewServer(remotePassiveRT.TestAdminHandler())
+			defer srv.Close()
+
+			fmt.Println(srv.URL)
+
+			// Active
+			tb1 := base.GetTestBucket(t)
+			localActiveRT := NewRestTester(t, &RestTesterConfig{
+				TestBucket: tb1,
+			})
+			defer localActiveRT.Close()
+
+			replConf := `
+			{
+				"replication_id": "replication",
+				"remote": "` + srv.URL + `/db",
+				"direction": "pushAndPull",
+				"continuous": true
+			}`
+
+			// Send up replication
+			resp := localActiveRT.SendAdminRequest("PUT", "/db/_replication/replication", replConf)
+			assertStatus(t, resp, http.StatusCreated)
+
+			// Create a doc with 3-revs
+			resp = localActiveRT.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id": "docid2", "_rev": "1-abc"}, {"_id": "docid2", "_rev": "2-abc", "_revisions": {"start": 2, "ids": ["abc", "abc"]}}, {"_id": "docid2", "_rev": "3-abc", "val":"test", "_revisions": {"start": 3, "ids": ["abc", "abc", "abc"]}}], "new_edits":false}`)
+			assertStatus(t, resp, http.StatusCreated)
+
+			// Start the replication
+			err := localActiveRT.GetDatabase().SGReplicateMgr.StartReplications()
+			assert.NoError(t, err)
+
+			// Wait for the replication to be started
+			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
+
+			// Wait for document to arrive on the doc is was put on
+			_, err = localActiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			assert.NoError(t, err)
+
+			// Wait for document to be replicated
+			_, err = remotePassiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			assert.NoError(t, err)
+
+			// Stop the replication
+			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
+			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateStopped)
+
+			if test.longestBranchLocal {
+				// Delete doc on remote
+				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
+				assertStatus(t, resp, http.StatusCreated)
+
+				// Create another rev and then delete doc on local - ie tree is longer
+				revid := makeDoc(localActiveRT, "docid2", "3-abc", "{}")
+				_ = makeDoc(localActiveRT, "docid2", revid, `{"_deleted": true}`)
+			} else {
+				// Delete doc on localActiveRT (active / local)
+				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
+				assertStatus(t, resp, http.StatusCreated)
+
+				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
+				revid := makeDoc(remotePassiveRT, "docid2", "3-abc", "{}")
+				_ = makeDoc(remotePassiveRT, "docid2", revid, `{"_deleted": true}`)
+			}
+
+			// Start up repl again
+			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
+			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
+
+			// TODO: Write something to wait for rev
+			time.Sleep(2 * time.Second)
+
+			doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalAll)
+			assert.NoError(t, err)
+			assert.Equal(t, "5-93c79fd417d16fe9ee3ed55f9a5dc127", doc.SyncData.CurrentRev)
+
+			doc, err = localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalAll)
+			assert.NoError(t, err)
+			assert.Equal(t, "5-93c79fd417d16fe9ee3ed55f9a5dc127", doc.SyncData.CurrentRev)
+
+			// Resurrect Doc
+			if test.resurrectLocal {
+				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
+				assertStatus(t, resp, http.StatusCreated)
+			} else {
+				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
+				assertStatus(t, resp, http.StatusCreated)
+			}
+
+			// TODO: Write something to wait for rev
+			time.Sleep(2 * time.Second)
+
+			doc, err = localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalAll)
+			assert.NoError(t, err)
+			assert.Equal(t, "6-ec2b71d37b7a8124c30f1d20af43c3b4", doc.SyncData.CurrentRev)
+
+			doc, err = remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalAll)
+			assert.NoError(t, err)
+			assert.Equal(t, "6-ec2b71d37b7a8124c30f1d20af43c3b4", doc.SyncData.CurrentRev)
+		})
+	}
+}
