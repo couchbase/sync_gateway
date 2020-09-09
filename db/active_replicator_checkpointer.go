@@ -379,7 +379,7 @@ func (c *Checkpointer) upgradeFromSGR1Checkpoint() (sgr1CheckpointSeq string) {
 		}
 	}
 
-	base.DebugfCtx(c.ctx, base.KeyReplicate, "using upgraded sg-replicate checkpoint seq: %q", sgr1CheckpointSeq)
+	base.InfofCtx(c.ctx, base.KeyReplicate, "using checkpointed seq from SGR1: %q", sgr1CheckpointSeq)
 	c.stats.GetCheckpointSGR1FallbackHitCount++
 	return sgr1CheckpointSeq
 }
@@ -471,7 +471,7 @@ func (c *Checkpointer) fetchCheckpoints() (*ReplicationStatus, error) {
 		checkpointSeq = ""
 	}
 
-	base.DebugfCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", checkpointSeq)
+	base.InfofCtx(c.ctx, base.KeyReplicate, "using checkpointed seq: %q", checkpointSeq)
 
 	if checkpointSeq == "" {
 		c.stats.GetCheckpointMissCount++
