@@ -346,19 +346,20 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	// asynchronously wait for a response if we have attachment digests to verify, if we sent a delta and want to error check, or if we have a registered callback.
 	awaitResponse := len(attDigests) > 0 || properties[RevMessageDeltaSrc] != "" || bsc.sgr2PushProcessedSeqCallback != nil
 
-	if !awaitResponse {
+	if awaitResponse {
+		// Allow client to download attachments in 'atts', but only while pulling this rev
+		bsc.addAllowedAttachments(attDigests)
+	} else {
 		bsc.replicationStats.SendRevCount.Add(1)
 		outrq.SetNoReply(true)
 	}
 
+	// send the rev
 	if !bsc.sendBLIPMessage(sender, outrq.Message) {
 		return ErrClosedBLIPSender
 	}
 
 	if awaitResponse {
-		// Allow client to download attachments in 'atts', but only while pulling this rev
-		bsc.addAllowedAttachments(attDigests)
-
 		go func() {
 			defer func() {
 				if panicked := recover(); panicked != nil {
