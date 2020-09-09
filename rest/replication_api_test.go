@@ -1704,8 +1704,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 			}
 
 			if test.resetReplication {
-				// remove the local sgr2 checkpoint to simulate the checkpoint being expired/TTL'd
-				assert.NoError(t, activeRTSGR2.GetDatabase().Bucket.Delete("_sync:local:checkpoint/"+r.Pull.CheckpointID))
+				assert.NoError(t, r.Reset())
 			}
 
 			assert.NoError(t, r.Start())
