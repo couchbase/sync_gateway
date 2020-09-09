@@ -4078,8 +4078,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			srv := httptest.NewServer(remotePassiveRT.TestAdminHandler())
 			defer srv.Close()
 
-			fmt.Println(srv.URL)
-
 			// Active
 			tb1 := base.GetTestBucket(t)
 			localActiveRT := NewRestTester(t, &RestTesterConfig{
@@ -4122,6 +4120,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=stop", "")
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateStopped)
 
+			// Delete on the short branch and make another doc on the longer branch before deleting it
 			if test.longestBranchLocal {
 				// Delete doc on remote
 				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
@@ -4144,36 +4143,56 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			resp = localActiveRT.SendAdminRequest("PUT", "/db/_replicationStatus/replication?action=start", "")
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
 
-			// TODO: Write something to wait for rev
-			time.Sleep(2 * time.Second)
-
-			doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalAll)
+			// Wait for the recently longest branch to show up on both sides
+			err = localActiveRT.WaitForCondition(func() bool {
+				doc, err := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				assert.NoError(t, err)
+				if doc.SyncData.CurrentRev == "5-93c79fd417d16fe9ee3ed55f9a5dc127" {
+					return true
+				}
+				return false
+			})
 			assert.NoError(t, err)
-			assert.Equal(t, "5-93c79fd417d16fe9ee3ed55f9a5dc127", doc.SyncData.CurrentRev)
 
-			doc, err = localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalAll)
+			err = remotePassiveRT.WaitForCondition(func() bool {
+				doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				assert.NoError(t, err)
+				if doc.SyncData.CurrentRev == "5-93c79fd417d16fe9ee3ed55f9a5dc127" {
+					return true
+				}
+				return false
+			})
 			assert.NoError(t, err)
-			assert.Equal(t, "5-93c79fd417d16fe9ee3ed55f9a5dc127", doc.SyncData.CurrentRev)
 
 			// Resurrect Doc
 			if test.resurrectLocal {
 				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
-				assertStatus(t, resp, http.StatusCreated)
 			} else {
 				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
-				assertStatus(t, resp, http.StatusCreated)
 			}
+			assertStatus(t, resp, http.StatusCreated)
 
-			// TODO: Write something to wait for rev
-			time.Sleep(2 * time.Second)
-
-			doc, err = localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalAll)
+			// Wait for resurrected doc to show up on both sides
+			err = localActiveRT.WaitForCondition(func() bool {
+				doc, err := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				assert.NoError(t, err)
+				if doc.SyncData.CurrentRev == "6-ec2b71d37b7a8124c30f1d20af43c3b4" {
+					return true
+				}
+				return false
+			})
 			assert.NoError(t, err)
-			assert.Equal(t, "6-ec2b71d37b7a8124c30f1d20af43c3b4", doc.SyncData.CurrentRev)
 
-			doc, err = remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalAll)
+			err = remotePassiveRT.WaitForCondition(func() bool {
+				doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				assert.NoError(t, err)
+				if doc.SyncData.CurrentRev == "6-ec2b71d37b7a8124c30f1d20af43c3b4" {
+					return true
+				}
+				return false
+			})
 			assert.NoError(t, err)
-			assert.Equal(t, "6-ec2b71d37b7a8124c30f1d20af43c3b4", doc.SyncData.CurrentRev)
+
 		})
 	}
 }
