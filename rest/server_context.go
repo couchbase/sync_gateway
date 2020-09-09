@@ -548,7 +548,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 					break
 				}
 
-				base.Infof(base.KeyReplicate, "Got SGR1 checkpoint for fallback in replication %q: %v", replicationID, sgr1CheckpointID)
+				base.Infof(base.KeyReplicate, "Got SGR1 checkpoint ID for fallback in replication %q: %v", replicationID, sgr1CheckpointID)
 				sgr1CheckpointIDs[replicationID] = sgr1CheckpointID
 				sgr1ReplicationConfig.upgradedToSGR2 = true
 			}
