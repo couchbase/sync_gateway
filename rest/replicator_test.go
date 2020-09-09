@@ -3844,7 +3844,7 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 	createOrUpdateDoc := func(rt *RestTester, docID, revID, bodyValue string) string {
 		body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
 		dbURL := "/db/" + docID
-		if docID != "" {
+		if revID != "" {
 			dbURL = "/db/" + docID + "?rev=" + revID
 		}
 		resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
