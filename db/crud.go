@@ -1133,8 +1133,7 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 		remoteDoc.Deleted = localDoc.Deleted
 		localGeneration, _ := ParseRevID(localDoc.CurrentRev)
 
-		// TODO: remove +1 once CBG-1049 is fixed
-		requiredAdditionalRevs := (localGeneration - remoteGeneration) + 1
+		requiredAdditionalRevs := localGeneration - remoteGeneration
 		injectedRevBody := []byte("{}")
 		injectedGeneration := remoteGeneration
 		for i := 0; i < requiredAdditionalRevs; i++ {
@@ -1212,6 +1211,12 @@ func (db *Database) tombstoneActiveRevision(doc *Document, revID string) (tombst
 
 	if doc.CurrentRev != revID {
 		return "", fmt.Errorf("Attempted to tombstone active revision, but provided rev (%s) doesn't match current rev(%s)", revID, doc.CurrentRev)
+	}
+
+	// Don't tombstone an already deleted revision, return the incoming revID instead.
+	if doc.IsDeleted() {
+		base.Debugf(base.KeyReplicate, "Active revision %q is an already tombstoned revision", revID)
+		return revID, nil
 	}
 
 	// Create tombstone
