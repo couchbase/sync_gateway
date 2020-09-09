@@ -1133,8 +1133,8 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 		remoteDoc.Deleted = localDoc.Deleted
 		localGeneration, _ := ParseRevID(localDoc.CurrentRev)
 
-		// TODO: reduce to +1 once CBG-1049 is fixed
-		requiredAdditionalRevs := (localGeneration - remoteGeneration) + 2
+		// TODO: remove +1 once CBG-1049 is fixed
+		requiredAdditionalRevs := (localGeneration - remoteGeneration) + 1
 		injectedRevBody := []byte("{}")
 		injectedGeneration := remoteGeneration
 		for i := 0; i < requiredAdditionalRevs; i++ {

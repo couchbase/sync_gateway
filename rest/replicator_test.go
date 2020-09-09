@@ -3822,41 +3822,21 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 	}
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	// startReplication starts the replication tasks and asserts that the start up
-	// operation is successful. It returns a teardown function to stop the replication
-	// that can be called in defer.
-	startReplication := func(ar *db.ActiveReplicator) func() {
-		require.NoError(t, ar.Start(), "Error starting replication")
-		return func() { require.NoError(t, ar.Stop(), "Error stopping replication") }
-	}
-
-	// requireBodyEmpty asserts that the specified document body is empty.
-	requireBodyEmpty := func(rt *RestTester, docID string) {
+	// requireErrorKeyNotFound asserts that reading specified document body via SDK
+	// returns a key not found error.
+	requireErrorKeyNotFound := func(rt *RestTester, docID string) {
 		var body []byte
 		_, err := rt.Bucket().Get(docID, &body)
 		require.EqualError(t, err, fmt.Sprintf("Error during Get %s: key not found", docID))
 	}
 
-	// waitForRevision waits until the specified tombstone revision is available
+	// waitForTombstone waits until the specified tombstone revision is available
 	// in the bucket backed by the specified RestTester instance.
 	waitForTombstone := func(rt *RestTester, docID, revID string) {
 		require.NoError(t, rt.WaitForCondition(func() bool {
 			doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-			return doc.IsDeleted()
+			return doc.IsDeleted() && len(doc.Body()) == 0
 		}))
-		doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-		require.NoError(t, err, "Error reading document from bucket")
-		require.Equal(t, revID, doc.SyncData.CurrentRev)
-		require.Empty(t, doc.Body(), "Document body should be empty")
-	}
-
-	// requireBodyEmpty asserts that the specified document body is not empty.
-	requireBodyNotEmpty := func(rt *RestTester, docID, revID, bodyValue string) {
-		doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-		require.NoError(t, err, "Error reading document from bucket")
-		require.Equal(t, revID, doc.SyncData.CurrentRev)
-		require.NotEmpty(t, doc.Body(), "Document body shouldn't be empty")
-		require.Equal(t, bodyValue, doc.GetDeepMutableBody()["key"])
 	}
 
 	// createOrUpdateDoc creates a new document or update an existing document with the
@@ -3874,53 +3854,41 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 	}
 
 	defaultConflictResolverWithTombstoneTests := []struct {
-		// A unique name to identify the unit test.
-		name string
-
-		// bodyValue is used to control the digest value for revision generation.
-		bodyValue string
-
-		// revGenHigh is used to make a revision tie by updating the remote doc.
-		revGenTie bool
-
-		// revGenHigh is used to update the doc on remote to keep revision generation higher.
-		revGenHigh bool
-
-		// tombstoneExpected represents the expected document revision.
-		tombstoneExpected string
+		name             string   // A unique name to identify the unit test.
+		remoteBodyValues []string // Controls the remote revision generation.
+		expectedRevID    string   // Expected document revision ID.
 	}{
 		{
 			// Revision tie with local digest is lower than the remote digest.
 			// local generation = remote generation:
 			//	- e.g. local is 3-a(T), remote is 3-b
-			name:              "revGenTieLocalDigestLower",
-			revGenTie:         true,
-			bodyValue:         "EADGBE",
-			tombstoneExpected: "6-6e092cbb01fd955ffa78b518ecfd3eb2",
+			name:             "revGenTieLocalDigestLower",
+			remoteBodyValues: []string{"baz", "EADGBE"},
+			expectedRevID:    "5-82185c1b8859f7854bff0cd201ba3fbc",
 		},
 		{
 			// Revision tie with local digest is higher than the remote digest.
 			// local generation = remote generation:
 			//	- e.g. local is 3-c(T), remote is 3-b
-			name:              "revGenTieLocalDigestHigher",
-			revGenTie:         true,
-			bodyValue:         "qux",
-			tombstoneExpected: "6-6a6d63d3fe4633da279ff316f19c6834",
+			name:             "revGenTieLocalDigestHigher",
+			remoteBodyValues: []string{"baz", "qux"},
+			expectedRevID:    "5-5829b78ea578d88225dcb31fb40cbad9",
 		},
 		{
 			// Local revision generation is lower than remote revision generation.
 			// local generation < remote generation:
 			//  - e.g. local is 3-a(T), remote is 4-b
-			name:              "revGenLocalLower",
-			revGenHigh:        true,
-			tombstoneExpected: "6-127a19153ddf2a20df73c9b911ee88c2",
+			name:             "revGenLocalLower",
+			remoteBodyValues: []string{"baz", "qux", "grunt"},
+			expectedRevID:    "5-fe3ac95144be01e9b455bfa163687f0e",
 		},
 		{
 			// Local revision generation is higher than remote revision generation.
 			// local generation > remote generation:
 			//	- e.g. local is 3-a(T), remote is 2-b
-			name:              "revGenLocalHigher",
-			tombstoneExpected: "6-bca6950afb1d225b4f76a07d297eef70",
+			name:             "revGenLocalHigher",
+			remoteBodyValues: []string{"baz"},
+			expectedRevID:    "5-a56584cc3a3de18b723652c3a410a202",
 		},
 	}
 
@@ -3975,26 +3943,24 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 			// Create the first revision of the document on rt1.
 			docID := t.Name() + "foo"
 			rt1RevIDCreated := createOrUpdateDoc(rt1, docID, "", "foo")
-			requireBodyNotEmpty(rt1, docID, rt1RevIDCreated, "foo")
 
 			// Create active replicator and start replication.
 			ar := db.NewActiveReplicator(&config)
-			defer startReplication(ar)()
+			require.NoError(t, ar.Start(), "Error starting replication")
+			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
 
 			// Wait for the original document revision written to rt1 to arrive at rt2.
 			rt2RevIDCreated := rt1RevIDCreated
 			require.NoError(t, rt2.WaitForCondition(func() bool {
 				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-				return doc != nil && doc.SyncData.CurrentRev == rt2RevIDCreated
+				return doc != nil && doc.SyncData.CurrentRev == rt2RevIDCreated && len(doc.Body()) > 0
 			}))
-			requireBodyNotEmpty(rt2, docID, rt2RevIDCreated, "foo")
 
 			// Stop replication.
 			require.NoError(t, ar.Stop(), "Error stopping replication")
 
 			// Update the document on rt1 to build a revision history.
 			rt1RevIDUpdated := createOrUpdateDoc(rt1, docID, rt1RevIDCreated, "bar")
-			requireBodyNotEmpty(rt1, docID, rt1RevIDUpdated, "bar")
 
 			// Tombstone the document on rt1 to mark the tip of the revision history for deletion.
 			resp := rt1.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt1RevIDUpdated, ``)
@@ -4002,44 +3968,28 @@ func TestDefaultConflictResolverWithTombstone(t *testing.T) {
 			rt1RevIDDeleted := respRevID(t, resp)
 
 			// Ensure that the tombstone revision is written to rt1 bucket with an empty body.
-			rt1DocDeleted, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-			require.NoError(t, err, "Error reading document from bucket")
-			require.Equal(t, rt1RevIDDeleted, rt1DocDeleted.SyncData.CurrentRev)
-			require.True(t, rt1DocDeleted.IsDeleted(), "Document should be a tombstone")
-			require.Empty(t, rt1DocDeleted.Body(), "Document body should be empty")
+			waitForTombstone(rt1, docID, rt1RevIDDeleted)
 
-			// Update the document on rt2 to branch revision history into a tree (conflict).
-			rt2RevIDUpdated := createOrUpdateDoc(rt2, docID, rt2RevIDCreated, "baz")
-			requireBodyNotEmpty(rt2, docID, rt2RevIDUpdated, "baz")
-
-			if test.revGenHigh {
-				// Update the document twice on rt2 to make the revision generation on rt2 is higher than rt1.
-				rt2RevIDUpdated2 := createOrUpdateDoc(rt2, docID, rt2RevIDUpdated, "qux")
-				requireBodyNotEmpty(rt2, docID, rt2RevIDUpdated2, "qux")
-				rt2RevIDUpdated3 := createOrUpdateDoc(rt2, docID, rt2RevIDUpdated2, "grunt")
-				requireBodyNotEmpty(rt2, docID, rt2RevIDUpdated3, "grunt")
-			}
-
-			if test.revGenTie {
-				// Update the document on rt2 to make tie between both local and remote revisions.
-				rt2RevIDUpdated2 := createOrUpdateDoc(rt2, docID, rt2RevIDUpdated, test.bodyValue)
-				requireBodyNotEmpty(rt2, docID, rt2RevIDUpdated2, test.bodyValue)
+			// Update the document on rt2 with the specified body values.
+			rt2RevID := rt2RevIDCreated
+			for _, bodyKey := range test.remoteBodyValues {
+				rt2RevID = createOrUpdateDoc(rt2, docID, rt2RevID, bodyKey)
 			}
 
 			// Start replication.
-			defer startReplication(ar)()
+			require.NoError(t, ar.Start(), "Error starting replication")
 
 			// Wait for default conflict resolution policy to be applied through replication and
 			// the winning revision to be written to both rt1 and rt2 buckets. Check whether the
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
-			waitForTombstone(rt2, docID, test.tombstoneExpected)
-			waitForTombstone(rt1, docID, test.tombstoneExpected)
+			waitForTombstone(rt2, docID, test.expectedRevID)
+			waitForTombstone(rt1, docID, test.expectedRevID)
 
 			// Ensure that the document body of the winning tombstone revision written to both
 			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
 			// revision via SDK should return a "key not found" error.
-			requireBodyEmpty(rt2, docID)
-			requireBodyEmpty(rt1, docID)
+			requireErrorKeyNotFound(rt2, docID)
+			requireErrorKeyNotFound(rt1, docID)
 		})
 	}
 }
