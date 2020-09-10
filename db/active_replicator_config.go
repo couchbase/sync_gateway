@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"net/url"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +59,10 @@ type ActiveReplicatorConfig struct {
 	WebsocketPingInterval time.Duration
 	// Conflict resolver
 	ConflictResolverFunc ConflictResolverFunc
+	// Conflict resolution type.  Required for Equals comparison only
+	ConflictResolutionType ConflictResolverType
+	// Conflict resolver source, for custom conflict resolver.  Required for Equals comparison only
+	ConflictResolverFuncSrc string
 	// SGR1CheckpointID can be used as a fallback when SGR2 checkpoints can't be found.
 	SGR1CheckpointID string
 	// InitialReconnectInterval is the initial time to wait for exponential backoff reconnects.
@@ -125,4 +130,81 @@ func (arc ActiveReplicatorConfig) CheckpointHash() (string, error) {
 	}
 
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+func (arc *ActiveReplicatorConfig) Equals(other *ActiveReplicatorConfig) bool {
+
+	if arc.ID != other.ID {
+		return false
+	}
+
+	if arc.Filter != other.Filter {
+		return false
+	}
+
+	if !reflect.DeepEqual(arc.FilterChannels, other.FilterChannels) {
+		return false
+	}
+
+	if !reflect.DeepEqual(arc.DocIDs, other.DocIDs) {
+		return false
+	}
+
+	if arc.ActiveOnly != other.ActiveOnly {
+		return false
+	}
+
+	if arc.ChangesBatchSize != other.ChangesBatchSize {
+		return false
+	}
+
+	if arc.CheckpointInterval != other.CheckpointInterval {
+		return false
+	}
+
+	if arc.Direction != other.Direction {
+		return false
+	}
+
+	if arc.Continuous != other.Continuous {
+		return false
+	}
+
+	if !reflect.DeepEqual(arc.RemoteDBURL, other.RemoteDBURL) {
+		return false
+	}
+
+	if arc.PurgeOnRemoval != other.PurgeOnRemoval {
+		return false
+	}
+
+	if arc.WebsocketPingInterval != other.WebsocketPingInterval {
+		return false
+	}
+
+	if arc.ConflictResolutionType != other.ConflictResolutionType {
+		return false
+	}
+
+	if arc.ConflictResolverFuncSrc != other.ConflictResolverFuncSrc {
+		return false
+	}
+
+	if arc.InitialReconnectInterval != other.InitialReconnectInterval {
+		return false
+	}
+
+	if arc.MaxReconnectInterval != other.MaxReconnectInterval {
+		return false
+	}
+
+	if arc.TotalReconnectTimeout != other.TotalReconnectTimeout {
+		return false
+	}
+
+	if arc.DeltasEnabled != other.DeltasEnabled {
+		return false
+	}
+
+	return true
 }

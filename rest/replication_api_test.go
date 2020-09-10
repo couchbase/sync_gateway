@@ -1930,6 +1930,85 @@ func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 
 }
 
+func TestReplicationConfigChange(t *testing.T) {
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	rt1, rt2, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Add docs to two channels
+	bulkDocs := `
+	{
+	"docs":
+		[ 
+			{"channels": ["ChannelOne"], "_id": "doc_1"},
+			{"channels": ["ChannelOne"], "_id": "doc_2"},
+			{"channels": ["ChannelOne"], "_id": "doc_3"},
+			{"channels": ["ChannelOne"], "_id": "doc_4"},
+			{"channels": ["ChannelTwo"], "_id": "doc_5"},
+			{"channels": ["ChannelTwo"], "_id": "doc_6"},
+			{"channels": ["ChannelTwo"], "_id": "doc_7"},
+			{"channels": ["ChannelTwo"], "_id": "doc_8"}
+		]
+	}
+	`
+	resp := rt1.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocs)
+	assertStatus(t, resp, http.StatusCreated)
+
+	replicationID := "testRepl"
+
+	replConf := `
+	{
+	  "replication_id": "` + replicationID + `",
+	  "remote": "` + remoteURLString + `",
+	  "direction": "push",
+	  "continuous": true,
+      "filter":"sync_gateway/bychannel",
+      "query_params": {
+          "channels":["ChannelOne"]
+      }
+	}`
+
+	// Create replication for first channel
+	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConf)
+	assertStatus(t, resp, http.StatusCreated)
+
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	changesResults, err := rt2.WaitForChanges(4, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 4)
+
+	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=stop", "")
+	assertStatus(t, resp, http.StatusOK)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateStopped)
+
+	// Upsert replication to use second channel
+	replConfUpdate := `
+			{
+				"replication_id": "` + replicationID + `",
+				"query_params": {
+		          "channels":["ChannelTwo"]
+		        }
+			}`
+
+	resp = rt1.SendAdminRequest("PUT", "/db/_replication/"+replicationID, replConfUpdate)
+	assertStatus(t, resp, http.StatusOK)
+
+	resp = rt1.SendAdminRequest("PUT", "/db/_replicationStatus/"+replicationID+"?action=start", "")
+	assertStatus(t, resp, http.StatusOK)
+	rt1.waitForReplicationStatus(replicationID, db.ReplicationStateRunning)
+
+	changesResults, err = rt2.WaitForChanges(8, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	require.Len(t, changesResults.Results, 8)
+}
+
 func SetDefaultCheckpointInterval(d time.Duration) func() {
 	previousInterval := db.DefaultCheckpointInterval
 	db.DefaultCheckpointInterval = d

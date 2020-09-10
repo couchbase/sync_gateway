@@ -322,8 +322,8 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 
 // Redacted returns the ReplicationCfg with password of the remote database redacted from
 // both replication config and remote URL, i.e., any password will be replaced with xxxxx.
-func (r *ReplicationConfig) Redacted() *ReplicationConfig {
-	config := *r
+func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
+	config := *rc
 	if config.Password != "" {
 		config.Password = "****"
 	}
@@ -468,18 +468,9 @@ func (m *sgReplicateManager) StartReplications() error {
 	return m.SubscribeCfgChanges()
 }
 
-func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (replicator *ActiveReplicator, err error) {
-
-	base.Infof(base.KeyReplicate, "Initializing replication %v", base.UD(config.ID))
-
-	// Re-validate replication.  Replication config should have already been validated on creation/update, but
-	// re-checking here in case of issues during persistence/load.
-	configValidationError := config.ValidateReplication(false)
-	if configValidationError != nil {
-		return nil, fmt.Errorf("Validation failure for replication config when initializing replication %s: %v", base.UD(config.ID), configValidationError)
-	}
-
-	rc := &ActiveReplicatorConfig{
+// NewActiveReplicatorConfig converts an incoming ReplicationCfg to an ActiveReplicatorConfig
+func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (rc *ActiveReplicatorConfig, err error) {
+	rc = &ActiveReplicatorConfig{
 		ID:                 config.ID,
 		Continuous:         config.Continuous,
 		ActiveDB:           &Database{DatabaseContext: m.dbContext}, // sg-replicate interacts with local as admin
@@ -519,12 +510,15 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	if rc.Direction == ActiveReplicatorTypePull || rc.Direction == ActiveReplicatorTypePushAndPull {
 		if config.ConflictResolutionType == "" {
 			rc.ConflictResolverFunc, err = NewConflictResolverFunc(ConflictResolverDefault, "")
+
 		} else {
 			rc.ConflictResolverFunc, err = NewConflictResolverFunc(config.ConflictResolutionType, config.ConflictResolutionFn)
+			rc.ConflictResolverFuncSrc = config.ConflictResolutionFn
 		}
 		if err != nil {
 			return nil, err
 		}
+		rc.ConflictResolutionType = config.ConflictResolutionType
 	}
 
 	if config.Remote == "" {
@@ -545,6 +539,33 @@ func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (repl
 	rc.WebsocketPingInterval = m.dbContext.Options.SGReplicateOptions.WebsocketPingInterval
 
 	rc.onComplete = m.replicationComplete
+
+	return rc, nil
+}
+
+func (m *sgReplicateManager) isCfgChanged(newCfg *ReplicationCfg, activeCfg *ActiveReplicatorConfig) (bool, error) {
+	newConfig, err := m.NewActiveReplicatorConfig(newCfg)
+	if err != nil {
+		return true, err
+	}
+	return !newConfig.Equals(activeCfg), nil
+}
+
+func (m *sgReplicateManager) InitializeReplication(config *ReplicationCfg) (replicator *ActiveReplicator, err error) {
+
+	base.Infof(base.KeyReplicate, "Initializing replication %v", base.UD(config.ID))
+
+	// Re-validate replication.  Replication config should have already been validated on creation/update, but
+	// re-checking here in case of issues during persistence/load.
+	configValidationError := config.ValidateReplication(false)
+	if configValidationError != nil {
+		return nil, fmt.Errorf("Validation failure for replication config when initializing replication %s: %v", base.UD(config.ID), configValidationError)
+	}
+
+	rc, cfgErr := m.NewActiveReplicatorConfig(config)
+	if cfgErr != nil {
+		return nil, cfgErr
+	}
 
 	// Retrieve or create an entry in db.replications expvar for this replication
 	allReplicationsStatsMap := m.dbContext.DbStats.DBReplicatorStats(rc.ID)
@@ -620,6 +641,22 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 		} else {
 			// Check for replications assigned to this node with updated state
 			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
+
+			// If the config has changed, re-initialize the replication
+			isChanged, err := m.isCfgChanged(replicationCfg, activeReplicator.config)
+			if err != nil {
+				base.Warnf("Error evaluating whether cfg has changed, potential changes not applied: %v", err)
+			}
+			if isChanged {
+				replicator, initError := m.InitializeReplication(replicationCfg)
+				if initError != nil {
+					base.Warnf("Error initializing upserted replication %s: %v", initError)
+				} else {
+					m.activeReplicators[replicationID] = replicator
+					activeReplicator = replicator
+				}
+			}
+
 			stateErr := activeReplicator.alignState(replicationCfg.TargetState)
 			if stateErr != nil {
 				base.Warnf("Error updating active replication %s to state %s: %v", replicationID, replicationCfg.TargetState, stateErr)
