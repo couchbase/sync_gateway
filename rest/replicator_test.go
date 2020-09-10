@@ -3839,189 +3839,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 	}
 }
 
-// This test ensures that the tombstone revision wins over non-tombstone revision
-// whilst applying default conflict resolution policy through pushAndPull replication.
-func TestDefaultConflictResolverWithTombstone(t *testing.T) {
-	if base.GTestBucketPool.NumUsableBuckets() < 2 {
-		t.Skipf("test requires at least 2 usable test buckets")
-	}
-	if !base.TestUseXattrs() {
-		t.Skip("This test only works with XATTRS enabled")
-	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
-
-	// requireErrorKeyNotFound asserts that reading specified document body via SDK
-	// returns a key not found error.
-	requireErrorKeyNotFound := func(rt *RestTester, docID string) {
-		var body []byte
-		_, err := rt.Bucket().Get(docID, &body)
-		require.EqualError(t, err, fmt.Sprintf("Error during Get %s: key not found", docID))
-	}
-
-	// waitForTombstone waits until the specified tombstone revision is available
-	// in the bucket backed by the specified RestTester instance.
-	waitForTombstone := func(rt *RestTester, docID, revID string) {
-		require.NoError(t, rt.WaitForCondition(func() bool {
-			doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-			return doc.IsDeleted() && len(doc.Body()) == 0
-		}))
-	}
-
-	// createOrUpdateDoc creates a new document or update an existing document with the
-	// specified document id, revision id and body value in a channel named "alice".
-	createOrUpdateDoc := func(rt *RestTester, docID, revID, bodyValue string) string {
-		body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
-		dbURL := "/db/" + docID
-		if revID != "" {
-			dbURL = "/db/" + docID + "?rev=" + revID
-		}
-		resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
-		assertStatus(t, resp, http.StatusCreated)
-		require.NoError(t, rt.WaitForPendingChanges())
-		return respRevID(t, resp)
-	}
-
-	defaultConflictResolverWithTombstoneTests := []struct {
-		name             string   // A unique name to identify the unit test.
-		remoteBodyValues []string // Controls the remote revision generation.
-		expectedRevID    string   // Expected document revision ID.
-	}{
-		{
-			// Revision tie with local digest is lower than the remote digest.
-			// local generation = remote generation:
-			//	- e.g. local is 3-a(T), remote is 3-b
-			name:             "revGenTieLocalDigestLower",
-			remoteBodyValues: []string{"baz", "EADGBE"},
-			expectedRevID:    "5-82185c1b8859f7854bff0cd201ba3fbc",
-		},
-		{
-			// Revision tie with local digest is higher than the remote digest.
-			// local generation = remote generation:
-			//	- e.g. local is 3-c(T), remote is 3-b
-			name:             "revGenTieLocalDigestHigher",
-			remoteBodyValues: []string{"baz", "qux"},
-			expectedRevID:    "5-5829b78ea578d88225dcb31fb40cbad9",
-		},
-		{
-			// Local revision generation is lower than remote revision generation.
-			// local generation < remote generation:
-			//  - e.g. local is 3-a(T), remote is 4-b
-			name:             "revGenLocalLower",
-			remoteBodyValues: []string{"baz", "qux", "grunt"},
-			expectedRevID:    "5-fe3ac95144be01e9b455bfa163687f0e",
-		},
-		{
-			// Local revision generation is higher than remote revision generation.
-			// local generation > remote generation:
-			//	- e.g. local is 3-a(T), remote is 2-b
-			name:             "revGenLocalHigher",
-			remoteBodyValues: []string{"baz"},
-			expectedRevID:    "5-a56584cc3a3de18b723652c3a410a202",
-		},
-	}
-
-	for _, test := range defaultConflictResolverWithTombstoneTests {
-		t.Run(test.name, func(tt *testing.T) {
-			// Passive
-			rt2 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: base.GetTestBucket(t),
-				DatabaseConfig: &DbConfig{
-					Users: map[string]*db.PrincipalConfig{
-						"alice": {
-							Password:         base.StringPtr("pass"),
-							ExplicitChannels: base.SetOf("alice"),
-						},
-					},
-				},
-				noAdminParty: true,
-			})
-			defer rt2.Close()
-
-			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
-			srv := httptest.NewServer(rt2.TestPublicHandler())
-			defer srv.Close()
-
-			// Build passiveDBURL with basic auth creds
-			passiveDBURL, err := url.Parse(srv.URL + "/db")
-			require.NoError(t, err)
-			passiveDBURL.User = url.UserPassword("alice", "pass")
-
-			// Active
-			rt1 := NewRestTester(t, &RestTesterConfig{
-				TestBucket: base.GetTestBucket(t),
-			})
-			defer rt1.Close()
-
-			defaultConflictResolver, err := db.NewCustomConflictResolver(
-				`function(conflict) { return defaultPolicy(conflict); }`)
-			require.NoError(t, err, "Error creating custom conflict resolver")
-
-			config := db.ActiveReplicatorConfig{
-				ID:          t.Name(),
-				Direction:   db.ActiveReplicatorTypePushAndPull,
-				RemoteDBURL: passiveDBURL,
-				ActiveDB: &db.Database{
-					DatabaseContext: rt1.GetDatabase(),
-				},
-				Continuous:           true,
-				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
-			}
-
-			// Create the first revision of the document on rt1.
-			docID := t.Name() + "foo"
-			rt1RevIDCreated := createOrUpdateDoc(rt1, docID, "", "foo")
-
-			// Create active replicator and start replication.
-			ar := db.NewActiveReplicator(&config)
-			require.NoError(t, ar.Start(), "Error starting replication")
-			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
-
-			// Wait for the original document revision written to rt1 to arrive at rt2.
-			rt2RevIDCreated := rt1RevIDCreated
-			require.NoError(t, rt2.WaitForCondition(func() bool {
-				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-				return doc != nil && doc.SyncData.CurrentRev == rt2RevIDCreated && len(doc.Body()) > 0
-			}))
-
-			// Stop replication.
-			require.NoError(t, ar.Stop(), "Error stopping replication")
-
-			// Update the document on rt1 to build a revision history.
-			rt1RevIDUpdated := createOrUpdateDoc(rt1, docID, rt1RevIDCreated, "bar")
-
-			// Tombstone the document on rt1 to mark the tip of the revision history for deletion.
-			resp := rt1.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt1RevIDUpdated, ``)
-			assertStatus(t, resp, http.StatusOK)
-			rt1RevIDDeleted := respRevID(t, resp)
-
-			// Ensure that the tombstone revision is written to rt1 bucket with an empty body.
-			waitForTombstone(rt1, docID, rt1RevIDDeleted)
-
-			// Update the document on rt2 with the specified body values.
-			rt2RevID := rt2RevIDCreated
-			for _, bodyValue := range test.remoteBodyValues {
-				rt2RevID = createOrUpdateDoc(rt2, docID, rt2RevID, bodyValue)
-			}
-
-			// Start replication.
-			require.NoError(t, ar.Start(), "Error starting replication")
-
-			// Wait for default conflict resolution policy to be applied through replication and
-			// the winning revision to be written to both rt1 and rt2 buckets. Check whether the
-			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
-			waitForTombstone(rt2, docID, test.expectedRevID)
-			waitForTombstone(rt1, docID, test.expectedRevID)
-
-			// Ensure that the document body of the winning tombstone revision written to both
-			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
-			// revision via SDK should return a "key not found" error.
-			requireErrorKeyNotFound(rt2, docID)
-			requireErrorKeyNotFound(rt1, docID)
-		})
-	}
-}
-
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
@@ -4195,4 +4012,355 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 		})
 	}
+}
+
+// This test ensures that the local tombstone revision wins over non-tombstone revision
+// whilst applying default conflict resolution policy through pushAndPull replication.
+func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	defaultConflictResolverWithTombstoneTests := []struct {
+		name             string   // A unique name to identify the unit test.
+		remoteBodyValues []string // Controls the remote revision generation.
+		expectedRevID    string   // Expected document revision ID.
+	}{
+		{
+			// Revision tie with local digest is lower than the remote digest.
+			// local generation = remote generation:
+			//	- e.g. local is 3-a(T), remote is 3-b
+			name:             "revGenTieLocalDigestLower",
+			remoteBodyValues: []string{"baz", "EADGBE"},
+			expectedRevID:    "4-c6fe7cde8f7187705f9e048322a9c350",
+		},
+		{
+			// Revision tie with local digest is higher than the remote digest.
+			// local generation = remote generation:
+			//	- e.g. local is 3-c(T), remote is 3-b
+			name:             "revGenTieLocalDigestHigher",
+			remoteBodyValues: []string{"baz", "qux"},
+			expectedRevID:    "4-a210e8a790415d7e842e78e1d051cb3d",
+		},
+		{
+			// Local revision generation is lower than remote revision generation.
+			// local generation < remote generation:
+			//  - e.g. local is 3-a(T), remote is 4-b
+			name:             "revGenLocalLower",
+			remoteBodyValues: []string{"baz", "qux", "grunt"},
+			expectedRevID:    "5-fe3ac95144be01e9b455bfa163687f0e",
+		},
+		{
+			// Local revision generation is higher than remote revision generation.
+			// local generation > remote generation:
+			//	- e.g. local is 3-a(T), remote is 2-b
+			name:             "revGenLocalHigher",
+			remoteBodyValues: []string{"baz"},
+			expectedRevID:    "4-232b1f34f6b9341c54435eaf5447d85d",
+		},
+	}
+
+	for _, test := range defaultConflictResolverWithTombstoneTests {
+		t.Run(test.name, func(tt *testing.T) {
+			// Passive
+			rt2 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: base.GetTestBucket(t),
+				DatabaseConfig: &DbConfig{
+					Users: map[string]*db.PrincipalConfig{
+						"alice": {
+							Password:         base.StringPtr("pass"),
+							ExplicitChannels: base.SetOf("alice"),
+						},
+					},
+				},
+				noAdminParty: true,
+			})
+			defer rt2.Close()
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+			srv := httptest.NewServer(rt2.TestPublicHandler())
+			defer srv.Close()
+
+			// Build passiveDBURL with basic auth creds
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+			passiveDBURL.User = url.UserPassword("alice", "pass")
+
+			// Active
+			rt1 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: base.GetTestBucket(t),
+			})
+			defer rt1.Close()
+
+			defaultConflictResolver, err := db.NewCustomConflictResolver(
+				`function(conflict) { return defaultPolicy(conflict); }`)
+			require.NoError(t, err, "Error creating custom conflict resolver")
+
+			config := db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				Continuous:           true,
+				ConflictResolverFunc: defaultConflictResolver,
+				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+			}
+
+			// Create the first revision of the document on rt1.
+			docID := t.Name() + "foo"
+			rt1RevIDCreated := createOrUpdateDoc(t, rt1, docID, "", "foo")
+
+			// Create active replicator and start replication.
+			ar := db.NewActiveReplicator(&config)
+			require.NoError(t, ar.Start(), "Error starting replication")
+			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
+
+			// Wait for the original document revision written to rt1 to arrive at rt2.
+			rt2RevIDCreated := rt1RevIDCreated
+			require.NoError(t, rt2.WaitForCondition(func() bool {
+				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				return doc != nil && len(doc.Body()) > 0
+			}))
+			requireRevID(t, rt2, docID, rt2RevIDCreated)
+
+			// Stop replication.
+			require.NoError(t, ar.Stop(), "Error stopping replication")
+
+			// Update the document on rt1 to build a revision history.
+			rt1RevIDUpdated := createOrUpdateDoc(t, rt1, docID, rt1RevIDCreated, "bar")
+
+			// Tombstone the document on rt1 to mark the tip of the revision history for deletion.
+			resp := rt1.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt1RevIDUpdated, ``)
+			assertStatus(t, resp, http.StatusOK)
+
+			// Ensure that the tombstone revision is written to rt1 bucket with an empty body.
+			waitForTombstone(t, rt1, docID)
+
+			// Update the document on rt2 with the specified body values.
+			rt2RevID := rt2RevIDCreated
+			for _, bodyValue := range test.remoteBodyValues {
+				rt2RevID = createOrUpdateDoc(t, rt2, docID, rt2RevID, bodyValue)
+			}
+
+			// Start replication.
+			require.NoError(t, ar.Start(), "Error starting replication")
+
+			// Wait for default conflict resolution policy to be applied through replication and
+			// the winning revision to be written to both rt1 and rt2 buckets. Check whether the
+			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
+			waitForTombstone(t, rt2, docID)
+			waitForTombstone(t, rt1, docID)
+
+			requireRevID(t, rt2, docID, test.expectedRevID)
+			requireRevID(t, rt1, docID, test.expectedRevID)
+
+			// Ensure that the document body of the winning tombstone revision written to both
+			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
+			// revision via SDK should return a "key not found" error.
+			requireErrorKeyNotFound(t, rt2, docID)
+			requireErrorKeyNotFound(t, rt1, docID)
+		})
+	}
+}
+
+// This test ensures that the remote tombstone revision wins over non-tombstone revision
+// whilst applying default conflict resolution policy through pushAndPull replication.
+func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	defaultConflictResolverWithTombstoneTests := []struct {
+		name            string   // A unique name to identify the unit test.
+		localBodyValues []string // Controls the local revision generation.
+		expectedRevID   string   // Expected document revision ID.
+	}{
+		{
+			// Revision tie with remote digest is lower than the local digest.
+			// local generation = remote generation:
+			//	- e.g. local is 3-b, remote is 3-a(T)
+			name:            "revGenTieRemoteDigestLower",
+			localBodyValues: []string{"baz", "EADGBE"},
+			expectedRevID:   "4-0748692c1535b62f59b2c276cc2a8bda",
+		},
+		{
+			// Revision tie with remote digest is higher than the local digest.
+			// local generation = remote generation:
+			//	- e.g. local is 3-b, remote is 3-c(T)
+			name:            "revGenTieRemoteDigestHigher",
+			localBodyValues: []string{"baz", "qux"},
+			expectedRevID:   "4-5afdb61ba968c9eaa7599e727c4c1b53",
+		},
+		{
+			// Local revision generation is higher than remote revision generation.
+			// local generation > remote generation:
+			//  - e.g. local is 4-b, remote is 3-a(T)
+			name:            "revGenRemoteLower",
+			localBodyValues: []string{"baz", "qux", "grunt"},
+			expectedRevID:   "5-962dc965fd8e7fd2bc3ffbcab85d53ba",
+		},
+		{
+			// Local revision generation is lower than remote revision generation.
+			// local generation < remote generation:
+			//	- e.g. local is 2-b, remote is 3-a(T)
+			name:            "revGenRemoteHigher",
+			localBodyValues: []string{"grunt"},
+			expectedRevID:   "3-cd4c29d9c84fc8b2a51c50e1234252c9",
+		},
+	}
+
+	for _, test := range defaultConflictResolverWithTombstoneTests {
+		t.Run(test.name, func(tt *testing.T) {
+			// Passive
+			rt2 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: base.GetTestBucket(t),
+				DatabaseConfig: &DbConfig{
+					Users: map[string]*db.PrincipalConfig{
+						"alice": {
+							Password:         base.StringPtr("pass"),
+							ExplicitChannels: base.SetOf("alice"),
+						},
+					},
+				},
+				noAdminParty: true,
+			})
+			defer rt2.Close()
+
+			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
+			srv := httptest.NewServer(rt2.TestPublicHandler())
+			defer srv.Close()
+
+			// Build passiveDBURL with basic auth creds
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+			passiveDBURL.User = url.UserPassword("alice", "pass")
+
+			// Active
+			rt1 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: base.GetTestBucket(t),
+			})
+			defer rt1.Close()
+
+			defaultConflictResolver, err := db.NewCustomConflictResolver(
+				`function(conflict) { return defaultPolicy(conflict); }`)
+			require.NoError(t, err, "Error creating custom conflict resolver")
+
+			config := db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				Continuous:           true,
+				ConflictResolverFunc: defaultConflictResolver,
+				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+			}
+
+			// Create the first revision of the document on rt2.
+			docID := t.Name() + "foo"
+			rt2RevIDCreated := createOrUpdateDoc(t, rt2, docID, "", "foo")
+
+			// Create active replicator and start replication.
+			ar := db.NewActiveReplicator(&config)
+			require.NoError(t, ar.Start(), "Error starting replication")
+			defer func() { require.NoError(t, ar.Stop(), "Error stopping replication") }()
+
+			// Wait for the original document revision written to rt2 to arrive at rt1.
+			rt1RevIDCreated := rt2RevIDCreated
+			require.NoError(t, rt1.WaitForCondition(func() bool {
+				doc, _ := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				return doc != nil && len(doc.Body()) > 0
+			}))
+			requireRevID(t, rt1, docID, rt1RevIDCreated)
+
+			// Stop replication.
+			require.NoError(t, ar.Stop(), "Error stopping replication")
+
+			// Update the document on rt2 to build a revision history.
+			rt2RevIDUpdated := createOrUpdateDoc(t, rt2, docID, rt2RevIDCreated, "bar")
+
+			// Tombstone the document on rt2 to mark the tip of the revision history for deletion.
+			resp := rt2.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+rt2RevIDUpdated, ``)
+			assertStatus(t, resp, http.StatusOK)
+			rt2RevID := respRevID(t, resp)
+			log.Printf("rt2RevID: %s", rt2RevID)
+
+			// Ensure that the tombstone revision is written to rt2 bucket with an empty body.
+			waitForTombstone(t, rt2, docID)
+
+			// Update the document on rt1 with the specified body values.
+			rt1RevID := rt1RevIDCreated
+			for _, bodyValue := range test.localBodyValues {
+				rt1RevID = createOrUpdateDoc(t, rt1, docID, rt1RevID, bodyValue)
+			}
+
+			// Start replication.
+			require.NoError(t, ar.Start(), "Error starting replication")
+
+			// Wait for default conflict resolution policy to be applied through replication and
+			// the winning revision to be written to both rt1 and rt2 buckets. Check whether the
+			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
+			waitForTombstone(t, rt1, docID)
+			waitForTombstone(t, rt2, docID)
+
+			requireRevID(t, rt1, docID, test.expectedRevID)
+			requireRevID(t, rt2, docID, test.expectedRevID)
+
+			// Ensure that the document body of the winning tombstone revision written to both
+			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
+			// revision via SDK should return a "key not found" error.
+			requireErrorKeyNotFound(t, rt2, docID)
+			requireErrorKeyNotFound(t, rt1, docID)
+		})
+	}
+}
+
+// createOrUpdateDoc creates a new document or update an existing document with the
+// specified document id, revision id and body value in a channel named "alice".
+func createOrUpdateDoc(t *testing.T, rt *RestTester, docID, revID, bodyValue string) string {
+	body := fmt.Sprintf(`{"key":%q,"channels":["alice"]}`, bodyValue)
+	dbURL := "/db/" + docID
+	if revID != "" {
+		dbURL = "/db/" + docID + "?rev=" + revID
+	}
+	resp := rt.SendAdminRequest(http.MethodPut, dbURL, body)
+	assertStatus(t, resp, http.StatusCreated)
+	require.NoError(t, rt.WaitForPendingChanges())
+	return respRevID(t, resp)
+}
+
+// waitForTombstone waits until the specified tombstone revision is available
+// in the bucket backed by the specified RestTester instance.
+func waitForTombstone(t *testing.T, rt *RestTester, docID string) {
+	require.NoError(t, rt.WaitForCondition(func() bool {
+		doc, _ := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		return doc.IsDeleted() && len(doc.Body()) == 0
+	}))
+}
+
+// requireErrorKeyNotFound asserts that reading specified document body via SDK
+// returns a key not found error.
+func requireErrorKeyNotFound(t *testing.T, rt *RestTester, docID string) {
+	var body []byte
+	_, err := rt.Bucket().Get(docID, &body)
+	require.EqualError(t, err, fmt.Sprintf("Error during Get %s: key not found", docID))
+}
+
+// requireRevID asserts that the specified document revision is written to the
+// underlying bucket backed by the given RestTester instance.
+func requireRevID(t *testing.T, rt *RestTester, docID, revID string) {
+	doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+	require.NoError(t, err, "Error reading document from bucket")
+	require.Equal(t, revID, doc.SyncData.CurrentRev)
 }

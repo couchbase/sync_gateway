@@ -770,11 +770,11 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 	// If the doc is a tombstone we want to allow conflicts when running SGR2
 	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
-	forceAllowConflicts := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
+	forceAllowConflictingTombstone := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.conflictResolver != nil {
-		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflicts)
+		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflictingTombstone)
 	} else {
-		_, _, err = bh.db.PutExistingRev(newDoc, history, revNoConflicts, forceAllowConflicts)
+		_, _, err = bh.db.PutExistingRev(newDoc, history, revNoConflicts, forceAllowConflictingTombstone)
 	}
 	if err != nil {
 		return err
