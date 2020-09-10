@@ -40,13 +40,14 @@ var ErrClosedBLIPSender = errors.New("use of closed BLIP sender")
 
 func NewBlipSyncContext(bc *blip.Context, db *Database, contextID string, replicationStats *BlipSyncStats) *BlipSyncContext {
 	bsc := &BlipSyncContext{
-		blipContext:      bc,
-		blipContextDb:    db,
-		loggingCtx:       db.Ctx,
-		terminator:       make(chan bool),
-		userChangeWaiter: db.NewUserWaiter(),
-		sgCanUseDeltas:   db.DeltaSyncEnabled(),
-		replicationStats: replicationStats,
+		blipContext:             bc,
+		blipContextDb:           db,
+		loggingCtx:              db.Ctx,
+		terminator:              make(chan bool),
+		userChangeWaiter:        db.NewUserWaiter(),
+		sgCanUseDeltas:          db.DeltaSyncEnabled(),
+		replicationStats:        replicationStats,
+		inFlightChangesThrottle: make(chan struct{}, maxInFlightChangesBatches),
 	}
 	if bsc.replicationStats == nil {
 		bsc.replicationStats = NewBlipSyncStats()
@@ -102,7 +103,11 @@ type BlipSyncContext struct {
 	changesPendingResponseCount      int64                                     // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
 	sendRevNoConflicts bool // Whether to set noconflicts=true when sending revisions
-
+	// inFlightChangesThrottle is a small buffered channel to limit the amount of in-flight changes batches for this connection.
+	// Couchbase Lite limits this on the client side, but this is defensive to prevent other non-CBL clients from requesting too many changes
+	// before they've processed the revs for previous batches. Keeping this >1 allows the client to be fed a constant supply of rev messages,
+	// without making Sync Gateway buffer a bunch of stuff in memory too far in advance of the client being able to receive the revs.
+	inFlightChangesThrottle chan struct{}
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.
