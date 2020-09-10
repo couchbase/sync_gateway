@@ -893,7 +893,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 //     1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //     2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //     3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflicts bool) (doc *Document, newRevID string, err error) {
+func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflictingTombstone bool) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -940,7 +940,12 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		}
 
 		// Conflict-free mode check
-		if !forceAllowConflicts && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
+
+		// We only bypass conflict resolution for incoming tombstones if the local doc is also a tombstone
+		allowConflictingTombstone := forceAllowConflictingTombstone && doc.IsDeleted()
+
+		if !allowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
+			//if !forceAllowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
 			if conflictResolver == nil {
 				return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}

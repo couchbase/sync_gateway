@@ -4315,7 +4315,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			waitForTombstone(t, rt2, docID)
 
 			requireRevID(t, rt1, docID, test.expectedRevID)
-			requireRevID(t, rt2, docID, "3-cd4c29d9c84fc8b2a51c50e1234252c9")
+			requireRevID(t, rt2, docID, test.expectedRevID)
 
 			// Ensure that the document body of the winning tombstone revision written to both
 			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
