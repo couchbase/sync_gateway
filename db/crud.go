@@ -1210,12 +1210,12 @@ func (db *Database) resolveDocMerge(localDoc *Document, remoteDoc *Document, con
 func (db *Database) tombstoneActiveRevision(doc *Document, revID string) (tombstoneRevID string, err error) {
 
 	if doc.CurrentRev != revID {
-		return "", fmt.Errorf("Attempted to tombstone active revision, but provided rev (%s) doesn't match current rev(%s)", revID, doc.CurrentRev)
+		return "", fmt.Errorf("Attempted to tombstone active revision for doc (%s), but provided rev (%s) doesn't match current rev(%s)", base.UD(doc.ID), revID, doc.CurrentRev)
 	}
 
 	// Don't tombstone an already deleted revision, return the incoming revID instead.
 	if doc.IsDeleted() {
-		base.Debugf(base.KeyReplicate, "Active revision %q is an already tombstoned revision", revID)
+		base.Debugf(base.KeyReplicate, "Active revision %s/%s is already tombstoned.", base.UD(doc.ID), revID)
 		return revID, nil
 	}
 
