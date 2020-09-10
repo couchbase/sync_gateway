@@ -1139,6 +1139,17 @@ func (ab *AtomicBool) CompareAndSwap(old bool, new bool) bool {
 	return atomic.CompareAndSwapInt32(&ab.value, oldint32, newint32)
 }
 
+// CASRetry attempts to retry CompareAndSwap for up to 1 second before returning the result.
+func (ab *AtomicBool) CASRetry(old bool, new bool) bool {
+	for i := 0; i < 10; i++ {
+		if ab.CompareAndSwap(old, new) {
+			return true
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
+	return false
+}
+
 func Sha1HashString(str string, salt string) string {
 	h := sha1.New()
 	h.Write([]byte(salt + str))
