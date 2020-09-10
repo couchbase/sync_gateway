@@ -243,7 +243,7 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		target.Scheme = "wss"
 	}
 
-	config, err := websocket.NewConfig(target.String()+"/_blipsync", "http://localhost")
+	config, err := websocket.NewConfig(target.String()+"/_blipsync?"+BLIPSyncClientTypeQueryParam+"="+string(BLIPClientTypeSGR2), "http://localhost")
 	if err != nil {
 		return nil, err
 	}

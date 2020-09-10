@@ -884,8 +884,8 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
-func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool) (doc *Document, newRevID string, err error) {
-	return db.PutExistingRevWithConflictResolution(newDoc, docHistory, noConflicts, nil)
+func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConflicts bool, forceAllConflicts bool) (doc *Document, newRevID string, err error) {
+	return db.PutExistingRevWithConflictResolution(newDoc, docHistory, noConflicts, nil, forceAllConflicts)
 }
 
 // Adds an existing revision to a document along with its history (list of rev IDs.)
@@ -893,7 +893,7 @@ func (db *Database) PutExistingRev(newDoc *Document, docHistory []string, noConf
 //     1. If noConflicts == false, the revision will be added to the rev tree as a conflict
 //     2. If noConflicts == true and a conflictResolverFunc is not provided, a 409 conflict error will be returned
 //     3. If noConflicts == true and a conflictResolverFunc is provided, conflicts will be resolved and the result added to the document.
-func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver) (doc *Document, newRevID string, err error) {
+func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHistory []string, noConflicts bool, conflictResolver *ConflictResolver, forceAllowConflicts bool) (doc *Document, newRevID string, err error) {
 	newRev := docHistory[0]
 	generation, _ := ParseRevID(newRev)
 	if generation < 0 {
@@ -940,7 +940,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		}
 
 		// Conflict-free mode check
-		if db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
+		if !forceAllowConflicts && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
 			if conflictResolver == nil {
 				return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
@@ -1016,7 +1016,7 @@ func (db *Database) PutExistingRevWithBody(docid string, body Body, docHistory [
 	delete(body, BodyAttachments)
 	newDoc.UpdateBody(body)
 
-	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts)
+	doc, newRevID, putExistingRevErr := db.PutExistingRev(newDoc, docHistory, noConflicts, false)
 
 	if putExistingRevErr != nil {
 		return nil, "", putExistingRevErr

@@ -38,6 +38,15 @@ type blipHandler struct {
 	serialNumber uint64    // This blip handler's serial number to differentiate logs w/ other handlers
 }
 
+type BLIPSyncContextClientType string
+
+const (
+	BLIPSyncClientTypeQueryParam = "client"
+
+	BLIPClientTypeCBL2 BLIPSyncContextClientType = "cbl2"
+	BLIPClientTypeSGR2 BLIPSyncContextClientType = "sgr2"
+)
+
 type blipHandlerFunc func(*blipHandler, *blip.Message) error
 
 // userBlipHandler wraps another blip handler with code that reloads the user object when the user
@@ -758,10 +767,14 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 	// Finally, save the revision (with the new attachments inline)
 	// If a conflict resolver is defined for the handler, write with conflict resolution.
+
+	// If the doc is a tombstone we want to allow conflicts when running SGR2
+	// bh.conflictResolver != nil represents an active SGR2 and BLIPClientTypeSGR2 represents a passive SGR2
+	forceAllowConflicts := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.conflictResolver != nil {
-		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver)
+		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflicts)
 	} else {
-		_, _, err = bh.db.PutExistingRev(newDoc, history, revNoConflicts)
+		_, _, err = bh.db.PutExistingRev(newDoc, history, revNoConflicts, forceAllowConflicts)
 	}
 	if err != nil {
 		return err

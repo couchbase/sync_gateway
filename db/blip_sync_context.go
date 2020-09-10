@@ -102,12 +102,17 @@ type BlipSyncContext struct {
 	conflictResolver                 *ConflictResolver                         // Conflict resolver for active replications
 	changesPendingResponseCount      int64                                     // Number of changes messages pending changesResponse
 	// TODO: For review, whether sendRevAllConflicts needs to be per sendChanges invocation
-	sendRevNoConflicts bool // Whether to set noconflicts=true when sending revisions
+	sendRevNoConflicts bool                      // Whether to set noconflicts=true when sending revisions
+	clientType         BLIPSyncContextClientType // Can perform client-specific replication behaviour based on this field
 	// inFlightChangesThrottle is a small buffered channel to limit the amount of in-flight changes batches for this connection.
 	// Couchbase Lite limits this on the client side, but this is defensive to prevent other non-CBL clients from requesting too many changes
 	// before they've processed the revs for previous batches. Keeping this >1 allows the client to be fed a constant supply of rev messages,
 	// without making Sync Gateway buffer a bunch of stuff in memory too far in advance of the client being able to receive the revs.
 	inFlightChangesThrottle chan struct{}
+}
+
+func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
+	bsc.clientType = clientType
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.
