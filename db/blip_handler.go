@@ -153,7 +153,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 	}
 
 	// Ensure that only _one_ subChanges subscription can be open on this blip connection at any given time.  SG #3222.
-	if !bh.activeSubChanges.CompareAndSwap(false, true) {
+	if !bh.activeSubChanges.CASRetry(false, true) {
 		return fmt.Errorf("blipHandler already has an outstanding continous subChanges.  Cannot open another one.")
 	}
 
