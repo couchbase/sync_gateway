@@ -112,7 +112,7 @@ type BlipSyncContext struct {
 }
 
 func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
-	bsc.clientType = &clientType
+	bsc.clientType = clientType
 }
 
 // Registers a BLIP handler including the outer-level work of logging & error handling.

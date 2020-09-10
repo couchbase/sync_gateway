@@ -767,7 +767,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 	// Finally, save the revision (with the new attachments inline)
 	// If a conflict resolver is defined for the handler, write with conflict resolution.
-	forceAllowConflicts := newDoc.Deleted && (bh.conflictResolver != nil || *bh.clientType == BLIPClientTypeSGR2)
+	forceAllowConflicts := newDoc.Deleted && (bh.conflictResolver != nil || bh.clientType == BLIPClientTypeSGR2)
 	if bh.conflictResolver != nil {
 		_, _, err = bh.db.PutExistingRevWithConflictResolution(newDoc, history, true, bh.conflictResolver, forceAllowConflicts)
 	} else {
