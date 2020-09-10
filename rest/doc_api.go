@@ -446,7 +446,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		newDoc.UpdateBody(body)
 	}
 
-	doc, rev, err := h.db.PutExistingRev(newDoc, history, true)
+	doc, rev, err := h.db.PutExistingRev(newDoc, history, true, false)
 
 	if err != nil {
 		return err
