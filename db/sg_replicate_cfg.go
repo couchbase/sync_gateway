@@ -641,10 +641,8 @@ func (m *sgReplicateManager) RefreshReplicationCfg() error {
 		} else {
 			// Check for replications assigned to this node with updated state
 			base.Debugf(base.KeyReplicate, "Aligning state for existing replication %s", replicationID)
-			// TODO: need to compare full hash here to see if replicator needs to be updated
-			//      not just checkpointer hash, as things like continuous true/false need to be considered
-			// if update required and active replicator state is not stopped, need to stop then update
-			// should all happen prior to align state
+
+			// If the config has changed, re-initialize the replication
 			isChanged, err := m.isCfgChanged(replicationCfg, activeReplicator.config)
 			if err != nil {
 				base.Warnf("Error evaluating whether cfg has changed, potential changes not applied: %v", err)
