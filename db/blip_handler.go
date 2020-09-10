@@ -29,6 +29,9 @@ var kHandlersByProfile = map[string]blipHandlerFunc{
 	MessageProposeChanges:  (*blipHandler).handleProposeChanges,
 }
 
+// maxInFlightChangesBatches is the maximum number of in-flight changes batches a client is allowed to send without being throttled.
+const maxInFlightChangesBatches = 2
+
 type blipHandler struct {
 	*BlipSyncContext
 	db           *Database // Handler-specific copy of the BlipSyncContext's blipContextDb
@@ -335,6 +338,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			return ErrClosedBLIPSender
 		}
 
+		bh.inFlightChangesThrottle <- struct{}{}
 		atomic.AddInt64(&bh.changesPendingResponseCount, 1)
 
 		bh.replicationStats.SendChangesCount.Add(int64(len(changeArray)))
@@ -343,6 +347,13 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				base.ErrorfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
 			}
+
+			// Sent all of the revs for this changes batch, allow another changes batch to be sent.
+			select {
+			case <-bh.inFlightChangesThrottle:
+			case <-bh.terminator:
+			}
+
 			atomic.AddInt64(&bh.changesPendingResponseCount, -1)
 		}(bh, sender, outrq.Response(), changeArray, sendTime, handleChangesResponseDb)
 	} else {
