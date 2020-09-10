@@ -90,18 +90,18 @@ dashboard.new(
     )
   )
   .addPanel(
-      gaugePanel.new(
-        'Current CPU Utilization',
-        min=0,
-      )
-      .addTarget(
-        prometheus.target(
-          'sgw_resource_utilization_process_cpu_percent_utilization{instance=~"$instance"}',
-          legendFormat='{{ instance }}',
-          instant=true
-        )
+    gaugePanel.new(
+      'Current CPU Utilization',
+      min=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'sgw_resource_utilization_process_cpu_percent_utilization{instance=~"$instance"}',
+        legendFormat='{{ instance }}',
+        instant=true
       )
     )
+  )
   .addPanel(
     graphPanel.new(
       'Memory Utilization',
@@ -1682,10 +1682,8 @@ dashboard.new(
       legend_current=true,
       legend_sort='current',
       legend_sortDesc=true,
-      format='short',
-      nullPointMode='null as zero',
+      format='percent',
       min=0,
-      decimals=0,
     )
     .addTarget(
       prometheus.target(
@@ -1766,7 +1764,7 @@ dashboard.new(
   )
   .addPanel(
     graphPanel.new(
-      'Attachment Bytes Pushed',
+      '% of docs in conflict',
       span=6,
       legend_alignAsTable=true,
       legend_rightSide=true,
@@ -1781,14 +1779,14 @@ dashboard.new(
     )
     .addTarget(
       prometheus.target(
-        'sgw_replication_sgr_num_attachment_bytes_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        'sgw_replication_sgr_push_conflict_count{instance=~"$instance",replication=~"$replication",database=~"$database"}/sgw_replication_sgr_num_docs_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }}',
       )
     )
   )
   .addPanel(
     graphPanel.new(
-      'Number of attachments pushed total',
+      'Total Conflicts',
       span=6,
       legend_alignAsTable=true,
       legend_rightSide=true,
@@ -1803,14 +1801,14 @@ dashboard.new(
     )
     .addTarget(
       prometheus.target(
-        'sgw_replication_sgr_num_attachments_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        'sgw_replication_sgr_conflict_resolved_local_count{instance=~"$instance",replication=~"$replication",database=~"$database"} + sgw_replication_sgr_conflict_resolved_remote_count{instance=~"$instance",replication=~"$replication",database=~"$database"} + sgw_replication_sgr_conflict_resolved_merge_count{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }}',
       )
     )
   )
   .addPanel(
     graphPanel.new(
-      'Num Docs Pushed',
+      'Documents Transferred',
       span=6,
       legend_alignAsTable=true,
       legend_rightSide=true,
@@ -1826,35 +1824,151 @@ dashboard.new(
     .addTarget(
       prometheus.target(
         'sgw_replication_sgr_num_docs_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        legendFormat='{{ database }} - {{ replication }} Docs Pushed',
+      )
+    )
+    .addTarget(
+      prometheus.target(
+        'sgw_replication_sgr_num_docs_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }} Docs Pulled',
       )
     )
   )
   .addPanel(
-      graphPanel.new(
-        'Num Docs Pushed [$interval]',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        format='short',
-        nullPointMode='null as zero',
-        min=0,
-        decimals=0,
-      )
-      .addTarget(
-        prometheus.target(
-          'rate(sgw_replication_sgr_num_docs_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}[$interval])',
-          legendFormat='{{ replication }}',
-        )
+    graphPanel.new(
+      'Documents Pushed per $interval',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'rate(sgw_replication_sgr_num_docs_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}[$interval])',
+        legendFormat='{{ database }} - {{ replication }}',
       )
     )
+  )
   .addPanel(
     graphPanel.new(
-      'Num docs failed to push',
+      'Documents Pulled per $interval',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'rate(sgw_replication_sgr_num_docs_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}[$interval])',
+        legendFormat='{{ database }} - {{ replication }}',
+      )
+    )
+  )
+  .addPanel(
+    graphPanel.new(
+      'Attachments Pulled per $interval',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'rate(sgw_replication_sgr_num_attachments_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}[$interval])',
+        legendFormat='{{ database }} - {{ replication }}',
+      )
+    )
+  )
+  .addPanel(
+    graphPanel.new(
+      'Attachments Pushed per $interval',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'rate(sgw_replication_sgr_num_attachments_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}[$interval])',
+        legendFormat='{{ database }} - {{ replication }}',
+      )
+    )
+  )
+  .addPanel(
+    graphPanel.new(
+      'Average size of attachments pulled',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'sgw_replication_sgr_num_attachment_bytes_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}/sgw_replication_sgr_num_attachments_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }}',
+      )
+    )
+  )
+  .addPanel(
+    graphPanel.new(
+      'Average size of attachments pushed',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'sgw_replication_sgr_num_attachment_bytes_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}/sgw_replication_sgr_num_attachments_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }}',
+      )
+    )
+  )
+  .addPanel(
+    graphPanel.new(
+      'Document Push Errors',
       span=6,
       legend_alignAsTable=true,
       legend_rightSide=true,
@@ -1870,205 +1984,19 @@ dashboard.new(
     .addTarget(
       prometheus.target(
         'sgw_replication_sgr_num_docs_failed_to_push{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        legendFormat='{{ database }} - {{ replication }} Failed to push count',
       )
-    )
-  )
-  .addPanel(
-    graphPanel.new(
-      'Push conflict count',
-      span=6,
-      legend_alignAsTable=true,
-      legend_rightSide=true,
-      legend_values=true,
-      legend_current=true,
-      legend_sort='current',
-      legend_sortDesc=true,
-      format='short',
-      nullPointMode='null as zero',
-      min=0,
-      decimals=0,
-    )
-    .addTarget(
-      prometheus.target(
-        'sgw_replication_sgr_push_conflict_count{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
-      )
-    )
-  )
-  .addPanel(
-    graphPanel.new(
-      'Push Rejected Count',
-      span=6,
-      legend_alignAsTable=true,
-      legend_rightSide=true,
-      legend_values=true,
-      legend_current=true,
-      legend_sort='current',
-      legend_sortDesc=true,
-      min=0,
-      nullPointMode='null as zero',
     )
     .addTarget(
       prometheus.target(
         'sgw_replication_sgr_push_rejected_count{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
-      )
-    )
-  )
-  .addPanel(
-      graphPanel.new(
-        'Push Delta Sent Count',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        min=0,
-        nullPointMode='null as zero',
-      )
-      .addTarget(
-        prometheus.target(
-          'sgw_replication_sgr_deltas_sent{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-          legendFormat='{{ replication }}',
-        )
-      )
-    )
-  .addPanel(
-      graphPanel.new(
-        'Docs checked sent',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        min=0,
-        nullPointMode='null as zero',
-      )
-      .addTarget(
-        prometheus.target(
-          'sgw_replication_sgr_docs_checked_sent{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-          legendFormat='{{ replication }}',
-        )
-      )
-    )
-.addPanel(
-    graphPanel.new(
-      'Attachment Bytes Pulled',
-      span=6,
-      legend_alignAsTable=true,
-      legend_rightSide=true,
-      legend_values=true,
-      legend_current=true,
-      legend_sort='current',
-      legend_sortDesc=true,
-      format='short',
-      nullPointMode='null as zero',
-      min=0,
-      decimals=0,
-    )
-    .addTarget(
-      prometheus.target(
-        'sgw_replication_sgr_num_attachment_bytes_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        legendFormat='{{ database }} - {{ replication }} Rejected push count',
       )
     )
   )
   .addPanel(
     graphPanel.new(
-      'Number of attachments pulled total',
-      span=6,
-      legend_alignAsTable=true,
-      legend_rightSide=true,
-      legend_values=true,
-      legend_current=true,
-      legend_sort='current',
-      legend_sortDesc=true,
-      format='short',
-      nullPointMode='null as zero',
-      min=0,
-      decimals=0,
-    )
-    .addTarget(
-      prometheus.target(
-        'sgw_replication_sgr_num_attachments_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
-      )
-    )
-  )
-  .addPanel(
-    graphPanel.new(
-      'Num Docs Pulled',
-      span=6,
-      legend_alignAsTable=true,
-      legend_rightSide=true,
-      legend_values=true,
-      legend_current=true,
-      legend_sort='current',
-      legend_sortDesc=true,
-      format='short',
-      nullPointMode='null as zero',
-      min=0,
-      decimals=0,
-    )
-    .addTarget(
-      prometheus.target(
-        'sgw_replication_sgr_num_docs_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
-      )
-    )
-  )
-  .addPanel(
-      graphPanel.new(
-        'Num Docs Pulled [$interval]',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        format='short',
-        nullPointMode='null as zero',
-        min=0,
-        decimals=0,
-      )
-      .addTarget(
-        prometheus.target(
-          'rate(sgw_replication_sgr_num_docs_pulled{instance=~"$instance",replication=~"$replication",database=~"$database"}[$interval])',
-          legendFormat='{{ replication }}',
-        )
-      )
-    )
-  .addPanel(
-      graphPanel.new(
-        'Num Docs Purged',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        format='short',
-        nullPointMode='null as zero',
-        min=0,
-        decimals=0,
-      )
-      .addTarget(
-        prometheus.target(
-          'sgw_replication_sgr_num_docs_purged{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-          legendFormat='{{ replication }}',
-        )
-      )
-    )
-  .addPanel(
-    graphPanel.new(
-      'Num docs failed to pull',
+      'Document Pull Errors',
       span=6,
       legend_alignAsTable=true,
       legend_rightSide=true,
@@ -2084,13 +2012,35 @@ dashboard.new(
     .addTarget(
       prometheus.target(
         'sgw_replication_sgr_num_docs_failed_to_pull{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        legendFormat='{{ database }} - {{ replication }}',
       )
     )
   )
   .addPanel(
     graphPanel.new(
-      'Deltas Received Count',
+      'Deltas Sent',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'sgw_replication_sgr_deltas_sent{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }}',
+      )
+    )
+  )
+  .addPanel(
+    graphPanel.new(
+      'Deltas Received',
       span=6,
       legend_alignAsTable=true,
       legend_rightSide=true,
@@ -2106,73 +2056,19 @@ dashboard.new(
     .addTarget(
       prometheus.target(
         'sgw_replication_sgr_deltas_recv{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        legendFormat='{{ database }} - {{ replication }} Deltas received',
       )
-    )
-  )
-  .addPanel(
-    graphPanel.new(
-      'Deltas Requested Count',
-      span=6,
-      legend_alignAsTable=true,
-      legend_rightSide=true,
-      legend_values=true,
-      legend_current=true,
-      legend_sort='current',
-      legend_sortDesc=true,
-      min=0,
-      nullPointMode='null as zero',
     )
     .addTarget(
       prometheus.target(
         'sgw_replication_sgr_deltas_requested{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        legendFormat='{{ database }} - {{ replication }} Deltas requested',
       )
     )
   )
   .addPanel(
-      graphPanel.new(
-        'Docs Checked Received',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        min=0,
-        nullPointMode='nll as zero',
-      )
-      .addTarget(
-        prometheus.target(
-          'sgw_replication_sgr_docs_checked_recv{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-          legendFormat='{{ replication }}',
-        )
-      )
-    )
-  .addPanel(
-      graphPanel.new(
-        'Conflicts Resolved Local Count',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        min=0,
-        nullPointMode='null as zero',
-      )
-      .addTarget(
-        prometheus.target(
-          'sgw_replication_sgr_conflict_resolved_local_count{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-          legendFormat='{{ replication }}',
-        )
-      )
-    )
-  .addPanel(
     graphPanel.new(
-      'Conflicts Resolved Remote Count',
+      '% of Documents pushed using delta sync',
       span=6,
       legend_alignAsTable=true,
       legend_rightSide=true,
@@ -2180,19 +2076,21 @@ dashboard.new(
       legend_current=true,
       legend_sort='current',
       legend_sortDesc=true,
-      min=0,
+      format='short',
       nullPointMode='null as zero',
+      min=0,
+      decimals=0,
     )
     .addTarget(
       prometheus.target(
-        'sgw_replication_sgr_conflict_resolved_remote_count{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        'sgw_replication_sgr_deltas_sent{instance=~"$instance",replication=~"$replication",database=~"$database"}/sgw_replication_sgr_num_docs_pushed{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+         legendFormat='{{ database }} - {{ replication }}',
       )
     )
   )
   .addPanel(
     graphPanel.new(
-      'Conflicts Resolved Merge Count',
+      'Docs Checked Sent',
       span=6,
       legend_alignAsTable=true,
       legend_rightSide=true,
@@ -2200,54 +2098,60 @@ dashboard.new(
       legend_current=true,
       legend_sort='current',
       legend_sortDesc=true,
-      min=0,
+      format='short',
       nullPointMode='null as zero',
+      min=0,
+      decimals=0,
     )
     .addTarget(
       prometheus.target(
-        'sgw_replication_sgr_conflict_resolved_merge_count{instance=~"$instance",replication=~"$replication",database=~"$database"}',
-        legendFormat='{{ replication }}',
+        'sgw_replication_sgr_docs_checked_sent{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }}',
       )
     )
   )
   .addPanel(
-      graphPanel.new(
-        'Total Conflict Count',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        min=0,
-        nullPointMode='null as zero',
-      )
-      .addTarget(
-        prometheus.target(
-          'sgw_replication_sgr_conflict_resolved_local_count{instance=~"$instance",database=~"$database"} + sgw_replication_sgr_conflict_resolved_merge_count{instance=~"$instance",database=~"$database"} + sgw_replication_sgr_conflict_resolved_remote_count{instance=~"$instance",database=~"$database"}',
-          legendFormat='{{ replication }}',
-        )
+    graphPanel.new(
+      'Num Docs Purged',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'sgw_replication_sgr_num_docs_purged{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }}',
       )
     )
-    .addPanel(
-      graphPanel.new(
-        'Total Docs Transferred Count',
-        span=6,
-        legend_alignAsTable=true,
-        legend_rightSide=true,
-        legend_values=true,
-        legend_current=true,
-        legend_sort='current',
-        legend_sortDesc=true,
-        min=0,
-        nullPointMode='null as zero',
-      )
-      .addTarget(
-        prometheus.target(
-          'sgw_replication_sgr_num_docs_pushed{instance=~"$instance",database=~"$database"} + sgw_replication_sgr_num_docs_pulled{instance=~"$instance",database=~"$database"}',
-          legendFormat='{{ replication }}',
-        )
+  )
+  .addPanel(
+    graphPanel.new(
+      'Docs Checked Received',
+      span=6,
+      legend_alignAsTable=true,
+      legend_rightSide=true,
+      legend_values=true,
+      legend_current=true,
+      legend_sort='current',
+      legend_sortDesc=true,
+      format='short',
+      nullPointMode='null as zero',
+      min=0,
+      decimals=0,
+    )
+    .addTarget(
+      prometheus.target(
+        'sgw_replication_sgr_docs_checked_received{instance=~"$instance",replication=~"$replication",database=~"$database"}',
+        legendFormat='{{ database }} - {{ replication }}',
       )
     )
+  )
 )
