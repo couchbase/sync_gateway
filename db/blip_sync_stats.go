@@ -109,8 +109,8 @@ func BlipSyncStatsForCBL(dbStats *base.DbStats) *BlipSyncStats {
 
 	blipStats.HandleRevCount = dbStats.CBLReplicationPush().DocPushCount
 
-	blipStats.GetAttachment = dbStats.CBLReplicationPull().AttachmentPullCount
-	blipStats.GetAttachmentBytes = dbStats.CBLReplicationPull().AttachmentPullBytes
+	blipStats.HandleGetAttachment = dbStats.CBLReplicationPull().AttachmentPullCount
+	blipStats.HandleGetAttachmentBytes = dbStats.CBLReplicationPull().AttachmentPullBytes
 
 	blipStats.HandleChangesResponseCount = dbStats.CBLReplicationPull().RequestChangesCount
 	blipStats.HandleChangesResponseTime = dbStats.CBLReplicationPull().RequestChangesTime
