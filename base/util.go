@@ -1141,11 +1141,11 @@ func (ab *AtomicBool) CompareAndSwap(old bool, new bool) bool {
 
 // CASRetry attempts to retry CompareAndSwap for up to 1 second before returning the result.
 func (ab *AtomicBool) CASRetry(old bool, new bool) bool {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		if ab.CompareAndSwap(old, new) {
 			return true
 		}
-		time.Sleep(time.Millisecond * 100)
+		time.Sleep(time.Millisecond * 10)
 	}
 	return false
 }
