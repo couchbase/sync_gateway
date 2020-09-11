@@ -341,6 +341,7 @@ type sgReplicateManager struct {
 	activeReplicatorsLock      sync.RWMutex                  // Mutex for activeReplications
 	clusterUpdateTerminator    chan struct{}                 // Terminator for cluster update retry
 	clusterSubscribeTerminator chan struct{}                 // Terminator for cluster change monitoring
+	closeWg                    sync.WaitGroup                // Teardown waitgroup for subscribe and retry goroutines
 	dbContext                  *DatabaseContext
 }
 
@@ -607,6 +608,8 @@ func (m *sgReplicateManager) Stop() {
 		m.heartbeatListener.Stop()
 	}
 	close(m.clusterUpdateTerminator)
+
+	m.closeWg.Wait()
 }
 
 // RefreshReplicationCfg is called when the cfg changes.  Checks whether replications
@@ -705,8 +708,10 @@ func (m *sgReplicateManager) SubscribeCfgChanges() error {
 		base.Debugf(base.KeyCluster, "Error subscribing to %s key changes: %v", cfgKeySGRCluster, err)
 		return err
 	}
+	m.closeWg.Add(1)
 	go func() {
 		defer base.FatalPanicHandler()
+		defer m.closeWg.Done()
 		for {
 			select {
 			case _, ok := <-cfgEvents:
@@ -749,6 +754,8 @@ func (m *sgReplicateManager) loadSGRCluster() (sgrCluster *SGRCluster, cas uint6
 
 // updateCluster manages CAS retry for SGRCluster updates.
 func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
+	m.closeWg.Add(1)
+	defer m.closeWg.Done()
 	for i := 1; i <= maxSGRClusterCasRetries; i++ {
 		select {
 		case <-m.clusterUpdateTerminator:
