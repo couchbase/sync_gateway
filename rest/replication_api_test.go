@@ -1730,6 +1730,8 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 				assert.Equal(t, int64(1), r.Pull.Checkpointer.Stats().GetCheckpointHitCount, "unexpected checkpoint hit")
 				assert.Equal(t, int64(0), r.Pull.Checkpointer.Stats().GetCheckpointMissCount, "unexpected checkpoint miss")
 			}
+
+			assert.NoError(t, r.Stop())
 		})
 	}
 }
@@ -1879,6 +1881,8 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointSGR1FallbackMissCount)
 	assert.Equal(t, int64(0), r.Push.Checkpointer.Stats().GetCheckpointHitCount)
 	assert.Equal(t, int64(1), r.Push.Checkpointer.Stats().GetCheckpointMissCount)
+
+	assert.NoError(t, r.Stop())
 }
 
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
