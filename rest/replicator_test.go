@@ -2723,6 +2723,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	assert.NoError(t, ar.Start())
 
+	base.WaitForStat(func() int64 {
+		return ar.Push.GetStats().SendRevCount.Value()
+	}, 1)
+
 	// wait for document originally written to rt1 to arrive at rt2
 	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
@@ -2750,6 +2754,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 
 	assert.NoError(t, rt1.WaitForPendingChanges())
+
+	base.WaitForStat(func() int64 {
+		return ar.Push.GetStats().SendRevCount.Value()
+	}, 2)
 
 	// wait for new document to arrive at rt2
 	changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
