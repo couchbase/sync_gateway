@@ -290,8 +290,6 @@ func TestUseClientCert(t *testing.T) {
 func TestGetPoolName(t *testing.T) {
 	fakeBucketSpec := &BucketSpec{}
 	assert.Equal(t, "default", fakeBucketSpec.GetPoolName())
-	fakeBucketSpec.PoolName = "Liverpool"
-	assert.Equal(t, "Liverpool", fakeBucketSpec.GetPoolName())
 }
 
 func TestGetViewQueryTimeout(t *testing.T) {

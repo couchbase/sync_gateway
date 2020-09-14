@@ -35,6 +35,10 @@ const (
 )
 
 const (
+	DefaultPool = "default"
+)
+
+const (
 	GoCB                   CouchbaseDriver = iota // Use GoCB driver with default Transcoder
 	GoCBCustomSGTranscoder                        // Use GoCB driver with a custom Transcoder
 )
@@ -89,17 +93,17 @@ type CouchbaseBucketType int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
-	Server, PoolName, BucketName, FeedType string
-	Auth                                   AuthHandler
-	CouchbaseDriver                        CouchbaseDriver
-	Certpath, Keypath, CACertPath          string         // X.509 auth parameters
-	KvTLSPort                              int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
-	MaxNumRetries                          int            // max number of retries before giving up
-	InitialRetrySleepTimeMS                int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
-	UseXattrs                              bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
-	ViewQueryTimeoutSecs                   *uint32        // the view query timeout in seconds (default: 75 seconds)
-	BucketOpTimeout                        *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-	KvPoolSize                             int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
+	Server, BucketName, FeedType  string
+	Auth                          AuthHandler
+	CouchbaseDriver               CouchbaseDriver
+	Certpath, Keypath, CACertPath string         // X.509 auth parameters
+	KvTLSPort                     int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
+	MaxNumRetries                 int            // max number of retries before giving up
+	InitialRetrySleepTimeMS       int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
+	UseXattrs                     bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
+	ViewQueryTimeoutSecs          *uint32        // the view query timeout in seconds (default: 75 seconds)
+	BucketOpTimeout               *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	KvPoolSize                    int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.
@@ -127,10 +131,7 @@ func (spec BucketSpec) UseClientCert() bool {
 }
 
 func (spec BucketSpec) GetPoolName() string {
-	if spec.PoolName == "" {
-		return "default"
-	}
-	return spec.PoolName
+	return DefaultPool
 }
 
 // Builds a gocb connection string based on BucketSpec.Server.
@@ -302,7 +303,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Infof(KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
-		bucket, err = walrus.GetBucket(spec.Server, spec.PoolName, spec.BucketName)
+		bucket, err = walrus.GetBucket(spec.Server, spec.GetPoolName(), spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
 		if spec.FeedType == "" || spec.FeedType != TapFeedType {
 			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}

@@ -39,7 +39,6 @@ var (
 	DefaultInterface              = ":4984"
 	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
 	DefaultServer                 = "walrus:"
-	DefaultPool                   = "default"
 	DefaultMinimumTLSVersionConst = tls.VersionTLS10
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
@@ -132,7 +131,6 @@ func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
 
 	return base.BucketSpec{
 		Server:     server,
-		PoolName:   DefaultPool,
 		BucketName: bucketName,
 		Keypath:    bc.KeyPath,
 		Certpath:   bc.CertPath,
