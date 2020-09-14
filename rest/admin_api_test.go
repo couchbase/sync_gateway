@@ -1780,12 +1780,11 @@ func TestHandleCreateDB(t *testing.T) {
 	defer rt.Close()
 
 	server := "walrus:"
-	pool := "liverpool"
 	bucket := "albums"
 	kvTLSPort := 11207
 	resource := fmt.Sprintf("/%s/", bucket)
 
-	bucketConfig := BucketConfig{Server: &server, Pool: &pool, Bucket: &bucket, KvTLSPort: kvTLSPort}
+	bucketConfig := BucketConfig{Server: &server, Bucket: &bucket, KvTLSPort: kvTLSPort}
 	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
 	var respBody db.Body
 
@@ -1804,7 +1803,7 @@ func TestHandleCreateDB(t *testing.T) {
 
 	// Try to create database with bad JSON request body and simulate JSON
 	// parsing error from the handler; handleCreateDB.
-	reqBodyJson := `"server":"walrus:","pool":"liverpool","bucket":"albums","kv_tls_port":11207`
+	reqBodyJson := `"server":"walrus:","pool":"default","bucket":"albums","kv_tls_port":11207`
 	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
 	assertStatus(t, resp, http.StatusBadRequest)
 }
@@ -1814,7 +1813,6 @@ func TestHandleDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	server := "walrus:"
-	pool := "liverpool"
 	bucket := "albums"
 	kvTLSPort := 443
 	certPath := "/etc/ssl/certs/client.cert"
@@ -1843,7 +1841,6 @@ func TestHandleDBConfig(t *testing.T) {
 
 	bucketConfig := BucketConfig{
 		Server:     &server,
-		Pool:       &pool,
 		Bucket:     &bucket,
 		Username:   username,
 		Password:   password,
@@ -1867,7 +1864,6 @@ func TestHandleDBConfig(t *testing.T) {
 
 	assert.Equal(t, bucket, respBody["bucket"].(string))
 	assert.Equal(t, bucket, respBody["name"].(string))
-	assert.Equal(t, pool, respBody["pool"].(string))
 	assert.Equal(t, server, respBody["server"].(string))
 	assert.Equal(t, username, respBody["username"].(string))
 	assert.Equal(t, password, respBody["password"].(string))

@@ -104,7 +104,6 @@ type ServerConfig struct {
 // Bucket configuration elements - used by db, index
 type BucketConfig struct {
 	Server     *string `json:"server,omitempty"`      // Couchbase server URL
-	Pool       *string `json:"pool,omitempty"`        // Couchbase pool name, default "default"
 	Bucket     *string `json:"bucket,omitempty"`      // Bucket name
 	Username   string  `json:"username,omitempty"`    // Username for authenticating to server
 	Password   string  `json:"password,omitempty"`    // Password for authenticating to server
@@ -117,15 +116,11 @@ type BucketConfig struct {
 func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
 
 	server := "http://localhost:8091"
-	pool := "default"
 	bucketName := ""
 	tlsPort := 11207
 
 	if bc.Server != nil {
 		server = *bc.Server
-	}
-	if bc.Pool != nil {
-		pool = *bc.Pool
 	}
 	if bc.Bucket != nil {
 		bucketName = *bc.Bucket
@@ -137,7 +132,7 @@ func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
 
 	return base.BucketSpec{
 		Server:     server,
-		PoolName:   pool,
+		PoolName:   DefaultPool,
 		BucketName: bucketName,
 		Keypath:    bc.KeyPath,
 		Certpath:   bc.CertPath,
@@ -318,9 +313,6 @@ func (dbConfig *DbConfig) setup(name string) error {
 	}
 	if dbConfig.Server == nil {
 		dbConfig.Server = &DefaultServer
-	}
-	if dbConfig.Pool == nil {
-		dbConfig.Pool = &DefaultPool
 	}
 
 	url, err := url.Parse(*dbConfig.Server)
@@ -860,7 +852,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 	configServer := flagSet.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flagSet.String("url", DefaultServer, "Address of Couchbase server")
-	poolName := flagSet.String("pool", DefaultPool, "Name of pool")
 	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flagSet.Bool("verbose", false, "Log more info about requests")
@@ -979,7 +970,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 					BucketConfig: BucketConfig{
 						Server:     couchbaseURL,
 						Bucket:     &defaultBucketName,
-						Pool:       poolName,
 						CertPath:   *certpath,
 						CACertPath: *cacertpath,
 						KeyPath:    *keypath,
