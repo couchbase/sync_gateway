@@ -1759,7 +1759,7 @@ dashboard.new(
 )
 .addRow(
   row.new(
-    title='SGR2',
+    title='Inter-Sync Gateway Replications',
     collapse=false,
   )
   .addPanel(
