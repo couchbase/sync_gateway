@@ -102,14 +102,15 @@ type ServerConfig struct {
 
 // Bucket configuration elements - used by db, index
 type BucketConfig struct {
-	Server     *string `json:"server,omitempty"`      // Couchbase server URL
-	Bucket     *string `json:"bucket,omitempty"`      // Bucket name
-	Username   string  `json:"username,omitempty"`    // Username for authenticating to server
-	Password   string  `json:"password,omitempty"`    // Password for authenticating to server
-	CertPath   string  `json:"certpath,omitempty"`    // Cert path (public key) for X.509 bucket auth
-	KeyPath    string  `json:"keypath,omitempty"`     // Key path (private key) for X.509 bucket auth
-	CACertPath string  `json:"cacertpath,omitempty"`  // Root CA cert path for X.509 bucket auth
-	KvTLSPort  int     `json:"kv_tls_port,omitempty"` // Memcached TLS port, if not default (11207)
+	Server         *string `json:"server,omitempty"`      // Couchbase server URL
+	DeprecatedPool *string `json:"pool,omitempty"`        // Couchbase pool name - This is now deprecated and forced to be "default"
+	Bucket         *string `json:"bucket,omitempty"`      // Bucket name
+	Username       string  `json:"username,omitempty"`    // Username for authenticating to server
+	Password       string  `json:"password,omitempty"`    // Password for authenticating to server
+	CertPath       string  `json:"certpath,omitempty"`    // Cert path (public key) for X.509 bucket auth
+	KeyPath        string  `json:"keypath,omitempty"`     // Key path (private key) for X.509 bucket auth
+	CACertPath     string  `json:"cacertpath,omitempty"`  // Root CA cert path for X.509 bucket auth
+	KvTLSPort      int     `json:"kv_tls_port,omitempty"` // Memcached TLS port, if not default (11207)
 }
 
 func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
@@ -473,6 +474,10 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 		} else if *dbConfig.ImportPartitions < 1 || *dbConfig.ImportPartitions > 1024 {
 			errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "import_partitions", "1-1024"))
 		}
+	}
+
+	if dbConfig.DeprecatedPool != nil {
+		base.Warnf(`"pool" config option is deprecated and is not supported. This will be set the the default of "default" and the option should be removed from config gile.`)
 	}
 
 	return errorMessages
