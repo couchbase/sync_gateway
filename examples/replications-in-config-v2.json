@@ -1,0 +1,78 @@
+{
+  "logging": {
+    "console": {
+      "log_keys": ["*"]
+    }
+  },
+  "databases": {
+    "db": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default",
+      "allow_conflicts": false,
+      "revs_limit": 20,
+      "replications": {
+        "push-continuous": {
+          "direction": "push",
+          "remote": "http://localhost:4985/db2",
+          "continuous": true
+        },
+        "pull-continuous": {
+          "direction": "pull",
+          "remote": "http://localhost:4985/db3",
+          "continuous": true
+        }
+      }
+    },
+    "db2": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default1",
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db3": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default2",
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db4": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default3",
+      "users": {
+        "GUEST": {
+          "disabled": false,
+          "admin_channels": ["*"]
+        }
+      },
+      "local-continuous-false": {
+        "direction": "pull",
+        "remote": "http://localhost:4985/db5",
+        "continuous": false
+      },
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db5": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default4",
+      "users": {
+        "GUEST": {
+          "disabled": false,
+          "admin_channels": ["*"]
+        }
+      },
+      "allow_conflicts": false,
+      "revs_limit": 20
+    }
+  }
+}

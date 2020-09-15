@@ -1,0 +1,64 @@
+{
+  logging: { console: { log_keys: [[32m"*"[39m] } },
+  databases: {
+    db: {
+      server: [32m"couchbase://localhost"[39m,
+      username: [32m"username"[39m,
+      password: [32m"password"[39m,
+      bucket: [32m"default"[39m,
+      allow_conflicts: [33mfalse[39m,
+      revs_limit: [33m20[39m,
+      replications: {
+        "push-continuous": {
+          direction: [32m"push"[39m,
+          remote: [32m"http://localhost:4985/db2"[39m,
+          continuous: [33mtrue[39m
+        },
+        "pull-continuous": {
+          direction: [32m"pull"[39m,
+          remote: [32m"http://localhost:4985/db3"[39m,
+          continuous: [33mtrue[39m
+        }
+      }
+    },
+    db2: {
+      server: [32m"couchbase://localhost"[39m,
+      username: [32m"username"[39m,
+      password: [32m"password"[39m,
+      bucket: [32m"default1"[39m,
+      allow_conflicts: [33mfalse[39m,
+      revs_limit: [33m20[39m
+    },
+    db3: {
+      server: [32m"couchbase://localhost"[39m,
+      username: [32m"username"[39m,
+      password: [32m"password"[39m,
+      bucket: [32m"default2"[39m,
+      allow_conflicts: [33mfalse[39m,
+      revs_limit: [33m20[39m
+    },
+    db4: {
+      server: [32m"couchbase://localhost"[39m,
+      username: [32m"username"[39m,
+      password: [32m"password"[39m,
+      bucket: [32m"default3"[39m,
+      users: { GUEST: { disabled: [33mfalse[39m, admin_channels: [[32m"*"[39m] } },
+      "local-continuous-false": {
+        direction: [32m"pull"[39m,
+        remote: [32m"http://localhost:4985/db5"[39m,
+        continuous: [33mfalse[39m
+      },
+      allow_conflicts: [33mfalse[39m,
+      revs_limit: [33m20[39m
+    },
+    db5: {
+      server: [32m"couchbase://localhost"[39m,
+      username: [32m"username"[39m,
+      password: [32m"password"[39m,
+      bucket: [32m"default4"[39m,
+      users: { GUEST: { disabled: [33mfalse[39m, admin_channels: [[32m"*"[39m] } },
+      allow_conflicts: [33mfalse[39m,
+      revs_limit: [33m20[39m
+    }
+  }
+}
