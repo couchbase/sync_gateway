@@ -477,7 +477,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 	}
 
 	if dbConfig.DeprecatedPool != nil {
-		base.Warnf(`"pool" config option is deprecated and is not supported. This will be set the the default of "default" and the option should be removed from config gile.`)
+		base.Warnf(`"pool" config option is not supported. The pool will be set to "default". The option should be removed from config file.`)
 	}
 
 	return errorMessages
