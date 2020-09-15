@@ -242,6 +242,7 @@ func (rt *RestTester) Close() {
 	}
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
+		rt.RestTesterServerContext = nil
 	}
 	if rt.testBucket != nil {
 		rt.testBucket.Close()
