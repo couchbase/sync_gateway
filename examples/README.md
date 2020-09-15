@@ -17,8 +17,7 @@ logging-with-redaction.json | Shows log redaction setting.
 logging-with-rotation.json | Shows log rotation option usage.
 openid-connect.json | Utilizes the openID connect function to authenticate users.
 read-write-timeouts.json  | Demonstrates how to set timeouts on reads/writes.
-replications-in-config.json | Shows Inter-Sync Gateway replication use. This is version 1.
-replications-in-config-v2.json | Shows the new version of Inter-Sync Gateway replication introduced in Sync Gateway 2.8. This should be used instead of version 1 (shown above).
+replications-in-config.json | Shows Inter-Sync Gateway replication use.
 serviceconfig.json | The default config used for service startup. Should be avoided when building a suitable config as Walrus is not supported.
 users-roles.json  | Statically define users and roles.  (They can also be defined via the REST API)
 
