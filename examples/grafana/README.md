@@ -47,4 +47,4 @@ When running the makefile or when running jb init you may encounter the followin
 
 If this occurs then your environment was unable to find the `jb` binary which means the GOPATH, or the installation directory is not part of your PATH environment variable.
 
-The GOPATH or installation directory can be found with `echo $(go env GOPATH)`. Ensure that this directory is present in the PATH variable. 
+The GOPATH can be found with `echo $(go env GOPATH)`. This is where `jb` will be installed. Ensure that this directory is present in the PATH variable. 
