@@ -52,10 +52,12 @@
           "admin_channels": ["*"]
         }
       },
-      "local-continuous-false": {
-        "direction": "pull",
-        "remote": "http://localhost:4985/db5",
-        "continuous": false
+      "replications": {
+        "local-continuous-false": {
+          "direction": "pull",
+          "remote": "http://localhost:4985/db5",
+          "continuous": false
+        }
       },
       "allow_conflicts": false,
       "revs_limit": 20
