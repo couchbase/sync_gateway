@@ -160,6 +160,9 @@ type OIDCProvider struct {
 	// Sync Gateway and the underlying OIDC library.
 	UsernameClaim string `json:"username_claim"`
 
+	// AllowUnsignedProviderTokens allows users to opt-in to accepting unsigned tokens from providers.
+	AllowUnsignedProviderTokens bool `json:"allow_unsigned_provider_tokens"`
+
 	// client represents client configurations to authenticate end-users
 	// with an OpenID Connect provider. It must not be accessed directly,
 	// use the accessor method GetClient() instead.
@@ -322,7 +325,7 @@ func (op *OIDCProvider) initOIDCClient() error {
 		return pkgerrors.Wrap(err, ErrMsgUnableToDiscoverConfig)
 	}
 
-	verifier = op.generateVerifier(&metadata, context.Background())
+	verifier = op.generateVerifier(&metadata, GetOIDCClientContext(op.InsecureSkipVerify))
 	if verifier == nil {
 		return pkgerrors.Wrap(err, ErrMsgUnableToGenerateVerifier)
 	}

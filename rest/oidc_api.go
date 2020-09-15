@@ -262,7 +262,7 @@ func (h *handler) handleOIDCRefresh() error {
 }
 
 func (h *handler) createSessionForTrustedIdToken(rawIDToken string, provider *auth.OIDCProvider) (username string, sessionID string, err error) {
-	user, tokenExpiryTime, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider)
+	user, tokenExpiryTime, err := h.db.Authenticator().AuthenticateTrustedJWT(rawIDToken, provider, h.getOIDCCallbackURL)
 	if err != nil {
 		return "", "", err
 	}

@@ -477,24 +477,51 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 }
 
 // Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
-// Verifies the token claims, but doesn't require signature verification.
+// Verifies the token claims, but doesn't require signature verification if allow_unsigned_provider_tokens is enabled.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
+func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (user User,
+	tokenExpiry time.Time, err error) {
 	base.Debugf(base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
-	// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
-	identity, err := VerifyClaims(token, provider.ClientID, provider.Issuer)
-	if err != nil {
-		base.Debugf(base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
-		return nil, time.Time{}, err
+	var identity *Identity
+	if provider.AllowUnsignedProviderTokens {
+		// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
+		identity, err = VerifyClaims(token, provider.ClientID, provider.Issuer)
+		if err != nil {
+			base.Debugf(base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
+			return nil, time.Time{}, err
+		}
+	} else {
+		// Get client for issuer
+		client := provider.GetClient(callbackURLFunc)
+		if client == nil {
+			return nil, time.Time{}, fmt.Errorf("OIDC client was not initialized")
+		}
+
+		// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
+		idToken, err := client.verifyJWT(token)
+		if err != nil {
+			base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
+			return nil, time.Time{}, err
+		}
+
+		var ok bool
+		identity, ok, err = getIdentity(idToken)
+		if err != nil {
+			base.Debugf(base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
+		}
+		if !ok {
+			return nil, time.Time{}, err
+		}
 	}
+
 	return auth.authenticateOIDCIdentity(identity, provider)
 }
 
 // Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
 func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
-	if identity.Subject == "" {
+	if identity == nil || identity.Subject == "" {
 		base.Debugf(base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
