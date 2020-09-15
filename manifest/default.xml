@@ -44,7 +44,7 @@
 
   <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="8f9a894d174b836c6362de9af75545cf585fc278"/>
 
-  <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="db06807997e6f778fe135571140a0c4f1f59723c"/>
+  <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="83e1dde05ac9e4861d4d8d4985046e8920c1d760"/>
 
   <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="9b201da3276b0475203dfa121a82cd4ccf37b8f2"/>
 
