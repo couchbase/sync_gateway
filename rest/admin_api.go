@@ -842,7 +842,6 @@ func (h *handler) getReplications() error {
 		return err
 	}
 
-	// TODO: remove the local/non-local handling below when CBG-909 is completed
 	for _, replication := range replications {
 		if replication.AssignedNode == h.db.UUID {
 			replication.AssignedNode = replication.AssignedNode + " (local)"
