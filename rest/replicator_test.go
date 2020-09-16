@@ -3927,8 +3927,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for document to arrive on the doc is was put on
 			err = localActiveRT.WaitForCondition(func() bool {
-				doc, err := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
-				require.NoError(t, err)
+				doc, _ := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
 				if doc == nil {
 					return false
 				}
@@ -3941,8 +3940,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 			// Wait for document to be replicated
 			err = remotePassiveRT.WaitForCondition(func() bool {
-				doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
-				require.NoError(t, err)
+				doc, _ := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
 				if doc == nil {
 					return false
 				}
