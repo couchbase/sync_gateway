@@ -121,7 +121,7 @@ var (
 			"FROM `%s` " +
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op " +
 			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)]  BETWEEN  ['foo', 0] AND ['foo', 1] " +
-			"ORDER BY sequence " +
+			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)] " +
 			"LIMIT 1",
 	}
 )
