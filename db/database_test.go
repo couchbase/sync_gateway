@@ -2012,3 +2012,88 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 	assert.Equal(t, "Liam", revBody["name"])
 	assert.Equal(t, json.Number("12"), revBody["age"])
 }
+
+func TestIncreasingRecentSequences(t *testing.T) {
+	var db *Database
+	var enableCallback bool
+	var body Body
+	var revid string
+
+	writeUpdateCallback := func(key string) {
+		if enableCallback {
+			enableCallback = false
+			// Write a doc
+			_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"2-abc", revid}, true)
+			assert.NoError(t, err)
+		}
+	}
+
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteUpdateCallback: writeUpdateCallback})
+	defer db.Close()
+
+	err := json.Unmarshal([]byte(`{"prop": "value"}`), &body)
+	assert.NoError(t, err)
+
+	// Create a doc
+	revid, _, err = db.Put("doc1", body)
+	assert.NoError(t, err)
+
+	enableCallback = true
+	doc, _, err := db.PutExistingRevWithBody("doc1", body, []string{"3-abc", "2-abc", revid}, true)
+	assert.NoError(t, err)
+
+	assert.True(t, sort.IsSorted(base.SortedUint64Slice(doc.SyncData.RecentSequences)))
+}
+
+func TestRepairUnorderedRecentSequences(t *testing.T) {
+	var db *Database
+	var body Body
+	var revid string
+
+	db = setupTestDB(t)
+	defer db.Close()
+
+	err := json.Unmarshal([]byte(`{"prop": "value"}`), &body)
+	assert.NoError(t, err)
+
+	// Create a doc
+	revid, _, err = db.Put("doc1", body)
+	assert.NoError(t, err)
+
+	// Update the doc a few times to populate recent sequences
+	for i := 0; i < 10; i++ {
+		updateBody := make(map[string]interface{})
+		updateBody["prop"] = i
+		updateBody["_rev"] = revid
+		revid, _, err = db.Put("doc1", updateBody)
+	}
+
+	syncData, err := db.GetDocSyncData("doc1")
+	assert.True(t, sort.IsSorted(base.SortedUint64Slice(syncData.RecentSequences)))
+
+	// Update document directly in the bucket to scramble recent sequences
+	var rawBody Body
+	_, err = db.Bucket.Get("doc1", &rawBody)
+	assert.NoError(t, err)
+	rawSyncData, _ := rawBody["_sync"].(map[string]interface{})
+	rawSyncData["recent_sequences"] = []uint64{3, 5, 9, 11, 1, 2, 4, 8, 7, 10, 5}
+	assert.NoError(t, db.Bucket.Set("doc1", 0, rawBody))
+
+	// Validate non-ordered
+	var rawBodyCheck Body
+	_, err = db.Bucket.Get("doc1", &rawBodyCheck)
+	assert.NoError(t, err)
+	log.Printf("raw body check %v", rawBodyCheck)
+	rawSyncDataCheck, _ := rawBody["_sync"].(map[string]interface{})
+	recentSequences, _ := rawSyncDataCheck["recent_sequences"].([]uint64)
+	assert.False(t, sort.IsSorted(base.SortedUint64Slice(recentSequences)))
+
+	// Update the doc again. expect sequences to now be ordered
+	updateBody := make(map[string]interface{})
+	updateBody["prop"] = 12
+	updateBody["_rev"] = revid
+	_, _, err = db.Put("doc1", updateBody)
+
+	syncData, err = db.GetDocSyncData("doc1")
+	assert.True(t, sort.IsSorted(base.SortedUint64Slice(syncData.RecentSequences)))
+}

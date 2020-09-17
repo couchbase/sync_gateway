@@ -1466,9 +1466,14 @@ func (db *Database) assignSequence(docSequence uint64, doc *Document, unusedSequ
 		}
 	}
 
-	// Append current sequence and unused sequences to recent sequence history
+	// Append current sequence and unused sequences to recent sequence history.
+	// CAS failures can result in unusedSequences being older than existing recentSequences,
+	// so sorting is required
 	doc.RecentSequences = append(doc.RecentSequences, unusedSequences...)
 	doc.RecentSequences = append(doc.RecentSequences, docSequence)
+	if len(doc.RecentSequences) > 1 {
+		base.SortedUint64Slice(doc.RecentSequences).Sort()
+	}
 
 	return unusedSequences, nil
 }
