@@ -1,0 +1,40 @@
+groups:
+  - name: sync-gateway.rules
+    rules:
+      - record: sgw::gsi::total_queries
+        expr: sum by (instance, database, job) ({__name__=~"sgw_gsi_views_.*_count"})
+      - alert: TooManyAuthFailuresInLastHour
+        expr: deriv(sgw_security_auth_failed_count[1h]) > 1000
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Too Many Auth Failures in Last Hour
+      - alert: TooManyDocumentAccessFailuresInLastHour
+        expr: deriv(sgw_security_num_access_errors[1h]) > 1000
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Too many Document Access Failures in Last Hour
+      - alert: TooManyDocumentRejectionFailuresInLastHour
+        expr: deriv(sgw_security_num_docs_rejected[1h]) > 1000
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Too many Document Rejection Failures in Last Hour
+      - alert: HighRevCacheMissRate
+        expr: sgw_cache_rev_cache_misses / (sgw_cache_rev_cache_misses + sgw_cache_rev_cache_hits) >= 1.0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: High Rev Cache Miss Rate
+      - alert: HighChannelCacheMissRate
+        expr: sgw_cache_chan_cache_misses / (sgw_cache_chan_cache_misses + sgw_cache_chan_cache_hits) >= 1.0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: High Channel Cache Miss Rate

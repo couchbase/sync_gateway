@@ -1625,7 +1625,7 @@ dashboard.new(
 )
 .addRow(
   row.new(
-    title='SG to SG Replications',
+    title='SG to SG Replication (Version 1)',
     collapse=false,
   )
   .addPanel(
