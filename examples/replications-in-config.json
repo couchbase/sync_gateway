@@ -11,7 +11,19 @@
       "password": "password",
       "bucket": "default",
       "allow_conflicts": false,
-      "revs_limit": 20
+      "revs_limit": 20,
+      "replications": {
+        "push-continuous": {
+          "direction": "push",
+          "remote": "http://localhost:4985/db2",
+          "continuous": true
+        },
+        "pull-continuous": {
+          "direction": "pull",
+          "remote": "http://localhost:4985/db3",
+          "continuous": true
+        }
+      }
     },
     "db2": {
       "server": "couchbase://localhost",
@@ -40,6 +52,21 @@
           "admin_channels": ["*"]
         }
       },
+      "replications": {
+        "local-continuous-false-pushAndPull-customConflictResolver": {
+          "direction": "pushAndPull",
+          "remote": "http://localhost:4985/db5",
+          "continuous": false,
+          "conflict_resolution_type": "custom",
+          "custom_conflict_resolver":`
+            function(conflict){
+              console.log("Full Remote Doc: " + JSON.stringify(conflict.RemoteDocument));
+              console.log("Full Local Doc: " + JSON.stringify(conflict.LocalDocument));
+              // Just for the purposes of this example the Remote Doc always wins
+              return conflict.RemoteDocument;
+            }`
+        }
+      },
       "allow_conflicts": false,
       "revs_limit": 20
     },
@@ -56,33 +83,35 @@
       },
       "allow_conflicts": false,
       "revs_limit": 20
+    },
+    "db6": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default5",
+      "replications": {
+        "local-continuous-false-pushAndPull-conflictLocalWins-withFilter": {
+          "direction": "pushAndPull",
+          "conflict_resolution_type": "localWins",
+          "remote": "http://localhost:4985/db7",
+          "continuous": false,
+          "purge_on_removal": true,
+          "enable_delta_sync": true,
+          "max_backoff_time": 100,
+          "filter": "sync_gateway/bychannel",
+          "query_params":["ABC"]
+        }
+      },
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db7": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default6",
+      "allow_conflicts": false,
+      "revs_limit": 20
     }
-  },
-  "replications": [
-    {
-      "replication_id": "push-to-other-continuous",
-      "source": "http://localhost:4985/db",
-      "target": "http://otherhost.com:4985/db",
-      "continuous": true
-    },
-    {
-      "replication_id": "pull-from-other-continuous",
-      "source": "http://otherhost.com:4985/db",
-      "target": "http://localhost:4985/db",
-      "continuous": true
-    },
-    {
-      "replication_id": "local-to-local-one-shot",
-      "source": "http://localhost:4985/db2",
-      "target": "http://localhost:4985/db3",
-      "continuous": false
-    },
-    {
-      "replication_id": "local-to-local-one-shot-non-admin-async",
-      "source": "http://localhost:4984/db4",
-      "target": "http://localhost:4984/db5",
-      "continuous": false,
-      "async": true
-    }
-  ]
+  }
 }
