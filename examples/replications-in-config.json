@@ -53,10 +53,18 @@
         }
       },
       "replications": {
-        "local-continuous-false": {
-          "direction": "pull",
+        "local-continuous-false-pushAndPull-customConflictResolver": {
+          "direction": "pushAndPull",
           "remote": "http://localhost:4985/db5",
-          "continuous": false
+          "continuous": false,
+          "conflict_resolution_type": "custom",
+          "custom_conflict_resolver":`
+            function(conflict){
+              console.log("Full Remote Doc: " + JSON.stringify(conflict.RemoteDocument));
+              console.log("Full Local Doc: " + JSON.stringify(conflict.LocalDocument));
+              // Just for the purposes of this example the Remote Doc always wins
+              return conflict.RemoteDocument;
+            }`
         }
       },
       "allow_conflicts": false,
@@ -73,6 +81,35 @@
           "admin_channels": ["*"]
         }
       },
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db6": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default5",
+      "replications": {
+        "local-continuous-false-pushAndPull-conflictLocalWins-withFilter": {
+          "direction": "pushAndPull",
+          "conflict_resolution_type": "localWins",
+          "remote": "http://localhost:4985/db7",
+          "continuous": false,
+          "purge_on_removal": true,
+          "enable_delta_sync": true,
+          "max_backoff_time": 100,
+          "filter": "sync_gateway/bychannel",
+          "query_params":["ABC"]
+        }
+      },
+      "allow_conflicts": false,
+      "revs_limit": 20
+    },
+    "db7": {
+      "server": "couchbase://localhost",
+      "username": "username",
+      "password": "password",
+      "bucket": "default6",
       "allow_conflicts": false,
       "revs_limit": 20
     }
