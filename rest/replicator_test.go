@@ -3874,7 +3874,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 	for _, test := range tombstoneTests {
 		t.Run(test.name, func(t *testing.T) {
-			defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket, base.KeyReplicate)()
 
 			makeDoc := func(rt *RestTester, docid string, rev string, value string) string {
 				var body db.Body
@@ -3926,11 +3926,29 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			localActiveRT.waitForReplicationStatus("replication", db.ReplicationStateRunning)
 
 			// Wait for document to arrive on the doc is was put on
-			_, err = localActiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			err = localActiveRT.WaitForCondition(func() bool {
+				doc, _ := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				if doc == nil {
+					return false
+				}
+				if doc.SyncData.CurrentRev == "3-abc" {
+					return true
+				}
+				return false
+			})
 			assert.NoError(t, err)
 
 			// Wait for document to be replicated
-			_, err = remotePassiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			err = remotePassiveRT.WaitForCondition(func() bool {
+				doc, _ := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+				if doc == nil {
+					return false
+				}
+				if doc.SyncData.CurrentRev == "3-abc" {
+					return true
+				}
+				return false
+			})
 			assert.NoError(t, err)
 
 			// Stop the replication
