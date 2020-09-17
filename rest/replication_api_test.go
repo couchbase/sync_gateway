@@ -1840,6 +1840,14 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 		},
 		sgReplicateEnabled: true,
 	})
+	leakyBucket2, ok := activeRTSGR2.GetDatabase().Bucket.(*base.LeakyBucket)
+	if ok {
+		underlyingBucket := leakyBucket2.GetUnderlyingBucket()
+		if _, ok := underlyingBucket.(*walrus.WalrusBucket); ok {
+			leakyBucket2.SetIgnoreClose(true)
+		}
+	}
+
 	defer activeRTSGR2.Close()
 	activeRTSGR2HTTPServer := NewHTTPTestServerOnListener(activeRTSGR2.TestAdminHandler(), l)
 	defer activeRTSGR2HTTPServer.Close()
