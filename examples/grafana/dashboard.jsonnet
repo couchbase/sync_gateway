@@ -1625,7 +1625,7 @@ dashboard.new(
 )
 .addRow(
   row.new(
-    title='SG to SG Replication (Version 1)',
+    title='Inter-Sync Gateway Replication (SG-Replicate v1)',
     collapse=false,
   )
   .addPanel(
