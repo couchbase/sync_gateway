@@ -89,7 +89,7 @@ type ReplicationConfig struct {
 	PurgeOnRemoval         bool                      `json:"purge_on_removal,omitempty"`
 	DeltaSyncEnabled       bool                      `json:"enable_delta_sync,omitempty"`
 	MaxBackoff             int                       `json:"max_backoff_time,omitempty"`
-	TargetState            string                    `json:"target_state,omitempty"`
+	InitialState           string                    `json:"initial_state,omitempty"`
 	Continuous             bool                      `json:"continuous"`
 	Filter                 string                    `json:"filter,omitempty"`
 	QueryParams            interface{}               `json:"query_params,omitempty"`
@@ -104,7 +104,7 @@ func DefaultReplicationConfig() ReplicationConfig {
 		PurgeOnRemoval:         false,
 		MaxBackoff:             5,
 		ConflictResolutionType: ConflictResolverDefault,
-		TargetState:            ReplicationStateRunning,
+		InitialState:           ReplicationStateRunning,
 		Continuous:             false,
 		Adhoc:                  false,
 		BatchSize:              defaultChangesBatchSize,
@@ -116,6 +116,7 @@ type ReplicationCfg struct {
 	ReplicationConfig
 	SGR1CheckpointID string `json:"sgr1_checkpoint_id,omitempty"` // can be set to fall back to when SGR2 checkpoints can't be found
 	AssignedNode     string `json:"assigned_node"`                // UUID of node assigned to this replication
+	TargetState      string `json:"target_state,omitempty"`       // Target state for replication.
 }
 
 // ReplicationUpsertConfig is used for operations that support upsert of a subset of replication properties.
@@ -130,7 +131,7 @@ type ReplicationUpsertConfig struct {
 	PurgeOnRemoval         *bool       `json:"purge_on_removal,omitempty"`
 	DeltaSyncEnabled       *bool       `json:"enable_delta_sync,omitempty"`
 	MaxBackoff             *int        `json:"max_backoff_time,omitempty"`
-	TargetState            *string     `json:"target_state,omitempty"`
+	InitialState           *string     `json:"initial_state,omitempty"`
 	Continuous             *bool       `json:"continuous"`
 	Filter                 *string     `json:"filter,omitempty"`
 	QueryParams            interface{} `json:"query_params,omitempty"`
@@ -173,8 +174,8 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 			return base.HTTPErrorf(http.StatusBadRequest, ConfigErrorConfigBasedAdhoc)
 		}
 
-		if rc.TargetState == ReplicationStateStopped {
-			return base.HTTPErrorf(http.StatusBadRequest, "Setting target_state=stopped is not valid for replications specifying adhoc=true")
+		if rc.InitialState == ReplicationStateStopped {
+			return base.HTTPErrorf(http.StatusBadRequest, "Setting initial_state=stopped is not valid for replications specifying adhoc=true")
 		}
 	}
 
@@ -263,8 +264,8 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 	if c.MaxBackoff != nil {
 		rc.MaxBackoff = *c.MaxBackoff
 	}
-	if c.TargetState != nil {
-		rc.TargetState = *c.TargetState
+	if c.InitialState != nil {
+		rc.InitialState = *c.InitialState
 	}
 	if c.Continuous != nil {
 		rc.Continuous = *c.Continuous
@@ -898,6 +899,13 @@ func (m *sgReplicateManager) PutReplications(replications map[string]*Replicatio
 			replicationCfg := &ReplicationCfg{}
 			if exists {
 				replicationCfg.AssignedNode = existingCfg.AssignedNode
+				replicationCfg.TargetState = existingCfg.TargetState
+			} else {
+				if replication.InitialState == ReplicationStateStopped {
+					replicationCfg.TargetState = ReplicationStateStopped
+				} else {
+					replicationCfg.TargetState = ReplicationStateRunning
+				}
 			}
 			if sgr1CheckpointID, ok := sgr1CheckpointIDs[replicationID]; ok {
 				replicationCfg.SGR1CheckpointID = sgr1CheckpointID
@@ -928,9 +936,17 @@ func (m *sgReplicateManager) UpsertReplication(replication *ReplicationUpsertCon
 				return true, base.HTTPErrorf(http.StatusBadRequest, "Replication must be stopped before updating config")
 			}
 		} else {
+			// Add a new replication to the cfg.  Set targetState based on initialState when specified.
 			replicationConfig := DefaultReplicationConfig()
 			replicationConfig.ID = replication.ID
-			cluster.Replications[replication.ID] = &ReplicationCfg{ReplicationConfig: replicationConfig}
+			targetState := ReplicationStateRunning
+			if replication.InitialState != nil && *replication.InitialState == ReplicationStateStopped {
+				targetState = ReplicationStateStopped
+			}
+			cluster.Replications[replication.ID] = &ReplicationCfg{
+				ReplicationConfig: replicationConfig,
+				TargetState:       targetState,
+			}
 		}
 
 		cluster.Replications[replication.ID].Upsert(replication)
@@ -965,18 +981,7 @@ func (m *sgReplicateManager) UpdateReplicationState(replicationID string, state 
 			return false, nil
 		}
 
-		upsertReplication := &ReplicationUpsertConfig{
-			ID:          replicationID,
-			TargetState: &state,
-		}
-
-		cluster.Replications[replicationID].Upsert(upsertReplication)
-
-		validateErr := cluster.Replications[replicationID].ValidateReplication(false)
-		if validateErr != nil {
-			return true, validateErr
-		}
-
+		cluster.Replications[replicationID].TargetState = state
 		cluster.RebalanceReplications()
 		return false, nil
 	}
