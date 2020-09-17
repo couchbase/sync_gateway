@@ -877,7 +877,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		// _attachments shouldn't be present in the body at this point.
 		// It will be stamped in for 1.x clients that require it further up the stack.
-		body1, err := rev.MutableBody()
+		body1, err := rev.Body()
 		require.NoError(t, err)
 		bodyAtts, foundBodyAtts := body1[BodyAttachments]
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
@@ -906,7 +906,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		// _attachments shouldn't be present in the body at this point.
 		// It will be stamped in for 1.x clients that require it further up the stack.
-		body1, err := rev.MutableBody()
+		body1, err := rev.Body()
 		require.NoError(t, err)
 		bodyAtts, foundBodyAtts := body1[BodyAttachments]
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
@@ -949,7 +949,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		// _attachments shouldn't be present in the body at this point.
 		// It will be stamped in for 1.x clients that require it further up the stack.
-		body1, err := rev.MutableBody()
+		body1, err := rev.Body()
 		require.NoError(t, err)
 		bodyAtts, foundBodyAtts := body1[BodyAttachments]
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
@@ -987,7 +987,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		}
 
 		// update the doc with a copy of the previous doc body
-		newBody, err := rev.DeepMutableBody()
+		newBody, err := rev.MutableBody()
 		require.NoError(t, err)
 		newBody[BodyRev] = "3-a"
 		newBody[BodyAttachments] = newAtts
@@ -1008,7 +1008,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 
 		// _attachments shouldn't be present in the body at this point.
 		// It will be stamped in for 1.x clients that require it further up the stack.
-		body1, err := rev.MutableBody()
+		body1, err := rev.Body()
 		require.NoError(t, err)
 		bodyAtts, foundBodyAtts := body1[BodyAttachments]
 		assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
@@ -1169,7 +1169,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 
 	// _attachments shouldn't be present in the body at this point.
 	// It will be stamped in for 1.x clients that require it further up the stack.
-	body1, err := rev.MutableBody()
+	body1, err := rev.Body()
 	require.NoError(t, err)
 	bodyAtts, foundBodyAtts := body1[BodyAttachments]
 	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
@@ -1355,7 +1355,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 
 	// _attachments shouldn't be present in the body at this point.
 	// It will be stamped in for 1.x clients that require it further up the stack.
-	body1, err := rev.MutableBody()
+	body1, err := rev.Body()
 	require.NoError(t, err)
 	bodyAtts, foundBodyAtts := body1[BodyAttachments]
 	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)

@@ -537,7 +537,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 			bodyBytes = rev.BodyBytes
 		}
 	} else {
-		body, err := rev.MutableBody()
+		body, err := rev.Body()
 		if err != nil {
 			return bsc.sendNoRev(sender, docID, revID, seq, err)
 		}

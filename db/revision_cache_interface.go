@@ -105,9 +105,9 @@ type DocumentRevision struct {
 	_shallowCopyBody Body // an unmarshalled body that can produce shallow copies
 }
 
-// DeepMutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
+// MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
 // Callers are free to modify any of this body without affecting the document revision.
-func (rev *DocumentRevision) DeepMutableBody() (b Body, err error) {
+func (rev *DocumentRevision) MutableBody() (b Body, err error) {
 	if err := b.Unmarshal(rev.BodyBytes); err != nil {
 		return nil, err
 	}
@@ -115,9 +115,10 @@ func (rev *DocumentRevision) DeepMutableBody() (b Body, err error) {
 	return b, nil
 }
 
-// MutableBody returns a shallow copy of the given document revision as a plain body (without any special properties)
-// Callers are only free to modify top-level properties of this body without affecting the document revision.
-func (rev *DocumentRevision) MutableBody() (b Body, err error) {
+// Body returns an unmarshalled body that is kept in the document revision to produce shallow copies.
+// If an unmarshalled copy is not available in the document revision, it makes a copy from the raw body
+// bytes and stores it in document revision itself before returning the body.
+func (rev *DocumentRevision) Body() (b Body, err error) {
 	// if we already have an unmarshalled body, take a copy and return it
 	if rev._shallowCopyBody != nil {
 		return rev._shallowCopyBody, nil
@@ -136,7 +137,7 @@ func (rev *DocumentRevision) MutableBody() (b Body, err error) {
 // Mutable1xBody returns a copy of the given document revision as a 1.x style body (with special properties)
 // Callers are free to modify this body without affecting the document revision.
 func (rev *DocumentRevision) Mutable1xBody(db *Database, requestedHistory Revisions, attachmentsSince []string, showExp bool) (b Body, err error) {
-	b, err = rev.MutableBody()
+	b, err = rev.Body()
 	if err != nil {
 		return nil, err
 	}

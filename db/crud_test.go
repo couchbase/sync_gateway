@@ -85,7 +85,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "1-a", docRevAgain.RevID)
 
-	body, err = docRevAgain.MutableBody()
+	body, err = docRevAgain.Body()
 	assert.NoError(t, err)
 	_, ok := body["modified"]
 	assert.False(t, ok)
@@ -937,7 +937,7 @@ func BenchmarkHandleRevDelta(b *testing.B) {
 	getDelta := func(newDoc *Document) {
 		deltaSrcRev, _ := db.GetRev("doc1", "1-a", false, nil)
 
-		deltaSrcBody, _ := deltaSrcRev.DeepMutableBody()
+		deltaSrcBody, _ := deltaSrcRev.MutableBody()
 
 		// Stamp attachments so we can patch them
 		if len(deltaSrcRev.Attachments) > 0 {

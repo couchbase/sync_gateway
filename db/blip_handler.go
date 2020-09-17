@@ -690,7 +690,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			return base.HTTPErrorf(http.StatusNotFound, "Can't use delta. Found tombstone for deltaSrc=%s", deltaSrcRevID)
 		}
 
-		deltaSrcBody, err := deltaSrcRev.DeepMutableBody()
+		deltaSrcBody, err := deltaSrcRev.MutableBody()
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to unmarshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
 		}
