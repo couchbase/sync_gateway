@@ -1623,6 +1623,8 @@ dashboard.new(
     )
   )
 )
+/*
+SG-Replicate V1 is not enabled in the dashboard by default as Version 2 should be used instead.
 .addRow(
   row.new(
     title='Inter-Sync Gateway Replication (SG-Replicate v1)',
@@ -1757,6 +1759,7 @@ dashboard.new(
     )
   )
 )
+*/
 .addRow(
   row.new(
     title='Inter-Sync Gateway Replications',
