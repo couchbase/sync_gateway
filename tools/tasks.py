@@ -356,61 +356,27 @@ class TaskRunner(object):
             else:
                 files.append(fp.name)
 
-        prefix = "%s_%s_%s" % (log_type, node, self.start_time)
-        self._zip_helper(prefix, filename, files)
+        prefix = f"{log_type}_{node}_{self.start_time}"
+        self.__make_zip(prefix, filename, files)
 
     def zip(self, filename, log_type, node):
-        files = []
-        for name, fp in self.files.items():
-            files.append(fp.name)
-
-        prefix = "%s_%s_%s" % (log_type, node, self.start_time)
-        self._zip_helper(prefix, filename, files)
+        files = [file.name for name, file in self.files.items()]
+        prefix = f"{log_type}_{node}_{self.start_time}"
+        self.__make_zip(prefix, filename, files)
 
     def close_all_files(self):
         for name, fp in self.files.items():
             fp.close()
 
-    def _zip_helper(self, prefix, filename, files):
+    @staticmethod
+    def __make_zip(prefix, filename, files):
         """Write all our logs to a zipfile"""
 
-        # Get absolute path to gozip relative to this file
-        exe = os.path.abspath(os.path.join(os.path.dirname(__file__), exec_name("gozip")))
-
-        # Don't have gozip relative to this file, try and see if there's one elsewhere in $PATH
-        if not os.path.isfile(exe):
-            exe = exec_name("gozip")
-
-        fallback = False
-
-        try:
-            p = subprocess.Popen([exe, "-strip-path", "-prefix", prefix, filename] + files,
-                                 stderr=subprocess.STDOUT,
-                                 stdin=subprocess.PIPE)
-            p.stdin.close()
-            status = p.wait()
-
-            if status != 0:
-                log("gozip terminated with non-zero exit code (%d)" % status)
-        except OSError as e:
-            log("Exception during compression: %s" % e)
-            fallback = True
-
-        if fallback:
-            log("IMPORTANT:")
-            log("  Compression using gozip failed.")
-            log("  Falling back to python implementation.")
-            log("  Please let us know about this and provide console output.")
-
-            self._zip_fallback(filename, prefix, files)
-
-    def _zip_fallback(self, filename, prefix, files):
         from zipfile import ZipFile, ZIP_DEFLATED
         zf = ZipFile(filename, mode='w', compression=ZIP_DEFLATED)
         try:
             for name in files:
-                zf.write(name,
-                         "%s/%s" % (prefix, os.path.basename(name)))
+                zf.write(name, f"{prefix}/{os.path.basename(name)}")
         finally:
             zf.close()
 
