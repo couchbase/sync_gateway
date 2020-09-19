@@ -711,17 +711,16 @@ func TestGuestUser(t *testing.T) {
 
 	guestUserEndpoint := fmt.Sprintf("/db/_user/%s", base.GuestUsername)
 
-	rtConfig := RestTesterConfig{noAdminParty: true}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
 	assertStatus(t, response, http.StatusOK)
 	var body db.Body
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["name"], base.GuestUsername)
+	assert.Equal(t, base.GuestUsername, body["name"])
 	// This ain't no admin-party, this ain't no nightclub, this ain't no fooling around:
-	goassert.DeepEquals(t, body["admin_channels"], nil)
+	assert.Nil(t, body["admin_channels"])
 
 	// Disable the guest user:
 	response = rt.SendAdminRequest(http.MethodPut, guestUserEndpoint, `{"disabled":true}`)
@@ -731,14 +730,14 @@ func TestGuestUser(t *testing.T) {
 	response = rt.SendAdminRequest(http.MethodGet, guestUserEndpoint, "")
 	assertStatus(t, response, http.StatusOK)
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	goassert.Equals(t, body["name"], base.GuestUsername)
-	goassert.DeepEquals(t, body["disabled"], true)
+	assert.Equal(t, base.GuestUsername, body["name"])
+	assert.True(t, body["disabled"].(bool))
 
 	// Check that the actual User object is correct:
 	user, _ := rt.ServerContext().Database("db").Authenticator().GetUser("")
-	goassert.Equals(t, user.Name(), "")
-	goassert.DeepEquals(t, user.ExplicitChannels(), channels.TimedSet{})
-	goassert.Equals(t, user.Disabled(), true)
+	assert.Empty(t, user.Name())
+	assert.Nil(t, user.ExplicitChannels())
+	assert.True(t, user.Disabled())
 
 	// We can't delete the guest user, but we should get a reasonable error back.
 	response = rt.SendAdminRequest(http.MethodDelete, guestUserEndpoint, "")
@@ -802,7 +801,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 // Check whether the session is getting extended or refreshed if 10% or more of the current
 // expiration time has elapsed.
 func TestSessionExtension(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
 	// Fake session with more than 10% of the 24 hours TTL has elapsed. It should cause a new
@@ -939,17 +938,17 @@ func TestFlush(t *testing.T) {
 
 	rt.createDoc(t, "doc1")
 	rt.createDoc(t, "doc2")
-	assertStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 200)
-	assertStatus(t, rt.SendRequest("GET", "/db/doc2", ""), 200)
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 200)
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 200)
 
 	log.Printf("Flushing db...")
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_flush", ""), 200)
 	rt.SetAdminParty(true) // needs to be re-enabled after flush since guest user got wiped
 
 	// After the flush, the db exists but the documents are gone:
-	assertStatus(t, rt.SendRequest("GET", "/db/", ""), 200)
-	assertStatus(t, rt.SendRequest("GET", "/db/doc1", ""), 404)
-	assertStatus(t, rt.SendRequest("GET", "/db/doc2", ""), 404)
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/", ""), 200)
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/doc1", ""), 404)
+	assertStatus(t, rt.SendAdminRequest("GET", "/db/doc2", ""), 404)
 }
 
 //Test a single call to take DB offline
@@ -1501,7 +1500,7 @@ func TestPurgeWithStarRevision(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"]}`)
 	assertStatus(t, response, 200)
@@ -1510,15 +1509,15 @@ func TestPurgeWithStarRevision(t *testing.T) {
 	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	//Create new versions of the doc1 without conflicts
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 }
 
 func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["*"]}`)
 	assertStatus(t, response, 200)
@@ -1528,8 +1527,8 @@ func TestPurgeWithMultipleValidDocs(t *testing.T) {
 	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}, "doc2": []interface{}{"*"}}})
 
 	//Create new versions of the docs without conflicts
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 }
 
 // TestPurgeWithChannelCache will make sure thant upon calling _purge, the channel caches are also cleaned
@@ -1538,8 +1537,8 @@ func TestPurgeWithChannelCache(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar", "channels": ["abc", "def"]}`), http.StatusCreated)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car", "channels": ["abc"]}`), http.StatusCreated)
 
 	changes, err := rt.WaitForChanges(2, "/db/_changes?filter=sync_gateway/bychannel&channels=abc,def", "", true)
 	assert.NoError(t, err, "Error waiting for changes")
@@ -1563,8 +1562,8 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 201)
 
 	response := rt.SendAdminRequest("POST", "/db/_purge", `{"doc1":["*"],"doc2":["1-123"]}`)
 	assertStatus(t, response, 200)
@@ -1573,10 +1572,10 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	goassert.DeepEquals(t, body, map[string]interface{}{"purged": map[string]interface{}{"doc1": []interface{}{"*"}}})
 
 	//Create new versions of the doc1 without conflicts
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`), 201)
 
 	//Create new versions of the doc2 fails because it already exists
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
 }
 
 func TestReplicateErrorConditions(t *testing.T) {

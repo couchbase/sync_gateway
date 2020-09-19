@@ -23,7 +23,7 @@ import (
 )
 
 func TestDesignDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
 	response := rt.SendRequest(http.MethodGet, "/db/_design/foo", "")
@@ -54,7 +54,7 @@ func TestDesignDocs(t *testing.T) {
 }
 
 func TestViewQuery(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foo", `{"views":{"bar": {"map": "function(doc) {emit(doc.key, doc.value);}"}}}`)
@@ -93,7 +93,7 @@ func TestViewQuery(t *testing.T) {
 
 //Tests #1109, wh ere design doc contains multiple views
 func TestViewQueryMultipleViews(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
 	//Define three views
@@ -122,7 +122,7 @@ func TestViewQueryMultipleViews(t *testing.T) {
 }
 
 func TestViewQueryWithParams(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest(http.MethodPut, "/db/_design/foodoc", `{"views": {"foobarview": {"map": "function(doc, meta) {if (doc.value == \"foo\") {emit(doc.key, null);}}"}}}`)
@@ -146,7 +146,7 @@ func TestViewQueryWithParams(t *testing.T) {
 }
 
 func TestViewQueryUserAccess(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
 	rt.ServerContext().Database("db").SetUserViewsEnabled(true)
@@ -233,7 +233,10 @@ func TestViewQueryMultipleViewsInterfaceValues(t *testing.T) {
 }
 
 func TestUserViewQuery(t *testing.T) {
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:       `function(doc) {channel(doc.channel)}`,
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -303,7 +306,10 @@ func TestUserViewQuery(t *testing.T) {
 
 // This includes a fix for #857
 func TestAdminReduceViewQuery(t *testing.T) {
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:       `function(doc) {channel(doc.channel)}`,
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -348,7 +354,10 @@ func TestAdminReduceViewQuery(t *testing.T) {
 }
 
 func TestAdminReduceSumQuery(t *testing.T) {
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:       `function(doc) {channel(doc.channel)}`,
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -379,7 +388,10 @@ func TestAdminReduceSumQuery(t *testing.T) {
 }
 
 func TestAdminGroupReduceSumQuery(t *testing.T) {
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:       `function(doc) {channel(doc.channel)}`,
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -523,7 +535,10 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 }
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:       `function(doc) {channel(doc.channel)}`,
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

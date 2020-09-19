@@ -594,6 +594,7 @@ func TestProposedChangesNoConflictsMode(t *testing.T) {
 
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
 		noConflictsMode: true,
+		guestEnabled:    true,
 	})
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
@@ -633,7 +634,6 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 	// Create bliptester that is connected as user1, with access to the user1 channel
 	btUser1, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
@@ -651,7 +651,6 @@ func TestPublicPortAuthentication(t *testing.T) {
 
 	// Create bliptester that is connected as user2, with access to the * channel
 	btUser2, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		noAdminParty:                true,
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // user2 has access to all channels
@@ -703,7 +702,6 @@ function(doc, oldDoc) {
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	}, rt)
@@ -770,7 +768,6 @@ function(doc, oldDoc) {
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	}, rt)
@@ -898,7 +895,6 @@ function(doc, oldDoc) {
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
-		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	}, rt)
@@ -1027,11 +1023,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
-	// Setup
-	rtConfig := RestTesterConfig{
-		noAdminParty: true,
-	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1078,11 +1070,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
-	// Setup
-	rtConfig := RestTesterConfig{
-		noAdminParty: true,
-	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1138,11 +1126,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
-	// Setup
-	rtConfig := RestTesterConfig{
-		noAdminParty: true,
-	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1206,10 +1190,7 @@ func TestReloadUser(t *testing.T) {
     `
 
 	// Setup
-	rtConfig := RestTesterConfig{
-		SyncFn:       syncFn,
-		noAdminParty: true,
-	}
+	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -1264,8 +1245,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 
 	// Setup
 	rtConfig := RestTesterConfig{
-		SyncFn:       `function(doc) {channel(doc.channels); access(doc.accessUser, doc.accessChannel);}`,
-		noAdminParty: true,
+		SyncFn: `function(doc) {channel(doc.channels); access(doc.accessUser, doc.accessChannel);}`,
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1311,7 +1291,6 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
@@ -1350,7 +1329,6 @@ func TestCheckpoint(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
@@ -1420,7 +1398,6 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
@@ -1466,7 +1443,6 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noAdminParty:                true,
 		connectingUsername:          "user1",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // All channels
@@ -1551,7 +1527,6 @@ func TestPutInvalidAttachment(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noAdminParty:                true,
 		connectingUsername:          "user1",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // All channels
@@ -1602,10 +1577,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
     `
 
 	// Setup
-	rtConfig := RestTesterConfig{
-		SyncFn:       syncFn,
-		noAdminParty: true,
-	}
+	rtConfig := RestTesterConfig{SyncFn: syncFn}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
@@ -1646,7 +1618,6 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noAdminParty:                true,
 		connectingUsername:          "user1",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // All channels
@@ -1685,7 +1656,9 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode: true,
+		noConflictsMode:    true,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
 	})
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
@@ -1713,7 +1686,9 @@ func TestPutRevConflictsMode(t *testing.T) {
 
 	// Create blip tester
 	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		noConflictsMode: false,
+		noConflictsMode:    false,
+		connectingUsername: "user1",
+		connectingPassword: "1234",
 	})
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
@@ -1752,11 +1727,7 @@ func TestGetRemovedDoc(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
-	// Setup
-	rtConfig := RestTesterConfig{
-		noAdminParty: true,
-	}
-	rt := NewRestTester(t, &rtConfig)
+	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
@@ -1908,7 +1879,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 //   - Expected: receive all 5 docs (4 revs and 1 norev)
 //   - Actual: only receive 4 docs (4 revs)
 func TestMissingNoRev(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
@@ -1957,7 +1928,14 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: &sgUseDeltas,
+			},
+		},
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2030,7 +2008,14 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: base.BoolPtr(true)}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.BoolPtr(true),
+			},
+		},
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2094,7 +2079,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2148,7 +2133,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2243,7 +2228,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP, base.KeyCache, base.KeySync, base.KeySyncMsg)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{noAdminParty: true, DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2364,7 +2349,14 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: &sgUseDeltas,
+			},
+		},
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2408,7 +2400,14 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: &sgUseDeltas,
+			},
+		},
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2492,7 +2491,14 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: &sgUseDeltas,
+			},
+		},
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2596,7 +2602,14 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: &sgUseDeltas,
+			},
+		},
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2645,7 +2658,14 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: &sgUseDeltas,
+			},
+		},
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2736,7 +2756,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2772,7 +2792,7 @@ func TestBlipNorev(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2810,7 +2830,14 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 
 	const docID = "pushAttachmentDoc"
 
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: base.BoolPtr(true)}}})
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.BoolPtr(true),
+			},
+		},
+		guestEnabled: true,
+	})
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
@@ -2864,7 +2891,14 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
 	}
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: base.BoolPtr(true)}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.BoolPtr(true),
+			},
+		},
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

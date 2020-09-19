@@ -120,7 +120,10 @@ func TestDocDeletionFromChannel(t *testing.T) {
 	// base.LogKeys["Changes"] = true
 	// base.LogKeys["Cache"] = true
 
-	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`}
+	rtConfig := RestTesterConfig{
+		SyncFn:       `function(doc) {channel(doc.channel)}`,
+		guestEnabled: true,
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -1389,14 +1392,14 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, response, 201)
 
 	//Create docs
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc1", `{"channels":["alpha"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc2", `{"channels":["alpha"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc3", `{"channels":["alpha"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/doc4", `{"channels":["alpha"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/docA", `{"channels":["beta"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/docB", `{"channels":["beta"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/docC", `{"channels":["beta"]}`), 201)
-	assertStatus(t, rt.SendRequest("PUT", "/db/docD", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc1", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc3", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc4", `{"channels":["alpha"]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/docA", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/docB", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/docC", `{"channels":["beta"]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("PUT", "/db/docD", `{"channels":["beta"]}`), 201)
 
 	// Create struct to hold changes response
 	var changes struct {
@@ -1518,7 +1521,7 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//test parameter style=all_docs
 	//Create a conflict revision on docC
-	assertStatus(t, rt.SendRequest("POST", "/db/_bulk_docs", `{"new_edits":false, "docs": [{"_id": "docC", "_rev": "2-b4afc58d8e61a6b03390e19a89d26643","foo": "bat", "channels":["beta"]}]}`), 201)
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits":false, "docs": [{"_id": "docC","_rev": "2-b4afc58d8e61a6b03390e19a89d26643","foo": "bat", "channels":["beta"]}]}`), 201)
 
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "style":"all_docs"}`
 	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
@@ -1536,7 +1539,7 @@ func updateTestDoc(rt *RestTester, docid string, revid string, body string) (new
 	if revid != "" {
 		path = fmt.Sprintf("%s?rev=%s", path, revid)
 	}
-	response := rt.SendRequest("PUT", path, body)
+	response := rt.SendAdminRequest("PUT", path, body)
 	if response.Code != 200 && response.Code != 201 {
 		return "", fmt.Errorf("createDoc got unexpected response code : %d", response.Code)
 	}
@@ -1612,7 +1615,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	reqHeaders := map[string]string{
 		"Content-Type": attachmentContentType,
 	}
-	response = rt.SendRequestWithHeaders("PUT", fmt.Sprintf("/db/doc_attachment/attach1?rev=%s", revid), attachmentBody, reqHeaders)
+	response = rt.SendAdminRequestWithHeaders("PUT", fmt.Sprintf("/db/doc_attachment/attach1?rev=%s", revid),
+		attachmentBody, reqHeaders)
 	assertStatus(t, response, 201)
 
 	// Doc w/ large numbers
