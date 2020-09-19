@@ -452,13 +452,24 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		return nil, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
 	}
 
+	identity, verifyErr := verifyToken(token, provider, callbackURLFunc)
+	if verifyErr != nil {
+		return nil, verifyErr
+	}
+	user, _, err := auth.authenticateOIDCIdentity(identity, provider)
+	return user, err
+}
+
+// verifyToken verifies claims and signature on the token; ensure that it's been signed by the provider.
+// Returns identity claims extracted from the token if the verification is successful and an identity error if not.
+func verifyToken(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (identity *Identity, err error) {
 	// Get client for issuer
 	client := provider.GetClient(callbackURLFunc)
 	if client == nil {
 		return nil, fmt.Errorf("OIDC client was not initialized")
 	}
 
-	// verifyJWT validates the claims and signature on the JWT
+	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
 	idToken, err := client.verifyJWT(token)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
@@ -472,8 +483,8 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	if !ok {
 		return nil, err
 	}
-	user, _, err := auth.authenticateOIDCIdentity(identity, provider)
-	return user, err
+
+	return identity, nil
 }
 
 // Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
@@ -493,26 +504,11 @@ func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCPr
 			return nil, time.Time{}, err
 		}
 	} else {
-		// Get client for issuer
-		client := provider.GetClient(callbackURLFunc)
-		if client == nil {
-			return nil, time.Time{}, fmt.Errorf("OIDC client was not initialized")
-		}
-
-		// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
-		idToken, err := client.verifyJWT(token)
-		if err != nil {
-			base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
-			return nil, time.Time{}, err
-		}
-
-		var ok bool
-		identity, ok, err = getIdentity(idToken)
-		if err != nil {
-			base.Debugf(base.KeyAuth, "Error getting identity from token (Identity: %v, Error: %v)", base.UD(identity), err)
-		}
-		if !ok {
-			return nil, time.Time{}, err
+		// Verify claims and signature on the JWT.
+		var verifyErr error
+		identity, verifyErr = verifyToken(token, provider, callbackURLFunc)
+		if verifyErr != nil {
+			return nil, time.Time{}, verifyErr
 		}
 	}
 
