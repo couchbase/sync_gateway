@@ -2021,10 +2021,29 @@ func TestReplicationConfigChange(t *testing.T) {
 	require.Len(t, changesResults.Results, 8)
 }
 
-func SetDefaultCheckpointInterval(d time.Duration) func() {
-	previousInterval := db.DefaultCheckpointInterval
-	db.DefaultCheckpointInterval = d
-	return func() {
-		db.DefaultCheckpointInterval = previousInterval
-	}
+// SetDefaultCheckpointInterval overwrites the replication checkpoint interval
+// with the new interval specified and returns a teardown function to reset the
+// default interval original value that can be deferred from the caller.
+func SetDefaultCheckpointInterval(currentInterval time.Duration) func() {
+	previousInterval := db.DefaultCheckpointInterval()
+	db.SetDefaultCheckpointInterval(currentInterval)
+	return func() { db.SetDefaultCheckpointInterval(previousInterval) }
+}
+
+func TestDefaultCheckpointIntervalDataRace(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer SetDefaultCheckpointInterval(10 * time.Second)()
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		log.Printf("DefaultCheckpointInterval: %v", db.DefaultCheckpointInterval())
+	}()
+
+	wg.Wait()
+	assert.Equal(t, 5*time.Second, db.DefaultCheckpointInterval())
 }
