@@ -130,10 +130,6 @@ func (spec BucketSpec) UseClientCert() bool {
 	return true
 }
 
-func (spec BucketSpec) GetPoolName() string {
-	return DefaultPool
-}
-
 // Builds a gocb connection string based on BucketSpec.Server.
 // Adds idle connection configuration, and X.509 auth settings when
 // certpath/keypath/cacertpath specified.
@@ -303,7 +299,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
 		Infof(KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
-		bucket, err = walrus.GetBucket(spec.Server, spec.GetPoolName(), spec.BucketName)
+		bucket, err = walrus.GetBucket(spec.Server, DefaultPool, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
 		if spec.FeedType == "" || spec.FeedType != TapFeedType {
 			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}

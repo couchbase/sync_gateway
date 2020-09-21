@@ -222,7 +222,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 		return errConvertServerSpec
 	}
 
-	poolName := spec.GetPoolName()
+	poolName := DefaultPool
 	bucketName := spec.BucketName
 
 	vbucketIdsArr := []uint16(nil) // nil means get all the vbuckets.
