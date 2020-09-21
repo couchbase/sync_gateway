@@ -468,7 +468,7 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 		feedName,
 		indexName,
 		serverURLsString,
-		spec.GetPoolName(),
+		DefaultPool,
 		spec.BucketName,
 		bucketUUID,
 		paramsStr,

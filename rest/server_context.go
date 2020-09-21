@@ -346,7 +346,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Connect to bucket
 	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
-		base.MD(dbName), base.MD(spec.BucketName), base.SD(spec.PoolName), base.SD(spec.Server))
+		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))
 	bucket, err := db.ConnectToBucket(spec)
 	if err != nil {
 		return nil, err

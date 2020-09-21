@@ -168,7 +168,6 @@ func bucketConfigFromTestBucket(tb *base.TestBucket) BucketConfig {
 	tbUser, tbPassword, _ := tb.BucketSpec.Auth.GetCredentials()
 	return BucketConfig{
 		Server:     &tb.BucketSpec.Server,
-		Pool:       &tb.BucketSpec.PoolName,
 		Bucket:     &tb.BucketSpec.BucketName,
 		Username:   tbUser,
 		Password:   tbPassword,

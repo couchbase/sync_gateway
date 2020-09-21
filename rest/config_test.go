@@ -673,7 +673,6 @@ func TestParseCommandLine(t *testing.T) {
 		keypath            = "/etc/ssl/certs/key.pem"
 		logKeys            = "Admin,Access,Auth,Bucket"
 		logFilePath        = "/var/log/sync_gateway"
-		pool               = "liverpool"
 	)
 	args := []string{
 		"sync_gateway",
@@ -688,7 +687,6 @@ func TestParseCommandLine(t *testing.T) {
 		"--keypath", keypath,
 		"--log", logKeys,
 		"--logFilePath", logFilePath,
-		"--pool", pool,
 		"--pretty"}
 
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
@@ -704,7 +702,6 @@ func TestParseCommandLine(t *testing.T) {
 	assert.Len(t, databases, 1)
 	assert.Equal(t, dbname, databases[dbname].Name)
 	assert.Equal(t, bucket, *databases[dbname].Bucket)
-	assert.Equal(t, pool, *databases[dbname].Pool)
 	assert.Equal(t, cacertpath, databases[dbname].CACertPath)
 	assert.Equal(t, certpath, databases[dbname].CertPath)
 	assert.Equal(t, keypath, databases[dbname].KeyPath)
@@ -781,7 +778,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
 		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
         "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{
-        "server":"couchbase://localhost","username":"username","password":"password","bucket":"default","pool":"pool1",
+        "server":"couchbase://localhost","username":"username","password":"password","bucket":"default",
         "certpath":"/etc/ssl/certs/cert.pem","cacertpath":"/etc/ssl/certs/ca.cert","keypath":"/etc/ssl/certs/key.pem",
         "users":{"GUEST":{"disabled":false,"admin_channels":["*"]}},"allow_conflicts":false,"revs_limit":20}}}`
 
@@ -809,7 +806,6 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		keypath            = "/etc/ssl/certs/key.pem"
 		logKeys            = "Admin,Access,Auth,Bucket"
 		logFilePath        = "/var/log/sync_gateway"
-		pool               = "liverpool"
 	)
 	args := []string{
 		"sync_gateway",
@@ -823,7 +819,6 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		"--keypath", keypath,
 		"--log", logKeys,
 		"--logFilePath", logFilePath,
-		"--pool", pool,
 		"--pretty",
 		"--verbose",
 		"--profileInterface", profileInterface,
@@ -847,7 +842,6 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, "password", db1.BucketConfig.Password)
 	assert.Equal(t, "default", *db1.BucketConfig.Bucket)
 	assert.Equal(t, "couchbase://localhost", *db1.BucketConfig.Server)
-	assert.Equal(t, "pool1", *db1.BucketConfig.Pool)
 	assert.Equal(t, "/etc/ssl/certs/cert.pem", db1.BucketConfig.CertPath)
 	assert.Equal(t, "/etc/ssl/certs/ca.cert", db1.BucketConfig.CACertPath)
 	assert.Equal(t, "/etc/ssl/certs/key.pem", db1.BucketConfig.KeyPath)
