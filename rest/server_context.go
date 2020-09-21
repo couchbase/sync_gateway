@@ -983,7 +983,7 @@ func (sc *ServerContext) startStatsLogger() {
 	interval := time.Second * time.Duration(statsLogFrequencySecs)
 
 	sc.statsContext.statsLoggingTicker = time.NewTicker(interval)
-	sc.statsContext.statsLoggingStop = make(chan struct{})
+	sc.statsContext.terminator = make(chan struct{})
 	go func() {
 		for {
 			select {
@@ -992,8 +992,9 @@ func (sc *ServerContext) startStatsLogger() {
 				if err != nil {
 					base.Warnf("Error logging stats: %v", err)
 				}
-			case <-sc.statsContext.statsLoggingStop:
+			case <-sc.statsContext.terminator:
 				base.Debugf(base.KeyAll, "Stopping stats logging goroutine")
+				sc.statsContext.statsLoggingTicker.Stop()
 				return
 			}
 		}
@@ -1003,11 +1004,8 @@ func (sc *ServerContext) startStatsLogger() {
 }
 
 func (sc *ServerContext) stopStatsLogger() {
-	if sc.statsContext.statsLoggingTicker != nil {
-		sc.statsContext.statsLoggingTicker.Stop()
-	}
-	if sc.statsContext.statsLoggingStop != nil {
-		close(sc.statsContext.statsLoggingStop)
+	if sc.statsContext.terminator != nil {
+		close(sc.statsContext.terminator)
 	}
 }
 
