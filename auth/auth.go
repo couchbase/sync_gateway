@@ -452,13 +452,24 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 		return nil, base.RedactErrorf("No provider found for issuer %v", base.UD(issuer))
 	}
 
+	identity, verifyErr := verifyToken(token, provider, callbackURLFunc)
+	if verifyErr != nil {
+		return nil, verifyErr
+	}
+	user, _, err := auth.authenticateOIDCIdentity(identity, provider)
+	return user, err
+}
+
+// verifyToken verifies claims and signature on the token; ensure that it's been signed by the provider.
+// Returns identity claims extracted from the token if the verification is successful and an identity error if not.
+func verifyToken(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (identity *Identity, err error) {
 	// Get client for issuer
 	client := provider.GetClient(callbackURLFunc)
 	if client == nil {
 		return nil, fmt.Errorf("OIDC client was not initialized")
 	}
 
-	// verifyJWT validates the claims and signature on the JWT
+	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
 	idToken, err := client.verifyJWT(token)
 	if err != nil {
 		base.Debugf(base.KeyAuth, "Client %v could not verify JWT. Error: %v", base.UD(client), err)
@@ -472,29 +483,41 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 	if !ok {
 		return nil, err
 	}
-	user, _, err := auth.authenticateOIDCIdentity(identity, provider)
-	return user, err
+
+	return identity, nil
 }
 
 // Authenticates a user based on a JWT token obtained directly from a provider (auth code flow, refresh flow).
-// Verifies the token claims, but doesn't require signature verification.
+// Verifies the token claims, but doesn't require signature verification if allow_unsigned_provider_tokens is enabled.
 // If the token is validated but the user for the username defined in the subject claim doesn't exist,
 // creates the user when autoRegister=true.
-func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
+func (auth *Authenticator) AuthenticateTrustedJWT(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (user User,
+	tokenExpiry time.Time, err error) {
 	base.Debugf(base.KeyAuth, "AuthenticateTrustedJWT called with token: %s", base.UD(token))
 
-	// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
-	identity, err := VerifyClaims(token, provider.ClientID, provider.Issuer)
-	if err != nil {
-		base.Debugf(base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
-		return nil, time.Time{}, err
+	var identity *Identity
+	if provider.AllowUnsignedProviderTokens {
+		// Verify claims - ensures that the token we received from the provider is valid for Sync Gateway
+		identity, err = VerifyClaims(token, provider.ClientID, provider.Issuer)
+		if err != nil {
+			base.Debugf(base.KeyAuth, "Error verifying raw token in AuthenticateTrustedJWT: %v", err)
+			return nil, time.Time{}, err
+		}
+	} else {
+		// Verify claims and signature on the JWT.
+		var verifyErr error
+		identity, verifyErr = verifyToken(token, provider, callbackURLFunc)
+		if verifyErr != nil {
+			return nil, time.Time{}, verifyErr
+		}
 	}
+
 	return auth.authenticateOIDCIdentity(identity, provider)
 }
 
 // Obtains a Sync Gateway User for the JWT. Expects that the JWT has already been verified for OIDC compliance.
 func (auth *Authenticator) authenticateOIDCIdentity(identity *Identity, provider *OIDCProvider) (user User, tokenExpiry time.Time, err error) {
-	if identity.Subject == "" {
+	if identity == nil || identity.Subject == "" {
 		base.Debugf(base.KeyAuth, "Empty subject found in OIDC identity: %v", base.UD(identity))
 		return nil, time.Time{}, errors.New("subject not found in OIDC identity")
 	}
