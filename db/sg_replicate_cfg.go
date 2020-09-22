@@ -415,12 +415,7 @@ func NewSGReplicateManager(dbContext *DatabaseContext, cfg cbgt.Cfg) (*sgReplica
 // sg-replicate heartbeat listener with the provided heartbeater
 func (m *sgReplicateManager) StartLocalNode(nodeUUID string, heartbeater base.Heartbeater) error {
 
-	hostName, hostErr := os.Hostname()
-	if hostErr != nil {
-		base.Infof(base.KeyCluster, "Unable to retrieve hostname, registering node for sgreplicate without host specified.  Error: %v", hostErr)
-	}
-
-	err := m.RegisterNode(nodeUUID, hostName)
+	err := m.RegisterNode(nodeUUID)
 	if err != nil {
 		return err
 	}
@@ -796,9 +791,21 @@ func (m *sgReplicateManager) updateCluster(callback ClusterUpdateFunc) error {
 	return errors.New("CAS Retry count (%d) exceeded when attempting to update sg-replicate cluster configuration")
 }
 
-// Register node adds a node to the cluster config, then triggers replication rebalance.
+// Register node node adds a node to the cluster config with host=os.Hostname(), then triggers replication rebalance.
 // Retries on CAS failure, is no-op if node already exists in config
-func (m *sgReplicateManager) RegisterNode(nodeUUID string, host string) error {
+func (m *sgReplicateManager) RegisterNode(nodeUUID string) error {
+
+	hostName, hostErr := os.Hostname()
+	if hostErr != nil {
+		base.Infof(base.KeyCluster, "Unable to retrieve hostname, registering node for sgreplicate without host specified.  Error: %v", hostErr)
+	}
+	return m.registerNodeForHost(nodeUUID, hostName)
+}
+
+// registerNodeForHost node adds a node to the cluster config, then triggers replication rebalance.
+// Retries on CAS failure, is no-op if node already exists in config.  Split out of RegisterNode to support
+// testing with specified host values.
+func (m *sgReplicateManager) registerNodeForHost(nodeUUID string, host string) error {
 	registerNodeCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		_, exists := cluster.Nodes[nodeUUID]
 		if exists {
@@ -1344,7 +1351,7 @@ func NewReplicationHeartbeatListener(mgr *sgReplicateManager) (*ReplicationHeart
 	}
 
 	// Initialize the node set
-	err := listener.reloadNodes()
+	_, err := listener.reloadNodes()
 	if err != nil {
 		return nil, err
 	}
@@ -1388,7 +1395,13 @@ func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 		for {
 			select {
 			case <-cfgEvents:
-				err := l.reloadNodes()
+				localNodeRegistered, err := l.reloadNodes()
+				if !localNodeRegistered {
+					registerErr := l.mgr.RegisterNode(l.mgr.localNodeUUID)
+					if registerErr != nil {
+						base.Warnf("Error attempting to re-register node, node will not participate in sg-replicate until restarted or replication cfg is next updated: %v", registerErr)
+					}
+				}
 				if err != nil {
 					base.Warnf("Error while reloading heartbeat node definitions: %v", err)
 				}
@@ -1400,11 +1413,11 @@ func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 	return nil
 }
 
-func (l *ReplicationHeartbeatListener) reloadNodes() error {
+func (l *ReplicationHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
 
 	nodeSet, err := l.mgr.getNodes()
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	nodeUUIDs := make([]string, 0)
@@ -1414,11 +1427,13 @@ func (l *ReplicationHeartbeatListener) reloadNodes() error {
 		}
 	}
 
+	localNodePresent = base.ContainsString(nodeUUIDs, l.mgr.localNodeUUID)
+
 	l.lock.Lock()
 	l.nodeIDs = nodeUUIDs
 	l.lock.Unlock()
 
-	return nil
+	return localNodePresent, nil
 }
 
 // GetNodes returns a copy of the in-memory node set
