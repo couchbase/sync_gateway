@@ -16,31 +16,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-var (
-	// defaultCheckpointIntervalLock is a reader/writer mutual
-	// exclusion lock that guards the defaultCheckpointInterval.
-	defaultCheckpointIntervalLock sync.RWMutex
-
-	// defaultCheckpointInterval represents the default
-	// replication checkpoint interval.
-	defaultCheckpointInterval = time.Second * 5
-)
-
-// DefaultCheckpointInterval returns the default
-// replication checkpoint interval.
-func DefaultCheckpointInterval() time.Duration {
-	defaultCheckpointIntervalLock.RLock()
-	defer defaultCheckpointIntervalLock.RUnlock()
-	return defaultCheckpointInterval
-}
-
-// SetDefaultCheckpointInterval overwrites the replication
-// checkpoint interval with the new interval specified.
-func SetDefaultCheckpointInterval(interval time.Duration) {
-	defaultCheckpointIntervalLock.Lock()
-	defer defaultCheckpointIntervalLock.Unlock()
-	defaultCheckpointInterval = interval
-}
+var DefaultCheckpointInterval = time.Second * 5
 
 // Checkpointer implements replicator checkpointing, by keeping two lists of sequences. Those which we expect to be processing revs for (either push or pull), and a map for those which we have done so on.
 // Periodically (based on a time interval), these two lists are used to calculate the highest sequence number which we've not had a gap for yet, and send a SetCheckpoint message for this sequence.
@@ -81,6 +57,9 @@ type Checkpointer struct {
 	remoteDBURL *url.URL
 
 	stats CheckpointerStats
+
+	// closeWg waits for the time-based checkpointer goroutine to finish.
+	closeWg sync.WaitGroup
 }
 
 type statusFunc func(lastSeq string) *ReplicationStatus
@@ -212,8 +191,10 @@ func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]string) {
 
 func (c *Checkpointer) Start() {
 	// Start a time-based checkpointer goroutine
+	c.closeWg.Add(1)
 	go func() {
-		checkpointInterval := DefaultCheckpointInterval()
+		defer c.closeWg.Done()
+		checkpointInterval := DefaultCheckpointInterval
 		if c.checkpointInterval > 0 {
 			checkpointInterval = c.checkpointInterval
 		}

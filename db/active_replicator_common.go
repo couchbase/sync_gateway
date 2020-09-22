@@ -159,6 +159,7 @@ func (a *activeReplicatorCommon) _disconnect() error {
 	if a.checkpointerCtx != nil {
 		a.checkpointerCtxCancel()
 		a.Checkpointer.CheckpointNow()
+		a.Checkpointer.closeWg.Wait()
 	}
 	a.checkpointerCtx = nil
 
