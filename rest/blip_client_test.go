@@ -466,6 +466,17 @@ func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClien
 	return NewBlipTesterClientOpts(tb, rt, nil)
 }
 
+func NewBlipTesterClientOptsAvoidRTClose(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
+	client, err = NewBlipTesterClientOpts(tb, rt, opts)
+	if err != nil {
+		return nil, err
+	}
+	client.pullReplication.bt.avoidRestTesterClose = true
+	client.pushReplication.bt.avoidRestTesterClose = true
+
+	return client, nil
+}
+
 // StartPull will begin a continuous pull replication since 0 between the client and server
 func (btc *BlipTesterClient) StartPull() (err error) {
 	return btc.StartPullSince("true", "0", "false")

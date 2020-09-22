@@ -242,7 +242,6 @@ func (rt *RestTester) Close() {
 	}
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
-		rt.RestTesterServerContext = nil
 	}
 	if rt.testBucket != nil {
 		rt.testBucket.Close()
@@ -708,6 +707,10 @@ type BlipTester struct {
 	// user contexts, a single RestTester may be shared among multiple BlipTester instances.
 	restTester *RestTester
 
+	// This flag is used to avoid closing the contained restTester. This functionality is to avoid a double close in
+	// some areas.
+	avoidRestTesterClose bool
+
 	// The blip context which contains blip related state and the sender/reciever goroutines associated
 	// with this websocket connection
 	blipContext *blip.Context
@@ -719,7 +722,9 @@ type BlipTester struct {
 // Close the bliptester
 func (bt BlipTester) Close() {
 	bt.sender.Close()
-	bt.restTester.Close()
+	if !bt.avoidRestTesterClose {
+		bt.restTester.Close()
+	}
 }
 
 // Returns database context for blipTester (assumes underlying rest tester is based on a single db - returns first it finds)
@@ -737,9 +742,21 @@ func NewBlipTester(tb testing.TB) (*BlipTester, error) {
 	return NewBlipTesterFromSpec(tb, defaultSpec)
 }
 
+func NewBlipTesterAvoidRTClose(tb testing.TB, spec *BlipTesterSpec) (blipTester *BlipTester, err error) {
+	if spec == nil {
+		blipTester, err = NewBlipTester(tb)
+	} else {
+		blipTester, err = NewBlipTesterFromSpec(tb, *spec)
+	}
+	if err != nil {
+		return nil, err
+	}
+	blipTester.avoidRestTesterClose = true
+	return blipTester, nil
+}
+
 // Create a BlipTester using the given spec
 func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
-
 	bt := &BlipTester{}
 
 	if spec.restTester != nil {
