@@ -1424,10 +1424,11 @@ func (l *ReplicationHeartbeatListener) reloadNodes() (localNodePresent bool, err
 	if nodeSet != nil {
 		for _, nodeDef := range nodeSet {
 			nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+			if nodeDef.UUID == l.mgr.localNodeUUID {
+				localNodePresent = true
+			}
 		}
 	}
-
-	localNodePresent = base.ContainsString(nodeUUIDs, l.mgr.localNodeUUID)
 
 	l.lock.Lock()
 	l.nodeIDs = nodeUUIDs
