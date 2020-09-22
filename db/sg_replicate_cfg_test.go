@@ -85,14 +85,14 @@ func TestReplicateManagerNodes(t *testing.T) {
 	manager, err := NewSGReplicateManager(&DatabaseContext{Name: "test"}, testCfg)
 	require.NoError(t, err)
 
-	err = manager.RegisterNode("node1", "host1")
+	err = manager.registerNodeForHost("node1", "host1")
 	require.NoError(t, err)
 
 	nodes, err := manager.getNodes()
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(nodes))
 
-	err = manager.RegisterNode("node2", "host2")
+	err = manager.registerNodeForHost("node2", "host2")
 	require.NoError(t, err)
 
 	nodes, err = manager.getNodes()
@@ -100,7 +100,7 @@ func TestReplicateManagerNodes(t *testing.T) {
 	assert.Equal(t, 2, len(nodes))
 
 	// re-adding an existing node is a no-op
-	err = manager.RegisterNode("node1", "host1")
+	err = manager.registerNodeForHost("node1", "host1")
 	require.NoError(t, err)
 
 	nodes, err = manager.getNodes()
@@ -144,7 +144,7 @@ func TestReplicateManagerConcurrentNodeOperations(t *testing.T) {
 		nodeWg.Add(1)
 		go func(i int) {
 			defer nodeWg.Done()
-			err := manager.RegisterNode(fmt.Sprintf("node_%d", i), fmt.Sprintf("host_%d", i))
+			err := manager.registerNodeForHost(fmt.Sprintf("node_%d", i), fmt.Sprintf("host_%d", i))
 			assert.NoError(t, err)
 		}(i)
 	}
