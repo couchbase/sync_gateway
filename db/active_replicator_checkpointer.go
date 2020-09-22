@@ -57,6 +57,9 @@ type Checkpointer struct {
 	remoteDBURL *url.URL
 
 	stats CheckpointerStats
+
+	// closeWg waits for the time-based checkpointer goroutine to finish.
+	closeWg sync.WaitGroup
 }
 
 type statusFunc func(lastSeq string) *ReplicationStatus
@@ -188,7 +191,9 @@ func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]string) {
 
 func (c *Checkpointer) Start() {
 	// Start a time-based checkpointer goroutine
+	c.closeWg.Add(1)
 	go func() {
+		defer c.closeWg.Done()
 		checkpointInterval := DefaultCheckpointInterval
 		if c.checkpointInterval > 0 {
 			checkpointInterval = c.checkpointInterval
