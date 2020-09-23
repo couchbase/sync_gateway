@@ -2021,6 +2021,117 @@ func TestReplicationConfigChange(t *testing.T) {
 	require.Len(t, changesResults.Results, 8)
 }
 
+// TestReplicationHeartbeatRemoval
+//   - Starts 2 RestTesters, one active, and one passive.
+//   - Creates two continuous pull replications on rt1 via the REST API
+//   - adds another active RT
+//   - simulates heartbeat-based removal of first RT by second RT
+//   - validates that active RT adds itself back to the node set and is reassigned a replication
+//   - Creates more documents, validates they are replicated
+func TestReplicationHeartbeatRemoval(t *testing.T) {
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only (replication rebalance)")
+	}
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+
+	// Increase checkpoint persistence frequency for cross-node status verification
+	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
+
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	defer db.SuspendSequenceBatching()()
+
+	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
+	defer teardown()
+
+	// Create docs on remote
+	docABC1 := t.Name() + "ABC1"
+	docDEF1 := t.Name() + "DEF1"
+	_ = remoteRT.putDoc(docABC1, `{"source":"remoteRT","channels":["ABC"]}`)
+	_ = remoteRT.putDoc(docDEF1, `{"source":"remoteRT","channels":["DEF"]}`)
+
+	// Create pull replications, verify running
+	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePull, []string{"ABC"}, true)
+	activeRT.createReplication("rep_DEF", remoteURLString, db.ActiveReplicatorTypePull, []string{"DEF"}, true)
+	activeRT.waitForAssignedReplications(2)
+	activeRT.assertReplicationState("rep_ABC", db.ReplicationStateRunning)
+	activeRT.assertReplicationState("rep_DEF", db.ReplicationStateRunning)
+
+	// wait for documents originally written to remoteRT to arrive at activeRT
+	changesResults := activeRT.RequireWaitChanges(2, "0")
+	changesResults.requireDocIDs(t, []string{docABC1, docDEF1})
+
+	// Validate doc replication
+	_ = activeRT.getDoc(docABC1)
+	_ = activeRT.getDoc(docDEF1)
+
+	// Add another node to the active cluster
+	activeRT2 := addActiveRT(t, activeRT.TestBucket)
+	defer activeRT2.Close()
+
+	// Wait for replication to be rebalanced to activeRT2
+	activeRT.waitForAssignedReplications(1)
+	activeRT2.waitForAssignedReplications(1)
+
+	// Create additional docs on remoteRT
+	docABC2 := t.Name() + "ABC2"
+	_ = remoteRT.putDoc(docABC2, `{"source":"remoteRT","channels":["ABC"]}`)
+	docDEF2 := t.Name() + "DEF2"
+	_ = remoteRT.putDoc(docDEF2, `{"source":"remoteRT","channels":["DEF"]}`)
+
+	// wait for new documents to arrive at activeRT
+	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
+	changesResults.requireDocIDs(t, []string{docABC2, docDEF2})
+
+	// Validate doc contents via both active nodes
+	_ = activeRT.getDoc(docABC2)
+	_ = activeRT.getDoc(docDEF2)
+	_ = activeRT2.getDoc(docABC2)
+	_ = activeRT2.getDoc(docDEF2)
+
+	activeRTUUID := activeRT.GetDatabase().UUID
+	activeRT2UUID := activeRT2.GetDatabase().UUID
+	activeRTMgr := activeRT2.GetDatabase().SGReplicateMgr
+	activeRT2Mgr := activeRT2.GetDatabase().SGReplicateMgr
+
+	// Have each RT remove the other node (simulates behaviour on heartbeat expiry)
+	assert.NoError(t, activeRTMgr.RemoveNode(activeRT2UUID))
+	assert.NoError(t, activeRT2Mgr.RemoveNode(activeRTUUID))
+
+	// Wait for nodes to add themselves back to cluster
+	err := activeRT.WaitForCondition(func() bool {
+		clusterDef, err := activeRTMgr.GetSGRCluster()
+		if err != nil {
+			return false
+		}
+		return len(clusterDef.Nodes) == 2
+	})
+	assert.NoError(t, err, "Nodes did not re-register after removal")
+
+	// Wait and validate replications are rebalanced
+	activeRT.waitForAssignedReplications(1)
+	activeRT2.waitForAssignedReplications(1)
+
+	// Add more docs to remote, to validate rebalanced replications are running
+	docABC3 := t.Name() + "ABC3"
+	_ = remoteRT.putDoc(docABC3, `{"source":"remoteRT","channels":["ABC"]}`)
+	docDEF3 := t.Name() + "DEF3"
+	_ = remoteRT.putDoc(docDEF3, `{"source":"remoteRT","channels":["DEF"]}`)
+
+	changesResults = activeRT.RequireWaitChanges(2, changesResults.Last_Seq.(string))
+	changesResults.requireDocIDs(t, []string{docABC3, docDEF3})
+
+	// explicitly stop the SGReplicateMgrs on the active nodes, to prevent a node rebalance during test teardown.
+	activeRT.GetDatabase().SGReplicateMgr.Stop()
+	activeRT.GetDatabase().SGReplicateMgr = nil
+	activeRT2.GetDatabase().SGReplicateMgr.Stop()
+	activeRT2.GetDatabase().SGReplicateMgr = nil
+}
+
 func SetDefaultCheckpointInterval(d time.Duration) func() {
 	previousInterval := db.DefaultCheckpointInterval
 	db.DefaultCheckpointInterval = d
