@@ -37,6 +37,7 @@ type activeReplicatorCommon struct {
 	ctxCancel             context.CancelFunc
 	reconnectActive       base.AtomicBool // Tracks whether reconnect goroutine is active
 	replicatorConnectFn   func() error    // the function called inside reconnectLoop.
+	activeSendChanges     base.AtomicBool // Tracks whether sendChanges goroutine is active.
 }
 
 func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
@@ -141,11 +142,13 @@ func (a *activeReplicatorCommon) Stop() error {
 	a._publishStatus()
 	a.lock.Unlock()
 
-	// Wait for up to 10s for reconnect goroutine to exit
+	// Wait for up to 10s for reconnect, subChanges, and sendChanges goroutines to exit.
 	teardownStart := time.Now()
-	for a.reconnectActive.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
+	for (a.reconnectActive.IsTrue() || (a.blipSyncContext != nil && a.blipSyncContext.activeSubChanges.IsTrue()) ||
+		a.activeSendChanges.IsTrue()) && (time.Since(teardownStart) < time.Second*10) {
 		time.Sleep(10 * time.Millisecond)
 	}
+
 	return err
 }
 

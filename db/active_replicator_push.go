@@ -89,6 +89,8 @@ func (apr *ActivePushReplicator) _connect() error {
 	}
 
 	go func(s *blip.Sender) {
+		apr.activeSendChanges.Set(true)
+		defer apr.activeSendChanges.Set(false)
 		isComplete := bh.sendChanges(s, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,
 			since:             seq,
