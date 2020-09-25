@@ -1154,8 +1154,38 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 	docHistory = append([]string{newRevID}, docHistory...)
 	remoteDoc.RevID = newRevID
 
-	// Set the incoming document's rev and body to the cloned local revision
+	// Set the incoming document's rev, body, deleted flag and attachment to the cloned local revision.
+	// Note: not setting expiry, as syncData.expiry is reference only and isn't guaranteed to match the bucket doc expiry
 	remoteDoc.RemoveBody()
+	remoteDoc.Deleted = localDoc.IsDeleted()
+	remoteDoc.DocAttachments = localDoc.SyncData.Attachments.ShallowCopy()
+
+	// If the local doc had attachments, any with revpos more recent than the common ancestor will need
+	// to have their revpos updated when we rewrite the rev as a child of the remote branch.
+	if remoteDoc.DocAttachments != nil {
+		// Identify generation of common ancestor and new rev
+		commonAncestorRevID := localDoc.SyncData.History.findAncestorFromSet(localDoc.CurrentRev, docHistory)
+		commonAncestorGen := 0
+		if commonAncestorRevID != "" {
+			commonAncestorGen, _ = ParseRevID(commonAncestorRevID)
+		}
+		newRevIDGen, _ := ParseRevID(newRevID)
+
+		// If attachment revpos is older than common ancestor, or common ancestor doesn't exist, set attachment's
+		// revpos to the generation of newRevID (i.e. treat as previously unknown to this revtree branch)
+		for _, value := range remoteDoc.DocAttachments {
+			attachmentMeta, ok := value.(map[string]interface{})
+			if !ok {
+				base.Warnf("Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.CurrentRev, value)
+				continue
+			}
+			revpos, ok := base.ToInt64(attachmentMeta["revpos"])
+			if revpos > int64(commonAncestorGen) || commonAncestorGen == 0 {
+				attachmentMeta["revpos"] = newRevIDGen
+			}
+		}
+	}
+
 	remoteDoc._rawBody = docBodyBytes
 
 	// Tombstone the local revision
