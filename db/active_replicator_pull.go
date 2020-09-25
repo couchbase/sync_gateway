@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -211,4 +212,17 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 			go apr.Complete()
 		}
 	}
+}
+
+// Stop stops the pull replication and waits for the sub changes goroutine to finish.
+func (apr *ActivePullReplicator) Stop() error {
+	if err := apr.stopAndDisconnect(); err != nil {
+		return err
+	}
+	teardownStart := time.Now()
+	for (apr.blipSyncContext != nil && apr.blipSyncContext.activeSubChanges.IsTrue()) &&
+		(time.Since(teardownStart) < time.Second*10) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }

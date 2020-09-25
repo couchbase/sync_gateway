@@ -88,7 +88,9 @@ func (apr *ActivePushReplicator) _connect() error {
 		channels = base.SetFromArray(apr.config.FilterChannels)
 	}
 
+	apr.activeSendChanges.Set(true)
 	go func(s *blip.Sender) {
+		defer apr.activeSendChanges.Set(false)
 		isComplete := bh.sendChanges(s, &sendChangesOptions{
 			docIDs:            apr.config.DocIDs,
 			since:             seq,
@@ -243,4 +245,16 @@ func (apr *ActivePushReplicator) _waitForPendingChangesResponse() error {
 		waitCount++
 	}
 	return errors.New("checkpointer _waitForPendingChangesResponse failed to complete after waiting 10s")
+}
+
+// Stop stops the push replication and waits for the send changes goroutine to finish.
+func (apr *ActivePushReplicator) Stop() error {
+	if err := apr.stopAndDisconnect(); err != nil {
+		return err
+	}
+	teardownStart := time.Now()
+	for apr.activeSendChanges.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return nil
 }

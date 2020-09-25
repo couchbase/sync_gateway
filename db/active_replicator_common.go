@@ -37,6 +37,7 @@ type activeReplicatorCommon struct {
 	ctxCancel             context.CancelFunc
 	reconnectActive       base.AtomicBool // Tracks whether reconnect goroutine is active
 	replicatorConnectFn   func() error    // the function called inside reconnectLoop.
+	activeSendChanges     base.AtomicBool // Tracks whether sendChanges goroutine is active.
 }
 
 func newActiveReplicatorCommon(config *ActiveReplicatorConfig, direction ActiveReplicatorDirection) *activeReplicatorCommon {
@@ -132,8 +133,8 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 	}
 }
 
-// Stop runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
-func (a *activeReplicatorCommon) Stop() error {
+// stopAndDisconnect runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
+func (a *activeReplicatorCommon) stopAndDisconnect() error {
 	a.lock.Lock()
 	a._stop()
 	err := a._disconnect()
