@@ -85,12 +85,12 @@ func (ar *ActiveReplicator) Stop() error {
 
 	var pushErr error
 	if ar.Push != nil {
-		pushErr = ar.Push.Stop()
+		pushErr = ar.Push.stop()
 	}
 
 	var pullErr error
 	if ar.Pull != nil {
-		pullErr = ar.Pull.Stop()
+		pullErr = ar.Pull.stop()
 	}
 
 	if pushErr != nil {

@@ -142,13 +142,11 @@ func (a *activeReplicatorCommon) Stop() error {
 	a._publishStatus()
 	a.lock.Unlock()
 
-	// Wait for up to 10s for reconnect, subChanges, and sendChanges goroutines to exit.
+	// Wait for up to 10s for reconnect goroutine to exit
 	teardownStart := time.Now()
-	for (a.reconnectActive.IsTrue() || (a.blipSyncContext != nil && a.blipSyncContext.activeSubChanges.IsTrue()) ||
-		a.activeSendChanges.IsTrue()) && (time.Since(teardownStart) < time.Second*10) {
+	for a.reconnectActive.IsTrue() && (time.Since(teardownStart) < time.Second*10) {
 		time.Sleep(10 * time.Millisecond)
 	}
-
 	return err
 }
 
