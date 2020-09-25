@@ -412,12 +412,11 @@ func (btc *BlipTesterClient) getLastReplicatedRev(docID string) (revID string, o
 }
 
 func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (*BlipTesterReplicator, error) {
-	bt, err := NewBlipTesterFromSpec(tb, BlipTesterSpec{
-		restTester:                  btc.rt,
+	bt, err := NewBlipTesterFromSpecWithRT(tb, &BlipTesterSpec{
 		connectingPassword:          "test",
 		connectingUsername:          btc.Username,
 		connectingUserChannelGrants: btc.Channels,
-	})
+	}, btc.rt)
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +432,7 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (
 	return r, nil
 }
 
-func NewBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
+func createBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
 	if opts == nil {
 		opts = &BlipTesterClientOpts{}
 	}
@@ -463,11 +462,11 @@ func NewBlipTesterClientOpts(tb testing.TB, rt *RestTester, opts *BlipTesterClie
 
 // NewBlipTesterClient returns a client which emulates the behaviour of a CBL client over BLIP.
 func NewBlipTesterClient(tb testing.TB, rt *RestTester) (client *BlipTesterClient, err error) {
-	return NewBlipTesterClientOpts(tb, rt, nil)
+	return createBlipTesterClientOpts(tb, rt, nil)
 }
 
-func NewBlipTesterClientOptsAvoidRTClose(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
-	client, err = NewBlipTesterClientOpts(tb, rt, opts)
+func NewBlipTesterClientOptsWithRT(tb testing.TB, rt *RestTester, opts *BlipTesterClientOpts) (client *BlipTesterClient, err error) {
+	client, err = createBlipTesterClientOpts(tb, rt, opts)
 	if err != nil {
 		return nil, err
 	}
