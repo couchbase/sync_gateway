@@ -214,9 +214,9 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 	}
 }
 
-// stop stops the pull replication and waits for the sub changes goroutine to finish.
-func (apr *ActivePullReplicator) stop() error {
-	if err := apr.Stop(); err != nil {
+// Stop stops the pull replication and waits for the sub changes goroutine to finish.
+func (apr *ActivePullReplicator) Stop() error {
+	if err := apr.stopAndDisconnect(); err != nil {
 		return err
 	}
 	teardownStart := time.Now()

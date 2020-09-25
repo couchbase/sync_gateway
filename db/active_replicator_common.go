@@ -133,8 +133,8 @@ func (a *activeReplicatorCommon) reconnectLoop() {
 	}
 }
 
-// Stop runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
-func (a *activeReplicatorCommon) Stop() error {
+// stopAndDisconnect runs _disconnect and _stop on the replicator, and sets the Stopped replication state.
+func (a *activeReplicatorCommon) stopAndDisconnect() error {
 	a.lock.Lock()
 	a._stop()
 	err := a._disconnect()

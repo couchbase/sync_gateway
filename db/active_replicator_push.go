@@ -247,9 +247,9 @@ func (apr *ActivePushReplicator) _waitForPendingChangesResponse() error {
 	return errors.New("checkpointer _waitForPendingChangesResponse failed to complete after waiting 10s")
 }
 
-// stop stops the push replication and waits for the send changes goroutine to finish.
-func (apr *ActivePushReplicator) stop() error {
-	if err := apr.Stop(); err != nil {
+// Stop stops the push replication and waits for the send changes goroutine to finish.
+func (apr *ActivePushReplicator) Stop() error {
+	if err := apr.stopAndDisconnect(); err != nil {
 		return err
 	}
 	teardownStart := time.Now()
