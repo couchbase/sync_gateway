@@ -1156,6 +1156,35 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 
 	// Set the incoming document's rev and body to the cloned local revision
 	remoteDoc.RemoveBody()
+	remoteDoc.Deleted = localDoc.IsDeleted()
+	remoteDoc.DocAttachments = localDoc.SyncData.Attachments.ShallowCopy()
+
+	// If the local doc had attachments, any with revpos more recent than the common ancestor will need
+	// to have their revpos updated when we rewrite the rev as a child of the remote branch.
+	if remoteDoc.DocAttachments != nil {
+		// Identify generation of common ancestor and new rev
+		commonAncestorRevID := localDoc.SyncData.History.findAncestorFromSet(localDoc.CurrentRev, docHistory)
+		commonAncestorGen := 0
+		if commonAncestorRevID != "" {
+			commonAncestorGen, _ = ParseRevID(commonAncestorRevID)
+		}
+		newRevIDGen, _ := ParseRevID(newRevID)
+
+		// If attachment revpos is older than common ancestor, or common ancestor doesn't exist, set attachment's
+		// revpos to new rev generation
+		for _, value := range remoteDoc.DocAttachments {
+			attachmentMeta, ok := value.(map[string]interface{})
+			if !ok {
+				base.Warnf("Unable to parse attachment meta during conflict resolution for %s/%s: %v", base.UD(localDoc.ID), localDoc.SyncData.CurrentRev, value)
+				continue
+			}
+			revpos, ok := base.ToInt64(attachmentMeta["revpos"])
+			if revpos > int64(commonAncestorGen) || commonAncestorGen == 0 {
+				attachmentMeta["revpos"] = newRevIDGen
+			}
+		}
+	}
+
 	remoteDoc._rawBody = docBodyBytes
 
 	// Tombstone the local revision
