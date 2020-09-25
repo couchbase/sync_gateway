@@ -315,16 +315,33 @@ func TestCBGTManagerHeartbeater(t *testing.T) {
 	assert.NoError(t, node3.Start())
 
 	// Create three heartbeat listeners, associate one with each node
-	testManagerVersion := ""
-	listener1, err := NewImportHeartbeatListener(cfgCB, testManagerVersion)
+	testUUID := cbgt.NewUUID()
+	var eventHandlers cbgt.ManagerEventHandlers
+	options := make(map[string]string)
+	options[cbgt.FeedAllotmentOption] = cbgt.FeedAllotmentOnePerPIndex
+	options["managerLoadDataDir"] = "false"
+	testManager := cbgt.NewManagerEx(
+		cbgt.VERSION,
+		cbgt.NewCfgMem(),
+		testUUID,
+		nil,
+		"",
+		1,
+		"",
+		testUUID,
+		"",
+		"some-datasource",
+		eventHandlers,
+		options)
+	listener1, err := NewImportHeartbeatListener(cfgCB, testManager)
 	assert.NoError(t, err)
 	assert.NoError(t, node1.RegisterListener(listener1))
 
-	listener2, err := NewImportHeartbeatListener(cfgCB, testManagerVersion)
+	listener2, err := NewImportHeartbeatListener(cfgCB, testManager)
 	assert.NoError(t, err)
 	assert.NoError(t, node2.RegisterListener(listener2))
 
-	listener3, err := NewImportHeartbeatListener(cfgCB, testManagerVersion)
+	listener3, err := NewImportHeartbeatListener(cfgCB, testManager)
 	assert.NoError(t, err)
 	assert.NoError(t, node3.RegisterListener(listener3))
 

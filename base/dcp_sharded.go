@@ -364,7 +364,7 @@ func registerHeartbeatListener(heartbeater Heartbeater, cbgtContext *CbgtContext
 	}
 
 	// Register listener for import, uses cfg and manager to manage set of participating nodes
-	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext.Cfg, cbgtContext.Manager.Version())
+	importHeartbeatListener, err := NewImportHeartbeatListener(cbgtContext.Cfg, cbgtContext.Manager)
 	if err != nil {
 		return nil, err
 	}
@@ -380,13 +380,13 @@ func registerHeartbeatListener(heartbeater Heartbeater, cbgtContext *CbgtContext
 // ImportHeartbeatListener uses cbgt's cfg to manage node list
 type importHeartbeatListener struct {
 	cfg        cbgt.Cfg      // cbgt cfg being used for import
-	mgrVersion string        // cbgt manager version, required for cbgt.UnregisterNodes
+	mgr        *cbgt.Manager // cbgt manager associated with this import node
 	terminator chan struct{} // close cfg subscription on close
 	nodeIDs    []string      // Set of nodes from the latest retrieval
 	lock       sync.RWMutex  // lock for nodeIDs access
 }
 
-func NewImportHeartbeatListener(cfg cbgt.Cfg, mgrVersion string) (*importHeartbeatListener, error) {
+func NewImportHeartbeatListener(cfg cbgt.Cfg, mgr *cbgt.Manager) (*importHeartbeatListener, error) {
 
 	if cfg == nil {
 		return nil, errors.New("Cfg must not be nil for ImportHeartbeatListener")
@@ -394,12 +394,12 @@ func NewImportHeartbeatListener(cfg cbgt.Cfg, mgrVersion string) (*importHeartbe
 
 	listener := &importHeartbeatListener{
 		cfg:        cfg,
-		mgrVersion: mgrVersion,
+		mgr:        mgr,
 		terminator: make(chan struct{}),
 	}
 
 	// Initialize the node set
-	err := listener.reloadNodes()
+	_, err := listener.reloadNodes()
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +421,7 @@ func (l *importHeartbeatListener) Name() string {
 func (l *importHeartbeatListener) StaleHeartbeatDetected(nodeUUID string) {
 
 	Infof(KeyCluster, "StaleHeartbeatDetected by import listener for node: %v", nodeUUID)
-	err := cbgt.UnregisterNodes(l.cfg, l.mgrVersion, []string{nodeUUID})
+	err := cbgt.UnregisterNodes(l.cfg, l.mgr.Version(), []string{nodeUUID})
 	if err != nil {
 		Warnf("Attempt to unregister %v from CBGT got error: %v", nodeUUID, err)
 	}
@@ -442,10 +442,17 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 		for {
 			select {
 			case <-cfgEvents:
-				err := l.reloadNodes()
+				localNodeRegistered, err := l.reloadNodes()
 				if err != nil {
 					Warnf("Error while reloading heartbeat node definitions: %v", err)
 				}
+				if !localNodeRegistered {
+					registerErr := l.mgr.Register(cbgt.NODE_DEFS_WANTED)
+					if registerErr != nil {
+						Warnf("Error attempting to re-register node, node will not participate in import until restarted or cbgt cfg is next updated: %v", registerErr)
+					}
+				}
+
 			case <-l.terminator:
 				return
 			}
@@ -454,17 +461,20 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 	return nil
 }
 
-func (l *importHeartbeatListener) reloadNodes() error {
+func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
 
 	nodeSet, _, err := cbgt.CfgGetNodeDefs(l.cfg, cbgt.NODE_DEFS_KNOWN)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	nodeUUIDs := make([]string, 0)
 	if nodeSet != nil {
 		for _, nodeDef := range nodeSet.NodeDefs {
 			nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+			if nodeDef.UUID == l.mgr.UUID() {
+				localNodePresent = true
+			}
 		}
 	}
 
@@ -472,7 +482,7 @@ func (l *importHeartbeatListener) reloadNodes() error {
 	l.nodeIDs = nodeUUIDs
 	l.lock.Unlock()
 
-	return nil
+	return localNodePresent, nil
 }
 
 // GetNodes returns a copy of the in-memory node set
