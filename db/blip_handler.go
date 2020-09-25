@@ -746,8 +746,12 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	// Look at attachments with revpos > the last common ancestor's
 	minRevpos := 1
 	if len(history) > 0 {
-		minRevpos, _ := ParseRevID(history[len(history)-1])
-		minRevpos++
+		minRevpos, _ = ParseRevID(history[len(history)-1])
+		// TODO: we can't identify at this point whether the last entry in history represents a
+		// common ancestor, or is the oldest history for a newly inserted doc.  In the former case,
+		// we'd prefer to run with minRevpos++, but since we can't determine without an additional
+		// rev lookup, pay the cost for redundant attachment verification when
+		// the attachment revpos equals the common ancestor
 	}
 
 	// Pull out attachments
