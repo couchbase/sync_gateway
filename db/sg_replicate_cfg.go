@@ -1396,14 +1396,14 @@ func (l *ReplicationHeartbeatListener) subscribeNodeSetChanges() error {
 			select {
 			case <-cfgEvents:
 				localNodeRegistered, err := l.reloadNodes()
+				if err != nil {
+					base.Warnf("Error while reloading heartbeat node definitions: %v", err)
+				}
 				if !localNodeRegistered {
 					registerErr := l.mgr.RegisterNode(l.mgr.localNodeUUID)
 					if registerErr != nil {
 						base.Warnf("Error attempting to re-register node, node will not participate in sg-replicate until restarted or replication cfg is next updated: %v", registerErr)
 					}
-				}
-				if err != nil {
-					base.Warnf("Error while reloading heartbeat node definitions: %v", err)
 				}
 			case <-l.terminator:
 				return
