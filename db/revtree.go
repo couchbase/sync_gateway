@@ -25,11 +25,11 @@ type RevKey string
 type RevInfo struct {
 	ID       string
 	Parent   string
-	Deleted  bool
-	Body     []byte // Used when revision body stored inline (stores bodies)
 	BodyKey  string // Used when revision body stored externally (doc key used for external storage)
-	Channels base.Set
+	Deleted  bool
 	depth    uint32
+	Body     []byte // Used when revision body stored inline (stores bodies)
+	Channels base.Set
 }
 
 func (rev RevInfo) IsRoot() bool {
@@ -106,7 +106,7 @@ func (tree RevTree) MarshalJSON() ([]byte, error) {
 	return base.JSONMarshal(rep)
 }
 
-func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
+func (tree *RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 
 	if tree == nil {
 		// base.Warnf(base.KeyAll, "No RevTree for input %q", inputjson)
@@ -122,6 +122,8 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 	if !(len(rep.Revs) == len(rep.Parents) && len(rep.Revs) == len(rep.Channels)) {
 		return errors.New("revtreelist data is invalid, revs/parents/channels counts are inconsistent")
 	}
+
+	*tree = make(RevTree, len(rep.Revs))
 
 	for i, revid := range rep.Revs {
 		info := RevInfo{ID: revid}
@@ -146,13 +148,13 @@ func (tree RevTree) UnmarshalJSON(inputjson []byte) (err error) {
 		if parentIndex >= 0 {
 			info.Parent = rep.Revs[parentIndex]
 		}
-		tree[revid] = &info
+		(*tree)[revid] = &info
 	}
 	if rep.Deleted != nil {
 		for _, i := range rep.Deleted {
-			info := tree[rep.Revs[i]]
+			info := (*tree)[rep.Revs[i]]
 			info.Deleted = true //because tree[rep.Revs[i]].Deleted=true is a compile error
-			tree[rep.Revs[i]] = info
+			(*tree)[rep.Revs[i]] = info
 		}
 	}
 	return
