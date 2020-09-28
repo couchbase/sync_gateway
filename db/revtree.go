@@ -442,8 +442,14 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int,
 	}
 
 	computedMaxDepth, leaves := tree.computeDepthsAndFindLeaves()
-	if computedMaxDepth <= maxDepth {
-		return
+	if computedMaxDepth > maxDepth {
+		// Delete nodes whose depth is greater than maxDepth:
+		for revid, node := range tree {
+			if node.depth > maxDepth {
+				delete(tree, revid)
+				pruned++
+			}
+		}
 	}
 
 	// Calculate tombstoneGenerationThreshold
@@ -452,14 +458,6 @@ func (tree RevTree) pruneRevisions(maxDepth uint32, keepRev string) (pruned int,
 	if foundShortestNonTSBranch {
 		// Only set the tombstoneGenerationThreshold if a genShortestNonTSBranch was found.  (fixes #2695)
 		tombstoneGenerationThreshold = genShortestNonTSBranch - int(maxDepth)
-	}
-
-	// Delete nodes whose depth is greater than maxDepth:
-	for revid, node := range tree {
-		if node.depth > maxDepth {
-			delete(tree, revid)
-			pruned++
-		}
 	}
 
 	// If we have a valid tombstoneGenerationThreshold, delete any tombstoned branches that are too old
