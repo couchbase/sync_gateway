@@ -16,6 +16,7 @@ import (
 // Group the stats related context that is associated w/ a ServerContext into a struct
 type statsContext struct {
 	statsLoggingTicker *time.Ticker
+	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
 	cpuStatsSnapshot   *cpuStatsSnapshot
 }
 

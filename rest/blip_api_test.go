@@ -650,13 +650,12 @@ func TestPublicPortAuthentication(t *testing.T) {
 	require.NoError(t, err, "Error sending revision")
 
 	// Create bliptester that is connected as user2, with access to the * channel
-	btUser2, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	btUser2, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		noAdminParty:                true,
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"},      // user2 has access to all channels
-		restTester:                  btUser1.restTester, // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
-	})
+		connectingUserChannelGrants: []string{"*"}, // user2 has access to all channels
+	}, btUser1.restTester) // re-use rest tester, otherwise it will create a new underlying bucket in walrus case
 	require.NoError(t, err, "Error creating BlipTester")
 	defer btUser2.Close()
 
@@ -703,12 +702,11 @@ function(doc, oldDoc) {
 	defer rt.Close()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
-	})
+	}, rt)
 	assert.NoError(t, err, "Error creating BlipTester")
 
 	// Attempt to send a doc, should be rejected
@@ -771,12 +769,11 @@ function(doc, oldDoc) {
 	defer rt.Close()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
-	})
+	}, rt)
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
@@ -900,12 +897,11 @@ function(doc, oldDoc) {
 	defer rt.Close()
 
 	// Create bliptester that is connected as user1, with no access to channel ABC
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		noAdminParty:       true,
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
-	})
+	}, rt)
 	assert.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
@@ -1040,9 +1036,8 @@ func TestBlipSendAndGetRev(t *testing.T) {
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
 	}
-	bt, err := NewBlipTesterFromSpec(t, btSpec)
+	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
@@ -1092,9 +1087,8 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
 	}
-	bt, err := NewBlipTesterFromSpec(t, btSpec)
+	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
@@ -1153,9 +1147,8 @@ func TestBlipSetCheckpoint(t *testing.T) {
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
 	}
-	bt, err := NewBlipTesterFromSpec(t, btSpec)
+	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
@@ -1219,11 +1212,10 @@ func TestReloadUser(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
-	})
+	}, rt)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
@@ -1277,11 +1269,10 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
-	})
+	}, rt)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
@@ -1617,11 +1608,10 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+	bt, err := NewBlipTesterFromSpecWithRT(t, &BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
-	})
+	}, rt)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
@@ -1771,9 +1761,8 @@ func TestGetRemovedDoc(t *testing.T) {
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
-		restTester:         rt,
 	}
-	bt, err := NewBlipTesterFromSpec(t, btSpec)
+	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
@@ -1785,9 +1774,8 @@ func TestGetRemovedDoc(t *testing.T) {
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"user1"}, // so it can see user1's docs
-		restTester:                  rt,
 	}
-	bt2, err := NewBlipTesterFromSpec(t, btSpec2)
+	bt2, err := NewBlipTesterFromSpecWithRT(t, &btSpec2, rt)
 	assert.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt2.Close()
 
@@ -1921,11 +1909,8 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 //   - Actual: only receive 4 docs (4 revs)
 func TestMissingNoRev(t *testing.T) {
 	rt := NewRestTester(t, nil)
-	btSpec := BlipTesterSpec{
-		restTester: rt,
-	}
 	defer rt.Close()
-	bt, err := NewBlipTesterFromSpec(t, btSpec)
+	bt, err := NewBlipTesterFromSpecWithRT(t, nil, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
@@ -1982,7 +1967,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 		deltaSentCount = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
 
-	client, err := NewBlipTesterClient(t, rt)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -2056,7 +2041,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 
 	deltaSentCount := rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
-	client, err := NewBlipTesterClient(t, rt)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -2113,7 +2098,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	client, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "alice",
 		Channels:     []string{"public"},
 		ClientDeltas: true,
@@ -2179,7 +2164,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		deltasSentStart = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
 
-	client, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "alice",
 		Channels:     []string{"public"},
 		ClientDeltas: true,
@@ -2274,7 +2259,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 		deltasSentStart = rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 	}
 
-	client1, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
+	client1, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "client1",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
@@ -2282,7 +2267,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	require.NoError(t, err)
 	defer client1.Close()
 
-	client2, err := NewBlipTesterClientOpts(t, rt, &BlipTesterClientOpts{
+	client2, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "client2",
 		Channels:     []string{"*"},
 		ClientDeltas: true,
@@ -2383,7 +2368,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(t, rt)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 	client.ClientDeltas = true
@@ -2427,7 +2412,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(t, rt)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -2445,7 +2430,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	// Perform a one-shot pull as client 2 to pull down the first revision
 
-	client2, err := NewBlipTesterClient(t, rt)
+	client2, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer client2.Close()
 
@@ -2511,7 +2496,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(t, rt)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -2615,7 +2600,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(t, rt)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -2664,7 +2649,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	client, err := NewBlipTesterClient(t, rt)
+	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -2754,7 +2739,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
 
@@ -2790,7 +2775,7 @@ func TestBlipNorev(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
 
@@ -2828,7 +2813,7 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: base.BoolPtr(true)}}})
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	require.NoError(t, err)
 	defer btc.Close()
 
@@ -2883,7 +2868,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	btc, err := NewBlipTesterClient(t, rt)
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
 	assert.NoError(t, err)
 	defer btc.Close()
 

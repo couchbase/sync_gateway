@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"testing"
@@ -270,4 +271,31 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.NoError(t, err, "No error while trying to get the existing database name")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
+}
+
+func TestStatsLoggerGoRoutines(t *testing.T) {
+	// Get goroutines prior to getting server context
+	goRoutineCountBefore := runtime.NumGoroutine()
+
+	// Start up stats logger by creating server context
+	ctx := NewServerContext(&ServerConfig{})
+
+	// Confirm an extra goroutine is running which is the stats logger
+	assert.Equal(t, goRoutineCountBefore+1, runtime.NumGoroutine())
+
+	// Close server context which will send signal to close stats logger
+	ctx.Close()
+
+	// Wait for stats logger to stop (ie wait for go routines to go back to prior count
+	sleeper := base.CreateSleeperFunc(200, 100)
+	waitFunc := func() (shouldRetry bool, err error, value interface{}) {
+		if goRoutineCountBefore == runtime.NumGoroutine() {
+			return false, nil, nil
+		}
+		return true, nil, nil
+	}
+	err, _ := base.RetryLoop("Wait for goroutines to go back to original count", waitFunc, sleeper)
+	assert.NoError(t, err)
+
+	assert.Equal(t, goRoutineCountBefore, runtime.NumGoroutine())
 }

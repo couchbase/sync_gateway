@@ -693,7 +693,7 @@ type BlipTesterSpec struct {
 	// If a RestTester is passed in, certain properties of the BlipTester such as noAdminParty will be ignored, since
 	// those properties only affect the creation of the RestTester.
 	// If nil, a default restTester will be created based on the properties in this spec
-	restTester *RestTester
+	// restTester *RestTester
 }
 
 // State associated with a BlipTester
@@ -707,6 +707,10 @@ type BlipTester struct {
 	// user contexts, a single RestTester may be shared among multiple BlipTester instances.
 	restTester *RestTester
 
+	// This flag is used to avoid closing the contained restTester. This functionality is to avoid a double close in
+	// some areas.
+	avoidRestTesterClose bool
+
 	// The blip context which contains blip related state and the sender/reciever goroutines associated
 	// with this websocket connection
 	blipContext *blip.Context
@@ -718,7 +722,9 @@ type BlipTester struct {
 // Close the bliptester
 func (bt BlipTester) Close() {
 	bt.sender.Close()
-	bt.restTester.Close()
+	if !bt.avoidRestTesterClose {
+		bt.restTester.Close()
+	}
 }
 
 // Returns database context for blipTester (assumes underlying rest tester is based on a single db - returns first it finds)
@@ -730,26 +736,40 @@ func (bt BlipTester) DatabaseContext() *db.DatabaseContext {
 	return nil
 }
 
+func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTester) (blipTester *BlipTester, err error) {
+	blipTesterSpec := spec
+	if spec == nil {
+		// Default spec
+		blipTesterSpec = &BlipTesterSpec{}
+	}
+	blipTester, err = createBlipTesterWithSpec(tb, *blipTesterSpec, rt)
+	if err != nil {
+		return nil, err
+	}
+	blipTester.avoidRestTesterClose = true
+
+	return blipTester, err
+}
+
 // Create a BlipTester using the default spec
 func NewBlipTester(tb testing.TB) (*BlipTester, error) {
 	defaultSpec := BlipTesterSpec{}
 	return NewBlipTesterFromSpec(tb, defaultSpec)
 }
 
-// Create a BlipTester using the given spec
 func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
+	rtConfig := RestTesterConfig{
+		EnableNoConflictsMode: spec.noConflictsMode,
+		noAdminParty:          spec.noAdminParty,
+	}
+	var rt = NewRestTester(tb, &rtConfig)
+	return createBlipTesterWithSpec(tb, spec, rt)
+}
 
-	bt := &BlipTester{}
-
-	if spec.restTester != nil {
-		bt.restTester = spec.restTester
-	} else {
-		rtConfig := RestTesterConfig{
-			EnableNoConflictsMode: spec.noConflictsMode,
-			noAdminParty:          spec.noAdminParty,
-		}
-		var rt = NewRestTester(tb, &rtConfig)
-		bt.restTester = rt
+// Create a BlipTester using the given spec
+func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester) (*BlipTester, error) {
+	bt := &BlipTester{
+		restTester: rt,
 	}
 
 	// Since blip requests all go over the public handler, wrap the public handler with the httptest server
