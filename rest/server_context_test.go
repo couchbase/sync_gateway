@@ -14,10 +14,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"runtime"
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
@@ -273,29 +273,19 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 }
 
-func TestStatsLoggerGoRoutines(t *testing.T) {
-	// Get goroutines prior to getting server context
-	goRoutineCountBefore := runtime.NumGoroutine()
+func TestStatsLoggerStopped(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	// Start up stats logger by creating server context
 	ctx := NewServerContext(&ServerConfig{})
 
-	// Confirm an extra goroutine is running which is the stats logger
-	assert.Equal(t, goRoutineCountBefore+1, runtime.NumGoroutine())
-
 	// Close server context which will send signal to close stats logger
 	ctx.Close()
 
-	// Wait for stats logger to stop (ie wait for go routines to go back to prior count
-	sleeper := base.CreateSleeperFunc(200, 100)
-	waitFunc := func() (shouldRetry bool, err error, value interface{}) {
-		if goRoutineCountBefore == runtime.NumGoroutine() {
-			return false, nil, nil
-		}
-		return true, nil, nil
-	}
-	err, _ := base.RetryLoop("Wait for goroutines to go back to original count", waitFunc, sleeper)
-	assert.NoError(t, err)
+	// ensure stats terminator is closed
+	_, ok := <-ctx.statsContext.terminator
+	assert.False(t, ok)
 
-	assert.Equal(t, goRoutineCountBefore, runtime.NumGoroutine())
+	// sleep a bit to allow the "Stopping stats logging goroutine" debug logging to be printed
+	time.Sleep(time.Millisecond * 10)
 }
