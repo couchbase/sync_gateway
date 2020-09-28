@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"log"
-	"sort"
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -222,41 +221,4 @@ func TestParseDocumentCas(t *testing.T) {
 	casInt := syncData.GetSyncCas()
 
 	goassert.Equals(t, casInt, uint64(1492749160563736576))
-}
-
-func TestPruneRevisionsWithDisconnected(t *testing.T) {
-	revTree := RevTree{
-		"100-abc": {ID: "100-abc"},
-		"101-def": {ID: "101-def", Parent: "100-abc", Deleted: true},
-		"101-abc": {ID: "101-abc", Parent: "100-abc"},
-		"102-abc": {ID: "102-abc", Parent: "101-abc"},
-		"103-def": {ID: "103-def", Parent: "102-abc", Deleted: true},
-		"103-abc": {ID: "103-abc", Parent: "102-abc"},
-		"104-abc": {ID: "104-abc", Parent: "103-abc"},
-		"105-abc": {ID: "105-abc", Parent: "104-abc"},
-		"106-def": {ID: "106-def", Parent: "105-abc", Deleted: true},
-		"106-abc": {ID: "106-abc", Parent: "105-abc"},
-		"107-abc": {ID: "107-abc", Parent: "106-abc"},
-
-		"1-abc": {ID: "1-abc"},
-		"2-abc": {ID: "2-abc", Parent: "1-abc"},
-		"3-abc": {ID: "3-abc", Parent: "2-abc"},
-		"4-abc": {ID: "4-abc", Parent: "3-abc", Deleted: true},
-
-		"70-abc": {ID: "70-abc"},
-		"71-abc": {ID: "71-abc", Parent: "70-abc"},
-		"72-abc": {ID: "72-abc", Parent: "71-abc"},
-		"73-abc": {ID: "73-abc", Parent: "72-abc", Deleted: true},
-	}
-
-	prunedCount, _ := revTree.pruneRevisions(4, "")
-	assert.Equal(t, 10, prunedCount)
-
-	remainingKeys := make([]string, 0, len(revTree))
-	for key := range revTree {
-		remainingKeys = append(remainingKeys, key)
-	}
-	sort.Strings(remainingKeys)
-
-	assert.Equal(t, []string{"101-abc", "102-abc", "103-abc", "103-def", "104-abc", "105-abc", "106-abc", "106-def", "107-abc"}, remainingKeys)
 }
