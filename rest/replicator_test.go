@@ -1767,6 +1767,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 		expectedTombstonedRevID string
 		expectedResolutionType  db.ConflictResolutionType
 		skipActiveLeafAssertion bool
+		skipBodyAssertion       bool
 	}{
 		{
 			name:                   "remoteWins",
@@ -1815,6 +1816,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:       db.Body{"source": "remote"},
 			expectedLocalRevID:      "1-b",
 			skipActiveLeafAssertion: true,
+			skipBodyAssertion:       base.TestUseXattrs(),
 		},
 		{
 			name:                    "twoTombstonesLocalWin",
@@ -1826,6 +1828,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:       db.Body{"source": "local"},
 			expectedLocalRevID:      "1-b",
 			skipActiveLeafAssertion: true,
+			skipBodyAssertion:       base.TestUseXattrs(),
 		},
 	}
 
@@ -1936,7 +1939,13 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
-			assert.Equal(t, test.expectedLocalBody, doc.Body())
+
+			// This is skipped for tombstone tests running with xattr as xattr tombstones don't have a body to assert
+			// against
+			if !test.skipBodyAssertion {
+				assert.Equal(t, test.expectedLocalBody, doc.Body())
+			}
+
 			log.Printf("Doc %s is %+v", docID, doc)
 			for revID, revInfo := range doc.SyncData.History {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
