@@ -2046,6 +2046,10 @@ func TestIncreasingRecentSequences(t *testing.T) {
 }
 
 func TestRepairUnorderedRecentSequences(t *testing.T) {
+	if base.TestUseXattrs() {
+		t.Skip("xattr=false only - test modifies doc _sync property")
+	}
+
 	var db *Database
 	var body Body
 	var revid string
@@ -2074,8 +2078,9 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	// Update document directly in the bucket to scramble recent sequences
 	var rawBody Body
 	_, err = db.Bucket.Get("doc1", &rawBody)
-	assert.NoError(t, err)
-	rawSyncData, _ := rawBody["_sync"].(map[string]interface{})
+	require.NoError(t, err)
+	rawSyncData, ok := rawBody["_sync"].(map[string]interface{})
+	require.True(t, ok)
 	rawSyncData["recent_sequences"] = []uint64{3, 5, 9, 11, 1, 2, 4, 8, 7, 10, 5}
 	assert.NoError(t, db.Bucket.Set("doc1", 0, rawBody))
 
