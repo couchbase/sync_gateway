@@ -30,7 +30,6 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 				"alice": {Password: base.StringPtr("pass")},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt.Close()
 
@@ -91,7 +90,6 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 				"alice": {Password: base.StringPtr("pass")},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt.Close()
 
@@ -160,7 +158,6 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -249,7 +246,6 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -426,7 +422,6 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 						},
 					},
 				},
-				noAdminParty: true,
 			})
 			defer rt2.Close()
 
@@ -571,7 +566,6 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -736,7 +730,6 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -896,7 +889,6 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -989,7 +981,6 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -1084,7 +1075,6 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -1205,7 +1195,6 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -1362,7 +1351,6 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -1496,7 +1484,6 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -1591,7 +1578,6 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -1691,7 +1677,6 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -1864,7 +1849,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 						},
 					},
 				},
-				noAdminParty: true,
 			})
 			defer rt2.Close()
 
@@ -2064,7 +2048,6 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 						},
 					},
 				},
-				noAdminParty: true,
 			})
 			defer rt2.Close()
 
@@ -2233,7 +2216,6 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -2310,7 +2292,6 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -2377,7 +2358,6 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -2532,7 +2512,6 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -2626,7 +2605,6 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -2701,7 +2679,6 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -2853,7 +2830,6 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -2959,7 +2935,6 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -3051,7 +3026,6 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -3253,7 +3227,6 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 								},
 							},
 						},
-						noAdminParty: true,
 					})
 					defer rt2.Close()
 
@@ -3351,8 +3324,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
-		TestBucket:   tb2,
-		noAdminParty: true,
+		TestBucket: tb2,
 	})
 	defer rt2.Close()
 
@@ -3438,7 +3410,6 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt2.Close()
 
@@ -3546,7 +3517,6 @@ func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 				"alice": {Password: base.StringPtr("pass")},
 			},
 		},
-		noAdminParty: true,
 	})
 	defer rt.Close()
 
@@ -3773,7 +3743,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 						},
 					},
 				},
-				noAdminParty: true,
 			})
 			defer rt2.Close()
 
@@ -4127,7 +4096,6 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 						},
 					},
 				},
-				noAdminParty: true,
 			})
 			defer rt2.Close()
 
@@ -4282,7 +4250,6 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 						},
 					},
 				},
-				noAdminParty: true,
 			})
 			defer rt2.Close()
 

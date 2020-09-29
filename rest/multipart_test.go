@@ -32,10 +32,10 @@ Content-Type: application/json
 {"key":"foo","value":"bar"}
 --0123456789--`
 
-	response := rt.SendRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 
-	response = rt.SendRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
 	log.Printf("response: %v", string(response.BodyBytes()))
 	assertStatus(t, response, http.StatusOK)
 }
@@ -127,10 +127,10 @@ Content-Disposition: attachment; filename=att.txt
 {"root":"Jacques' JSON attachment"}
 --123--`
 
-	response := rt.SendRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
+	response := rt.SendAdminRequestWithHeaders(http.MethodPut, "/db/doc1", bodyText, reqHeaders)
 	assertStatus(t, response, http.StatusCreated)
 
-	response = rt.SendRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
+	response = rt.SendAdminRequestWithHeaders(http.MethodGet, "/db/doc1", "", reqHeaders)
 	assertStatus(t, response, http.StatusOK)
 
 	var body db.Body

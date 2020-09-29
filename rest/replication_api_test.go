@@ -1026,7 +1026,6 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 				},
 			},
 		},
-		noAdminParty: true,
 	})
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1

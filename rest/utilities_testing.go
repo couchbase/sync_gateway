@@ -32,7 +32,7 @@ import (
 // file, they wouldn't be publicly exported to other packages)
 
 type RestTesterConfig struct {
-	noAdminParty          bool                 // Unless this is true, Admin Party is in full effect
+	guestEnabled          bool                 // If this is true, Admin Party is in full effect
 	SyncFn                string               // put the sync() function source in here (optional)
 	DatabaseConfig        *DbConfig            // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	InitSyncSeq           uint64               // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
@@ -160,9 +160,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	rt.testBucket = testBucket
 	rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
-	if !rt.noAdminParty {
-		rt.SetAdminParty(true)
-	}
+	rt.SetAdminParty(rt.guestEnabled)
 
 	return rt.testBucket.Bucket
 }
@@ -674,7 +672,7 @@ type BlipTesterSpec struct {
 	noConflictsMode bool
 
 	// If an underlying RestTester is created, it will propagate this setting to the underlying RestTester.
-	noAdminParty bool
+	guestEnabled bool
 
 	// The Sync Gateway username and password to connect with.  If set, then you
 	// may want to disable "Admin Party" mode, which will allow guest user access.
@@ -690,7 +688,7 @@ type BlipTesterSpec struct {
 	connectingUserChannelGrants []string
 
 	// Allow tests to further customized a RestTester or re-use it across multiple BlipTesters if needed.
-	// If a RestTester is passed in, certain properties of the BlipTester such as noAdminParty will be ignored, since
+	// If a RestTester is passed in, certain properties of the BlipTester such as guestEnabled will be ignored, since
 	// those properties only affect the creation of the RestTester.
 	// If nil, a default restTester will be created based on the properties in this spec
 	// restTester *RestTester
@@ -753,14 +751,14 @@ func NewBlipTesterFromSpecWithRT(tb testing.TB, spec *BlipTesterSpec, rt *RestTe
 
 // Create a BlipTester using the default spec
 func NewBlipTester(tb testing.TB) (*BlipTester, error) {
-	defaultSpec := BlipTesterSpec{}
+	defaultSpec := BlipTesterSpec{guestEnabled: true}
 	return NewBlipTesterFromSpec(tb, defaultSpec)
 }
 
 func NewBlipTesterFromSpec(tb testing.TB, spec BlipTesterSpec) (*BlipTester, error) {
 	rtConfig := RestTesterConfig{
 		EnableNoConflictsMode: spec.noConflictsMode,
-		noAdminParty:          spec.noAdminParty,
+		guestEnabled:          spec.guestEnabled,
 	}
 	var rt = NewRestTester(tb, &rtConfig)
 	return createBlipTesterWithSpec(tb, spec, rt)
