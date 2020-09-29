@@ -18,11 +18,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // 1-one -- 2-two -- 3-three
@@ -1067,6 +1066,31 @@ func BenchmarkRevTreePruning(b *testing.B) {
 		revTree.pruneRevisions(50, "")
 	}
 
+}
+
+func BenchmarkRevtreeUnmarshal(b *testing.B) {
+	doc := Document{
+		ID: "docid",
+	}
+	err := base.JSONUnmarshal([]byte(largeRevTree), &doc)
+	assert.NoError(b, err)
+	treeJson, err := base.JSONMarshal(doc.History)
+	assert.NoError(b, err)
+
+	b.ResetTimer()
+	b.Run("Marshal into revTree", func(b *testing.B) {
+		revTree := RevTree{}
+		for i := 0; i < b.N; i++ {
+			_ = base.JSONUnmarshal(treeJson, &revTree)
+		}
+	})
+
+	b.Run("Marshal into revTreeList", func(b *testing.B) {
+		revTree := revTreeList{}
+		for i := 0; i < b.N; i++ {
+			_ = base.JSONUnmarshal(treeJson, &revTree)
+		}
+	})
 }
 
 func addRevs(revTree RevTree, startingParentRevId string, numRevs int, revDigest string) {
