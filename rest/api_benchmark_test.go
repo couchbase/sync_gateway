@@ -264,7 +264,7 @@ func BenchmarkReadOps_RevsDiff(b *testing.B) {
 
 	doc1k_bulkDocs_entry := fmt.Sprintf(doc_1k_format, doc1k_bulkDocs_meta)
 	bulkDocs_body := fmt.Sprintf(`{"new_edits":false, "docs": [%s]}`, doc1k_bulkDocs_entry)
-	response := rt.SendRequest("POST", "/db/_bulk_docs", bulkDocs_body)
+	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", bulkDocs_body)
 	if response.Code != 201 {
 		log.Printf("Unexpected response: %d", response.Code)
 		log.Printf("Response:%s", response.Body.Bytes())
