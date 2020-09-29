@@ -73,6 +73,10 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 		// Non-retry error - return
 		if !isTransientIndexerError(queryErr) {
 			Warnf("Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
+			if IsIndexNotFoundError(queryErr) {
+				// MB-40964 toy build logging
+				bucket.logMB40964ToyBuildDiagnostics()
+			}
 			return queryResults, pkgerrors.WithStack(queryErr)
 		}
 
@@ -86,6 +90,47 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 
 	Warnf("Exceeded max retries for query when querying index using statement: [%s], err:%v", UD(bucketStatement), err)
 	return nil, err
+}
+
+// logMB40964ToyBuildDiagnostics grabs a bunch of info from the indexer/query service to log for MB-40964
+func (bucket *CouchbaseBucketGoCB) logMB40964ToyBuildDiagnostics() {
+
+	diagnosticQueries := []struct {
+		name     string
+		queryStr string
+	}{
+		{
+			name:     "systemActiveRequests",
+			queryStr: `select *, meta().plan from system:active_requests`,
+		},
+		{
+			name:     "systemCompletedRequests",
+			queryStr: `select *, meta().plan from system:completed_requests`,
+		},
+		{
+			name:     "systemPrepareds",
+			queryStr: `select *, meta().plan from system:prepareds`,
+		},
+		{
+			name:     "systemIndexes",
+			queryStr: `select * from system:indexes`,
+		},
+	}
+
+	for _, q := range diagnosticQueries {
+		gocbQuery := gocb.NewN1qlQuery(q.queryStr)
+		gocbQuery.AdHoc(true)
+		gocbQuery.Profile(gocb.QueryProfileTimings)
+		r, err := bucket.ExecuteN1qlQuery(gocbQuery, nil)
+		if err != nil {
+			Errorf("MB-40964 %s: error querying: %v", q.name, err)
+			continue
+		}
+		// Print all NextBytes for query until empty
+		for b := r.NextBytes(); len(b) > 0; b = r.NextBytes() {
+			Errorf("MB-40964 %s: %s", q.name, b)
+		}
+	}
 }
 
 func (bucket *CouchbaseBucketGoCB) ExplainQuery(statement string, params interface{}) (plan map[string]interface{}, err error) {
