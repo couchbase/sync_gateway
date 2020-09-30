@@ -85,6 +85,10 @@ type ActiveReplicatorConfig struct {
 	// Map corresponding to db.replications.[replicationID] in Sync Gateway's expvars.  Populated with
 	// replication stats in blip_sync_stats.go
 	ReplicationStatsMap *base.DbReplicatorStats
+
+	// This can be used in a test in order to set ignoreNoConflicts to false. Allows for simulating an earlier Sync
+	// Gateway version where allow_conflicts is set to false.
+	DisableIgnoreNoConflicts bool
 }
 
 type OnCompleteFunc func(replicationID string)

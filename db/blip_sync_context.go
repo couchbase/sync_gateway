@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"runtime/debug"
 	"strconv"
@@ -220,8 +221,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	}
 
 	if response.Type() == blip.ErrorType {
-		base.InfofCtx(bsc.loggingCtx, base.KeyAll, "Client returned error in changesResponse: %s", respBody)
-		return nil
+		return errors.New(fmt.Sprintf("Client returned error in changesResponse: %s", respBody))
 	}
 
 	var answer []interface{}

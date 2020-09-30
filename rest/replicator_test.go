@@ -4566,6 +4566,63 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	}
 }
 
+func TestSendToOldClientIgnoreConflictsFalse(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			AllowConflicts: base.BoolPtr(false),
+		},
+	})
+	defer rt2.Close()
+
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+	})
+	defer rt1.Close()
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewTLSServer(rt2.TestAdminHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          "test",
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:               true,
+		InsecureSkipVerify:       true,
+		DisableIgnoreNoConflicts: true,
+		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+	})
+
+	require.NoError(t, ar.Start())
+
+	errorCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()
+	assert.Equal(t, 0, int(errorCountBefore))
+
+	response := rt1.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, response, http.StatusCreated)
+
+	err = rt2.WaitForCondition(func() bool {
+		if int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()) == 1 {
+			return true
+		}
+		return false
+	})
+	assert.NoError(t, err)
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {

@@ -88,6 +88,12 @@ func (apr *ActivePushReplicator) _connect() error {
 		channels = base.SetFromArray(apr.config.FilterChannels)
 	}
 
+	// This should always be set to true in a real scenario. This is only to be used for tests
+	ignoreNoConflicts := true
+	if apr.config.DisableIgnoreNoConflicts {
+		ignoreNoConflicts = false
+	}
+
 	apr.activeSendChanges.Set(true)
 	go func(s *blip.Sender) {
 		defer apr.activeSendChanges.Set(false)
@@ -99,7 +105,7 @@ func (apr *ActivePushReplicator) _connect() error {
 			batchSize:         int(apr.config.ChangesBatchSize),
 			channels:          channels,
 			clientType:        clientTypeSGR2,
-			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
+			ignoreNoConflicts: ignoreNoConflicts, // force the passive side to accept a "changes" message, even in no conflicts mode.
 		})
 		// On a normal completion, call complete for the replication
 		if isComplete {
