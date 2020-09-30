@@ -73,7 +73,7 @@ func (bucket *CouchbaseBucketGoCB) Query(statement string, params interface{}, c
 		// Non-retry error - return
 		if !isTransientIndexerError(queryErr) {
 			Warnf("Error when querying index using statement: [%s] parameters: [%+v] error:%v", UD(bucketStatement), UD(params), queryErr)
-			if IsIndexNotFoundError(queryErr) {
+			if strings.Contains(queryErr.Error(), "[12016] Index Not Found") {
 				// MB-40964 toy build logging
 				bucket.logMB40964ToyBuildDiagnostics()
 			}
