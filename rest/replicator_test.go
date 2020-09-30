@@ -4571,6 +4571,8 @@ func TestSendToOldClientIgnoreConflictsFalse(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
+	errorCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()
+
 	// Passive
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
@@ -4608,14 +4610,13 @@ func TestSendToOldClientIgnoreConflictsFalse(t *testing.T) {
 
 	require.NoError(t, ar.Start())
 
-	errorCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()
-	assert.Equal(t, 0, int(errorCountBefore))
+	assert.Equal(t, errorCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value())
 
 	response := rt1.SendAdminRequest("PUT", "/db/doc1", "{}")
 	assertStatus(t, response, http.StatusCreated)
 
 	err = rt2.WaitForCondition(func() bool {
-		if int(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()) == 1 {
+		if base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1 {
 			return true
 		}
 		return false
