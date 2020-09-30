@@ -29,6 +29,7 @@ import (
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 
 	// Register profiling handlers (see Go docs)
@@ -351,18 +352,16 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 	return false, fmt.Errorf("Unrecognized value for import_docs: %#v. Valid values are true and false.", dbConfig.AutoImport)
 }
 
-func (dbConfig *DbConfig) validate() []error {
+func (dbConfig *DbConfig) validate() *multierror.Error {
 	return dbConfig.validateVersion(base.IsEnterpriseEdition())
 }
 
-func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
-
-	errorMessages := make([]error, 0)
-
+func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessages *multierror.Error) {
 	// Make sure a non-zero compact_interval_days config is within the valid range
 	if val := dbConfig.CompactIntervalDays; val != nil && *val != 0 &&
 		(*val < db.CompactIntervalMinDays || *val > db.CompactIntervalMaxDays) {
-		errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "compact_interval_days", fmt.Sprintf("%g-%g", db.CompactIntervalMinDays, db.CompactIntervalMaxDays)))
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "compact_interval_days",
+			fmt.Sprintf("%g-%g", db.CompactIntervalMinDays, db.CompactIntervalMaxDays)))
 	}
 
 	if dbConfig.CacheConfig != nil {
@@ -386,25 +385,25 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 			}
 
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumPending < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_num_pending", 1))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_num_pending", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitPending < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_pending", 1))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_pending", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxWaitSkipped < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_skipped", 1))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_wait_skipped", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxLength < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_length", 1))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_length", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MinLength != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MinLength < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.min_length", 1))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.min_length", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds != nil && *dbConfig.CacheConfig.ChannelCacheConfig.ExpirySeconds < 1 {
-				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.expiry_seconds", 1))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.expiry_seconds", 1))
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber != nil && *dbConfig.CacheConfig.ChannelCacheConfig.MaxNumber < db.MinimumChannelCacheMaxNumber {
-				errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_number", db.MinimumChannelCacheMaxNumber))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.channel_cache.max_number", db.MinimumChannelCacheMaxNumber))
 			}
 
 			// Compact watermark validation
@@ -412,18 +411,18 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 			lwm := db.DefaultCompactLowWatermarkPercent
 			if dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 100 {
-					errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_high_watermark_pct", "0-100"))
+					errorMessages = multierror.Append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_high_watermark_pct", "0-100"))
 				}
 				hwm = *dbConfig.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
 			}
 			if dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent != nil {
 				if *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent < 1 || *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent > 100 {
-					errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_low_watermark_pct", "0-100"))
+					errorMessages = multierror.Append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "cache.channel_cache.compact_low_watermark_pct", "0-100"))
 				}
 				lwm = *dbConfig.CacheConfig.ChannelCacheConfig.LowWatermarkPercent
 			}
 			if lwm >= hwm {
-				errorMessages = append(errorMessages, fmt.Errorf("cache.channel_cache.compact_high_watermark_pct (%v) must be greater than cache.channel_cache.compact_low_watermark_pct (%v)", hwm, lwm))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("cache.channel_cache.compact_high_watermark_pct (%v) must be greater than cache.channel_cache.compact_low_watermark_pct (%v)", hwm, lwm))
 			}
 
 		}
@@ -438,7 +437,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 
 			if dbConfig.CacheConfig.RevCacheConfig.ShardCount != nil {
 				if *dbConfig.CacheConfig.RevCacheConfig.ShardCount < 1 {
-					errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.rev_cache.shard_count", 1))
+					errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg, "cache.rev_cache.shard_count", 1))
 				}
 			}
 		}
@@ -453,14 +452,14 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 	// Import validation
 	autoImportEnabled, err := dbConfig.AutoImportEnabled()
 	if err != nil {
-		errorMessages = append(errorMessages, err)
+		errorMessages = multierror.Append(errorMessages, err)
 	}
 	if dbConfig.FeedType == base.TapFeedType && autoImportEnabled == true {
-		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("Invalid configuration for Sync Gw. TAP feed type can not be used with auto-import"))
 	}
 
 	if dbConfig.AutoImport != nil && autoImportEnabled && !dbConfig.UseXattrs() {
-		errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled"))
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled"))
 	}
 
 	if dbConfig.ImportPartitions != nil {
@@ -468,11 +467,11 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 			base.Warnf(eeOnlyWarningMsg, "import_partitions", *dbConfig.ImportPartitions, nil)
 			dbConfig.ImportPartitions = nil
 		} else if !dbConfig.UseXattrs() {
-			errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled"))
 		} else if !autoImportEnabled {
-			errorMessages = append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but import_docs disabled"))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Invalid configuration - import_partitions set, but import_docs disabled"))
 		} else if *dbConfig.ImportPartitions < 1 || *dbConfig.ImportPartitions > 1024 {
-			errorMessages = append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "import_partitions", "1-1024"))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf(rangeValueErrorMsg, "import_partitions", "1-1024"))
 		}
 	}
 
@@ -484,16 +483,11 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) []error {
 
 }
 
-func (dbConfig *DbConfig) validateSgDbConfig() []error {
-
-	errorMessages := make([]error, 0)
-
+func (dbConfig *DbConfig) validateSgDbConfig() (errorMessages *multierror.Error) {
 	if err := dbConfig.validate(); err != nil {
-		errorMessages = append(errorMessages, err...)
+		errorMessages = multierror.Append(errorMessages, err)
 	}
-
 	return errorMessages
-
 }
 
 // Checks for deprecated cache config options and if they are set it will return a warning. If the old one is set and
@@ -664,7 +658,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	return base.WrapJSONUnknownFieldErr(err)
 }
 
-func (config *ServerConfig) setupAndValidateDatabases() []error {
+func (config *ServerConfig) setupAndValidateDatabases() (errs *multierror.Error) {
 	if config == nil {
 		return nil
 	}
@@ -672,25 +666,24 @@ func (config *ServerConfig) setupAndValidateDatabases() []error {
 	for name, dbConfig := range config.Databases {
 
 		if err := dbConfig.setup(name); err != nil {
-			return []error{err}
+			return multierror.Append(errs, err)
 		}
 
-		if err := dbConfig.validateSgDbConfig(); err != nil && len(err) > 0 {
-			return err
+		if errs = dbConfig.validateSgDbConfig(); errs != nil {
+			return errs
 		}
 	}
 	return nil
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors
-func (config *ServerConfig) validate() []error {
-	errorMessages := make([]error, 0)
-
+func (config *ServerConfig) validate() (errorMessages *multierror.Error) {
 	if config.Unsupported != nil && config.Unsupported.StatsLogFrequencySecs != nil {
 		if *config.Unsupported.StatsLogFrequencySecs == 0 {
 			// explicitly disabled
 		} else if *config.Unsupported.StatsLogFrequencySecs < 10 {
-			errorMessages = append(errorMessages, fmt.Errorf(minValueErrorMsg, "unsupported.stats_log_freq_secs", 10))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg,
+				"unsupported.stats_log_freq_secs", 10))
 		}
 	}
 
@@ -1096,7 +1089,7 @@ func RunServer(config *ServerConfig) {
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 
-func validateServerContext(sc *ServerContext) (errors []error) {
+func validateServerContext(sc *ServerContext) (errors *multierror.Error) {
 	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc.databases_))
 	for _, dbContext := range sc.databases_ {
 		if uuid, err := dbContext.Bucket.UUID(); err == nil {
@@ -1106,7 +1099,7 @@ func validateServerContext(sc *ServerContext) (errors []error) {
 	sharedBuckets := sharedBuckets(bucketUUIDToDBContext)
 	for _, sharedBucket := range sharedBuckets {
 		sharedBucketError := &SharedBucketError{sharedBucket}
-		errors = append(errors, sharedBucketError)
+		errors = multierror.Append(errors, sharedBucketError)
 		messageFormat := "Bucket %q is shared among databases %s. " +
 			"This may result in unexpected behaviour if security is not defined consistently."
 		base.Warnf(messageFormat, base.MD(sharedBucket.bucketName), base.MD(sharedBucket.dbNames))
@@ -1221,11 +1214,11 @@ func ServerMain() {
 	}
 
 	// Validation
-	var errorMsgs = make([]error, 0)
-	errorMsgs = append(errorMsgs, config.validate()...)
-	errorMsgs = append(errorMsgs, config.setupAndValidateDatabases()...)
-	if len(errorMsgs) > 0 {
-		for _, err := range errorMsgs {
+	var errorMsgs *multierror.Error
+	errorMsgs = multierror.Append(errorMsgs, config.validate())
+	errorMsgs = multierror.Append(errorMsgs, config.setupAndValidateDatabases())
+	if errorMsgs != nil {
+		for _, err := range errorMsgs.Errors {
 			base.Errorf("Error during config validation: %v", err)
 		}
 		base.Fatalf("Error(s) during config validation")

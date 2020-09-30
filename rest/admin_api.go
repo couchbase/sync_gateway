@@ -574,8 +574,8 @@ func (h *handler) handleSGCollect() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to parse request body: %v", err)
 	}
 
-	if errs := params.Validate(); len(errs) > 0 {
-		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %#v", errs)
+	if errs := params.Validate(); errs != nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid options used for sgcollect_info: %v", errs)
 	}
 
 	zipFilename := sgcollectFilename()

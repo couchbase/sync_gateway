@@ -52,8 +52,7 @@ func TestSgcollectOptionsValidateValid(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			errs := test.options.Validate()
-			assert.Len(t, errs, 0)
+			assert.Nil(t, test.options.Validate())
 		})
 	}
 }
@@ -119,10 +118,10 @@ func TestSgcollectOptionsValidateInvalid(t *testing.T) {
 			errs := test.options.Validate()
 
 			// make sure we get at least one error for the given invalid options.
-			assert.True(t, len(errs) > 0)
+			assert.NotNil(t, errs)
 
 			// check each error matches the expected string.
-			for _, err := range errs {
+			for _, err := range errs.Errors {
 				assert.Contains(ts, err.Error(), test.errContains)
 			}
 		})

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"flag"
 	"io/ioutil"
 	"net/http"
@@ -117,8 +118,8 @@ func TestConfigValidation(t *testing.T) {
 			assert.NoError(tt, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
-				require.Len(t, errorMessages, 1)
-				assert.EqualError(tt, errorMessages[0], test.err)
+				require.NotNil(t, errorMessages)
+				assert.EqualError(tt, errorMessages.Errors[0], test.err)
 			} else {
 				assert.Nil(t, errorMessages)
 			}
@@ -264,8 +265,8 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 			assert.NoError(tt, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
-				require.Len(tt, errorMessages, 1)
-				assert.EqualError(tt, errorMessages[0], test.err)
+				require.NotNil(tt, errorMessages)
+				assert.EqualError(tt, errorMessages.Errors[0], test.err)
 			} else {
 				assert.Nil(tt, errorMessages)
 			}
@@ -626,19 +627,19 @@ func TestServerConfigValidate(t *testing.T) {
 	statsLogFrequencySecs := uint(9)
 	unsupported := &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc := &ServerConfig{Unsupported: unsupported}
-	assert.Len(t, sc.validate(), 1)
+	assert.NotNil(t, sc.validate())
 
 	// Valid configuration value for StatsLogFrequencySecs
 	statsLogFrequencySecs = uint(10)
 	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc = &ServerConfig{Unsupported: unsupported}
-	assert.Len(t, sc.validate(), 0)
+	assert.Nil(t, sc.validate())
 
 	// Explicitly disabled
 	statsLogFrequencySecs = uint(0)
 	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc = &ServerConfig{Unsupported: unsupported}
-	assert.Len(t, sc.validate(), 0)
+	assert.Nil(t, sc.validate())
 }
 
 func TestSetupAndValidateDatabases(t *testing.T) {
@@ -655,8 +656,8 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 
 	sc = &ServerConfig{Databases: databases}
 	errs = sc.setupAndValidateDatabases()
-	assert.Len(t, errs, 1)
-	assert.Contains(t, errs[0].Error(), "invalid control character in URL")
+	assert.NotNil(t, errs)
+	assert.Contains(t, errs.Errors[0].Error(), "invalid control character in URL")
 }
 
 func TestParseCommandLine(t *testing.T) {
@@ -906,8 +907,8 @@ func TestValidateServerContext(t *testing.T) {
 		},
 	}
 
-	require.Len(t, config.validate(), 0, "Unexpected error while validating ServerConfig")
-	require.Len(t, config.setupAndValidateDatabases(), 0, "Unexpected error while validating databases")
+	require.Nil(t, config.validate(), "Unexpected error while validating ServerConfig")
+	require.Nil(t, config.setupAndValidateDatabases(), "Unexpected error while validating databases")
 
 	sc := NewServerContext(config)
 	defer sc.Close()
@@ -917,10 +918,11 @@ func TestValidateServerContext(t *testing.T) {
 	}
 
 	sharedBucketErrors := validateServerContext(sc)
-	SharedBucketError, ok := sharedBucketErrors[0].(*SharedBucketError)
-	require.True(t, ok)
-	assert.Equal(t, tb1.BucketSpec.BucketName, SharedBucketError.GetSharedBucket().bucketName)
-	assert.Subset(t, []string{"db1", "db2"}, SharedBucketError.GetSharedBucket().dbNames)
+	require.NotNil(t, sharedBucketErrors)
+	var sharedBucketError *SharedBucketError
+	require.True(t, errors.As(sharedBucketErrors.Errors[0], &sharedBucketError))
+	assert.Equal(t, tb1.BucketSpec.BucketName, sharedBucketError.GetSharedBucket().bucketName)
+	assert.Subset(t, []string{"db1", "db2"}, sharedBucketError.GetSharedBucket().dbNames)
 }
 
 func TestParseCommandLineWithIllegalOptionBucket(t *testing.T) {
