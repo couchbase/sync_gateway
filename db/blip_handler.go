@@ -49,6 +49,8 @@ const (
 
 type blipHandlerFunc func(*blipHandler, *blip.Message) error
 
+var ProposeChangesErr = base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
+
 // userBlipHandler wraps another blip handler with code that reloads the user object when the user
 // or the user's roles have changed, to make sure that the replication has the latest channel access grants.
 // Uses a userChangeWaiter to detect changes to the user or roles.  Note that in the case of a pushed document
@@ -355,6 +357,10 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				base.ErrorfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
+				if bh.handleChangesErrCallback != nil && strings.Contains(err.Error(), ProposeChangesErr.Message) {
+					err = ProposeChangesErr
+					bh.handleChangesErrCallback(err)
+				}
 			}
 
 			// Sent all of the revs for this changes batch, allow another changes batch to be sent.
@@ -390,7 +396,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 	}
 
 	if !ignoreNoConflicts && !bh.db.AllowConflicts() {
-		return base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
+		return ProposeChangesErr
 	}
 
 	var changeList [][]interface{}

@@ -51,6 +51,8 @@ func (apr *ActivePushReplicator) Start() error {
 	return err
 }
 
+var PreHydrogenTargetAllowConflictsError = errors.New("target cluster has allow_conflicts false. Update this to allow_conflicts true or upgrade to 2.8 to enable V2")
+
 // _connect opens up a connection, and starts replicating.
 func (apr *ActivePushReplicator) _connect() error {
 	var err error
@@ -92,6 +94,16 @@ func (apr *ActivePushReplicator) _connect() error {
 	ignoreNoConflicts := true
 	if apr.config.DisableIgnoreNoConflicts {
 		ignoreNoConflicts = false
+	}
+
+	apr.blipSyncContext.handleChangesErrCallback = func(err error) {
+		if err == ProposeChangesErr {
+			_ = apr.setError(PreHydrogenTargetAllowConflictsError)
+			err = apr.stopAndDisconnect()
+			if err != nil {
+				base.Errorf("Failed to stop and disconnect replication: %v", err)
+			}
+		}
 	}
 
 	apr.activeSendChanges.Set(true)

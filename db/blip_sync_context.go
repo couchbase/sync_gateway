@@ -110,6 +110,10 @@ type BlipSyncContext struct {
 	// before they've processed the revs for previous batches. Keeping this >1 allows the client to be fed a constant supply of rev messages,
 	// without making Sync Gateway buffer a bunch of stuff in memory too far in advance of the client being able to receive the revs.
 	inFlightChangesThrottle chan struct{}
+
+	// In the event of a handleChangesResponse error this callback will be ran if not null with the error passed in.
+	// Allows an error to be handled.
+	handleChangesErrCallback func(err error)
 }
 
 func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {

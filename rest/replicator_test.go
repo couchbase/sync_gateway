@@ -4566,7 +4566,7 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	}
 }
 
-func TestSendToOldClientIgnoreConflictsFalse(t *testing.T) {
+func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
@@ -4608,6 +4608,9 @@ func TestSendToOldClientIgnoreConflictsFalse(t *testing.T) {
 		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
 	})
 
+	defer func() {
+		require.NoError(t, ar.Stop())
+	}()
 	require.NoError(t, ar.Start())
 
 	assert.Equal(t, errorCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value())
@@ -4622,6 +4625,9 @@ func TestSendToOldClientIgnoreConflictsFalse(t *testing.T) {
 		return false
 	})
 	assert.NoError(t, err)
+
+	assert.Equal(t, db.ReplicationStateStopped, ar.GetStatus().Status)
+	assert.Equal(t, db.PreHydrogenTargetAllowConflictsError.Error(), ar.GetStatus().ErrorMessage)
 }
 
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
