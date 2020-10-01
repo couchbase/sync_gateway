@@ -9,6 +9,7 @@ import (
 
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSgcollectFilename(t *testing.T) {
@@ -52,7 +53,7 @@ func TestSgcollectOptionsValidateValid(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Nil(t, test.options.Validate())
+			assert.Nil(t, test.options.Validate().ErrorOrNil())
 		})
 	}
 }
@@ -118,7 +119,7 @@ func TestSgcollectOptionsValidateInvalid(t *testing.T) {
 			errs := test.options.Validate()
 
 			// make sure we get at least one error for the given invalid options.
-			assert.NotNil(t, errs)
+			require.NotNil(t, errs.ErrorOrNil())
 
 			// check each error matches the expected string.
 			for _, err := range errs.Errors {

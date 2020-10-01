@@ -484,7 +484,7 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 }
 
 func (dbConfig *DbConfig) validateSgDbConfig() (errorMessages *multierror.Error) {
-	if err := dbConfig.validate(); err != nil {
+	if err := dbConfig.validate(); err.ErrorOrNil() != nil {
 		errorMessages = multierror.Append(errorMessages, err)
 	}
 	return errorMessages
@@ -669,7 +669,7 @@ func (config *ServerConfig) setupAndValidateDatabases() (errs *multierror.Error)
 			return multierror.Append(errs, err)
 		}
 
-		if errs = dbConfig.validateSgDbConfig(); errs != nil {
+		if errs = dbConfig.validateSgDbConfig(); errs.ErrorOrNil() != nil {
 			return errs
 		}
 	}
@@ -1217,7 +1217,7 @@ func ServerMain() {
 	var errorMsgs *multierror.Error
 	errorMsgs = multierror.Append(errorMsgs, config.validate())
 	errorMsgs = multierror.Append(errorMsgs, config.setupAndValidateDatabases())
-	if errorMsgs != nil {
+	if errorMsgs.ErrorOrNil() != nil {
 		for _, err := range errorMsgs.Errors {
 			base.Errorf("Error during config validation: %v", err)
 		}
