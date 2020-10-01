@@ -3213,13 +3213,9 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc5", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 
-	time.Sleep(100 * time.Millisecond)
-
 	// Normal changes
-	changesJSON = `{"style":"all_docs"}`
-	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes, err = rt.WaitForChanges(10, "/db/_changes?style=all_docs", "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
 	require.Len(t, changes.Results, 10)
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
