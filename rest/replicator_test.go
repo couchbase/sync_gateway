@@ -1989,8 +1989,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 		remoteRevisionBody      []byte
 		remoteRevID             string
 		conflictResolver        string
-		expectedLocalBody       []byte
-		expectedLocalRevID      string
+		expectedBody            []byte
+		expectedRevID           string
 		expectedTombstonedRevID string
 	}{
 		{
@@ -2000,8 +2000,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			remoteRevisionBody: []byte(`{"source": "remote"}`),
 			remoteRevID:        "1-b",
 			conflictResolver:   `function(conflict) {return conflict.RemoteDocument;}`,
-			expectedLocalBody:  []byte(`{"source": "remote"}`),
-			expectedLocalRevID: "1-b",
+			expectedBody:       []byte(`{"source": "remote"}`),
+			expectedRevID:      "1-b",
 		},
 		{
 			name:               "merge",
@@ -2014,8 +2014,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 							mergedDoc.source = "merged";
 							return mergedDoc;
 						}`,
-			expectedLocalBody:  []byte(`{"source": "merged"}`),
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
+			expectedBody:  []byte(`{"source": "merged"}`),
+			expectedRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"merged"}`)), // rev for merged body, with parent 1-b
 		},
 		{
 			name:               "localWins",
@@ -2024,8 +2024,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			remoteRevisionBody: []byte(`{"source": "remote"}`),
 			remoteRevID:        "1-b",
 			conflictResolver:   `function(conflict) {return conflict.LocalDocument;}`,
-			expectedLocalBody:  []byte(`{"source": "local"}`),
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
+			expectedBody:       []byte(`{"source": "local"}`),
+			expectedRevID:      db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
 		},
 		{
 			name:               "localWinsRemoteTombstone",
@@ -2034,8 +2034,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			remoteRevisionBody: []byte(`{"_deleted": true}`),
 			remoteRevID:        "1-b",
 			conflictResolver:   `function(conflict) {return conflict.LocalDocument;}`,
-			expectedLocalBody:  []byte(`{"source": "local"}`),
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
+			expectedBody:       []byte(`{"source": "local"}`),
+			expectedRevID:      db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
 		},
 	}
 
@@ -2067,7 +2067,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.NoError(t, json.Unmarshal(test.remoteRevisionBody, &remoteRevisionBody))
 
 			var expectedLocalBody db.Body
-			assert.NoError(t, json.Unmarshal(test.expectedLocalBody, &expectedLocalBody))
+			assert.NoError(t, json.Unmarshal(test.expectedBody, &expectedLocalBody))
 
 			// Create revision on rt2 (remote)
 			docID := test.name
@@ -2125,11 +2125,12 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
 
 			// Validate results on the local (rt1)
+			assert.NoError(t, rt1.waitForRev(docID, test.expectedRevID))
 			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
+			assert.Equal(t, test.expectedRevID, changesResults.Results[0].Changes[0]["rev"])
 			log.Printf("Changes response is %+v", changesResults)
 
 			rawDocResponse := rt1.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, "")
@@ -2140,7 +2141,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
-			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
+			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
 			assert.Equal(t, expectedLocalBody, doc.Body())
 			log.Printf("Doc %s is %+v", docID, doc)
 			log.Printf("Doc %s attachments are %+v", docID, doc.Attachments)
@@ -2166,16 +2167,17 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, 1, activeCount)
 
 			// Validate results on the remote (rt2)
+			assert.NoError(t, rt2.waitForRev(docID, test.expectedRevID))
 			changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
-			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
+			assert.Equal(t, test.expectedRevID, changesResults.Results[0].Changes[0]["rev"])
 			log.Printf("Changes response is %+v", changesResults)
 
 			doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
-			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
+			assert.Equal(t, test.expectedRevID, doc.SyncData.CurrentRev)
 			assert.Equal(t, expectedLocalBody, doc.Body())
 			log.Printf("Remote Doc %s is %+v", docID, doc)
 			log.Printf("Remote Doc %s attachments are %+v", docID, doc.Attachments)
