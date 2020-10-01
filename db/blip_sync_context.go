@@ -111,9 +111,9 @@ type BlipSyncContext struct {
 	// without making Sync Gateway buffer a bunch of stuff in memory too far in advance of the client being able to receive the revs.
 	inFlightChangesThrottle chan struct{}
 
-	// In the event of a handleChangesResponse error this callback will be ran if not null with the error passed in.
-	// Allows an error to be handled.
-	handleChangesErrCallback func(err error)
+	// fatalErrorCallback is called by the replicator code when the replicator using this blipSyncContext should be
+	// stopped
+	fatalErrorCallback func(err error)
 }
 
 func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
