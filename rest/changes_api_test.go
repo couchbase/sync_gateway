@@ -3177,16 +3177,9 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictActive"}], "new_edits":false}`)
 	assertStatus(t, response, 201)
 
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
 	// Get pre-delete changes
-	changesJSON := `{"style":"all_docs"}`
-	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
+	changes, err := rt.WaitForChanges(5, "/db/_changes?style=all_docs", "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
 	require.Len(t, changes.Results, 5)
 
 	// Delete
@@ -3201,7 +3194,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
 	assertStatus(t, response, 201)
 
-	//Create additional active docs
+	// Create additional active docs
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc1", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc2", `{"channel":["PBS"]}`)
@@ -3225,9 +3218,9 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	}
 
 	// Active only NO Limit, POST
-	changesJSON = `{"style":"all_docs", "active_only":true}`
+	changesJSON := `{"style":"all_docs", "active_only":true}`
 	changes.Results = nil
-	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Len(t, changes.Results, 8)
