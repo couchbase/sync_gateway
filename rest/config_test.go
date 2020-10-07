@@ -934,10 +934,12 @@ func TestValidateServerContext(t *testing.T) {
 	}
 
 	sharedBucketErrors := validateServerContext(sc)
-	require.NotNil(t, sharedBucketErrors.ErrorOrNil())
+	require.NotNil(t, sharedBucketErrors)
+	multiError, ok := sharedBucketErrors.(*multierror.Error)
+	require.NotNil(t, ok)
+	require.Equal(t, multiError.Len(), 1)
 	var sharedBucketError *SharedBucketError
-	require.Equal(t, sharedBucketErrors.Len(), 1)
-	require.True(t, errors.As(sharedBucketErrors.Errors[0], &sharedBucketError))
+	require.True(t, errors.As(multiError.Errors[0], &sharedBucketError))
 	assert.Equal(t, tb1.BucketSpec.BucketName, sharedBucketError.GetSharedBucket().bucketName)
 	assert.Subset(t, []string{"db1", "db2"}, sharedBucketError.GetSharedBucket().dbNames)
 }

@@ -1089,7 +1089,7 @@ func RunServer(config *ServerConfig) {
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
 }
 
-func validateServerContext(sc *ServerContext) (errors *multierror.Error) {
+func validateServerContext(sc *ServerContext) (errors error) {
 	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc.databases_))
 	for _, dbContext := range sc.databases_ {
 		if uuid, err := dbContext.Bucket.UUID(); err == nil {
