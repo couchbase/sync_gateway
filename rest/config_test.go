@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -118,9 +119,11 @@ func TestConfigValidation(t *testing.T) {
 			assert.NoError(tt, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
-				require.NotNil(t, errorMessages.ErrorOrNil())
-				require.Equal(t, errorMessages.Len(), 1)
-				assert.EqualError(tt, errorMessages.Errors[0], test.err)
+				require.NotNil(t, errorMessages)
+				multiError, ok := errorMessages.(*multierror.Error)
+				require.True(t, ok)
+				require.Equal(t, multiError.Len(), 1)
+				assert.EqualError(tt, multiError.Errors[0], test.err)
 			} else {
 				assert.Nil(t, errorMessages)
 			}
@@ -266,9 +269,12 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 			assert.NoError(tt, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
-				require.NotNil(tt, errorMessages.ErrorOrNil())
-				require.Equal(t, errorMessages.Len(), 1)
-				assert.EqualError(tt, errorMessages.Errors[0], test.err)
+				require.NotNil(t, errorMessages)
+				multiError, ok := errorMessages.(*multierror.Error)
+				require.True(t, ok)
+				require.Equal(t, multiError.Len(), 1)
+				assert.EqualError(tt, multiError.Errors[0], test.err)
+
 			} else {
 				assert.Nil(tt, errorMessages)
 			}
@@ -630,21 +636,23 @@ func TestServerConfigValidate(t *testing.T) {
 	unsupported := &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc := &ServerConfig{Unsupported: unsupported}
 	validationErrors := sc.validate()
-	require.NotNil(t, validationErrors.ErrorOrNil())
-	require.Equal(t, validationErrors.Len(), 1)
-	assert.Contains(t, validationErrors.Errors[0].Error(), "minimum value for unsupported.stats_log_freq_secs")
+	require.NotNil(t, validationErrors)
+	multiError, ok := validationErrors.(*multierror.Error)
+	require.True(t, ok)
+	require.Equal(t, multiError.Len(), 1)
+	assert.Contains(t, multiError.Errors[0].Error(), "minimum value for unsupported.stats_log_freq_secs")
 
 	// Valid configuration value for StatsLogFrequencySecs
 	statsLogFrequencySecs = uint(10)
 	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc = &ServerConfig{Unsupported: unsupported}
-	assert.Nil(t, sc.validate().ErrorOrNil())
+	assert.Nil(t, sc.validate())
 
 	// Explicitly disabled
 	statsLogFrequencySecs = uint(0)
 	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc = &ServerConfig{Unsupported: unsupported}
-	assert.Nil(t, sc.validate().ErrorOrNil())
+	assert.Nil(t, sc.validate())
 }
 
 func TestSetupAndValidateDatabases(t *testing.T) {
@@ -661,9 +669,11 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 
 	sc = &ServerConfig{Databases: databases}
 	errs = sc.setupAndValidateDatabases()
-	require.NotNil(t, errs.ErrorOrNil())
-	require.Equal(t, errs.Len(), 1)
-	assert.Contains(t, errs.Errors[0].Error(), "invalid control character in URL")
+	require.NotNil(t, errs)
+	multiError, ok := errs.(*multierror.Error)
+	require.True(t, ok)
+	require.Equal(t, multiError.Len(), 1)
+	assert.Contains(t, multiError.Errors[0].Error(), "invalid control character in URL")
 }
 
 func TestParseCommandLine(t *testing.T) {
@@ -913,8 +923,8 @@ func TestValidateServerContext(t *testing.T) {
 		},
 	}
 
-	require.Nil(t, config.validate().ErrorOrNil(), "Unexpected error while validating ServerConfig")
-	require.Nil(t, config.setupAndValidateDatabases().ErrorOrNil(), "Unexpected error while validating databases")
+	require.Nil(t, config.validate(), "Unexpected error while validating ServerConfig")
+	require.Nil(t, config.setupAndValidateDatabases(), "Unexpected error while validating databases")
 
 	sc := NewServerContext(config)
 	defer sc.Close()

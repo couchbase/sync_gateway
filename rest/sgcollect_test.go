@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +54,7 @@ func TestSgcollectOptionsValidateValid(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Nil(t, test.options.Validate().ErrorOrNil())
+			assert.Nil(t, test.options.Validate())
 		})
 	}
 }
@@ -117,12 +118,15 @@ func TestSgcollectOptionsValidateInvalid(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(ts *testing.T) {
 			errs := test.options.Validate()
+			require.NotNil(t, errs)
+			multiError, ok := errs.(*multierror.Error)
+			require.True(t, ok)
 
 			// make sure we get at least one error for the given invalid options.
-			require.NotNil(t, errs.ErrorOrNil())
+			require.NotNil(t, multiError.ErrorOrNil())
 
 			// check each error matches the expected string.
-			for _, err := range errs.Errors {
+			for _, err := range multiError.Errors {
 				assert.Contains(ts, err.Error(), test.errContains)
 			}
 		})

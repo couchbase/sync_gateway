@@ -198,7 +198,7 @@ func validateOutputDirectory(dir string) error {
 }
 
 // Validate ensures the options are OK to use in sgcollect_info.
-func (c *sgCollectOptions) Validate() (errs *multierror.Error) {
+func (c *sgCollectOptions) Validate() (errs error) {
 	if c.OutputDirectory != "" {
 		if err := validateOutputDirectory(c.OutputDirectory); err != nil {
 			errs = multierror.Append(errs, err)

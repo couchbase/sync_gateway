@@ -352,11 +352,11 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 	return false, fmt.Errorf("Unrecognized value for import_docs: %#v. Valid values are true and false.", dbConfig.AutoImport)
 }
 
-func (dbConfig *DbConfig) validate() *multierror.Error {
+func (dbConfig *DbConfig) validate() error {
 	return dbConfig.validateVersion(base.IsEnterpriseEdition())
 }
 
-func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessages *multierror.Error) {
+func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessages error) {
 	// Make sure a non-zero compact_interval_days config is within the valid range
 	if val := dbConfig.CompactIntervalDays; val != nil && *val != 0 &&
 		(*val < db.CompactIntervalMinDays || *val > db.CompactIntervalMaxDays) {
@@ -483,8 +483,8 @@ func (dbConfig *DbConfig) validateVersion(isEnterpriseEdition bool) (errorMessag
 
 }
 
-func (dbConfig *DbConfig) validateSgDbConfig() (errorMessages *multierror.Error) {
-	if err := dbConfig.validate(); err.ErrorOrNil() != nil {
+func (dbConfig *DbConfig) validateSgDbConfig() (errorMessages error) {
+	if err := dbConfig.validate(); err != nil {
 		errorMessages = multierror.Append(errorMessages, err)
 	}
 	return errorMessages
@@ -658,7 +658,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	return base.WrapJSONUnknownFieldErr(err)
 }
 
-func (config *ServerConfig) setupAndValidateDatabases() (errs *multierror.Error) {
+func (config *ServerConfig) setupAndValidateDatabases() (errs error) {
 	if config == nil {
 		return nil
 	}
@@ -669,7 +669,7 @@ func (config *ServerConfig) setupAndValidateDatabases() (errs *multierror.Error)
 			return multierror.Append(errs, err)
 		}
 
-		if errs = dbConfig.validateSgDbConfig(); errs.ErrorOrNil() != nil {
+		if errs = dbConfig.validateSgDbConfig(); errs != nil {
 			return errs
 		}
 	}
@@ -677,7 +677,7 @@ func (config *ServerConfig) setupAndValidateDatabases() (errs *multierror.Error)
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors
-func (config *ServerConfig) validate() (errorMessages *multierror.Error) {
+func (config *ServerConfig) validate() (errorMessages error) {
 	if config.Unsupported != nil && config.Unsupported.StatsLogFrequencySecs != nil {
 		if *config.Unsupported.StatsLogFrequencySecs == 0 {
 			// explicitly disabled
@@ -1214,13 +1214,11 @@ func ServerMain() {
 	}
 
 	// Validation
-	var errorMsgs *multierror.Error
-	errorMsgs = multierror.Append(errorMsgs, config.validate())
-	errorMsgs = multierror.Append(errorMsgs, config.setupAndValidateDatabases())
-	if errorMsgs.ErrorOrNil() != nil {
-		for _, err := range errorMsgs.Errors {
-			base.Errorf("Error during config validation: %v", err)
-		}
+	var multiError error
+	multiError = multierror.Append(multiError, config.validate())
+	multiError = multierror.Append(multiError, config.setupAndValidateDatabases())
+	if multiError != nil {
+		base.Errorf("Error during config validation: %v", multiError)
 		base.Fatalf("Error(s) during config validation")
 	}
 
