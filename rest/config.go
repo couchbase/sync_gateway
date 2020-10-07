@@ -1214,10 +1214,10 @@ func ServerMain() {
 	}
 
 	// Validation
-	var multiError error
+	var multiError *multierror.Error
 	multiError = multierror.Append(multiError, config.validate())
 	multiError = multierror.Append(multiError, config.setupAndValidateDatabases())
-	if multiError != nil {
+	if multiError.ErrorOrNil() != nil {
 		base.Errorf("Error during config validation: %v", multiError)
 		base.Fatalf("Error(s) during config validation")
 	}
