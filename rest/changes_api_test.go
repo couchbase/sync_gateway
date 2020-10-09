@@ -1420,8 +1420,6 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
 	assertStatus(t, response, 201)
 
-	time.Sleep(100 * time.Millisecond)
-
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
 	err = rt.WaitForCondition(func() bool {
