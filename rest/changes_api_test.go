@@ -1356,7 +1356,117 @@ func TestChangesActiveOnlyInteger(t *testing.T) {
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
 	defer rt.Close()
-	changesActiveOnly(t, rt)
+
+	// Create user:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	// Put several documents
+	var body db.Body
+	response := rt.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	deletedRev := body["rev"].(string)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/removedDoc", `{"channel":["PBS"]}`)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	removedRev := body["rev"].(string)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/activeDoc", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", `{"channel":["PBS","ABC"]}`)
+	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	partialRemovalRev := body["rev"].(string)
+	assertStatus(t, response, 201)
+
+	response = rt.SendAdminRequest("PUT", "/db/conflictedDoc", `{"channel":["PBS"]}`)
+	assertStatus(t, response, 201)
+
+	// Create a conflict, then tombstone it
+	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictTombstone"}], "new_edits":false}`)
+	assertStatus(t, response, 201)
+	response = rt.SendAdminRequest("DELETE", "/db/conflictedDoc?rev=1-conflictTombstone", "")
+	assertStatus(t, response, 200)
+
+	// Create a conflict, and don't tombstone it
+	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictActive"}], "new_edits":false}`)
+	assertStatus(t, response, 201)
+
+	var changes struct {
+		Results  []db.ChangeEntry
+		Last_Seq interface{}
+	}
+
+	// Pre-delete changes
+	changesJSON := `{"style":"all_docs"}`
+	err = rt.WaitForCondition(func() bool {
+		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.NoError(t, err, "Error unmarshalling changes response")
+		return len(changes.Results) == 5
+	})
+	assert.NoError(t, err)
+
+	// Delete
+	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/deletedDoc?rev=%s", deletedRev), "")
+	assertStatus(t, response, 200)
+
+	// Removed
+	response = rt.SendAdminRequest("PUT", "/db/removedDoc", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, removedRev))
+	assertStatus(t, response, 201)
+
+	// Partially removed
+	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
+	assertStatus(t, response, 201)
+
+	// Normal changes
+	changesJSON = `{"style":"all_docs"}`
+	err = rt.WaitForCondition(func() bool {
+		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.NoError(t, err, "Error unmarshalling changes response")
+		return len(changes.Results) == 5
+	})
+	assert.NoError(t, err)
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+		if entry.ID == "conflictedDoc" {
+			require.Len(t, entry.Changes, 3)
+		}
+	}
+
+	// Active only, POST
+	changesJSON = `{"style":"all_docs", "active_only":true}`
+	changes.Results = nil
+	err = rt.WaitForCondition(func() bool {
+		changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
+		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.NoError(t, err, "Error unmarshalling changes response")
+		return len(changes.Results) == 3
+	})
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+		// validate conflicted handling
+		if entry.ID == "conflictedDoc" {
+			require.Len(t, entry.Changes, 2)
+		}
+	}
+
+	// Active only, GET
+	changes.Results = nil
+	err = rt.WaitForCondition(func() bool {
+		changesResponse := rt.Send(requestByUser("GET", "/db/_changes?style=all_docs&active_only=true", "", "bernard"))
+		err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
+		assert.NoError(t, err, "Error unmarshalling changes response")
+		return len(changes.Results) == 3
+	})
+	for _, entry := range changes.Results {
+		log.Printf("Entry:%+v", entry)
+		if entry.ID == "conflictedDoc" {
+			require.Len(t, entry.Changes, 2)
+		}
+	}
 }
 
 func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
@@ -1772,112 +1882,6 @@ func TestChangesIncludeDocs(t *testing.T) {
 			db.AssertEqualBodies(t, expectedBody, resultBody)
 		} else {
 			assert.Equal(t, expectedChange.Doc, result.Doc)
-		}
-	}
-}
-
-// Test _changes with channel filter
-func changesActiveOnly(t *testing.T, rt *RestTester) {
-
-	// Create user:
-	a := rt.ServerContext().Database("db").Authenticator()
-	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
-	assert.NoError(t, err)
-	assert.NoError(t, a.Save(bernard))
-
-	// Put several documents
-	var body db.Body
-	response := rt.SendAdminRequest("PUT", "/db/deletedDoc", `{"channel":["PBS"]}`)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	deletedRev := body["rev"].(string)
-	assertStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/removedDoc", `{"channel":["PBS"]}`)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	removedRev := body["rev"].(string)
-	assertStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/activeDoc", `{"channel":["PBS"]}`)
-	assertStatus(t, response, 201)
-	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", `{"channel":["PBS","ABC"]}`)
-	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
-	partialRemovalRev := body["rev"].(string)
-	assertStatus(t, response, 201)
-
-	response = rt.SendAdminRequest("PUT", "/db/conflictedDoc", `{"channel":["PBS"]}`)
-	assertStatus(t, response, 201)
-
-	// Create a conflict, then tombstone it
-	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictTombstone"}], "new_edits":false}`)
-	assertStatus(t, response, 201)
-	response = rt.SendAdminRequest("DELETE", "/db/conflictedDoc?rev=1-conflictTombstone", "")
-	assertStatus(t, response, 200)
-
-	// Create a conflict, and don't tombstone it
-	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictActive"}], "new_edits":false}`)
-	assertStatus(t, response, 201)
-
-	var changes struct {
-		Results  []db.ChangeEntry
-		Last_Seq interface{}
-	}
-
-	// Pre-delete changes
-	changesJSON := `{"style":"all_docs"}`
-	changesResponse := rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 5)
-
-	// Delete
-	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/deletedDoc?rev=%s", deletedRev), "")
-	assertStatus(t, response, 200)
-
-	// Removed
-	response = rt.SendAdminRequest("PUT", "/db/removedDoc", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, removedRev))
-	assertStatus(t, response, 201)
-
-	// Partially removed
-	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
-	assertStatus(t, response, 201)
-
-	time.Sleep(100 * time.Millisecond)
-
-	// Normal changes
-	changesJSON = `{"style":"all_docs"}`
-	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 5)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-		if entry.ID == "conflictedDoc" {
-			require.Len(t, entry.Changes, 3)
-		}
-	}
-
-	// Active only, POST
-	changesJSON = `{"style":"all_docs", "active_only":true}`
-	changes.Results = nil
-	changesResponse = rt.Send(requestByUser("POST", "/db/_changes", changesJSON, "bernard"))
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 3)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-		// validate conflicted handling
-		if entry.ID == "conflictedDoc" {
-			require.Len(t, entry.Changes, 2)
-		}
-	}
-	// Active only, GET
-	changes.Results = nil
-	changesResponse = rt.Send(requestByUser("GET", "/db/_changes?style=all_docs&active_only=true", "", "bernard"))
-	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
-	assert.NoError(t, err, "Error unmarshalling changes response")
-	require.Len(t, changes.Results, 3)
-	for _, entry := range changes.Results {
-		log.Printf("Entry:%+v", entry)
-		if entry.ID == "conflictedDoc" {
-			require.Len(t, entry.Changes, 2)
 		}
 	}
 }
