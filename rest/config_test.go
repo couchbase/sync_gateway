@@ -668,12 +668,9 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 	databases["db1"] = &DbConfig{Name: "db1", BucketConfig: *bc}
 
 	sc = &ServerConfig{Databases: databases}
-	errs = sc.setupAndValidateDatabases()
-	require.NotNil(t, errs)
-	multiError, ok := errs.(*multierror.Error)
-	require.True(t, ok)
-	require.Equal(t, multiError.Len(), 1)
-	assert.Contains(t, multiError.Errors[0].Error(), "invalid control character in URL")
+	validationError := sc.setupAndValidateDatabases()
+	require.NotNil(t, validationError)
+	assert.Contains(t, validationError.Error(), "invalid control character in URL")
 }
 
 func TestParseCommandLine(t *testing.T) {

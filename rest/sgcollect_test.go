@@ -123,7 +123,7 @@ func TestSgcollectOptionsValidateInvalid(t *testing.T) {
 			require.True(t, ok)
 
 			// make sure we get at least one error for the given invalid options.
-			require.NotNil(t, multiError.ErrorOrNil())
+			require.True(t, multiError.Len() > 0)
 
 			// check each error matches the expected string.
 			for _, err := range multiError.Errors {

@@ -666,7 +666,7 @@ func (config *ServerConfig) setupAndValidateDatabases() (errs error) {
 	for name, dbConfig := range config.Databases {
 
 		if err := dbConfig.setup(name); err != nil {
-			return multierror.Append(errs, err)
+			return err
 		}
 
 		if errs = dbConfig.validateSgDbConfig(); errs != nil {
