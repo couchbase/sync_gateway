@@ -206,7 +206,7 @@ func (apr *ActivePullReplicator) registerCheckpointerCallbacks() {
 
 	// Trigger complete for non-continuous replications when caught up
 	if !apr.config.Continuous {
-		apr.blipSyncContext.emptyChangesMessageCallback = func() {
+		apr.blipSyncContext.onReplicationComplete = func(err error) {
 			// Complete blocks waiting for pending rev messages, so needs
 			// it's own goroutine
 			go apr.Complete()
