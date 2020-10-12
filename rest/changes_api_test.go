@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -697,6 +698,104 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		assert.Equal(t, expectedChange.Changes, result.Changes)
 		assert.Equal(t, expectedChange.Deleted, result.Deleted)
 		assert.Equal(t, expectedChange.Removed, result.Removed)
+	}
+}
+
+// Ensures that changes feed goroutines blocked on a ChangeWaiter are closed when the changes feed is terminated.
+// Reproduces CBG-1113 and #1329 (even with the fix in PR #1360)
+// Tests all combinations of HTTP feed types, admin/non-admin, and with and without a manual notify to wake up.
+func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
+
+	const username = "bernard"
+
+	tests := []struct {
+		feedType     string
+		manualNotify bool
+		username     string // "" for admin
+	}{
+		{"normal", false, username},
+		{"normal", true, username},
+		{"normal", false, ""},
+		{"normal", true, ""},
+		{"continuous", false, username},
+		{"continuous", true, username},
+		{"continuous", false, ""},
+		{"continuous", true, ""},
+		{"longpoll", false, username},
+		{"longpoll", true, username},
+		{"longpoll", false, ""},
+		{"longpoll", true, ""},
+		// Can't test websocket feeds in the same way as other REST types
+		// for manual websocket testing:
+		// $ echo "{}" | wsd -url='ws://127.0.0.1:4985/db1/_changes?since=0&feed=websocket&continuous=true'
+	}
+
+	sendRequestFn := func(rt *RestTester, username string, method, resource, body string) *TestResponse {
+		if username == "" {
+			return rt.SendAdminRequest(method, resource, body)
+		}
+		return rt.Send(requestByUser(method, resource, body, username))
+	}
+
+	for _, test := range tests {
+		testName := fmt.Sprintf("%v user:%v manualNotify:%t", test.feedType, test.username, test.manualNotify)
+		t.Run(testName, func(t *testing.T) {
+			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+			defer base.Errorf("test finished")
+
+			const numChangesToSend = 1000
+
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
+
+			if test.username != "" {
+				a := rt.GetDatabase().Authenticator()
+				bernard, err := a.NewUser(username, "letmein", base.Set{})
+				require.NoError(t, err)
+				require.NoError(t, a.Save(bernard))
+			}
+
+			// Create a doc and send an initial changes
+			resp := sendRequestFn(rt, test.username, http.MethodPut, "/db/doc1", `{"foo":"bar"}`)
+			assertStatus(t, resp, http.StatusCreated)
+			c, err := rt.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			require.NoError(t, err)
+
+			lastSeq := c.Last_Seq.(string)
+			t.Logf("lastSeq: %v %v", lastSeq, c)
+
+			startGoroutines := runtime.NumGoroutine()
+			t.Logf("start goroutines: %d", startGoroutines)
+
+			// Send all of these concurrently, just to speed up testing. Not reliant on concurrency to trigger goroutine leak.
+			wg := sync.WaitGroup{}
+			for i := 0; i < numChangesToSend; i++ {
+				wg.Add(1)
+				go func() {
+					resp := sendRequestFn(rt, test.username, http.MethodGet, "/db/_changes?since="+lastSeq+"&feed="+test.feedType+"&timeout=100", "")
+					assertStatus(t, resp, http.StatusOK)
+					wg.Done()
+				}()
+			}
+			wg.Wait()
+
+			// write a doc to force change waiters to be triggered
+			if test.manualNotify {
+				resp = sendRequestFn(rt, test.username, http.MethodPut, "/db/doc2", `{"foo":"bar"}`)
+				assertStatus(t, resp, http.StatusCreated)
+				_, err := rt.WaitForChanges(1, "/db/_changes?since="+lastSeq, "", true)
+				assert.NoError(t, err)
+			}
+
+			// wait for goroutines to drop to starting value
+			endGoroutines := runtime.NumGoroutine()
+			assert.NoError(t, rt.WaitForCondition(func() bool {
+				endGoroutines = runtime.NumGoroutine()
+				return endGoroutines <= startGoroutines
+			}))
+			t.Logf("end goroutines: %d", endGoroutines)
+		})
 	}
 }
 
