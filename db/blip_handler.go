@@ -317,11 +317,15 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	})
 
 	// On forceClose, send notify to trigger immediate exit from change waiter
-	if forceClose && bh.db.User() != nil {
-		bh.db.DatabaseContext.NotifyTerminatedChanges(bh.db.User().Name())
+	if forceClose {
+		user := ""
+		if bh.db.User() != nil {
+			user = bh.db.User().Name()
+		}
+		bh.db.DatabaseContext.NotifyTerminatedChanges(user)
 	}
-	return !forceClose
 
+	return !forceClose
 }
 
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}, ignoreNoConflicts bool) error {
