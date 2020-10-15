@@ -96,7 +96,7 @@ func (apr *ActivePushReplicator) _connect() error {
 		ignoreNoConflicts = false
 	}
 
-	apr.blipSyncContext.onReplicationComplete = func(err error) {
+	apr.blipSyncContext.fatalErrorCallback = func(err error) {
 		if err == ErrUseProposeChanges {
 			_ = apr.setError(PreHydrogenTargetAllowConflictsError)
 			err = apr.stopAndDisconnect()

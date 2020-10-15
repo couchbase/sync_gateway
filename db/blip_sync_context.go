@@ -97,7 +97,7 @@ type BlipSyncContext struct {
 	sgr2PushAddExpectedSeqsCallback  func(expectedSeqs ...string)              // sgr2PushAddExpectedSeqsCallback is called after sync gateway has sent a revision, but is still awaiting an acknowledgement
 	sgr2PushProcessedSeqCallback     func(remoteSeq string)                    // sgr2PushProcessedSeqCallback is called after receiving acknowledgement of a sent revision
 	sgr2PushAlreadyKnownSeqsCallback func(alreadyKnownSeqs ...string)          // sgr2PushAlreadyKnownSeqsCallback is called to mark the sequence as being immediately processed
-	onReplicationComplete            func(err error)                           // onReplicationComplete is called when replication is complete. This is either used when empty changes is received or when error occurs
+	emptyChangesMessageCallback      func()                                    // emptyChangesMessageCallback is called when an empty changes message is received
 	replicationStats                 *BlipSyncStats                            // Replication stats
 	purgeOnRemoval                   bool                                      // Purges the document when we pull a _removed:true revision.
 	conflictResolver                 *ConflictResolver                         // Conflict resolver for active replications
@@ -110,6 +110,10 @@ type BlipSyncContext struct {
 	// before they've processed the revs for previous batches. Keeping this >1 allows the client to be fed a constant supply of rev messages,
 	// without making Sync Gateway buffer a bunch of stuff in memory too far in advance of the client being able to receive the revs.
 	inFlightChangesThrottle chan struct{}
+
+	// fatalErrorCallback is called by the replicator code when the replicator using this blipSyncContext should be
+	// stopped
+	fatalErrorCallback func(err error)
 }
 
 func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {

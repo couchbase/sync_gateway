@@ -357,9 +357,9 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				base.ErrorfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
-				if bh.onReplicationComplete != nil && strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
+				if bh.fatalErrorCallback != nil && strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
 					err = ErrUseProposeChanges
-					bh.onReplicationComplete(err)
+					bh.fatalErrorCallback(err)
 				}
 			}
 
@@ -411,8 +411,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		// message, or a continuous replication catches up *for the first time*.
 		// Note that this doesn't mean that rev messages associated with previous changes
 		// messages have been fully processed
-		if bh.onReplicationComplete != nil {
-			bh.onReplicationComplete(nil)
+		if bh.emptyChangesMessageCallback != nil {
+			bh.emptyChangesMessageCallback()
 		}
 		return nil
 	}
