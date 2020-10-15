@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -742,9 +741,10 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
-			defer base.Errorf("test finished")
-
-			const numChangesToSend = 1000
+			const (
+				numChangesToSend = 1000
+				requestTimeoutMs = "2500"
+			)
 
 			rt := NewRestTester(t, nil)
 			defer rt.Close()
@@ -763,21 +763,36 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			require.NoError(t, err)
 
 			lastSeq := c.Last_Seq.(string)
-			t.Logf("lastSeq: %v %v", lastSeq, c)
 
-			startGoroutines := runtime.NumGoroutine()
-			t.Logf("start goroutines: %d", startGoroutines)
+			assert.NoError(t, rt.WaitForCondition(func() bool {
+				return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value() == 0
+			}))
 
 			// Send all of these concurrently, just to speed up testing. Not reliant on concurrency to trigger goroutine leak.
 			wg := sync.WaitGroup{}
 			for i := 0; i < numChangesToSend; i++ {
 				wg.Add(1)
 				go func() {
-					resp := sendRequestFn(rt, test.username, http.MethodGet, "/db/_changes?since="+lastSeq+"&feed="+test.feedType+"&timeout=100", "")
+					resp := sendRequestFn(rt, test.username, http.MethodGet, "/db/_changes?since="+lastSeq+"&feed="+test.feedType+"&timeout="+requestTimeoutMs, "")
 					assertStatus(t, resp, http.StatusOK)
 					wg.Done()
 				}()
 			}
+
+			// normal does not wait for any further changes, so does not have any replications in a "caught up" state.
+			if test.feedType != "normal" {
+				assert.NoError(t, rt.WaitForCondition(func() bool {
+					// can't check for equality with numChangesToSend because they might've timed out by now on slow test runs.
+					// Assume there's at least one still running though.
+					return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value() > 0
+				}))
+			} else {
+				assert.NoError(t, rt.WaitForCondition(func() bool {
+					return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value() == 0
+				}))
+			}
+
+			// wait for the request timeouts
 			wg.Wait()
 
 			// write a doc to force change waiters to be triggered
@@ -788,13 +803,9 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			// wait for goroutines to drop to starting value
-			endGoroutines := runtime.NumGoroutine()
 			assert.NoError(t, rt.WaitForCondition(func() bool {
-				endGoroutines = runtime.NumGoroutine()
-				return endGoroutines <= startGoroutines
+				return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value() == 0
 			}))
-			t.Logf("end goroutines: %d", endGoroutines)
 		})
 	}
 }
