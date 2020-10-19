@@ -357,8 +357,7 @@ func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]i
 		go func(bh *blipHandler, sender *blip.Sender, response *blip.Message, changeArray [][]interface{}, sendTime time.Time, database *Database) {
 			if err := bh.handleChangesResponse(sender, response, changeArray, sendTime, database); err != nil {
 				base.ErrorfCtx(bh.loggingCtx, "Error from bh.handleChangesResponse: %v", err)
-				if bh.fatalErrorCallback != nil && strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
-					err = ErrUseProposeChanges
+				if bh.fatalErrorCallback != nil {
 					bh.fatalErrorCallback(err)
 				}
 			}

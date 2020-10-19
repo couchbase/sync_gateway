@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -90,14 +91,9 @@ func (apr *ActivePushReplicator) _connect() error {
 		channels = base.SetFromArray(apr.config.FilterChannels)
 	}
 
-	// This should always be set to true in a real scenario. This is only to be used for tests
-	ignoreNoConflicts := true
-	if apr.config.DisableIgnoreNoConflicts {
-		ignoreNoConflicts = false
-	}
-
 	apr.blipSyncContext.fatalErrorCallback = func(err error) {
-		if err == ErrUseProposeChanges {
+		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
+			err = ErrUseProposeChanges
 			_ = apr.setError(PreHydrogenTargetAllowConflictsError)
 			err = apr.stopAndDisconnect()
 			if err != nil {
@@ -117,7 +113,7 @@ func (apr *ActivePushReplicator) _connect() error {
 			batchSize:         int(apr.config.ChangesBatchSize),
 			channels:          channels,
 			clientType:        clientTypeSGR2,
-			ignoreNoConflicts: ignoreNoConflicts, // force the passive side to accept a "changes" message, even in no conflicts mode.
+			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
 		})
 		// On a normal completion, call complete for the replication
 		if isComplete {

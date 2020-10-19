@@ -4566,7 +4566,14 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	}
 }
 
+// This test can be used for testing replication to a pre-hydrogen SGR target. The test itself simply has a passive and
+// active node and attempts to replicate and expects the replicator to enter an error state. The intention is that the
+// passive side emulates a pre-hydrogen target by having ignoreNoConflicts set to false. In order to use this test this
+// flag should be hardcoded during development. This can be set inside the sendChangesOptions struct under the _connect
+// method in active_replicator_push.go
 func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
+	t.Skip("Test is only for development purposes")
+
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
@@ -4602,10 +4609,9 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:               true,
-		InsecureSkipVerify:       true,
-		DisableIgnoreNoConflicts: true,
-		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		Continuous:          true,
+		InsecureSkipVerify:  true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
 	})
 
 	defer func() {
