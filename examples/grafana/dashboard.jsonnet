@@ -94,6 +94,7 @@ dashboard.new(
       'Current CPU Utilization',
       min=0,
     )
+    .addThreshold({ color: 'green', value: 0 })
     .addTarget(
       prometheus.target(
         'sgw_resource_utilization_process_cpu_percent_utilization{instance=~"$instance"}',
