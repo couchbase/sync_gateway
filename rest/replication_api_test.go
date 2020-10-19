@@ -1570,7 +1570,6 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 			remoteRT := NewRestTester(t, nil)
 			defer remoteRT.Close()
 			remoteRTHTTPServer := httptest.NewServer(remoteRT.TestAdminHandler())
-			defer remoteRTHTTPServer.Close()
 
 			// Create docs on remote
 			docABC1 := test.name + "ABC1"
@@ -1586,7 +1585,11 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 			// creating activeRTSGR1 due to the presence of it in the server config.
 			l, err := net.Listen("tcp", "127.0.0.1:0")
 			require.NoError(t, err)
-			defer func() { _ = l.Close() }()
+			defer func() {
+				// Close the HTTP Server before we close the socket
+				remoteRTHTTPServer.Close()
+				_ = l.Close()
+			}()
 
 			const replicationID = "TestSGR1CheckpointMigrationPull"
 
@@ -1762,12 +1765,10 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer func() {
-		log.Printf("bbrks: before net.Listen Close")
-		err := l.Close()
-		log.Printf("bbrks: after net.Listen Close %v", err)
+		// Close the HTTP Server before we close the socket
+		remoteRTHTTPServer.Close()
+		_ = l.Close()
 	}()
-
-	defer remoteRTHTTPServer.Close()
 
 	const replicationID = "TestSGR1CheckpointMigrationPush"
 
