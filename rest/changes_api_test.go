@@ -742,7 +742,7 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 			const (
-				numChangesToSend = 1000
+				numChangesToSend = 5
 				requestTimeoutMs = "2500"
 			)
 

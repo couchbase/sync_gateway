@@ -1750,8 +1750,8 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 
 	remoteRT := NewRestTester(t, nil)
 	defer remoteRT.Close()
+
 	remoteRTHTTPServer := httptest.NewServer(remoteRT.TestAdminHandler())
-	defer remoteRTHTTPServer.Close()
 
 	// Bucket for activeRTSGR1 and activeRTSGR2
 	activeBucket := base.GetTestBucket(t)
@@ -1761,7 +1761,13 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	// creating activeRTSGR1 due to the presence of it in the server config.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer func() { _ = l.Close() }()
+	defer func() {
+		log.Printf("bbrks: before net.Listen Close")
+		err := l.Close()
+		log.Printf("bbrks: after net.Listen Close %v", err)
+	}()
+
+	defer remoteRTHTTPServer.Close()
 
 	const replicationID = "TestSGR1CheckpointMigrationPush"
 
