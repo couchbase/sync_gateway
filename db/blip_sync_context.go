@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"runtime/debug"
 	"strconv"
@@ -109,6 +110,10 @@ type BlipSyncContext struct {
 	// before they've processed the revs for previous batches. Keeping this >1 allows the client to be fed a constant supply of rev messages,
 	// without making Sync Gateway buffer a bunch of stuff in memory too far in advance of the client being able to receive the revs.
 	inFlightChangesThrottle chan struct{}
+
+	// fatalErrorCallback is called by the replicator code when the replicator using this blipSyncContext should be
+	// stopped
+	fatalErrorCallback func(err error)
 }
 
 func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
@@ -220,8 +225,7 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 	}
 
 	if response.Type() == blip.ErrorType {
-		base.InfofCtx(bsc.loggingCtx, base.KeyAll, "Client returned error in changesResponse: %s", respBody)
-		return nil
+		return errors.New(fmt.Sprintf("Client returned error in changesResponse: %s", respBody))
 	}
 
 	var answer []interface{}

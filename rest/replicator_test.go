@@ -4577,6 +4577,76 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 	}
 }
 
+// This test can be used for testing replication to a pre-hydrogen SGR target. The test itself simply has a passive and
+// active node and attempts to replicate and expects the replicator to enter an error state. The intention is that the
+// passive side emulates a pre-hydrogen target by having ignoreNoConflicts set to false. In order to use this test this
+// flag should be hardcoded during development. This can be set inside the sendChangesOptions struct under the _connect
+// method in active_replicator_push.go
+func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
+	t.Skip("Test is only for development purposes")
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	errorCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value()
+
+	// Passive
+	tb2 := base.GetTestBucket(t)
+	rt2 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: tb2,
+		DatabaseConfig: &DbConfig{
+			AllowConflicts: base.BoolPtr(false),
+		},
+	})
+	defer rt2.Close()
+
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+	})
+	defer rt1.Close()
+
+	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+	srv := httptest.NewTLSServer(rt2.TestAdminHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          "test",
+		Direction:   db.ActiveReplicatorTypePush,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          true,
+		InsecureSkipVerify:  true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+	})
+
+	defer func() {
+		require.NoError(t, ar.Stop())
+	}()
+	require.NoError(t, ar.Start())
+
+	assert.Equal(t, errorCountBefore, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value())
+
+	response := rt1.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, response, http.StatusCreated)
+
+	err = rt2.WaitForCondition(func() bool {
+		if base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1 {
+			return true
+		}
+		return false
+	})
+	assert.NoError(t, err)
+
+	assert.Equal(t, db.ReplicationStateStopped, ar.GetStatus().Status)
+	assert.Equal(t, db.PreHydrogenTargetAllowConflictsError.Error(), ar.GetStatus().ErrorMessage)
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -51,6 +52,8 @@ func (apr *ActivePushReplicator) Start() error {
 	return err
 }
 
+var PreHydrogenTargetAllowConflictsError = errors.New("cannot run replication to target with allow_conflicts=false. Change to allow_conflicts=true or upgrade to 2.8")
+
 // _connect opens up a connection, and starts replicating.
 func (apr *ActivePushReplicator) _connect() error {
 	var err error
@@ -86,6 +89,17 @@ func (apr *ActivePushReplicator) _connect() error {
 	var channels base.Set
 	if apr.config.FilterChannels != nil {
 		channels = base.SetFromArray(apr.config.FilterChannels)
+	}
+
+	apr.blipSyncContext.fatalErrorCallback = func(err error) {
+		if strings.Contains(err.Error(), ErrUseProposeChanges.Message) {
+			err = ErrUseProposeChanges
+			_ = apr.setError(PreHydrogenTargetAllowConflictsError)
+			err = apr.stopAndDisconnect()
+			if err != nil {
+				base.Errorf("Failed to stop and disconnect replication: %v", err)
+			}
+		}
 	}
 
 	apr.activeSendChanges.Set(true)
