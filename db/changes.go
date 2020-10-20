@@ -735,6 +735,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					break waitForChanges
 				}
 
+				db.DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp.Add(1)
 				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(1)
 				waitResponse := changeWaiter.Wait()
 				db.DbStats.CBLReplicationPull().NumPullReplCaughtUp.Add(-1)
