@@ -783,12 +783,8 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			if test.feedType != "normal" {
 				assert.NoError(t, rt.WaitForCondition(func() bool {
 					// can't check for equality with numChangesToSend because they might've timed out by now on slow test runs.
-					// Assume there's at least one still running though.
+					// Assume there's at least one still running. If this fails, it's likely the test took to long and the requests timed out before this stat was checked.
 					return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value() > 0
-				}))
-			} else {
-				assert.NoError(t, rt.WaitForCondition(func() bool {
-					return rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp.Value() == 0
 				}))
 			}
 
