@@ -351,7 +351,7 @@ func (r *replicationCheckpoint) Copy() *replicationCheckpoint {
 // writes that old SGR1 sequence as an SGR2 checkpoint,
 // and finally removes the SGR1 checkpoint doc to prevent reuse.
 func (c *Checkpointer) upgradeFromSGR1Checkpoint() (sgr1CheckpointSeq string) {
-	base.Infof(base.KeyReplicate, "Attempting to fetch SGR1 checkpoint as fallback: %v", c.sgr1CheckpointID)
+	base.InfofCtx(c.ctx, base.KeyReplicate, "Attempting to fetch SGR1 checkpoint as fallback: %v", c.sgr1CheckpointID)
 	var err error
 	var sgr1CheckpointRev string
 
@@ -623,7 +623,7 @@ func (c *Checkpointer) removeRemoteSGR1Checkpoint() error {
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := ioutil.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		return fmt.Errorf("unable to delete remote SGR1 checkpoint: %v", respBody)
+		return fmt.Errorf("unable to delete remote SGR1 checkpoint: %s", respBody)
 	}
 	return nil
 }
@@ -778,7 +778,7 @@ func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage stri
 	// getCheckpoint to obtain the current status
 	checkpoint, err := c.getLocalCheckpoint()
 	if err != nil {
-		base.Infof(base.KeyReplicate, "Unable to persist status update to checkpoint: %v", err)
+		base.InfofCtx(c.ctx, base.KeyReplicate, "Unable to persist status update to checkpoint: %v", err)
 	}
 	if checkpoint == nil {
 		checkpoint = &replicationCheckpoint{}
@@ -793,9 +793,9 @@ func (c *Checkpointer) setLocalCheckpointStatus(status string, errorMessage stri
 	base.Tracef(base.KeyReplicate, "setLocalCheckpoint(%v)", checkpoint)
 	newRev, setErr := c.setLocalCheckpoint(checkpoint)
 	if setErr != nil {
-		base.Warnf("Unable to persist status in local checkpoint for %s, status not updated: %v", c.clientID, setErr)
+		base.WarnfCtx(c.ctx, "Unable to persist status in local checkpoint for %s, status not updated: %v", c.clientID, setErr)
 	} else {
-		base.Tracef(base.KeyReplicate, "setLocalCheckpointStatus successful for %s, newRev: %s: %+v %+v", c.clientID, newRev, checkpoint, checkpoint.Status)
+		base.TracefCtx(c.ctx, base.KeyReplicate, "setLocalCheckpointStatus successful for %s, newRev: %s: %+v %+v", c.clientID, newRev, checkpoint, checkpoint.Status)
 	}
 	c.lock.Lock()
 	c.lastLocalCheckpointRevID = newRev
