@@ -1584,7 +1584,11 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 			// listen on a random available port for activeRTSGR1. The address is needed before
 			// creating activeRTSGR1 due to the presence of it in the server config.
 			l, err := net.Listen("tcp", "127.0.0.1:0")
-			require.NoError(t, err)
+			if err != nil {
+				remoteRTHTTPServer.Close()
+				t.Fatalf("unexpected error listening on address: %v", err)
+			}
+
 			defer func() {
 				// Close the HTTP Server before we close the socket
 				remoteRTHTTPServer.Close()
@@ -1763,7 +1767,11 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	// listen on a random available port for activeRTSGR1. The address is needed before
 	// creating activeRTSGR1 due to the presence of it in the server config.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
+	if err != nil {
+		remoteRTHTTPServer.Close()
+		t.Fatalf("unexpected error listening on address: %v", err)
+	}
+
 	defer func() {
 		// Close the HTTP Server before we close the socket
 		remoteRTHTTPServer.Close()
