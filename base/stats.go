@@ -194,6 +194,7 @@ type CBLReplicationPullStats struct {
 	NumPullReplActiveContinuous *SgwIntStat `json:"num_pull_repl_active_continuous"`
 	NumPullReplActiveOneShot    *SgwIntStat `json:"num_pull_repl_active_one_shot"`
 	NumPullReplCaughtUp         *SgwIntStat `json:"num_pull_repl_caught_up"`
+	NumPullReplTotalCaughtUp    *SgwIntStat `json:"num_pull_repl_total_caught_up"`
 	NumPullReplSinceZero        *SgwIntStat `json:"num_pull_repl_since_zero"`
 	NumPullReplTotalContinuous  *SgwIntStat `json:"num_pull_repl_total_continuous"`
 	NumPullReplTotalOneShot     *SgwIntStat `json:"num_pull_repl_total_one_shot"`
@@ -579,6 +580,7 @@ func (d *DbStats) initCBLReplicationPullStats() {
 		NumPullReplActiveContinuous: NewIntStat(SubsystemReplicationPull, "num_pull_repl_active_one_shot", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		NumPullReplActiveOneShot:    NewIntStat(SubsystemReplicationPull, "num_replications_active", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		NumPullReplCaughtUp:         NewIntStat(SubsystemReplicationPull, "num_pull_repl_caught_up", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumPullReplTotalCaughtUp:    NewIntStat(SubsystemReplicationPull, "num_pull_repl_total_caught_up", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		NumPullReplSinceZero:        NewIntStat(SubsystemReplicationPull, "num_pull_repl_since_zero", labelKeys, labelVals, prometheus.CounterValue, 0),
 		NumPullReplTotalContinuous:  NewIntStat(SubsystemReplicationPull, "num_pull_repl_total_continuous", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		NumPullReplTotalOneShot:     NewIntStat(SubsystemReplicationPull, "num_pull_repl_total_one_shot", labelKeys, labelVals, prometheus.GaugeValue, 0),

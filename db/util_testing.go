@@ -161,7 +161,7 @@ func (sw *StatWaiter) Wait() {
 			}
 		}
 
-		sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d)", sw.targetCount, actualCount)
+		sw.tb.Errorf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
 	} else {
 		actualCount := sw.newStat.Value()
 		if actualCount >= sw.targetCount {
@@ -178,7 +178,7 @@ func (sw *StatWaiter) Wait() {
 			}
 		}
 
-		sw.tb.Fatalf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d)", sw.targetCount, actualCount)
+		sw.tb.Errorf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
 	}
 }
 
