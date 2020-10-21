@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -65,12 +66,12 @@ func TestRequireAdmin(t *testing.T) {
 // Helpers
 func assertRejected(t *testing.T, result interface{}, err *base.HTTPError) {
 	r, ok := result.(*ChannelMapperOutput)
-	require.True(t, ok)
-	require.Equal(t, r.Rejection, err)
+	assert.True(t, ok)
+	assert.Equal(t, r.Rejection, err)
 }
 
 func assertNotRejected(t *testing.T, result interface{}) {
 	r, ok := result.(*ChannelMapperOutput)
-	require.True(t, ok)
-	require.NoError(t, r.Rejection)
+	assert.True(t, ok)
+	assert.NoError(t, r.Rejection)
 }
