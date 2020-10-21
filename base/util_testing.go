@@ -99,13 +99,13 @@ func TestsDisableGSI() bool {
 		return true
 	}
 
-	// Default to disabling GSI, but allow with SG_TEST_DISABLE_GSI=false
-	disableGSI := true
-	if envDisableGSI := os.Getenv(TestEnvSyncGatewayDisableGSI); envDisableGSI != "" {
-		disableGSI, _ = strconv.ParseBool(envDisableGSI)
+	// Default to disabling GSI, but allow with SG_TEST_USE_GSI=true
+	useGSI := false
+	if envUseGSI := os.Getenv(TestEnvSyncGatewayDisableGSI); envUseGSI != "" {
+		useGSI, _ = strconv.ParseBool(envUseGSI)
 	}
 
-	return disableGSI
+	return !useGSI
 }
 
 // Check the whether tests are being run with SG_TEST_BACKING_STORE=Couchbase
