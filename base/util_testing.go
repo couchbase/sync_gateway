@@ -94,16 +94,17 @@ func TestsShouldDropIndexes() bool {
 
 // TestsDisableGSI returns true if tests should be forced to avoid any GSI-specific code.
 func TestsDisableGSI() bool {
-	// FIXME: CBG-813 - Re-enable GSI in integration tests after CB 6.5.1 Beta
-	if true {
-		return true
-	}
 	// Disable GSI when running with Walrus
 	if !TestUseCouchbaseServer() && UnitTestUrlIsWalrus() {
 		return true
 	}
 
-	disableGSI, _ := strconv.ParseBool(os.Getenv(TestEnvSyncGatewayDisableGSI))
+	// Default to disabling GSI, but allow with SG_TEST_DISABLE_GSI=false
+	disableGSI := true
+	if envDisableGSI := os.Getenv(TestEnvSyncGatewayDisableGSI); envDisableGSI != "" {
+		disableGSI, _ = strconv.ParseBool(envDisableGSI)
+	}
+
 	return disableGSI
 }
 
