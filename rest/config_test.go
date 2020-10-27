@@ -1000,3 +1000,148 @@ func TestConfigToDatabaseOptions(t *testing.T) {
 	assert.Equal(t, *config.Databases["db"].CacheConfig.ChannelCacheConfig.QueryLimit, database.Options.CacheOptions.ChannelQueryLimit)
 
 }
+
+func TestExpandEnv(t *testing.T) {
+	tests := []struct {
+		name           string
+		inputConfig    []byte
+		varsEnv        map[string]string
+		expectedConfig []byte
+	}{
+		{
+			name: "environment variable substitution with $var and ${var} syntax",
+			inputConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost",
+				      "username": "$USERNAME",
+				      "password": "${PASSWORD}"
+				    }
+				  }
+				}
+			`),
+			varsEnv: map[string]string{
+				"USERNAME": "Administrator",
+				"PASSWORD": "password",
+			},
+			expectedConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost",
+				      "username": "Administrator",
+				      "password": "password"
+				    }
+				  }
+				}
+			`),
+		},
+		{
+			name: "environment variable substitution with ${var:-default_value} syntax",
+			inputConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "${BUCKET:-leaky_bucket}",
+				      "server": "couchbase://localhost"
+				    }
+				  }
+				}
+			`),
+			expectedConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost"
+				    }
+				  }
+				}
+			`),
+		},
+		{
+			name: "environment variable substitution escape with $$var syntax",
+			inputConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost",
+				      "username": "$$USERNAME",
+                      "password": "P@$$$$w0rd",
+                      "sync": "function (doc, oldDoc) { if (doc.$$sdk) { channel(doc.$$sdk);}}"
+				    }
+				  }
+				}
+			`),
+			varsEnv: map[string]string{
+				"USERNAME": "Administrator",
+			},
+			expectedConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost",
+				      "username": "$USERNAME",
+                      "password": "P@$$w0rd",
+                      "sync": "function (doc, oldDoc) { if (doc.$sdk) { channel(doc.$sdk);}}"
+				    }
+				  }
+				}
+			`),
+		},
+		{
+			name: "empty value substitution when environment variable is not set",
+			inputConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost",
+				      "username": "$USERNAME",
+				      "password": "${PASSWORD}"
+				    }
+				  }
+				}
+			`),
+			expectedConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost",
+				      "username": "",
+				      "password": ""
+				    }
+				  }
+				}
+			`),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Set an environment variables.
+			for k, v := range test.varsEnv {
+				os.Setenv(k, v)
+				value, ok := os.LookupEnv(k)
+				require.True(t, ok, "Environment variable %q should exist", k)
+				require.Equal(t, v, value, "Unexpected value set for environment variable %q", k)
+			}
+			// Check environment variable substitutions.
+			actualConfig := expandEnv(test.inputConfig)
+			assert.Equal(t, test.expectedConfig, actualConfig)
+
+			// Unset environment variables.
+			for k, _ := range test.varsEnv {
+				os.Unsetenv(k)
+				value, ok := os.LookupEnv(k)
+				assert.False(t, ok, "Environment variable %q shouldn't exist", k)
+				assert.Empty(t, value, "Environment variable %q must be empty", k)
+			}
+		})
+	}
+}
