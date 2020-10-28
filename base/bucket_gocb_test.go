@@ -2108,13 +2108,17 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	// Remove existing password-based authentication
 	testBucket.BucketSpec.Auth = nil
 
-	// Force use of TLS so we are able to use X509
-	if strings.HasPrefix(testBucket.BucketSpec.Server, "http://") {
-		testBucket.BucketSpec.Server = "couchbases://" + testBucket.BucketSpec.Server[7:]
-	} else if strings.HasPrefix(testBucket.BucketSpec.Server, "couchbase://") {
-		testBucket.BucketSpec.Server = "couchbases://" + testBucket.BucketSpec.Server[12:]
+	// Force use of TLS so we are able to use X509 by stripping protocol and using couchbases://
+	if !strings.HasPrefix(testBucket.BucketSpec.Server, "couchbases://") {
+		for _, proto := range []string{"http://", "couchbase://", ""} {
+			if !strings.HasPrefix(testBucket.BucketSpec.Server, proto) {
+				continue
+			}
+			testBucket.BucketSpec.Server = "couchbases://" + testBucket.BucketSpec.Server[len(proto):]
+			testBucket.BucketSpec.Server = strings.TrimSuffix(testBucket.BucketSpec.Server, ":8091")
+			break
+		}
 	}
-	testBucket.BucketSpec.Server = strings.TrimSuffix(testBucket.BucketSpec.Server, ":8091")
 
 	// Set CertPath/KeyPath for X509 auth
 	certPath, keyPath, x509CleanupFn := tempX509Certs(t)
