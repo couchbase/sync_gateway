@@ -2159,12 +2159,16 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
 
 			// Validate results on the local (rt1)
-			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
-			require.NoError(t, err)
-			require.Len(t, changesResults.Results, 1)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
-			log.Printf("Changes response is %+v", changesResults)
+			err = rt1.WaitForCondition(func() bool {
+				doc, _ := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				if doc == nil {
+					return false
+				}
+				if doc.SyncData.CurrentRev == test.expectedLocalRevID {
+					return true
+				}
+				return false
+			})
 
 			rawDocResponse := rt1.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, "")
 			log.Printf("Raw response: %s", rawDocResponse.Body.Bytes())
@@ -2200,12 +2204,18 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, 1, activeCount)
 
 			// Validate results on the remote (rt2)
-			changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			// Wait for document to arrive on the doc is was put on
+			err = rt2.WaitForCondition(func() bool {
+				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				if doc == nil {
+					return false
+				}
+				if doc.SyncData.CurrentRev == test.expectedLocalRevID {
+					return true
+				}
+				return false
+			})
 			require.NoError(t, err)
-			require.Len(t, changesResults.Results, 1)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
-			log.Printf("Changes response is %+v", changesResults)
 
 			doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
