@@ -1126,7 +1126,8 @@ func TestExpandEnv(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Set an environment variables.
 			for k, v := range test.varsEnv {
-				os.Setenv(k, v)
+				err := os.Setenv(k, v)
+				require.NoError(t, err, "Error setting environment variable %q", k)
 				value, ok := os.LookupEnv(k)
 				require.True(t, ok, "Environment variable %q should exist", k)
 				require.Equal(t, v, value, "Unexpected value set for environment variable %q", k)
@@ -1137,7 +1138,8 @@ func TestExpandEnv(t *testing.T) {
 
 			// Unset environment variables.
 			for k, _ := range test.varsEnv {
-				os.Unsetenv(k)
+				err := os.Unsetenv(k)
+				require.NoError(t, err, "Error removing environment variable %q", k)
 				value, ok := os.LookupEnv(k)
 				assert.False(t, ok, "Environment variable %q shouldn't exist", k)
 				assert.Empty(t, value, "Environment variable %q must be empty", k)
