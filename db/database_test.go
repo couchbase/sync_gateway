@@ -2058,11 +2058,11 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	defer db.Close()
 
 	err := json.Unmarshal([]byte(`{"prop": "value"}`), &body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Create a doc
 	revid, _, err = db.Put("doc1", body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Update the doc a few times to populate recent sequences
 	for i := 0; i < 10; i++ {
@@ -2070,9 +2070,11 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 		updateBody["prop"] = i
 		updateBody["_rev"] = revid
 		revid, _, err = db.Put("doc1", updateBody)
+		require.NoError(t, err)
 	}
 
 	syncData, err := db.GetDocSyncData("doc1")
+	require.NoError(t, err)
 	assert.True(t, sort.IsSorted(base.SortedUint64Slice(syncData.RecentSequences)))
 
 	// Update document directly in the bucket to scramble recent sequences
@@ -2087,10 +2089,12 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	// Validate non-ordered
 	var rawBodyCheck Body
 	_, err = db.Bucket.Get("doc1", &rawBodyCheck)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	log.Printf("raw body check %v", rawBodyCheck)
-	rawSyncDataCheck, _ := rawBody["_sync"].(map[string]interface{})
-	recentSequences, _ := rawSyncDataCheck["recent_sequences"].([]uint64)
+	rawSyncDataCheck, ok := rawBody["_sync"].(map[string]interface{})
+	require.True(t, ok)
+	recentSequences, ok := rawSyncDataCheck["recent_sequences"].([]uint64)
+	require.True(t, ok)
 	assert.False(t, sort.IsSorted(base.SortedUint64Slice(recentSequences)))
 
 	// Update the doc again. expect sequences to now be ordered
@@ -2098,7 +2102,9 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	updateBody["prop"] = 12
 	updateBody["_rev"] = revid
 	_, _, err = db.Put("doc1", updateBody)
+	require.NoError(t, err)
 
 	syncData, err = db.GetDocSyncData("doc1")
+	require.NoError(t, err)
 	assert.True(t, sort.IsSorted(base.SortedUint64Slice(syncData.RecentSequences)))
 }
