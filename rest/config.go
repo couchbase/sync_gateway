@@ -687,22 +687,26 @@ func expandEnv(config []byte) []byte {
 			base.Debugf(base.KeyAll, "Skipping environment variable expansion: %s", key)
 			return key
 		}
-		kvPair := strings.SplitN(key, ":-", 2)
-		key = kvPair[0]
-
-		value := os.Getenv(key)
-		if value == "" && len(kvPair) == 2 {
-			// Set value to the default.
-			value = kvPair[1]
-			base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}' with "+
-				"default '%s'", key, base.UD(kvPair[1]))
-		} else {
-			base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}' with '%s'",
-				key, base.UD(value))
-		}
-
-		return value
+		return envDefaultExpansion(key, os.Getenv)
 	}))
+}
+
+// envDefaultExpansion implements the ${foo:-bar} parameter expansion from
+// https://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html#tag_02_06_02
+func envDefaultExpansion(key string, getEnvFn func(string) string) (value string) {
+	kvPair := strings.SplitN(key, ":-", 2)
+	key = kvPair[0]
+	value = getEnvFn(key)
+	if value == "" && len(kvPair) == 2 {
+		// Set value to the default.
+		value = kvPair[1]
+		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}' with "+
+			"default '%s'", key, base.UD(value))
+	} else {
+		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}' with '%s'",
+			key, base.UD(value))
+	}
+	return value
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors

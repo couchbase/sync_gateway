@@ -1001,6 +1001,53 @@ func TestConfigToDatabaseOptions(t *testing.T) {
 
 }
 
+func TestEnvDefaultExpansion(t *testing.T) {
+	tests := []struct {
+		name          string
+		envKey        string
+		envValue      string
+		expectedValue string
+	}{
+		{
+			name:          "no value, no default",
+			envKey:        "PASSWORD",
+			envValue:      "",
+			expectedValue: "",
+		},
+		{
+			name:          "value, no default",
+			envKey:        "PASSWORD",
+			envValue:      "pa55w0rd",
+			expectedValue: "pa55w0rd",
+		},
+		{
+			name:          "value, default",
+			envKey:        "PASSWORD:-pa55w0rd",
+			envValue:      "foobar",
+			expectedValue: "foobar",
+		},
+		{
+			name:          "no value, default",
+			envKey:        "PASSWORD:-pa55w0rd",
+			envValue:      "",
+			expectedValue: "pa55w0rd",
+		},
+		{
+			name:          "no value, default with special chars",
+			envKey:        "PASSWORD:-pa55w:-0rd",
+			envValue:      "",
+			expectedValue: "pa55w:-0rd",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actualValue := envDefaultExpansion(test.envKey, func(s string) string { return test.envValue })
+			assert.Equal(t, test.expectedValue, actualValue)
+		})
+	}
+}
+
 func TestExpandEnv(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -1116,6 +1163,31 @@ func TestExpandEnv(t *testing.T) {
 				      "server": "couchbase://localhost",
 				      "username": "",
 				      "password": ""
+				    }
+				  }
+				}
+			`),
+		},
+		{
+			name: "concatenated envs",
+			inputConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "username": "$COMPANY$USERNAME"
+				    }
+				  }
+				}
+			`),
+			varsEnv: map[string]string{
+				"COMPANY":  "couchbase",
+				"USERNAME": "bbrks",
+			},
+			expectedConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "username": "couchbasebbrks"
 				    }
 				  }
 				}
