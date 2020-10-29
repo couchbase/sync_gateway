@@ -833,7 +833,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
-		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false) {
+		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false, nil) {
 			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
@@ -944,7 +944,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		// We only bypass conflict resolution for incoming tombstones if the local doc is also a tombstone
 		allowConflictingTombstone := forceAllowConflictingTombstone && doc.IsDeleted()
 
-		if !allowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
+		if !allowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts, docHistory) {
 			//if !forceAllowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
 			if conflictResolver == nil {
 				return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
@@ -1532,34 +1532,47 @@ Truth table for AllowConflicts and noConflicts combinations:
                        AllowConflicts=true     AllowConflicts=false
    noConflicts=true    continue checks         continue checks
    noConflicts=false   return false            continue checks */
-func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted, noConflicts bool) bool {
+func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted, noConflicts bool, docHistory []string) bool {
 
 	if db.AllowConflicts() && !noConflicts {
 		return false
 	}
 
-	// Conflict-free mode: If doc exists, its current rev must be the new rev's parent, unless it's a tombstone.
+	// Conflict-free mode: If doc exists, it must satisfy one of the following:
+	//   (a) its current rev is the new rev's parent
+	//   (b) the new rev is a tombstone, whose parent is an existing non-tombstoned leaf
+	//   (c) the current rev is a tombstone, and the new rev is a non-tombstone disconnected branch
 
-	// If the parent is the current rev, it's not a conflict.
+	// case a: If the parent is the current rev, it's not a conflict.
 	if parentRevID == doc.CurrentRev || doc.CurrentRev == "" {
 		return false
 	}
 
-	// If the parent isn't the current rev, reject as a conflict unless this is tombstoning an existing non-winning leaf
-	if !deleted {
-		base.DebugfCtx(db.Ctx, base.KeyCRUD, "Conflict - non-tombstone updates to non-winning revisions aren't valid when allow_conflicts=false")
+	// case b: If it's a tombstone, it's allowed if it's tombstoning an existing non-tombstoned leaf
+	if deleted {
+		for _, leafRevId := range doc.History.GetLeaves() {
+			if leafRevId == parentRevID && doc.History[leafRevId].Deleted == false {
+				return false
+			}
+		}
+		base.DebugfCtx(db.Ctx, base.KeyCRUD, "Conflict - tombstone updates to non-leaf or already tombstoned revisions aren't valid when allow_conflicts=false")
 		return true
 	}
 
-	// If it's a tombstone, it's allowed if it's tombstoning an existing non-tombstoned leaf
-	for _, leafRevId := range doc.History.GetLeaves() {
-		if leafRevId == parentRevID && doc.History[leafRevId].Deleted == false {
-			return false
+	// case c: If current doc is a tombstone, disconnected branch resurrections are allowed
+	if doc.IsDeleted() {
+		for _, ancestorRevID := range docHistory {
+			_, ok := doc.History[ancestorRevID]
+			if ok {
+				base.DebugfCtx(db.Ctx, base.KeyCRUD, "Conflict - document is deleted, but update would branch from existing revision.")
+				return true
+			}
 		}
+		return false
 	}
 
 	// If we haven't found a valid conflict scenario by this point, flag as invalid
-	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Conflict - tombstone updates to non-leaf or already tombstoned revisions aren't valid when allow_conflicts=false")
+	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Conflict - non-tombstone updates to non-winning revisions aren't valid when allow_conflicts=false")
 	return true
 }
 

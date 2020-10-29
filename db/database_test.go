@@ -873,11 +873,21 @@ func TestNoConflictsMode(t *testing.T) {
 	assert.NoError(t, err, "add 4-a")
 	delete(body, BodyDeleted)
 
-	// Create a non-conflict with no history (re-creating the document, but with an invalid rev):
-	_, _, err = db.PutExistingRevWithBody("doc", body, []string{"1-f"}, false)
+	// Try to resurrect the document with a conflicting branch
+	_, _, err = db.PutExistingRevWithBody("doc", body, []string{"4-f", "3-a"}, false)
 	assertHTTPError(t, err, 409)
 
-	// Resurrect the tombstoned document with a valid history
+	// Resurrect the tombstoned document with a disconnected branch):
+	_, _, err = db.PutExistingRevWithBody("doc", body, []string{"1-f"}, false)
+	assert.NoError(t, err, "add 1-f")
+
+	// Tombstone the resurrected branch
+	body[BodyDeleted] = true
+	_, _, err = db.PutExistingRevWithBody("doc", body, []string{"2-f", "1-f"}, false)
+	assert.NoError(t, err, "add 2-f")
+	delete(body, BodyDeleted)
+
+	// Resurrect the tombstoned document with a valid history (descendents of leaf)
 	_, _, err = db.PutExistingRevWithBody("doc", body, []string{"5-f", "4-a"}, false)
 	assert.NoError(t, err, "add 5-f")
 	delete(body, BodyDeleted)
@@ -2046,6 +2056,10 @@ func TestIncreasingRecentSequences(t *testing.T) {
 }
 
 func TestRepairUnorderedRecentSequences(t *testing.T) {
+	if base.TestUseXattrs() {
+		t.Skip("xattr=false only - test modifies doc _sync property")
+	}
+
 	var db *Database
 	var body Body
 	var revid string
@@ -2074,8 +2088,9 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	// Update document directly in the bucket to scramble recent sequences
 	var rawBody Body
 	_, err = db.Bucket.Get("doc1", &rawBody)
-	assert.NoError(t, err)
-	rawSyncData, _ := rawBody["_sync"].(map[string]interface{})
+	require.NoError(t, err)
+	rawSyncData, ok := rawBody["_sync"].(map[string]interface{})
+	require.True(t, ok)
 	rawSyncData["recent_sequences"] = []uint64{3, 5, 9, 11, 1, 2, 4, 8, 7, 10, 5}
 	assert.NoError(t, db.Bucket.Set("doc1", 0, rawBody))
 

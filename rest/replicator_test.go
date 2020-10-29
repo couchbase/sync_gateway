@@ -1782,6 +1782,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 		expectedTombstonedRevID string
 		expectedResolutionType  db.ConflictResolutionType
 		skipActiveLeafAssertion bool
+		skipBodyAssertion       bool
 	}{
 		{
 			name:                   "remoteWins",
@@ -1830,6 +1831,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:       db.Body{"source": "remote"},
 			expectedLocalRevID:      "1-b",
 			skipActiveLeafAssertion: true,
+			skipBodyAssertion:       base.TestUseXattrs(),
 		},
 		{
 			name:                    "twoTombstonesLocalWin",
@@ -1841,6 +1843,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalBody:       db.Body{"source": "local"},
 			expectedLocalRevID:      "1-b",
 			skipActiveLeafAssertion: true,
+			skipBodyAssertion:       base.TestUseXattrs(),
 		},
 	}
 
@@ -1952,7 +1955,11 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedLocalRevID, doc.SyncData.CurrentRev)
-			assert.Equal(t, test.expectedLocalBody, doc.Body())
+			// This is skipped for tombstone tests running with xattr as xattr tombstones don't have a body to assert
+			// against
+			if !test.skipBodyAssertion {
+				assert.Equal(t, test.expectedLocalBody, doc.Body())
+			}
 			log.Printf("Doc %s is %+v", docID, doc)
 			for revID, revInfo := range doc.SyncData.History {
 				log.Printf("doc revision [%s]: %+v", revID, revInfo)
@@ -1995,6 +2002,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 		localRevID              string
 		remoteRevisionBody      []byte
 		remoteRevID             string
+		commonAncestorRevID     string
 		conflictResolver        string
 		expectedLocalBody       []byte
 		expectedLocalRevID      string
@@ -2035,14 +2043,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
 		},
 		{
-			name:               "localWinsRemoteTombstone",
-			localRevisionBody:  []byte(`{"source": "local"}`),
-			localRevID:         "1-a",
-			remoteRevisionBody: []byte(`{"_deleted": true}`),
-			remoteRevID:        "1-b",
-			conflictResolver:   `function(conflict) {return conflict.LocalDocument;}`,
-			expectedLocalBody:  []byte(`{"source": "local"}`),
-			expectedLocalRevID: db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
+			name:                "localWinsRemoteTombstone",
+			localRevisionBody:   []byte(`{"source": "local"}`),
+			localRevID:          "2-a",
+			remoteRevisionBody:  []byte(`{"_deleted": true}`),
+			remoteRevID:         "2-b",
+			commonAncestorRevID: "1-a",
+			conflictResolver:    `function(conflict) {return conflict.LocalDocument;}`,
+			expectedLocalBody:   []byte(`{"source": "local"}`),
+			expectedLocalRevID:  db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 2-b
 		},
 	}
 
@@ -2079,7 +2088,16 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			// Create revision on rt2 (remote)
 			docID := test.name
-			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, "", remoteRevisionBody)
+
+			if test.commonAncestorRevID != "" {
+				resp, err := rt2.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", remoteRevisionBody)
+				assert.NoError(t, err)
+				assertStatus(t, resp, http.StatusCreated)
+				rt2revID := respRevID(t, resp)
+				assert.Equal(t, test.commonAncestorRevID, rt2revID)
+			}
+
+			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, test.commonAncestorRevID, remoteRevisionBody)
 			assert.NoError(t, err)
 			assertStatus(t, resp, http.StatusCreated)
 			rt2revID := respRevID(t, resp)
@@ -2102,7 +2120,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			defer rt1.Close()
 
 			// Create revision on rt1 (local)
-			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, "", localRevisionBody)
+			if test.commonAncestorRevID != "" {
+				resp, err = rt1.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", localRevisionBody)
+				assert.NoError(t, err)
+				assertStatus(t, resp, http.StatusCreated)
+				rt1revID := respRevID(t, resp)
+				assert.Equal(t, test.commonAncestorRevID, rt1revID)
+			}
+
+			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, test.commonAncestorRevID, localRevisionBody)
 			assert.NoError(t, err)
 			assertStatus(t, resp, http.StatusCreated)
 			rt1revID := respRevID(t, resp)
@@ -2133,12 +2159,16 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
 
 			// Validate results on the local (rt1)
-			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
-			require.NoError(t, err)
-			require.Len(t, changesResults.Results, 1)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
-			log.Printf("Changes response is %+v", changesResults)
+			err = rt1.WaitForCondition(func() bool {
+				doc, _ := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				if doc == nil {
+					return false
+				}
+				if doc.SyncData.CurrentRev == test.expectedLocalRevID {
+					return true
+				}
+				return false
+			})
 
 			rawDocResponse := rt1.SendAdminRequest(http.MethodGet, "/db/_raw/"+docID, "")
 			log.Printf("Raw response: %s", rawDocResponse.Body.Bytes())
@@ -2174,12 +2204,18 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, 1, activeCount)
 
 			// Validate results on the remote (rt2)
-			changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			// Wait for document to arrive on the doc is was put on
+			err = rt2.WaitForCondition(func() bool {
+				doc, _ := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+				if doc == nil {
+					return false
+				}
+				if doc.SyncData.CurrentRev == test.expectedLocalRevID {
+					return true
+				}
+				return false
+			})
 			require.NoError(t, err)
-			require.Len(t, changesResults.Results, 1)
-			assert.Equal(t, docID, changesResults.Results[0].ID)
-			assert.Equal(t, test.expectedLocalRevID, changesResults.Results[0].Changes[0]["rev"])
-			log.Printf("Changes response is %+v", changesResults)
 
 			doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 			require.NoError(t, err)
@@ -3574,14 +3610,15 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 	// scenarios
 	conflictResolutionTests := []struct {
-		name               string
-		localRevisionBody  db.Body
-		localRevID         string
-		remoteRevisionBody db.Body
-		remoteRevID        string
-		conflictResolver   string
-		expectedLocalBody  db.Body
-		expectedLocalRevID string
+		name                string
+		commonAncestorRevID string
+		localRevisionBody   db.Body
+		localRevID          string
+		remoteRevisionBody  db.Body
+		remoteRevID         string
+		conflictResolver    string
+		expectedLocalBody   db.Body
+		expectedLocalRevID  string
 	}{
 		{
 			name: "mergeReadWriteIntlProps",
@@ -3723,11 +3760,12 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				"source":       "local",
 				db.BodyDeleted: true,
 			},
-			localRevID: "1-a",
+			commonAncestorRevID: "1-a",
+			localRevID:          "2-a",
 			remoteRevisionBody: db.Body{
 				"source": "remote",
 			},
-			remoteRevID: "1-b",
+			remoteRevID: "2-b",
 			conflictResolver: `function(conflict) {
 				var mergedDoc = new Object();
 				mergedDoc.source = "merged";
@@ -3738,7 +3776,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 				"localDeleted": true,
 				"source":       "merged",
 			},
-			expectedLocalRevID: createRevID(2, "1-b", db.Body{
+			expectedLocalRevID: createRevID(3, "2-b", db.Body{
 				"localDeleted": true,
 				"source":       "merged",
 			}),
@@ -3771,7 +3809,11 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 			// Create revision on rt2 (remote)
 			docID := test.name
-			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, "", test.remoteRevisionBody)
+			if test.commonAncestorRevID != "" {
+				_, err := rt2.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", test.remoteRevisionBody)
+				assert.NoError(t, err)
+			}
+			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID, test.commonAncestorRevID, test.remoteRevisionBody)
 			assert.NoError(t, err)
 			assertStatus(t, resp, http.StatusCreated)
 			rt2revID := respRevID(t, resp)
@@ -3796,7 +3838,11 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			defer rt1.Close()
 
 			// Create revision on rt1 (local)
-			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, "", test.localRevisionBody)
+			if test.commonAncestorRevID != "" {
+				_, err := rt1.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", test.remoteRevisionBody)
+				assert.NoError(t, err)
+			}
+			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, test.commonAncestorRevID, test.localRevisionBody)
 			assert.NoError(t, err)
 			assertStatus(t, resp, http.StatusCreated)
 			rt1revID := respRevID(t, resp)
@@ -3861,6 +3907,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			assert.Equal(t, 1, activeCount)
 		})
 	}
+
 }
 
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
@@ -3873,32 +3920,67 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		name               string
 		longestBranchLocal bool
 		resurrectLocal     bool
+		sdkResurrect       bool
 	}{
+
 		{
 			name:               "RemoteLongResurrectLocal",
 			longestBranchLocal: false,
 			resurrectLocal:     true,
-		},
-		{
-			name:               "RemoteLongResurrectRemote",
-			longestBranchLocal: false,
-			resurrectLocal:     false,
+			sdkResurrect:       false,
 		},
 		{
 			name:               "LocalLongResurrectLocal",
 			longestBranchLocal: true,
 			resurrectLocal:     true,
+			sdkResurrect:       false,
+		},
+		{
+			name:               "RemoteLongResurrectRemote",
+			longestBranchLocal: false,
+			resurrectLocal:     false,
+			sdkResurrect:       false,
 		},
 		{
 			name:               "LocalLongResurrectRemote",
 			longestBranchLocal: true,
 			resurrectLocal:     false,
+			sdkResurrect:       false,
+		},
+
+		{
+			name:               "RemoteLongSDKResurrectLocal",
+			longestBranchLocal: false,
+			resurrectLocal:     true,
+			sdkResurrect:       true,
+		},
+		{
+			name:               "RemoteLongSDKResurrectRemote",
+			longestBranchLocal: false,
+			resurrectLocal:     false,
+			sdkResurrect:       true,
+		},
+		{
+			name:               "LocalLongSDKResurrectLocal",
+			longestBranchLocal: true,
+			resurrectLocal:     true,
+			sdkResurrect:       true,
+		},
+		{
+			name:               "LocalLongSDKResurrectRemote",
+			longestBranchLocal: true,
+			resurrectLocal:     false,
+			sdkResurrect:       true,
 		},
 	}
 
 	for _, test := range tombstoneTests {
 		t.Run(test.name, func(t *testing.T) {
-			defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket, base.KeyReplicate)()
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket, base.KeyReplicate)()
+
+			if test.sdkResurrect && !base.TestUseXattrs() {
+				t.Skip("SDK resurrect test cases require xattrs to be enabled")
+			}
 
 			makeDoc := func(rt *RestTester, docid string, rev string, value string) string {
 				var body db.Body
@@ -3986,16 +4068,27 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				assertStatus(t, resp, http.StatusCreated)
 
 				// Create another rev and then delete doc on local - ie tree is longer
-				revid := makeDoc(localActiveRT, "docid2", "3-abc", "{}")
-				_ = makeDoc(localActiveRT, "docid2", revid, `{"_deleted": true}`)
+				revid := makeDoc(localActiveRT, "docid2", "3-abc", `{"foo":"bar"}`)
+				localActiveRT.deleteDoc("docid2", revid)
+
+				// Validate local is CBS tombstone, expect not found error
+				var getRaw []byte
+				_, getErr := tb1.Get("docid2", getRaw)
+				assert.Error(t, getErr, "Expect KeyNotFound error retrieving local tombstone pre-replication")
+
 			} else {
 				// Delete doc on localActiveRT (active / local)
 				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
 				assertStatus(t, resp, http.StatusCreated)
 
 				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
-				revid := makeDoc(remotePassiveRT, "docid2", "3-abc", "{}")
-				_ = makeDoc(remotePassiveRT, "docid2", revid, `{"_deleted": true}`)
+				revid := makeDoc(remotePassiveRT, "docid2", "3-abc", `{"foo":"bar"}`)
+				remotePassiveRT.deleteDoc("docid2", revid)
+
+				// Validate local is CBS tombstone, expect not found error
+				var getRaw []byte
+				_, getErr := tb2.Get("docid2", getRaw)
+				assert.Error(t, getErr, "Expect KeyNotFound error retrieving remote tombstone pre-replication")
 			}
 
 			// Start up repl again
@@ -4006,7 +4099,11 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			err = localActiveRT.WaitForCondition(func() bool {
 				doc, err := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
 				assert.NoError(t, err)
-				if doc.SyncData.CurrentRev == "5-93c79fd417d16fe9ee3ed55f9a5dc127" {
+				if doc.SyncData.CurrentRev == "5-4a5f5a35196c37c117737afd5be1fc9b" {
+					// Validate local is CBS tombstone, expect not found error
+					var getRaw []byte
+					_, getErr := tb1.Get("docid2", getRaw)
+					assert.Error(t, getErr, "Expect KeyNotFound error retrieving local tombstone post-replication")
 					return true
 				}
 				return false
@@ -4016,7 +4113,11 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			err = remotePassiveRT.WaitForCondition(func() bool {
 				doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
 				assert.NoError(t, err)
-				if doc.SyncData.CurrentRev == "5-93c79fd417d16fe9ee3ed55f9a5dc127" {
+				if doc.SyncData.CurrentRev == "5-4a5f5a35196c37c117737afd5be1fc9b" {
+					// Validate remote is CBS tombstone
+					var getRaw []byte
+					_, getErr := tb2.Get("docid2", getRaw)
+					assert.Error(t, getErr, "Expect KeyNotFound error retrieving remote tombstone post-replication")
 					return true
 				}
 				return false
@@ -4024,33 +4125,63 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Resurrect Doc
+			updatedBody := make(map[string]interface{})
+			updatedBody["resurrection"] = true
 			if test.resurrectLocal {
-				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
+				if test.sdkResurrect {
+					// resurrect doc via SDK on local
+					err = tb1.Set("docid2", 0, updatedBody)
+					assert.NoError(t, err, "Unable to resurrect doc docid2")
+					// force on-demand import
+					_, getErr := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
+				} else {
+					resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
+					assertStatus(t, resp, http.StatusCreated)
+				}
 			} else {
-				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
+				if test.sdkResurrect {
+					// resurrect doc via SDK on remote
+					err = tb2.Set("docid2", 0, updatedBody)
+					assert.NoError(t, err, "Unable to resurrect doc docid2")
+					// force on-demand import
+					_, getErr := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+					assert.NoError(t, getErr, "Unable to retrieve resurrected doc docid2")
+				} else {
+					resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2", `{"resurrection": true}`)
+					assertStatus(t, resp, http.StatusCreated)
+				}
 			}
-			assertStatus(t, resp, http.StatusCreated)
+
+			// For SG resurrect, rev history is preserved, expect rev 6-...
+			expectedRevID := "6-bf187e11c1f8913769dca26e56621036"
+			if test.sdkResurrect {
+				// For SDK resurrect, rev history is not preserved, expect rev 1-...
+				expectedRevID = "1-e5d43a9cdc4a2d4e258800dfc37e9d77"
+			}
 
 			// Wait for resurrected doc to show up on both sides
 			err = localActiveRT.WaitForCondition(func() bool {
 				doc, err := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
-				assert.NoError(t, err)
-				if doc.SyncData.CurrentRev == "6-ec2b71d37b7a8124c30f1d20af43c3b4" {
+				if err != nil {
+					return false
+				}
+				if doc.SyncData.CurrentRev == expectedRevID {
 					return true
 				}
 				return false
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			err = remotePassiveRT.WaitForCondition(func() bool {
 				doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
 				assert.NoError(t, err)
-				if doc.SyncData.CurrentRev == "6-ec2b71d37b7a8124c30f1d20af43c3b4" {
+				if doc.SyncData.CurrentRev == expectedRevID {
 					return true
 				}
 				return false
 			})
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 		})
 	}
