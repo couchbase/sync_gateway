@@ -2859,6 +2859,9 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
+	// FIXME: CBG-1157
+	t.Skip("WARNING: Skipped until CBG-1157")
+
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges)()
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
