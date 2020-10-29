@@ -880,6 +880,9 @@ function(doc, oldDoc) {
 
 func TestConcurrentRefreshUser(t *testing.T) {
 
+	// FIXME: CBG-1156
+	t.Skip("WARNING: Skipped until CBG-1156")
+
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)()
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
 	syncFunction := `
