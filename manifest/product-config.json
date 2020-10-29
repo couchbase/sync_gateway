@@ -226,14 +226,23 @@
             "go_version": "1.13.4",
             "start_build": 177
         },
-        "manifest/2.8.xml": {
+        "manifest/2.8/2.8.0.xml": {
+            "do-build": false,
             "release": "2.8.0",
             "release_name": "Couchbase Sync Gateway 2.8.0",
             "production": true,
             "interval": 120,
             "go_version": "1.13.4",
+            "start_build": 377
+        },
+        "manifest/2.8.xml": {
+            "release": "2.8.0.1",
+            "release_name": "Couchbase Sync Gateway 2.8.0.1",
+            "production": true,
+            "interval": 120,
+            "go_version": "1.13.4",
             "trigger_blackduck": true,
-            "start_build": 374
+            "start_build": 1
         },
         "manifest/dev.xml": {
             "release": "dev",
