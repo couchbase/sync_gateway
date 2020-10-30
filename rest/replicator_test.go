@@ -2077,6 +2077,9 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			rt2revID := respRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
+			remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalSync)
+			require.NoError(t, err)
+
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 			srv := httptest.NewServer(rt2.TestPublicHandler())
 			defer srv.Close()
@@ -2100,6 +2103,9 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
 
+			localDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalSync)
+			require.NoError(t, err)
+
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
@@ -2118,15 +2124,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			// Start the replicator (implicit connect)
 			assert.NoError(t, ar.Start())
-
-			// TODO: Use replication stats to wait for replication to complete
-			time.Sleep(1 * time.Second)
-			log.Printf("========================Replication should be done, checking with changes")
 			// wait for the document originally written to rt2 to arrive at rt1.  Should end up as winner under default conflict resolution
+			base.WaitForStat(func() int64 {
+				return ar.GetStatus().DocsWritten
+			}, 1)
+			log.Printf("========================Replication should be done, checking with changes")
 
 			// Validate results on the local (rt1)
-			assert.NoError(t, rt1.waitForRev(docID, test.expectedRevID))
-			changesResults, err := rt1.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			changesResults, err := rt1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", localDoc.Sequence), "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
@@ -2167,8 +2172,12 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			assert.Equal(t, 1, activeCount)
 
 			// Validate results on the remote (rt2)
-			assert.NoError(t, rt2.waitForRev(docID, test.expectedRevID))
-			changesResults, err = rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			rt2Since := remoteDoc.Sequence
+			if test.expectedRevID == test.remoteRevID {
+				// no changes should have been pushed back up to rt2, because this rev won.
+				rt2Since = 0
+			}
+			changesResults, err = rt2.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%d", rt2Since), "", true)
 			require.NoError(t, err)
 			require.Len(t, changesResults.Results, 1)
 			assert.Equal(t, docID, changesResults.Results[0].ID)
