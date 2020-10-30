@@ -105,7 +105,7 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	return db
 }
 
-// If certain environemnt variables are set, for example to turn on XATTR support, then update
+// If certain environment variables are set, for example to turn on XATTR support, then update
 // the DatabaseContextOptions accordingly
 func AddOptionsFromEnvironmentVariables(dbcOptions *DatabaseContextOptions) {
 	if base.TestUseXattrs() {
@@ -345,6 +345,107 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assertHTTPError(t, err, 404)
 }
 
+func TestGetRemovalMultiChannel(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	auth := auth.NewAuthenticator(db.Bucket, db)
+
+	// Create a user who have access to both channel ABC and NBC.
+	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC", "NBC"))
+	require.NoError(t, err, "Error creating user")
+
+	// Create a user who have access to channel NBC.
+	userBob, err := auth.NewUser("bob", "pass", base.SetOf("NBC"))
+	require.NoError(t, err, "Error creating user")
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1":       "v1",
+		"channels": append([]string{"ABC", "NBC"}),
+	}
+	rev1ID, _, err := db.Put("doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
+	rev2Body := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRev:    rev1ID,
+	}
+	rev2ID, _, err := db.Put("doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Create the third revision of doc1 on channel ABC.
+	rev3Body := Body{
+		"k3":       "v3",
+		"channels": []string{"ABC"},
+		BodyRev:    rev2ID,
+	}
+	rev3ID, _, err := db.Put("doc1", rev3Body)
+	require.NoError(t, err, "Error creating doc")
+	require.NotEmpty(t, rev3ID, "Error creating doc")
+
+	// Get rev2 of the doc as a user who have access to this revision.
+	db.user = userAlice
+	body, err := db.Get1xRevBody("doc1", rev2ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+
+	rev1GenID := rev1ID[2:]
+	rev2GenID := rev2ID[2:]
+	bodyExpected := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRevisions: Revisions{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2GenID, rev1GenID},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev2ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// Get rev2 of the doc as a user who doesn't have access to this revision.
+	db.user = userBob
+	body, err = db.Get1xRevBody("doc1", rev2ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+	bodyExpected = Body{
+		BodyRemoved: true,
+		BodyRevisions: Revisions{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2GenID, rev1GenID},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev2ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// Flush the revision cache and purge the old revision backup.
+	db.FlushRevisionCacheForTest()
+	err = db.purgeOldRevisionJSON("doc1", rev2ID)
+	require.NoError(t, err, "Error purging old revision JSON")
+
+	// Try with a user who have access to this revision.
+	db.user = userAlice
+	body, err = db.Get1xRevBody("doc1", rev2ID, true, nil)
+	assertHTTPError(t, err, 404)
+
+	// Get rev2 of the doc as a user who doesn't have access to this revision.
+	db.user = userBob
+	body, err = db.Get1xRevBody("doc1", rev2ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+	bodyExpected = Body{
+		BodyRemoved: true,
+		BodyRevisions: Revisions{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2GenID, rev1GenID},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev2ID,
+	}
+	require.Equal(t, bodyExpected, body)
+}
+
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
 func TestGetRemoved(t *testing.T) {
 
@@ -401,16 +502,7 @@ func TestGetRemoved(t *testing.T) {
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
 	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "Get1xRevBody")
-	expectedResult = Body{
-		BodyId:      "doc1",
-		BodyRev:     rev2id,
-		BodyRemoved: true,
-		BodyRevisions: Revisions{
-			RevisionsStart: 2,
-			RevisionsIds:   []string{rev2digest, rev1digest}},
-	}
-	goassert.DeepEquals(t, body, expectedResult)
+	assertHTTPError(t, err, 404)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = db.purgeOldRevisionJSON("doc1", rev1id)
@@ -476,17 +568,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
 	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
-	assert.NoError(t, err, "Get1xRevBody")
-	expectedResult = Body{
-		BodyId:      "doc1",
-		BodyRev:     rev2id,
-		BodyRemoved: true,
-		BodyDeleted: true,
-		BodyRevisions: Revisions{
-			RevisionsStart: 2,
-			RevisionsIds:   []string{rev2digest, rev1digest}},
-	}
-	AssertEqualBodies(t, expectedResult, body)
+	assertHTTPError(t, err, 404)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
 	err = db.purgeOldRevisionJSON("doc1", rev1id)

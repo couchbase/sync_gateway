@@ -800,19 +800,19 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 // removal notification (_removed=true)
 func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
 
-	channels = make(base.Set)
+	removedChannels := make(base.Set)
 
 	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
 	for channel, removal := range doc.Channels {
 		if removal != nil && removal.RevID == revID {
-			channels[channel] = struct{}{}
+			removedChannels[channel] = struct{}{}
 			if removal.Deleted == true {
 				isDelete = true
 			}
 		}
 	}
 	// If no matches found, return isRemoval=false
-	if len(channels) == 0 {
+	if len(removedChannels) == 0 {
 		return nil, nil, nil, false, false, nil
 	}
 
@@ -822,6 +822,14 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 		bodyBytes = []byte(`{"` + BodyDeleted + `":true,"` + BodyRemoved + `":true}`)
 	} else {
 		bodyBytes = []byte(RemovedRedactedDocument)
+	}
+
+	activeChannels := make(base.Set)
+	// Add active channels to the channel set if the the revision is available in the revision tree.
+	if revInfo, ok := doc.History[revID]; ok {
+		for channel, _ := range revInfo.Channels {
+			activeChannels[channel] = struct{}{}
+		}
 	}
 
 	// Build revision history for revID
@@ -836,7 +844,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 	}
 	history = encodeRevisions(revHistory)
 
-	return bodyBytes, history, channels, true, isDelete, nil
+	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
 
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.

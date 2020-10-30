@@ -105,6 +105,14 @@ type DocumentRevision struct {
 	_shallowCopyBody Body // an unmarshalled body that can produce shallow copies
 }
 
+// IsRemoval determines whether the revision is a removal by
+// inspecting the revision body bytes.
+func (rev *DocumentRevision) IsRemoval() bool {
+	body := string(rev.BodyBytes)
+	return body == RemovedRedactedDocument ||
+		body == `{"`+BodyDeleted+`":true,"`+BodyRemoved+`":true}`
+}
+
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
 // Callers are free to modify any of this body without affecting the document revision.
 func (rev *DocumentRevision) MutableBody() (b Body, err error) {

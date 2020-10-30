@@ -280,6 +280,10 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		return redactedRev, nil
 	}
 
+	if revision.IsRemoval() {
+		return DocumentRevision{}, base.HTTPErrorf(404, "missing")
+	}
+
 	if revision.Deleted && revid == "" {
 		return DocumentRevision{}, base.HTTPErrorf(404, "deleted")
 	}
@@ -311,6 +315,10 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 				return nil, &redactedBody, nil
 			}
 
+			if fromRevision.IsRemoval() {
+				return nil, nil, base.HTTPErrorf(404, "missing")
+			}
+
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
 			// db.DbStats.StatsDeltaSync().Add(base.StatKeyDeltaCacheHits, 1)
 			db.DbStats.DeltaSync().DeltaCacheHit.Add(1)
@@ -335,6 +343,10 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, toRevision.Channels, deleted, toRevision.History)
 		if !isAuthorized {
 			return nil, &redactedBody, nil
+		}
+
+		if toRevision.IsRemoval() {
+			return nil, nil, base.HTTPErrorf(404, "missing")
 		}
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
