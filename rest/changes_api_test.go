@@ -706,6 +706,97 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	}
 }
 
+// TestChangesFromCompoundSinceViaDocGrant ensures that a changes feed with a compound since value returns the correct result after a dynamic channel grant.
+func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyChanges, base.KeyHTTP)()
+
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {
+	channel(doc.channel);
+	if (doc.grants) {
+		access(doc.grants.users, doc.grants.channels);
+	}
+}`})
+	defer rt.Close()
+
+	// Create user with access to channel ABC:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
+
+	// Create docs in various channels
+	_ = rt.putDoc("pbs-1", `{"channel":["PBS"]}`)
+	_ = rt.putDoc("hbo-1", `{"channel":["HBO"]}`)
+	pbs2 := rt.putDoc("pbs-2", `{"channel":["PBS"]}`)
+	hbo2 := rt.putDoc("hbo-2", `{"channel":["HBO"]}`)
+
+	// remove channels/tombstone a couple of docs to ensure they're not backfilled after a dynamic grant
+	_ = rt.putDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.Rev))
+	rt.deleteDoc(pbs2.ID, pbs2.Rev)
+
+	_ = rt.putDoc("abc-1", `{"channel":["ABC"]}`)
+	cacheWaiter.AddAndWait(7)
+
+	// Issue changes request and check the results, expect only the one doc in ABC
+	expectedResults := []string{
+		`{"seq":7,"id":"abc-1","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+	}
+	changes, err := rt.WaitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange, result)
+	}
+
+	// create doc that dynamically grants bernard access to PBS and HBO
+	_ = rt.putDoc("grant-1", `{"channel": ["ABC"], "grants": {"users": ["bernard"], "channels": ["PBS", "HBO"]}}`)
+
+	cacheWaiter.AddAndWait(1)
+
+	// Issue a new changes request with since=last_seq ensure that user receives all records for channels PBS, HBO.
+	expectedResults = []string{
+		`{"seq":"8:1","id":"pbs-1","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-b11d5ac3de8e0b902fc55aa62dcbe49e"}]}`,
+	}
+	changes, err = rt.WaitForChanges(1,
+		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange, result)
+	}
+
+	// Write another doc
+	_ = rt.putDoc("mix-1", `{"channel":["ABC", "PBS", "HBO"]}`)
+
+	cacheWaiter.AddAndWait(1)
+
+	// Issue a changes request with a compound since value from the last changes response
+	// ensure we don't backfill from the start, but have everything from the compound sequence onwards
+	expectedResults = []string{
+		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-b11d5ac3de8e0b902fc55aa62dcbe49e"}]}`, // FIXME: Sequence that caused a backfill isn't sent in a subsequent partial-backfill
+		`{"seq":9,"id":"mix-1","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
+	}
+	changes, err = rt.WaitForChanges(len(expectedResults), "/db/_changes?since=8:1", "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
+
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange, result)
+	}
+}
+
 // Ensures that changes feed goroutines blocked on a ChangeWaiter are closed when the changes feed is terminated.
 // Reproduces CBG-1113 and #1329 (even with the fix in PR #1360)
 // Tests all combinations of HTTP feed types, admin/non-admin, and with and without a manual notify to wake up.
