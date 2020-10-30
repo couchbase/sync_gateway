@@ -722,8 +722,13 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 }`})
 	defer rt.Close()
 
-	// Create user with access to channel ABC:
+	// Create user with access to channel NBC:
 	a := rt.ServerContext().Database("db").Authenticator()
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "NBC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(alice))
+
+	// Create user with access to channel ABC:
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
@@ -755,8 +760,8 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 		assert.Equal(t, expectedChange, result)
 	}
 
-	// create doc that dynamically grants bernard access to PBS and HBO
-	_ = rt.putDoc("grant-1", `{"channel": ["ABC"], "grants": {"users": ["bernard"], "channels": ["PBS", "HBO"]}}`)
+	// create doc that dynamically grants both users access to PBS and HBO
+	_ = rt.putDoc("grant-1", `{"channel": ["NBC"], "grants": {"users": ["alice", "bernard"], "channels": ["NBC", "PBS", "HBO"]}}`)
 
 	cacheWaiter.AddAndWait(1)
 
@@ -764,7 +769,7 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	expectedResults = []string{
 		`{"seq":"8:1","id":"pbs-1","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
 		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
-		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-b11d5ac3de8e0b902fc55aa62dcbe49e"}]}`,
+		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-c5098bb14d12d647c901850ff6a6292a"}]}`,
 	}
 	changes, err = rt.WaitForChanges(1,
 		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
@@ -784,17 +789,29 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	// ensure we don't backfill from the start, but have everything from the compound sequence onwards
 	expectedResults = []string{
 		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
-		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-b11d5ac3de8e0b902fc55aa62dcbe49e"}]}`, // FIXME: Sequence that caused a backfill isn't sent in a subsequent partial-backfill
+		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-c5098bb14d12d647c901850ff6a6292a"}]}`,
 		`{"seq":9,"id":"mix-1","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
-	changes, err = rt.WaitForChanges(len(expectedResults), "/db/_changes?since=8:1", "bernard", false)
-	require.NoError(t, err, "Error retrieving changes results")
 
-	for index, result := range changes.Results {
-		var expectedChange db.ChangeEntry
-		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
-		assert.Equal(t, expectedChange, result)
-	}
+	t.Run("grant via existing channel", func(t *testing.T) {
+		changes, err = rt.WaitForChanges(len(expectedResults), "/db/_changes?since=8:1", "alice", false)
+		require.NoError(t, err, "Error retrieving changes results for alice")
+		for index, result := range changes.Results {
+			var expectedChange db.ChangeEntry
+			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+			assert.Equal(t, expectedChange, result)
+		}
+	})
+
+	t.Run("grant via new channel", func(t *testing.T) {
+		changes, err = rt.WaitForChanges(len(expectedResults), "/db/_changes?since=8:1", "bernard", false)
+		require.NoError(t, err, "Error retrieving changes results for bernard")
+		for index, result := range changes.Results {
+			var expectedChange db.ChangeEntry
+			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+			assert.Equal(t, expectedChange, result)
+		}
+	})
 }
 
 // Ensures that changes feed goroutines blocked on a ChangeWaiter are closed when the changes feed is terminated.
