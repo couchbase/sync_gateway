@@ -678,15 +678,21 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 
 	cacheWaiter.AddAndWait(4)
 
-	// Issue another changes request - ensure we don't backfill again
+	// Issue a changes request with a compound since value from the last changes response
+	// ensure we don't backfill from the start, but have everything from the compound sequence onwards
 	expectedResults = []string{
+		`{"seq":"28:6","id":"hbo-2","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":"28:15","id":"mix-1","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}`,
+		`{"seq":"28:16","id":"mix-2","removed":["PBS"],"changes":[{"rev":"2-5dcb551a0eb59eef3d98c64c29033d02"}]}`,
+		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
+		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 		`{"seq":29,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
 		`{"seq":30,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
 		`{"seq":31,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
 	changes, err = rt.WaitForChanges(len(expectedResults),
-		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+		fmt.Sprintf("/db/_changes?since=28:5"), "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
