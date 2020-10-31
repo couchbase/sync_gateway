@@ -51,7 +51,7 @@ func (h *handler) handleCreateDB() error {
 func (h *handler) handleDbOnline() error {
 	h.assertAdminOnly()
 	dbState := atomic.LoadUint32(&h.db.State)
-	//If the DB is already trasitioning to: online or is online silently return
+	//If the DB is already transitioning to: online or is online silently return
 	if dbState == db.DBOnline || dbState == db.DBStarting {
 		return nil
 	}

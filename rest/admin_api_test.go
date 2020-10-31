@@ -1783,15 +1783,9 @@ func TestHandleCreateDB(t *testing.T) {
 	kvTLSPort := 11207
 	resource := fmt.Sprintf("/%s/", bucket)
 
-	bucketConfig := BucketConfig{
-		Server:    &server,
-		Bucket:    &bucket,
-		KvTLSPort: kvTLSPort,
-	}
-	dbConfig := &DbConfig{
-		BucketConfig:       bucketConfig,
-		SGReplicateEnabled: base.BoolPtr(false),
-	}
+	bucketConfig := BucketConfig{Server: &server, Bucket: &bucket, KvTLSPort: kvTLSPort}
+	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
+	var respBody db.Body
 
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -1802,8 +1796,6 @@ func TestHandleCreateDB(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
 	assertStatus(t, resp, http.StatusOK)
-
-	var respBody db.Body
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 	assert.Equal(t, bucket, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
@@ -1813,16 +1805,34 @@ func TestHandleCreateDB(t *testing.T) {
 	reqBodyJson := `"server":"walrus:","pool":"default","bucket":"albums","kv_tls_port":11207`
 	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
 	assertStatus(t, resp, http.StatusBadRequest)
+}
+
+func TestHandlePutDbConfigWithBackticks(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Get database info before putting config.
+	resp := rt.SendAdminRequest(http.MethodGet, "/backticks/", "")
+	assertStatus(t, resp, http.StatusNotFound)
 
 	// Create database with valid JSON config that contains sync function enclosed in backticks.
+	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
 	reqBodyWithBackticks := `{
     	"server": "walrus:",
-    	"bucket": "albums",
-        "sync": ` + "`" + `function(doc, oldDoc) { console.log("foo");}` + "`" + `,
-    	"kv_tls_port": 11207
+    	"bucket": "backticks",
+        "sync": ` + "`" + syncFunc + "`" + `
 	}`
-	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyWithBackticks)
+	resp = rt.SendAdminRequest(http.MethodPut, "/backticks/", reqBodyWithBackticks)
 	assertStatus(t, resp, http.StatusCreated)
+
+	// Get database config after putting config.
+	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config", "")
+	assertStatus(t, resp, http.StatusOK)
+	var respBody db.Body
+	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.Equal(t, "backticks", respBody["name"].(string))
+	assert.Equal(t, "walrus:", respBody["server"].(string))
+	assert.Equal(t, syncFunc, respBody["sync"].(string))
 }
 
 func TestHandleDBConfig(t *testing.T) {
