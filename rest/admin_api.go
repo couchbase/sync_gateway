@@ -35,7 +35,7 @@ func (h *handler) handleCreateDB() error {
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
 	var config *DbConfig
-	if err := h.readJSONInto(&config); err != nil {
+	if err := h.readSanitizeJSONInto(&config); err != nil {
 		return err
 	}
 	if err := config.setup(dbName); err != nil {
@@ -132,7 +132,7 @@ func (h *handler) handlePutDbConfig() error {
 	h.assertAdminOnly()
 	dbName := h.db.Name
 	var config *DbConfig
-	if err := h.readJSONInto(&config); err != nil {
+	if err := h.readSanitizeJSONInto(&config); err != nil {
 		return err
 	}
 	if err := config.setup(dbName); err != nil {

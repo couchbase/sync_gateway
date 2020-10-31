@@ -27,30 +27,23 @@ const kMaxInlineAttachmentSize = 200
 // JSON bodies smaller than this won't be GZip-encoded.
 const kMinCompressedJSONSize = 300
 
-// Parses a JSON MIME body, unmarshaling it into "into".
+// ReadConfigJSON parses a JSON body, unmarshals it into the target structure "into".
 // Closes the input io.ReadCloser once done.
-func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}) error {
-	contentType := headers.Get("Content-Type")
-	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
+func ReadConfigJSON(headers http.Header, input io.ReadCloser, into interface{}) error {
+	// Performs the Content-Type validation and Content-Encoding check.
+	input, err := processContentEncoding(headers, input)
+	if err != nil {
+		return err
 	}
 
-	switch headers.Get("Content-Encoding") {
-	case "gzip":
-		var err error
-		if input, err = gzip.NewReader(input); err != nil {
-			return err
-		}
-	case "":
-		break
-	default:
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
+	content, err := ioutil.ReadAll(input)
+	if err != nil {
+		return err
 	}
+	defer func() { _ = input.Close() }()
 
-	decoder := base.JSONDecoder(input)
-	decoder.DisallowUnknownFields()
-	decoder.UseNumber()
-	err := decoder.Decode(into)
+	// Decode the body bytes into target structure.
+	err = decode(content, into)
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
 		if errors.Cause(err) == base.ErrUnknownField {
@@ -59,10 +52,83 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
 		}
 	}
-
-	_ = input.Close()
-
 	return err
+}
+
+// ReadSanitizeConfigJSON parses a JSON body, unmarshals it into the target structure "into".
+// Closes the input io.ReadCloser once done.
+func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, into interface{}) error {
+	// Performs the Content-Type validation and Content-Encoding check.
+	input, err := processContentEncoding(headers, input)
+	if err != nil {
+		return err
+	}
+
+	content, err := ioutil.ReadAll(input)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+
+	// Expand environment variables.
+	content = expandEnv(content)
+
+	// Convert the back quotes into double-quotes, escapes literal
+	// backslashes, newlines or double-quotes with backslashes.
+	if content = sanitizeConfig(content); err != nil {
+		return err
+	}
+
+	// Decode the body bytes into target structure.
+	err = decode(content, into)
+	if err != nil {
+		err = base.WrapJSONUnknownFieldErr(err)
+		if errors.Cause(err) == base.ErrUnknownField {
+			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
+		} else {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
+		}
+	}
+	return err
+}
+
+// processContentEncoding performs the Content-Type validation and Content-Encoding check.
+func processContentEncoding(headers http.Header, input io.ReadCloser) (io.ReadCloser, error) {
+	contentType := headers.Get("Content-Type")
+	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
+		return input, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
+	}
+	switch headers.Get("Content-Encoding") {
+	case "gzip":
+		var err error
+		if input, err = gzip.NewReader(input); err != nil {
+			return input, err
+		}
+	case "":
+		break
+	default:
+		return input, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
+	}
+	return input, nil
+}
+
+// sanitizeConfig converts the back quotes into double-quotes, escapes
+// literal backslashes, newlines or double-quotes with backslashes.
+func sanitizeConfig(content []byte) []byte {
+	content = base.ConvertBackQuotedStrings(content)
+	return content
+}
+
+// decode unmarshals the raw JSON bytes into the target structure. Underlying
+// Decoder to return an error when the destination is a struct and the input
+// contains object keys which do not match any non-ignored, exported fields
+// in the destination. UseNumber is enforced in Decoder to unmarshal a number
+// into an interface{} as a Number instead of as a float64.
+func decode(content []byte, into interface{}) error {
+	decoder := base.JSONDecoder(bytes.NewBuffer(content))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	return decoder.Decode(into)
 }
 
 type attInfo struct {
@@ -198,7 +264,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 		return nil, err
 	}
 	var body db.Body
-	err = ReadJSONFromMIME(http.Header(mainPart.Header), mainPart, &body)
+	err = ReadConfigJSON(http.Header(mainPart.Header), mainPart, &body)
 	if err != nil {
 		return nil, err
 	}

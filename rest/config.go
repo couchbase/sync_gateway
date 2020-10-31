@@ -650,9 +650,9 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 		return err
 	}
 
-	b = base.ConvertBackQuotedStrings(b)
-	// Expand environment variables
+	// Expand environment variables.
 	b = expandEnv(b)
+	b = base.ConvertBackQuotedStrings(b)
 	d := base.JSONDecoder(bytes.NewBuffer(b))
 	d.DisallowUnknownFields()
 	err = d.Decode(config)
@@ -701,10 +701,12 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 		// Set value to the default.
 		value = kvPair[1]
 		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}' with "+
-			"default '%s'", key, base.UD(value))
+			"default value specified", key)
+	} else if value == "" && len(kvPair) != 2 {
+		base.Infof(base.KeyAll, "The '${%s}' environment variable is not set and the default value "+
+			"was not specified in config. Will be replaced with an empty string in config", key)
 	} else {
-		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}' with '%s'",
-			key, base.UD(value))
+		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}'", key)
 	}
 	return value
 }

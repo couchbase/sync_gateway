@@ -1783,9 +1783,15 @@ func TestHandleCreateDB(t *testing.T) {
 	kvTLSPort := 11207
 	resource := fmt.Sprintf("/%s/", bucket)
 
-	bucketConfig := BucketConfig{Server: &server, Bucket: &bucket, KvTLSPort: kvTLSPort}
-	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
-	var respBody db.Body
+	bucketConfig := BucketConfig{
+		Server:    &server,
+		Bucket:    &bucket,
+		KvTLSPort: kvTLSPort,
+	}
+	dbConfig := &DbConfig{
+		BucketConfig:       bucketConfig,
+		SGReplicateEnabled: base.BoolPtr(false),
+	}
 
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
@@ -1796,6 +1802,8 @@ func TestHandleCreateDB(t *testing.T) {
 
 	resp = rt.SendAdminRequest(http.MethodGet, resource, string(reqBody))
 	assertStatus(t, resp, http.StatusOK)
+
+	var respBody db.Body
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 	assert.Equal(t, bucket, respBody["db_name"].(string))
 	assert.Equal(t, "Online", respBody["state"].(string))
@@ -1805,6 +1813,16 @@ func TestHandleCreateDB(t *testing.T) {
 	reqBodyJson := `"server":"walrus:","pool":"default","bucket":"albums","kv_tls_port":11207`
 	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyJson)
 	assertStatus(t, resp, http.StatusBadRequest)
+
+	// Create database with valid JSON config that contains sync function enclosed in backticks.
+	reqBodyWithBackticks := `{
+    	"server": "walrus:",
+    	"bucket": "albums",
+        "sync": ` + "`" + `function(doc, oldDoc) { console.log("foo");}` + "`" + `,
+    	"kv_tls_port": 11207
+	}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/photos/", reqBodyWithBackticks)
+	assertStatus(t, resp, http.StatusCreated)
 }
 
 func TestHandleDBConfig(t *testing.T) {
