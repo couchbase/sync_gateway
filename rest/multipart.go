@@ -68,7 +68,7 @@ func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, into inter
 	if err != nil {
 		return err
 	}
-	defer input.Close()
+	defer func() { _ = input.Close() }()
 
 	// Expand environment variables.
 	content = expandEnv(content)
