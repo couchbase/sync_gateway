@@ -653,6 +653,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	// Expand environment variables.
 	b = expandEnv(b)
 	b = base.ConvertBackQuotedStrings(b)
+
 	d := base.JSONDecoder(bytes.NewBuffer(b))
 	d.DisallowUnknownFields()
 	err = d.Decode(config)

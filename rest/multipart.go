@@ -51,7 +51,9 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 }
 
 // ReadSanitizeConfigJSON parses a JSON body, unmarshals it into the target structure "into".
-// Closes the input io.ReadCloser once done.
+// Closes the input io.ReadCloser once done. It expands environment variables and sanitizes the
+// input bytes by converting the back quotes into double-quotes, escaping literal backslashes,
+// newlines or double-quotes with backslashes.
 func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, into interface{}) error {
 	// Performs the Content-Type validation and Content-Encoding check.
 	input, err := processContentEncoding(headers, input)
@@ -59,6 +61,7 @@ func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, into inter
 		return err
 	}
 
+	// Read body bytes to sanitize the content and substitute environment variables.
 	content, err := ioutil.ReadAll(input)
 	if err != nil {
 		return err
