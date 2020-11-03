@@ -280,6 +280,8 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		return redactedRev, nil
 	}
 
+	// If the revision is a removal cache entry (no body), but the user has access to that removal, then just
+	// return 404 missing to indicate that the body of the revision is no longer available.
 	if revision.IsRemoval() {
 		return DocumentRevision{}, base.HTTPErrorf(404, "missing")
 	}
@@ -306,6 +308,13 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		return nil, nil, err
 	}
 
+	// If the fromRevision is a removal cache entry (no body), but the user has access to that removal, then just
+	// return 404 missing to indicate that the body of the revision is no longer available.
+	// Delta can't be generated if we don't have the fromRevision body.
+	if fromRevision.IsRemoval() {
+		return nil, nil, base.HTTPErrorf(404, "missing")
+	}
+
 	// If delta is found, check whether it is a delta for the toRevID we want
 	if fromRevision.Delta != nil {
 		if fromRevision.Delta.ToRevID == toRevID {
@@ -313,10 +322,6 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 			isAuthorized, redactedBody := db.authorizeUserForChannels(docID, toRevID, fromRevision.Delta.ToChannels, fromRevision.Delta.ToDeleted, encodeRevisions(fromRevision.Delta.RevisionHistory))
 			if !isAuthorized {
 				return nil, &redactedBody, nil
-			}
-
-			if fromRevision.IsRemoval() {
-				return nil, nil, base.HTTPErrorf(404, "missing")
 			}
 
 			// Case 2a. 'some rev' is the rev we're interested in - return the delta
