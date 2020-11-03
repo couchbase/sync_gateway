@@ -50,11 +50,11 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 	return err
 }
 
-// ReadSanitizeConfigJSON parses a JSON body, unmarshals it into the target structure "into".
+// ReadSanitizeConfigJSON parses a JSON body, unmarshals it into "DbConfig".
 // Closes the input io.ReadCloser once done. It expands environment variables and sanitizes the
 // input bytes by converting the back quotes into double-quotes, escaping literal backslashes,
 // newlines or double-quotes with backslashes.
-func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, into interface{}) error {
+func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, config *DbConfig) error {
 	// Performs the Content-Type validation and Content-Encoding check.
 	input, err := processContentEncoding(headers, input)
 	if err != nil {
@@ -76,7 +76,7 @@ func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, into inter
 	content = base.ConvertBackQuotedStrings(content)
 
 	// Decode the body bytes into target structure.
-	err = base.JSONDecoderWithOptions(bytes.NewReader(content), true, true).Decode(&into)
+	err = base.JSONDecoderWithOptions(bytes.NewReader(content), true, true).Decode(config)
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
 		if errors.Cause(err) == base.ErrUnknownField {

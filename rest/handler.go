@@ -476,9 +476,9 @@ func (h *handler) readJSONInto(into interface{}) error {
 	return ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
-// readSanitizeJSONInto reads and sanitizes a JSON request body into a custom structure.
-func (h *handler) readSanitizeJSONInto(into interface{}) error {
-	return ReadSanitizeConfigJSON(h.rq.Header, h.requestBody, into)
+// readSanitizeJSONInto reads and sanitizes a JSON request body into DbConfig.
+func (h *handler) readSanitizeJSONInto(config *DbConfig) error {
+	return ReadSanitizeConfigJSON(h.rq.Header, h.requestBody, config)
 }
 
 // Reads & parses the request body, handling either JSON or multipart.
