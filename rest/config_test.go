@@ -1401,20 +1401,3 @@ func TestSetupServerContext(t *testing.T) {
 		assert.Nil(t, sc)
 	})
 }
-
-func TestStartServer(t *testing.T) {
-	t.Skip("Skipping this test temporarily")
-	config := &ServerConfig{
-		Logging: &base.LoggingConfig{
-			RedactionLevel: base.RedactFull,
-		},
-		ProfileInterface: base.StringPtr("localhost:4987"),
-		MetricsInterface: base.StringPtr("localhost:4986"),
-		AdminInterface:   base.StringPtr("localhost:4985"),
-		Interface:        base.StringPtr("localhost:-1"), // Force HTTP server startup to fail.
-	}
-	sc, err := setupServerContext(config)
-	require.NoError(t, err)
-	defer sc.Close()
-	startServer(config, sc)
-}
