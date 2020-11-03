@@ -27,23 +27,17 @@ const kMaxInlineAttachmentSize = 200
 // JSON bodies smaller than this won't be GZip-encoded.
 const kMinCompressedJSONSize = 300
 
-// ReadConfigJSON parses a JSON body, unmarshals it into the target structure "into".
+// ReadJSONFromMIME parses a JSON MIME body, unmarshalling it into "into".
 // Closes the input io.ReadCloser once done.
-func ReadConfigJSON(headers http.Header, input io.ReadCloser, into interface{}) error {
+func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}) error {
 	// Performs the Content-Type validation and Content-Encoding check.
 	input, err := processContentEncoding(headers, input)
 	if err != nil {
 		return err
 	}
 
-	content, err := ioutil.ReadAll(input)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = input.Close() }()
-
 	// Decode the body bytes into target structure.
-	err = decode(content, into)
+	err = base.JSONDecoderWithOptions(input, true, true).Decode(&into)
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
 		if errors.Cause(err) == base.ErrUnknownField {
@@ -52,6 +46,7 @@ func ReadConfigJSON(headers http.Header, input io.ReadCloser, into interface{}) 
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
 		}
 	}
+	_ = input.Close()
 	return err
 }
 
@@ -80,7 +75,7 @@ func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, into inter
 	}
 
 	// Decode the body bytes into target structure.
-	err = decode(content, into)
+	err = base.JSONDecoderWithOptions(bytes.NewReader(content), true, true).Decode(&into)
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
 		if errors.Cause(err) == base.ErrUnknownField {
@@ -117,18 +112,6 @@ func processContentEncoding(headers http.Header, input io.ReadCloser) (io.ReadCl
 func sanitizeConfig(content []byte) []byte {
 	content = base.ConvertBackQuotedStrings(content)
 	return content
-}
-
-// decode unmarshals the raw JSON bytes into the target structure. Underlying
-// Decoder to return an error when the destination is a struct and the input
-// contains object keys which do not match any non-ignored, exported fields
-// in the destination. UseNumber is enforced in Decoder to unmarshal a number
-// into an interface{} as a Number instead of as a float64.
-func decode(content []byte, into interface{}) error {
-	decoder := base.JSONDecoder(bytes.NewBuffer(content))
-	decoder.DisallowUnknownFields()
-	decoder.UseNumber()
-	return decoder.Decode(into)
 }
 
 type attInfo struct {
@@ -264,7 +247,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 		return nil, err
 	}
 	var body db.Body
-	err = ReadConfigJSON(http.Header(mainPart.Header), mainPart, &body)
+	err = ReadJSONFromMIME(http.Header(mainPart.Header), mainPart, &body)
 	if err != nil {
 		return nil, err
 	}

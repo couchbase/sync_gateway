@@ -473,7 +473,7 @@ func (h *handler) readJSON() (db.Body, error) {
 
 // Parses a JSON request body into a custom structure.
 func (h *handler) readJSONInto(into interface{}) error {
-	return ReadConfigJSON(h.rq.Header, h.requestBody, into)
+	return ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
 // readSanitizeJSONInto reads and sanitizes a JSON request body into a custom structure.

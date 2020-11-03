@@ -1435,3 +1435,15 @@ func IsConnectionRefusedError(err error) bool {
 
 	return strings.Contains(err.Error(), errorMessage)
 }
+
+// JSONDecoderWithOptions returns a new JSON decoder implementing the JSONDecoderI interface with the specified options.
+func JSONDecoderWithOptions(r io.Reader, disallowUnknownFields, useNumber bool) (d JSONDecoderI) {
+	d = JSONDecoder(r)
+	if disallowUnknownFields {
+		d.DisallowUnknownFields()
+	}
+	if useNumber {
+		d.UseNumber()
+	}
+	return d
+}
