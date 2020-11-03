@@ -70,9 +70,7 @@ func ReadSanitizeConfigJSON(headers http.Header, input io.ReadCloser, into inter
 
 	// Convert the back quotes into double-quotes, escapes literal
 	// backslashes, newlines or double-quotes with backslashes.
-	if content = sanitizeConfig(content); err != nil {
-		return err
-	}
+	content = base.ConvertBackQuotedStrings(content)
 
 	// Decode the body bytes into target structure.
 	err = base.JSONDecoderWithOptions(bytes.NewReader(content), true, true).Decode(&into)
@@ -105,13 +103,6 @@ func processContentEncoding(headers http.Header, input io.ReadCloser) (io.ReadCl
 		return input, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 	return input, nil
-}
-
-// sanitizeConfig converts the back quotes into double-quotes, escapes
-// literal backslashes, newlines or double-quotes with backslashes.
-func sanitizeConfig(content []byte) []byte {
-	content = base.ConvertBackQuotedStrings(content)
-	return content
 }
 
 type attInfo struct {
