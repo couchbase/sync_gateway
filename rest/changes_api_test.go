@@ -2973,9 +2973,6 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 func TestChangesActiveOnlyWithLimit(t *testing.T) {
 
-	// FIXME: CBG-1157
-	t.Skip("WARNING: Skipped until CBG-1157")
-
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges)()
 
 	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
@@ -2988,7 +2985,6 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "PBS", "ABC"))
 	assert.NoError(t, err)
 	assert.NoError(t, a.Save(bernard))
-
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put several documents
@@ -2997,36 +2993,48 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	deletedRev := body["rev"].(string)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
+
 	response = rt.SendAdminRequest("PUT", "/db/removedDoc", `{"channel":["PBS"]}`)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	removedRev := body["rev"].(string)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
+
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc0", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
 
 	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", `{"channel":["PBS","ABC"]}`)
 	assert.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	partialRemovalRev := body["rev"].(string)
 	assertStatus(t, response, 201)
 
+	cacheWaiter.AddAndWait(1)
+
 	response = rt.SendAdminRequest("PUT", "/db/conflictedDoc", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+
+	cacheWaiter.AddAndWait(1)
 
 	// Create a conflict, then tombstone it
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictTombstone"}], "new_edits":false}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
+
 	response = rt.SendAdminRequest("DELETE", "/db/conflictedDoc?rev=1-conflictTombstone", "")
 	assertStatus(t, response, 200)
+	cacheWaiter.AddAndWait(1)
 
 	// Create a conflict, and don't tombstone it
 	response = rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id":"conflictedDoc","channel":["PBS"], "_rev":"1-conflictActive"}], "new_edits":false}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
 
 	var changes struct {
 		Results  []db.ChangeEntry
 		Last_Seq interface{}
 	}
-	cacheWaiter.AddAndWait(8)
 
 	// Pre-delete changes
 	changesJSON := `{"style":"all_docs"}`
@@ -3038,28 +3046,38 @@ func TestChangesActiveOnlyWithLimit(t *testing.T) {
 	// Delete
 	response = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/deletedDoc?rev=%s", deletedRev), "")
 	assertStatus(t, response, 200)
+	cacheWaiter.AddAndWait(1)
 
 	// Removed
 	response = rt.SendAdminRequest("PUT", "/db/removedDoc", fmt.Sprintf(`{"_rev":%q, "channel":["HBO"]}`, removedRev))
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
 
 	// Partially removed
 	response = rt.SendAdminRequest("PUT", "/db/partialRemovalDoc", fmt.Sprintf(`{"_rev":%q, "channel":["PBS"]}`, partialRemovalRev))
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
 
 	//Create additional active docs
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc1", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
+
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc2", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
+
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc3", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
+
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc4", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
+	cacheWaiter.AddAndWait(1)
+
 	response = rt.SendAdminRequest("PUT", "/db/activeDoc5", `{"channel":["PBS"]}`)
 	assertStatus(t, response, 201)
-
-	cacheWaiter.AddAndWait(8)
+	cacheWaiter.AddAndWait(1)
 
 	// Normal changes
 	changesJSON = `{"style":"all_docs"}`
@@ -3578,6 +3596,7 @@ func TestIncludeDocsWithPrincipals(t *testing.T) {
 	defer rt.Close()
 
 	testDb := rt.ServerContext().Database("db")
+
 	cacheWaiter := testDb.NewDCPCachingCountWaiter(t)
 
 	// Put users
