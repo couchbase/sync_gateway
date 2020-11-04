@@ -879,10 +879,6 @@ function(doc, oldDoc) {
 // Start goroutine sending rev messages for documents that grant access to themselves for the active replication's user
 
 func TestConcurrentRefreshUser(t *testing.T) {
-
-	// FIXME: CBG-1156
-	t.Skip("WARNING: Skipped until CBG-1156")
-
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg, base.KeyChanges, base.KeyCache)()
 	// Initialize restTester here, so that we can use custom sync function, and later modify user
 	syncFunction := `
@@ -1010,10 +1006,10 @@ function(doc, oldDoc) {
 
 	// Wait until all expected changes are received by change handler
 	// receivedChangesWg.Wait()
-	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*30)
+	timeoutErr := WaitWithTimeout(&receivedChangesWg, time.Second*60)
 	assert.NoError(t, timeoutErr, "Timed out waiting for all changes.")
 
-	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*30)
+	revTimeoutErr := WaitWithTimeout(&revsFinishedWg, time.Second*60)
 	assert.NoError(t, revTimeoutErr, "Timed out waiting for all revs.")
 
 	assert.False(t, nonIntegerSequenceReceived, "Unexpected non-integer sequence seen.")
