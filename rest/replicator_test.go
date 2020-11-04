@@ -149,17 +149,17 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 
 	const (
+		username = "AL_1c.e-@"
 		password = "pa$$w*rD!"
-		// password = "pass"
 	)
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
-				"alice": {
+				username: {
 					Password:         base.StringPtr(password),
-					ExplicitChannels: base.SetOf("alice"),
+					ExplicitChannels: base.SetOf(username),
 				},
 			},
 		},
@@ -167,7 +167,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	defer rt2.Close()
 
 	docID := t.Name() + "rt2doc1"
-	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
+	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["`+username+`"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
@@ -182,7 +182,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword("alice", password)
+	passiveDBURL.User = url.UserPassword(username, password)
 
 	// Active
 	tb1 := base.GetTestBucket(t)
