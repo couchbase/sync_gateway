@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"math"
@@ -476,9 +477,45 @@ func (h *handler) readJSONInto(into interface{}) error {
 	return ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
-// readSanitizeJSONInto reads and sanitizes a JSON request body into DbConfig.
-func (h *handler) readSanitizeJSONInto(config *DbConfig) error {
-	return ReadSanitizeConfigJSON(h.rq.Header, h.requestBody, config)
+// readSanitizeJSONInto reads and sanitizes a JSON request body and returns DbConfig.
+// Expands environment variables (if any) referenced in the config.
+func (h *handler) readSanitizeConfigJSON() (*DbConfig, error) {
+	// Performs the Content-Type validation and Content-Encoding check.
+	input, err := processContentEncoding(h.rq.Header, h.requestBody)
+	if err != nil {
+		return nil, err
+	}
+
+	// Read body bytes to sanitize the content and substitute environment variables.
+	defer func() { _ = input.Close() }()
+	content, err := ioutil.ReadAll(input)
+	if err != nil {
+		return nil, err
+	}
+
+	// Expand environment variables.
+	content = expandEnv(content)
+
+	// Convert the back quotes into double-quotes, escapes literal
+	// backslashes, newlines or double-quotes with backslashes.
+	content = base.ConvertBackQuotedStrings(content)
+
+	// Decode the body bytes into target structure.
+	decoder := base.JSONDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	decoder.UseNumber()
+	var config DbConfig
+	err = decoder.Decode(&config)
+
+	if err != nil {
+		err = base.WrapJSONUnknownFieldErr(err)
+		if errors.Cause(err) == base.ErrUnknownField {
+			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
+		} else {
+			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
+		}
+	}
+	return &config, err
 }
 
 // Reads & parses the request body, handling either JSON or multipart.

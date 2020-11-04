@@ -34,14 +34,14 @@ const kDefaultDBOnlineDelay = 0
 func (h *handler) handleCreateDB() error {
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
-	var config DbConfig
-	if err := h.readSanitizeJSONInto(&config); err != nil {
+	config, err := h.readSanitizeConfigJSON()
+	if err != nil {
 		return err
 	}
 	if err := config.setup(dbName); err != nil {
 		return err
 	}
-	if _, err := h.server.AddDatabaseFromConfig(&config); err != nil {
+	if _, err := h.server.AddDatabaseFromConfig(config); err != nil {
 		return err
 	}
 	return base.HTTPErrorf(http.StatusCreated, "created")
@@ -131,8 +131,8 @@ func (h *handler) handleGetConfig() error {
 func (h *handler) handlePutDbConfig() error {
 	h.assertAdminOnly()
 	dbName := h.db.Name
-	var config DbConfig
-	if err := h.readSanitizeJSONInto(&config); err != nil {
+	config, err := h.readSanitizeConfigJSON()
+	if err != nil {
 		return err
 	}
 	if err := config.setup(dbName); err != nil {
@@ -140,7 +140,7 @@ func (h *handler) handlePutDbConfig() error {
 	}
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	h.server.config.Databases[dbName] = &config
+	h.server.config.Databases[dbName] = config
 
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
