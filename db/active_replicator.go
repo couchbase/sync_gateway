@@ -256,10 +256,17 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 	}
 
 	if target.User != nil {
-		config.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(target.User.String())))
+		config.Header.Add("Authorization", "Basic "+base64UserInfo(target.User))
 	}
 
 	return blipContext.DialConfig(config)
+}
+
+// base64UserInfo returns the base64 encoded version of the given UserInfo.
+// Can't use i.String() here because that returns URL encoded versions of credentials.
+func base64UserInfo(i *url.Userinfo) string {
+	password, _ := i.Password()
+	return base64.StdEncoding.EncodeToString([]byte(i.Username() + ":" + password))
 }
 
 // combinedState reports a combined replication state for a pushAndPull
