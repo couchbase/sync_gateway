@@ -2495,84 +2495,87 @@ func TestBlipDeltaSyncPullRevCacheChannelRemoval(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: &sgUseDeltas,
+			},
+		},
+	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
-	// Create client with a user who have access to both channel ABC and NBC.
+	// Create client with a user who have access to channel1
 	client1, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "alice",
-		Channels:     []string{"ABC", "NBC"},
+		Channels:     []string{"channel1"},
 		ClientDeltas: true,
 	})
 	require.NoError(t, err)
 	defer client1.Close()
 
-	err = client1.StartPull()
-	require.NoError(t, err)
-
-	// Create client with a user who have access to channel NBC.
+	// Create client with a user who have access to both channel1 and channel2
 	client2, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
 		Username:     "bob",
-		Channels:     []string{"NBC"},
+		Channels:     []string{"channel1", "channel2"},
 		ClientDeltas: true,
 	})
 	require.NoError(t, err)
 	defer client2.Close()
 
-	// Create the first revision of doc1.
+	// Create the first revision of doc1 on both channel1 and channel2
 	resp := rt.SendAdminRequest(http.MethodPut, "/db/doc1",
-		`{"channels": ["ABC", "NBC"], "strings": ["E", "A"]}`)
+		`{"channels":["channel1","channel2"],"keys":["key1"]}`)
 	require.Equal(t, http.StatusCreated, resp.Code)
 
-	data, ok := client1.WaitForRev("doc1", "1-e71463878dd3c79318821b9016045524")
+	// changes, err := rt.WaitForChanges(1, "/db/_changes", "alice", true)
+	changes, err := rt.WaitForChanges(1,
+		"/db/_changes?filter=sync_gateway/bychannel&channels=channel1,channel2", "", true)
+	require.NoError(t, err, "Error retrieving changes results")
+	log.Printf("changes: %v", changes)
+
+	err = client1.StartOneshotPull()
+	assert.NoError(t, err)
+
+	data, ok := client1.WaitForRev("doc1", "1-ebebfcdd41fb6253d9ab955fa32a9791")
 	require.True(t, ok)
-	assert.Contains(t, string(data), `"channels":["ABC","NBC"]`)
-	assert.Contains(t, string(data), `"strings":["E","A"]`)
+	assert.Contains(t, string(data), `"channels":["channel1","channel2"]`)
+	assert.Contains(t, string(data), `"keys":["key1"]`)
 
 	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
 
-	data, ok = client2.WaitForRev("doc1", "1-e71463878dd3c79318821b9016045524")
+	data, ok = client2.WaitForRev("doc1", "1-ebebfcdd41fb6253d9ab955fa32a9791")
 	require.True(t, ok)
-	assert.Contains(t, string(data), `"channels":["ABC","NBC"]`)
-	assert.Contains(t, string(data), `"strings":["E","A"]`)
+	assert.Contains(t, string(data), `"channels":["channel1","channel2"]`)
+	assert.Contains(t, string(data), `"keys":["key1"]`)
 
-	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-e71463878dd3c79318821b9016045524",
-		`{"channels":["ABC","NBC"],"strings":["E","A","D"]}`)
+	// Create the second revision of doc1 on channel2 as removal from channel1.
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-ebebfcdd41fb6253d9ab955fa32a9791",
+		`{"channels":["channel2"],"keys":["key1","key2"]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
 
-	msg, ok := client1.pullReplication.WaitForMessage(5)
-	require.True(t, ok)
+	changes, err = rt.WaitForChanges(1,
+		"/db/_changes?filter=sync_gateway/bychannel&channels=channel2", "", true)
+	require.NoError(t, err, "Error retrieving changes results")
+	log.Printf("changes: %v", changes)
 
-	data, ok = client1.WaitForRev("doc1", "2-0736188acd327a34c081b7d257a188a3")
-	require.True(t, ok)
-	assert.Contains(t, string(data), `"channels":["ABC","NBC"]`)
-	assert.Contains(t, string(data), `"strings":["E","A","D"]`)
-
-	// Check the request was sent with the correct deltaSrc property
-	assert.Equal(t, "1-e71463878dd3c79318821b9016045524", msg.Properties[db.RevMessageDeltaSrc])
-	// Check the request body was the actual delta
-	msgBody, err := msg.Body()
-	assert.NoError(t, err)
-	assert.Equal(t, `{"strings":{"2-":["D"]}}`, string(msgBody))
-
-	err = client2.StartOneshotPull()
+	err = client1.StartOneshotPull()
 	assert.NoError(t, err)
 
-	msg, ok = client2.pullReplication.WaitForMessage(5)
+	data, ok = client1.WaitForRev("doc1", "2-e5ee743e42d9780e22bd7b26dd4a4e60")
 	require.True(t, ok)
+	assert.Contains(t, string(data), `{"_removed":true}`)
 
-	data, ok = client2.WaitForRev("doc1", "2-0736188acd327a34c081b7d257a188a3")
-	require.True(t, ok)
-	assert.Contains(t, string(data), `"channels":["ABC","NBC"]`)
-	assert.Contains(t, string(data), `"strings":["E","A","D"]`)
-
-	// Create the third revision of doc1 on channel ABC.
-	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=2-0736188acd327a34c081b7d257a188a3",
-		`{"channels":["ABC"],"strings":["E","A","D","G"]}`)
+	// Create the third revision of doc1 on channel2 as leaf revision".
+	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=2-e5ee743e42d9780e22bd7b26dd4a4e60",
+		`{"channels":["channel2"],"keys":["key1","key2","key3"]}`)
 	assert.Equal(t, http.StatusCreated, resp.Code)
+
+	changes, err = rt.WaitForChanges(1,
+		"/db/_changes?filter=sync_gateway/bychannel&channels=channel2", "", true)
+	require.NoError(t, err, "Error retrieving changes results")
+	log.Printf("changes: %v", changes)
 
 	// Get a reference to the database.
 	dbContext, err := rt.ServerContext().GetDatabase("db")
@@ -2582,26 +2585,27 @@ func TestBlipDeltaSyncPullRevCacheChannelRemoval(t *testing.T) {
 
 	// Flush the revision cache and purge the old revision backup.
 	database.FlushRevisionCacheForTest()
-	response := rt.SendAdminRequest(http.MethodPost, "/db/_purge", `{"doc1":["2-0736188acd327a34c081b7d257a188a3"]}`)
+	response := rt.SendAdminRequest(http.MethodPost, "/db/_purge", `{"doc1":["2-e5ee743e42d9780e22bd7b26dd4a4e60"]}`)
 	assertStatus(t, response, http.StatusOK)
 	var body map[string]interface{}
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	require.Equal(t, body, map[string]interface{}{"purged": map[string]interface{}{}})
 
-	msg, ok = client1.pullReplication.WaitForMessage(7)
-	require.True(t, ok)
-
-	data, ok = client1.WaitForRev("doc1", "3-a79d61f13915ea510e1f8a9b946e58c1")
-	require.True(t, ok)
-	assert.Contains(t, string(data), `"channels":["ABC"]`)
-	assert.Contains(t, string(data), `"strings":["E","A","D","G"]`)
-
-	// Check the request was sent with the correct deltaSrc property
-	assert.Equal(t, "2-0736188acd327a34c081b7d257a188a3", msg.Properties[db.RevMessageDeltaSrc])
-	// Check the request body was the actual delta
-	msgBody, err = msg.Body()
+	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
-	assert.Equal(t, `{"channels":{"1-":[]},"strings":{"3-":["G"]}}`, string(msgBody))
+
+	data, ok = client2.WaitForRev("doc1", "2-e5ee743e42d9780e22bd7b26dd4a4e60")
+	require.True(t, ok)
+	assert.Contains(t, string(data), `"channels":["channel2"]`)
+	assert.Contains(t, string(data), `"keys":["key1","key2"]`)
+
+	err = client2.StartOneshotPull()
+	assert.NoError(t, err)
+
+	data, ok = client2.WaitForRev("doc1", "3-8921af8b8dc0cbefed53453fe9900153")
+	require.True(t, ok)
+	assert.Contains(t, string(data), `"channels":["channel2"]`)
+	assert.Contains(t, string(data), `"keys":["key1","key2","key3"]`)
 }
 
 // TestBlipDeltaSyncPush tests that a simple push replication handles deltas in EE,
