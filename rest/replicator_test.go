@@ -148,12 +148,17 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	// Passive
 	tb2 := base.GetTestBucket(t)
 
+	const (
+		password = "pa$$w*rD!"
+		// password = "pass"
+	)
+
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
 		DatabaseConfig: &DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
-					Password:         base.StringPtr("pass"),
+					Password:         base.StringPtr(password),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
@@ -177,7 +182,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	require.NoError(t, err)
 
 	// Add basic auth creds to target db URL
-	passiveDBURL.User = url.UserPassword("alice", "pass")
+	passiveDBURL.User = url.UserPassword("alice", password)
 
 	// Active
 	tb1 := base.GetTestBucket(t)
