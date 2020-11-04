@@ -858,8 +858,8 @@ func TestChangeWaiterExitOnChangesTermination(t *testing.T) {
 			rt := NewRestTester(t, nil)
 			defer rt.Close()
 
-			activeCaughtUpStatWaiter := rt.GetDatabase().NewNewStatWaiter(rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, t)
-			totalCaughtUpStatWaiter := rt.GetDatabase().NewNewStatWaiter(rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp, t)
+			activeCaughtUpStatWaiter := rt.GetDatabase().NewStatWaiter(rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplCaughtUp, t)
+			totalCaughtUpStatWaiter := rt.GetDatabase().NewStatWaiter(rt.GetDatabase().DbStats.CBLReplicationPull().NumPullReplTotalCaughtUp, t)
 
 			if test.username != "" {
 				a := rt.GetDatabase().Authenticator()

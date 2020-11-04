@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"errors"
-	"expvar"
 	"fmt"
 	"math"
 	"testing"
@@ -97,14 +96,13 @@ func (db *DatabaseContext) WaitForCaughtUp(targetCount int64) error {
 }
 
 type StatWaiter struct {
-	initCount   int64       // Document cached count when NewStatWaiter is called
-	targetCount int64       // Target count used when Wait is called
-	stat        *expvar.Int // Expvar to wait on
-	newStat     *base.SgwIntStat
-	tb          testing.TB // Raises tb.Fatalf on wait timeout
+	initCount   int64            // Document cached count when NewStatWaiter is called
+	targetCount int64            // Target count used when Wait is called
+	stat        *base.SgwIntStat // Stat to wait on
+	tb          testing.TB       // Raises tb.Fatalf on wait timeout
 }
 
-func (db *DatabaseContext) NewStatWaiter(stat *expvar.Int, tb testing.TB) *StatWaiter {
+func (db *DatabaseContext) NewStatWaiter(stat *base.SgwIntStat, tb testing.TB) *StatWaiter {
 	return &StatWaiter{
 		initCount:   stat.Value(),
 		targetCount: stat.Value(),
@@ -113,25 +111,16 @@ func (db *DatabaseContext) NewStatWaiter(stat *expvar.Int, tb testing.TB) *StatW
 	}
 }
 
-func (db *DatabaseContext) NewNewStatWaiter(stat *base.SgwIntStat, tb testing.TB) *StatWaiter {
-	return &StatWaiter{
-		initCount:   stat.Value(),
-		targetCount: stat.Value(),
-		newStat:     stat,
-		tb:          tb,
-	}
-}
-
 func (db *DatabaseContext) NewDCPCachingCountWaiter(tb testing.TB) *StatWaiter {
-	return db.NewNewStatWaiter(db.DbStats.Database().DCPCachingCount, tb)
+	return db.NewStatWaiter(db.DbStats.Database().DCPCachingCount, tb)
 }
 
 func (db *DatabaseContext) NewPullReplicationCaughtUpWaiter(tb testing.TB) *StatWaiter {
-	return db.NewNewStatWaiter(db.DbStats.CBLReplicationPull().NumPullReplCaughtUp, tb)
+	return db.NewStatWaiter(db.DbStats.CBLReplicationPull().NumPullReplCaughtUp, tb)
 }
 
 func (db *DatabaseContext) NewCacheRevsActiveWaiter(tb testing.TB) *StatWaiter {
-	return db.NewNewStatWaiter(db.DbStats.Cache().ChannelCacheRevsActive, tb)
+	return db.NewStatWaiter(db.DbStats.Cache().ChannelCacheRevsActive, tb)
 }
 
 func (sw *StatWaiter) Add(count int) {
@@ -145,41 +134,22 @@ func (sw *StatWaiter) AddAndWait(count int) {
 
 // Wait uses backoff retry for up to ~27s
 func (sw *StatWaiter) Wait() {
-	if sw.stat != nil {
-		actualCount := sw.stat.Value()
-		if actualCount >= sw.targetCount {
-			return
-		}
-
-		waitTime := 1 * time.Millisecond
-		for i := 0; i < 13; i++ {
-			waitTime = waitTime * 2
-			time.Sleep(waitTime)
-			actualCount = sw.stat.Value()
-			if actualCount >= sw.targetCount {
-				return
-			}
-		}
-
-		sw.tb.Errorf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
-	} else {
-		actualCount := sw.newStat.Value()
-		if actualCount >= sw.targetCount {
-			return
-		}
-
-		waitTime := 1 * time.Millisecond
-		for i := 0; i < 13; i++ {
-			waitTime = waitTime * 2
-			time.Sleep(waitTime)
-			actualCount = sw.newStat.Value()
-			if actualCount >= sw.targetCount {
-				return
-			}
-		}
-
-		sw.tb.Errorf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
+	actualCount := sw.stat.Value()
+	if actualCount >= sw.targetCount {
+		return
 	}
+
+	waitTime := 1 * time.Millisecond
+	for i := 0; i < 13; i++ {
+		waitTime = waitTime * 2
+		time.Sleep(waitTime)
+		actualCount = sw.stat.Value()
+		if actualCount >= sw.targetCount {
+			return
+		}
+	}
+
+	sw.tb.Errorf("StatWaiter.Wait timed out waiting for stat to reach %d (actual: %d) %s", sw.targetCount, actualCount, base.GetCallersName(2, true))
 }
 
 func AssertEqualBodies(t *testing.T, expected, actual Body) {
