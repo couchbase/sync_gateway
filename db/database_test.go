@@ -312,7 +312,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
 	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
-	err = db.purgeOldRevisionJSON("doc1", rev2id)
+	err = db.PurgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
@@ -338,7 +338,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	goassert.DeepEquals(t, body, expectedResult)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = db.purgeOldRevisionJSON("doc1", rev1id)
+	err = db.PurgeOldRevisionJSON("doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = db.Get1xRevBody("doc1", rev1id, true, nil)
@@ -422,7 +422,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 
 	// Flush the revision cache and purge the old revision backup.
 	db.FlushRevisionCacheForTest()
-	err = db.purgeOldRevisionJSON("doc1", rev2ID)
+	err = db.PurgeOldRevisionJSON("doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
 	// Try with a user who have access to this revision.
@@ -497,7 +497,7 @@ func TestGetRemoved(t *testing.T) {
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
 	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
-	err = db.purgeOldRevisionJSON("doc1", rev2id)
+	err = db.PurgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
@@ -505,7 +505,7 @@ func TestGetRemoved(t *testing.T) {
 	assertHTTPError(t, err, 404)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = db.purgeOldRevisionJSON("doc1", rev1id)
+	err = db.PurgeOldRevisionJSON("doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = db.Get1xRevBody("doc1", rev1id, true, nil)
@@ -563,7 +563,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	// After expiry from the rev cache and removal of doc backup, try again
 	cacheHitCounter, cacheMissCounter := db.DatabaseContext.DbStats.Cache().RevisionCacheHits, db.DatabaseContext.DbStats.Cache().RevisionCacheMisses
 	db.DatabaseContext.revisionCache = NewShardedLRURevisionCache(DefaultRevisionCacheShardCount, DefaultRevisionCacheSize, db.DatabaseContext, cacheHitCounter, cacheMissCounter)
-	err = db.purgeOldRevisionJSON("doc1", rev2id)
+	err = db.PurgeOldRevisionJSON("doc1", rev2id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Get the deleted doc with its history; equivalent to GET with ?revs=true
@@ -571,7 +571,7 @@ func TestGetRemovedAndDeleted(t *testing.T) {
 	assertHTTPError(t, err, 404)
 
 	// Ensure revision is unavailable for a non-leaf revision that isn't available via the rev cache, and wasn't a channel removal
-	err = db.purgeOldRevisionJSON("doc1", rev1id)
+	err = db.PurgeOldRevisionJSON("doc1", rev1id)
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	_, err = db.Get1xRevBody("doc1", rev1id, true, nil)
