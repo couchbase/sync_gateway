@@ -1807,6 +1807,34 @@ func TestHandleCreateDB(t *testing.T) {
 	assertStatus(t, resp, http.StatusBadRequest)
 }
 
+func TestHandlePutDbConfigWithBackticks(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Get database info before putting config.
+	resp := rt.SendAdminRequest(http.MethodGet, "/backticks/", "")
+	assertStatus(t, resp, http.StatusNotFound)
+
+	// Create database with valid JSON config that contains sync function enclosed in backticks.
+	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
+	reqBodyWithBackticks := `{
+    	"server": "walrus:",
+    	"bucket": "backticks",
+        "sync": ` + "`" + syncFunc + "`" + `
+	}`
+	resp = rt.SendAdminRequest(http.MethodPut, "/backticks/", reqBodyWithBackticks)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Get database config after putting config.
+	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config", "")
+	assertStatus(t, resp, http.StatusOK)
+	var respBody db.Body
+	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
+	assert.Equal(t, "backticks", respBody["name"].(string))
+	assert.Equal(t, "walrus:", respBody["server"].(string))
+	assert.Equal(t, syncFunc, respBody["sync"].(string))
+}
+
 func TestHandleDBConfig(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

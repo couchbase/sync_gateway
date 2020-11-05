@@ -34,8 +34,8 @@ const kDefaultDBOnlineDelay = 0
 func (h *handler) handleCreateDB() error {
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
-	var config *DbConfig
-	if err := h.readJSONInto(&config); err != nil {
+	config, err := h.readSanitizeConfigJSON()
+	if err != nil {
 		return err
 	}
 	if err := config.setup(dbName); err != nil {
@@ -51,7 +51,7 @@ func (h *handler) handleCreateDB() error {
 func (h *handler) handleDbOnline() error {
 	h.assertAdminOnly()
 	dbState := atomic.LoadUint32(&h.db.State)
-	//If the DB is already trasitioning to: online or is online silently return
+	//If the DB is already transitioning to: online or is online silently return
 	if dbState == db.DBOnline || dbState == db.DBStarting {
 		return nil
 	}
@@ -131,8 +131,8 @@ func (h *handler) handleGetConfig() error {
 func (h *handler) handlePutDbConfig() error {
 	h.assertAdminOnly()
 	dbName := h.db.Name
-	var config *DbConfig
-	if err := h.readJSONInto(&config); err != nil {
+	config, err := h.readSanitizeConfigJSON()
+	if err != nil {
 		return err
 	}
 	if err := config.setup(dbName); err != nil {

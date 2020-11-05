@@ -27,30 +27,21 @@ const kMaxInlineAttachmentSize = 200
 // JSON bodies smaller than this won't be GZip-encoded.
 const kMinCompressedJSONSize = 300
 
-// Parses a JSON MIME body, unmarshaling it into "into".
+// ReadJSONFromMIME parses a JSON MIME body, unmarshalling it into "into".
 // Closes the input io.ReadCloser once done.
 func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}) error {
-	contentType := headers.Get("Content-Type")
-	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
+	// Performs the Content-Type validation and Content-Encoding check.
+	input, err := processContentEncoding(headers, input)
+	if err != nil {
+		return err
 	}
 
-	switch headers.Get("Content-Encoding") {
-	case "gzip":
-		var err error
-		if input, err = gzip.NewReader(input); err != nil {
-			return err
-		}
-	case "":
-		break
-	default:
-		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
-	}
-
+	// Decode the body bytes into target structure.
 	decoder := base.JSONDecoder(input)
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
-	err := decoder.Decode(into)
+	err = decoder.Decode(into)
+
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
 		if errors.Cause(err) == base.ErrUnknownField {
@@ -59,10 +50,28 @@ func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
 		}
 	}
-
 	_ = input.Close()
-
 	return err
+}
+
+// processContentEncoding performs the Content-Type validation and Content-Encoding check.
+func processContentEncoding(headers http.Header, input io.ReadCloser) (io.ReadCloser, error) {
+	contentType := headers.Get("Content-Type")
+	if contentType != "" && !strings.HasPrefix(contentType, "application/json") {
+		return input, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
+	}
+	switch headers.Get("Content-Encoding") {
+	case "gzip":
+		var err error
+		if input, err = gzip.NewReader(input); err != nil {
+			return input, err
+		}
+	case "":
+		break
+	default:
+		return input, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
+	}
+	return input, nil
 }
 
 type attInfo struct {

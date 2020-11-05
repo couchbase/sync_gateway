@@ -650,6 +650,8 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 		return err
 	}
 
+	// Expand environment variables.
+	b = expandEnv(b)
 	b = base.ConvertBackQuotedStrings(b)
 
 	d := base.JSONDecoder(bytes.NewBuffer(b))
@@ -674,6 +676,40 @@ func (config *ServerConfig) setupAndValidateDatabases() (errs error) {
 		}
 	}
 	return nil
+}
+
+// expandEnv replaces $var or ${var} in config according to the values of the
+// current environment variables. The replacement is case-sensitive. References
+// to undefined variables are replaced by an empty string. A default value can
+// be given by using the form ${var:-default value}.
+func expandEnv(config []byte) []byte {
+	return []byte(os.Expand(string(config), func(key string) string {
+		if key == "$" {
+			base.Debugf(base.KeyAll, "Skipping environment variable expansion: %s", key)
+			return key
+		}
+		return envDefaultExpansion(key, os.Getenv)
+	}))
+}
+
+// envDefaultExpansion implements the ${foo:-bar} parameter expansion from
+// https://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html#tag_02_06_02
+func envDefaultExpansion(key string, getEnvFn func(string) string) (value string) {
+	kvPair := strings.SplitN(key, ":-", 2)
+	key = kvPair[0]
+	value = getEnvFn(key)
+	if value == "" && len(kvPair) == 2 {
+		// Set value to the default.
+		value = kvPair[1]
+		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}' with "+
+			"default value specified", key)
+	} else if value == "" && len(kvPair) != 2 {
+		base.Infof(base.KeyAll, "The '${%s}' environment variable is not set and the default value "+
+			"was not specified in config. Will be replaced with an empty string in config", key)
+	} else {
+		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}'", key)
+	}
+	return value
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors
