@@ -243,6 +243,14 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		target.Scheme = "wss"
 	}
 
+	// Strip userinfo from the URL, don't need it because of the Basic auth header.
+	var basicAuthCreds *url.Userinfo
+	if target.User != nil {
+		// take a copy
+		basicAuthCreds = &*target.User
+		target.User = nil
+	}
+
 	config, err := websocket.NewConfig(target.String()+"/_blipsync?"+BLIPSyncClientTypeQueryParam+"="+string(BLIPClientTypeSGR2), "http://localhost")
 	if err != nil {
 		return nil, err
@@ -255,8 +263,8 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		config.TlsConfig.InsecureSkipVerify = true
 	}
 
-	if target.User != nil {
-		config.Header.Add("Authorization", "Basic "+base64UserInfo(target.User))
+	if basicAuthCreds != nil {
+		config.Header.Add("Authorization", "Basic "+base64UserInfo(basicAuthCreds))
 	}
 
 	return blipContext.DialConfig(config)
