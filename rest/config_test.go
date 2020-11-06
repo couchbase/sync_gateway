@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/db"
 	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1401,4 +1404,366 @@ func TestSetupServerContext(t *testing.T) {
 		assert.Contains(t, err.Error(), "configuration error: 32 outside allowed range: 10-31: invalid bcrypt cost")
 		assert.Nil(t, sc)
 	})
+}
+
+// missingJavaScriptFilePath represents a nonexistent JavaScript file path on the disk.
+// It is used to cover the negative test scenario for loading JavaScript from a file that is missing.
+const missingJavaScriptFilePath = "/var/folders/lv/956l1vqx48gfln58125f_mmc0000gs/T/missing-703266776.js"
+
+// errInternalServerError is thrown from the mocked HTTP endpoint backed by the
+// httptest server. It is used to simulate the negative test scenario for loading
+// JavaScript source from an external HTTP endpoint.
+var errInternalServerError = &base.HTTPError{
+	Status:  http.StatusInternalServerError,
+	Message: "Internal Server Error",
+}
+
+// javaScriptFile returns a callable function to create a JavaScript file on the disk with the
+// given JavaScript source and returns a teardown function to remove the file after its use.
+func javaScriptFile(t *testing.T, js string) func() (path string, teardownFn func()) {
+	return func() (path string, teardownFn func()) {
+		file, err := ioutil.TempFile("", "*.js")
+		require.NoError(t, err, "Error creating JavaScript file")
+		_, err = file.Write([]byte(js))
+		require.NoError(t, err, "Error writing to JavaScript file")
+		path = file.Name()
+		teardownFn = func() {
+			assert.NoError(t, file.Close(), "Error closing file: %s ", path)
+			assert.NoError(t, os.Remove(path), "Error removing file: %s ", path)
+			assert.False(t, base.FileExists(path), "File %s should be removed", path)
+		}
+		return path, teardownFn
+	}
+}
+
+// emptyJavaScriptFile returns a callable function to create an empty file on the disk
+// and returns a teardown function to remove the file after its use.
+func emptyJavaScriptFile(t *testing.T) func() (path string, teardownFn func()) {
+	return func() (path string, teardownFn func()) {
+		file, err := ioutil.TempFile("", "*.js")
+		require.NoError(t, err, "Error creating JavaScript file")
+		path = file.Name()
+		teardownFn = func() {
+			assert.NoError(t, file.Close(), "Error closing file: %s ", path)
+			assert.NoError(t, os.Remove(path), "Error removing file: %s ", path)
+			assert.False(t, base.FileExists(path), "File %s should be removed", path)
+		}
+		return path, teardownFn
+	}
+}
+
+// missingJavaScriptFile returns a callable function that internally returns a missing
+// JavaScript file path. The callable teardown function returned from this function is nil.
+func missingJavaScriptFile() func() (path string, teardownFn func()) {
+	return func() (path string, teardownFn func()) {
+		path = missingJavaScriptFilePath
+		return path, nil
+	}
+}
+
+// inlineJavaScript returns a callable function that internally returns given JavaScript
+// source as-is. The callable teardown function returned from this function is nil.
+func inlineJavaScript(js string) func() (path string, teardownFn func()) {
+	return func() (path string, teardownFn func()) {
+		return js, nil
+	}
+}
+
+// javaScriptHttpEndpoint returns a callable function to setup an HTTP endpoint that exposes
+// the given JavaScript source and returns a teardown function to terminate the underlying
+// httptest server instance.
+func javaScriptHttpEndpoint(t *testing.T, js string) func() (path string, teardownFn func()) {
+	return func() (path string, teardownFn func()) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := fmt.Fprint(w, js)
+			require.NoError(t, err)
+		}))
+		teardownFn = func() { ts.Close() }
+		return ts.URL, teardownFn
+	}
+}
+
+// javaScriptHttpErrorEndpoint returns a callable function to setup an HTTP endpoint that always
+// return StatusInternalServerError and a teardown function to terminate the underlying httptest
+// server instance.
+func javaScriptHttpErrorEndpoint() func() (path string, teardownFn func()) {
+	return func() (path string, teardownFn func()) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		teardownFn = func() { ts.Close() }
+		return ts.URL, teardownFn
+	}
+}
+
+func TestLoadJavaScript(t *testing.T) {
+	const js = `function (doc, oldDoc) { if (doc.published) { channel("public"); } }`
+	var tests = []struct {
+		name        string
+		jsInput     func() (path string, teardownFn func())
+		jsExpected  string
+		errExpected error
+	}{
+		{
+			name:        "Load inline JavaScript",
+			jsInput:     inlineJavaScript(js),
+			jsExpected:  js,
+			errExpected: nil,
+		},
+		{
+			name:        "Load JavaScript from an external HTTP endpoint",
+			jsInput:     javaScriptHttpEndpoint(t, js),
+			jsExpected:  js,
+			errExpected: nil,
+		},
+		{
+			name:        "Load JavaScript from an external endpoint that returns an error",
+			jsInput:     javaScriptHttpErrorEndpoint(),
+			jsExpected:  "",
+			errExpected: errInternalServerError,
+		},
+		{
+			name:        "Load JavaScript from an external file",
+			jsInput:     javaScriptFile(t, js),
+			jsExpected:  js,
+			errExpected: nil,
+		},
+		{
+			name:        "Load JavaScript from an external empty file",
+			jsInput:     emptyJavaScriptFile(t),
+			jsExpected:  "",
+			errExpected: nil,
+		},
+		{
+			name:        "Load JavaScript from an external file that doesn't exist",
+			jsInput:     missingJavaScriptFile(),
+			jsExpected:  missingJavaScriptFilePath,
+			errExpected: nil,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			inputJavaScriptOrPath, teardownFn := test.jsInput()
+			defer func() {
+				if teardownFn != nil {
+					teardownFn()
+				}
+			}()
+			js, err := loadJavaScript(inputJavaScriptOrPath)
+			require.Equal(t, test.errExpected, err)
+			assert.Equal(t, test.jsExpected, js)
+		})
+	}
+}
+
+func TestSetupDbConfigWithSyncFunction(t *testing.T) {
+	const jsSync = `function (doc, oldDoc) { if (doc.published) { channel("public"); } }`
+	var tests = []struct {
+		name             string
+		jsSyncInput      func() (path string, teardownFn func())
+		jsSyncFnExpected string
+		errExpected      error
+	}{
+		{
+			name:             "Load inline sync function",
+			jsSyncInput:      inlineJavaScript(jsSync),
+			jsSyncFnExpected: jsSync,
+			errExpected:      nil,
+		},
+		{
+			name:             "Load sync function from an external HTTP endpoint",
+			jsSyncInput:      javaScriptHttpEndpoint(t, jsSync),
+			jsSyncFnExpected: jsSync,
+			errExpected:      nil,
+		},
+		{
+			name:             "Load sync function from an external endpoint that returns an error",
+			jsSyncInput:      javaScriptHttpErrorEndpoint(),
+			jsSyncFnExpected: "",
+			errExpected:      errInternalServerError,
+		},
+		{
+			name:             "Load sync function from an external file",
+			jsSyncInput:      javaScriptFile(t, jsSync),
+			jsSyncFnExpected: jsSync,
+			errExpected:      nil,
+		},
+		{
+			name:             "Load sync function from an external empty file",
+			jsSyncInput:      emptyJavaScriptFile(t),
+			jsSyncFnExpected: "",
+			errExpected:      nil,
+		},
+		{
+			name:             "Load sync function from an external file that doesn't exist",
+			jsSyncInput:      missingJavaScriptFile(),
+			jsSyncFnExpected: missingJavaScriptFilePath,
+			errExpected:      nil,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			sync, teardownFn := test.jsSyncInput()
+			defer func() {
+				if teardownFn != nil {
+					teardownFn()
+				}
+			}()
+			dbConfig := DbConfig{
+				Name: "db",
+				Sync: base.StringPtr(sync),
+			}
+			err := dbConfig.setup(dbConfig.Name)
+			require.Equal(t, test.errExpected, err)
+			if test.errExpected == nil {
+				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
+			}
+		})
+	}
+}
+
+func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
+	const jsImportFilter = `function(doc) { if (doc.type != "mobile") { return false } return true }`
+	var tests = []struct {
+		name                   string
+		jsImportFilterInput    func() (inlineFnOrPath string, teardownFn func())
+		jsImportFilterExpected string
+		errExpected            error
+	}{
+		{
+			name:                   "Load inline import filter function",
+			jsImportFilterInput:    inlineJavaScript(jsImportFilter),
+			jsImportFilterExpected: jsImportFilter,
+			errExpected:            nil,
+		},
+		{
+			name:                   "Load import filter function from an external HTTP endpoint",
+			jsImportFilterInput:    javaScriptHttpEndpoint(t, jsImportFilter),
+			jsImportFilterExpected: jsImportFilter,
+			errExpected:            nil,
+		},
+		{
+			name:                   "Load import filter function from an external endpoint that returns an error",
+			jsImportFilterInput:    javaScriptHttpErrorEndpoint(),
+			jsImportFilterExpected: "",
+			errExpected:            errInternalServerError,
+		},
+		{
+			name:                   "Load import filter function from an external file",
+			jsImportFilterInput:    javaScriptFile(t, jsImportFilter),
+			jsImportFilterExpected: jsImportFilter,
+			errExpected:            nil,
+		},
+		{
+			name:                   "Load import filter function from an external empty file",
+			jsImportFilterInput:    emptyJavaScriptFile(t),
+			jsImportFilterExpected: "",
+			errExpected:            nil,
+		},
+		{
+			name:                   "Load import filter function from an external file that doesn't exist",
+			jsImportFilterInput:    missingJavaScriptFile(),
+			jsImportFilterExpected: missingJavaScriptFilePath,
+			errExpected:            nil,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			importFilter, teardownFn := test.jsImportFilterInput()
+			defer func() {
+				if teardownFn != nil {
+					teardownFn()
+				}
+			}()
+			dbConfig := DbConfig{
+				Name:         "db",
+				ImportFilter: base.StringPtr(importFilter),
+			}
+			err := dbConfig.setup(dbConfig.Name)
+			require.Equal(t, test.errExpected, err)
+			if test.errExpected == nil {
+				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
+			}
+		})
+	}
+}
+
+func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
+	const jsConflictResolution = `function(conflict) {
+      if (conflict.LocalDocument.type == "A4") {
+        return defaultPolicy(conflict);
+      } else {
+        return conflict.RemoteDocument;
+      }
+    }`
+	var tests = []struct {
+		name                  string
+		jsConflictResInput    func() (inlineFnOrPath string, teardownFn func())
+		jsConflictResExpected string
+		errExpected           error
+	}{
+		{
+			name:                  "Load an inline conflict resolution function",
+			jsConflictResInput:    inlineJavaScript(jsConflictResolution),
+			jsConflictResExpected: jsConflictResolution,
+			errExpected:           nil,
+		},
+		{
+			name:                  "Load conflict resolution function from an external HTTP endpoint",
+			jsConflictResInput:    javaScriptHttpEndpoint(t, jsConflictResolution),
+			jsConflictResExpected: jsConflictResolution,
+			errExpected:           nil,
+		},
+		{
+			name:                  "Load conflict resolution function from an external endpoint that returns an error",
+			jsConflictResInput:    javaScriptHttpErrorEndpoint(),
+			jsConflictResExpected: "",
+			errExpected:           errInternalServerError,
+		},
+		{
+			name:                  "Load conflict resolution function from an external file",
+			jsConflictResInput:    javaScriptFile(t, jsConflictResolution),
+			jsConflictResExpected: jsConflictResolution,
+			errExpected:           nil,
+		},
+		{
+			name:                  "Load conflict resolution function from an external empty file",
+			jsConflictResInput:    emptyJavaScriptFile(t),
+			jsConflictResExpected: "",
+			errExpected:           nil,
+		},
+		{
+			name:                  "Load conflict resolution function from an external file that doesn't exist",
+			jsConflictResInput:    missingJavaScriptFile(),
+			jsConflictResExpected: missingJavaScriptFilePath,
+			errExpected:           nil,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			conflictResolutionFn, teardownFn := test.jsConflictResInput()
+			defer func() {
+				if teardownFn != nil {
+					teardownFn()
+				}
+			}()
+			dbConfig := DbConfig{
+				Name: "db",
+				Replications: map[string]*db.ReplicationConfig{
+					"replication1": {
+						ID:                     "replication1",
+						ConflictResolutionType: db.ConflictResolverCustom,
+						ConflictResolutionFn:   conflictResolutionFn,
+					},
+				},
+			}
+			err := dbConfig.setup(dbConfig.Name)
+			require.Equal(t, test.errExpected, err)
+			if test.errExpected == nil {
+				require.NotNil(t, dbConfig.Replications["replication1"])
+				conflictResolutionFnActual := dbConfig.Replications["replication1"].ConflictResolutionFn
+				assert.Equal(t, test.jsConflictResExpected, conflictResolutionFnActual)
+			}
+		})
+	}
 }

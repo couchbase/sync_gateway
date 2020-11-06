@@ -331,7 +331,74 @@ func (dbConfig *DbConfig) setup(name string) error {
 		dbConfig.Server = &urlStr
 	}
 
+	// If the sync function is referenced from an external file or http(s) endpoint
+	// unlike the inline JavaScript definition, read it from the specified path.
+	if dbConfig.Sync != nil {
+		sync, err := loadJavaScript(*dbConfig.Sync)
+		if err != nil {
+			return err
+		}
+		dbConfig.Sync = base.StringPtr(sync)
+	}
+
+	// If the import filter function is referenced from an external file or http(s) endpoint
+	// unlike the inline JavaScript definition, read it from the specified path.
+	if dbConfig.ImportFilter != nil {
+		importFilter, err := loadJavaScript(*dbConfig.ImportFilter)
+		if err != nil {
+			return err
+		}
+		dbConfig.ImportFilter = base.StringPtr(importFilter)
+	}
+
+	// If the conflict resolution function is referenced from an external file or http(s) endpoint
+	// unlike the inline JavaScript definition, read it from the specified path.
+	for _, rc := range dbConfig.Replications {
+		if rc.ConflictResolutionFn != "" {
+			conflictResolutionFn, err := loadJavaScript(rc.ConflictResolutionFn)
+			if err != nil {
+				return err
+			}
+			rc.ConflictResolutionFn = conflictResolutionFn
+		}
+	}
+
 	return err
+}
+
+// loadJavaScript loads the JavaScript source from an external file or and HTTP/HTTPS endpoint.
+// If the specified path does not qualify for a valid file or an URI, it returns the input path
+// as-is with the assumption that it is an inline JavaScript source. Returns error if there is
+// any failure in reading the JavaScript file or URI.
+func loadJavaScript(path string) (js string, err error) {
+	messageFormat := "Loading JavaScript from [%s] ..."
+	var rc io.ReadCloser
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		base.Infof(base.KeyAll, messageFormat, path)
+		resp, err := http.Get(path)
+		if err != nil {
+			return "", err
+		} else if resp.StatusCode >= http.StatusMultipleChoices {
+			return "", base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
+		}
+		rc = resp.Body
+	} else if base.FileExists(path) {
+		base.Infof(base.KeyAll, messageFormat, path)
+		rc, err = os.Open(path)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		base.Infof(base.KeyAll, "Specified path doesn't look like a file or URI, returning as-is "+
+			"with the assumption that it is an executable inline JavaScript source")
+		return path, nil
+	}
+	defer func() { _ = rc.Close() }()
+	src, err := ioutil.ReadAll(rc)
+	if err != nil {
+		return "", err
+	}
+	return string(src), nil
 }
 
 func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
