@@ -345,6 +345,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assertHTTPError(t, err, 404)
 }
 
+// Test removal handling for unavailable multi-channel revisions.
 func TestGetRemovalMultiChannel(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
@@ -425,7 +426,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	err = db.PurgeOldRevisionJSON("doc1", rev2ID)
 	require.NoError(t, err, "Error purging old revision JSON")
 
-	// Try with a user who have access to this revision.
+	// Try with a user who has access to this revision.
 	db.user = userAlice
 	body, err = db.Get1xRevBody("doc1", rev2ID, true, nil)
 	assertHTTPError(t, err, 404)
@@ -444,6 +445,170 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 		BodyRev: rev2ID,
 	}
 	require.Equal(t, bodyExpected, body)
+}
+
+// Test delta sync behavior when the fromRevision is a channel removal.
+func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1":       "v1",
+		"channels": append([]string{"ABC", "NBC"}),
+	}
+	rev1ID, _, err := db.Put("doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
+	rev2Body := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRev:    rev1ID,
+	}
+	rev2ID, _, err := db.Put("doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Create the third revision of doc1 on channel ABC.
+	rev3Body := Body{
+		"k3":       "v3",
+		"channels": []string{"ABC"},
+		BodyRev:    rev2ID,
+	}
+	rev3ID, _, err := db.Put("doc1", rev3Body)
+	require.NoError(t, err, "Error creating doc")
+	require.NotEmpty(t, rev3ID, "Error creating doc")
+
+	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
+	body, err := db.Get1xRevBody("doc1", rev2ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+
+	rev1GenID := rev1ID[2:]
+	rev2GenID := rev2ID[2:]
+	bodyExpected := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRevisions: Revisions{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2GenID, rev1GenID},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev2ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// Flush the revision cache and purge the old revision backup.
+	db.FlushRevisionCacheForTest()
+	err = db.PurgeOldRevisionJSON("doc1", rev2ID)
+	require.NoError(t, err, "Error purging old revision JSON")
+
+	// Generate delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
+	// as a user who doesn't access to the removed revision via any another channel.
+	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
+	require.NoError(t, err, "Error creating user")
+
+	db.user = user
+	db.DbStats.InitDeltaSyncStats()
+
+	delta, redactedRev, err := db.GetDelta("doc1", rev2ID, rev3ID)
+	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+	assert.Nil(t, delta)
+	assert.Nil(t, redactedRev)
+
+	// Generate delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
+	// as a user who has access to the removed revision via another channel.
+	user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
+
+	db.user = user
+	db.DbStats.InitDeltaSyncStats()
+
+	delta, redactedRev, err = db.GetDelta("doc1", rev2ID, rev3ID)
+	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+	assert.Nil(t, delta)
+	assert.Nil(t, redactedRev)
+}
+
+// Test delta sync behavior when the toRevision is a channel removal.
+func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	// Create the first revision of doc1.
+	rev1Body := Body{
+		"k1":       "v1",
+		"channels": append([]string{"ABC", "NBC"}),
+	}
+	rev1ID, _, err := db.Put("doc1", rev1Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Create the second revision of doc1 on channel ABC as removal from channel NBC.
+	rev2Body := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRev:    rev1ID,
+	}
+	rev2ID, _, err := db.Put("doc1", rev2Body)
+	require.NoError(t, err, "Error creating doc")
+
+	// Create the third revision of doc1 on channel ABC.
+	rev3Body := Body{
+		"k3":       "v3",
+		"channels": []string{"ABC"},
+		BodyRev:    rev2ID,
+	}
+	rev3ID, _, err := db.Put("doc1", rev3Body)
+	require.NoError(t, err, "Error creating doc")
+	require.NotEmpty(t, rev3ID, "Error creating doc")
+
+	// Get the deleted doc with its history; equivalent to GET with ?revs=true, while still resident in the rev cache
+	body, err := db.Get1xRevBody("doc1", rev2ID, true, nil)
+	require.NoError(t, err, "Error getting 1x rev body")
+
+	rev1GenID := rev1ID[2:]
+	rev2GenID := rev2ID[2:]
+	bodyExpected := Body{
+		"k2":       "v2",
+		"channels": []string{"ABC"},
+		BodyRevisions: Revisions{
+			RevisionsStart: 2,
+			RevisionsIds:   []string{rev2GenID, rev1GenID},
+		},
+		BodyId:  "doc1",
+		BodyRev: rev2ID,
+	}
+	require.Equal(t, bodyExpected, body)
+
+	// Flush the revision cache and purge the old revision backup.
+	db.FlushRevisionCacheForTest()
+	err = db.PurgeOldRevisionJSON("doc1", rev2ID)
+	require.NoError(t, err, "Error purging old revision JSON")
+
+	// Generate delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
+	// as a user who doesn't access to the removed revision via any another channel.
+	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
+	require.NoError(t, err, "Error creating user")
+
+	db.user = user
+	db.DbStats.InitDeltaSyncStats()
+
+	delta, redactedRev, err := db.GetDelta("doc1", rev1ID, rev2ID)
+	require.NoError(t, err)
+	assert.Nil(t, delta)
+	assert.Equal(t, `{"_removed":true}`, string(redactedRev.BodyBytes))
+
+	// Generate delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
+	// as a user who has access to the removed revision via another channel.
+	user, err = authenticator.NewUser("bob", "pass", base.SetOf("ABC"))
+
+	db.user = user
+	db.DbStats.InitDeltaSyncStats()
+
+	delta, redactedRev, err = db.GetDelta("doc1", rev1ID, rev2ID)
+	require.Equal(t, base.HTTPErrorf(404, "missing"), err)
+	assert.Nil(t, delta)
+	assert.Nil(t, redactedRev)
 }
 
 // Test retrieval of a channel removal revision, when the revision is not otherwise available
