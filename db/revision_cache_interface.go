@@ -105,6 +105,14 @@ type DocumentRevision struct {
 	_shallowCopyBody Body // an unmarshalled body that can produce shallow copies
 }
 
+// IsRemoval determines whether the revision is a removal by
+// inspecting the revision body bytes.
+func (rev *DocumentRevision) IsRemoval() bool {
+	body := string(rev.BodyBytes)
+	return body == RemovedRedactedDocument ||
+		body == `{"`+BodyDeleted+`":true,"`+BodyRemoved+`":true}`
+}
+
 // MutableBody returns a deep copy of the given document revision as a plain body (without any special properties)
 // Callers are free to modify any of this body without affecting the document revision.
 func (rev *DocumentRevision) MutableBody() (b Body, err error) {
@@ -240,14 +248,14 @@ func revCacheLoader(backingStore RevisionCacheBackingStore, id IDAndRev, unmarsh
 func revCacheLoaderForDocument(backingStore RevisionCacheBackingStore, doc *Document, revid string) (bodyBytes []byte, body Body, history Revisions, channels base.Set, attachments AttachmentsMeta, deleted bool, expiry *time.Time, err error) {
 	if bodyBytes, body, attachments, err = backingStore.getRevision(doc, revid); err != nil {
 		// If we can't find the revision (either as active or conflicted body from the document, or as old revision body backup), check whether
-		// the revision was a channel removal.  If so, we want to store as removal in the revision cache
-		removalBodyBytes, removalHistory, removalChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(revid)
+		// the revision was a channel removal. If so, we want to store as removal in the revision cache
+		removalBodyBytes, removalHistory, activeChannels, isRemoval, isDelete, isRemovalErr := doc.IsChannelRemoval(revid)
 		if isRemovalErr != nil {
 			return bodyBytes, body, history, channels, nil, isDelete, nil, isRemovalErr
 		}
 
 		if isRemoval {
-			return removalBodyBytes, body, removalHistory, removalChannels, nil, isDelete, nil, nil
+			return removalBodyBytes, body, removalHistory, activeChannels, nil, isDelete, nil, nil
 		} else {
 			// If this wasn't a removal, return the original error from getRevision
 			return bodyBytes, body, history, channels, nil, isDelete, nil, err

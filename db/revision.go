@@ -315,7 +315,7 @@ func (db *Database) refreshPreviousRevisionBackup(docid string, revid string, bo
 }
 
 // Currently only used by unit tests - deletes an archived old revision from the database
-func (db *Database) purgeOldRevisionJSON(docid string, revid string) error {
+func (db *Database) PurgeOldRevisionJSON(docid string, revid string) error {
 	base.Debugf(base.KeyCRUD, "Purging old revision backup %q / %q ", base.UD(docid), revid)
 	return db.Bucket.Delete(oldRevisionKey(docid, revid))
 }
