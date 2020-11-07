@@ -486,7 +486,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 	require.NoError(t, err, "Error purging old revision JSON")
 
 	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
-	// as a user who doesn't have access to the removed revision via any another.
+	// as a user who doesn't have access to the removed revision via any other channel.
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
@@ -551,7 +551,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 	require.NoError(t, err, "Error purging old revision JSON")
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
-	// as a user who doesn't have access to the removed revision via any another.
+	// as a user who doesn't have access to the removed revision via any other channel.
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
