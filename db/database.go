@@ -636,6 +636,10 @@ func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removed
 		return make([]string, 0), nil
 	}
 
+	if !gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql) {
+		return removedIndexes, nil
+	}
+
 	return removeObsoleteIndexes(gocbBucket, previewOnly, context.UseXattrs(), context.UseViews(), sgIndexes)
 }
 

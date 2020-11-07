@@ -361,7 +361,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	// Initialize Views or GSI indexes for the bucket
 	if !useViews {
-		gsiSupported := bucket.IsSupported(sgbucket.BucketFeatureN1ql)
+		gsiSupported := bucket.IsSupported(sgbucket.DataStoreFeatureN1ql)
 		if !gsiSupported {
 			return nil, errors.New("Sync Gateway was unable to connect to a query node on the provided Couchbase Server cluster.  Ensure a query node is accessible, or set 'use_views':true in Sync Gateway's database config.")
 		}

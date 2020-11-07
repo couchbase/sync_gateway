@@ -68,7 +68,7 @@ func NewLeakyBucket(bucket Bucket, config LeakyBucketConfig) *LeakyBucket {
 	}
 }
 
-var _ N1QLBucket = &LeakyBucket{}
+var _ N1QLStore = &LeakyBucket{}
 
 func (b *LeakyBucket) GetUnderlyingBucket() Bucket {
 	return b.bucket
@@ -88,9 +88,6 @@ func (b *LeakyBucket) Get(k string, rv interface{}) (cas uint64, err error) {
 func (b *LeakyBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
 	return b.bucket.GetRaw(k)
 }
-func (b *LeakyBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
-	return b.bucket.GetBulkRaw(keys)
-}
 func (b *LeakyBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {
 	return b.bucket.GetAndTouchRaw(k, exp)
 }
@@ -102,9 +99,6 @@ func (b *LeakyBucket) Add(k string, exp uint32, v interface{}) (added bool, err 
 }
 func (b *LeakyBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	return b.bucket.AddRaw(k, exp, v)
-}
-func (b *LeakyBucket) Append(k string, data []byte) error {
-	return b.bucket.Append(k, data)
 }
 func (b *LeakyBucket) Set(k string, exp uint32, v interface{}) error {
 	return b.bucket.Set(k, exp, v)
@@ -123,9 +117,6 @@ func (b *LeakyBucket) Delete(k string) error {
 func (b *LeakyBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
 	return b.bucket.Remove(k, cas)
 }
-func (b *LeakyBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
-	return b.bucket.Write(k, flags, exp, v, opt)
-}
 func (b *LeakyBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
@@ -142,9 +133,6 @@ func (b *LeakyBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteU
 		return b.bucket.WriteUpdate(k, exp, wrapperCallback)
 	}
 	return b.bucket.WriteUpdate(k, exp, callback)
-}
-func (b *LeakyBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
-	return b.bucket.SetBulk(entries)
 }
 
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
@@ -215,10 +203,6 @@ func (b *LeakyBucket) ViewQuery(ddoc, name string, params map[string]interface{}
 
 func (b *LeakyBucket) GetMaxVbno() (uint16, error) {
 	return b.bucket.GetMaxVbno()
-}
-
-func (b *LeakyBucket) Refresh() error {
-	return b.bucket.Refresh()
 }
 
 func (b *LeakyBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
@@ -411,13 +395,6 @@ func (b *LeakyBucket) Close() {
 func (b *LeakyBucket) Dump() {
 	b.bucket.Dump()
 }
-func (b *LeakyBucket) VBHash(docID string) uint32 {
-	if b.config.TapFeedVbuckets {
-		return VBHash(docID, 1024)
-	} else {
-		return b.bucket.VBHash(docID)
-	}
-}
 
 func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
 	return b.bucket.CouchbaseServerVersion()
@@ -428,7 +405,7 @@ func (b *LeakyBucket) UUID() (string, error) {
 }
 
 func (b *LeakyBucket) CloseAndDelete() error {
-	if bucket, ok := b.bucket.(sgbucket.DeleteableBucket); ok {
+	if bucket, ok := b.bucket.(sgbucket.DeleteableStore); ok {
 		return bucket.CloseAndDelete()
 	}
 	return nil
@@ -448,7 +425,7 @@ func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, 
 	b.config.PostQueryCallback = callback
 }
 
-func (b *LeakyBucket) IsSupported(feature sgbucket.BucketFeature) bool {
+func (b *LeakyBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	return b.bucket.IsSupported(feature)
 }
 

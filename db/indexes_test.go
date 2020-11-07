@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/couchbase/gocb"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
@@ -83,6 +84,7 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	assert.True(t, ok)
+	require.True(t, gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
 	// We have one xattr-only index - adjust expected indexes accordingly
 	expectedIndexes := int(indexTypeCount)
@@ -130,6 +132,7 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
 	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	assert.True(t, ok)
+	require.True(t, gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
 	copiedIndexes := copySGIndexes(sgIndexes)
 
@@ -178,6 +181,7 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
 	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
 	assert.True(t, ok)
+	require.True(t, gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
 	_, err := removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
@@ -231,6 +235,7 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 
 	leakyBucket := base.NewLeakyBucket(db.Bucket, base.LeakyBucketConfig{DropIndexErrorNames: []string{"sg_access_1", "sg_access_x1"}})
 	copiedIndexes := copySGIndexes(sgIndexes)
+	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
 	//Use existing versions of IndexAccess and IndexChannels and create an old version that will be removed by obsolete
 	//indexes. Resulting from the removal candidates for removeObsoleteIndexes will be:

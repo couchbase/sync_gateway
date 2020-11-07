@@ -17,7 +17,6 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -159,71 +158,6 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 
 }
 
-func TestBulkGetRaw(t *testing.T) {
-
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
-
-	keySet := make([]string, 1000)
-	valueSet := make(map[string][]byte, 1000)
-
-	defer func() {
-		// Clean up
-		for _, key := range keySet {
-			// Delete key
-			err := bucket.Delete(key)
-			assert.NoError(t, err)
-		}
-
-	}()
-
-	for i := 0; i < 1000; i++ {
-		iStr := strconv.Itoa(i)
-		key := t.Name() + iStr
-		val := []byte("bar" + iStr)
-		keySet[i] = key
-		valueSet[key] = val
-
-		_, _, err := bucket.GetRaw(key)
-		require.Truef(t, IsKeyNotFoundError(bucket, err), "Key [%s] should not exist yet, expected error but didn't get one.", key)
-		require.NoError(t, bucket.SetRaw(key, 0, val))
-	}
-
-	results, err := bucket.GetBulkRaw(keySet)
-	require.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	assert.Len(t, results, 1000)
-
-	// validate results, and prepare new keySet with non-existent keys
-	mixedKeySet := make([]string, 2000)
-	for index, key := range keySet {
-		// Verify value
-		assert.Equal(t, results[key], valueSet[key])
-		mixedKeySet[2*index] = key
-		mixedKeySet[2*index+1] = fmt.Sprintf("%s_invalid", key)
-	}
-
-	// Validate bulkGet that include non-existent keys work as expected
-	mixedResults, err := bucket.GetBulkRaw(mixedKeySet)
-	require.NoError(t, err, fmt.Sprintf("Error calling GetBulkRaw(): %v", err))
-	assert.Len(t, results, 1000)
-
-	for _, key := range keySet {
-		// validate mixed results
-		assert.Equal(t, mixedResults[key], valueSet[key])
-	}
-
-	// if passed all non-existent keys, should return an empty map
-	nonExistentKeySet := make([]string, 1000)
-	for index, key := range keySet {
-		nonExistentKeySet[index] = fmt.Sprintf("%s_invalid", key)
-	}
-	emptyResults, err := bucket.GetBulkRaw(nonExistentKeySet)
-	require.NoError(t, err, fmt.Sprintf("Unexpected error calling GetBulkRaw(): %v", err))
-	assert.NotNil(t, emptyResults)
-	assert.Len(t, emptyResults, 0)
-
-}
-
 func TestWriteCasBasic(t *testing.T) {
 
 	bucket := GetTestBucket(t)
@@ -299,103 +233,6 @@ func TestWriteCasAdvanced(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error removing key from bucket")
 	}
-
-}
-
-// When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
-func TestSetBulk(t *testing.T) {
-
-	// Might be failing due to something related to this comment:
-	//    When enabling this test, you should also uncomment the code in isRecoverableGoCBError()
-	// However, there's no commented code in isRecoverableGoCBError()
-	t.Skip("TestSetBulk is currently not passing against both walrus and couchbase server.  Error logs: https://gist.github.com/tleyden/22d69ff9e627d7ad37043200614a3cc5")
-
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
-
-	key1 := t.Name() + "1"
-	key2 := t.Name() + "2"
-	key3 := t.Name() + "3"
-	var returnVal interface{}
-
-	// Cleanup
-	defer func() {
-		keys2del := []string{key1, key2, key3}
-		for _, key2del := range keys2del {
-			err := bucket.Delete(key2del)
-			if err != nil {
-				t.Errorf("Error removing key from bucket")
-			}
-
-		}
-	}()
-
-	_, err := bucket.Get(key1, &returnVal)
-	if err == nil {
-		t.Errorf("Key should not exist yet, expected error but got nil")
-	}
-
-	// Write a single key, get cas val: casStale
-	casZero := uint64(0)
-	casStale, err := bucket.WriteCas(key1, 0, 0, casZero, "key-initial", sgbucket.Raw)
-	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", err)
-	}
-
-	// Update that key so that casStale is now stale, get casFresh
-	casUpdated, err := bucket.WriteCas(key1, 0, 0, casStale, "key-updated", sgbucket.Raw)
-	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", err)
-	}
-
-	// Do bulk set with a new key and the prev key with casStale
-	entries := []*sgbucket.BulkSetEntry{}
-	entries = append(entries, &sgbucket.BulkSetEntry{
-		Key:   key1,
-		Value: "key-updated2",
-		Cas:   casStale,
-	})
-	entries = append(entries, &sgbucket.BulkSetEntry{
-		Key:   key2,
-		Value: "key2-initial",
-		Cas:   casZero,
-	})
-
-	doSingleFakeRecoverableGOCBError = true
-	err = bucket.SetBulk(entries)
-	goassert.True(t, err == nil)
-
-	// Expect one error for the casStale key
-	goassert.Equals(t, numNonNilErrors(entries), 1)
-
-	// Expect that the other key was correctly written
-	_, err = bucket.Get(key2, &returnVal)
-	goassert.True(t, err == nil)
-	goassert.Equals(t, returnVal, "key2-initial")
-
-	// Retry with bulk set with another new key and casFresh key
-	entries = []*sgbucket.BulkSetEntry{}
-	entries = append(entries, &sgbucket.BulkSetEntry{
-		Key:   key1,
-		Value: "key-updated3",
-		Cas:   casUpdated,
-	})
-	entries = append(entries, &sgbucket.BulkSetEntry{
-		Key:   key3,
-		Value: "key3-initial",
-		Cas:   casZero,
-	})
-
-	doSingleFakeRecoverableGOCBError = true
-	err = bucket.SetBulk(entries)
-
-	// Expect no errors
-	goassert.Equals(t, numNonNilErrors(entries), 0)
-
-	// Make sure the original key that previously failed now works
-	_, err = bucket.Get(key1, &returnVal)
-	goassert.True(t, err == nil)
-	goassert.Equals(t, returnVal, "key-updated3")
 
 }
 

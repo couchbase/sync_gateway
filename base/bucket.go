@@ -82,8 +82,7 @@ func init() {
 	gomemcached.MaxBodyLen = int(20 * 1024 * 1024)
 }
 
-// TODO: unalias these and just pass around sgbucket.X everywhere
-type Bucket sgbucket.Bucket
+type Bucket sgbucket.DataStore
 type FeedArguments sgbucket.FeedArguments
 type TapFeed sgbucket.MutationFeed
 
@@ -335,7 +334,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		// If XATTRS are enabled via enable_shared_bucket_access config flag, assert that Couchbase Server is 5.0
 		// or later, otherwise refuse to connect to the bucket since pre 5.0 versions don't support XATTRs
 		if spec.UseXattrs {
-			if !bucket.IsSupported(sgbucket.BucketFeatureXattrs) {
+			if !bucket.IsSupported(sgbucket.DataStoreFeatureXattrs) {
 				Warnf("If using XATTRS, Couchbase Server version must be >= 5.0.")
 				return nil, ErrFatalBucketConnection
 			}
