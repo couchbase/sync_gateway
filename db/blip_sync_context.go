@@ -487,11 +487,12 @@ func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID 
 
 // sendBLIPMessage is a simple wrapper around all sent BLIP messages
 func (bsc *BlipSyncContext) sendBLIPMessage(sender *blip.Sender, msg *blip.Message) bool {
+	ok := sender.Send(msg)
 	if base.LogTraceEnabled(base.KeySyncMsg) {
 		rqBody, _ := msg.Body()
-		base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Send Req %s: Body: '%s' Properties: %v", msg, base.UD(rqBody), base.UD(msg.Properties))
+		base.TracefCtx(bsc.loggingCtx, base.KeySyncMsg, "Sent Req %s: Body: '%s' Properties: %v", msg, base.UD(rqBody), base.UD(msg.Properties))
 	}
-	return sender.Send(msg)
+	return ok
 }
 
 func (bsc *BlipSyncContext) sendNoRev(sender *blip.Sender, docID, revID string, seq SequenceID, err error) error {

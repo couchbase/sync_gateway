@@ -1968,7 +1968,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":12345678901234567890}]}`, string(data))
 
-	msg, ok := client.pullReplication.WaitForMessage(5)
+	msg, ok := client.WaitForBlipRevMessage("doc1", "2-26359894b20d89c97638e71c40482f28")
 	assert.True(t, ok)
 
 	// Check EE is delta, and CE is full-body replication
@@ -2060,7 +2060,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	assert.Equal(t, `{"greetings":{"2-":[{"howdy":12345678901234567890}]}}`, string(msgBody))
 	assert.Equal(t, deltaSentCount+1, rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value())
 
-	msg, ok = client.pullReplication.WaitForMessage(6)
+	msg, ok = client.WaitForBlipRevMessage("doc1", "2-26359894b20d89c97638e71c40482f28")
 	assert.True(t, ok)
 
 	// Check the resent request was NOT sent with a deltaSrc property
@@ -2396,7 +2396,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		t.Skipf("Skipping enterprise-only delta sync test.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
@@ -2436,8 +2436,9 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
 
-	msg, ok := client2.pullReplication.WaitForMessage(3)
+	data, ok = client2.WaitForRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4")
 	assert.True(t, ok)
+	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
 	// create doc1 rev 2-959f0e9ad32d84ff652fb91d8d0caa7e
 	resp = rt.SendAdminRequest(http.MethodPut, "/db/doc1?rev=1-0335a345b6ffed05707ccc4cbc1b67f4", `{"greetings": [{"hello": "world!"}, {"hi": "alice"}, {"howdy": "bob"}]}`)
@@ -2447,7 +2448,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`, string(data))
 
-	msg, ok = client.pullReplication.WaitForMessage(5)
+	msg, ok := client.WaitForBlipRevMessage("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
 	assert.True(t, ok)
 
 	// Check EE is delta
@@ -2466,7 +2467,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	err = client2.StartOneshotPull()
 	assert.NoError(t, err)
 
-	msg2, ok := client2.pullReplication.WaitForMessage(6)
+	msg2, ok := client2.WaitForBlipRevMessage("doc1", "2-959f0e9ad32d84ff652fb91d8d0caa7e")
 	assert.True(t, ok)
 
 	// Check the request was sent with the correct deltaSrc property
@@ -2709,7 +2710,8 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	assert.NotEqual(t, blip.ErrorType, msg.Type(), "Expected non-error blip message type")
 
 	// Check EE is delta, and CE is full-body replication
-	msg, ok = client.pullReplication.WaitForMessage(5)
+	// msg, ok = client.pullReplication.WaitForMessage(5)
+	msg, ok = client.WaitForBlipRevMessage("doc1", "2-10000d5ec533b29b117e60274b1e3653")
 	assert.True(t, ok)
 
 	if base.IsEnterpriseEdition() {
