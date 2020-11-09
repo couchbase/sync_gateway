@@ -596,10 +596,10 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 		return nil, err
 	}
 
-	config.Password = "****"
+	config.Password = "xxxxx"
 
 	for i := range config.Users {
-		config.Users[i].Password = base.StringPtr("****")
+		config.Users[i].Password = base.StringPtr("xxxxx")
 	}
 
 	for i, _ := range config.Replications {

@@ -13,7 +13,7 @@ func TestWebhookString(t *testing.T) {
 	wh = &Webhook{
 		url: "http://username:password@example.com/foo",
 	}
-	assert.Equal(t, "Webhook handler [http://****:****@example.com/foo]", wh.String())
+	assert.Equal(t, "Webhook handler [http://xxxxx:xxxxx@example.com/foo]", wh.String())
 
 	wh = &Webhook{
 		url: "http://example.com:9000/baz",
@@ -27,7 +27,7 @@ func TestSanitizedUrl(t *testing.T) {
 	wh = &Webhook{
 		url: "https://foo%40bar.baz:my-%24ecret-p%40%25%24w0rd@example.com:8888/bar",
 	}
-	assert.Equal(t, "https://****:****@example.com:8888/bar", wh.SanitizedUrl())
+	assert.Equal(t, "https://xxxxx:xxxxx@example.com:8888/bar", wh.SanitizedUrl())
 
 	wh = &Webhook{
 		url: "https://example.com/does-not-count-as-url-embedded:basic-auth-credentials@qux",

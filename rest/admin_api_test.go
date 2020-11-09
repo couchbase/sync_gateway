@@ -2170,8 +2170,8 @@ func TestConfigRedaction(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "****", unmarshaledConfig.Password)
-	assert.Equal(t, "****", *unmarshaledConfig.Users["alice"].Password)
+	assert.Equal(t, "xxxxx", unmarshaledConfig.Password)
+	assert.Equal(t, "xxxxx", *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default db config redaction when redaction disabled
 	response = rt.SendAdminRequest("GET", "/db/_config?redact=false", "")
@@ -2187,8 +2187,8 @@ func TestConfigRedaction(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "****", unmarshaledServerConfig.Databases["db"].Password)
-	assert.Equal(t, "****", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+	assert.Equal(t, "xxxxx", unmarshaledServerConfig.Databases["db"].Password)
+	assert.Equal(t, "xxxxx", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
 
 	// Test default server config redaction when redaction disabled
 	response = rt.SendAdminRequest("GET", "/_config?redact=false", "")
