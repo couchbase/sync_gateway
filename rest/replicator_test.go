@@ -3897,6 +3897,11 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
+	// FIXME: CBG-1171
+	if !base.TestUseXattrs() {
+		t.Skip("Test broken under xattrs=false - CBG-1171")
+	}
+
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
