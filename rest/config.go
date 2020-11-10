@@ -316,7 +316,10 @@ func (dbConfig *DbConfig) setup(name string) error {
 	}
 
 	url, err := url.Parse(*dbConfig.Server)
-	if err == nil && url.User != nil {
+	if err != nil {
+		return err
+	}
+	if url.User != nil {
 		// Remove credentials from URL and put them into the DbConfig.Username and .Password:
 		if dbConfig.Username == "" {
 			dbConfig.Username = url.User.Username()
@@ -338,7 +341,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 		if err != nil {
 			return err
 		}
-		dbConfig.Sync = base.StringPtr(sync)
+		dbConfig.Sync = &sync
 	}
 
 	// If the import filter function is referenced from an external file or http(s) endpoint
@@ -348,7 +351,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 		if err != nil {
 			return err
 		}
-		dbConfig.ImportFilter = base.StringPtr(importFilter)
+		dbConfig.ImportFilter = &importFilter
 	}
 
 	// If the conflict resolution function is referenced from an external file or http(s) endpoint
@@ -363,7 +366,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 		}
 	}
 
-	return err
+	return nil
 }
 
 // loadJavaScript loads the JavaScript source from an external file or and HTTP/HTTPS endpoint.
@@ -378,7 +381,8 @@ func loadJavaScript(path string) (js string, err error) {
 		resp, err := http.Get(path)
 		if err != nil {
 			return "", err
-		} else if resp.StatusCode >= http.StatusMultipleChoices {
+		} else if resp.StatusCode >= 300 {
+			_ = resp.Body.Close()
 			return "", base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
 		}
 		rc = resp.Body
@@ -389,8 +393,6 @@ func loadJavaScript(path string) (js string, err error) {
 			return "", err
 		}
 	} else {
-		base.Infof(base.KeyAll, "Specified path doesn't look like a file or URI, returning as-is "+
-			"with the assumption that it is an executable inline JavaScript source")
 		return path, nil
 	}
 	defer func() { _ = rc.Close() }()
