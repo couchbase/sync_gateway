@@ -48,24 +48,41 @@ const (
 	kMaxDeltaTtlDuration = 60 * 60 * 24 * 30 * time.Second
 )
 
-// basicAuthURLRegexp is used to match the HTTP basic auth component of a URL
-var basicAuthURLRegexp = regexp.MustCompilePOSIX(`:\/\/[^:/]+:[^@/]+@`)
-
-// RedactBasicAuthURL returns the given string, with a redacted HTTP basic auth component.
-func RedactBasicAuthURL(url string) string {
-	return basicAuthURLRegexp.ReplaceAllLiteralString(url, "://****:****@")
+// RedactBasicAuthURLUserAndPassword returns the given string, with a redacted HTTP basic auth component.
+func RedactBasicAuthURLUserAndPassword(urlIn string) string {
+	redactedUrl, err := RedactBasicAuthURL(urlIn, false)
+	if err != nil {
+		Warnf("%v", err)
+		return ""
+	}
+	return redactedUrl
 }
 
-// basicAuthURLPasswordRegexp is used to match the HTTP basic auth credentials component of a URL
-var basicAuthURLPasswordRegexp = regexp.MustCompile(`:\/\/(?P<username>[^:/]+):(?P<password>[^@/]+)@`)
-
-// RedactBasicAuthURL returns the given string, with a redacted HTTP basic auth password component.
-func RedactBasicAuthURLPassword(url string) string {
-	if basicAuthURLPasswordRegexp.MatchString(url) {
-		redacted := fmt.Sprintf("://${%s}:****@", basicAuthURLPasswordRegexp.SubexpNames()[1])
-		return basicAuthURLPasswordRegexp.ReplaceAllString(url, redacted)
+// RedactBasicAuthURLPassword returns the given string, with a redacted HTTP basic auth password component.
+func RedactBasicAuthURLPassword(urlIn string) string {
+	redactedUrl, err := RedactBasicAuthURL(urlIn, true)
+	if err != nil {
+		Warnf("%v", err)
+		return ""
 	}
-	return url
+	return redactedUrl
+}
+
+func RedactBasicAuthURL(urlIn string, passwordOnly bool) (string, error) {
+	urlParsed, err := url.Parse(urlIn)
+	if err != nil {
+		// err can't be wrapped or logged as it contains unredacted data from the provided url
+		return "", fmt.Errorf("unable to redact URL, returning empty string")
+	}
+	if urlParsed.User != nil {
+		user := urlParsed.User.Username()
+		if !passwordOnly {
+			user = "xxxxx"
+		}
+		urlParsed.User = url.UserPassword(user, "xxxxx")
+	}
+
+	return urlParsed.String(), nil
 }
 
 // GenerateRandomSecret returns a cryptographically-secure 160-bit random number encoded as a hex string.

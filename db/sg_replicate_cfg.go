@@ -194,8 +194,7 @@ func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
 
 	remoteURL, err := url.Parse(rc.Remote)
 	if err != nil {
-		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL [%s] is invalid: %v",
-			base.RedactBasicAuthURLPassword(rc.Remote), base.RedactBasicAuthURLPassword(err.Error()))
+		return base.HTTPErrorf(http.StatusBadRequest, "Replication remote URL is invalid")
 	}
 
 	if (remoteURL != nil && remoteURL.User.Username() != "") && rc.Username != "" {
@@ -326,7 +325,7 @@ func (rc *ReplicationConfig) Equals(compareToCfg *ReplicationConfig) (bool, erro
 func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
 	config := *rc
 	if config.Password != "" {
-		config.Password = "****"
+		config.Password = "xxxxx"
 	}
 	config.Remote = base.RedactBasicAuthURLPassword(config.Remote)
 	return &config

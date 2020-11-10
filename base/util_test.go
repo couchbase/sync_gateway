@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -553,32 +554,78 @@ func TestRedactBasicAuthURL(t *testing.T) {
 		},
 		{
 			input:    "http://username:password@hostname",
-			expected: "http://****:****@hostname",
+			expected: "http://xxxxx:xxxxx@hostname",
 		},
 		{
 			input:    "https://username:password@example.org:8123",
-			expected: "https://****:****@example.org:8123",
+			expected: "https://xxxxx:xxxxx@example.org:8123",
 		},
 		{
 			input:    "https://username:password@example.org/path",
-			expected: "https://****:****@example.org/path",
+			expected: "https://xxxxx:xxxxx@example.org/path",
 		},
 		{
 			input:    "https://username:password@example.org:8123/path?key=val&email=me@example.org",
-			expected: "https://****:****@example.org:8123/path?key=val&email=me@example.org",
+			expected: "https://xxxxx:xxxxx@example.org:8123/path?key=val&email=me@example.org",
 		},
 		{
 			input:    "https://foo%40bar.baz:my-%24ecret-p%40%25%24w0rd@example.com:8888/bar",
-			expected: "https://****:****@example.com:8888/bar",
+			expected: "https://xxxxx:xxxxx@example.com:8888/bar",
 		},
 		{
 			input:    "https://example.com/does-not-count-as-url-embedded:basic-auth-credentials@qux",
 			expected: "https://example.com/does-not-count-as-url-embedded:basic-auth-credentials@qux",
 		},
+		{
+			input:    "http://example.org",
+			expected: "http://example.org",
+		},
+		{
+			input:    "http://example.org:1234",
+			expected: "http://example.org:1234",
+		},
+		{
+			input:    "http://foo:bar@example.org",
+			expected: "http://xxxxx:xxxxx@example.org",
+		},
+		{
+			input:    "http://foo:bar@example.org:1234",
+			expected: "http://xxxxx:xxxxx@example.org:1234",
+		},
+		{
+			input:    "http://foo:p@ssw0rd@example.org",
+			expected: "http://xxxxx:xxxxx@example.org",
+		},
+		{
+			input:    "http://foo:@example.org",
+			expected: "http://xxxxx:xxxxx@example.org",
+		},
+		{
+			input:    "http://foo@example.org",
+			expected: "http://xxxxx:xxxxx@example.org",
+		},
+		{
+			input:    "ftp://foo:p@ssw0rd@example.org",
+			expected: "ftp://xxxxx:xxxxx@example.org",
+		},
+		{
+			input:    "",
+			expected: "",
+		},
+		{
+			input:    "http://foo:%f@example.org",
+			expected: "",
+		},
+		{
+			input:    ":invalid:url",
+			expected: "",
+		},
 	}
 
 	for _, test := range tests {
-		goassert.Equals(t, RedactBasicAuthURL(test.input), test.expected)
+		t.Run(test.input, func(t *testing.T) {
+			assert.Equal(t, test.expected, RedactBasicAuthURLUserAndPassword(test.input))
+		})
 	}
 }
 
@@ -1310,4 +1357,21 @@ func TestGetRestrictedIntQuery(t *testing.T) {
 		false,
 	)
 	assert.Equal(t, minValue, restricted)
+}
+
+func BenchmarkURLParse(b *testing.B) {
+	var basicAuthURLRegexp = regexp.MustCompilePOSIX(`:\/\/[^:/]+:[^@/]+@`)
+	b.ResetTimer()
+	urlString := "https://username:password@example.org:8123/path?key=val&email=me@example.org"
+	b.Run("url.Parse", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _ = url.Parse(urlString)
+		}
+	})
+
+	b.Run("regex", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_ = basicAuthURLRegexp.ReplaceAllLiteralString(urlString, "://****:****@")
+		}
+	})
 }

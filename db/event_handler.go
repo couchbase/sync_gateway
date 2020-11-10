@@ -145,5 +145,5 @@ func (wh *Webhook) String() string {
 
 func (wh *Webhook) SanitizedUrl() string {
 	// Basic auth credentials may have been included in the URL, in which case obscure them
-	return base.RedactBasicAuthURL(wh.url)
+	return base.RedactBasicAuthURLUserAndPassword(wh.url)
 }
