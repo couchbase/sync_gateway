@@ -738,11 +738,10 @@ func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 	// Create docs in various channels
 	_ = rt.putDoc("pbs-1", `{"channel":["PBS"]}`)
 	_ = rt.putDoc("hbo-1", `{"channel":["HBO"]}`)
-	cacheWaiter.AddAndWait(2)
 
 	pbs2 := rt.putDoc("pbs-2", `{"channel":["PBS"]}`)
 	hbo2 := rt.putDoc("hbo-2", `{"channel":["HBO"]}`)
-	cacheWaiter.AddAndWait(2)
+	cacheWaiter.AddAndWait(4)
 
 	// remove channels/tombstone a couple of docs to ensure they're not backfilled after a dynamic grant
 	_ = rt.putDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.Rev))
