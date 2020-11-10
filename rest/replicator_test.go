@@ -2620,8 +2620,10 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, startNumChangesRequestedFromZeroTotal+1, numChangesRequestedFromZeroTotal)
 
 	// rev assertions
-	numRevsSentTotal := ar.Push.GetStats().SendRevCount.Value()
-	assert.Equal(t, startNumRevsSentTotal+1, numRevsSentTotal)
+	_, ok := base.WaitForStat(func() int64 {
+		return ar.Push.GetStats().SendRevCount.Value()
+	}, startNumRevsSentTotal+1)
+	assert.True(t, ok)
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().ExpectedSequenceCount)
 
@@ -2683,8 +2685,10 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	assert.Equal(t, numChangesRequestedFromZeroTotal+1, endNumChangesRequestedFromZeroTotal)
 
 	// make sure the replicator has resent the rev
-	numRevsSentTotal = ar.Push.GetStats().SendRevCount.Value()
-	assert.Equal(t, startNumRevsSentTotal+1, numRevsSentTotal)
+	_, ok = base.WaitForStat(func() int64 {
+		return ar.Push.GetStats().SendRevCount.Value()
+	}, startNumRevsSentTotal+1)
+	assert.True(t, ok)
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().ProcessedSequenceCount)
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().ExpectedSequenceCount)
 
