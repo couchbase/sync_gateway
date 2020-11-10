@@ -126,7 +126,10 @@ func NewTestBucketPool(bucketReadierFunc TBPBucketReadierFunc, bucketInitFunc TB
 	go tbp.bucketReadierWorker(ctx, bucketReadierFunc)
 
 	// Remove old test buckets (if desired)
-	removeOldBuckets, _ := strconv.ParseBool(os.Getenv(tbpEnvRecreate))
+	removeOldBuckets := true
+	if envRecreate := os.Getenv(tbpEnvRecreate); envRecreate != "" {
+		removeOldBuckets, _ = strconv.ParseBool(envRecreate)
+	}
 	if removeOldBuckets {
 		err := tbp.removeOldTestBuckets()
 		if err != nil {
@@ -461,6 +464,11 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 				FatalfCtx(ctx, "Timed out trying to open new bucket: %v", err)
 			}
 			openBuckets[i] = b
+
+			_, err = b.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+BucketQueryToken+`%";`, nil, gocb.RequestPlus, true)
+			if err != nil {
+				Fatalf("Couldn't remove old prepared statements: %v", err)
+			}
 
 			wg.Done()
 		}(i, bucketExists)
