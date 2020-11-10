@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -1762,6 +1763,8 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
 
+	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(context.Background()))
+
 	// Try to get rev 2 via BLIP API and assert that _removed == false
 	resultDoc, err := bt.GetDocAtRev("foo", "2-bcd")
 	assert.NoError(t, err, "Unexpected Error")
@@ -1780,6 +1783,8 @@ func TestGetRemovedDoc(t *testing.T) {
 	assert.True(t, sent)
 	assert.NoError(t, err)                         // no error
 	assert.Empty(t, resp.Properties["Error-Code"]) // no error
+
+	require.NoError(t, rt.GetDatabase().WaitForPendingChanges(context.Background()))
 
 	// Flush rev cache in case this prevents the bug from showing up (didn't make a difference)
 	rt.GetDatabase().FlushRevisionCacheForTest()
