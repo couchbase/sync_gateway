@@ -1107,7 +1107,7 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
 	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
 
-	crc32cMacroExpansionSupported := bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion)
+	crc32cMacroExpansionSupported := bucket.IsSupported(sgbucket.DataStoreFeatureCrc32cMacroExpansion)
 	if err != nil {
 		return 0, err
 	}
@@ -1212,7 +1212,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
-		if bucket.IsSupported(sgbucket.BucketFeatureCrc32cMacroExpansion) {
+		if bucket.IsSupported(sgbucket.DataStoreFeatureCrc32cMacroExpansion) {
 			// Stamp the body hash on the xattr
 			if isDelete {
 				builder.UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr)
@@ -2505,17 +2505,17 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 	}
 }
 
-func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.BucketFeature) bool {
+func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	major, minor, _ := bucket.CouchbaseServerVersion()
 	switch feature {
-	case sgbucket.BucketFeatureXattrs:
+	case sgbucket.DataStoreFeatureXattrs:
 		return isMinimumVersion(major, minor, 5, 0)
-	case sgbucket.BucketFeatureN1ql:
+	case sgbucket.DataStoreFeatureN1ql:
 		numberOfN1qlNodes := len(bucket.IoRouter().N1qlEps())
 		return numberOfN1qlNodes > 0
 	// Crc32c macro expansion is used to avoid conflicting with the Couchbase Eventing module, which also uses XATTRS.
 	// Since Couchbase Eventing was introduced in Couchbase Server 5.5, the Crc32c macro expansion only needs to be done on 5.5 or later.
-	case sgbucket.BucketFeatureCrc32cMacroExpansion:
+	case sgbucket.DataStoreFeatureCrc32cMacroExpansion:
 		return isMinimumVersion(major, minor, 5, 5)
 	default:
 		return false

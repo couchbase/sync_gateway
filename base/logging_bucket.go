@@ -48,10 +48,6 @@ func (b *LoggingBucket) Touch(k string, exp uint32) (cas uint64, err error) {
 	defer b.log(time.Now(), k, exp)
 	return b.bucket.Touch(k, exp)
 }
-func (b *LoggingBucket) GetBulkRaw(keys []string) (map[string][]byte, error) {
-	defer b.log(time.Now(), keys)
-	return b.bucket.GetBulkRaw(keys)
-}
 func (b *LoggingBucket) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	defer b.log(time.Now(), k, exp)
 	return b.bucket.Add(k, exp, v)
@@ -59,10 +55,6 @@ func (b *LoggingBucket) Add(k string, exp uint32, v interface{}) (added bool, er
 func (b *LoggingBucket) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	defer b.log(time.Now(), k, exp)
 	return b.bucket.AddRaw(k, exp, v)
-}
-func (b *LoggingBucket) Append(k string, data []byte) error {
-	defer b.log(time.Now(), k)
-	return b.bucket.Append(k, data)
 }
 func (b *LoggingBucket) Set(k string, exp uint32, v interface{}) error {
 	defer b.log(time.Now(), k, exp)
@@ -79,10 +71,6 @@ func (b *LoggingBucket) Delete(k string) error {
 func (b *LoggingBucket) Remove(k string, cas uint64) (casOut uint64, err error) {
 	defer b.log(time.Now(), k, cas)
 	return b.bucket.Remove(k, cas)
-}
-func (b *LoggingBucket) Write(k string, flags int, exp uint32, v interface{}, opt sgbucket.WriteOptions) error {
-	defer b.log(time.Now(), k, flags, exp, opt)
-	return b.bucket.Write(k, flags, exp, v, opt)
 }
 func (b *LoggingBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v interface{}, opt sgbucket.WriteOptions) (uint64, error) {
 	defer b.log(time.Now(), k, flags, exp, cas, opt)
@@ -101,6 +89,7 @@ func (b *LoggingBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, err
 	defer b.log(time.Now(), k, amt, def, exp)
 	return b.bucket.Incr(k, amt, def, exp)
 }
+
 func (b *LoggingBucket) WriteCasWithXattr(k string, xattr string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
 	defer b.log(time.Now(), k, xattr, exp, cas)
 	return b.bucket.WriteCasWithXattr(k, xattr, exp, cas, v, xv)
@@ -127,6 +116,7 @@ func (b *LoggingBucket) GetXattr(k string, xattr string, xv interface{}) (cas ui
 	defer b.log(time.Now(), k, xattr)
 	return b.bucket.GetXattr(k, xattr, xv)
 }
+
 func (b *LoggingBucket) GetDDocs(value interface{}) error {
 	defer b.log(time.Now())
 	return b.bucket.GetDDocs(value)
@@ -158,16 +148,6 @@ func (b *LoggingBucket) ViewQuery(ddoc, name string, params map[string]interface
 	return b.bucket.ViewQuery(ddoc, name, params)
 }
 
-func (b *LoggingBucket) SetBulk(entries []*sgbucket.BulkSetEntry) (err error) {
-	defer b.log(time.Now(), entries)
-	return b.bucket.SetBulk(entries)
-}
-
-func (b *LoggingBucket) Refresh() error {
-	defer b.log(time.Now())
-	return b.bucket.Refresh()
-}
-
 func (b *LoggingBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	defer b.log(time.Now())
 	return b.bucket.StartTapFeed(args, dbStats)
@@ -186,10 +166,13 @@ func (b *LoggingBucket) Dump() {
 	defer b.log(time.Now())
 	b.bucket.Dump()
 }
+
+/*
 func (b *LoggingBucket) VBHash(docID string) uint32 {
 	defer b.log(time.Now())
 	return b.bucket.VBHash(docID)
 }
+*/
 
 func (b *LoggingBucket) GetMaxVbno() (uint16, error) {
 	defer b.log(time.Now())
@@ -217,7 +200,7 @@ func (b *LoggingBucket) GetUnderlyingBucket() Bucket {
 	return b.bucket
 }
 
-func (b *LoggingBucket) IsSupported(feature sgbucket.BucketFeature) bool {
+func (b *LoggingBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	defer b.log(time.Now())
 	return b.bucket.IsSupported(feature)
 }

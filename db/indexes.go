@@ -187,7 +187,7 @@ func (i *SGIndex) isXattrOnly() bool {
 
 // Creates index associated with specified SGIndex if not already present.  Always defers build - a subsequent BUILD INDEX
 // will need to be invoked for any created indexes.
-func (i *SGIndex) createIfNeeded(bucket *base.CouchbaseBucketGoCB, useXattrs bool, numReplica uint) (isDeferred bool, err error) {
+func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numReplica uint) (isDeferred bool, err error) {
 
 	if i.isXattrOnly() && !useXattrs {
 		return false, nil
@@ -278,7 +278,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 		return nil
 	}
 
-	if !gocbBucket.IsSupported(sgbucket.BucketFeatureN1ql) {
+	if !gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql) {
 		return errors.New("No available nodes running the Query Service. Either add the Query Service to your Couchbase Server cluster or set `use_views` to true in your Sync Gateway config")
 	}
 
@@ -391,12 +391,8 @@ func isIndexerError(err error) bool {
 // Iterates over the index set, removing obsolete indexes:
 //  - indexes based on the inverse value of xattrs being used by the database
 //  - indexes associated with previous versions of the index, for either xattrs=true or xattrs=false
-func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
+func removeObsoleteIndexes(bucket base.N1QLStore, previewOnly bool, useXattrs bool, useViews bool, indexMap map[SGIndexType]SGIndex) (removedIndexes []string, err error) {
 	removedIndexes = make([]string, 0)
-
-	if !bucket.IsSupported(sgbucket.BucketFeatureN1ql) {
-		return removedIndexes, nil
-	}
 
 	// Build set of candidates for cleanup
 	removalCandidates := make([]string, 0)
@@ -429,7 +425,7 @@ func removeObsoleteIndexes(bucket base.N1QLBucket, previewOnly bool, useXattrs b
 }
 
 // Removes an obsolete index from the database.  In preview mode, checks for existence of the index only.
-func removeObsoleteIndex(bucket base.N1QLBucket, indexName string, previewOnly bool) (removed bool, err error) {
+func removeObsoleteIndex(bucket base.N1QLStore, indexName string, previewOnly bool) (removed bool, err error) {
 
 	if previewOnly {
 		// Check for index existence

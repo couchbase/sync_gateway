@@ -23,8 +23,7 @@ type N1qlIndexOptions struct {
 	DeferBuild      bool `json:"defer_build,omitempty"`          // Whether to defer initial build of index (requires a subsequent BUILD INDEX invocation)
 }
 
-type N1QLBucket interface {
-	Bucket
+type N1QLStore interface {
 	Query(statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (results gocb.QueryResults, err error)
 	ExplainQuery(statement string, params interface{}) (plain map[string]interface{}, err error)
 	CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
@@ -35,7 +34,7 @@ type N1QLBucket interface {
 	DropIndex(indexName string) error
 }
 
-var _ N1QLBucket = &CouchbaseBucketGoCB{}
+var _ N1QLStore = &CouchbaseBucketGoCB{}
 
 // Query accepts a parameterized statement,  optional list of params, and an optional flag to force adhoc query execution.
 // Params specified using the $param notation in the statement are intended to be used w/ N1QL prepared statements, and will be
