@@ -229,7 +229,7 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (time.Durat
 
 	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
 	if err != nil {
-		return time.Duration(0), err
+		return 0, err
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -237,16 +237,16 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (time.Durat
 	if resp.StatusCode == http.StatusForbidden {
 		Warnf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if resp.StatusCode != http.StatusOK {
-		return time.Duration(0), errors.New(resp.Status)
+		return 0, errors.New(resp.Status)
 	}
 
 	respBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return time.Duration(0), err
+		return 0, err
 	}
 
 	if err := JSONUnmarshal(respBytes, &purgeResponse); err != nil {
-		return time.Duration(0), err
+		return 0, err
 	}
 
 	// Server purge interval is a float value, in days.  Round up to hours
