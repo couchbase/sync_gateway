@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -196,7 +197,7 @@ func (bucket *CouchbaseBucketGoCB) GetBucketCredentials() (username, password st
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
+func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (time.Duration, error) {
 
 	// Bucket-specific settings
 	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.Name())
@@ -219,7 +220,7 @@ func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (int, error) {
 // Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
 // that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
 // bucket and server purge intervals).
-func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error) {
+func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (time.Duration, error) {
 
 	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
 	var purgeResponse struct {
@@ -228,7 +229,7 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 
 	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
 	if err != nil {
-		return 0, err
+		return time.Duration(0), err
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -236,21 +237,21 @@ func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (int, error
 	if resp.StatusCode == http.StatusForbidden {
 		Warnf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
 	} else if resp.StatusCode != http.StatusOK {
-		return 0, errors.New(resp.Status)
+		return time.Duration(0), errors.New(resp.Status)
 	}
 
 	respBytes, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return 0, err
+		return time.Duration(0), err
 	}
 
 	if err := JSONUnmarshal(respBytes, &purgeResponse); err != nil {
-		return 0, err
+		return time.Duration(0), err
 	}
 
 	// Server purge interval is a float value, in days.  Round up to hours
 	purgeIntervalHours := int(purgeResponse.PurgeInterval*24 + 0.5)
-	return purgeIntervalHours, nil
+	return time.Duration(purgeIntervalHours) * time.Hour, nil
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID

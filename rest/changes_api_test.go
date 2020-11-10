@@ -3784,7 +3784,7 @@ func TestTombstoneCompaction(t *testing.T) {
 	}
 
 	rt := NewRestTester(t, nil)
-	rt.GetDatabase().PurgeInterval = 0
+	rt.GetDatabase().PurgeInterval = time.Duration(0)
 	defer rt.Close()
 
 	compactionTotal := 0

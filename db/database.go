@@ -50,9 +50,13 @@ const (
 )
 
 const (
-	DefaultRevsLimitNoConflicts             = 50
-	DefaultRevsLimitConflicts               = 100
-	DefaultPurgeInterval                    = 30 // Default metadata purge interval, in days.  Used if server's purge interval is unavailable
+	DefaultRevsLimitNoConflicts = 50
+	DefaultRevsLimitConflicts   = 100
+
+	// DefaultPurgeInterval represents a time duration of 30 days (in hours)
+	// to be used as default metadata purge interval when the server’s purge
+	// interval (either bucket specific or cluster wide) is not available.
+	DefaultPurgeInterval                    = 30 * 24 * time.Hour
 	DefaultSGReplicateEnabled               = true
 	DefaultSGReplicateWebsocketPingInterval = time.Minute * 5
 )
@@ -94,7 +98,7 @@ type DatabaseContext struct {
 	State              uint32                   // The runtime state of the DB from a service perspective
 	ExitChanges        chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders      auth.OIDCProviderMap     // OIDC clients
-	PurgeInterval      int                      // Metadata purge interval, in hours
+	PurgeInterval      time.Duration            // Metadata purge interval, in hours
 	serverUUID         string                   // UUID of the server, if available
 	DbStats            *base.DbStats            // stats that correspond to this database context
 	CompactState       uint32                   // Status of database compaction
@@ -917,7 +921,7 @@ func (db *Database) Compact() (int, error) {
 	}
 
 	// Trigger view compaction for all tombstoned documents older than the purge interval
-	purgeIntervalDuration := time.Duration(-db.PurgeInterval) * time.Hour
+	purgeIntervalDuration := -db.PurgeInterval * time.Hour
 	startTime := time.Now()
 	purgeOlderThan := startTime.Add(purgeIntervalDuration)
 
