@@ -71,18 +71,18 @@ func RedactBasicAuthURLPassword(urlIn string) string {
 func RedactBasicAuthURL(urlIn string, passwordOnly bool) (string, error) {
 	urlParsed, err := url.Parse(urlIn)
 	if err != nil {
+		// err can't be wrapped or logged as it contains unredacted data from the provided url
 		return "", fmt.Errorf("unable to redact URL, returning empty string")
 	}
-	urlEdit := *urlParsed
-	if urlEdit.User != nil {
-		user := urlEdit.User.Username()
+	if urlParsed.User != nil {
+		user := urlParsed.User.Username()
 		if !passwordOnly {
 			user = "xxxxx"
 		}
-		urlEdit.User = url.UserPassword(user, "xxxxx")
+		urlParsed.User = url.UserPassword(user, "xxxxx")
 	}
 
-	return urlEdit.String(), nil
+	return urlParsed.String(), nil
 }
 
 // GenerateRandomSecret returns a cryptographically-secure 160-bit random number encoded as a hex string.

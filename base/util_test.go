@@ -596,10 +596,36 @@ func TestRedactBasicAuthURL(t *testing.T) {
 			input:    "http://foo:p@ssw0rd@example.org",
 			expected: "http://xxxxx:xxxxx@example.org",
 		},
+		{
+			input:    "http://foo:@example.org",
+			expected: "http://xxxxx:xxxxx@example.org",
+		},
+		{
+			input:    "http://foo@example.org",
+			expected: "http://xxxxx:xxxxx@example.org",
+		},
+		{
+			input:    "ftp://foo:p@ssw0rd@example.org",
+			expected: "ftp://xxxxx:xxxxx@example.org",
+		},
+		{
+			input:    "",
+			expected: "",
+		},
+		{
+			input:    "http://foo:%f@example.org",
+			expected: "",
+		},
+		{
+			input:    ":invalid:url",
+			expected: "",
+		},
 	}
 
 	for _, test := range tests {
-		goassert.Equals(t, RedactBasicAuthURLUserAndPassword(test.input), test.expected)
+		t.Run(test.input, func(t *testing.T) {
+			assert.Equal(t, test.expected, RedactBasicAuthURLUserAndPassword(test.input))
+		})
 	}
 }
 
