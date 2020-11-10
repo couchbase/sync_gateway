@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 // Used for queries that only return doc id

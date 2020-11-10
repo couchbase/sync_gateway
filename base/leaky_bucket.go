@@ -7,8 +7,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.

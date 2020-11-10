@@ -6,9 +6,9 @@ import (
 	"log"
 	"testing"
 
-	"github.com/couchbase/gocb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 var testN1qlOptions = &N1qlIndexOptions{

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/gocb"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const BucketQueryToken = "$_bucket"   // Token used for bucket name replacement in query statements

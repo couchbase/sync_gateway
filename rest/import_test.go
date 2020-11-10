@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 func SkipImportTestsIfNotEnabled(t *testing.T) {

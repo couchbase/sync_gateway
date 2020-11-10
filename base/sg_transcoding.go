@@ -1,7 +1,7 @@
 package base
 
 import (
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 
 	"gopkg.in/couchbase/gocbcore.v7"
 )

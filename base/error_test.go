@@ -7,11 +7,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	"github.com/stretchr/testify/assert"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 func TestError(t *testing.T) {

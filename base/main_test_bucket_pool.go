@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocb"
 	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 // GTestBucketPool is a global instance of a TestBucketPool used to manage a pool of buckets for integration testing.

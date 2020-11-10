@@ -14,11 +14,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 type sgError struct {
