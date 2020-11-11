@@ -1735,7 +1735,7 @@ func TestGetRemovedDoc(t *testing.T) {
 		connectingPassword: "1234",
 	}
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Workaround data race (https://gist.github.com/tleyden/0ace70b8a38b76a7beee95529610b6cf) that happens because
@@ -1748,7 +1748,7 @@ func TestGetRemovedDoc(t *testing.T) {
 		connectingUserChannelGrants: []string{"user1"}, // so it can see user1's docs
 	}
 	bt2, err := NewBlipTesterFromSpecWithRT(t, &btSpec2, rt)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt2.Close()
 
 	// Add rev-1 in channel user1
@@ -1818,7 +1818,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
 	bt, err := NewBlipTester(t)
-	assert.NoError(t, err, "Error creating BlipTester")
+	require.NoError(t, err, "Error creating BlipTester")
 	defer bt.Close()
 
 	bt.blipContext.HandlerForProfile["changes"] = func(request *blip.Message) {
@@ -1951,7 +1951,7 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 	}
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	client.ClientDeltas = true
@@ -2032,7 +2032,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	deltaSentCount := rt.GetDatabase().DbStats.DeltaSync().DeltasSent.Value()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	// reject deltas built ontop of rev 1
@@ -2093,7 +2093,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 		Channels:     []string{"public"},
 		ClientDeltas: true,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	err = client.StartPull()
@@ -2159,7 +2159,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 		Channels:     []string{"public"},
 		ClientDeltas: true,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	err = client.StartPull()
@@ -2366,7 +2366,7 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 	client.ClientDeltas = true
 
@@ -2417,7 +2417,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	client.ClientDeltas = true
@@ -2435,7 +2435,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 	// Perform a one-shot pull as client 2 to pull down the first revision
 
 	client2, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client2.Close()
 
 	client2.ClientDeltas = true
@@ -2509,7 +2509,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	client.ClientDeltas = true
@@ -2620,7 +2620,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	client.ClientDeltas = false
@@ -2676,7 +2676,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	client.ClientDeltas = true
@@ -2910,7 +2910,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer btc.Close()
 
 	btc.ClientDeltas = true
