@@ -175,30 +175,24 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 // ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
 var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.TestBucketPool) error {
 
-	if base.TestsDisableGSI() {
-		tbp.Logf(ctx, "flushing bucket and readying views only")
-		if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
-			return err
-		}
-		// Exit early if we're not using GSI.
-		return viewBucketReadier(ctx, b, tbp)
-	}
-
-	tbp.Logf(ctx, "emptying bucket via N1QL, readying views and indexes")
-	if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
+	tbp.Logf(ctx, "flushing bucket and readying views")
+	if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
 		return err
 	}
+
 	if err := viewBucketReadier(ctx, b, tbp); err != nil {
 		return err
 	}
 
-	tbp.Logf(ctx, "waiting for empty bucket indexes")
-	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-	if err := WaitForIndexEmpty(b, base.TestUseXattrs()); err != nil {
-		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
-		return err
+	if !base.TestsDisableGSI() {
+		tbp.Logf(ctx, "waiting for empty bucket indexes")
+		// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
+		if err := WaitForIndexEmpty(b, base.TestUseXattrs()); err != nil {
+			tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
+			return err
+		}
+		tbp.Logf(ctx, "bucket indexes empty")
 	}
-	tbp.Logf(ctx, "bucket indexes empty")
 
 	return nil
 }
