@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (

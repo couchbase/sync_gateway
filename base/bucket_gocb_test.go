@@ -22,12 +22,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	goassert "github.com/couchbaselabs/go.assert"
 	pkgerrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/couchbase/gocbcore.v7"
 )
 

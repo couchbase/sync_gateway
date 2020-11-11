@@ -6,12 +6,12 @@ import (
 	"log"
 	"testing"
 
-	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 func TestInitializeIndexes(t *testing.T) {
