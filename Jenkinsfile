@@ -13,6 +13,7 @@ pipeline {
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
         EE_BUILD_TAG = "cb_sg_enterprise"
         SGW_REPO = "github.com/couchbase/sync_gateway"
+        GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
     }
 
     stages {
@@ -148,16 +149,16 @@ pipeline {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             script {
                                 try {
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
                                     sh "gofmt -d -e ${GOPATH}/src/${SGW_REPO} | tee gofmt.out"
                                     sh "test -z \"\$(cat gofmt.out)\""
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'OK', status: 'SUCCESS')
                                 } catch (Exception e) {
                                     sh "wc -l < gofmt.out | awk '{printf \$1}' > gofmt.count"
                                     script {
                                         env.GOFMT_COUNT = readFile 'gofmt.count'
                                     }
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: "found "+env.GOFMT_COUNT+" problems", status: 'FAILURE')
                                     unstable("gofmt failed")
                                 }
                             }
@@ -188,16 +189,16 @@ pipeline {
                         withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
                             script {
                                 try {
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
                                     sh "errcheck ${SGW_REPO}/... | tee errcheck.out"
                                     sh "test -z \"\$(cat errcheck.out)\""
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'OK', status: 'SUCCESS')
                                 } catch (Exception e) {
                                     sh "wc -l < errcheck.out | awk '{printf \$1}' > errcheck.count"
                                     script {
                                         env.ERRCHECK_COUNT = readFile 'errcheck.count'
                                     }
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: "found "+env.ERRCHECK_COUNT+" unhandled errors", status: 'FAILURE')
                                     unstable("errcheck failed")
                                 }
                             }
@@ -215,7 +216,7 @@ pipeline {
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
                                 withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
                                     sh '2>&1 go test -timeout=20m -coverpkg=${SGW_REPO}/... -coverprofile=cover_ce.out -race -count=1 -v ${SGW_REPO}/... > verbose_ce.out.raw || true'
@@ -247,9 +248,9 @@ pipeline {
                                     script {
                                         try {
                                             sh 'go2xunit -fail -suite-name-prefix="CE-" -input verbose_ce.out -output reports/test-ce.xml'
-                                            githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_PASS+'/'+env.TEST_CE_TOTAL+' passed ('+env.TEST_CE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
-                                            githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: env.TEST_CE_FAIL+'/'+env.TEST_CE_TOTAL+' failed ('+env.TEST_CE_SKIP+' skipped)', status: 'FAILURE')
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ce.out', fingerprint: false
                                             unstable("At least one CE unit test failed")
@@ -267,7 +268,7 @@ pipeline {
                         stage('EE') {
                             steps {
                                 withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
-                                    githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
+                                    githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
                                     sh "2>&1 go test -timeout=20m -tags ${EE_BUILD_TAG} -coverpkg=${SGW_REPO}/... -coverprofile=cover_ee.out -race -count=1 -v ${SGW_REPO}/... > verbose_ee.out.raw || true"
@@ -298,9 +299,9 @@ pipeline {
                                     script {
                                         try {
                                             sh 'go2xunit -fail -suite-name-prefix="EE-" -input verbose_ee.out -output reports/test-ee.xml'
-                                            githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_PASS+'/'+env.TEST_EE_TOTAL+' passed ('+env.TEST_EE_SKIP+' skipped)', status: 'SUCCESS')
                                         } catch (Exception e) {
-                                            githubNotify(credentialsId: 'bbrks_uberjenkins_sg_access_token', context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
+                                            githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: env.TEST_EE_FAIL+'/'+env.TEST_EE_TOTAL+' failed ('+env.TEST_EE_SKIP+' skipped)', status: 'FAILURE')
                                             // archive verbose test logs in the event of a test failure
                                             archiveArtifacts artifacts: 'verbose_ee.out', fingerprint: false
                                             unstable("At least one EE unit test failed")
@@ -319,14 +320,14 @@ pipeline {
                             when { expression { return false } }
                             steps {
                                 echo 'Example of where we could run lite-core unit tests against a running SG CE'
-                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'CE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ce', successDescription: 'CE with LiteCore Test Passed') {
+                                gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running LiteCore Tests', failureDescription: 'CE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ce', successDescription: 'CE with LiteCore Test Passed') {
                                     echo "..."
                                 }
                             }
                         }
                         stage('against EE') {
                             steps {
-                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
+                                gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running LiteCore Tests', failureDescription: 'EE with LiteCore Test Failed', gitHubContext: 'sgw-pipeline-litecore-ee', successDescription: 'EE with LiteCore Test Passed') {
                                     sh 'touch litecore.out'
                                     sh 'docker pull couchbase/sg-test-litecore:latest'
                                     sh 'docker run --net=host --rm -v /root/.ssh/id_rsa_ns-buildbot:/root/.ssh/id_rsa -v `pwd`/sync_gateway_ee-linux:/sync_gateway -v `pwd`/litecore.out:/output.out couchbase/sg-test-litecore:latest'
@@ -355,7 +356,7 @@ pipeline {
                                 // TODO: Read labels on PR for 'integration-test'
                                 // if present, run stage as separate GH status
                                 echo 'Example of where we can run integration tests for this commit'
-                                gitStatusWrapper(credentialsId: 'bbrks_uberjenkins_sg_access_token', description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
+                                gitStatusWrapper(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", description: 'Running EE Integration Test', failureDescription: 'EE Integration Test Failed', gitHubContext: 'sgw-pipeline-integration-ee', successDescription: 'EE Integration Test Passed') {
                                     echo "Waiting for integration test to finish..."
                                     // TODO: add commit parameter
                                     // Block the pipeline, but don't propagate a failure up to the top-level job - rely on gitStatusWrapper letting us know it failed
