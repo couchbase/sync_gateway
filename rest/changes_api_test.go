@@ -1712,6 +1712,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("PUT", "/db/docC", `{"channels":["beta"]}`), 201)
 	assertStatus(t, rt.SendAdminRequest("PUT", "/db/docD", `{"channels":["beta"]}`), 201)
 
+	require.NoError(t, rt.WaitForPendingChanges())
+
 	// Create struct to hold changes response
 	var changes struct {
 		Results []db.ChangeEntry
@@ -1719,7 +1721,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//User has access to single channel
 	body := `{"filter":"_doc_ids", "doc_ids":["doc4", "doc1", "docA", "b0gus"]}`
-	request, _ := http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err := http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user1", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1729,7 +1732,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//User has access to different single channel
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "docB", "docD", "doc1"]}`
-	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user2", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1739,7 +1743,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//User has access to multiple channels
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
-	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user3", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1749,7 +1754,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//User has no channel access
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"]}`
-	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user4", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1758,7 +1764,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//User has "*" channel access
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
-	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user5", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1767,7 +1774,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//User has "*" channel access, override POST with GET params
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1", "docA"]}`
-	request, _ = http.NewRequest("POST", `/db/_changes?doc_ids=["docC","doc1"]`, bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", `/db/_changes?doc_ids=["docC","doc1"]`, bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user5", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1775,7 +1783,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	require.Len(t, changes.Results, 2)
 
 	//User has "*" channel access, use GET
-	request, _ = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=["docC","doc1","docD"]`, nil)
+	request, err = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=["docC","doc1","docD"]`, nil)
+	require.NoError(t, err)
 	request.SetBasicAuth("user5", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1783,7 +1792,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	require.Len(t, changes.Results, 3)
 
 	//User has "*" channel access, use GET with doc_ids plain comma separated list
-	request, _ = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=docC,doc1,doc2,docD`, nil)
+	request, err = http.NewRequest("GET", `/db/_changes?filter=_doc_ids&doc_ids=docC,doc1,doc2,docD`, nil)
+	require.NoError(t, err)
 	request.SetBasicAuth("user5", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1799,7 +1809,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//Use since value to restrict results
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6}`
-	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user3", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1809,7 +1820,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//Use since value and limit value to restrict results
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "since":6, "limit":1}`
-	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user3", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1819,7 +1831,8 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 
 	//test parameter include_docs=true
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "include_docs":true }`
-	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user3", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
@@ -1834,8 +1847,11 @@ func TestOneShotChangesWithExplicitDocIds(t *testing.T) {
 	//Create a conflict revision on docC
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits":false, "docs": [{"_id": "docC","_rev": "2-b4afc58d8e61a6b03390e19a89d26643","foo": "bat", "channels":["beta"]}]}`), 201)
 
+	require.NoError(t, rt.WaitForPendingChanges())
+
 	body = `{"filter":"_doc_ids", "doc_ids":["docC", "b0gus", "doc4", "docD", "doc1"], "style":"all_docs"}`
-	request, _ = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	request, err = http.NewRequest("POST", "/db/_changes", bytes.NewBufferString(body))
+	require.NoError(t, err)
 	request.SetBasicAuth("user3", "letmein")
 	response = rt.Send(request)
 	assertStatus(t, response, 200)
