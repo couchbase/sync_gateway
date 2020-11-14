@@ -1064,8 +1064,8 @@ func (config *ServerConfig) Serve(addr string, handler http.Handler) {
 	}
 }
 
-// Starts and runs the server given its configuration. (This function never returns.)
-func RunServer(config *ServerConfig) {
+// ServerContext creates a new ServerContext given its configuration and performs the context validation.
+func setupServerContext(config *ServerConfig) (*ServerContext, error) {
 	PrettyPrint = config.Pretty
 
 	base.Infof(base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
@@ -1091,18 +1091,22 @@ func RunServer(config *ServerConfig) {
 	// Set global bcrypt cost if configured
 	if config.BcryptCost > 0 {
 		if err := auth.SetBcryptCost(config.BcryptCost); err != nil {
-			base.Fatalf("Configuration error: %v", err)
+			return nil, fmt.Errorf("configuration error: %v", err)
 		}
 	}
 
 	sc := NewServerContext(config)
 	for _, dbConfig := range config.Databases {
 		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			base.Fatalf("Error opening database %s: %v", base.MD(dbConfig.Name), err)
+			return nil, fmt.Errorf("error opening database %s: %v", base.MD(dbConfig.Name), err)
 		}
 	}
 	_ = validateServerContext(sc)
+	return sc, nil
+}
 
+// startServer starts and runs the server with the given configuration. (This function never returns.)
+func startServer(config *ServerConfig, sc *ServerContext) {
 	if config.ProfileInterface != nil {
 		//runtime.MemProfileRate = 10 * 1024
 		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
@@ -1189,11 +1193,11 @@ func GetConfig() *ServerConfig {
 }
 
 func RegisterSignalHandler() {
-	signalchannel := make(chan os.Signal, 1)
-	signal.Notify(signalchannel, syscall.SIGHUP, os.Interrupt, os.Kill)
+	signalChannel := make(chan os.Signal, 1)
+	signal.Notify(signalChannel, syscall.SIGHUP, os.Interrupt, os.Kill)
 
 	go func() {
-		for sig := range signalchannel {
+		for sig := range signalChannel {
 			base.Infof(base.KeyAll, "Handling signal: %v", sig)
 			switch sig {
 			case syscall.SIGHUP:
@@ -1207,20 +1211,15 @@ func RegisterSignalHandler() {
 	}()
 }
 
-// Main entry point for a simple server; you can have your main() function just call this.
-// It parses command-line flags, reads the optional configuration file, then starts the server.
-func ServerMain() {
-	RegisterSignalHandler()
-	defer base.FatalPanicHandler()
-
+// setupServerConfig parses command-line flags, reads the optional configuration file,
+// performs the config validation and database setup.
+func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	var unknownFieldsErr error
-
-	var err error
-	config, err = ParseCommandLine(os.Args, flag.ExitOnError)
+	config, err = ParseCommandLine(args, flag.ExitOnError)
 	if errors.Cause(err) == base.ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {
-		base.Fatalf(err.Error())
+		return nil, fmt.Errorf(err.Error())
 	}
 
 	// Logging config will now have been loaded from command line
@@ -1231,7 +1230,7 @@ func ServerMain() {
 		// If we didn't set up logging correctly, we *probably* can't log via normal means...
 		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
 		log.Printf("[ERR] Error setting up logging: %v", err)
-		base.Fatalf("Error setting up logging: %v", err)
+		return nil, fmt.Errorf("error setting up logging: %v", err)
 	}
 
 	// This is the earliest opportunity to log a startup indicator
@@ -1241,7 +1240,7 @@ func ServerMain() {
 	// If we got an unknownFields error when reading the config
 	// log and exit now we've tried setting up the logging.
 	if unknownFieldsErr != nil {
-		base.Fatalf(unknownFieldsErr.Error())
+		return nil, fmt.Errorf(unknownFieldsErr.Error())
 	}
 
 	// Execute any deferred warnings from setup.
@@ -1255,8 +1254,27 @@ func ServerMain() {
 	multiError = multierror.Append(multiError, config.setupAndValidateDatabases())
 	if multiError.ErrorOrNil() != nil {
 		base.Errorf("Error during config validation: %v", multiError)
-		base.Fatalf("Error(s) during config validation")
+		return nil, fmt.Errorf("error(s) during config validation: %v", multiError)
 	}
 
-	RunServer(config)
+	return config, nil
+}
+
+// Main entry point for a simple server; you can have your main() function just call this.
+// It parses command-line flags, reads the optional configuration file, then starts the server.
+func ServerMain() {
+	RegisterSignalHandler()
+	defer base.FatalPanicHandler()
+
+	config, err := setupServerConfig(os.Args)
+	if err != nil {
+		base.Fatalf(err.Error())
+	}
+
+	ctx, err := setupServerContext(config)
+	if err != nil {
+		base.Fatalf(err.Error())
+	}
+
+	startServer(config, ctx)
 }
