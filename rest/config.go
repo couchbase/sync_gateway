@@ -1260,8 +1260,9 @@ func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	return config, nil
 }
 
-// Main entry point for a simple server; you can have your main() function just call this.
-// It parses command-line flags, reads the optional configuration file, then starts the server.
+// ServerMain is the main entry point of launching the Sync Gateway server; the main
+// function directly calls this. It registers both signal and fatal panic handlers,
+// does the initial setup and finally starts the server.
 func ServerMain() {
 	RegisterSignalHandler()
 	defer base.FatalPanicHandler()

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"golang.org/x/crypto/bcrypt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -1358,15 +1359,47 @@ func TestSetupAndValidate(t *testing.T) {
 }
 
 func TestSetupServerContext(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	config := &ServerConfig{
-		Logging: &base.LoggingConfig{
-			RedactionLevel: base.RedactFull,
-		},
-	}
-	sc, err := setupServerContext(config)
-	require.NoError(t, err)
-	sc.Close()
+
+	t.Run("Create server context with a valid configuration", func(t *testing.T) {
+		defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+		config := &ServerConfig{
+			Logging: &base.LoggingConfig{
+				RedactionLevel: base.RedactNone,
+			},
+		}
+		sc, err := setupServerContext(config)
+		require.NoError(t, err)
+		require.NotNil(t, sc)
+		sc.Close()
+	})
+
+	t.Run("Create server context with BcryptCost inside allowed range", func(t *testing.T) {
+		defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+		config := &ServerConfig{
+			Logging: &base.LoggingConfig{
+				RedactionLevel: base.RedactFull,
+			},
+			BcryptCost: bcrypt.MaxCost,
+		}
+		sc, err := setupServerContext(config)
+		require.NoError(t, err)
+		require.NotNil(t, sc)
+		sc.Close()
+	})
+
+	t.Run("Create server context with BcryptCost outside allowed range", func(t *testing.T) {
+		defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+		config := &ServerConfig{
+			Logging: &base.LoggingConfig{
+				RedactionLevel: base.RedactPartial,
+			},
+			BcryptCost: bcrypt.MaxCost + 1,
+		}
+		sc, err := setupServerContext(config)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "configuration error: 32 outside allowed range: 10-31: invalid bcrypt cost")
+		assert.Nil(t, sc)
+	})
 }
 
 func TestStartServer(t *testing.T) {
