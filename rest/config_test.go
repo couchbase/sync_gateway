@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"golang.org/x/crypto/bcrypt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -15,10 +14,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestReadServerConfig(t *testing.T) {
@@ -1359,9 +1360,8 @@ func TestSetupAndValidate(t *testing.T) {
 }
 
 func TestSetupServerContext(t *testing.T) {
-
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
-		defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 		config := &ServerConfig{
 			Logging: &base.LoggingConfig{
 				RedactionLevel: base.RedactNone,
@@ -1374,13 +1374,13 @@ func TestSetupServerContext(t *testing.T) {
 	})
 
 	t.Run("Create server context with BcryptCost inside allowed range", func(t *testing.T) {
-		defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 		config := &ServerConfig{
 			Logging: &base.LoggingConfig{
 				RedactionLevel: base.RedactFull,
 			},
 			BcryptCost: bcrypt.MaxCost,
 		}
+		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
 		sc, err := setupServerContext(config)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
@@ -1388,13 +1388,13 @@ func TestSetupServerContext(t *testing.T) {
 	})
 
 	t.Run("Create server context with BcryptCost outside allowed range", func(t *testing.T) {
-		defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 		config := &ServerConfig{
 			Logging: &base.LoggingConfig{
 				RedactionLevel: base.RedactPartial,
 			},
 			BcryptCost: bcrypt.MaxCost + 1,
 		}
+		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
 		sc, err := setupServerContext(config)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "configuration error: 32 outside allowed range: 10-31: invalid bcrypt cost")
