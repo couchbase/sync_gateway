@@ -1,4 +1,4 @@
-package db
+package channels
 
 import (
 	"os"
@@ -10,11 +10,7 @@ import (
 func TestMain(m *testing.M) {
 	defer base.SetUpGlobalTestLogging(m)()
 
-	base.GTestBucketPool = base.NewTestBucketPool(ViewsAndGSIBucketReadier, ViewsAndGSIBucketInit)
-
 	status := m.Run()
-
-	base.GTestBucketPool.Close()
 
 	os.Exit(status)
 }

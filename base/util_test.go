@@ -630,6 +630,10 @@ func TestRedactBasicAuthURL(t *testing.T) {
 }
 
 func TestSetUpTestLogging(t *testing.T) {
+	if GlobalTestLoggingSet.IsTrue() {
+		t.Skip("Test does not work when a global test log level is set")
+	}
+
 	// Check default state of logging is as expected.
 	require.Equal(t, LevelInfo, *consoleLogger.LogLevel)
 	require.Equal(t, *logKeyMask(KeyHTTP), *consoleLogger.LogKeyMask)

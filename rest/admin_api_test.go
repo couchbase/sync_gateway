@@ -436,11 +436,15 @@ function(doc, oldDoc) {
 }
 
 func TestLoggingKeys(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
+	if base.GlobalTestLoggingSet.IsTrue() {
+		t.Skip("Test does not work when a global test log level is set")
+	}
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
 
 	//Assert default log channels are enabled
 	response := rt.SendAdminRequest("GET", "/_logging", "")
@@ -512,11 +516,15 @@ func TestLoggingKeys(t *testing.T) {
 }
 
 func TestLoggingLevels(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
+	if base.GlobalTestLoggingSet.IsTrue() {
+		t.Skip("Test does not work when a global test log level is set")
+	}
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
 
 	// Log keys should be blank
 	response := rt.SendAdminRequest("GET", "/_logging", "")
@@ -546,11 +554,15 @@ func TestLoggingLevels(t *testing.T) {
 }
 
 func TestLoggingCombined(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
+	if base.GlobalTestLoggingSet.IsTrue() {
+		t.Skip("Test does not work when a global test log level is set")
+	}
 
 	// Reset logging to initial state, in case any other tests forgot to clean up after themselves
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
 
 	// Log keys should be blank
 	response := rt.SendAdminRequest("GET", "/_logging", "")
