@@ -14,10 +14,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestReadServerConfig(t *testing.T) {
@@ -1218,4 +1220,184 @@ func TestExpandEnv(t *testing.T) {
 			}
 		})
 	}
+}
+
+// createTempFile creates a temporary file with the given content.
+func createTempFile(t *testing.T, content []byte) *os.File {
+	file, err := ioutil.TempFile("", "*-sync_gateway.conf")
+	require.NoError(t, err, "Error creating temp file")
+	_, err = file.Write(content)
+	require.NoError(t, err, "Error writing bytes")
+	return file
+}
+
+// deleteTempFile deletes the given file.
+func deleteTempFile(t *testing.T, file *os.File) {
+	path := file.Name()
+	require.NoError(t, file.Close(), "Error closing file: %s ", path)
+	require.NoError(t, os.Remove(path), "Error removing file: %s ", path)
+	require.False(t, base.FileExists(path), "Deleted file %s shouldn't exist", path)
+}
+
+func TestSetupAndValidate(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	t.Run("Run setupAndValidate with valid config", func(t *testing.T) {
+		configFile := createTempFile(t, []byte(`{
+          "databases": {
+            "db": {
+              "bucket": "data_bucket",
+              "enable_shared_bucket_access": true,
+              "import_docs": true,
+              "server": "couchbase://localhost",
+              "username": "Administrator",
+              "password": "password",
+              "use_views": false,
+              "revs_limit": 200,
+              "num_index_replicas": 1,
+              "users": {
+                "GUEST": { "admin_channels": ["*"] }
+              }
+            }
+          },
+          "logging": {
+            "console": {
+              "enabled": true,
+              "log_level": "debug",
+              "log_keys": [
+                "*"
+              ],
+              "color_enabled": true
+            }
+          }
+        }`))
+		defer deleteTempFile(t, configFile)
+		args := []string{"sync_gateway", configFile.Name()}
+		config, err := setupServerConfig(args)
+		require.NoError(t, err, "Error reading config file")
+		require.NotNil(t, config)
+
+		db := config.Databases["db"]
+		require.NotNil(t, db)
+
+		assert.Equal(t, "db", db.Name)
+		assert.NotNil(t, db.Bucket)
+
+		assert.Equal(t, "data_bucket", *db.Bucket)
+		assert.NotNil(t, db.Server)
+
+		assert.NotNil(t, db.EnableXattrs)
+		assert.True(t, *db.EnableXattrs)
+
+		assert.Equal(t, "couchbase://localhost", *db.Server)
+		assert.Equal(t, "Administrator", db.Username)
+
+		assert.Equal(t, "password", db.Password)
+		assert.False(t, db.UseViews)
+
+		assert.NotNil(t, db.RevsLimit)
+		assert.Equal(t, 200, int(*db.RevsLimit))
+
+		assert.NotNil(t, db.NumIndexReplicas)
+		assert.Equal(t, 1, int(*db.NumIndexReplicas))
+
+		require.NotNil(t, config.Logging)
+		require.NotNil(t, config.Logging.Console)
+
+		require.NotNil(t, config.Logging.Console.ColorEnabled)
+		assert.True(t, *config.Logging.Console.ColorEnabled)
+
+		require.NotNil(t, config.Logging.Console.Enabled)
+		assert.True(t, *config.Logging.Console.Enabled)
+
+		require.NotNil(t, config.Logging.Console.LogLevel)
+		assert.Equal(t, "debug", config.Logging.Console.LogLevel.String())
+		assert.Equal(t, []string{"*", "HTTP"}, config.Logging.Console.LogKeys)
+	})
+
+	t.Run("Run setupAndValidate with unknown field in config file", func(t *testing.T) {
+		configFile := createTempFile(t, []byte(`{"unknownKey":"unknownValue"}`))
+		defer deleteTempFile(t, configFile)
+		args := []string{"sync_gateway", configFile.Name()}
+		config, err := setupServerConfig(args)
+		require.Error(t, err, "Should throw error reading file")
+		assert.Contains(t, err.Error(), "unrecognized JSON field")
+		assert.Nil(t, config)
+	})
+
+	t.Run("Run setupAndValidate with a config file that doesn't exist", func(t *testing.T) {
+		configFile := createTempFile(t, []byte(``))
+		args := []string{"sync_gateway", configFile.Name()}
+		deleteTempFile(t, configFile)
+		config, err := setupServerConfig(args)
+		require.Error(t, err, "Should throw error reading file")
+		assert.Contains(t, err.Error(), "Error reading config file")
+		assert.Nil(t, config)
+	})
+
+	t.Run("Run setupAndValidate with illegal value for stats_log_freq_secs", func(t *testing.T) {
+		configFile := createTempFile(t, []byte(`
+		{
+		  "databases": {
+		    "db": {
+		      "bucket": "leaky_bucket",
+		      "server": "couchbase://localhost",
+		      "username": "Administrator",
+		      "password": "password"
+		    }
+		  },
+		  "unsupported": {
+		    "stats_log_freq_secs": 1
+		  }
+		}`))
+		defer deleteTempFile(t, configFile)
+		args := []string{"sync_gateway", configFile.Name()}
+		config, err := setupServerConfig(args)
+		require.Error(t, err, "Should throw error reading file")
+		assert.Contains(t, err.Error(), "minimum value for unsupported.stats_log_freq_secs is: 10")
+		assert.Nil(t, config)
+	})
+
+}
+
+func TestSetupServerContext(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	t.Run("Create server context with a valid configuration", func(t *testing.T) {
+		config := &ServerConfig{
+			Logging: &base.LoggingConfig{
+				RedactionLevel: base.RedactNone,
+			},
+		}
+		sc, err := setupServerContext(config)
+		require.NoError(t, err)
+		require.NotNil(t, sc)
+		sc.Close()
+	})
+
+	t.Run("Create server context with BcryptCost inside allowed range", func(t *testing.T) {
+		config := &ServerConfig{
+			Logging: &base.LoggingConfig{
+				RedactionLevel: base.RedactFull,
+			},
+			BcryptCost: bcrypt.MaxCost,
+		}
+		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
+		sc, err := setupServerContext(config)
+		require.NoError(t, err)
+		require.NotNil(t, sc)
+		sc.Close()
+	})
+
+	t.Run("Create server context with BcryptCost outside allowed range", func(t *testing.T) {
+		config := &ServerConfig{
+			Logging: &base.LoggingConfig{
+				RedactionLevel: base.RedactPartial,
+			},
+			BcryptCost: bcrypt.MaxCost + 1,
+		}
+		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
+		sc, err := setupServerContext(config)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "configuration error: 32 outside allowed range: 10-31: invalid bcrypt cost")
+		assert.Nil(t, sc)
+	})
 }
