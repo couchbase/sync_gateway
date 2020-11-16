@@ -205,6 +205,28 @@ func CreateProperty(size int) (result string) {
 	return string(resultBytes)
 }
 
+var GlobalTestLoggingSet = AtomicBool{}
+
+// SetUpGlobalTestLogging sets a global log level at runtime by using the SG_TEST_LOG_LEVEL environment variable.
+// This global level overrides any tests that specify their own test log level with SetUpTestLogging.
+func SetUpGlobalTestLogging(m *testing.M) (teardownFn func()) {
+	if logLevel := os.Getenv(TestEnvGlobalLogLevel); logLevel != "" {
+		var l LogLevel
+		err := l.UnmarshalText([]byte(logLevel))
+		if err != nil {
+			Fatalf("Invalid log level used for %q: %s", TestEnvGlobalLogLevel, err)
+		}
+		teardown := SetUpTestLogging(l, KeyAll)
+		GlobalTestLoggingSet.Set(true)
+		return func() {
+			teardown()
+			GlobalTestLoggingSet.Set(false)
+		}
+	}
+	// noop
+	return func() { GlobalTestLoggingSet.Set(false) }
+}
+
 // SetUpTestLogging will set the given log level and log keys,
 // and return a function that can be deferred for teardown.
 //
@@ -251,6 +273,15 @@ func SetUpBenchmarkLogging(logLevel LogLevel, logKeys ...LogKey) (teardownFn fun
 }
 
 func setTestLogging(logLevel LogLevel, caller string, logKeys ...LogKey) (teardownFn func()) {
+	if GlobalTestLoggingSet.IsTrue() {
+		// noop, test log level is already set globally
+		return func() {
+			if caller != "" {
+				Infof(KeyAll, "%v: Reset logging", caller)
+			}
+		}
+	}
+
 	initialLogLevel := LevelInfo
 	initialLogKey := logKeyMask(KeyHTTP)
 

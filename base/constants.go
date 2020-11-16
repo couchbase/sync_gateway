@@ -54,6 +54,9 @@ const (
 	// Don't use an auth handler by default, but provide a way to override
 	TestEnvSyncGatewayUseAuthHandler = "SG_TEST_USE_AUTH_HANDLER"
 
+	// Can be used to set a global log level for all tests at runtime.
+	TestEnvGlobalLogLevel = "SG_TEST_LOG_LEVEL"
+
 	DefaultUseXattrs      = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
 	DefaultAllowConflicts = true  // Whether Sync Gateway allows revision conflicts, if not specified in the config
 

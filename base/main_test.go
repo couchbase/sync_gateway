@@ -6,6 +6,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	defer SetUpGlobalTestLogging(m)()
+
 	GTestBucketPool = NewTestBucketPool(FlushBucketEmptierFunc, NoopInitFunc)
 
 	status := m.Run()

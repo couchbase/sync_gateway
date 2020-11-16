@@ -321,6 +321,10 @@ func TestLastComponent(t *testing.T) {
 }
 
 func TestLogSyncGatewayVersion(t *testing.T) {
+	if GlobalTestLoggingSet.IsTrue() {
+		t.Skip("Test does not work when a global test log level is set")
+	}
+
 	for i := LevelNone; i < levelCount; i++ {
 		t.Run(i.String(), func(t *testing.T) {
 			consoleLogger.LogLevel.Set(i)
