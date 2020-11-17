@@ -1240,6 +1240,7 @@ func deleteTempFile(t *testing.T, file *os.File) {
 }
 
 func TestSetupAndValidate(t *testing.T) {
+	t.Skip("Skipping this test temporarily; until CBG-1195 is fixed")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	t.Run("Run setupAndValidate with valid config", func(t *testing.T) {
 		configFile := createTempFile(t, []byte(`{
