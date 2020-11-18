@@ -1613,6 +1613,13 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 				Name: "db",
 				Sync: base.StringPtr(sync),
 			}
+			if test.errExpected != nil {
+				test.errExpected = JavaScriptLoadError{
+					Message: "error loading sync function",
+					Path:    sync,
+					Err:     test.errExpected,
+				}
+			}
 			err := dbConfig.setup(dbConfig.Name)
 			require.Equal(t, test.errExpected, err)
 			if test.errExpected == nil {
@@ -1678,6 +1685,13 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			dbConfig := DbConfig{
 				Name:         "db",
 				ImportFilter: base.StringPtr(importFilter),
+			}
+			if test.errExpected != nil {
+				test.errExpected = JavaScriptLoadError{
+					Message: "error loading import filter function",
+					Path:    importFilter,
+					Err:     test.errExpected,
+				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
 			require.Equal(t, test.errExpected, err)
@@ -1756,6 +1770,13 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 						ConflictResolutionFn:   conflictResolutionFn,
 					},
 				},
+			}
+			if test.errExpected != nil {
+				test.errExpected = JavaScriptLoadError{
+					Message: "error loading conflict resolution function",
+					Path:    conflictResolutionFn,
+					Err:     test.errExpected,
+				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
 			require.Equal(t, test.errExpected, err)
