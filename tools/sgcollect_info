@@ -87,7 +87,7 @@ def create_option_parser():
     parser.add_option("--just-upload-into", dest="just_upload_into",
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--upload-host", dest="upload_host",
-                      help="if specified, gathers diagnotics and uploads it to the specified host,"
+                      help="if specified, gathers diagnostics and uploads it to the specified host,"
                            " e.g 'https://uploads.couchbase.com'")
     parser.add_option("--customer", dest="upload_customer",
                       help="used in conjunction with '--upload-host' and '--ticket', "
