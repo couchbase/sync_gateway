@@ -338,10 +338,10 @@ func (dbConfig *DbConfig) setup(name string) error {
 	if dbConfig.Sync != nil {
 		sync, err := loadJavaScript(*dbConfig.Sync)
 		if err != nil {
-			return JavaScriptLoadError{
-				Message: "error loading sync function",
-				Path:    *dbConfig.Sync,
-				Err:     err,
+			return &JavaScriptLoadError{
+				JSLoadType: SyncFunction,
+				Path:       *dbConfig.Sync,
+				Err:        err,
 			}
 		}
 		dbConfig.Sync = &sync
@@ -351,10 +351,10 @@ func (dbConfig *DbConfig) setup(name string) error {
 	if dbConfig.ImportFilter != nil {
 		importFilter, err := loadJavaScript(*dbConfig.ImportFilter)
 		if err != nil {
-			return JavaScriptLoadError{
-				Message: "error loading import filter function",
-				Path:    *dbConfig.ImportFilter,
-				Err:     err,
+			return &JavaScriptLoadError{
+				JSLoadType: ImportFilter,
+				Path:       *dbConfig.ImportFilter,
+				Err:        err,
 			}
 		}
 		dbConfig.ImportFilter = &importFilter
@@ -365,10 +365,10 @@ func (dbConfig *DbConfig) setup(name string) error {
 		if rc.ConflictResolutionFn != "" {
 			conflictResolutionFn, err := loadJavaScript(rc.ConflictResolutionFn)
 			if err != nil {
-				return JavaScriptLoadError{
-					Message: "error loading conflict resolution function",
-					Path:    rc.ConflictResolutionFn,
-					Err:     err,
+				return &JavaScriptLoadError{
+					JSLoadType: ConflictResolver,
+					Path:       rc.ConflictResolutionFn,
+					Err:        err,
 				}
 			}
 			rc.ConflictResolutionFn = conflictResolutionFn
@@ -383,53 +383,71 @@ func (dbConfig *DbConfig) setup(name string) error {
 // as-is with the assumption that it is an inline JavaScript source. Returns error if there is
 // any failure in reading the JavaScript file or URI.
 func loadJavaScript(path string) (js string, err error) {
-	rc, err := readCloser(path)
-	if err != nil {
-		switch err.(type) {
-		case PathNotFoundError:
-			// If rc is nil and readCloser returns no error, treat the
-			// the given path as an inline JavaScript and return it as-is.
-			return path, nil
-		default:
+	rc, err := readFromPath(path)
+	switch err.(type) {
+	case nil:
+		defer func() { _ = rc.Close() }()
+		src, err := ioutil.ReadAll(rc)
+		if err != nil {
 			return "", err
 		}
-	}
-	defer func() { _ = rc.Close() }()
-	src, err := ioutil.ReadAll(rc)
-	if err != nil {
+		return string(src), nil
+	case *PathNotFoundError:
+		// If rc is nil and readFromPath returns no error, treat the
+		// the given path as an inline JavaScript and return it as-is.
+		return path, nil
+	default:
 		return "", err
 	}
-	return string(src), nil
+}
+
+// JSLoadType represents a specific JavaScript load type.
+// It is used to uniquely identify any potential errors during JavaScript load.
+type JSLoadType int
+
+const (
+	SyncFunction     JSLoadType = iota // Sync Function JavaScript load.
+	ImportFilter                       // Import filter JavaScript load.
+	ConflictResolver                   // Conflict Resolver JavaScript load.
+)
+
+// String returns the string representation of a specific JSLoadType.
+func (t JSLoadType) String() string {
+	jsLoadTypes := [...]string{"SyncFunction", "ImportFilter", "ConflictResolver"}
+	if len(jsLoadTypes) < int(t) {
+		return ""
+	}
+	return jsLoadTypes[t]
 }
 
 // JavaScriptLoadError is returned if there is any failure in loading JavaScript
 // source from an external file or URL (HTTP/HTTPS endpoint).
 type JavaScriptLoadError struct {
-	Message string // A short description about the error.
-	Path    string // Path of the JavaScript source.
-	Err     error  // Underlying error.
+	JSLoadType JSLoadType // A specific JavaScript load type.
+	Path       string     // Path of the JavaScript source.
+	Err        error      // Underlying error.
 }
 
 // Error returns string representation of the JavaScriptLoadError.
-func (e JavaScriptLoadError) Error() string {
-	return fmt.Sprintf("Error loading JavaScript, Message: %s, Path: %s, Err: %v", e.Message, e.Path, e.Err)
+func (e *JavaScriptLoadError) Error() string {
+	return fmt.Sprintf("Error loading JavaScript (%s) from (%q), Err: %v", e.JSLoadType, e.Path, e.Err)
 }
 
 // PathNotFoundError is returned when the specified path or URL (HTTP/HTTPS endpoint)
 // doesn't exist while constructing the ReadCloser.
 type PathNotFoundError struct {
-	Path string
+	Path string // Specified path or URL (HTTP/HTTPS endpoint).
 }
 
 // Error returns string representation of the PathNotFoundError.
-func (e PathNotFoundError) Error() string {
-	return fmt.Sprintf("specified path %q doesn't look like a file or URL", e.Path)
+func (e *PathNotFoundError) Error() string {
+	return fmt.Sprintf("Specified path %q doesn't look like a file or URL", e.Path)
 }
 
-// readCloser creates a ReadCloser from the given path. The path must be either a valid file
+// readFromPath creates a ReadCloser from the given path. The path must be either a valid file
 // or an HTTP/HTTPS endpoint. Returns an error if there is any failure in building ReadCloser.
-func readCloser(path string) (rc io.ReadCloser, err error) {
-	messageFormat := "Loading data from [%s] ..."
+func readFromPath(path string) (rc io.ReadCloser, err error) {
+	messageFormat := "Loading content from [%s] ..."
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		base.Infof(base.KeyAll, messageFormat, path)
 		resp, err := http.Get(path)
@@ -447,7 +465,7 @@ func readCloser(path string) (rc io.ReadCloser, err error) {
 			return nil, err
 		}
 	} else {
-		return nil, PathNotFoundError{Path: path}
+		return nil, &PathNotFoundError{Path: path}
 	}
 	return rc, nil
 }
@@ -734,7 +752,7 @@ func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 
 // LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
 func LoadServerConfig(path string) (config *ServerConfig, err error) {
-	rc, err := readCloser(path)
+	rc, err := readFromPath(path)
 	if err != nil {
 		return nil, err
 	}

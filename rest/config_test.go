@@ -1614,10 +1614,10 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 				Sync: base.StringPtr(sync),
 			}
 			if test.errExpected != nil {
-				test.errExpected = JavaScriptLoadError{
-					Message: "error loading sync function",
-					Path:    sync,
-					Err:     test.errExpected,
+				test.errExpected = &JavaScriptLoadError{
+					JSLoadType: SyncFunction,
+					Path:       sync,
+					Err:        test.errExpected,
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
@@ -1687,10 +1687,10 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 				ImportFilter: base.StringPtr(importFilter),
 			}
 			if test.errExpected != nil {
-				test.errExpected = JavaScriptLoadError{
-					Message: "error loading import filter function",
-					Path:    importFilter,
-					Err:     test.errExpected,
+				test.errExpected = &JavaScriptLoadError{
+					JSLoadType: ImportFilter,
+					Path:       importFilter,
+					Err:        test.errExpected,
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
@@ -1772,10 +1772,10 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 				},
 			}
 			if test.errExpected != nil {
-				test.errExpected = JavaScriptLoadError{
-					Message: "error loading conflict resolution function",
-					Path:    conflictResolutionFn,
-					Err:     test.errExpected,
+				test.errExpected = &JavaScriptLoadError{
+					JSLoadType: ConflictResolver,
+					Path:       conflictResolutionFn,
+					Err:        test.errExpected,
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
