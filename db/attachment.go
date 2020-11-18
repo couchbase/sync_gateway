@@ -98,11 +98,8 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 			if parentAttachments != nil {
 				if parentAttachment := parentAttachments[name]; parentAttachment != nil {
 					parentrevpos, ok := base.ToInt64(parentAttachment.(map[string]interface{})["revpos"])
-					if !ok {
-						return nil, nil
-					}
 
-					if revpos <= parentrevpos {
+					if ok && revpos <= parentrevpos {
 						atts[name] = parentAttachment
 					}
 				}
