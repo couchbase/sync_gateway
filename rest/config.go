@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -30,7 +31,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/hashicorp/go-multierror"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 
 	// Register profiling handlers (see Go docs)
 	_ "net/http/pprof"
@@ -384,21 +385,20 @@ func (dbConfig *DbConfig) setup(name string) error {
 // any failure in reading the JavaScript file or URI.
 func loadJavaScript(path string) (js string, err error) {
 	rc, err := readFromPath(path)
-	switch err.(type) {
-	case nil:
-		defer func() { _ = rc.Close() }()
-		src, err := ioutil.ReadAll(rc)
-		if err != nil {
-			return "", err
-		}
-		return string(src), nil
-	case *PathNotFoundError:
+	if errors.Is(err, ErrPathNotFound) {
 		// If rc is nil and readFromPath returns no error, treat the
 		// the given path as an inline JavaScript and return it as-is.
 		return path, nil
-	default:
+	}
+	if err != nil {
 		return "", err
 	}
+	defer func() { _ = rc.Close() }()
+	src, err := ioutil.ReadAll(rc)
+	if err != nil {
+		return "", err
+	}
+	return string(src), nil
 }
 
 // JSLoadType represents a specific JavaScript load type.
@@ -415,7 +415,7 @@ const (
 func (t JSLoadType) String() string {
 	jsLoadTypes := [...]string{"SyncFunction", "ImportFilter", "ConflictResolver"}
 	if len(jsLoadTypes) < int(t) {
-		return ""
+		return fmt.Sprintf("JSLoadType(%d)", t)
 	}
 	return jsLoadTypes[t]
 }
@@ -430,19 +430,12 @@ type JavaScriptLoadError struct {
 
 // Error returns string representation of the JavaScriptLoadError.
 func (e *JavaScriptLoadError) Error() string {
-	return fmt.Sprintf("Error loading JavaScript (%s) from (%q), Err: %v", e.JSLoadType, e.Path, e.Err)
+	return fmt.Sprintf("Error loading JavaScript (%s) from %q, Err: %v", e.JSLoadType, e.Path, e.Err)
 }
 
-// PathNotFoundError is returned when the specified path or URL (HTTP/HTTPS endpoint)
-// doesn't exist while constructing the ReadCloser.
-type PathNotFoundError struct {
-	Path string // Specified path or URL (HTTP/HTTPS endpoint).
-}
-
-// Error returns string representation of the PathNotFoundError.
-func (e *PathNotFoundError) Error() string {
-	return fmt.Sprintf("Specified path %q doesn't look like a file or URL", e.Path)
-}
+// ErrPathNotFound means that the specified path or URL (HTTP/HTTPS endpoint)
+// doesn't exist to construct a ReadCloser to read the bytes later on.
+var ErrPathNotFound = errors.New("path not found")
 
 // readFromPath creates a ReadCloser from the given path. The path must be either a valid file
 // or an HTTP/HTTPS endpoint. Returns an error if there is any failure in building ReadCloser.
@@ -465,7 +458,7 @@ func readFromPath(path string) (rc io.ReadCloser, err error) {
 			return nil, err
 		}
 	} else {
-		return nil, &PathNotFoundError{Path: path}
+		return nil, ErrPathNotFound
 	}
 	return rc, nil
 }
@@ -1032,18 +1025,18 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		for _, filename := range flagSet.Args() {
 			newConfig, newConfigErr := LoadServerConfig(filename)
 
-			if errors.Cause(newConfigErr) == base.ErrUnknownField {
+			if pkgerrors.Cause(newConfigErr) == base.ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
-				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
+				err = pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			} else if newConfigErr != nil {
-				return config, errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
+				return config, pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			}
 
 			if config == nil {
 				config = newConfig
 			} else {
 				if err := config.MergeWith(newConfig); err != nil {
-					return config, errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
+					return config, pkgerrors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
 				}
 			}
 		}
@@ -1340,7 +1333,7 @@ func RegisterSignalHandler() {
 func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	var unknownFieldsErr error
 	config, err = ParseCommandLine(args, flag.ExitOnError)
-	if errors.Cause(err) == base.ErrUnknownField {
+	if pkgerrors.Cause(err) == base.ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {
 		return nil, fmt.Errorf(err.Error())
