@@ -1146,7 +1146,13 @@ func TestDBOfflinePostResync(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.True(t, body["state"].(string) == "Offline")
 
-	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync", ""), 200)
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
+	err := rt.WaitForCondition(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		res := bytes.Compare([]byte(`{"status": "not running"}`), response.BodyBytes())
+		return res == 0
+	})
+	assert.NoError(t, err)
 }
 
 //Take DB offline and ensure only one _resync can be in progress
@@ -1156,13 +1162,18 @@ func TestDBOfflineSingleResync(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	rt := NewRestTester(t, nil)
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: syncFn})
 	defer rt.Close()
 
 	//create documents in DB to cause resync to take a few seconds
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%v", i))
 	}
+	assert.Equal(t, int64(1000), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 
 	log.Printf("Taking DB offline")
 	response := rt.SendAdminRequest("GET", "/db/", "")
@@ -1178,31 +1189,91 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 	goassert.True(t, body["state"].(string) == "Offline")
 
-	input := bytes.NewBufferString("")
-	request, _ := http.NewRequest("POST", "http://localhost/db/_resync", input)
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	assertStatus(t, response, http.StatusOK)
 
-	// Create a SlowResponseRecorder which wraps an httptest.Recorder, and adds an artificial
-	// delay which will block the _resync handler and force it to stay in the _resync state for numSecsInResync seconds
-	numSecsInResync := time.Second * 2
-	recorder := httptest.NewRecorder()
-	slowResponseRecorder := NewSlowResponseRecorder(numSecsInResync, recorder)
+	// TODO: Should be fine but may need to add a wait method to slow down resync op
+	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 400)
 
-	// Kick off goroutine that will invoke the handler to handle the first _resync request which will return a 200 (asserted below)
-	go rt.TestAdminHandler().ServeHTTP(slowResponseRecorder, request)
+	err := rt.WaitForCondition(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		res := bytes.Compare([]byte(`{"status": "not running"}`), response.BodyBytes())
+		return res == 0
+	})
+	assert.NoError(t, err)
 
-	// Wait for the slowResponseRecorder to be called back. After this unblocks, we know it's blocked in a
-	// call to _rsync that is artifically delayed due to the slowResponseRecorder
-	slowResponseRecorder.WaitForResponseToStart()
+	assert.Equal(t, int64(2000), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+}
 
-	// Send a second _resync request.  This must return a 503 since the first one is blocked processing
-	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync", ""), 503)
+func TestResync(t *testing.T) {
 
-	// Wait until the first _resync request finishes
-	slowResponseRecorder.WaitForResponseToFinish()
+	testCases := []struct {
+		name               string
+		docsCreated        int
+		expectedSyncFnRuns int
+		queryLimit         int
+	}{
+		{
+			name:               "Docs 0, Limit Default",
+			docsCreated:        0,
+			expectedSyncFnRuns: 0,
+			queryLimit:         db.DefaultResyncQueryLimit,
+		},
+		{
+			name:               "Docs 1000, Limit Default",
+			docsCreated:        1000,
+			expectedSyncFnRuns: 2000,
+			queryLimit:         db.DefaultResyncQueryLimit,
+		},
+		{
+			name:               "Docs 1000, Limit 10",
+			docsCreated:        1000,
+			expectedSyncFnRuns: 2000,
+			queryLimit:         10,
+		},
+	}
 
-	// Extract the recorded result and make sure it was a 200 response
-	recordedResponseInitialResync := recorder.Result()
-	goassert.Equals(t, recordedResponseInitialResync.StatusCode, 200)
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rt := NewRestTester(t,
+				&RestTesterConfig{
+					DatabaseConfig: &DbConfig{
+						ResyncQueryLimit: &testCase.queryLimit,
+					},
+					SyncFn: syncFn,
+				},
+			)
+			rt.Close()
+
+			for i := 0; i < testCase.docsCreated; i++ {
+				rt.createDoc(t, fmt.Sprintf("doc%d", i))
+			}
+
+			response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			assertStatus(t, response, http.StatusServiceUnavailable)
+
+			response = rt.SendAdminRequest("POST", "/db/_offline", "")
+			assertStatus(t, response, http.StatusOK)
+
+			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			assertStatus(t, response, http.StatusOK)
+
+			err := rt.WaitForCondition(func() bool {
+				response := rt.SendAdminRequest("GET", "/db/_resync", "")
+				return `{"status": "not running"}` == string(response.BodyBytes())
+			})
+			assert.NoError(t, err)
+
+			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value()))
+
+		})
+	}
 
 }
 

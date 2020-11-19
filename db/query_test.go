@@ -44,7 +44,7 @@ func TestQueryChannelsStatsView(t *testing.T) {
 	channelQueryErrorCountBefore := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, "", false)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -91,7 +91,7 @@ func TestQueryChannelsStatsN1ql(t *testing.T) {
 	channelQueryErrorCountBefore := db.DbStats.Query(QueryTypeChannels).QueryErrorCount.Value()
 
 	// Issue channels query
-	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, "", false)
 	assert.NoError(t, queryErr, "Query error")
 
 	assert.Equal(t, 3, countQueryResults(results))
@@ -309,7 +309,7 @@ func TestCoveringQueries(t *testing.T) {
 	}
 
 	// channels
-	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100, false)
+	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100, "", false)
 	plan, explainErr := gocbBucket.ExplainQuery(channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
 	covered := isCovered(plan)
@@ -318,7 +318,7 @@ func TestCoveringQueries(t *testing.T) {
 	assert.True(t, covered, "Channel query isn't covered by index: %s", planJSON)
 
 	// star channel
-	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100, false)
+	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100, "", false)
 	plan, explainErr = gocbBucket.ExplainQuery(channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
 	covered = isCovered(plan)

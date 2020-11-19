@@ -691,6 +691,11 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		compactIntervalSecs = uint32(*config.CompactIntervalDays * 60 * 60 * 24)
 	}
 
+	resyncQueryLimit := db.DefaultResyncQueryLimit
+	if config.ResyncQueryLimit != nil {
+		resyncQueryLimit = *config.ResyncQueryLimit
+	}
+
 	secureCookieOverride := sc.config.SSLCert != nil
 	if config.SecureCookieOverride != nil {
 		secureCookieOverride = *config.SecureCookieOverride
@@ -729,6 +734,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		DeltaSyncOptions:          deltaSyncOptions,
 		CompactInterval:           compactIntervalSecs,
+		ResyncQueryLimit:          resyncQueryLimit,
 		SGReplicateOptions: db.SGReplicateOptions{
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
