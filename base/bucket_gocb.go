@@ -350,7 +350,6 @@ func (bucket *CouchbaseBucketGoCB) GetRaw(k string) (rv []byte, cas uint64, err 
 	}
 
 	return returnVal, cas, err
-
 }
 
 func (bucket *CouchbaseBucketGoCB) Get(k string, rv interface{}) (cas uint64, err error) {
@@ -1515,9 +1514,6 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 		var callbackExpiry *uint32
 
 		// Load the existing value.
-		// NOTE: ignore error and assume it's a "key not found" error.  If it's a more
-		// serious error, it will probably recur when calling other ops below
-
 		cas, err := bucket.Get(k, &value)
 		if err != nil {
 			if !bucket.IsKeyNotFoundError(err) {
@@ -1765,13 +1761,14 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 
 	}
 
-	// Kick off retry loop
-	err, cas := RetryLoopCas("Incr with key", worker, bucket.Spec.RetrySleeper())
+	// Kick off retry loop.  Using RetryLoopCas here to return a strongly typed
+	// incr result (NOT CAS)
+	err, val := RetryLoopCas("Incr with key", worker, bucket.Spec.RetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during Incr with key: %v", UD(k).Redact())
 	}
 
-	return cas, err
+	return val, err
 
 }
 
