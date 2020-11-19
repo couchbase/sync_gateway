@@ -350,18 +350,18 @@ func testRetryUntilTrueCustom(t *testing.T, retryFunc RetryUntilTrueFunc, waitTi
 
 func FileExists(filename string) bool {
 	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
+	if err != nil {
 		return false
 	}
-	return !info.IsDir()
+	return info != nil && !info.IsDir()
 }
 
 func DirExists(filename string) bool {
 	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
+	if err != nil {
 		return false
 	}
-	return info.IsDir()
+	return info != nil && info.IsDir()
 }
 
 // WaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
