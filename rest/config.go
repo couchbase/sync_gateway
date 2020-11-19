@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -30,7 +31,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/hashicorp/go-multierror"
-	"github.com/pkg/errors"
+	pkgerrors "github.com/pkg/errors"
 
 	// Register profiling handlers (see Go docs)
 	_ "net/http/pprof"
@@ -316,7 +317,10 @@ func (dbConfig *DbConfig) setup(name string) error {
 	}
 
 	url, err := url.Parse(*dbConfig.Server)
-	if err == nil && url.User != nil {
+	if err != nil {
+		return err
+	}
+	if url.User != nil {
 		// Remove credentials from URL and put them into the DbConfig.Username and .Password:
 		if dbConfig.Username == "" {
 			dbConfig.Username = url.User.Username()
@@ -331,7 +335,132 @@ func (dbConfig *DbConfig) setup(name string) error {
 		dbConfig.Server = &urlStr
 	}
 
-	return err
+	// Load Sync Function.
+	if dbConfig.Sync != nil {
+		sync, err := loadJavaScript(*dbConfig.Sync)
+		if err != nil {
+			return &JavaScriptLoadError{
+				JSLoadType: SyncFunction,
+				Path:       *dbConfig.Sync,
+				Err:        err,
+			}
+		}
+		dbConfig.Sync = &sync
+	}
+
+	// Load Import Filter Function.
+	if dbConfig.ImportFilter != nil {
+		importFilter, err := loadJavaScript(*dbConfig.ImportFilter)
+		if err != nil {
+			return &JavaScriptLoadError{
+				JSLoadType: ImportFilter,
+				Path:       *dbConfig.ImportFilter,
+				Err:        err,
+			}
+		}
+		dbConfig.ImportFilter = &importFilter
+	}
+
+	// Load Conflict Resolution Function.
+	for _, rc := range dbConfig.Replications {
+		if rc.ConflictResolutionFn != "" {
+			conflictResolutionFn, err := loadJavaScript(rc.ConflictResolutionFn)
+			if err != nil {
+				return &JavaScriptLoadError{
+					JSLoadType: ConflictResolver,
+					Path:       rc.ConflictResolutionFn,
+					Err:        err,
+				}
+			}
+			rc.ConflictResolutionFn = conflictResolutionFn
+		}
+	}
+
+	return nil
+}
+
+// loadJavaScript loads the JavaScript source from an external file or and HTTP/HTTPS endpoint.
+// If the specified path does not qualify for a valid file or an URI, it returns the input path
+// as-is with the assumption that it is an inline JavaScript source. Returns error if there is
+// any failure in reading the JavaScript file or URI.
+func loadJavaScript(path string) (js string, err error) {
+	rc, err := readFromPath(path)
+	if errors.Is(err, ErrPathNotFound) {
+		// If rc is nil and readFromPath returns no error, treat the
+		// the given path as an inline JavaScript and return it as-is.
+		return path, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = rc.Close() }()
+	src, err := ioutil.ReadAll(rc)
+	if err != nil {
+		return "", err
+	}
+	return string(src), nil
+}
+
+// JSLoadType represents a specific JavaScript load type.
+// It is used to uniquely identify any potential errors during JavaScript load.
+type JSLoadType int
+
+const (
+	SyncFunction     JSLoadType = iota // Sync Function JavaScript load.
+	ImportFilter                       // Import filter JavaScript load.
+	ConflictResolver                   // Conflict Resolver JavaScript load.
+)
+
+// String returns the string representation of a specific JSLoadType.
+func (t JSLoadType) String() string {
+	jsLoadTypes := [...]string{"SyncFunction", "ImportFilter", "ConflictResolver"}
+	if len(jsLoadTypes) < int(t) {
+		return fmt.Sprintf("JSLoadType(%d)", t)
+	}
+	return jsLoadTypes[t]
+}
+
+// JavaScriptLoadError is returned if there is any failure in loading JavaScript
+// source from an external file or URL (HTTP/HTTPS endpoint).
+type JavaScriptLoadError struct {
+	JSLoadType JSLoadType // A specific JavaScript load type.
+	Path       string     // Path of the JavaScript source.
+	Err        error      // Underlying error.
+}
+
+// Error returns string representation of the JavaScriptLoadError.
+func (e *JavaScriptLoadError) Error() string {
+	return fmt.Sprintf("Error loading JavaScript (%s) from %q, Err: %v", e.JSLoadType, e.Path, e.Err)
+}
+
+// ErrPathNotFound means that the specified path or URL (HTTP/HTTPS endpoint)
+// doesn't exist to construct a ReadCloser to read the bytes later on.
+var ErrPathNotFound = errors.New("path not found")
+
+// readFromPath creates a ReadCloser from the given path. The path must be either a valid file
+// or an HTTP/HTTPS endpoint. Returns an error if there is any failure in building ReadCloser.
+func readFromPath(path string) (rc io.ReadCloser, err error) {
+	messageFormat := "Loading content from [%s] ..."
+	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+		base.Infof(base.KeyAll, messageFormat, path)
+		resp, err := http.Get(path)
+		if err != nil {
+			return nil, err
+		} else if resp.StatusCode >= 300 {
+			_ = resp.Body.Close()
+			return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
+		}
+		rc = resp.Body
+	} else if base.FileExists(path) {
+		base.Infof(base.KeyAll, messageFormat, path)
+		rc, err = os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, ErrPathNotFound
+	}
+	return rc, nil
 }
 
 func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
@@ -616,25 +745,13 @@ func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 
 // LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
 func LoadServerConfig(path string) (config *ServerConfig, err error) {
-	var dataReadCloser io.ReadCloser
-
-	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		resp, err := http.Get(path)
-		if err != nil {
-			return nil, err
-		} else if resp.StatusCode >= 300 {
-			return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
-		}
-		dataReadCloser = resp.Body
-	} else {
-		dataReadCloser, err = os.Open(path)
-		if err != nil {
-			return nil, err
-		}
+	rc, err := readFromPath(path)
+	if err != nil {
+		return nil, err
 	}
 
-	defer func() { _ = dataReadCloser.Close() }()
-	return readServerConfig(dataReadCloser)
+	defer func() { _ = rc.Close() }()
+	return readServerConfig(rc)
 }
 
 // readServerConfig returns a validated ServerConfig from an io.Reader
@@ -908,18 +1025,18 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		for _, filename := range flagSet.Args() {
 			newConfig, newConfigErr := LoadServerConfig(filename)
 
-			if errors.Cause(newConfigErr) == base.ErrUnknownField {
+			if pkgerrors.Cause(newConfigErr) == base.ErrUnknownField {
 				// Delay returning this error so we can continue with other setup
-				err = errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
+				err = pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			} else if newConfigErr != nil {
-				return config, errors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
+				return config, pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
 			}
 
 			if config == nil {
 				config = newConfig
 			} else {
 				if err := config.MergeWith(newConfig); err != nil {
-					return config, errors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
+					return config, pkgerrors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
 				}
 			}
 		}
@@ -1216,7 +1333,7 @@ func RegisterSignalHandler() {
 func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	var unknownFieldsErr error
 	config, err = ParseCommandLine(args, flag.ExitOnError)
-	if errors.Cause(err) == base.ErrUnknownField {
+	if pkgerrors.Cause(err) == base.ErrUnknownField {
 		unknownFieldsErr = err
 	} else if err != nil {
 		return nil, fmt.Errorf(err.Error())
