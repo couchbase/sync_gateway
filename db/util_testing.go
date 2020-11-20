@@ -37,8 +37,7 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 
 func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error) {
 	// Create the star channel query
-	statement := QueryStarChannel.statement
-	// statement = fmt.Sprintf("%s LIMIT 1", statement) // append LIMIT 1 since we only care if there are any results or not
+	statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
 	starChannelQueryStatement := replaceActiveOnlyFilter(statement, false)
 	starChannelQueryStatement = replaceSyncTokensQuery(starChannelQueryStatement, useXattrs)
 	starChannelQueryStatement = replaceIndexTokensQuery(starChannelQueryStatement, sgIndexes[IndexAllDocs], useXattrs)
@@ -56,12 +55,8 @@ func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error
 	}
 
 	// If it's empty, we're done
-	var queryRow map[string]interface{}
-	var found bool
-	for results.Next(&queryRow) {
-		found = true
-		base.Warnf("isIndexEmpty found item in all docs index: %v", queryRow)
-	}
+	var queryRow AllDocsIndexQueryRow
+	found := results.Next(&queryRow)
 	resultsCloseErr := results.Close()
 	if resultsCloseErr != nil {
 		return false, err
