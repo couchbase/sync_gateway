@@ -61,7 +61,6 @@ type dataStore struct {
 }
 
 func testAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataStore)) {
-
 	dataStores := make([]dataStore, 0)
 	dataStores = append(dataStores, dataStore{
 		name:   "gocb.v1",
@@ -85,7 +84,6 @@ func testAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.Data
 }
 
 func TestSetGet(t *testing.T) {
-
 	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
 		key := t.Name()
@@ -113,7 +111,6 @@ func TestSetGet(t *testing.T) {
 }
 
 func TestSetGetRaw(t *testing.T) {
-
 	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
 		key := t.Name()
@@ -141,7 +138,6 @@ func TestSetGetRaw(t *testing.T) {
 }
 
 func TestAddRaw(t *testing.T) {
-
 	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 		val := []byte("bar")
@@ -174,14 +170,12 @@ func TestAddRaw(t *testing.T) {
 			t.Errorf("Error removing key from bucket: %v", err)
 		}
 	})
-
 }
 
 // TestAddRawTimeout attempts to fill up the gocbpipeline by writing large documents concurrently with a small timeout,
 // to verify that timeout errors are returned, and the operation isn't retried (which would return a cas error).
 //   (see CBG-463)
 func TestAddRawTimeoutRetry(t *testing.T) {
-
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
@@ -211,13 +205,10 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 
 	}
 	wg.Wait()
-
 }
 
 func TestWriteCasBasic(t *testing.T) {
-
 	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
-
 		key := t.Name()
 		val := []byte("bar2")
 
@@ -227,7 +218,6 @@ func TestWriteCasBasic(t *testing.T) {
 		}
 
 		cas := uint64(0)
-
 		cas, err = bucket.WriteCas(key, 0, 0, cas, []byte("bar"), sgbucket.Raw)
 		if err != nil {
 			t.Errorf("Error doing WriteCas: %v", err)
@@ -237,7 +227,6 @@ func TestWriteCasBasic(t *testing.T) {
 		if err != nil {
 			t.Errorf("Error doing WriteCas: %v", err)
 		}
-
 		if casOut == cas {
 			t.Errorf("Expected different casOut value")
 		}
@@ -252,11 +241,9 @@ func TestWriteCasBasic(t *testing.T) {
 			t.Errorf("Error removing key from bucket")
 		}
 	})
-
 }
 
 func TestWriteCasAdvanced(t *testing.T) {
-
 	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 
@@ -287,13 +274,10 @@ func TestWriteCasAdvanced(t *testing.T) {
 			t.Errorf("Error removing key from bucket")
 		}
 	})
-
 }
 
 func TestUpdate(t *testing.T) {
-
 	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
-
 		key := t.Name()
 		valInitial := []byte(`{"state":"initial"}`)
 		valUpdated := []byte(`{"state":"updated"}`)
@@ -345,69 +329,9 @@ func TestUpdate(t *testing.T) {
 			t.Errorf("Error removing key from bucket")
 		}
 	})
-
-}
-
-func TestWriteUpdate(t *testing.T) {
-
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
-
-		key := t.Name()
-		valInitial := []byte(`{"state":"initial"}`)
-		valUpdated := []byte(`{"state":"updated"}`)
-
-		var rv map[string]interface{}
-		_, err := bucket.Get(key, &rv)
-		if err == nil {
-			t.Errorf("Key should not exist yet, expected error but got nil")
-		}
-
-		updateFunc := func(current []byte) (updated []byte, opt sgbucket.WriteOptions, expiry *uint32, err error) {
-			if len(current) == 0 {
-				return valInitial, opt, nil, nil
-			} else {
-				return valUpdated, opt, nil, nil
-			}
-		}
-		var cas uint64
-		cas, err = bucket.WriteUpdate(key, 0, updateFunc)
-		if err != nil {
-			t.Errorf("Error calling WriteUpdate: %v", err)
-		}
-		if cas == 0 {
-			t.Errorf("Unexpected cas returned by bucket.Update")
-		}
-
-		_, err = bucket.Get(key, &rv)
-		assert.NoError(t, err, "error retrieving initial value")
-		state, ok := rv["state"]
-		assert.True(t, ok, "expected state property not present")
-		assert.Equal(t, "initial", state)
-
-		cas, err = bucket.WriteUpdate(key, 0, updateFunc)
-		if err != nil {
-			t.Errorf("Error calling WriteUpdate: %v", err)
-		}
-		if cas == 0 {
-			t.Errorf("Unexpected cas returned by bucket.Update")
-		}
-
-		_, err = bucket.Get(key, &rv)
-		assert.NoError(t, err, "error retrieving updated value")
-		state, ok = rv["state"]
-		assert.True(t, ok, "expected state property not present")
-		assert.Equal(t, "updated", state)
-
-		err = bucket.Delete(key)
-		if err != nil {
-			t.Errorf("Error removing key from bucket")
-		}
-	})
-
 }
 
 func TestIncrCounter(t *testing.T) {
-
 	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 
@@ -435,7 +359,6 @@ func TestIncrCounter(t *testing.T) {
 		assert.NoError(t, err, "Error incrementing value for existing counter")
 		assert.Equal(t, uint64(2), retrieval)
 	})
-
 }
 
 func TestGetAndTouchRaw(t *testing.T) {

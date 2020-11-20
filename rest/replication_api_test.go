@@ -938,7 +938,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 //   - Write documents to rt1, each belonging to one of the channels (verifies replications are still running)
 //   - Validate replications do not report errors, all docs are replicated
 // Note: This test intermittently reproduced CBG-998 under -race when a 1s sleep was added post-callback to
-//   WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket WriteUpdateCallback.
+//   WriteUpdateWithXattr.  Have been unable to reproduce the same with a leaky bucket UpdateCallback.
 func TestReplicationConcurrentPush(t *testing.T) {
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {

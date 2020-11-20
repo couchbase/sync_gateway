@@ -1707,7 +1707,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	xattrBytes := 0 // Track size of xattr written, for write stats
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
-		_, err = db.Bucket.WriteUpdate(key, expiry, func(currentValue []byte) (raw []byte, writeOpts sgbucket.WriteOptions, syncFuncExpiry *uint32, err error) {
+		_, err = db.Bucket.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
@@ -1724,7 +1724,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			raw, err = doc.MarshalBodyAndSync()
 			base.DebugfCtx(db.Ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
 			docBytes = len(raw)
-			return raw, writeOpts, syncFuncExpiry, err
+			return raw, syncFuncExpiry, err
 		})
 
 		// If we can't find sync metadata in the document body, check for upgrade.  If upgrade, retry write using WriteUpdateWithXattr

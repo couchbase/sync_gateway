@@ -80,10 +80,6 @@ func (b *LoggingBucket) Update(k string, exp uint32, callback sgbucket.UpdateFun
 	defer b.log(time.Now(), k, exp)
 	return b.bucket.Update(k, exp, callback)
 }
-func (b *LoggingBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
-	defer b.log(time.Now(), k, exp)
-	return b.bucket.WriteUpdate(k, exp, callback)
-}
 
 func (b *LoggingBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 	defer b.log(time.Now(), k, amt, def, exp)

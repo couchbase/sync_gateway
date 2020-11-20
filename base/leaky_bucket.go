@@ -47,9 +47,9 @@ type LeakyBucketConfig struct {
 	FirstTimeViewCustomPartialError bool
 	PostQueryCallback               func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
 
-	// WriteUpdateCallback issues additional callback in WriteUpdate after standard callback completes, but prior to document write.  Allows
-	// tests to trigger CAS retry handling by modifying the underlying document in a WriteUpdateCallback implementation.
-	WriteUpdateCallback func(key string)
+	// UpdateCallback issues additional callback in WriteUpdate after standard callback completes, but prior to document write.  Allows
+	// tests to trigger CAS retry handling by modifying the underlying document in a UpdateCallback implementation.
+	UpdateCallback func(key string)
 
 	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
 	WriteWithXattrCallback func(key string)
@@ -121,18 +121,15 @@ func (b *LeakyBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v in
 	return b.bucket.WriteCas(k, flags, exp, cas, v, opt)
 }
 func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
-	return b.bucket.Update(k, exp, callback)
-}
-func (b *LeakyBucket) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
-	if b.config.WriteUpdateCallback != nil {
-		wrapperCallback := func(current []byte) (updated []byte, opt sgbucket.WriteOptions, expiry *uint32, err error) {
-			updated, opt, expiry, err = callback(current)
-			b.config.WriteUpdateCallback(k)
-			return updated, opt, expiry, err
+	if b.config.UpdateCallback != nil {
+		wrapperCallback := func(current []byte) (updated []byte, expiry *uint32, err error) {
+			updated, expiry, err = callback(current)
+			b.config.UpdateCallback(k)
+			return updated, expiry, err
 		}
-		return b.bucket.WriteUpdate(k, exp, wrapperCallback)
+		return b.bucket.Update(k, exp, wrapperCallback)
 	}
-	return b.bucket.WriteUpdate(k, exp, callback)
+	return b.bucket.Update(k, exp, callback)
 }
 
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
@@ -217,10 +214,10 @@ func (b *LeakyBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas 
 }
 
 func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	if b.config.WriteUpdateCallback != nil {
+	if b.config.UpdateCallback != nil {
 		wrapperCallback := func(current []byte, xattr []byte, cas uint64) (updated []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
 			updated, updatedXattr, deletedDoc, expiry, err = callback(current, xattr, cas)
-			b.config.WriteUpdateCallback(k)
+			b.config.UpdateCallback(k)
 			return updated, updatedXattr, deletedDoc, expiry, err
 		}
 		return b.bucket.WriteUpdateWithXattr(k, xattr, exp, previous, wrapperCallback)

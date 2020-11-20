@@ -326,7 +326,7 @@ func TestAttachmentCASRetryAfterNewAttachment(t *testing.T) {
 
 	// Use leaky bucket to inject callback in query invocation
 	queryCallbackConfig := base.LeakyBucketConfig{
-		WriteUpdateCallback: writeUpdateCallback,
+		UpdateCallback: writeUpdateCallback,
 	}
 
 	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
@@ -385,7 +385,7 @@ func TestAttachmentCASRetryDuringNewAttachment(t *testing.T) {
 
 	// Use leaky bucket to inject callback in query invocation
 	queryCallbackConfig := base.LeakyBucketConfig{
-		WriteUpdateCallback: writeUpdateCallback,
+		UpdateCallback: writeUpdateCallback,
 	}
 
 	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)

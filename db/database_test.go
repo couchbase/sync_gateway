@@ -2039,7 +2039,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 
 	// Use leaky bucket to inject callback in query invocation
 	queryCallbackConfig := base.LeakyBucketConfig{
-		WriteUpdateCallback: writeUpdateCallback,
+		UpdateCallback: writeUpdateCallback,
 	}
 
 	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
@@ -2076,7 +2076,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 
 	// Use leaky bucket to inject callback in query invocation
 	queryCallbackConfig := base.LeakyBucketConfig{
-		WriteUpdateCallback: writeUpdateCallback,
+		UpdateCallback: writeUpdateCallback,
 	}
 
 	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
@@ -2131,7 +2131,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 
 	// Use leaky bucket to inject callback in query invocation
 	queryCallbackConfig := base.LeakyBucketConfig{
-		WriteUpdateCallback: writeUpdateCallback,
+		UpdateCallback: writeUpdateCallback,
 	}
 
 	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
@@ -2186,7 +2186,7 @@ func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
 
 	// Use leaky bucket to inject callback in query invocation
 	queryCallbackConfig := base.LeakyBucketConfig{
-		WriteUpdateCallback: writeUpdateCallback,
+		UpdateCallback: writeUpdateCallback,
 	}
 
 	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), queryCallbackConfig)
@@ -2252,7 +2252,7 @@ func TestIncreasingRecentSequences(t *testing.T) {
 		}
 	}
 
-	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{WriteUpdateCallback: writeUpdateCallback})
+	db = setupTestLeakyDBWithCacheOptions(t, DefaultCacheOptions(), base.LeakyBucketConfig{UpdateCallback: writeUpdateCallback})
 	defer db.Close()
 
 	err := json.Unmarshal([]byte(`{"prop": "value"}`), &body)
