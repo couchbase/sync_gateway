@@ -64,31 +64,34 @@ func GetTestBucket(t testing.TB) *TestBucket {
 
 func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 	if driver == GoCBv2 {
-		// TODO: add GoCBv2 support to TestBucketPool.  Force use of sg_int_0 until
-		//  this is implemented
-		server := UnitTestUrl()
-		if server == kTestCouchbaseServerURL {
-			server = "couchbase://localhost"
+		// TODO: add GoCBv2 support to TestBucketPool.
+
+		// Reserve test bucket from pool
+		_, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+
+		spec.CouchbaseDriver = GoCBv2
+		if spec.Server == kTestCouchbaseServerURL {
+			spec.Server = "couchbase://localhost"
 		}
-		if !strings.HasPrefix(server, "couchbase") {
+		if !strings.HasPrefix(spec.Server, "couchbase") {
+			closeFn()
 			t.Fatalf("Server must use couchbase scheme for gocb v2 testing")
 		}
 
-		spec := BucketSpec{
-			Server:          server,
-			CouchbaseDriver: driver,
-			Auth:            tbpDefaultBucketSpec.Auth,
-			UseXattrs:       tbpDefaultBucketSpec.UseXattrs,
-		}
-		spec.BucketName = "sg_int_0"
 		collection, err := GetCouchbaseCollection(spec)
 		if err != nil {
 			t.Fatalf("Unable to get collection: %v", collection)
 		}
+
+		closeAll := func() {
+			collection.Close()
+			closeFn()
+		}
+
 		return &TestBucket{
 			Bucket:     collection,
 			BucketSpec: spec,
-			closeFn:    collection.close,
+			closeFn:    closeAll,
 		}
 
 	} else {

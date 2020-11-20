@@ -120,6 +120,7 @@ func (c *Collection) UUID() (string, error) {
 	return "", errors.New("Not implemented")
 }
 func (c *Collection) Close() {
+	// No close handling for collection
 	return
 }
 
@@ -139,13 +140,12 @@ func (c *Collection) Get(k string, rv interface{}) (cas uint64, err error) {
 }
 
 func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
-
 	getOptions := &gocb.GetOptions{
 		Transcoder: gocb.NewRawBinaryTranscoder(),
 	}
-	getRawResult, err := c.Collection.Get(k, getOptions)
-	if err != nil {
-		return nil, 0, err
+	getRawResult, getErr := c.Collection.Get(k, getOptions)
+	if getErr != nil {
+		return nil, 0, getErr
 	}
 
 	err = getRawResult.Content(&rv)
@@ -156,21 +156,23 @@ func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64
 	getAndTouchOptions := &gocb.GetAndTouchOptions{
 		Transcoder: gocb.NewRawBinaryTranscoder(),
 	}
-	getAndTouchRawResult, err := c.Collection.GetAndTouch(k, expAsDuration(exp), getAndTouchOptions)
+	getAndTouchRawResult, getErr := c.Collection.GetAndTouch(k, expAsDuration(exp), getAndTouchOptions)
+	if getErr != nil {
+		return nil, 0, getErr
+	}
 
 	err = getAndTouchRawResult.Content(&rv)
 	return rv, uint64(getAndTouchRawResult.Cas()), err
 }
 
 func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
-
 	result, err := c.Collection.Touch(k, expAsDuration(exp), nil)
 	if err != nil {
 		return 0, err
 	}
 	return uint64(result.Cas()), nil
-
 }
+
 func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	opts := &gocb.InsertOptions{
 		Expiry: expAsDuration(exp),
@@ -259,7 +261,6 @@ func (c *Collection) Remove(k string, cas uint64) (casOut uint64, err error) {
 }
 
 func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
-
 	for {
 		var value []byte
 		var err error
@@ -339,7 +340,6 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 
 // TODO: Pending removal of WriteUpdate from sg-bucket
 func (c *Collection) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
-
 	updateCallback := func(current []byte) (updated []byte, expiry *uint32, err error) {
 		updated, _, expiry, err = callback(current)
 		return updated, expiry, err
@@ -433,11 +433,6 @@ func (c *Collection) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuid
 }
 func (c *Collection) GetMaxVbno() (uint16, error) {
 	return 0, nil
-}
-
-// non-interface
-func (c *Collection) close() {
-	return
 }
 
 func expAsDuration(exp uint32) time.Duration {
