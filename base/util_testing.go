@@ -62,6 +62,43 @@ func GetTestBucket(t testing.TB) *TestBucket {
 	}
 }
 
+func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
+	if driver == GoCBv2 {
+		// TODO: add GoCBv2 support to TestBucketPool.
+
+		// Reserve test bucket from pool
+		_, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+
+		spec.CouchbaseDriver = GoCBv2
+		if spec.Server == kTestCouchbaseServerURL {
+			spec.Server = "couchbase://localhost"
+		}
+		if !strings.HasPrefix(spec.Server, "couchbase") {
+			closeFn()
+			t.Fatalf("Server must use couchbase scheme for gocb v2 testing")
+		}
+
+		collection, err := GetCouchbaseCollection(spec)
+		if err != nil {
+			t.Fatalf("Unable to get collection: %v", collection)
+		}
+
+		closeAll := func() {
+			collection.Close()
+			closeFn()
+		}
+
+		return &TestBucket{
+			Bucket:     collection,
+			BucketSpec: spec,
+			closeFn:    closeAll,
+		}
+
+	} else {
+		return GetTestBucket(t)
+	}
+}
+
 // Should Sync Gateway use XATTRS functionality when running unit tests?
 func TestUseXattrs() bool {
 

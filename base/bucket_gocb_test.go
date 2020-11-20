@@ -55,69 +55,125 @@ func TestTranscoder(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+type dataStore struct {
+	name   string
+	driver CouchbaseDriver
+}
+
+func testAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataStore)) {
+
+	dataStores := make([]dataStore, 0)
+	dataStores = append(dataStores, dataStore{
+		name:   "gocb.v1",
+		driver: GoCB,
+	})
+
+	if TestUseCouchbaseServer() {
+		dataStores = append(dataStores, dataStore{
+			name:   "gocb.v2",
+			driver: GoCBv2,
+		})
+	}
+
+	for _, dataStore := range dataStores {
+		t.Run(dataStore.name, func(t *testing.T) {
+			bucket := GetTestBucketForDriver(t, dataStore.driver)
+			defer bucket.Close()
+			testCallback(t, bucket)
+		})
+	}
+}
+
+func TestSetGet(t *testing.T) {
+
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		key := t.Name()
+		val := make(map[string]interface{}, 0)
+		val["foo"] = "bar"
+
+		var rVal map[string]interface{}
+		_, err := bucket.Get(key, &rVal)
+		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
+
+		err = bucket.Set(key, 0, val)
+		assert.NoError(t, err, "Error calling Set()")
+
+		_, err = bucket.Get(key, &rVal)
+		require.NoError(t, err, "Error calling Get()")
+		fooVal, ok := rVal["foo"]
+		require.True(t, ok, "expected property 'foo' not found")
+		assert.Equal(t, "bar", fooVal)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
+}
+
 func TestSetGetRaw(t *testing.T) {
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-	key := t.Name()
-	val := []byte("bar")
+		key := t.Name()
+		val := []byte("bar")
 
-	_, _, err := bucket.GetRaw(key)
-	if err == nil {
-		t.Errorf("Key should not exist yet, expected error but got nil")
-	}
+		_, _, err := bucket.GetRaw(key)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
 
-	if err := bucket.SetRaw(key, 0, val); err != nil {
-		t.Errorf("Error calling SetRaw(): %v", err)
-	}
+		if err := bucket.SetRaw(key, 0, val); err != nil {
+			t.Errorf("Error calling SetRaw(): %v", err)
+		}
 
-	rv, _, err := bucket.GetRaw(key)
-	if string(rv) != string(val) {
-		t.Errorf("%v != %v", string(rv), string(val))
-	}
+		rv, _, err := bucket.GetRaw(key)
+		if string(rv) != string(val) {
+			t.Errorf("%v != %v", string(rv), string(val))
+		}
 
-	err = bucket.Delete(key)
-	if err != nil {
-		t.Errorf("Error removing key from bucket")
-	}
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
 }
 
 func TestAddRaw(t *testing.T) {
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+		key := t.Name()
+		val := []byte("bar")
 
-	key := t.Name()
-	val := []byte("bar")
+		_, _, err := bucket.GetRaw(key)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
 
-	_, _, err := bucket.GetRaw(key)
-	if err == nil {
-		t.Errorf("Key should not exist yet, expected error but got nil")
-	}
+		added, err := bucket.AddRaw(key, 0, val)
+		if err != nil {
+			t.Errorf("Error calling AddRaw(): %v", err)
+		}
+		assert.True(t, added, "AddRaw returned added=false, expected true")
 
-	added, err := bucket.AddRaw(key, 0, val)
-	if err != nil {
-		t.Errorf("Error calling AddRaw(): %v", err)
-	}
-	assert.True(t, added, "AddRaw returned added=false, expected true")
+		rv, _, err := bucket.GetRaw(key)
+		if string(rv) != string(val) {
+			t.Errorf("%v != %v", string(rv), string(val))
+		}
 
-	rv, _, err := bucket.GetRaw(key)
-	if string(rv) != string(val) {
-		t.Errorf("%v != %v", string(rv), string(val))
-	}
+		// Calling AddRaw for existing value should return added=false, no error
+		added, err = bucket.AddRaw(key, 0, val)
+		if err != nil {
+			t.Errorf("Error calling AddRaw(): %v", err)
+		}
+		assert.True(t, added == false, "AddRaw returned added=true for duplicate, expected false")
 
-	// Calling AddRaw for existing value should return added=false, no error
-	added, err = bucket.AddRaw(key, 0, val)
-	if err != nil {
-		t.Errorf("Error calling AddRaw(): %v", err)
-	}
-	assert.True(t, added == false, "AddRaw returned added=true for duplicate, expected false")
-
-	err = bucket.Delete(key)
-	if err != nil {
-		t.Errorf("Error removing key from bucket")
-	}
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket: %v", err)
+		}
+	})
 
 }
 
@@ -160,183 +216,225 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 
 func TestWriteCasBasic(t *testing.T) {
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-	key := t.Name()
-	val := []byte("bar2")
+		key := t.Name()
+		val := []byte("bar2")
 
-	_, _, err := bucket.GetRaw(key)
-	if err == nil {
-		t.Errorf("Key should not exist yet, expected error but got nil")
-	}
+		_, _, err := bucket.GetRaw(key)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
 
-	cas := uint64(0)
+		cas := uint64(0)
 
-	cas, err = bucket.WriteCas(key, 0, 0, cas, []byte("bar"), sgbucket.Raw)
-	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", err)
-	}
+		cas, err = bucket.WriteCas(key, 0, 0, cas, []byte("bar"), sgbucket.Raw)
+		if err != nil {
+			t.Errorf("Error doing WriteCas: %v", err)
+		}
 
-	casOut, err := bucket.WriteCas(key, 0, 0, cas, val, sgbucket.Raw)
-	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", err)
-	}
+		casOut, err := bucket.WriteCas(key, 0, 0, cas, val, sgbucket.Raw)
+		if err != nil {
+			t.Errorf("Error doing WriteCas: %v", err)
+		}
 
-	if casOut == cas {
-		t.Errorf("Expected different casOut value")
-	}
+		if casOut == cas {
+			t.Errorf("Expected different casOut value")
+		}
 
-	rv, _, err := bucket.GetRaw(key)
-	if string(rv) != string(val) {
-		t.Errorf("%v != %v", string(rv), string(val))
-	}
+		rv, _, err := bucket.GetRaw(key)
+		if string(rv) != string(val) {
+			t.Errorf("%v != %v", string(rv), string(val))
+		}
 
-	err = bucket.Delete(key)
-	if err != nil {
-		t.Errorf("Error removing key from bucket")
-	}
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
 
 }
 
 func TestWriteCasAdvanced(t *testing.T) {
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+		key := t.Name()
 
-	key := t.Name()
-
-	_, _, err := bucket.GetRaw(key)
-	if err == nil {
-		t.Errorf("Key should not exist yet, expected error but got nil")
-	}
-
-	casZero := uint64(0)
-
-	// write doc to bucket, giving cas value of 0
-
-	_, err = bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
-	if err != nil {
-		t.Errorf("Error doing WriteCas: %v", err)
-	}
-
-	// try to write doc to bucket, giving cas value of 0 again -- exepct a failure
-	secondWriteCas, err := bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
-	goassert.True(t, err != nil)
-
-	// try to write doc to bucket again, giving invalid cas value -- expect a failure
-	// also, expect no retries, however there is currently no easy way to detect that.
-	_, err = bucket.WriteCas(key, 0, 0, secondWriteCas-1, []byte("bar"), sgbucket.Raw)
-	goassert.True(t, err != nil)
-
-	err = bucket.Delete(key)
-	if err != nil {
-		t.Errorf("Error removing key from bucket")
-	}
-
-}
-
-func numNonNilErrors(entries []*sgbucket.BulkSetEntry) int {
-	errorCount := 0
-	for _, entry := range entries {
-		if entry.Error != nil {
-			errorCount += 1
+		_, _, err := bucket.GetRaw(key)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
 		}
-	}
-	return errorCount
+
+		casZero := uint64(0)
+
+		// write doc to bucket, giving cas value of 0
+		_, err = bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
+		if err != nil {
+			t.Errorf("Error doing WriteCas: %v", err)
+		}
+
+		// try to write doc to bucket, giving cas value of 0 again -- exepct a failure
+		secondWriteCas, err := bucket.WriteCas(key, 0, 0, casZero, []byte("bar"), sgbucket.Raw)
+		goassert.True(t, err != nil)
+
+		// try to write doc to bucket again, giving invalid cas value -- expect a failure
+		// also, expect no retries, however there is currently no easy way to detect that.
+		_, err = bucket.WriteCas(key, 0, 0, secondWriteCas-1, []byte("bar"), sgbucket.Raw)
+		goassert.True(t, err != nil)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
+
 }
 
 func TestUpdate(t *testing.T) {
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-	key := t.Name()
-	valInitial := []byte("initial")
-	valUpdated := []byte("updated")
+		key := t.Name()
+		valInitial := []byte(`{"state":"initial"}`)
+		valUpdated := []byte(`{"state":"updated"}`)
 
-	_, _, err := bucket.GetRaw(key)
-	if err == nil {
-		t.Errorf("Key should not exist yet, expected error but got nil")
-	}
-
-	updateFunc := func(current []byte) (updated []byte, expiry *uint32, err error) {
-		if len(current) == 0 {
-			return valInitial, nil, nil
-		} else {
-			return valUpdated, nil, nil
+		var rv map[string]interface{}
+		_, err := bucket.Get(key, &rv)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
 		}
-	}
-	var cas uint64
-	cas, err = bucket.Update(key, 0, updateFunc)
-	if err != nil {
-		t.Errorf("Error calling Update: %v", err)
-	}
-	if cas == 0 {
-		t.Errorf("Unexpected cas returned by bucket.Update")
-	}
 
-	rv, _, err := bucket.GetRaw(key)
-	if string(rv) != string(valInitial) {
-		t.Errorf("%v != %v", string(rv), string(valInitial))
-	}
+		updateFunc := func(current []byte) (updated []byte, expiry *uint32, err error) {
+			if len(current) == 0 {
+				return valInitial, nil, nil
+			} else {
+				return valUpdated, nil, nil
+			}
+		}
+		var cas uint64
+		cas, err = bucket.Update(key, 0, updateFunc)
+		if err != nil {
+			t.Errorf("Error calling Update: %v", err)
+		}
+		if cas == 0 {
+			t.Errorf("Unexpected cas returned by bucket.Update")
+		}
 
-	cas, err = bucket.Update(key, 0, updateFunc)
-	if err != nil {
-		t.Errorf("Error calling Update: %v", err)
-	}
-	if cas == 0 {
-		t.Errorf("Unexpected cas returned by bucket.Update")
-	}
+		_, err = bucket.Get(key, &rv)
+		assert.NoError(t, err, "error retrieving initial value")
+		state, ok := rv["state"]
+		assert.True(t, ok, "expected state property not present")
+		assert.Equal(t, "initial", state)
 
-	rv, _, err = bucket.GetRaw(key)
-	if string(rv) != string(valUpdated) {
-		t.Errorf("%v != %v", string(rv), string(valUpdated))
-	}
+		cas, err = bucket.Update(key, 0, updateFunc)
+		if err != nil {
+			t.Errorf("Error calling Update: %v", err)
+		}
+		if cas == 0 {
+			t.Errorf("Unexpected cas returned by bucket.Update")
+		}
 
-	err = bucket.Delete(key)
-	if err != nil {
-		t.Errorf("Error removing key from bucket")
-	}
+		_, err = bucket.Get(key, &rv)
+		assert.NoError(t, err, "error retrieving updated value")
+		state, ok = rv["state"]
+		assert.True(t, ok, "expected state property not present")
+		assert.Equal(t, "updated", state)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
+
+}
+
+func TestWriteUpdate(t *testing.T) {
+
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		key := t.Name()
+		valInitial := []byte(`{"state":"initial"}`)
+		valUpdated := []byte(`{"state":"updated"}`)
+
+		var rv map[string]interface{}
+		_, err := bucket.Get(key, &rv)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		updateFunc := func(current []byte) (updated []byte, opt sgbucket.WriteOptions, expiry *uint32, err error) {
+			if len(current) == 0 {
+				return valInitial, opt, nil, nil
+			} else {
+				return valUpdated, opt, nil, nil
+			}
+		}
+		var cas uint64
+		cas, err = bucket.WriteUpdate(key, 0, updateFunc)
+		if err != nil {
+			t.Errorf("Error calling WriteUpdate: %v", err)
+		}
+		if cas == 0 {
+			t.Errorf("Unexpected cas returned by bucket.Update")
+		}
+
+		_, err = bucket.Get(key, &rv)
+		assert.NoError(t, err, "error retrieving initial value")
+		state, ok := rv["state"]
+		assert.True(t, ok, "expected state property not present")
+		assert.Equal(t, "initial", state)
+
+		cas, err = bucket.WriteUpdate(key, 0, updateFunc)
+		if err != nil {
+			t.Errorf("Error calling WriteUpdate: %v", err)
+		}
+		if cas == 0 {
+			t.Errorf("Unexpected cas returned by bucket.Update")
+		}
+
+		_, err = bucket.Get(key, &rv)
+		assert.NoError(t, err, "error retrieving updated value")
+		state, ok = rv["state"]
+		assert.True(t, ok, "expected state property not present")
+		assert.Equal(t, "updated", state)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
 
 }
 
 func TestIncrCounter(t *testing.T) {
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+		key := t.Name()
 
-	key := t.Name()
+		defer func() {
+			err := bucket.Delete(key)
+			if err != nil {
+				t.Errorf("Error removing counter from bucket")
+			}
+		}()
 
-	defer func() {
-		err := bucket.Delete(key)
-		if err != nil {
-			t.Errorf("Error removing counter from bucket")
-		}
-	}()
+		// New Counter - incr 1, default 1
+		value, err := bucket.Incr(key, 1, 1, 0)
+		assert.NoError(t, err, "Error incrementing non-existent counter")
 
-	// New Counter - incr 1, default 1
-	value, err := bucket.Incr(key, 1, 1, 0)
-	if err != nil {
-		t.Errorf("Error incrementing non-existent counter")
-	}
-	// key did not exist - so expect the "initial" value of 1
-	goassert.Equals(t, value, uint64(1))
+		// key did not exist - so expect the "initial" value of 1
+		assert.Equal(t, uint64(1), value)
 
-	// Retrieve existing counter value using GetCounter
-	retrieval, err := GetCounter(bucket, key)
-	if err != nil {
-		t.Errorf("Error retrieving value for existing counter")
-	}
-	goassert.Equals(t, retrieval, uint64(1))
+		// Retrieve existing counter value using GetCounter
+		retrieval, err := GetCounter(bucket, key)
+		assert.NoError(t, err, "Error retrieving value for existing counter")
+		assert.Equal(t, uint64(1), retrieval)
 
-	// Increment existing counter
-	retrieval, err = bucket.Incr(key, 1, 1, 0)
-	if err != nil {
-		t.Errorf("Error incrementing value for existing counter")
-	}
-	// and now increment the existing value
-	goassert.Equals(t, retrieval, uint64(2))
+		// Increment existing counter
+		retrieval, err = bucket.Incr(key, 1, 1, 0)
+		assert.NoError(t, err, "Error incrementing value for existing counter")
+		assert.Equal(t, uint64(2), retrieval)
+	})
 
 }
 
@@ -347,40 +445,37 @@ func TestGetAndTouchRaw(t *testing.T) {
 
 	key := t.Name()
 	val := []byte("bar")
+	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
+		defer func() {
+			err := bucket.Delete(key)
+			if err != nil {
+				t.Errorf("Error removing key from bucket")
+			}
 
-	defer func() {
-		err := bucket.Delete(key)
-		if err != nil {
-			t.Errorf("Error removing key from bucket")
+		}()
+
+		_, _, err := bucket.GetRaw(key)
+		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
+
+		err = bucket.SetRaw(key, 0, val)
+		assert.NoError(t, err, "Error calling SetRaw()")
+
+		rv, _, err := bucket.GetRaw(key)
+		assert.True(t, err == nil)
+		if string(rv) != string(val) {
+			t.Errorf("%v != %v", string(rv), string(val))
 		}
 
-	}()
+		rv, _, err = bucket.GetAndTouchRaw(key, 1)
+		assert.NoError(t, err, "Error calling GetAndTouchRaw")
 
-	_, _, err := bucket.GetRaw(key)
-	if err == nil {
-		t.Errorf("Key should not exist yet, expected error but got nil")
-	}
+		assert.True(t, err == nil)
+		assert.Equal(t, len(val), len(rv))
 
-	if err := bucket.SetRaw(key, 0, val); err != nil {
-		t.Errorf("Error calling SetRaw(): %v", err)
-	}
-
-	rv, _, err := bucket.GetRaw(key)
-	goassert.True(t, err == nil)
-	if string(rv) != string(val) {
-		t.Errorf("%v != %v", string(rv), string(val))
-	}
-
-	rv, _, err = bucket.GetAndTouchRaw(key, 1)
-	if err != nil {
-		log.Printf("Error calling GetAndTouchRaw: %v", err)
-	}
-
-	goassert.True(t, err == nil)
-	goassert.Equals(t, len(rv), len(val))
+		_, err = bucket.Touch(key, 1)
+		assert.NoError(t, err, "Error calling Touch")
+	})
 
 }
 

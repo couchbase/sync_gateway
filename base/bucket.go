@@ -41,6 +41,7 @@ const (
 const (
 	GoCB                   CouchbaseDriver = iota // Use GoCB driver with default Transcoder
 	GoCBCustomSGTranscoder                        // Use GoCB driver with a custom Transcoder
+	GoCBv2                                        // Use gocb v2 driver
 )
 
 const (
@@ -318,7 +319,8 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 			} else {
 				bucket, err = GetCouchbaseBucketGoCB(spec)
 			}
-
+		case GoCBv2:
+			bucket, err = GetCouchbaseCollection(spec)
 		default:
 			panic(fmt.Sprintf("Unexpected CouchbaseDriver: %v", spec.CouchbaseDriver))
 		}
