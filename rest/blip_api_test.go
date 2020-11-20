@@ -2990,6 +2990,9 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	assertStatus(t, req, http.StatusCreated)
 	doc2Bytes := req.BodyBytes()
 
+	_, err = rt.WaitForChanges(2, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+
 	err = json.Unmarshal(doc1Bytes, &doc1Body)
 	assert.NoError(t, err)
 	err = json.Unmarshal(doc2Bytes, &doc2Body)
