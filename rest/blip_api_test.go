@@ -1031,7 +1031,7 @@ func TestBlipSendAndGetRev(t *testing.T) {
 		connectingPassword: "1234",
 	}
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Send non-deleted rev
@@ -1078,7 +1078,7 @@ func TestBlipSendAndGetLargeNumberRev(t *testing.T) {
 		connectingPassword: "1234",
 	}
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Send non-deleted rev
@@ -1134,7 +1134,7 @@ func TestBlipSetCheckpoint(t *testing.T) {
 		connectingPassword: "1234",
 	}
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Create new checkpoint
@@ -1198,7 +1198,7 @@ func TestReloadUser(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	}, rt)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Set up a ChangeWaiter for this test, to block until the user change notification happens
@@ -1254,7 +1254,7 @@ func TestAccessGrantViaSyncFunction(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	}, rt)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
@@ -1295,7 +1295,7 @@ func TestAccessGrantViaAdminApi(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Add a doc in the PBS channel
@@ -1333,7 +1333,7 @@ func TestCheckpoint(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	client := "testClient"
@@ -1402,7 +1402,7 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	attachmentBody := "attach"
@@ -1448,7 +1448,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // All channels
 	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	attachmentBody := "attach"
@@ -1532,7 +1532,7 @@ func TestPutInvalidAttachment(t *testing.T) {
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // All channels
 	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	for _, test := range tests {
@@ -1585,7 +1585,7 @@ func TestPutInvalidRevSyncFnReject(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	}, rt)
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Add a doc that will be rejected by sync function, since user
@@ -1623,7 +1623,7 @@ func TestPutInvalidRevMalformedBody(t *testing.T) {
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"*"}, // All channels
 	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	// Add a doc that will be rejected by sync function, since user
@@ -1661,7 +1661,7 @@ func TestPutRevNoConflictsMode(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})
@@ -1691,7 +1691,7 @@ func TestPutRevConflictsMode(t *testing.T) {
 		connectingUsername: "user1",
 		connectingPassword: "1234",
 	})
-	assert.NoError(t, err, "Unexpected error creating BlipTester")
+	require.NoError(t, err, "Unexpected error creating BlipTester")
 	defer bt.Close()
 
 	sent, _, resp, err := bt.SendRev("foo", "1-abc", []byte(`{"key": "val"}`), blip.Properties{})

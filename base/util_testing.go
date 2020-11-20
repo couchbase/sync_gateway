@@ -42,12 +42,16 @@ func (tb TestBucket) Close() {
 	tb.closeFn()
 }
 
+// NoCloseClone returns a leaky bucket with a no-op close function for the given bucket.
+func NoCloseClone(b Bucket) *LeakyBucket {
+	return NewLeakyBucket(b, LeakyBucketConfig{IgnoreClose: true})
+}
+
 // NoCloseClone returns a new test bucket referencing the same underlying bucket and bucketspec, but
 // with an IgnoreClose leaky bucket, and a no-op close function.  Used when multiple references to the same bucket are needed.
 func (tb *TestBucket) NoCloseClone() *TestBucket {
-	noCloseBucket := NewLeakyBucket(tb.Bucket, LeakyBucketConfig{IgnoreClose: true})
 	return &TestBucket{
-		Bucket:     noCloseBucket,
+		Bucket:     NoCloseClone(tb.Bucket),
 		BucketSpec: tb.BucketSpec,
 		closeFn:    func() {},
 	}

@@ -890,6 +890,7 @@ func TestValidateServerContext(t *testing.T) {
 	tb1User, tb1Password, _ := tb1.BucketSpec.Auth.GetCredentials()
 	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()
 
+	xattrs := base.TestUseXattrs()
 	config = &ServerConfig{
 		Databases: map[string]*DbConfig{
 			"db1": {
@@ -899,6 +900,7 @@ func TestValidateServerContext(t *testing.T) {
 					Username: tb1User,
 					Password: tb1Password,
 				},
+				EnableXattrs:     &xattrs,
 				UseViews:         base.TestsDisableGSI(),
 				NumIndexReplicas: base.UintPtr(0),
 			},
@@ -909,6 +911,7 @@ func TestValidateServerContext(t *testing.T) {
 					Username: tb1User,
 					Password: tb1Password,
 				},
+				EnableXattrs:     &xattrs,
 				UseViews:         base.TestsDisableGSI(),
 				NumIndexReplicas: base.UintPtr(0),
 			},
@@ -919,6 +922,7 @@ func TestValidateServerContext(t *testing.T) {
 					Username: tb2User,
 					Password: tb2Password,
 				},
+				EnableXattrs:     &xattrs,
 				UseViews:         base.TestsDisableGSI(),
 				NumIndexReplicas: base.UintPtr(0),
 			},
@@ -981,6 +985,7 @@ func TestConfigToDatabaseOptions(t *testing.T) {
 			"username": "` + bucketUser + `",
 			"password": "` + bucketPassword + `",
 			"bucket": "` + spec.BucketName + `",
+			"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
 			"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
 			"num_index_replicas": 0,
 			"cache":{
