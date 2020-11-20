@@ -353,7 +353,7 @@ func FileExists(filename string) bool {
 	if err != nil {
 		return false
 	}
-	return info != nil && !info.IsDir()
+	return !info.IsDir()
 }
 
 func DirExists(filename string) bool {
@@ -361,7 +361,7 @@ func DirExists(filename string) bool {
 	if err != nil {
 		return false
 	}
-	return info != nil && info.IsDir()
+	return info.IsDir()
 }
 
 // WaitForStat will retry for up to 20 seconds until the result of getStatFunc is equal to the expected value.
