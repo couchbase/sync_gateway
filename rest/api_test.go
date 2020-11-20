@@ -4433,11 +4433,16 @@ func TestNumAccessErrors(t *testing.T) {
 	response := rt.Send(requestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user"))
 	assertStatus(t, response, 403)
 
-	responseBody := make(map[string]interface{})
+	base.WaitForStat(func() int64 { return rt.GetDatabase().DbStats.SecurityStats.NumAccessErrors.Value() }, 1)
+
 	response = rt.SendAdminRequest("GET", "/_expvar", "")
 	assertStatus(t, response, http.StatusOK)
 
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
+	responseBodyBytes := response.Body.Bytes()
+	t.Logf("expvar response: %s", responseBodyBytes)
+
+	responseBody := make(map[string]interface{})
+	require.NoError(t, base.JSONUnmarshal(responseBodyBytes, &responseBody))
 	sgExpvars, ok := responseBody["syncgateway"].(map[string]interface{})
 	require.True(t, ok)
 	dbExpvars, ok := sgExpvars["per_db"].(map[string]interface{})
