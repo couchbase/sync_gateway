@@ -4434,26 +4434,6 @@ func TestNumAccessErrors(t *testing.T) {
 	assertStatus(t, response, 403)
 
 	base.WaitForStat(func() int64 { return rt.GetDatabase().DbStats.SecurityStats.NumAccessErrors.Value() }, 1)
-
-	response = rt.SendAdminRequest("GET", "/_expvar", "")
-	assertStatus(t, response, http.StatusOK)
-
-	responseBodyBytes := response.Body.Bytes()
-	t.Logf("expvar response: %s", responseBodyBytes)
-
-	responseBody := make(map[string]interface{})
-	require.NoError(t, base.JSONUnmarshal(responseBodyBytes, &responseBody))
-	sgExpvars, ok := responseBody["syncgateway"].(map[string]interface{})
-	require.True(t, ok)
-	dbExpvars, ok := sgExpvars["per_db"].(map[string]interface{})
-	require.True(t, ok)
-	dbStats, ok := dbExpvars["db"].(map[string]interface{})
-	require.True(t, ok)
-	securityStats, ok := dbStats["security"].(map[string]interface{})
-	require.True(t, ok)
-	numAccessErrors, ok := securityStats["num_access_errors"]
-	require.True(t, ok)
-	assert.Equal(t, float64(1), numAccessErrors)
 }
 
 func TestNonImportedDuplicateID(t *testing.T) {
