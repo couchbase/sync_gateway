@@ -38,6 +38,7 @@
   <!-- gocb v2 -->
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="171294ec44d0d95af8a261d4231205c567aa63a2" />
   <project name="gocbcore" path="godeps/src/github.com/couchbase/gocbcore" remote="couchbase" revision="81e2e2022863fa5c42b7351cae8993b6b04c3b64"/>
+  <project name="golang-snappy"  path="godeps/src/github.com/golang/snappy" remote="couchbasedeps" revision="723cc1e459b8eea2dea4583200fd60757d40097a" />
 
   <!-- gocb v1 -->
   <project name="gocb" path="godeps/src/gopkg.in/couchbase/gocb.v1" remote="couchbase" revision="a6e1124eba0e2910e0e4a20cce8dc84e272efea8" />
