@@ -677,15 +677,20 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 		return nil
 	} else {
-		// If the DB is already transitioning to: offline or is offline silently return
 		dbState := atomic.LoadUint32(&dc.State)
+
+		// If the DB is already transitioning to: offline or is offline silently return
 		if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 			return nil
 		}
 
-		msg := "Unable to take Database offline, database must be in Online state but was %s"
-		base.Infof(base.KeyCRUD, msg, RunStateString[dbState])
-		return base.HTTPErrorf(http.StatusServiceUnavailable, msg, RunStateString[dbState])
+		msg := "Unable to take Database offline, database must be in Online state but was " + RunStateString[dbState]
+		if dbState == DBOnline {
+			msg = "Unable to take Database offline, another operation was already in progress. Please try again."
+		}
+
+		base.Infof(base.KeyCRUD, msg)
+		return base.HTTPErrorf(http.StatusServiceUnavailable, msg)
 	}
 }
 
