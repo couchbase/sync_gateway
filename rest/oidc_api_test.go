@@ -917,7 +917,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			if tc.providers["foo"].IncludeAccessToken {
 				assert.Equal(t, authResponseExpected.AccessToken, authResponseActual.AccessToken, "access_token mismatch")
 				assert.Equal(t, authResponseExpected.TokenType, authResponseActual.TokenType, "token_type mismatch")
-				assert.True(t, (authResponseExpected.Expires-authResponseActual.Expires) <= 5, "expiry is not within 5 seconds of the expected value")
+				assert.True(t, (authResponseExpected.Expires-authResponseActual.Expires) <= 30, "expiry is not within 30 seconds of the expected value: expected %d got: %d", authResponseExpected.Expires, authResponseActual.Expires)
 			}
 
 			// Query db endpoint with Bearer token
@@ -958,7 +958,7 @@ func TestOpenIDConnectAuthCodeFlow(t *testing.T) {
 			if tc.providers["foo"].IncludeAccessToken {
 				assert.Equal(t, refreshResponseExpected.AccessToken, refreshResponseActual.AccessToken, "access_token mismatch")
 				assert.Equal(t, refreshResponseExpected.TokenType, refreshResponseActual.TokenType, "token_type mismatch")
-				assert.True(t, (refreshResponseExpected.Expires-refreshResponseActual.Expires) <= 5, "expiry is not within 5 seconds of the expected value")
+				assert.True(t, (refreshResponseExpected.Expires-refreshResponseActual.Expires) <= 30, "expiry is not within 30 seconds of the expected value: expected %d got: %d", refreshResponseExpected.Expires, refreshResponseActual.Expires)
 			}
 			// Query db endpoint with Bearer token
 			request, err = http.NewRequest(http.MethodGet, dbEndpoint, nil)
