@@ -961,6 +961,7 @@ func TestParseCommandLineWithIllegalOptionBucket(t *testing.T) {
 }
 
 func TestPutInvalidConfig(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -970,7 +971,7 @@ func TestPutInvalidConfig(t *testing.T) {
 
 // Validate basic mapping from config to database options
 func TestConfigToDatabaseOptions(t *testing.T) {
-
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
@@ -1248,8 +1249,7 @@ func deleteTempFile(t *testing.T, file *os.File) {
 }
 
 func TestSetupAndValidate(t *testing.T) {
-	t.Skip("Skipping this test temporarily; until CBG-1195 is fixed")
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	t.Run("Run setupAndValidate with valid config", func(t *testing.T) {
 		configFile := createTempFile(t, []byte(`{
           "databases": {

@@ -984,7 +984,9 @@ func (sc *ServerContext) startStatsLogger() {
 
 	sc.statsContext.statsLoggingTicker = time.NewTicker(interval)
 	sc.statsContext.terminator = make(chan struct{})
+	sc.statsContext.statsLoggerWg.Add(1)
 	go func() {
+		defer sc.statsContext.statsLoggerWg.Done()
 		for {
 			select {
 			case <-sc.statsContext.statsLoggingTicker.C:
@@ -1006,6 +1008,7 @@ func (sc *ServerContext) startStatsLogger() {
 func (sc *ServerContext) stopStatsLogger() {
 	if sc.statsContext.terminator != nil {
 		close(sc.statsContext.terminator)
+		sc.statsContext.statsLoggerWg.Wait()
 	}
 }
 

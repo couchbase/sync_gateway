@@ -103,6 +103,7 @@ type DatabaseContext struct {
 	DbStats            *base.DbStats            // stats that correspond to this database context
 	CompactState       uint32                   // Status of database compaction
 	terminator         chan bool                // Signal termination of background goroutines
+	terminated         []chan struct{}          // List of terminated background goroutines
 	activeChannels     *channels.ActiveChannels // Tracks active replications by channel
 	CfgSG              cbgt.Cfg                 // Sync Gateway cluster shared config
 	//CfgSG                        *base.CfgSG              // Sync Gateway cluster shared config
@@ -484,7 +485,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
 				db := Database{DatabaseContext: dbContext}
-				err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
+				done, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
 					_, err := db.Compact()
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
@@ -494,6 +495,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				if err != nil {
 					return nil, err
 				}
+				db.terminated = append(db.terminated, done)
 			} else {
 				base.Warnf("Automatic compaction can only be enabled on nodes running an Import process")
 			}
@@ -584,6 +586,8 @@ func (context *DatabaseContext) Close() {
 
 	context.OIDCProviders.Stop()
 	close(context.terminator)
+	// Wait for database background tasks to finish.
+	waitForBGTCompletion(context.terminated...)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()

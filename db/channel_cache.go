@@ -83,11 +83,11 @@ type channelCacheImpl struct {
 }
 
 func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
-	return newChannelCache(context.Name, terminator, options, context, context.activeChannels, context.DbStats.Cache())
+	return newChannelCache(context.Name, terminator, context.terminated, options, context, context.activeChannels, context.DbStats.Cache())
 }
 
-func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOptions,
-	queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels,
+func newChannelCache(dbName string, terminator chan bool, terminated []chan struct{},
+	options ChannelCacheOptions, queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels,
 	cacheStats *base.CacheStats) (*channelCacheImpl, error) {
 
 	channelCache := &channelCacheImpl{
@@ -101,10 +101,12 @@ func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOp
 		activeChannels:       activeChannels,
 		cacheStats:           cacheStats,
 	}
-	err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
+	done, err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge,
+		terminator)
 	if err != nil {
 		return nil, err
 	}
+	terminated = append(terminated, done)
 	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache, nil

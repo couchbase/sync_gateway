@@ -59,6 +59,7 @@ type changeCache struct {
 	lock               sync.RWMutex            // Coordinates access to struct fields
 	options            CacheOptions            // Cache config
 	terminator         chan bool               // Signal termination of background goroutines
+	terminated         []chan struct{}         // Notifies on each background task termination.
 	initTime           time.Time               // Cache init time - used for latency calculations
 	channelCache       ChannelCache            // Underlying channel cache
 	lastAddPendingTime int64                   // The most recent time _addPendingLogs was run, as epoch time
@@ -180,14 +181,18 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	err = NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+	done, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries,
+		c.options.CachePendingSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
-	err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	c.terminated = append(c.terminated, done)
+
+	done, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
+	c.terminated = append(c.terminated, done)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
@@ -208,12 +213,29 @@ func (c *changeCache) Start(initialSequence uint64) error {
 	return nil
 }
 
+// waitForBGTCompletion waits for all the background tasks to finish.
+func waitForBGTCompletion(ch ...chan struct{}) {
+	for _, v := range ch {
+	waitForCompletion:
+		for {
+			select {
+			case <-v:
+				break waitForCompletion
+			default:
+			}
+		}
+	}
+}
+
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 
 	// Signal to background goroutines that the changeCache has been stopped, so they can exit
 	// their loop
 	close(c.terminator)
+
+	// Wait for changeCache background tasks to finish.
+	waitForBGTCompletion(c.terminated...)
 
 	c.lock.Lock()
 	c.stopped = true
