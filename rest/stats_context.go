@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -18,6 +19,7 @@ type statsContext struct {
 	statsLoggingTicker *time.Ticker
 	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
 	cpuStatsSnapshot   *cpuStatsSnapshot
+	statsLoggerWg      sync.WaitGroup // Waits for the stats logger goroutine to finish.
 }
 
 // The peak number of goroutines observed during lifetime of program
