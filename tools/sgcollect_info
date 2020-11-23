@@ -170,7 +170,7 @@ def extract_element_from_config(element, config):
         # lookup key after converting element name to lower case
         return lower_case_keys_dict[element.lower()]
     except (ValueError, KeyError):
-        # If we can't deserialise the json or find the key then return nothing
+        # If we can't deserialize the json or find the key then return nothing
         return
 
 
@@ -186,7 +186,7 @@ def extract_element_from_default_logging_config(element, config):
                         return guessed_log_path
             return
         except (ValueError, KeyError):
-            # If we can't deserialise the json or find the key then return nothing
+            # If we can't deserialize the json or find the key then return nothing
             return
 
 
@@ -200,7 +200,7 @@ def extract_element_from_logging_config(element, config):
                     return guessed_log_path
             return
         except (ValueError, KeyError):
-            # If we can't deserialise the json or find the key then return nothing
+            # If we can't deserialize the json or find the key then return nothing
             return
 
 
