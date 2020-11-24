@@ -338,16 +338,6 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 	}
 }
 
-// TODO: Pending removal of WriteUpdate from sg-bucket
-func (c *Collection) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
-	updateCallback := func(current []byte) (updated []byte, expiry *uint32, err error) {
-		updated, _, expiry, err = callback(current)
-		return updated, expiry, err
-	}
-
-	return c.Update(k, exp, updateCallback)
-}
-
 func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
 	if amt == 0 {
 		return 0, errors.New("amt passed to Incr must be non-zero")

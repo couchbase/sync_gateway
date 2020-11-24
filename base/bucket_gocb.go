@@ -1511,70 +1511,6 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 	for {
 		var value []byte
 		var err error
-		var callbackExpiry *uint32
-
-		// Load the existing value.
-		cas, err := bucket.Get(k, &value)
-		if err != nil {
-			if !bucket.IsKeyNotFoundError(err) {
-				// Unexpected error, abort
-				return cas, err
-			}
-			cas = 0 // Key not found error
-		}
-
-		// Invoke callback to get updated value
-		value, callbackExpiry, err = callback(value)
-		if err != nil {
-			return cas, err
-		}
-		if callbackExpiry != nil {
-			exp = *callbackExpiry
-		}
-
-		var casGoCB gocb.Cas
-		if cas == 0 {
-			// If the Get fails, the cas will be 0 and so call Insert().
-			// If we get an error on the insert, due to a race, this will
-			// go back through the cas loop
-
-			casGoCB, err = bucket.Bucket.Insert(k, value, exp)
-		} else {
-			if value == nil {
-				// In order to match the go-couchbase bucket behavior, if the
-				// callback returns nil, we delete the doc
-				casGoCB, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
-			} else {
-				// Otherwise, attempt to do a replace.  won't succeed if
-				// updated underneath us
-				casGoCB, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
-			}
-		}
-
-		if pkgerrors.Cause(err) == gocb.ErrKeyExists {
-			// retry on cas failure
-		} else if isRecoverableWriteError(err) {
-			// retry on recoverable failure, up to MaxNumRetries
-			if retryAttempts >= bucket.Spec.MaxNumRetries {
-				return 0, pkgerrors.Wrapf(err, "Update retry loop aborted after %d attempts", retryAttempts)
-			}
-		} else {
-			// err will be nil if successful
-			return uint64(casGoCB), err
-		}
-
-		retryAttempts++
-	}
-
-}
-
-func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sgbucket.WriteUpdateFunc) (casOut uint64, err error) {
-
-	retryAttempts := 0
-	for {
-		var value []byte
-		var err error
-		var writeOpts sgbucket.WriteOptions
 		var cas uint64
 
 		// Load the existing value.
@@ -1589,7 +1525,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 
 		// Invoke callback to get updated value
 		var callbackExpiry *uint32
-		value, writeOpts, callbackExpiry, err = callback(value)
+		value, callbackExpiry, err = callback(value)
 		if err != nil {
 			return cas, err
 		}
@@ -1602,13 +1538,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 			// If the Get fails, the cas will be 0 and so call Insert().
 			// If we get an error on the insert, due to a race, this will
 			// go back through the cas loop
-
-			if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
-				casGoCB, err = bucket.Bucket.InsertDura(k, value, exp, numNodesReplicateTo, numNodesPersistTo)
-			} else {
-				casGoCB, err = bucket.Bucket.Insert(k, value, exp)
-			}
-
+			casGoCB, err = bucket.Bucket.Insert(k, value, exp)
 		} else {
 			if value == nil {
 
@@ -1620,17 +1550,12 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 				//
 				// If this functionality is re-added, this method should probably take a flag called
 				// allowDeletes (bool) so that callers must intentionally allow deletes
-				return 0, fmt.Errorf("The ability to remove items via WriteUpdate has been removed.  See code comments in bucket_gocb.go")
+				return 0, fmt.Errorf("The ability to remove items via Update has been removed.  See code comments in bucket_gocb.go")
 
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
-				if writeOpts&(sgbucket.Persist|sgbucket.Indexable) != 0 {
-					casGoCB, err = bucket.Bucket.ReplaceDura(k, value, gocb.Cas(cas), exp, numNodesReplicateTo, numNodesPersistTo)
-				} else {
-					casGoCB, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
-				}
-
+				casGoCB, err = bucket.Bucket.Replace(k, value, gocb.Cas(cas), exp)
 			}
 		}
 
@@ -1647,7 +1572,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdate(k string, exp uint32, callback sg
 		}
 
 		retryAttempts++
-		Debugf(KeyCRUD, "CAS WriteUpdate RetryLoop retrying for doc %q, attempt %d", UD(k), retryAttempts)
+		Debugf(KeyCRUD, "CAS Update RetryLoop retrying for doc %q, attempt %d", UD(k), retryAttempts)
 	}
 }
 
