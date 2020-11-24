@@ -214,14 +214,15 @@ func (c *changeCache) Start(initialSequence uint64) error {
 }
 
 // waitForBGTCompletion waits for all the background tasks to finish.
-func waitForBGTCompletion(ch ...chan struct{}) {
-	for _, v := range ch {
+func waitForBGTCompletion(waitTime time.Duration, terminated ...chan struct{}) {
+	for _, t := range terminated {
 	waitForCompletion:
 		for {
 			select {
-			case <-v:
+			case <-t:
 				break waitForCompletion
-			default:
+			case <-time.After(waitTime):
+				return
 			}
 		}
 	}
@@ -235,7 +236,7 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	waitForBGTCompletion(c.terminated...)
+	waitForBGTCompletion(BGTCompletionMaxWait, c.terminated...)
 
 	c.lock.Lock()
 	c.stopped = true
