@@ -113,15 +113,15 @@ func (b *LoggingBucket) GetXattr(k string, xattr string, xv interface{}) (cas ui
 	return b.bucket.GetXattr(k, xattr, xv)
 }
 
-func (b *LoggingBucket) GetDDocs(value interface{}) error {
+func (b *LoggingBucket) GetDDocs() (map[string]sgbucket.DesignDoc, error) {
 	defer b.log(time.Now())
-	return b.bucket.GetDDocs(value)
+	return b.bucket.GetDDocs()
 }
-func (b *LoggingBucket) GetDDoc(docname string, value interface{}) error {
+func (b *LoggingBucket) GetDDoc(docname string) (sgbucket.DesignDoc, error) {
 	defer b.log(time.Now(), docname)
-	return b.bucket.GetDDoc(docname, value)
+	return b.bucket.GetDDoc(docname)
 }
-func (b *LoggingBucket) PutDDoc(docname string, value interface{}) error {
+func (b *LoggingBucket) PutDDoc(docname string, value *sgbucket.DesignDoc) error {
 	defer b.log(time.Now(), docname)
 	return b.bucket.PutDDoc(docname, value)
 }
@@ -132,11 +132,6 @@ func (b *LoggingBucket) DeleteDDoc(docname string) error {
 func (b *LoggingBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 	defer b.log(time.Now(), ddoc, name)
 	return b.bucket.View(ddoc, name, params)
-}
-
-func (b *LoggingBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
-	defer b.log(time.Now(), ddoc, name)
-	return b.bucket.ViewCustom(ddoc, name, params, vres)
 }
 
 func (b *LoggingBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
@@ -199,4 +194,8 @@ func (b *LoggingBucket) GetUnderlyingBucket() Bucket {
 func (b *LoggingBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	defer b.log(time.Now())
 	return b.bucket.IsSupported(feature)
+}
+
+func (b *LoggingBucket) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
+	return b.bucket.IsError(err, errorType)
 }

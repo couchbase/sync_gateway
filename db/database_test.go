@@ -41,16 +41,28 @@ func setupTestDB(t testing.TB) *Database {
 	return setupTestDBWithCacheOptions(t, DefaultCacheOptions())
 }
 
+func setupTestDBForBucket(t testing.TB, bucket base.Bucket) *Database {
+	cacheOptions := DefaultCacheOptions()
+	dbcOptions := DatabaseContextOptions{
+		CacheOptions: &cacheOptions,
+	}
+	return setupTestDBForBucketWithOptions(t, bucket, dbcOptions)
+}
+
 // Sets up test db with the specified database context options.  Note that environment variables can
 // override somedbcOptions properties.
 func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) *Database {
 
-	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	tBucket := base.GetTestBucket(t)
+	return setupTestDBForBucketWithOptions(t, tBucket, dbcOptions)
+}
+
+func setupTestDBForBucketWithOptions(t testing.TB, tBucket base.Bucket, dbcOptions DatabaseContextOptions) *Database {
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
 	context, err := NewDatabaseContext("db", tBucket, false, dbcOptions)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	require.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	require.NoError(t, err, "Couldn't create database 'db'")
 	return db
 }
 
@@ -1412,13 +1424,8 @@ func TestUpdateDesignDoc(t *testing.T) {
 
 	// Validate retrieval of the design doc by admin
 	var result sgbucket.DesignDoc
-	err = db.GetDesignDoc("official", &result)
+	result, err = db.GetDesignDoc("official")
 	log.Printf("design doc: %+v", result)
-
-	// Try to retrieve it as an empty interface as well, and make sure no errors
-	var resultEmptyInterface interface{}
-	err = db.GetDesignDoc("official", &resultEmptyInterface)
-	assert.NoError(t, err, "retrieve design doc (empty interface) as admin")
 
 	assert.NoError(t, err, "retrieve design doc as admin")
 	retrievedView, ok := result.Views["TestView"]
@@ -1671,55 +1678,6 @@ func TestConcurrentImport(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-}
-
-func TestViewCustom(t *testing.T) {
-
-	if testing.Short() {
-		t.Skip("skipping test in short mode")
-	}
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test may not pass under non-walrus, if views aren't enabled, as ViewAllDocs won't exist")
-	}
-
-	db := setupTestDB(t)
-	defer db.Close()
-
-	// add some docs
-	docId := base.GenerateRandomID()
-	_, _, err := db.Put(docId, Body{"val": "one"})
-	if err != nil {
-		log.Printf("error putting doc: %v", err)
-	}
-	assert.True(t, err == nil)
-
-	// query all docs using ViewCustom query.
-	opts := Body{"stale": false, "reduce": false}
-	viewResult := sgbucket.ViewResult{}
-
-	// Add retry to avoid race condition where queryAllDocs doesn't return the doc we just added
-	// TODO: stale=false guarantees no race when using a couchbase bucket, but this test
-	//	may be hitting something related to https://github.com/couchbaselabs/walrus/issues/18.  Can remove sleep when
-	// that gets fixed
-	foundDoc := false
-	for i := 0; i < 10; i++ {
-		errViewCustom := db.Bucket.ViewCustom(DesignDocSyncHousekeeping(), ViewAllDocs, opts, &viewResult)
-		assert.True(t, errViewCustom == nil)
-
-		// assert that the doc added earlier is in the results
-		for _, viewRow := range viewResult.Rows {
-			if viewRow.ID == docId {
-				foundDoc = true
-			}
-		}
-		if foundDoc {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	assert.True(t, foundDoc)
-
 }
 
 //////// BENCHMARKS

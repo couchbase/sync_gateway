@@ -27,8 +27,10 @@ func (h *handler) handleGetDesignDoc() error {
 		}
 		result = db.Body{"filters": db.Body{"bychannel": filter}}
 	} else {
-		if err := h.db.GetDesignDoc(ddocID, &result); err != nil {
-			return err
+		var getErr error
+		result, getErr = h.db.GetDesignDoc(ddocID)
+		if getErr != nil {
+			return getErr
 		}
 	}
 	h.writeJSON(result)

@@ -152,17 +152,17 @@ func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error
 	return val, err
 }
 
-func (b *LeakyBucket) GetDDocs(value interface{}) error {
-	return b.bucket.GetDDocs(value)
+func (b *LeakyBucket) GetDDocs() (map[string]sgbucket.DesignDoc, error) {
+	return b.bucket.GetDDocs()
 }
-func (b *LeakyBucket) GetDDoc(docname string, value interface{}) error {
+func (b *LeakyBucket) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error) {
 	if b.config.DDocGetErrorCount > 0 {
 		b.config.DDocGetErrorCount--
-		return errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DDocGetErrorCount))
+		return ddoc, errors.New(fmt.Sprintf("Artificial leaky bucket error %d fails remaining", b.config.DDocGetErrorCount))
 	}
-	return b.bucket.GetDDoc(docname, value)
+	return b.bucket.GetDDoc(docname)
 }
-func (b *LeakyBucket) PutDDoc(docname string, value interface{}) error {
+func (b *LeakyBucket) PutDDoc(docname string, value *sgbucket.DesignDoc) error {
 	return b.bucket.PutDDoc(docname, value)
 }
 func (b *LeakyBucket) DeleteDDoc(docname string) error {
@@ -174,16 +174,6 @@ func (b *LeakyBucket) DeleteDDoc(docname string) error {
 }
 func (b *LeakyBucket) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
 	return b.bucket.View(ddoc, name, params)
-}
-func (b *LeakyBucket) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
-	err := b.bucket.ViewCustom(ddoc, name, params, vres)
-
-	if b.config.FirstTimeViewCustomPartialError {
-		b.config.FirstTimeViewCustomPartialError = !b.config.FirstTimeViewCustomPartialError
-		err = ErrPartialViewErrors
-	}
-
-	return err
 }
 
 func (b *LeakyBucket) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
@@ -510,6 +500,10 @@ func (b *LeakyBucket) DropIndex(indexName string) error {
 	}
 
 	return gocbBucket.DropIndex(indexName)
+}
+
+func (b *LeakyBucket) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
+	return b.bucket.IsError(err, errorType)
 }
 
 // An implementation of a sgbucket tap feed that wraps

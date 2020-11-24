@@ -55,36 +55,8 @@ func TestTranscoder(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-type dataStore struct {
-	name   string
-	driver CouchbaseDriver
-}
-
-func testAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataStore)) {
-	dataStores := make([]dataStore, 0)
-	dataStores = append(dataStores, dataStore{
-		name:   "gocb.v1",
-		driver: GoCB,
-	})
-
-	if TestUseCouchbaseServer() {
-		dataStores = append(dataStores, dataStore{
-			name:   "gocb.v2",
-			driver: GoCBv2,
-		})
-	}
-
-	for _, dataStore := range dataStores {
-		t.Run(dataStore.name, func(t *testing.T) {
-			bucket := GetTestBucketForDriver(t, dataStore.driver)
-			defer bucket.Close()
-			testCallback(t, bucket)
-		})
-	}
-}
-
 func TestSetGet(t *testing.T) {
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
 		key := t.Name()
 		val := make(map[string]interface{}, 0)
@@ -111,7 +83,7 @@ func TestSetGet(t *testing.T) {
 }
 
 func TestSetGetRaw(t *testing.T) {
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
 		key := t.Name()
 		val := []byte("bar")
@@ -138,7 +110,7 @@ func TestSetGetRaw(t *testing.T) {
 }
 
 func TestAddRaw(t *testing.T) {
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 		val := []byte("bar")
 
@@ -208,7 +180,7 @@ func TestAddRawTimeoutRetry(t *testing.T) {
 }
 
 func TestWriteCasBasic(t *testing.T) {
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 		val := []byte("bar2")
 
@@ -244,7 +216,7 @@ func TestWriteCasBasic(t *testing.T) {
 }
 
 func TestWriteCasAdvanced(t *testing.T) {
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 
 		_, _, err := bucket.GetRaw(key)
@@ -277,7 +249,7 @@ func TestWriteCasAdvanced(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 		valInitial := []byte(`{"state":"initial"}`)
 		valUpdated := []byte(`{"state":"updated"}`)
@@ -332,7 +304,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestIncrCounter(t *testing.T) {
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 
 		defer func() {
@@ -368,7 +340,7 @@ func TestGetAndTouchRaw(t *testing.T) {
 
 	key := t.Name()
 	val := []byte("bar")
-	testAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
 		defer func() {
 			err := bucket.Delete(key)
