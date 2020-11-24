@@ -107,7 +107,7 @@ type DatabaseContext struct {
 	DbStats            *base.DbStats            // stats that correspond to this database context
 	CompactState       uint32                   // Status of database compaction
 	terminator         chan bool                // Signal termination of background goroutines
-	terminated         []chan struct{}          // List of terminated background goroutines
+	terminated         []TaskStat               // List of terminated background goroutines
 	activeChannels     *channels.ActiveChannels // Tracks active replications by channel
 	CfgSG              cbgt.Cfg                 // Sync Gateway cluster shared config
 	//CfgSG                        *base.CfgSG              // Sync Gateway cluster shared config
@@ -499,7 +499,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				if err != nil {
 					return nil, err
 				}
-				db.terminated = append(db.terminated, done)
+				db.terminated = append(db.terminated, TaskStat{"Compact", db.Name, done})
 			} else {
 				base.Warnf("Automatic compaction can only be enabled on nodes running an Import process")
 			}
@@ -591,7 +591,7 @@ func (context *DatabaseContext) Close() {
 	context.OIDCProviders.Stop()
 	close(context.terminator)
 	// Wait for database background tasks to finish.
-	waitForBGTCompletion(BGTCompletionMaxWait, context.terminated...)
+	waitForBGTCompletion(BGTCompletionMaxWait, context.terminated)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()

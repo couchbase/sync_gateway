@@ -49,3 +49,12 @@ type BackgroundTaskError struct {
 func (err *BackgroundTaskError) Error() string {
 	return fmt.Sprintf("Can't create background task: %q with interval %v", err.TaskName, err.Interval)
 }
+
+// TaskStat is a container that holds the background task, associated
+// database name and a channel to receive a signal about the background
+// task termination.
+type TaskStat struct {
+	name   string        // Background Task name
+	dbName string        // Associated database name
+	done   chan struct{} // Channel to to receive termination signal
+}

@@ -77,7 +77,7 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	terminator := make(chan bool)
-	var terminated []chan struct{}
+	var terminated []TaskStat
 	defer close(terminator)
 
 	// Define cache with max channels 20, hwm will be 16, low water mark will be 12
@@ -114,7 +114,7 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	terminator := make(chan bool)
-	var terminated []chan struct{}
+	var terminated []TaskStat
 	defer close(terminator)
 
 	// Define cache with max channels 20, watermarks 50/90
@@ -172,7 +172,7 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	terminator := make(chan bool)
-	var terminated []chan struct{}
+	var terminated []TaskStat
 	defer close(terminator)
 
 	// Define cache with max channels 20, watermarks 50/90
@@ -268,7 +268,7 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
 
 	terminator := make(chan bool)
-	var terminated []chan struct{}
+	var terminated []TaskStat
 	defer close(terminator)
 
 	// Define cache with max channels 20, watermarks 50/90
@@ -341,7 +341,7 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
 
 	terminator := make(chan bool)
-	var terminated []chan struct{}
+	var terminated []TaskStat
 	defer close(terminator)
 
 	// Define cache with max channels 100, watermarks 90/70
@@ -409,7 +409,7 @@ func TestChannelCacheBypass(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
 
 	terminator := make(chan bool)
-	var terminated []chan struct{}
+	var terminated []TaskStat
 	defer close(terminator)
 
 	// Define cache with max channels 20, watermarks 50/100
@@ -508,7 +508,7 @@ func (qh *testQueryHandler) seedEntries(seededEntries LogEntries) {
 func TestChannelCacheBackgroundTaskWithIllegalTimeInterval(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
 	terminator := make(chan bool)
-	var terminated []chan struct{}
+	var terminated []TaskStat
 	defer close(terminator)
 
 	options := DefaultCacheOptions().ChannelCacheOptions

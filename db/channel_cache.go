@@ -86,7 +86,7 @@ func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions
 	return newChannelCache(context.Name, terminator, context.terminated, options, context, context.activeChannels, context.DbStats.Cache())
 }
 
-func newChannelCache(dbName string, terminator chan bool, terminated []chan struct{},
+func newChannelCache(dbName string, terminator chan bool, terminated []TaskStat,
 	options ChannelCacheOptions, queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels,
 	cacheStats *base.CacheStats) (*channelCacheImpl, error) {
 
@@ -106,7 +106,7 @@ func newChannelCache(dbName string, terminator chan bool, terminated []chan stru
 	if err != nil {
 		return nil, err
 	}
-	terminated = append(terminated, done)
+	terminated = append(terminated, TaskStat{"CleanAgedItems", dbName, done})
 	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache, nil
