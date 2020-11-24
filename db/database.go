@@ -74,6 +74,10 @@ const (
 	CompactIntervalMaxDays = float32(60)   // 60 Days in days
 )
 
+// BGTCompletionMaxWait is the maximum amount of time to wait for
+// completion of all background tasks before the server is stopped.
+const BGTCompletionMaxWait = 30 * time.Second
+
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -587,7 +591,7 @@ func (context *DatabaseContext) Close() {
 	context.OIDCProviders.Stop()
 	close(context.terminator)
 	// Wait for database background tasks to finish.
-	waitForBGTCompletion(context.terminated...)
+	waitForBGTCompletion(BGTCompletionMaxWait, context.terminated...)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
