@@ -1277,6 +1277,86 @@ func TestResync(t *testing.T) {
 
 }
 
+func TestResyncErrorScenarios(t *testing.T) {
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			SyncFn: syncFn,
+		},
+	)
+	rt.Close()
+
+	for i := 0; i < 1000; i++ {
+		rt.createDoc(t, fmt.Sprintf("doc%d", i))
+	}
+
+	response := rt.SendAdminRequest("GET", "/db/_resync", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	assertStatus(t, response, http.StatusServiceUnavailable)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	assertStatus(t, response, http.StatusBadRequest)
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	assertStatus(t, response, http.StatusBadRequest)
+
+	err := rt.WaitForCondition(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		return `{"status": "not running"}` == string(response.BodyBytes())
+	})
+	assert.NoError(t, err)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	assertStatus(t, response, http.StatusBadRequest)
+}
+
+func TestResyncStop(t *testing.T) {
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			SyncFn: syncFn,
+		},
+	)
+	rt.Close()
+
+	for i := 0; i < 1000; i++ {
+		rt.createDoc(t, fmt.Sprintf("doc%d", i))
+	}
+
+	err := rt.WaitForCondition(func() bool {
+		return int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value()) == 1000
+	})
+	assert.NoError(t, err)
+
+	response := rt.SendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+	assertStatus(t, response, http.StatusOK)
+
+	syncFnCount := int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.True(t, syncFnCount < 2000)
+}
+
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
 
