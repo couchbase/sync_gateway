@@ -202,7 +202,7 @@ class Task(object):
 
     def will_run(self):
         """Determine if this task will run on this platform."""
-        return sys.platform in self.platforms
+        return sys.platform.startswith(tuple(self.platforms))
 
 
 class PythonTask(object):
@@ -420,7 +420,7 @@ class SolarisTask(Task):
 
 
 class LinuxTask(Task):
-    platforms = ['linux2']
+    platforms = ['linux']
 
 
 class WindowsTask(Task):
