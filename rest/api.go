@@ -178,7 +178,6 @@ func (h *handler) handlePostResync() error {
 	}
 
 	if action == "start" {
-
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 			go func() {
 				defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
@@ -206,8 +205,7 @@ func (h *handler) handlePostResync() error {
 		}
 
 		h.writeRawJSON([]byte(`{"status": "stopping"}`))
-		h.db.ResyncTerminator <- struct{}{}
-
+		h.db.ResyncTerminator = true
 	}
 
 	return nil

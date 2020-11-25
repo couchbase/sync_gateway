@@ -1331,6 +1331,9 @@ func TestResyncStop(t *testing.T) {
 	rt := NewRestTester(t,
 		&RestTesterConfig{
 			SyncFn: syncFn,
+			DatabaseConfig: &DbConfig{
+				ResyncQueryLimit: base.IntPtr(100),
+			},
 		},
 	)
 	rt.Close()
