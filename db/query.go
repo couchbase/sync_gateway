@@ -412,19 +412,6 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 }
 
 func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
-
-	// if context.Options.UseViews {
-	// 	opts := Body{"stale": false, "reduce": false}
-	// 	opts[QueryParamStartKey] = []interface{}{true}
-	// 	return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewImport, opts)
-	// }
-	//
-	// // N1QL Query
-	// var importQueryStatement string
-	// importQueryStatement = replaceSyncTokensQuery(QueryResync.statement, context.UseXattrs())
-	// importQueryStatement = replaceIndexTokensQuery(importQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
-	//
-	// return context.N1QLQueryWithStats(QueryTypeResync, importQueryStatement, nil, gocb.RequestPlus, QueryResync.adhoc)
 	return context.QueryChannels("*", startSeq, endSeq, limit, "seq", false)
 }
 
