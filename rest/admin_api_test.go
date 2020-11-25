@@ -1194,7 +1194,7 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 	// TODO: Should be fine but may need to add a wait method to slow down resync op
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
-	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 400)
+	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1310,7 +1310,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	assertStatus(t, response, http.StatusOK)
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	assertStatus(t, response, http.StatusBadRequest)
+	assertStatus(t, response, http.StatusServiceUnavailable)
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")

@@ -178,14 +178,6 @@ func (h *handler) handlePostResync() error {
 	}
 
 	if action == "start" {
-		dbState := atomic.LoadUint32(&h.db.State)
-		if dbState == db.DBResyncing {
-			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync already in progress")
-		}
-
-		if dbState != db.DBOffline {
-			return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling _resync")
-		}
 
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 			go func() {
@@ -196,6 +188,15 @@ func (h *handler) handlePostResync() error {
 				}
 			}()
 			h.writeRawJSON([]byte(`{"status": "running"}`))
+		} else {
+			dbState := atomic.LoadUint32(&h.db.State)
+			if dbState == db.DBResyncing {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync already in progress")
+			}
+
+			if dbState != db.DBOffline {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling _resync")
+			}
 		}
 
 	} else if action == "stop" {
