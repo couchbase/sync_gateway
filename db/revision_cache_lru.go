@@ -78,6 +78,7 @@ type revCacheValue struct {
 	err         error           // Error from loaderFunc if it failed
 	lock        sync.RWMutex    // Synchronizes access to this struct
 	body        Body            // unmarshalled body (if available)
+	removed     bool            // True if revision is a removal
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -258,7 +259,7 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore, include
 		}
 	} else {
 		cacheHit = false
-		value.bodyBytes, value.body, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(backingStore, value.key, includeBody)
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(backingStore, value.key, includeBody)
 	}
 
 	if includeDelta {
@@ -303,6 +304,7 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Expiry:      value.expiry,
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
+		Removed:     value.removed,
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()
@@ -351,7 +353,7 @@ func (value *revCacheValue) loadForDoc(backingStore RevisionCacheBackingStore, d
 		}
 	} else {
 		cacheHit = false
-		value.bodyBytes, value.body, value.history, value.channels, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(backingStore, doc, value.key.RevID)
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(backingStore, doc, value.key.RevID)
 	}
 	if includeBody {
 		docRevBody = value.body
