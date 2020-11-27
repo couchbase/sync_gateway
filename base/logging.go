@@ -320,7 +320,7 @@ var (
 	consoleLogger                                                              *ConsoleLogger
 	consoleLogBuffer                                                           strings.Builder
 	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
-	traceBuffer, debugBuffer, infoBuffer, warnBuffer, errorBuffer, statsBuffer strings.Builder
+	// traceBuffer, debugBuffer, infoBuffer, warnBuffer, errorBuffer, statsBuffer strings.Builder
 
 	// envColorCapable evaluated only once to prevent unnecessary
 	// overhead of checking os.Getenv on each colorEnabled() invocation
