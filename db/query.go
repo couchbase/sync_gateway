@@ -334,7 +334,7 @@ func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
 }
 
 // Query to compute the set of documents assigned to the specified channel within the sequence range
-func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint64, endSeq uint64, limit int, ordering string, activeOnly bool) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (sgbucket.QueryResultIterator, error) {
 
 	if context.Options.UseViews {
 		opts := changesViewOptions(channelName, startSeq, endSeq, limit)
@@ -345,8 +345,7 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	// Standard channel index/query doesn't support the star channel.  For star channel queries, QueryStarChannel
 	// (which is backed by IndexAllDocs) is used.  The QueryStarChannel result schema is a subset of the
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
-	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit, ordering,
-		activeOnly)
+	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit, activeOnly)
 
 	return context.N1QLQueryWithStats(QueryChannels.name, channelQueryStatement, params, gocb.RequestPlus, QueryChannels.adhoc)
 }
@@ -375,8 +374,7 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 
 // Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
 // query is covering.
-func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int,
-	ordering string, activeOnly bool) (statement string, params map[string]interface{}) {
+func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (statement string, params map[string]interface{}) {
 
 	channelQuery := QueryChannels
 	index := sgIndexes[IndexChannels]
@@ -388,9 +386,6 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	channelQueryStatement := replaceActiveOnlyFilter(channelQuery.statement, activeOnly)
 	channelQueryStatement = replaceSyncTokensQuery(channelQueryStatement, context.UseXattrs())
 	channelQueryStatement = replaceIndexTokensQuery(channelQueryStatement, index, context.UseXattrs())
-	if ordering != "" {
-		channelQueryStatement = fmt.Sprintf("%s ORDER BY %s", channelQueryStatement, ordering)
-	}
 	if limit > 0 {
 		channelQueryStatement = fmt.Sprintf("%s LIMIT %d", channelQueryStatement, limit)
 	}
@@ -412,7 +407,7 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 }
 
 func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
-	return context.QueryChannels("*", startSeq, endSeq, limit, "seq", false)
+	return context.QueryChannels("*", startSeq, endSeq, limit, false)
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index

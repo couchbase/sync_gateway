@@ -101,7 +101,7 @@ type DatabaseContext struct {
 	Options            DatabaseContextOptions   // Database Context Options
 	AccessLock         sync.RWMutex             // Allows DB offline to block until synchronous calls have completed
 	State              uint32                   // The runtime state of the DB from a service perspective
-	ResyncTerminator   bool                     // Allows resync operation to be cancelled while in progress
+	ResyncTerminator   base.AtomicBool          // Allows resync operation to be cancelled while in progress
 	ExitChanges        chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders      auth.OIDCProviderMap     // OIDC clients
 	PurgeInterval      time.Duration            // Metadata purge interval
@@ -1095,6 +1095,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		return 0, err
 	}
 
+outerLoop:
 	for {
 		results, err := db.QueryResync(queryLimit, startSeq, endSeq)
 		if err != nil {
@@ -1106,9 +1107,8 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 
 		var importRow QueryIdRow
 		for results.Next(&importRow) {
-			if db.ResyncTerminator {
-				db.ResyncTerminator = false
-				break
+			if db.ResyncTerminator.CompareAndSwap(true, false) {
+				break outerLoop
 			}
 			docid := importRow.Id
 			key := realDocID(docid)
@@ -1232,7 +1232,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			return 0, closeErr
 		}
 
-		if queryRowCount < queryLimit || highSeq == endSeq {
+		if queryRowCount < queryLimit || highSeq >= endSeq {
 			break
 		}
 		startSeq = highSeq + 1

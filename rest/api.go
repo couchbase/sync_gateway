@@ -205,7 +205,7 @@ func (h *handler) handlePostResync() error {
 		}
 
 		h.writeRawJSON([]byte(`{"status": "stopping"}`))
-		h.db.ResyncTerminator = true
+		h.db.ResyncTerminator.Set(true)
 	}
 
 	return nil
