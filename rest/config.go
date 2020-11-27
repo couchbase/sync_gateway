@@ -1332,6 +1332,9 @@ func RegisterSignalHandler() {
 // performs the config validation and database setup.
 func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	var unknownFieldsErr error
+
+	base.InitializeLoggers()
+
 	config, err = ParseCommandLine(args, flag.ExitOnError)
 	if pkgerrors.Cause(err) == base.ErrUnknownField {
 		unknownFieldsErr = err
@@ -1353,6 +1356,8 @@ func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	// This is the earliest opportunity to log a startup indicator
 	// that will be persisted in all log files.
 	base.LogSyncGatewayVersion()
+
+	base.FlushLoggers()
 
 	// If we got an unknownFields error when reading the config
 	// log and exit now we've tried setting up the logging.

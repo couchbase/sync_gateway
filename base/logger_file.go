@@ -89,6 +89,18 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFile
 	return logger, nil
 }
 
+func NewMemoryLogger(level LogLevel, buffer *strings.Builder) *FileLogger {
+	logger := &FileLogger{
+		Enabled: true,
+		level:   level,
+		name:    level.String(),
+		output:  buffer,
+		logger:  log.New(buffer, "", 0),
+	}
+
+	return logger
+}
+
 // Rotate will rotate the active log file.
 func (l *FileLogger) Rotate() error {
 	if l == nil {

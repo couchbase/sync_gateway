@@ -318,7 +318,9 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 
 var (
 	consoleLogger                                                              *ConsoleLogger
+	consoleLogBuffer                                                           strings.Builder
 	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
+	traceBuffer, debugBuffer, infoBuffer, warnBuffer, errorBuffer, statsBuffer strings.Builder
 
 	// envColorCapable evaluated only once to prevent unnecessary
 	// overhead of checking os.Getenv on each colorEnabled() invocation
@@ -352,9 +354,9 @@ func init() {
 
 	// initialCollationBufferSize is set to zero for disabling log collation before
 	// initializing a logging config, and when running under a test scenario.
-	initialCollationBufferSize := 0
+	// initialCollationBufferSize := 0
 
-	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
+	// consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
 	initExternalLoggers()
 }
 

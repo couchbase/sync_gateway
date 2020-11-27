@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -85,6 +86,7 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 		return warnings, err
 	}
 
+	// fmt.Println(infoBuffer.String())
 	infoLogger, err = NewFileLogger(c.Info, LevelInfo, LevelInfo.String(), c.LogFilePath, infoMinAge)
 	if err != nil {
 		return warnings, err
@@ -110,6 +112,29 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 	initExternalLoggers()
 
 	return warnings, nil
+}
+
+func InitializeLoggers() {
+	consoleLogger, _, _ = NewConsoleLogger(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{
+		Enabled: BoolPtr(true),
+		Output:  &consoleLogBuffer,
+	}})
+	infoLogger = NewMemoryLogger(LevelInfo, &infoBuffer)
+}
+
+func FlushLoggers() {
+	errorLogger.logf(processBufferString(errorBuffer))
+	warnLogger.logf(processBufferString(warnBuffer))
+	infoLogger.logf(processBufferString(infoBuffer))
+	debugLogger.logf(processBufferString(debugBuffer))
+	traceLogger.logf(processBufferString(traceBuffer))
+	statsLogger.logf(processBufferString(statsBuffer))
+	consoleLogger.logf(processBufferString(consoleLogBuffer))
+}
+
+// Required to trim new line off of the end to avoid blank line
+func processBufferString(buffer strings.Builder) string {
+	return strings.TrimSuffix(buffer.String(), "\n")
 }
 
 // validateLogFilePath ensures the given path is created and is a directory.
