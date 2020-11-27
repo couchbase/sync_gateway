@@ -1020,7 +1020,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		Sync string
 	}
 
-	_, err = context.Bucket.Update(base.SyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	_, err = context.Bucket.Update(base.SyncDataKey, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// The first time opening a new db, currentValue will be nil. Don't treat this as a change.
 		if currentValue != nil {
 			parseErr := base.JSONUnmarshal(currentValue, &syncData)
@@ -1031,9 +1031,9 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 		if changed || currentValue == nil {
 			syncData.Sync = syncFun
 			bytes, err := base.JSONMarshal(syncData)
-			return bytes, nil, err
+			return bytes, nil, false, err
 		} else {
-			return nil, nil, base.ErrUpdateCancel // value unchanged, no need to save
+			return nil, nil, false, base.ErrUpdateCancel // value unchanged, no need to save
 		}
 	})
 
@@ -1154,18 +1154,18 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			}
 			_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, nil, writeUpdateFunc)
 		} else {
-			_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+			_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 				// Be careful: this block can be invoked multiple times if there are races!
 				if currentValue == nil {
-					return nil, nil, base.ErrUpdateCancel // someone deleted it?!
+					return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
 				}
 				doc, err := unmarshalDocument(docid, currentValue)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, false, err
 				}
 				updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
 				if err != nil {
-					return nil, nil, err
+					return nil, nil, false, err
 				}
 				if shouldUpdate {
 					base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
@@ -1173,9 +1173,9 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 						updatedDoc.UpdateExpiry(*updatedExpiry)
 					}
 					updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
-					return updatedBytes, updatedExpiry, marshalErr
+					return updatedBytes, updatedExpiry, false, marshalErr
 				} else {
-					return nil, nil, base.ErrUpdateCancel
+					return nil, nil, false, base.ErrUpdateCancel
 				}
 			})
 		}

@@ -122,10 +122,10 @@ func (b *LeakyBucket) WriteCas(k string, flags int, exp uint32, cas uint64, v in
 }
 func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc) (casOut uint64, err error) {
 	if b.config.UpdateCallback != nil {
-		wrapperCallback := func(current []byte) (updated []byte, expiry *uint32, err error) {
-			updated, expiry, err = callback(current)
+		wrapperCallback := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			updated, expiry, isDelete, err = callback(current)
 			b.config.UpdateCallback(k)
-			return updated, expiry, err
+			return updated, expiry, isDelete, err
 		}
 		return b.bucket.Update(k, exp, wrapperCallback)
 	}

@@ -99,23 +99,23 @@ func (auth *Authenticator) GetRole(name string) (Role, error) {
 func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) (Principal, error) {
 	var princ Principal
 
-	cas, err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, error) {
+	cas, err := auth.bucket.Update(docID, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 		// Be careful: this block can be invoked multiple times if there are races!
 		if currentValue == nil {
 			princ = nil
-			return nil, nil, base.ErrUpdateCancel
+			return nil, nil, false, base.ErrUpdateCancel
 		}
 
 		princ = factory()
 		if err := base.JSONUnmarshal(currentValue, princ); err != nil {
-			return nil, nil, pkgerrors.WithStack(base.RedactErrorf("base.JSONUnmarshal() error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
+			return nil, nil, false, pkgerrors.WithStack(base.RedactErrorf("base.JSONUnmarshal() error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
 		}
 		changed := false
 		if princ.Channels() == nil {
 			// Channel list has been invalidated by a doc update -- rebuild it:
 			if err := auth.rebuildChannels(princ); err != nil {
 				base.Warnf("RebuildChannels returned error: %v", err)
-				return nil, nil, err
+				return nil, nil, false, err
 			}
 			changed = true
 		}
@@ -123,7 +123,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			if user.RoleNames() == nil {
 				if err := auth.rebuildRoles(user); err != nil {
 					base.Warnf("RebuildRoles returned error: %v", err)
-					return nil, nil, err
+					return nil, nil, false, err
 				}
 				changed = true
 			}
@@ -135,10 +135,10 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			if marshalErr != nil {
 				marshalErr = pkgerrors.WithStack(base.RedactErrorf("base.JSONUnmarshal() error for doc ID: %s in getPrincipal(). Error: %v", base.UD(docID), marshalErr))
 			}
-			return updatedBytes, nil, marshalErr
+			return updatedBytes, nil, false, marshalErr
 		} else {
 			// Principal is valid, so stop the update
-			return nil, nil, base.ErrUpdateCancel
+			return nil, nil, false, base.ErrUpdateCancel
 		}
 	})
 
