@@ -193,7 +193,6 @@ func emptyAllDocsIndex(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *ba
 
 	// A stripped down version of db.Compact() that works on AllDocs instead of tombstones
 	for {
-		purgedDocs := make([]string, 0)
 		results, err := database.QueryChannels("*", 0, 0, 0, false)
 		if err != nil {
 			return 0, err
@@ -206,7 +205,6 @@ func emptyAllDocsIndex(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *ba
 			// First, attempt to purge.
 			purgeErr := database.Purge(tombstonesRow.Id)
 			if purgeErr == nil {
-				purgedDocs = append(purgedDocs, tombstonesRow.Id)
 			} else if base.IsKeyNotFoundError(b, purgeErr) {
 				// If key no longer exists, need to add and remove to trigger removal from view
 				_, addErr := b.Add(tombstonesRow.Id, 0, purgeBody)
@@ -215,20 +213,16 @@ func emptyAllDocsIndex(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *ba
 					continue
 				}
 
-				// At this point, the doc is not in a usable state for mobile
-				// so mark it to be removed from cache, even if the subsequent delete fails
-				purgedDocs = append(purgedDocs, tombstonesRow.Id)
-
 				if delErr := b.Delete(tombstonesRow.Id); delErr != nil {
 					tbp.Logf(ctx, "Error compacting key %s (delete) - will not be compacted.  %v", tombstonesRow.Id, delErr)
 				}
+				purgedDocCount++
 			} else {
 				tbp.Logf(ctx, "Error compacting key %s (purge) - will not be compacted.  %v", tombstonesRow.Id, purgeErr)
 			}
 		}
 
-		purgedDocCount += len(purgedDocs)
-		tbp.Logf(ctx, "Compacted %v docs in batch", len(purgedDocs))
+		tbp.Logf(ctx, "Compacted %v docs in batch", purgedDocCount)
 
 		if resultCount < QueryTombstoneBatch {
 			break
