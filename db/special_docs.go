@@ -64,18 +64,18 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 	if doctype == DocTypeLocal {
 		expiry = base.SecondsToCbsExpiry(int(db.DatabaseContext.Options.LocalDocExpirySecs))
 	}
-	_, err := db.Bucket.Update(key, expiry, func(value []byte) ([]byte, *uint32, error) {
+	_, err := db.Bucket.Update(key, expiry, func(value []byte) ([]byte, *uint32, bool, error) {
 		if len(value) == 0 {
 			if matchRev != "" || body == nil {
-				return nil, nil, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
+				return nil, nil, false, base.HTTPErrorf(http.StatusNotFound, "No previous revision to replace")
 			}
 		} else {
 			prevBody := Body{}
 			if err := prevBody.Unmarshal(value); err != nil {
-				return nil, nil, err
+				return nil, nil, false, err
 			}
 			if matchRev != prevBody[BodyRev] {
-				return nil, nil, base.HTTPErrorf(http.StatusConflict, "Document update conflict")
+				return nil, nil, false, base.HTTPErrorf(http.StatusConflict, "Document update conflict")
 			}
 		}
 
@@ -88,10 +88,10 @@ func (db *Database) putSpecial(doctype string, docid string, matchRev string, bo
 			revid = fmt.Sprintf("0-%d", generation+1)
 			body[BodyRev] = revid
 			bodyBytes, marshalErr := base.JSONMarshal(body)
-			return bodyBytes, nil, marshalErr
+			return bodyBytes, nil, false, marshalErr
 		} else {
 			// Deleting:
-			return nil, nil, nil
+			return nil, nil, true, nil
 		}
 	})
 

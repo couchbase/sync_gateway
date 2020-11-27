@@ -1525,7 +1525,8 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 
 		// Invoke callback to get updated value
 		var callbackExpiry *uint32
-		value, callbackExpiry, err = callback(value)
+		var isDelete bool
+		value, callbackExpiry, isDelete, err = callback(value)
 		if err != nil {
 			return cas, err
 		}
@@ -1535,23 +1536,17 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 
 		var casGoCB gocb.Cas
 		if cas == 0 {
+			// Ignore delete if document doesn't exist
+			if isDelete {
+				return 0, nil
+			}
 			// If the Get fails, the cas will be 0 and so call Insert().
 			// If we get an error on the insert, due to a race, this will
 			// go back through the cas loop
 			casGoCB, err = bucket.Bucket.Insert(k, value, exp)
 		} else {
-			if value == nil {
-
-				// This breaks the parity with the go-couchbase bucket behavior because it feels
-				// dangerous to remove data based on the callback return value.  If there are any
-				// errors in the callbacks to cause it to return a nil return value, and no error,
-				// it could erroneously remove data.  At present, nothing in the Sync Gateway codebase
-				// is known to use this functionality anyway.
-				//
-				// If this functionality is re-added, this method should probably take a flag called
-				// allowDeletes (bool) so that callers must intentionally allow deletes
-				return 0, fmt.Errorf("The ability to remove items via Update has been removed.  See code comments in bucket_gocb.go")
-
+			if value == nil && isDelete {
+				casGoCB, err = bucket.Bucket.Remove(k, gocb.Cas(cas))
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us

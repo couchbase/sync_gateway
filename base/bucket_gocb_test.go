@@ -288,11 +288,11 @@ func TestUpdate(t *testing.T) {
 			t.Errorf("Key should not exist yet, expected error but got nil")
 		}
 
-		updateFunc := func(current []byte) (updated []byte, expiry *uint32, err error) {
+		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
 			if len(current) == 0 {
-				return valInitial, nil, nil
+				return valInitial, nil, false, nil
 			} else {
-				return valUpdated, nil, nil
+				return valUpdated, nil, false, nil
 			}
 		}
 		var cas uint64

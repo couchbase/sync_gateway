@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"expvar"
-	"fmt"
 	"io/ioutil"
 	"time"
 
@@ -288,7 +287,8 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 		}
 
 		// Invoke callback to get updated value
-		value, callbackExpiry, err = callback(value)
+		var isDelete bool
+		value, callbackExpiry, isDelete, err = callback(value)
 		if err != nil {
 			return cas, err
 		}
@@ -312,8 +312,14 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 				casGoCB = result.Cas()
 			}
 		} else {
-			if value == nil {
-				return 0, fmt.Errorf("The ability to remove items via Update has been removed.  Callback should not return nil error and value")
+			if value == nil && isDelete {
+				removeOptions := &gocb.RemoveOptions{
+					Cas: gocb.Cas(cas),
+				}
+				result, err = c.Collection.Remove(k, removeOptions)
+				if err == nil {
+					casGoCB = result.Cas()
+				}
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
 				// updated underneath us
