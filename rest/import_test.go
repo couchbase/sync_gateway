@@ -1231,11 +1231,16 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	nonMobileKey := "TestUpgradeNoXattr"
 	nonMobileBody := make(map[string]interface{})
 	nonMobileBody["channels"] = "ABC"
+
+	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Val
+
 	_, err = bucket.Add(nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
-	// We don't have a way to wait for a upgrade that doesn't happen.  To manually test this handling, re-enable the sleep below
-	// time.Sleep(2 * time.Second)
+	// We don't have a way to wait for a upgrade that doesn't happen, but we can look for the warning that happens.
+	base.WaitForStat(func() int64 {
+		return base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Val - warnCountBefore
+	}, 1)
 }
 
 // Write a doc via SDK with an expiry value.  Verify that expiry is preserved when doc is imported via DCP feed
