@@ -193,13 +193,14 @@ func TestAllDatabaseNames(t *testing.T) {
 	serverContext := NewServerContext(serverConfig)
 	defer serverContext.Close()
 
-	dbConfig := &DbConfig{BucketConfig: bucketConfigFromTestBucket(tb1), Name: "imdb1", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0)}
+	xattrs := base.TestUseXattrs()
+	dbConfig := &DbConfig{BucketConfig: bucketConfigFromTestBucket(tb1), Name: "imdb1", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
 	_, err := serverContext.AddDatabaseFromConfig(dbConfig)
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 
-	dbConfig = &DbConfig{BucketConfig: bucketConfigFromTestBucket(tb2), Name: "imdb2", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0)}
+	dbConfig = &DbConfig{BucketConfig: bucketConfigFromTestBucket(tb2), Name: "imdb2", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
 	_, err = serverContext.AddDatabaseFromConfig(dbConfig)
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 2)

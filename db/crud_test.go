@@ -9,6 +9,7 @@ import (
 	"github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type treeDoc struct {
@@ -446,7 +447,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Create rev 1-a")
 	body := Body{"key1": "value1", "version": "1a", "large": prop_1000_bytes}
 	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
-	assert.NoError(t, err, "add 1-a")
+	require.NoError(t, err, "add 1-a")
 
 	// Create rev 2-a
 	// 1-a
@@ -455,14 +456,14 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Create rev 2-a")
 	rev2a_body := Body{"key1": "value2", "version": "2a", "large": prop_1000_bytes}
 	doc, newRev, err := db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	assert.NoError(t, err, "add 2-a")
 	rev2a_body[BodyId] = doc.ID
 	rev2a_body[BodyRev] = newRev
-	assert.NoError(t, err, "add 2-a")
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 2-a...")
 	gotbody, err := db.Get1xBody("doc1")
-	assert.NoError(t, err, "Couldn't get document")
+	require.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev2a_body)
 
 	// Create rev 3-a
@@ -475,14 +476,14 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Create rev 3-a")
 	rev3a_body := Body{"key1": "value2", "version": "3a", "large": prop_1000_bytes}
 	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev3a_body, []string{"3-a", "2-a", "1-a"}, false)
+	require.NoError(t, err, "add 3-a")
 	rev3a_body[BodyId] = doc.ID
 	rev3a_body[BodyRev] = newRev
-	assert.NoError(t, err, "add 3-a")
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 3-a...")
 	gotbody, err = db.Get1xBody("doc1")
-	assert.NoError(t, err, "Couldn't get document")
+	require.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev3a_body)
 
 	// Create rev 2-b
@@ -494,12 +495,12 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Create rev 2-b")
 	rev2b_body := Body{"key1": "value2", "version": "2b", "large": prop_1000_bytes}
 	_, _, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
-	assert.NoError(t, err, "add 2-b")
+	require.NoError(t, err, "add 2-b")
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc, verify still rev 3-a")
 	gotbody, err = db.Get1xBody("doc1")
-	assert.NoError(t, err, "Couldn't get document")
+	require.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev3a_body)
 
 	// Create rev that hops a few generations
@@ -517,14 +518,14 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Create rev 6-a")
 	rev6a_body := Body{"key1": "value2", "version": "6a", "large": prop_1000_bytes}
 	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev6a_body, []string{"6-a", "5-a", "4-a", "3-a"}, false)
+	require.NoError(t, err, "add 6-a")
 	rev6a_body[BodyId] = doc.ID
 	rev6a_body[BodyRev] = newRev
-	assert.NoError(t, err, "add 6-a")
 
 	// Retrieve the document:
 	log.Printf("Retrieve doc 6-a...")
 	gotbody, err = db.Get1xBody("doc1")
-	assert.NoError(t, err, "Couldn't get document")
+	require.NoError(t, err, "Couldn't get document")
 	goassert.DeepEquals(t, gotbody, rev6a_body)
 
 	// Add child to non-winning revision w/ inline body
@@ -542,7 +543,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Create rev 3-b")
 	rev3b_body := Body{"key1": "value2", "version": "3b", "large": prop_1000_bytes}
 	_, _, err = db.PutExistingRevWithBody("doc1", rev3b_body, []string{"3-b", "2-b", "1-a"}, false)
-	assert.NoError(t, err, "add 3-b")
+	require.NoError(t, err, "add 3-b")
 
 	// Same again and again
 	// Add child to non-winning revision w/ inline body
@@ -561,12 +562,12 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Create rev 3-c")
 	rev3c_body := Body{"key1": "value2", "version": "3c", "large": prop_1000_bytes}
 	_, _, err = db.PutExistingRevWithBody("doc1", rev3c_body, []string{"3-c", "2-b", "1-a"}, false)
-	assert.NoError(t, err, "add 3-c")
+	require.NoError(t, err, "add 3-c")
 
 	log.Printf("Create rev 3-d")
 	rev3d_body := Body{"key1": "value2", "version": "3d", "large": prop_1000_bytes}
 	_, _, err = db.PutExistingRevWithBody("doc1", rev3d_body, []string{"3-d", "2-b", "1-a"}, false)
-	assert.NoError(t, err, "add 3-d")
+	require.NoError(t, err, "add 3-d")
 
 	// Create new winning revision on 'b' branch.  Triggers movement of 6-a to inline storage.  Force cas retry, check document contents
 	//    1-a
@@ -585,7 +586,7 @@ func TestOldRevisionStorage(t *testing.T) {
 	log.Printf("Create rev 7-b")
 	rev7b_body := Body{"key1": "value2", "version": "7b", "large": prop_1000_bytes}
 	_, _, err = db.PutExistingRevWithBody("doc1", rev7b_body, []string{"7-b", "6-b", "5-b", "4-b", "3-b"}, false)
-	assert.NoError(t, err, "add 7-b")
+	require.NoError(t, err, "add 7-b")
 
 }
 

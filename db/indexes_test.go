@@ -31,10 +31,9 @@ func TestInitializeIndexes(t *testing.T) {
 	initErr := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
 	assert.NoError(t, initErr, "Error initializing all indexes")
 
-	if !base.TestsDisableGSI() {
-		err := goCbBucket.CreatePrimaryIndex(base.PrimaryIndexName, nil)
-		assert.NoError(t, err)
-	}
+	// Recreate the primary index required by the test bucket pooling framework
+	err := goCbBucket.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
@@ -122,7 +121,6 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 }
 
 func TestPostUpgradeIndexesVersionChange(t *testing.T) {
-
 	if base.TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
@@ -165,7 +163,6 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
 	assert.NoError(t, validateErr, "Error validating indexes online")
-
 }
 
 func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {

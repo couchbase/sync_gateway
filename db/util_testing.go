@@ -172,11 +172,72 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 	return isChanged
 }
 
+// emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty. Works similarly to db.Compact, except on a different index.
+func emptyAllDocsIndex(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.TestBucketPool) (numCompacted int, err error) {
+	purgedDocCount := 0
+	purgeBody := Body{"_purged": true}
+
+	dbCtx, err := NewDatabaseContext("db", base.NoCloseClone(b), false, DatabaseContextOptions{
+		UseViews:    base.TestsDisableGSI(),
+		EnableXattr: base.TestUseXattrs(),
+	})
+	if err != nil {
+		return 0, err
+	}
+	defer dbCtx.Close()
+
+	database, err := GetDatabase(dbCtx, nil)
+	if err != nil {
+		return 0, err
+	}
+
+	// A stripped down version of db.Compact() that works on AllDocs instead of tombstones
+	for {
+		results, err := database.QueryChannels("*", 0, 0, 0, false)
+		if err != nil {
+			return 0, err
+		}
+		var tombstonesRow QueryIdRow
+		var resultCount int
+		for results.Next(&tombstonesRow) {
+			resultCount++
+			tbp.Logf(ctx, "compactTestBucket deleting %q", tombstonesRow.Id)
+			// First, attempt to purge.
+			purgeErr := database.Purge(tombstonesRow.Id)
+			if purgeErr == nil {
+			} else if base.IsKeyNotFoundError(b, purgeErr) {
+				// If key no longer exists, need to add and remove to trigger removal from view
+				_, addErr := b.Add(tombstonesRow.Id, 0, purgeBody)
+				if addErr != nil {
+					tbp.Logf(ctx, "Error compacting key %s (add) - will not be compacted.  %v", tombstonesRow.Id, addErr)
+					continue
+				}
+
+				if delErr := b.Delete(tombstonesRow.Id); delErr != nil {
+					tbp.Logf(ctx, "Error compacting key %s (delete) - will not be compacted.  %v", tombstonesRow.Id, delErr)
+				}
+				purgedDocCount++
+			} else {
+				tbp.Logf(ctx, "Error compacting key %s (purge) - will not be compacted.  %v", tombstonesRow.Id, purgeErr)
+			}
+		}
+
+		tbp.Logf(ctx, "Compacted %v docs in batch", purgedDocCount)
+
+		if resultCount < QueryTombstoneBatch {
+			break
+		}
+	}
+
+	tbp.Logf(ctx, "Finished compaction ... Total docs purged: %d", purgedDocCount)
+	return purgedDocCount, nil
+}
+
 // ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
 var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.TestBucketPool) error {
 
 	if base.TestsDisableGSI() {
-		tbp.Logf(ctx, "flushing bucket and readying views only")
+		tbp.Logf(ctx, "flushing bucket and readying views")
 		if err := base.FlushBucketEmptierFunc(ctx, b, tbp); err != nil {
 			return err
 		}
@@ -188,6 +249,11 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 	if err := base.N1QLBucketEmptierFunc(ctx, b, tbp); err != nil {
 		return err
 	}
+
+	if _, err := emptyAllDocsIndex(ctx, b, tbp); err != nil {
+		return err
+	}
+
 	if err := viewBucketReadier(ctx, b, tbp); err != nil {
 		return err
 	}

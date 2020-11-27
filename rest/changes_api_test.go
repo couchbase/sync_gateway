@@ -1972,6 +1972,8 @@ func TestChangesIncludeDocs(t *testing.T) {
 	response = rt.SendAdminRequest("DELETE", "/db/doc_resolved_conflict?rev=2-conflicting_rev", "")
 	assertStatus(t, response, 200)
 
+	require.NoError(t, rt.WaitForPendingChanges())
+
 	expectedResults := make([]string, 10)
 	expectedResults[0] = `{"seq":1,"id":"_user/user1","changes":[]}`
 	expectedResults[1] = `{"seq":2,"id":"doc_active","doc":{"_id":"doc_active","_rev":"1-d59fda97ac4849f6a754fbcf4b522980","channels":["alpha"],"type":"active"},"changes":[{"rev":"1-d59fda97ac4849f6a754fbcf4b522980"}]}`

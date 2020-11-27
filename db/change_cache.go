@@ -448,6 +448,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 			base.Infof(base.KeyCache, "Found mobile xattr on doc %q without %s property - caching, assuming upgrade in progress.", base.UD(docID), base.SyncPropertyName)
 			syncData = &migratedDoc.SyncData
 		} else {
+			// TODO: Change warning to stat and info logging for this scenario
 			base.Warnf("changeCache: Doc %q does not have valid sync data.", base.UD(docID))
 			return
 		}

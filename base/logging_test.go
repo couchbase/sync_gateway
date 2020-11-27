@@ -39,6 +39,10 @@ func assertLogContains(t *testing.T, s string, f func()) {
 }
 
 func TestRedactedLogFuncs(t *testing.T) {
+	if GlobalTestLoggingSet.IsTrue() {
+		t.Skip("Test does not work when a global test log level is set")
+	}
+
 	username := UD("alice")
 
 	defer func() { RedactUserData = false }()

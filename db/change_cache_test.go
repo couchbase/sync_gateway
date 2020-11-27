@@ -899,33 +899,34 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 	options.Continuous = true
 	options.Wait = true
 	feed, err := db.MultiChangesFeed(base.SetOf("*"), options)
-	goassert.True(t, err == nil)
+	require.NoError(t, err)
 
 	var changes = make([]*ChangeEntry, 0, 50)
 
 	// Validate the initial sequences arrive as expected
 	err = appendFromFeed(&changes, feed, 3, base.DefaultWaitForSequence)
-	goassert.True(t, err == nil)
-	goassert.Equals(t, len(changes), 3)
+	require.NoError(t, err)
+	assert.Len(t, changes, 3)
 	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6"}))
 
 	_, incrErr := db.Bucket.Incr(base.SyncSeqKey, 7, 7, 0)
-	goassert.True(t, incrErr == nil)
+	require.NoError(t, incrErr)
 
 	// Modify user to have access to both channels (sequence 2):
 	userInfo, err := db.GetPrincipal("naomi", true)
-	goassert.True(t, userInfo != nil)
+	require.NoError(t, err)
+	require.NotNil(t, userInfo)
 	userInfo.ExplicitChannels = base.SetOf("ABC", "PBS")
 	_, err = db.UpdatePrincipal(*userInfo, true, true)
-	assert.NoError(t, err, "UpdatePrincipal failed")
+	require.NoError(t, err, "UpdatePrincipal failed")
 
 	WriteDirect(db, []string{"PBS"}, 9)
 	require.NoError(t, db.changeCache.waitForSequence(context.TODO(), 9, base.DefaultWaitForSequence))
 
 	err = appendFromFeed(&changes, feed, 4, base.DefaultWaitForSequence)
-	assert.NoError(t, err, "Expected more changes to be sent on feed, but never received")
-	goassert.Equals(t, len(changes), 7)
-	goassert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
+	require.NoError(t, err, "Expected more changes to be sent on feed, but never received")
+	assert.Len(t, changes, 7)
+	assert.True(t, verifyChangesFullSequences(changes, []string{"1", "2", "2::6", "2:8:5", "2:8:6", "2::8", "2::9"}))
 	// Notes:
 	// 1. 2::8 is the user sequence
 	// 2. The duplicate send of sequence '6' is the standard behaviour when a channel is added - we don't know

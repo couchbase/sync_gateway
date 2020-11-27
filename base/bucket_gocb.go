@@ -2334,6 +2334,7 @@ func (bucket *CouchbaseBucketGoCB) APIBucketItemCount() (itemCount int, err erro
 }
 
 // QueryBucketItemCount uses a request plus query to get the number of items in a bucket, as the REST API can be slow to update its value.
+// Requires a primary index on the bucket.
 func (bucket *CouchbaseBucketGoCB) QueryBucketItemCount() (itemCount int, err error) {
 	r, err := bucket.Query("SELECT COUNT(1) AS count FROM `$_bucket`", nil, gocb.RequestPlus, true)
 	if err != nil {

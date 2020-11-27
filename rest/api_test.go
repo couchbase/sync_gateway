@@ -4433,12 +4433,7 @@ func TestNumAccessErrors(t *testing.T) {
 	response := rt.Send(requestByUser("PUT", "/db/doc", `{"prop":true, "channels":["foo"]}`, "user"))
 	assertStatus(t, response, 403)
 
-	responseBody := make(map[string]interface{})
-	response = rt.SendAdminRequest("GET", "/_expvar", "")
-
-	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &responseBody))
-	numAccessErrors := responseBody["syncgateway"].(map[string]interface{})["per_db"].(map[string]interface{})["db"].(map[string]interface{})["security"].(map[string]interface{})["num_access_errors"]
-	assert.Equal(t, float64(1), numAccessErrors)
+	base.WaitForStat(func() int64 { return rt.GetDatabase().DbStats.SecurityStats.NumAccessErrors.Value() }, 1)
 }
 
 func TestNonImportedDuplicateID(t *testing.T) {

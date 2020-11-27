@@ -678,7 +678,6 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		return nil
 	} else {
 		dbState := atomic.LoadUint32(&dc.State)
-
 		// If the DB is already transitioning to: offline or is offline silently return
 		if dbState == DBOffline || dbState == DBResyncing || dbState == DBStopping {
 			return nil
