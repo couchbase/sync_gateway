@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -53,7 +52,7 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 		return warnings, errors.New("nil LoggingConfig")
 	}
 
-	consoleLogger, warnings, err = NewConsoleLogger(&c.Console)
+	consoleLogger, warnings, err = NewConsoleLogger(&c.Console, false, &consoleLogger.buffer)
 	if err != nil {
 		return warnings, err
 	}
@@ -77,12 +76,12 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 		})
 	}
 
-	errorLogger, err = NewFileLogger(c.Error, LevelError, LevelError.String(), c.LogFilePath, errorMinAge, nil)
+	errorLogger, err = NewFileLogger(c.Error, LevelError, LevelError.String(), c.LogFilePath, errorMinAge, &errorLogger.buffer)
 	if err != nil {
 		return warnings, err
 	}
 
-	warnLogger, err = NewFileLogger(c.Warn, LevelWarn, LevelWarn.String(), c.LogFilePath, warnMinAge, nil)
+	warnLogger, err = NewFileLogger(c.Warn, LevelWarn, LevelWarn.String(), c.LogFilePath, warnMinAge, &warnLogger.buffer)
 	if err != nil {
 		return warnings, err
 	}
@@ -92,20 +91,18 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogF
 		return warnings, err
 	}
 
-	// debugBuffer := debugLogger.buffer
-	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, LevelDebug.String(), c.LogFilePath, debugMinAge, nil)
+	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, LevelDebug.String(), c.LogFilePath, debugMinAge, &debugLogger.buffer)
 	if err != nil {
 		return warnings, err
 	}
-	// debugLogger.buffer = debugBuffer
 
-	traceLogger, err = NewFileLogger(c.Trace, LevelTrace, LevelTrace.String(), c.LogFilePath, traceMinAge, nil)
+	traceLogger, err = NewFileLogger(c.Trace, LevelTrace, LevelTrace.String(), c.LogFilePath, traceMinAge, &traceLogger.buffer)
 	if err != nil {
 		return warnings, err
 	}
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	statsLogger, err = NewFileLogger(c.Stats, LevelNone, "stats", c.LogFilePath, statsMinage, nil)
+	statsLogger, err = NewFileLogger(c.Stats, LevelNone, "stats", c.LogFilePath, statsMinage, &statsLogger.buffer)
 	if err != nil {
 		return warnings, err
 	}
@@ -127,29 +124,33 @@ func NewMemoryLogger(level LogLevel) *FileLogger {
 
 	return logger
 }
-
 func InitializeLoggers() {
+	// consoleLogger, _, _ = NewConsoleLogger(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{
+	// 	Enabled: BoolPtr(true),
+	// }}, nil)
+	// consoleLogger.output = &consoleLogger.buffer
+	// consoleLogger.logger = log.New(&consoleLogger.buffer, "", 0)
+
 	consoleLogger, _, _ = NewConsoleLogger(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{
 		Enabled: BoolPtr(true),
-		Output:  &consoleLogBuffer,
-	}})
+	}}, true, nil)
+
+	errorLogger = NewMemoryLogger(LevelError)
+	warnLogger = NewMemoryLogger(LevelWarn)
 	infoLogger = NewMemoryLogger(LevelInfo)
+	debugLogger = NewMemoryLogger(LevelDebug)
+	traceLogger = NewMemoryLogger(LevelTrace)
+	statsLogger = NewMemoryLogger(LevelNone)
 }
 
-func FlushLoggers() {
-	// errorLogger.logf(processBufferString(errorBuffer))
-	// warnLogger.logf(processBufferString(warnBuffer))
-	infoLogger.logf(processBufferString(infoLogger.buffer))
-	// debugLogger.logf(processBufferString(debugBuffer))
-	// traceLogger.logf(processBufferString(traceBuffer))
-	// statsLogger.logf(processBufferString(statsBuffer))
-	consoleLogger.logf(processBufferString(consoleLogBuffer))
-}
-
-// Required to trim new line off of the end to avoid blank line
-func processBufferString(buffer strings.Builder) string {
-	fmt.Println(buffer.String())
-	return strings.TrimSuffix(buffer.String(), "\n")
+func FlushLoggerBuffers() {
+	errorLogger.FlushBufferToLog()
+	warnLogger.FlushBufferToLog()
+	infoLogger.FlushBufferToLog()
+	debugLogger.FlushBufferToLog()
+	traceLogger.FlushBufferToLog()
+	statsLogger.FlushBufferToLog()
+	consoleLogger.FlushBufferToLog()
 }
 
 // validateLogFilePath ensures the given path is created and is a directory.

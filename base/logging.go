@@ -318,7 +318,6 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 
 var (
 	consoleLogger                                                              *ConsoleLogger
-	consoleLogBuffer                                                           strings.Builder
 	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
 	// traceBuffer, debugBuffer, infoBuffer, warnBuffer, errorBuffer, statsBuffer strings.Builder
 

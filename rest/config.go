@@ -1357,7 +1357,7 @@ func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	// that will be persisted in all log files.
 	base.LogSyncGatewayVersion()
 
-	base.FlushLoggers()
+	base.FlushLoggerBuffers()
 
 	// If we got an unknownFields error when reading the config
 	// log and exit now we've tried setting up the logging.

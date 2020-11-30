@@ -94,6 +94,12 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFile
 	return logger, nil
 }
 
+func (l *FileLogger) FlushBufferToLog() {
+	// Need to clear hanging new line to avoid empty line
+	logString := strings.TrimSuffix(l.buffer.String(), "\n")
+	l.logf(logString)
+}
+
 // Rotate will rotate the active log file.
 func (l *FileLogger) Rotate() error {
 	if l == nil {

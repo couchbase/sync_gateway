@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/natefinch/lumberjack"
@@ -36,7 +37,7 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLogFn, error) {
+func NewConsoleLogger(config *ConsoleLoggerConfig, useBuffer bool, buffer *strings.Builder) (*ConsoleLogger, []DeferredLogFn, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
 		return nil, nil, err
@@ -54,6 +55,15 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 			logger:  log.New(config.Output, "", 0),
 		},
 		isStderr: isStderr,
+	}
+
+	if useBuffer {
+		logger.FileLogger.logger = log.New(&logger.buffer, "", 0)
+		logger.output = &logger.buffer
+	}
+
+	if buffer != nil {
+		logger.FileLogger.buffer = *buffer
 	}
 
 	// Only create the collateBuffer channel and worker if required.
@@ -186,7 +196,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 }
 
 func newConsoleLoggerOrPanic(config *ConsoleLoggerConfig) *ConsoleLogger {
-	logger, _, err := NewConsoleLogger(config)
+	logger, _, err := NewConsoleLogger(config, false, nil)
 	if err != nil {
 		panic(err)
 	}
