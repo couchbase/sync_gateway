@@ -103,7 +103,7 @@ var QueryStarChannel = SGQuery{
 			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
 			"AND META().id NOT LIKE '%s' %s"+
-			"ORDER BY [$sync.sequence, $sync.rev, $sync.flags, $sync.deleted]",
+			"ORDER BY $sync.sequence",
 		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard, activeOnlyFilter),
 	adhoc: false,
 }

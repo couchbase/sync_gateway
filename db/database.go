@@ -139,7 +139,7 @@ type DatabaseContextOptions struct {
 	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions        SGReplicateOptions
 	SlowQueryWarningThreshold time.Duration
-	ResyncQueryLimit          int
+	ResyncQueryLimit          int // Limit used for pagination of resync queries. If not set defaults to DefaultResyncQueryLimit
 }
 
 type SGReplicateOptions struct {
