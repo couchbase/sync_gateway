@@ -59,7 +59,7 @@ type changeCache struct {
 	lock               sync.RWMutex            // Coordinates access to struct fields
 	options            CacheOptions            // Cache config
 	terminator         chan bool               // Signal termination of background goroutines
-	terminated         []TaskStat              // Notifies on each background task termination.
+	backgroundTasks    []BackgroundTask        // List of background tasks.
 	initTime           time.Time               // Cache init time - used for latency calculations
 	channelCache       ChannelCache            // Underlying channel cache
 	lastAddPendingTime int64                   // The most recent time _addPendingLogs was run, as epoch time
@@ -170,7 +170,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		c.options = DefaultCacheOptions()
 	}
 
-	channelCache, err := NewChannelCacheForContext(c.terminator, c.options.ChannelCacheOptions, c.context)
+	channelCache, err := NewChannelCacheForContext(c.backgroundTasks, c.terminator, c.options.ChannelCacheOptions, c.context)
 	if err != nil {
 		return err
 	}
@@ -181,17 +181,17 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	done, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+	bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
-	c.terminated = append(c.terminated, TaskStat{"InsertPendingEntries", c.context.Name, done})
+	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
-	done, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
-	c.terminated = append(c.terminated, TaskStat{"CleanSkippedSequenceQueue", c.context.Name, done})
+	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
@@ -212,26 +212,6 @@ func (c *changeCache) Start(initialSequence uint64) error {
 	return nil
 }
 
-// waitForBGTCompletion waits for all the background tasks to finish.
-func waitForBGTCompletion(waitTime time.Duration, terminated []TaskStat) {
-	for i, t := range terminated {
-	waitForCompletion:
-		for {
-			select {
-			case <-t.done:
-				break waitForCompletion
-			case <-time.After(waitTime):
-				for _, v := range terminated[i:] {
-					base.Infof(base.KeyAll,
-						"Timeout after %v of waiting for background task %q on database %q to terminate",
-						waitTime, v.name, v.dbName)
-				}
-				return
-			}
-		}
-	}
-}
-
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 
@@ -240,7 +220,7 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	waitForBGTCompletion(BGTCompletionMaxWait, c.terminated)
+	c.context.waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks)
 
 	c.lock.Lock()
 	c.stopped = true

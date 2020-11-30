@@ -13,14 +13,18 @@ type BackgroundTaskFunc func(ctx context.Context) error
 // backgroundTask runs task at the specified time interval in its own goroutine until stopped or an error is thrown by
 // the BackgroundTaskFunc
 func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, interval time.Duration,
-	c chan bool) (done chan struct{}, err error) {
+	c chan bool) (bgt BackgroundTask, err error) {
 	if interval <= 0 {
-		return done, &BackgroundTaskError{TaskName: taskName, Interval: interval}
+		return BackgroundTask{}, &BackgroundTaskError{TaskName: taskName, Interval: interval}
 	}
-	done = make(chan struct{})
+	bgt = BackgroundTask{
+		taskName: taskName,
+		doneChan: make(chan struct{}),
+	}
+
 	base.Infof(base.KeyAll, "Created background task: %q with interval %v", taskName, interval)
 	go func() {
-		defer close(done)
+		defer close(bgt.doneChan)
 		defer base.FatalPanicHandler()
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -38,7 +42,7 @@ func NewBackgroundTask(taskName string, dbName string, task BackgroundTaskFunc, 
 			}
 		}
 	}()
-	return done, nil
+	return bgt, nil
 }
 
 type BackgroundTaskError struct {
@@ -50,11 +54,9 @@ func (err *BackgroundTaskError) Error() string {
 	return fmt.Sprintf("Can't create background task: %q with interval %v", err.TaskName, err.Interval)
 }
 
-// TaskStat is a container that holds the background task, associated
-// database name and a channel to receive a signal about the background
-// task termination.
-type TaskStat struct {
-	name   string        // Background Task name
-	dbName string        // Associated database name
-	done   chan struct{} // Channel to to receive termination signal
+// BackgroundTask contains the name of the background task that is
+// initiated and a channel that notifies background task termination.
+type BackgroundTask struct {
+	taskName string        // Name of the background task.
+	doneChan chan struct{} // doneChan is closed when background task is terminated.
 }

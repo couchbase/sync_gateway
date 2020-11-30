@@ -961,7 +961,6 @@ func TestParseCommandLineWithIllegalOptionBucket(t *testing.T) {
 }
 
 func TestPutInvalidConfig(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
