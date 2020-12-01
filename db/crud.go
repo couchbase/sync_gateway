@@ -258,6 +258,10 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		return DocumentRevision{}, err
 	}
 
+	if revision.BodyBytes == nil && !revision.Removed {
+		return DocumentRevision{}, base.HTTPErrorf(404, "missing")
+	}
+
 	// RequestedHistory is the _revisions returned in the body.  Avoids mutating revision.History, in case it's needed
 	// during attachment processing below
 	requestedHistory := revision.History
