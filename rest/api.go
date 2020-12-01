@@ -186,7 +186,7 @@ func (h *handler) handlePostResync() error {
 					base.Errorf("Error occurred running resync operation: %v", err)
 				}
 			}()
-			h.writeRawJSON([]byte(`{"status": "running"}`))
+			h.writeRawJSON([]byte(fmt.Sprintf(`{"status": "running", "docs_changed": %d, "docs_processed": %d}`, h.db.ResyncStatus.DocsChanged, h.db.ResyncStatus.DocsProcessed)))
 		} else {
 			dbState := atomic.LoadUint32(&h.db.State)
 			if dbState == db.DBResyncing {
@@ -205,7 +205,7 @@ func (h *handler) handlePostResync() error {
 		}
 
 		h.writeRawJSON([]byte(`{"status": "stopping"}`))
-		h.db.ResyncTerminator.Set(true)
+		h.db.ResyncStatus.ResyncTerminator.Set(true)
 	}
 
 	return nil

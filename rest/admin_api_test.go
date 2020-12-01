@@ -1192,7 +1192,6 @@ func TestDBOfflineSingleResync(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
 
-	// TODO: Should be fine but may need to add a wait method to slow down resync op
 	// Send a second _resync request.  This must return a 400 since the first one is blocked processing
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 503)
 
@@ -1212,24 +1211,28 @@ func TestResync(t *testing.T) {
 		name               string
 		docsCreated        int
 		expectedSyncFnRuns int
+		expectedQueryCount int
 		queryLimit         int
 	}{
 		{
 			name:               "Docs 0, Limit Default",
 			docsCreated:        0,
 			expectedSyncFnRuns: 0,
+			expectedQueryCount: 1,
 			queryLimit:         db.DefaultResyncQueryLimit,
 		},
 		{
 			name:               "Docs 1000, Limit Default",
 			docsCreated:        1000,
 			expectedSyncFnRuns: 2000,
+			expectedQueryCount: 1,
 			queryLimit:         db.DefaultResyncQueryLimit,
 		},
 		{
 			name:               "Docs 1000, Limit 10",
 			docsCreated:        1000,
 			expectedSyncFnRuns: 2000,
+			expectedQueryCount: 100,
 			queryLimit:         10,
 		},
 	}
@@ -1271,6 +1274,15 @@ func TestResync(t *testing.T) {
 			assert.NoError(t, err)
 
 			assert.Equal(t, testCase.expectedSyncFnRuns, int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value()))
+
+			var queryName string
+			if base.TestsDisableGSI() {
+				queryName = fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncGateway(), db.ViewChannels)
+			} else {
+				queryName = db.QueryTypeAllDocs
+			}
+
+			assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
 
 		})
 	}

@@ -82,26 +82,26 @@ const BGTCompletionMaxWait = 30 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name               string                   // Database name
-	UUID               string                   // UUID for this database instance. Used by cbgt and sgr
-	Bucket             base.Bucket              // Storage
-	BucketSpec         base.BucketSpec          // The BucketSpec
-	BucketLock         sync.RWMutex             // Control Access to the underlying bucket object
-	mutationListener   changeListener           // Caching feed listener
-	ImportListener     *importListener          // Import feed listener
-	sequences          *sequenceAllocator       // Source of new sequence numbers
-	ChannelMapper      *channels.ChannelMapper  // Runs JS 'sync' function
-	StartTime          time.Time                // Timestamp when context was instantiated
-	RevsLimit          uint32                   // Max depth a document's revision tree can grow to
-	autoImport         bool                     // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache      RevisionCache            // Cache of recently-accessed doc revisions
-	changeCache        *changeCache             // Cache of recently-access channels
-	EventMgr           *EventManager            // Manages notification events
-	AllowEmptyPassword bool                     // Allow empty passwords?  Defaults to false
-	Options            DatabaseContextOptions   // Database Context Options
-	AccessLock         sync.RWMutex             // Allows DB offline to block until synchronous calls have completed
-	State              uint32                   // The runtime state of the DB from a service perspective
-	ResyncTerminator   base.AtomicBool          // Allows resync operation to be cancelled while in progress
+	Name               string                  // Database name
+	UUID               string                  // UUID for this database instance. Used by cbgt and sgr
+	Bucket             base.Bucket             // Storage
+	BucketSpec         base.BucketSpec         // The BucketSpec
+	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
+	mutationListener   changeListener          // Caching feed listener
+	ImportListener     *importListener         // Import feed listener
+	sequences          *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime          time.Time               // Timestamp when context was instantiated
+	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
+	autoImport         bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache      RevisionCache           // Cache of recently-accessed doc revisions
+	changeCache        *changeCache            // Cache of recently-access channels
+	EventMgr           *EventManager           // Manages notification events
+	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
+	Options            DatabaseContextOptions  // Database Context Options
+	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State              uint32                  // The runtime state of the DB from a service perspective
+	ResyncStatus       ResyncStatus
 	ExitChanges        chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders      auth.OIDCProviderMap     // OIDC clients
 	PurgeInterval      time.Duration            // Metadata purge interval
@@ -188,6 +188,12 @@ type ImportOptions struct {
 	ImportFilter     *ImportFilterFunction // Opt-in filter for document import
 	BackupOldRev     bool                  // Create temporary backup of old revision body when available
 	ImportPartitions uint16                // Number of partitions for import
+}
+
+type ResyncStatus struct {
+	ResyncTerminator base.AtomicBool // Allows resync operation to be cancelled while in progress
+	DocsProcessed    int
+	DocsChanged      int
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -1085,17 +1091,19 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 	}
 
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
-	changeCount := 0
-	docCount := 0
 
-	queryLimit := int(db.Options.ResyncQueryLimit)
+	queryLimit := db.Options.ResyncQueryLimit
 	startSeq := uint64(0)
 	endSeq, err := db.sequences.lastSequence()
 	if err != nil {
 		return 0, err
 	}
 
-outerLoop:
+	defer func() {
+		db.ResyncStatus.DocsChanged = 0
+		db.ResyncStatus.DocsProcessed = 0
+	}()
+
 	for {
 		results, err := db.QueryResync(queryLimit, startSeq, endSeq)
 		if err != nil {
@@ -1107,13 +1115,19 @@ outerLoop:
 
 		var importRow QueryIdRow
 		for results.Next(&importRow) {
-			if db.ResyncTerminator.CompareAndSwap(true, false) {
-				break outerLoop
+			if db.ResyncStatus.ResyncTerminator.CompareAndSwap(true, false) {
+				base.Infof(base.KeyAll, "Re-running of Sync Function was stopped before the operation could be "+
+					"completed. System maybe in an inconsistent state. Docs changed: %d Docs Processed: %d", db.ResyncStatus.DocsChanged, db.ResyncStatus.DocsProcessed)
+				closeErr := results.Close()
+				if closeErr != nil {
+					return 0, closeErr
+				}
+				return db.ResyncStatus.DocsChanged, nil
 			}
 			docid := importRow.Id
 			key := realDocID(docid)
 			queryRowCount++
-			docCount++
+			db.ResyncStatus.DocsProcessed++
 			documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
 				highSeq = doc.Sequence
 				imported := false
@@ -1220,7 +1234,7 @@ outerLoop:
 				})
 			}
 			if err == nil {
-				changeCount++
+				db.ResyncStatus.DocsChanged++
 			} else if err != base.ErrUpdateCancel {
 				base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
 			}
@@ -1237,9 +1251,9 @@ outerLoop:
 		}
 		startSeq = highSeq + 1
 	}
-	base.Infof(base.KeyAll, "Finished re-running sync function; %d/%d docs changed", changeCount, docCount)
+	base.Infof(base.KeyAll, "Finished re-running sync function; %d/%d docs changed", db.ResyncStatus.DocsChanged, db.ResyncStatus.DocsProcessed)
 
-	if changeCount > 0 {
+	if db.ResyncStatus.DocsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
 		base.Infof(base.KeyAll, "Invalidating channel caches of users/roles...")
 		users, roles, _ := db.AllPrincipalIDs()
@@ -1250,7 +1264,7 @@ outerLoop:
 			db.invalRoleChannels(name)
 		}
 	}
-	return changeCount, nil
+	return db.ResyncStatus.DocsChanged, nil
 }
 
 func (db *Database) invalUserRoles(username string) {

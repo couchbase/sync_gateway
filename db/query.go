@@ -379,7 +379,7 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 
 	channelQuery := QueryChannels
 	index := sgIndexes[IndexChannels]
-	if channelName == "*" {
+	if channelName == channels.UserStarChannel {
 		channelQuery = QueryStarChannel
 		index = sgIndexes[IndexAllDocs]
 	}
@@ -408,7 +408,7 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 }
 
 func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
-	return context.QueryChannels("*", startSeq, endSeq, limit, false)
+	return context.QueryChannels(channels.UserStarChannel, startSeq, endSeq, limit, false)
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index
