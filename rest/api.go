@@ -158,9 +158,10 @@ func (h *handler) handleFlush() error {
 func (h *handler) handleGetResync() error {
 	dbState := atomic.LoadUint32(&h.db.State)
 	if dbState == db.DBResyncing {
-		h.writeRawJSON([]byte(`{"status": "running"}`))
+		h.writeRawJSON([]byte(fmt.Sprintf(`{"status": "running", "docs_changed": %d, "docs_processed": %d}`, h.db.ResyncStatus.DocsChanged, h.db.ResyncStatus.DocsProcessed)))
+		return nil
 	}
-	h.writeRawJSON([]byte(`{"status": "not running"}`))
+	h.writeRawJSON([]byte(fmt.Sprintf(`{"status": "not running", "last_run_docs_changed": %d, "last_run_docs_processed": %d}`, h.db.ResyncStatus.DocsChanged, h.db.ResyncStatus.DocsProcessed)))
 	return nil
 }
 

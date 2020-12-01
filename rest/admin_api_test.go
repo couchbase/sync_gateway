@@ -1149,8 +1149,10 @@ func TestDBOfflinePostResync(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("POST", "/db/_resync?action=start", ""), 200)
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		res := bytes.Compare([]byte(`{"status": "not running"}`), response.BodyBytes())
-		return res == 0
+		var body map[string]interface{}
+		err := json.Unmarshal(response.BodyBytes(), &body)
+		assert.NoError(t, err)
+		return body["status"].(string) == "not running"
 	})
 	assert.NoError(t, err)
 }
@@ -1197,8 +1199,10 @@ func TestDBOfflineSingleResync(t *testing.T) {
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		res := bytes.Compare([]byte(`{"status": "not running"}`), response.BodyBytes())
-		return res == 0
+		var body map[string]interface{}
+		err := json.Unmarshal(response.BodyBytes(), &body)
+		assert.NoError(t, err)
+		return body["status"].(string) == "not running"
 	})
 	assert.NoError(t, err)
 
@@ -1269,7 +1273,10 @@ func TestResync(t *testing.T) {
 
 			err := rt.WaitForCondition(func() bool {
 				response := rt.SendAdminRequest("GET", "/db/_resync", "")
-				return `{"status": "not running"}` == string(response.BodyBytes())
+				var body map[string]interface{}
+				err := json.Unmarshal(response.BodyBytes(), &body)
+				assert.NoError(t, err)
+				return body["status"].(string) == "not running"
 			})
 			assert.NoError(t, err)
 
@@ -1321,12 +1328,17 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
 
+	// Unlikely but this may cause a race as we are expecting this POST to run before the 1000s doc re-sync occurs.
+	// May require a method to slowdown the resync process
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusServiceUnavailable)
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
-		return `{"status": "not running"}` == string(response.BodyBytes())
+		var body map[string]interface{}
+		err := json.Unmarshal(response.BodyBytes(), &body)
+		assert.NoError(t, err)
+		return body["status"].(string) == "not running"
 	})
 	assert.NoError(t, err)
 
