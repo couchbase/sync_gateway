@@ -175,7 +175,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
-			logger, _, err := NewConsoleLogger(&test.config, false, nil)
+			logger, err := NewConsoleLogger(&test.config)
 			assert.NoError(tt, err)
 			assert.Equal(tt, test.expected.Enabled, logger.Enabled)
 			assert.Equal(tt, *test.expected.LogLevel, *logger.LogLevel)

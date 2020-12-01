@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/natefinch/lumberjack"
@@ -37,13 +36,13 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(config *ConsoleLoggerConfig, useBuffer bool, buffer *strings.Builder) (*ConsoleLogger, []DeferredLogFn, error) {
+func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	logKey, warnings := ToLogKey(config.LogKeys)
+	logKey := ToLogKey(config.LogKeys)
 	isStderr := config.FileOutput == "" && *config.Enabled
 
 	logger := &ConsoleLogger{
@@ -57,15 +56,6 @@ func NewConsoleLogger(config *ConsoleLoggerConfig, useBuffer bool, buffer *strin
 		isStderr: isStderr,
 	}
 
-	if useBuffer {
-		logger.FileLogger.logger = log.New(&logger.buffer, "", 0)
-		logger.output = &logger.buffer
-	}
-
-	if buffer != nil {
-		logger.FileLogger.buffer = *buffer
-	}
-
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
@@ -76,22 +66,27 @@ func NewConsoleLogger(config *ConsoleLoggerConfig, useBuffer bool, buffer *strin
 		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
+	logIfPossible := func(logFn func()) {
+		if consoleLogger != nil {
+			logFn()
+		}
+	}
+
 	if *config.Enabled {
 		consoleOutput := "stderr"
 		if config.FileOutput != "" {
 			consoleOutput = config.FileOutput
 		}
-
-		warnings = append(warnings, func() {
+		logIfPossible(func() {
 			Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
 		})
 	} else {
-		warnings = append(warnings, func() {
+		logIfPossible(func() {
 			Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
 		})
 	}
 
-	return logger, warnings, nil
+	return logger, nil
 }
 
 func (l *ConsoleLogger) logf(format string, args ...interface{}) {
@@ -196,7 +191,7 @@ func (lcc *ConsoleLoggerConfig) init() error {
 }
 
 func newConsoleLoggerOrPanic(config *ConsoleLoggerConfig) *ConsoleLogger {
-	logger, _, err := NewConsoleLogger(config, false, nil)
+	logger, err := NewConsoleLogger(config)
 	if err != nil {
 		panic(err)
 	}

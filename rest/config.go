@@ -845,43 +845,40 @@ func (config *ServerConfig) validate() (errorMessages error) {
 
 // setupAndValidateLogging sets up and validates logging,
 // and returns a slice of deferred logs to execute later.
-func (config *ServerConfig) SetupAndValidateLogging() (warnings []base.DeferredLogFn, err error) {
+func (config *ServerConfig) SetupAndValidateLogging() (err error) {
 
 	if config.Logging == nil {
 		config.Logging = &base.LoggingConfig{}
 	}
 
 	// populate values from deprecated logging config options if not set
-	warnings = config.deprecatedConfigLoggingFallback()
+	config.deprecatedConfigLoggingFallback()
 
 	base.SetRedaction(config.Logging.RedactionLevel)
 
-	warningsInit, err := config.Logging.Init(defaultLogFilePath)
-	warnings = append(warnings, warningsInit...)
+	err = config.Logging.Init(defaultLogFilePath)
 	if err != nil {
-		return warnings, err
+		return err
 	}
 
 	if config.Logging.DeprecatedDefaultLog == nil {
 		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
 	}
 
-	return warnings, nil
+	return nil
 }
 
 // deprecatedConfigLoggingFallback will parse the ServerConfig and try to
 // use older logging config options for backwards compatibility.
 // It will return a slice of deferred warnings to log at a later time.
-func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.DeferredLogFn) {
+func (config *ServerConfig) deprecatedConfigLoggingFallback() {
 
 	warningMsgFmt := "Using deprecated config option: %q. Use %q instead."
 
 	if config.Logging.DeprecatedDefaultLog != nil {
 		// Fall back to the old logging.["default"].LogFilePath option
 		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
-			warnings = append(warnings, func() {
-				base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
-			})
+			base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
 
 			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
 			// SGCollect relies on this path to pick up the standard and rotated log files.
@@ -897,38 +894,28 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() (warnings []base.D
 
 		// Fall back to the old logging.["default"].LogKeys option
 		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
-			warnings = append(warnings, func() {
-				base.Warnf(warningMsgFmt, `logging.["default"].LogKeys`, "logging.console.log_keys")
-			})
+			base.Warnf(warningMsgFmt, `logging.["default"].LogKeys`, "logging.console.log_keys")
 			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
 		}
 
 		// Fall back to the old logging.["default"].LogLevel option
 		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
-			warnings = append(warnings, func() {
-				base.Warnf(warningMsgFmt, `logging.["default"].LogLevel`, "logging.console.log_level")
-			})
+			base.Warnf(warningMsgFmt, `logging.["default"].LogLevel`, "logging.console.log_level")
 			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
 		}
 	}
 
 	// Fall back to the old LogFilePath option
 	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
-		warnings = append(warnings, func() {
-			base.Warnf(warningMsgFmt, "logFilePath", "logging.log_file_path")
-		})
+		base.Warnf(warningMsgFmt, "logFilePath", "logging.log_file_path")
 		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
 	}
 
 	// Fall back to the old Log option
 	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
-		warnings = append(warnings, func() {
-			base.Warnf(warningMsgFmt, "log", "logging.console.log_keys")
-		})
+		base.Warnf(warningMsgFmt, "log", "logging.console.log_keys")
 		config.Logging.Console.LogKeys = config.DeprecatedLog
 	}
-
-	return warnings
 }
 
 func (self *ServerConfig) MergeWith(other *ServerConfig) error {
@@ -1335,6 +1322,10 @@ func setupServerConfig(args []string) (config *ServerConfig, err error) {
 
 	base.InitializeLoggers()
 
+	// We can log version here because for console we have initialized an early logger in init() and for file loggers we
+	// have the memory buffers.
+	base.LogSyncGatewayVersion()
+
 	config, err = ParseCommandLine(args, flag.ExitOnError)
 	if pkgerrors.Cause(err) == base.ErrUnknownField {
 		unknownFieldsErr = err
@@ -1345,7 +1336,7 @@ func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
 	// configuration and setup logging now
-	warnings, err := config.SetupAndValidateLogging()
+	err = config.SetupAndValidateLogging()
 	if err != nil {
 		// If we didn't set up logging correctly, we *probably* can't log via normal means...
 		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
@@ -1353,21 +1344,12 @@ func setupServerConfig(args []string) (config *ServerConfig, err error) {
 		return nil, fmt.Errorf("error setting up logging: %v", err)
 	}
 
-	// This is the earliest opportunity to log a startup indicator
-	// that will be persisted in all log files.
-	base.LogSyncGatewayVersion()
-
 	base.FlushLoggerBuffers()
 
 	// If we got an unknownFields error when reading the config
 	// log and exit now we've tried setting up the logging.
 	if unknownFieldsErr != nil {
 		return nil, fmt.Errorf(unknownFieldsErr.Error())
-	}
-
-	// Execute any deferred warnings from setup.
-	for _, logFn := range warnings {
-		logFn()
 	}
 
 	// Validation
