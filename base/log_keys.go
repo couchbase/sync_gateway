@@ -194,20 +194,14 @@ func ToLogKey(keysStr []string) (logKeys LogKeyMask) {
 		// Strip a single "+" suffix in log keys and warn (for backwards compatibility)
 		if strings.HasSuffix(key, "+") {
 			newLogKey := strings.TrimSuffix(key, "+")
-
-			// warnings = append(warnings, func() {
 			Warnf("Deprecated log key: %q found. Changing to: %q.", originalKey, newLogKey)
-			// })
-
 			key = newLogKey
 		}
 
 		if logKey, ok := logKeyNamesInverse[key]; ok {
 			logKeys.Enable(logKey)
 		} else {
-			// warnings = append(warnings, func() {
 			Warnf("Invalid log key: %v", originalKey)
-			// })
 		}
 	}
 
