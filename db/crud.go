@@ -258,7 +258,7 @@ func (db *Database) getRev(docid, revid string, maxHistory int, historyFrom []st
 		return DocumentRevision{}, err
 	}
 
-	if revision.BodyBytes == nil && !revision.Removed {
+	if revision.BodyBytes == nil {
 		return DocumentRevision{}, base.HTTPErrorf(404, "missing")
 	}
 
