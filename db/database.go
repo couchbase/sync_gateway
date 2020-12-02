@@ -194,6 +194,7 @@ type ResyncStatus struct {
 	ResyncTerminator base.AtomicBool // Allows resync operation to be cancelled while in progress
 	DocsProcessed    int
 	DocsChanged      int
+	Mutex            sync.Mutex // Used to lock the processed and changed ints
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -1099,9 +1100,22 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		return 0, err
 	}
 
+	// Reset these values now that a new run has begun
+	db.ResyncStatus.Mutex.Lock()
+	db.ResyncStatus.DocsProcessed = 0
+	db.ResyncStatus.DocsChanged = 0
+	db.ResyncStatus.Mutex.Unlock()
+
+	docsChanged := 0
+	docsProcessed := 0
+
+	// In the event of an early exit we would like to ensure these values are up to date which they wouldn't be if they
+	// were unable to reach the end of the batch iteration.
 	defer func() {
-		db.ResyncStatus.DocsChanged = 0
-		db.ResyncStatus.DocsProcessed = 0
+		db.ResyncStatus.Mutex.Lock()
+		db.ResyncStatus.DocsProcessed = docsProcessed
+		db.ResyncStatus.DocsChanged = docsChanged
+		db.ResyncStatus.Mutex.Unlock()
 	}()
 
 	for {
@@ -1117,17 +1131,17 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		for results.Next(&importRow) {
 			if db.ResyncStatus.ResyncTerminator.CompareAndSwap(true, false) {
 				base.Infof(base.KeyAll, "Re-running of Sync Function was stopped before the operation could be "+
-					"completed. System maybe in an inconsistent state. Docs changed: %d Docs Processed: %d", db.ResyncStatus.DocsChanged, db.ResyncStatus.DocsProcessed)
+					"completed. System maybe in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
 				closeErr := results.Close()
 				if closeErr != nil {
 					return 0, closeErr
 				}
-				return db.ResyncStatus.DocsChanged, nil
+				return docsChanged, nil
 			}
 			docid := importRow.Id
 			key := realDocID(docid)
 			queryRowCount++
-			db.ResyncStatus.DocsProcessed++
+			docsProcessed++
 			documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
 				highSeq = doc.Sequence
 				imported := false
@@ -1234,11 +1248,16 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 				})
 			}
 			if err == nil {
-				db.ResyncStatus.DocsChanged++
+				docsChanged++
 			} else if err != base.ErrUpdateCancel {
 				base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
 			}
 		}
+
+		db.ResyncStatus.Mutex.Lock()
+		db.ResyncStatus.DocsProcessed = docsProcessed
+		db.ResyncStatus.DocsChanged = docsChanged
+		db.ResyncStatus.Mutex.Unlock()
 
 		// Close query results
 		closeErr := results.Close()
@@ -1251,9 +1270,9 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		}
 		startSeq = highSeq + 1
 	}
-	base.Infof(base.KeyAll, "Finished re-running sync function; %d/%d docs changed", db.ResyncStatus.DocsChanged, db.ResyncStatus.DocsProcessed)
+	base.Infof(base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
-	if db.ResyncStatus.DocsChanged > 0 {
+	if docsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
 		base.Infof(base.KeyAll, "Invalidating channel caches of users/roles...")
 		users, roles, _ := db.AllPrincipalIDs()
@@ -1264,7 +1283,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			db.invalRoleChannels(name)
 		}
 	}
-	return db.ResyncStatus.DocsChanged, nil
+	return docsChanged, nil
 }
 
 func (db *Database) invalUserRoles(username string) {
