@@ -26,6 +26,7 @@ type changeListener struct {
 	keyCounts             map[string]uint64      // Latest count at which each doc key was updated
 	OnDocChanged          DocChangedFunc         // Called when change arrives on feed
 	terminator            chan bool              // Signal to cause cbdatasource bucketdatasource.Close() to be called, which removes dcp receiver
+	doneChan              chan struct{}          // doneChan is closed when the tap feed worker goroutine finishes.
 }
 
 type DocChangedFunc func(event sgbucket.FeedEvent)
@@ -67,7 +68,9 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 		if err != nil {
 			return err
 		}
+		listener.doneChan = make(chan struct{})
 		go func() {
+			defer close(listener.doneChan)
 			defer base.FatalPanicHandler()
 			defer listener.notifyStopping()
 			for event := range listener.tapFeed.Events() {
@@ -119,6 +122,10 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	return requiresCheckpointPersistence
 }
 
+// TapFeedStopMaxWait is the maximum amount of time to wait for
+// tap feed worker goroutine to terminate before the server is stopped.
+const TapFeedStopMaxWait = 30 * time.Second
+
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
 func (listener *changeListener) Stop() {
 
@@ -126,6 +133,15 @@ func (listener *changeListener) Stop() {
 
 	if listener.terminator != nil {
 		close(listener.terminator)
+
+		// Wait for tap feed worker to terminate.
+		waitTime := TapFeedStopMaxWait
+		select {
+		case <-listener.doneChan:
+			// Tap feed worker goroutine is terminated and doneChan is already closed.
+		case <-time.After(waitTime):
+			base.Infof(base.KeyAll, "Timeout after %v of waiting for tap feed worker to terminate", waitTime)
+		}
 	}
 
 	if listener.tapNotifier != nil {
