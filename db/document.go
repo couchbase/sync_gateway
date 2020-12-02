@@ -799,7 +799,7 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 // Determine whether the specified revision was a channel removal, based on doc.Channels.  If so, construct the standard document body for a
 // removal notification (_removed=true)
 // Set of channels returned from IsChannelRemoval are "Active" channels and NOT "Removed".
-func (doc *Document) IsChannelRemoval(revID string) (history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
+func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history Revisions, channels base.Set, isRemoval bool, isDelete bool, err error) {
 
 	removedChannels := make(base.Set)
 
@@ -814,8 +814,12 @@ func (doc *Document) IsChannelRemoval(revID string) (history Revisions, channels
 	}
 	// If no matches found, return isRemoval=false
 	if len(removedChannels) == 0 {
-		return nil, nil, false, false, nil
+		return nil, nil, nil, false, false, nil
 	}
+
+	// Construct removal body
+	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
+	bodyBytes = []byte(RemovedRedactedDocument)
 
 	activeChannels := make(base.Set)
 	// Add active channels to the channel set if the the revision is available in the revision tree.
@@ -828,7 +832,7 @@ func (doc *Document) IsChannelRemoval(revID string) (history Revisions, channels
 	// Build revision history for revID
 	revHistory, err := doc.History.getHistory(revID)
 	if err != nil {
-		return nil, nil, false, false, err
+		return nil, nil, nil, false, false, err
 	}
 
 	// If there's no history (because the revision has been pruned from the rev tree), treat revision history as only the specified rev id.
@@ -837,7 +841,7 @@ func (doc *Document) IsChannelRemoval(revID string) (history Revisions, channels
 	}
 	history = encodeRevisions(revHistory)
 
-	return history, activeChannels, true, isDelete, nil
+	return bodyBytes, history, activeChannels, true, isDelete, nil
 }
 
 // Updates a document's channel/role UserAccessMap with new access settings from an AccessMap.
