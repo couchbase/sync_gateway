@@ -120,7 +120,7 @@ func TestLateSequenceHandling(t *testing.T) {
 	defer context.Close()
 
 	stats := base.NewSyncGatewayStats()
-	cacheStats := stats.NewDBStats("").CacheStats
+	cacheStats := stats.NewDBStats("", false, false, false).CacheStats
 
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
 	goassert.True(t, cache != nil)
@@ -190,7 +190,7 @@ func TestLateSequenceHandlingWithMultipleListeners(t *testing.T) {
 	defer context.Close()
 
 	stats := base.NewSyncGatewayStats()
-	cacheStats := stats.NewDBStats("").CacheStats
+	cacheStats := stats.NewDBStats("", false, false, false).CacheStats
 
 	cache := newSingleChannelCache(context, "Test1", 0, cacheStats)
 	goassert.True(t, cache != nil)

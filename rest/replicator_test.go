@@ -49,7 +49,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 		ActiveDB:            &db.Database{DatabaseContext: rt.GetDatabase()},
 		RemoteDBURL:         passiveDBURL,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats("test").DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats("test", false, false, false).DBReplicatorStats(t.Name()),
 	})
 
 	startNumReplicationsTotal := rt.GetDatabase().DbStats.Database().NumReplicationsTotal.Value()
@@ -110,7 +110,7 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 		RemoteDBURL:           passiveDBURL,
 		WebsocketPingInterval: time.Millisecond * 10,
 		Continuous:            true,
-		ReplicationStatsMap:   base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap:   base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 
 	pingCountStart := base.ExpvarVar2Int(expvar.Get("goblip").(*expvar.Map).Get("sender_ping_count"))
@@ -200,7 +200,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -288,7 +288,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -609,7 +609,7 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval:  time.Minute * 5,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -778,7 +778,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval:  time.Minute * 5,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -931,7 +931,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1023,7 +1023,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1109,7 +1109,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1227,7 +1227,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name() + "1").DBReplicatorStats(t.Name())
+	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false).DBReplicatorStats(t.Name())
 	ar := db.NewActiveReplicator(&arConfig)
 
 	startNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -1276,7 +1276,7 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	}
 
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name() + "2").DBReplicatorStats(t.Name())
+	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false).DBReplicatorStats(t.Name())
 	ar = db.NewActiveReplicator(&arConfig)
 	defer func() { assert.NoError(t, ar.Stop()) }()
 	assert.NoError(t, ar.Start())
@@ -1392,7 +1392,7 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval:  time.Minute * 5,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -1526,7 +1526,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1618,7 +1618,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		Continuous:          true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1718,7 +1718,7 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 		ChangesBatchSize:    200,
 		Continuous:          true,
 		PurgeOnRemoval:      true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -1895,7 +1895,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
-			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name())
+			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name())
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePull,
@@ -2142,7 +2142,7 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				ChangesBatchSize:     200,
 				ConflictResolverFunc: customConflictResolver,
 				Continuous:           true,
-				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 			})
 			defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -2293,7 +2293,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		InsecureSkipVerify:  true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
@@ -2368,7 +2368,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 		},
 		ChangesBatchSize:    200,
 		InsecureSkipVerify:  false,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	require.NoError(t, err)
 	defer func() { assert.NoError(t, ar.Stop()) }()
@@ -2437,7 +2437,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval:  time.Minute * 5,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -2595,7 +2595,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	}
 
 	// Create the first active replicator to pull from seq:0
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name() + "1").DBReplicatorStats(t.Name())
+	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"1", false, false, false).DBReplicatorStats(t.Name())
 	ar := db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
 
@@ -2660,7 +2660,7 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	require.NoError(t, err)
 	passiveDBURL.User = url.UserPassword("alice", "pass")
 	arConfig.RemoteDBURL = passiveDBURL
-	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name() + "2").DBReplicatorStats(t.Name())
+	arConfig.ReplicationStatsMap = base.SyncGatewayStats.NewDBStats(t.Name()+"2", false, false, false).DBReplicatorStats(t.Name())
 
 	ar = db.NewActiveReplicator(&arConfig)
 	require.NoError(t, err)
@@ -2763,7 +2763,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval:  time.Minute * 5,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -2907,7 +2907,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval:  time.Minute * 5,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -3018,7 +3018,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		ChangesBatchSize:    200,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 	defer func() { assert.NoError(t, ar.Stop()) }()
 
@@ -3114,7 +3114,7 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		// test isn't long running enough to worry about time-based checkpoints,
 		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
 		CheckpointInterval:  time.Minute * 5,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull chan1 from seq:0
@@ -3319,7 +3319,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 						InitialReconnectInterval: time.Millisecond,
 						MaxReconnectInterval:     time.Millisecond * 50,
 						TotalReconnectTimeout:    timeoutVal,
-						ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+						ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 					}
 
 					// Create the first active replicator to pull from seq:0
@@ -3408,7 +3408,7 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 		// aggressive reconnect intervals for testing purposes
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
-		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -3494,7 +3494,7 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
 		TotalReconnectTimeout:    time.Second * 5,
-		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap:      base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -3839,7 +3839,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
-			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name())
+			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name())
 			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
 				ID:          t.Name(),
 				Direction:   db.ActiveReplicatorTypePull,
@@ -4275,7 +4275,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 				},
 				Continuous:           true,
 				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 			}
 
 			// Create the first revision of the document on rt1.
@@ -4429,7 +4429,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 				},
 				Continuous:           true,
 				ConflictResolverFunc: defaultConflictResolver,
-				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 			}
 
 			// Create the first revision of the document on rt2.
@@ -4759,7 +4759,7 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 		},
 		Continuous:          true,
 		InsecureSkipVerify:  true,
-		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
 
 	defer func() {

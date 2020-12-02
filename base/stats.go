@@ -511,7 +511,7 @@ type QueryStat struct {
 	QueryTime       *SgwIntStat
 }
 
-func (s *SgwStats) NewDBStats(name string) *DbStats {
+func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled bool, viewsEnabled bool, queryNames ...string) *DbStats {
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
 	s.DbStats[name] = &DbStats{
@@ -524,6 +524,26 @@ func (s *SgwStats) NewDBStats(name string) *DbStats {
 	s.DbStats[name].initCBLReplicationPushStats()
 	s.DbStats[name].initDatabaseStats()
 	s.DbStats[name].initSecurityStats()
+
+	if deltaSyncEnabled {
+		s.DbStats[name].InitDeltaSyncStats()
+	}
+
+	if importEnabled {
+		s.DbStats[name].InitSharedBucketImportStats()
+	}
+
+	if viewsEnabled {
+		s.DbStats[name].InitQueryStats(
+			true,
+			queryNames...,
+		)
+	} else {
+		s.DbStats[name].InitQueryStats(
+			false,
+			queryNames...,
+		)
+	}
 
 	return s.DbStats[name]
 }
