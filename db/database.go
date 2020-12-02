@@ -248,19 +248,13 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	dbStats := base.SyncGatewayStats.NewDBStats(dbName)
+	enabledDeltaSync := options.DeltaSyncOptions.Enabled
+	enabledImport := autoImport || options.EnableXattr
+	enabledViews := options.UseViews
 
-	if options.DeltaSyncOptions.Enabled {
-		dbStats.InitDeltaSyncStats()
-	}
-
-	if autoImport || options.EnableXattr {
-		dbStats.InitSharedBucketImportStats()
-	}
-
-	if options.UseViews {
-		dbStats.InitQueryStats(
-			true,
+	var queryNames []string
+	if enabledViews {
+		queryNames = []string{
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccess),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
@@ -270,10 +264,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewImport),
 			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewSessions),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewTombstones))
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewTombstones),
+		}
 	} else {
-		dbStats.InitQueryStats(
-			false,
+		queryNames = []string{
 			QueryTypeAccess,
 			QueryTypeRoleAccess,
 			QueryTypeChannels,
@@ -283,8 +277,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			QueryTypeSessions,
 			QueryTypeTombstones,
 			QueryTypeResync,
-			QueryTypeAllDocs)
+			QueryTypeAllDocs,
+		}
 	}
+
+	dbStats := base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
 
 	dbContext := &DatabaseContext{
 		Name:       dbName,
