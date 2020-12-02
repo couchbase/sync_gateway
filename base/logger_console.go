@@ -36,7 +36,7 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
+func NewConsoleLogger(isInitSetup bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
 		return nil, err
@@ -66,10 +66,9 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
-	logIfPossible := func(logFn func()) {
-		if consoleLogger != nil {
-			logFn()
-		}
+	// If this is our first setup from init() we should return now as non of the below logging can be performed yet
+	if isInitSetup {
+		return logger, nil
 	}
 
 	if *config.Enabled {
@@ -77,13 +76,10 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 		if config.FileOutput != "" {
 			consoleOutput = config.FileOutput
 		}
-		logIfPossible(func() {
-			Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
-		})
+		Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
+
 	} else {
-		logIfPossible(func() {
-			Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
-		})
+		Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
 	}
 
 	return logger, nil
@@ -190,8 +186,8 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	return nil
 }
 
-func newConsoleLoggerOrPanic(config *ConsoleLoggerConfig) *ConsoleLogger {
-	logger, err := NewConsoleLogger(config)
+func newConsoleLoggerOrPanic(isInitSetup bool, config *ConsoleLoggerConfig) *ConsoleLogger {
+	logger, err := NewConsoleLogger(isInitSetup, config)
 	if err != nil {
 		panic(err)
 	}

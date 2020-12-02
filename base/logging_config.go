@@ -52,7 +52,7 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (err error) {
 		return errors.New("nil LoggingConfig")
 	}
 
-	consoleLogger, err = NewConsoleLogger(&c.Console)
+	consoleLogger, err = NewConsoleLogger(false, &c.Console)
 	if err != nil {
 		return err
 	}
