@@ -18,6 +18,7 @@ type statsContext struct {
 	statsLoggingTicker *time.Ticker
 	terminator         chan struct{} // Used to stop the goroutine handling the stats logging
 	cpuStatsSnapshot   *cpuStatsSnapshot
+	doneChan           chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
 
 // The peak number of goroutines observed during lifetime of program

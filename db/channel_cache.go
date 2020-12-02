@@ -68,6 +68,7 @@ type StableSequenceCallbackFunc func() uint64
 type channelCacheImpl struct {
 	queryHandler         ChannelQueryHandler       // Passed to singleChannelCacheImpl for view queries.
 	channelCaches        *base.RangeSafeCollection // A collection of singleChannelCaches
+	backgroundTasks      []BackgroundTask          // List of background tasks.
 	terminator           chan bool                 // Signal terminator of background goroutines
 	options              ChannelCacheOptions       // Channel cache options
 	lateSeqLock          sync.RWMutex              // Coordinates access to late sequence caches
@@ -82,17 +83,18 @@ type channelCacheImpl struct {
 	validFromLock        sync.RWMutex              // Mutex used to avoid race between AddToCache and addChannelCache.  See CBG-520 for more details
 }
 
-func NewChannelCacheForContext(terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
-	return newChannelCache(context.Name, terminator, options, context, context.activeChannels, context.DbStats.Cache())
+func NewChannelCacheForContext(backgroundTasks []BackgroundTask, terminator chan bool, options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
+	return newChannelCache(context.Name, backgroundTasks, terminator, options, context, context.activeChannels, context.DbStats.Cache())
 }
 
-func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOptions,
-	queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels,
+func newChannelCache(dbName string, backgroundTasks []BackgroundTask, terminator chan bool,
+	options ChannelCacheOptions, queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels,
 	cacheStats *base.CacheStats) (*channelCacheImpl, error) {
 
 	channelCache := &channelCacheImpl{
 		queryHandler:         queryHandler,
 		channelCaches:        base.NewRangeSafeCollection(),
+		backgroundTasks:      backgroundTasks,
 		terminator:           terminator,
 		options:              options,
 		maxChannels:          options.MaxNumChannels,
@@ -101,10 +103,11 @@ func newChannelCache(dbName string, terminator chan bool, options ChannelCacheOp
 		activeChannels:       activeChannels,
 		cacheStats:           cacheStats,
 	}
-	err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
+	bgt, err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
 	if err != nil {
 		return nil, err
 	}
+	backgroundTasks = append(backgroundTasks, bgt)
 	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache, nil

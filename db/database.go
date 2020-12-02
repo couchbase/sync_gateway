@@ -74,6 +74,10 @@ const (
 	CompactIntervalMaxDays = float32(60)   // 60 Days in days
 )
 
+// BGTCompletionMaxWait is the maximum amount of time to wait for
+// completion of all background tasks before the server is stopped.
+const BGTCompletionMaxWait = 30 * time.Second
+
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
@@ -103,6 +107,7 @@ type DatabaseContext struct {
 	DbStats            *base.DbStats            // stats that correspond to this database context
 	CompactState       uint32                   // Status of database compaction
 	terminator         chan bool                // Signal termination of background goroutines
+	backgroundTasks    []BackgroundTask         // List of background tasks that are initiated.
 	activeChannels     *channels.ActiveChannels // Tracks active replications by channel
 	CfgSG              cbgt.Cfg                 // Sync Gateway cluster shared config
 	//CfgSG                        *base.CfgSG              // Sync Gateway cluster shared config
@@ -484,7 +489,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if dbContext.Options.CompactInterval != 0 {
 			if autoImport {
 				db := Database{DatabaseContext: dbContext}
-				err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
+				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
 					_, err := db.Compact()
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
@@ -494,6 +499,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 				if err != nil {
 					return nil, err
 				}
+				db.backgroundTasks = append(db.backgroundTasks, bgt)
 			} else {
 				base.Warnf("Automatic compaction can only be enabled on nodes running an Import process")
 			}
@@ -584,6 +590,8 @@ func (context *DatabaseContext) Close() {
 
 	context.OIDCProviders.Stop()
 	close(context.terminator)
+	// Wait for database background tasks to finish.
+	context.waitForBGTCompletion(BGTCompletionMaxWait, context.backgroundTasks)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
@@ -599,6 +607,23 @@ func (context *DatabaseContext) Close() {
 
 	base.RemovePerDbStats(context.Name)
 
+}
+
+// waitForBGTCompletion waits for all the background tasks to finish.
+func (context *DatabaseContext) waitForBGTCompletion(waitTimeMax time.Duration, tasks []BackgroundTask) {
+	waitTime := waitTimeMax
+	for _, t := range tasks {
+		start := time.Now()
+		select {
+		case <-t.doneChan:
+			waitTime -= time.Now().Sub(start)
+			continue
+		case <-time.After(waitTime):
+			// Timeout after waiting for background task to terminate.
+		}
+		base.Infof(base.KeyAll, "Timeout after %v of waiting for background task %q to "+
+			"terminate, database: %s", waitTimeMax, t.taskName, context.Name)
+	}
 }
 
 func (context *DatabaseContext) IsClosed() bool {

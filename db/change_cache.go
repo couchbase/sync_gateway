@@ -59,6 +59,7 @@ type changeCache struct {
 	lock               sync.RWMutex            // Coordinates access to struct fields
 	options            CacheOptions            // Cache config
 	terminator         chan bool               // Signal termination of background goroutines
+	backgroundTasks    []BackgroundTask        // List of background tasks.
 	initTime           time.Time               // Cache init time - used for latency calculations
 	channelCache       ChannelCache            // Underlying channel cache
 	lastAddPendingTime int64                   // The most recent time _addPendingLogs was run, as epoch time
@@ -169,7 +170,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		c.options = DefaultCacheOptions()
 	}
 
-	channelCache, err := NewChannelCacheForContext(c.terminator, c.options.ChannelCacheOptions, c.context)
+	channelCache, err := NewChannelCacheForContext(c.backgroundTasks, c.terminator, c.options.ChannelCacheOptions, c.context)
 	if err != nil {
 		return err
 	}
@@ -180,14 +181,17 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 	heap.Init(&c.pendingLogs)
 
 	// background tasks that perform housekeeping duties on the cache
-	err = NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
+	bgt, err := NewBackgroundTask("InsertPendingEntries", c.context.Name, c.InsertPendingEntries, c.options.CachePendingSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
-	err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
+	c.backgroundTasks = append(c.backgroundTasks, bgt)
+
+	bgt, err = NewBackgroundTask("CleanSkippedSequenceQueue", c.context.Name, c.CleanSkippedSequenceQueue, c.options.CacheSkippedSeqMaxWait/2, c.terminator)
 	if err != nil {
 		return err
 	}
+	c.backgroundTasks = append(c.backgroundTasks, bgt)
 
 	// Lock the cache -- not usable until .Start() called.  This fixes the DCP startup race condition documented in SG #3558.
 	c.lock.Lock()
@@ -214,6 +218,9 @@ func (c *changeCache) Stop() {
 	// Signal to background goroutines that the changeCache has been stopped, so they can exit
 	// their loop
 	close(c.terminator)
+
+	// Wait for changeCache background tasks to finish.
+	c.context.waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks)
 
 	c.lock.Lock()
 	c.stopped = true

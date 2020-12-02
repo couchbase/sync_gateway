@@ -984,7 +984,9 @@ func (sc *ServerContext) startStatsLogger() {
 
 	sc.statsContext.statsLoggingTicker = time.NewTicker(interval)
 	sc.statsContext.terminator = make(chan struct{})
+	sc.statsContext.doneChan = make(chan struct{})
 	go func() {
+		defer close(sc.statsContext.doneChan)
 		for {
 			select {
 			case <-sc.statsContext.statsLoggingTicker.C:
@@ -1003,9 +1005,22 @@ func (sc *ServerContext) startStatsLogger() {
 
 }
 
+// StatsLoggerStopMaxWait is the maximum amount of time to wait for
+// stats logger goroutine to terminate before the server is stopped.
+const StatsLoggerStopMaxWait = 30 * time.Second
+
+// stopStatsLogger stops the stats logger.
 func (sc *ServerContext) stopStatsLogger() {
 	if sc.statsContext.terminator != nil {
 		close(sc.statsContext.terminator)
+
+		waitTime := StatsLoggerStopMaxWait
+		select {
+		case <-sc.statsContext.doneChan:
+			// Stats logger goroutine is terminated and doneChan is already closed.
+		case <-time.After(waitTime):
+			base.Infof(base.KeyAll, "Timeout after %v of waiting for stats logger to terminate", waitTime)
+		}
 	}
 }
 
