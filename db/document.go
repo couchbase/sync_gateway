@@ -819,11 +819,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 
 	// Construct removal body
 	// doc ID and rev ID aren't required to be inserted here, as both of those are available in the request.
-	if isDelete {
-		bodyBytes = []byte(`{"` + BodyDeleted + `":true,"` + BodyRemoved + `":true}`)
-	} else {
-		bodyBytes = []byte(RemovedRedactedDocument)
-	}
+	bodyBytes = []byte(RemovedRedactedDocument)
 
 	activeChannels := make(base.Set)
 	// Add active channels to the channel set if the the revision is available in the revision tree.
