@@ -62,6 +62,15 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (err error) {
 		Consolef(LevelInfo, KeyNone, "Logging: Files disabled")
 		// Explicitly log this error to console
 		Consolef(LevelError, KeyNone, ErrUnsetLogFilePath.Error())
+
+		// nil out other loggers
+		errorLogger = nil
+		warnLogger = nil
+		infoLogger = nil
+		debugLogger = nil
+		traceLogger = nil
+		statsLogger = nil
+
 		return nil
 	}
 
@@ -130,12 +139,24 @@ func InitializeLoggers() {
 }
 
 func FlushLoggerBuffers() {
-	errorLogger.FlushBufferToLog()
-	warnLogger.FlushBufferToLog()
-	infoLogger.FlushBufferToLog()
-	debugLogger.FlushBufferToLog()
-	traceLogger.FlushBufferToLog()
-	statsLogger.FlushBufferToLog()
+	if errorLogger != nil {
+		errorLogger.FlushBufferToLog()
+	}
+	if warnLogger != nil {
+		warnLogger.FlushBufferToLog()
+	}
+	if infoLogger != nil {
+		infoLogger.FlushBufferToLog()
+	}
+	if debugLogger != nil {
+		debugLogger.FlushBufferToLog()
+	}
+	if traceLogger != nil {
+		traceLogger.FlushBufferToLog()
+	}
+	if statsLogger != nil {
+		statsLogger.FlushBufferToLog()
+	}
 }
 
 // validateLogFilePath ensures the given path is created and is a directory.
