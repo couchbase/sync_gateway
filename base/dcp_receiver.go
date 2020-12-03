@@ -322,6 +322,7 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	// Close the data source if feed terminator is closed
 	if args.Terminator != nil {
 		go func() {
+			defer close(args.DoneChan)
 			<-args.Terminator
 			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(bucketName), feedID)
 			if err := bds.Close(); err != nil {

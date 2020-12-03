@@ -48,6 +48,7 @@ func (listener *changeListener) Start(bucket base.Bucket, dbStats *expvar.Map) e
 		ID:         base.DCPCachingFeedID,
 		Backfill:   sgbucket.FeedNoBackfill,
 		Terminator: listener.terminator,
+		DoneChan:   make(chan struct{}),
 	}
 
 	return listener.StartMutationFeed(bucket, dbStats)
@@ -68,6 +69,7 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 			return err
 		}
 		go func() {
+			defer close(listener.FeedArgs.DoneChan)
 			defer base.FatalPanicHandler()
 			defer listener.notifyStopping()
 			for event := range listener.tapFeed.Events() {
@@ -119,6 +121,10 @@ func (listener *changeListener) ProcessFeedEvent(event sgbucket.FeedEvent) bool 
 	return requiresCheckpointPersistence
 }
 
+// MutationFeedStopMaxWait is the maximum amount of time to wait for
+// mutation feed worker goroutine to terminate before the server is stopped.
+const MutationFeedStopMaxWait = 30 * time.Second
+
 // Stops a changeListener. Any pending Wait() calls will immediately return false.
 func (listener *changeListener) Stop() {
 
@@ -138,6 +144,15 @@ func (listener *changeListener) Stop() {
 		if err != nil {
 			base.Debugf(base.KeyChanges, "Error closing listener tap feed: %v", err)
 		}
+	}
+
+	// Wait for mutation feed worker to terminate.
+	waitTime := MutationFeedStopMaxWait
+	select {
+	case <-listener.FeedArgs.DoneChan:
+		// Mutation feed worker goroutine is terminated and doneChan is already closed.
+	case <-time.After(waitTime):
+		base.Infof(base.KeyAll, "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
 	}
 }
 

@@ -1245,7 +1245,9 @@ func deleteTempFile(t *testing.T, file *os.File) {
 }
 
 func TestSetupAndValidate(t *testing.T) {
-	t.Skip("Skipping this test temporarily; until CBG-1217 is fixed")
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skipping this test; it only works on Walrus bucket")
+	}
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	t.Run("Run setupAndValidate with valid config", func(t *testing.T) {
 		configFile := createTempFile(t, []byte(`{

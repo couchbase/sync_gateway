@@ -37,6 +37,7 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 		ID:         base.DCPImportFeedID,
 		Backfill:   sgbucket.FeedResume,
 		Terminator: il.terminator,
+		DoneChan:   make(chan struct{}),
 	}
 
 	importFeedStatsMap := dbContext.DbStats.Database().ImportFeedMapStats
