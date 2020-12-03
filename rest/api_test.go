@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -4705,11 +4706,16 @@ func TestDeletedPutReplicator2(t *testing.T) {
 }
 
 func TestWebhookSpecialProperties(t *testing.T) {
-
 	wg := sync.WaitGroup{}
+	count := 0
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		wg.Done()
+		count++
+
+		if count == 1 {
+			return
+		}
 
 		var body db.Body
 		d := base.JSONDecoder(r.Body)
@@ -4732,7 +4738,16 @@ func TestWebhookSpecialProperties(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar", "_deleted": true}`)
+	var body map[string]interface{}
+
+	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar"}`)
+	assertStatus(t, res, http.StatusCreated)
+	wg.Add(1)
+	wg.Wait()
+
+	err := json.Unmarshal(res.BodyBytes(), &body)
+	assert.NoError(t, err)
+	res = rt.SendAdminRequest("PUT", "/db/doc1?rev="+body["rev"].(string), `{"_deleted": true}`)
 	assertStatus(t, res, http.StatusCreated)
 	wg.Add(1)
 	wg.Wait()
@@ -5217,4 +5232,30 @@ func TestAttachmentContentType(t *testing.T) {
 
 		assert.Equal(t, "", contentDisposition)
 	}
+}
+
+func TestDeleteNonExistentDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("DELETE", "/db/fake", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	response = rt.SendAdminRequest("GET", "/db/fake", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	var body map[string]interface{}
+	_, err := rt.GetDatabase().Bucket.Get("fake", &body)
+	assert.Error(t, err)
+}
+
+func TestPutEmptyDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("GET", "/db/doc", "")
+	assertStatus(t, response, http.StatusOK)
 }

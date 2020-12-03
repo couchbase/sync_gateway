@@ -264,7 +264,9 @@ func (doc *Document) GetDeepMutableBody() Body {
 			return nil
 		}
 		var err error
-		doc._rawBody, err = base.JSONMarshal(doc._body)
+
+		// The below call with cause the _rawBody to be generated
+		_, err = doc.BodyBytes()
 		if err != nil {
 			base.Warnf("Unable to marshal document body into raw body : %s", err)
 			return nil
@@ -306,6 +308,11 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 		base.Warnf("Null doc body/rawBody %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return nil, nil
 	}
+
+	// if len(doc._body) == 0 && doc.Deleted {
+	// 	doc._rawBody = []byte{}
+	// 	return []byte{}, nil
+	// }
 
 	bodyBytes, err := base.JSONMarshal(doc._body)
 	if err != nil {

@@ -1811,30 +1811,6 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			expectedLocalRevID:     db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
 			expectedResolutionType: db.ConflictResolutionLocal,
 		},
-		{
-			name:                    "twoTombstonesRemoteWin",
-			localRevisionBody:       db.Body{"_deleted": true, "source": "local"},
-			localRevID:              "1-a",
-			remoteRevisionBody:      db.Body{"_deleted": true, "source": "remote"},
-			remoteRevID:             "1-b",
-			conflictResolver:        `function(conflict){}`,
-			expectedLocalBody:       db.Body{"source": "remote"},
-			expectedLocalRevID:      "1-b",
-			skipActiveLeafAssertion: true,
-			skipBodyAssertion:       base.TestUseXattrs(),
-		},
-		{
-			name:                    "twoTombstonesLocalWin",
-			localRevisionBody:       db.Body{"_deleted": true, "source": "local"},
-			localRevID:              "1-b",
-			remoteRevisionBody:      db.Body{"_deleted": true, "source": "remote"},
-			remoteRevID:             "1-a",
-			conflictResolver:        `function(conflict){}`,
-			expectedLocalBody:       db.Body{"source": "local"},
-			expectedLocalRevID:      "1-b",
-			skipActiveLeafAssertion: true,
-			skipBodyAssertion:       base.TestUseXattrs(),
-		},
 	}
 
 	for _, test := range conflictResolutionTests {
@@ -1978,6 +1954,142 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 	}
 }
 
+func TestActiveReplicatorPullConflictTombstones(t *testing.T) {
+	testCases := []struct {
+		name                      string
+		localRevID1               string
+		localRevID2               string
+		localShouldTombstoneRev2  bool
+		remoteRevID1              string
+		remoteRevID2              string
+		remoteShouldTombstoneRev2 bool
+		conflictResolver          string
+		expectedLocalRevID        string
+		expectedLocalBody         string
+		skipBodyAssertion         bool
+	}{
+		{
+			name:                      "TwoTombstoneRemoteWin",
+			localRevID1:               "1-alocal",
+			localRevID2:               "2-alocal",
+			localShouldTombstoneRev2:  true,
+			remoteRevID1:              "1-bremote",
+			remoteRevID2:              "2-bremote",
+			remoteShouldTombstoneRev2: true,
+			conflictResolver:          `function(conflict){}`,
+			expectedLocalRevID:        "2-bremote",
+			expectedLocalBody:         "{}",
+			skipBodyAssertion:         base.TestUseXattrs(),
+		},
+		{
+			name:                      "TwoTombstoneLocalWin",
+			localRevID1:               "1-blocal",
+			localRevID2:               "2-blocal",
+			localShouldTombstoneRev2:  true,
+			remoteRevID1:              "1-aremote",
+			remoteRevID2:              "2-aremote",
+			remoteShouldTombstoneRev2: true,
+			conflictResolver:          `function(conflict){}`,
+			expectedLocalRevID:        "2-blocal",
+			expectedLocalBody:         "{}",
+			skipBodyAssertion:         base.TestUseXattrs(),
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			if base.GTestBucketPool.NumUsableBuckets() < 2 {
+				t.Skipf("test requires at least 2 usable test buckets")
+			}
+			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+			// Passive
+			tb2 := base.GetTestBucket(t)
+
+			rt2 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: tb2,
+			})
+			defer rt2.Close()
+
+			docID := test.name
+
+			// Create deleted rev on rt2 (remote / passive)
+			resp, err := rt2.PutDocumentWithRevID(docID, test.remoteRevID1, "", map[string]interface{}{})
+			assert.NoError(t, err)
+			assertStatus(t, resp, http.StatusCreated)
+			revID := respRevID(t, resp)
+
+			if test.remoteShouldTombstoneRev2 {
+				resp, err = rt2.PutDocumentWithRevID(docID, test.remoteRevID2, revID, map[string]interface{}{"_deleted": true})
+			} else {
+				resp, err = rt2.PutDocumentWithRevID(docID, test.remoteRevID2, revID, map[string]interface{}{})
+			}
+			assert.NoError(t, err)
+
+			// Make rt2 listen on HTTP
+			srv := httptest.NewServer(rt2.TestAdminHandler())
+			defer srv.Close()
+
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+
+			// Active / local
+			tb1 := base.GetTestBucket(t)
+			rt1 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: tb1,
+			})
+			defer rt1.Close()
+
+			// Create revision on rt1 (active / local)
+			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID1, "", map[string]interface{}{})
+			assert.NoError(t, err)
+			assertStatus(t, resp, http.StatusCreated)
+			revID = respRevID(t, resp)
+
+			if test.localShouldTombstoneRev2 {
+				resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID2, revID, map[string]interface{}{"_deleted": true})
+			} else {
+				resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID2, revID, map[string]interface{}{})
+			}
+			assert.NoError(t, err)
+
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
+			require.NoError(t, err)
+			replicationStats := base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name())
+			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+				ID:          "repl",
+				Direction:   db.ActiveReplicatorTypePull,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				ChangesBatchSize:     200,
+				Continuous:           true,
+				ReplicationStatsMap:  replicationStats,
+				ConflictResolverFunc: customConflictResolver,
+			})
+			defer func() { assert.NoError(t, ar.Stop()) }()
+
+			assert.NoError(t, ar.Start())
+
+			time.Sleep(10 * time.Second)
+
+			doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			require.NoError(t, err)
+
+			assert.Equal(t, test.expectedLocalRevID, doc.CurrentRev)
+
+			if !test.skipBodyAssertion {
+				docBody, err := doc.BodyBytes()
+				assert.NoError(t, err)
+				assert.Equal(t, test.expectedLocalBody, string(docBody))
+			}
+
+			// t.Fail()
+		})
+	}
+}
+
 // TestActiveReplicatorPushAndPullConflict:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Create the same document id with different content on rt1 and rt2
@@ -1988,16 +2100,15 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 	// scenarios
 	conflictResolutionTests := []struct {
-		name                    string
-		localRevisionBody       []byte
-		localRevID              string
-		remoteRevisionBody      []byte
-		remoteRevID             string
-		commonAncestorRevID     string
-		conflictResolver        string
-		expectedBody            []byte
-		expectedRevID           string
-		expectedTombstonedRevID string
+		name                string
+		localRevisionBody   []byte
+		localRevID          string
+		remoteRevisionBody  []byte
+		remoteRevID         string
+		commonAncestorRevID string
+		conflictResolver    string
+		expectedBody        []byte
+		expectedRevID       string
 	}{
 		{
 			name:               "remoteWins",
@@ -2032,17 +2143,6 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			conflictResolver:   `function(conflict) {return conflict.LocalDocument;}`,
 			expectedBody:       []byte(`{"source": "local"}`),
 			expectedRevID:      db.CreateRevIDWithBytes(2, "1-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 1-b
-		},
-		{
-			name:                "localWinsRemoteTombstone",
-			localRevisionBody:   []byte(`{"source": "local"}`),
-			localRevID:          "2-a",
-			remoteRevisionBody:  []byte(`{"_deleted": true}`),
-			remoteRevID:         "2-b",
-			commonAncestorRevID: "1-a",
-			conflictResolver:    `function(conflict) {return conflict.LocalDocument;}`,
-			expectedBody:        []byte(`{"source": "local"}`),
-			expectedRevID:       db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`)), // rev for local body, transposed under parent 2-b
 		},
 	}
 
@@ -2234,6 +2334,157 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 				}
 			}
 			assert.Equal(t, 1, activeCount)
+		})
+	}
+}
+
+func TestActiveReplicatorPushAndPullConflictTombstones(t *testing.T) {
+	testCases := []struct {
+		name                string
+		commonAncestorRevID string
+		localRevBody        []byte
+		localRevID          string
+		remoteRevBody       []byte
+		remoteRevID         string
+		conflictResolver    string
+		expectedBody        []byte
+		expectedRevID       string
+	}{
+		{
+			name:                "localWinsRemoteTombstone",
+			commonAncestorRevID: "1-a",
+			localRevBody:        []byte(`{"source": "local"}`),
+			localRevID:          "2-a",
+			remoteRevBody:       []byte(`{"_deleted": true}`),
+			remoteRevID:         "2-b",
+			conflictResolver:    `function(conflict) {return conflict.LocalDocument;}`,
+			expectedBody:        []byte(`{"source":"local"}`),
+			expectedRevID:       db.CreateRevIDWithBytes(3, "2-b", []byte(`{"source":"local"}`)),
+		},
+		{
+			name:                "remoteWinsLocalTombstone",
+			commonAncestorRevID: "1-a",
+			localRevBody:        []byte(`{"_deleted": true}`),
+			localRevID:          "2-b",
+			remoteRevBody:       []byte(`{"source": "remote"}`),
+			remoteRevID:         "2-a",
+			conflictResolver:    `function(conflict) {return conflict.RemoteDocument;}`,
+			expectedBody:        []byte(`{"source":"remote"}`),
+			expectedRevID:       "2-a",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			if base.GTestBucketPool.NumUsableBuckets() < 2 {
+				t.Skipf("test requires at least 2 usable test buckets")
+			}
+
+			rt2 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: base.GetTestBucket(t),
+			})
+			defer rt2.Close()
+
+			var localRevisionBody db.Body
+			assert.NoError(t, json.Unmarshal(test.localRevBody, &localRevisionBody))
+
+			var remoteRevisionBody db.Body
+			assert.NoError(t, json.Unmarshal(test.remoteRevBody, &remoteRevisionBody))
+
+			var expectedLocalBody db.Body
+			assert.NoError(t, json.Unmarshal(test.expectedBody, &expectedLocalBody))
+
+			docID := test.name
+
+			resp, err := rt2.PutDocumentWithRevID(docID, test.commonAncestorRevID, "", map[string]interface{}{})
+			assert.NoError(t, err)
+			assertStatus(t, resp, http.StatusCreated)
+			err = rt2.waitForRev(docID, test.commonAncestorRevID)
+			assert.NoError(t, err)
+
+			srv := httptest.NewServer(rt2.TestAdminHandler())
+			defer srv.Close()
+
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+
+			rt1 := NewRestTester(t, &RestTesterConfig{
+				TestBucket: base.GetTestBucket(t),
+			})
+			defer rt1.Close()
+
+			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				Continuous:          false,
+				ChangesBatchSize:    200,
+				ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+			})
+
+			assert.NoError(t, ar.Start())
+
+			waitAndAssertCondition(t, func() bool {
+				return ar.GetStatus().Status == db.ReplicationStateStopped
+			})
+
+			resp, err = rt1.PutDocumentWithRevID(docID, test.localRevID, test.commonAncestorRevID, localRevisionBody)
+			assert.NoError(t, err)
+			assertStatus(t, resp, http.StatusCreated)
+			err = rt1.WaitForCondition(func() bool {
+				resp = rt1.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+				var body db.Body
+				assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &body))
+				return body["_sync"].(map[string]interface{})["rev"].(string) == test.localRevID
+			})
+			assert.NoError(t, err)
+
+			resp, _ = rt2.PutDocumentWithRevID(docID, test.remoteRevID, test.commonAncestorRevID, remoteRevisionBody)
+			assert.NoError(t, err)
+			assertStatus(t, resp, http.StatusCreated)
+			err = rt2.WaitForCondition(func() bool {
+				resp = rt2.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+				var body db.Body
+				assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &body))
+				return body["_sync"].(map[string]interface{})["rev"].(string) == test.remoteRevID
+			})
+			assert.NoError(t, err)
+
+			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
+			require.NoError(t, err)
+			ar = db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePushAndPull,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: rt1.GetDatabase(),
+				},
+				Continuous:           false,
+				ChangesBatchSize:     200,
+				ConflictResolverFunc: customConflictResolver,
+				ReplicationStatsMap:  base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+			})
+
+			assert.NoError(t, ar.Start())
+
+			waitAndAssertCondition(t, func() bool {
+				return ar.GetStatus().Status == db.ReplicationStateRunning
+			})
+
+			waitAndAssertCondition(t, func() bool {
+				return ar.GetStatus().Status == db.ReplicationStateStopped
+			})
+
+			retDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedRevID, retDoc.CurrentRev)
+
+			retDocBody, err := retDoc.BodyBytes()
+			assert.NoError(t, err)
+			assert.Equal(t, test.expectedBody, retDocBody)
 		})
 	}
 }

@@ -1626,6 +1626,11 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
 		deleteBody := len(value) > len(EmptyDocument)
+
+		if isDelete && len(updatedValue) == len(EmptyDocument) {
+			deleteBody = true
+		}
+
 		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
 
 		switch pkgerrors.Cause(writeErr) {
@@ -1637,7 +1642,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 			// conflict/duplicate handling on retry.
 		default:
 			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
-			Warnf("Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
+			Infof(KeyAll, "Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
 			return emptyCas, writeErr
 		}
 

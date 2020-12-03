@@ -1630,6 +1630,11 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
+	if !docExists && newDoc.Deleted {
+		err = base.HTTPErrorf(http.StatusNotFound, "Document does not exist. Cannot delete a document which doesn't exist")
+		return
+	}
+
 	if len(channelSet) > 0 {
 		doc.History[newRevID].Channels = channelSet
 	}
@@ -1724,7 +1729,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			raw, err = doc.MarshalBodyAndSync()
 			base.DebugfCtx(db.Ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
 			docBytes = len(raw)
-			return raw, syncFuncExpiry, false, err
+			return raw, syncFuncExpiry, doc.IsDeleted(), err
 		})
 
 		// If we can't find sync metadata in the document body, check for upgrade.  If upgrade, retry write using WriteUpdateWithXattr
