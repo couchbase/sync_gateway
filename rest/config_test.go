@@ -586,13 +586,12 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 		t.Run(test.name, func(tt *testing.T) {
 			config := serverConfig()
 			config.Logging.DeprecatedDefaultLog.LogFilePath = &test.deprecatedLogFilePath
-			warns := config.deprecatedConfigLoggingFallback()
+			config.deprecatedConfigLoggingFallback()
 			require.NoError(t, err, "Error setting up deprecated logging config")
 			assert.Equal(t, test.expectedLogFilePath, config.Logging.LogFilePath, "Error setting log_file_path")
 			assert.Equal(t, config.Logging.DeprecatedDefaultLog.LogKeys, config.Logging.Console.LogKeys)
 			assert.Equal(t, base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel), config.Logging.Console.LogLevel)
 			assert.Equal(t, config.DeprecatedLog, config.Logging.Console.LogKeys)
-			assert.Len(t, warns, 3)
 		})
 	}
 
@@ -602,21 +601,19 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 		DeprecatedLogFilePath: base.StringPtr(deprecatedDefaultLogFilePathAsFile.Name()),
 		DeprecatedLog:         deprecatedLog,
 	}
-	warns := config.deprecatedConfigLoggingFallback()
+	config.deprecatedConfigLoggingFallback()
 	assert.Equal(t, *config.DeprecatedLogFilePath, config.Logging.LogFilePath)
 	assert.Equal(t, config.DeprecatedLog, config.Logging.Console.LogKeys)
-	assert.Len(t, warns, 2)
 }
 
 func TestSetupAndValidateLogging(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLogging")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	sc := &ServerConfig{}
-	warns, err := sc.SetupAndValidateLogging()
+	err := sc.SetupAndValidateLogging()
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.NotEmpty(t, sc.Logging)
 	assert.Empty(t, sc.Logging.DeprecatedDefaultLog)
-	assert.Len(t, warns, 2)
 }
 
 func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
@@ -627,9 +624,8 @@ func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
 	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl, RedactionLevel: base.RedactFull}
 	sc := &ServerConfig{Logging: lc}
-	warns, err := sc.SetupAndValidateLogging()
+	err := sc.SetupAndValidateLogging()
 	assert.NoError(t, err, "Setup and validate logging should be successful")
-	assert.Len(t, warns, 5)
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
 	assert.Equal(t, ddl, sc.Logging.DeprecatedDefaultLog)
 }

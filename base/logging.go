@@ -34,9 +34,6 @@ const (
 
 type Level int32
 
-// DeferredLogFn is an anonymous function that can be executed at a later date to log something.
-type DeferredLogFn func()
-
 //By setting DebugLevel to -1, if LogLevel is not set in the logging config it
 //will default to the zero value for int32 (0) which will disable debug
 //logging, InfoLevel logging will be the default output.
@@ -354,7 +351,7 @@ func init() {
 	// initializing a logging config, and when running under a test scenario.
 	initialCollationBufferSize := 0
 
-	consoleLogger = newConsoleLoggerOrPanic(&ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
+	consoleLogger = newConsoleLoggerOrPanic(true, &ConsoleLoggerConfig{FileLoggerConfig: FileLoggerConfig{Enabled: BoolPtr(true), CollationBufferSize: &initialCollationBufferSize}})
 	initExternalLoggers()
 }
 

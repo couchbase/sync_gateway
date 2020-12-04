@@ -48,40 +48,34 @@ func TestLogKeyNames(t *testing.T) {
 	goassert.StringContains(t, name, "Replicate")
 
 	keys := []string{}
-	logKeys, warnings := ToLogKey(keys)
-	goassert.Equals(t, len(warnings), 0)
+	logKeys := ToLogKey(keys)
 	goassert.Equals(t, logKeys, LogKeyMask(0))
 	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{})
 
 	keys = append(keys, "DCP")
-	logKeys, warnings = ToLogKey(keys)
-	goassert.Equals(t, len(warnings), 0)
+	logKeys = ToLogKey(keys)
 	goassert.Equals(t, logKeys, *logKeyMask(KeyDCP))
 	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String()})
 
 	keys = append(keys, "Access")
-	logKeys, warnings = ToLogKey(keys)
-	goassert.Equals(t, len(warnings), 0)
+	logKeys = ToLogKey(keys)
 	goassert.Equals(t, logKeys, *logKeyMask(KeyAccess, KeyDCP))
 	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAccess.String(), KeyDCP.String()})
 
 	keys = []string{"*", "DCP"}
-	logKeys, warnings = ToLogKey(keys)
-	goassert.Equals(t, len(warnings), 0)
+	logKeys = ToLogKey(keys)
 	goassert.Equals(t, logKeys, *logKeyMask(KeyAll, KeyDCP))
 	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyAll.String(), KeyDCP.String()})
 
 	// Special handling of log keys
 	keys = []string{"HTTP+"}
-	logKeys, warnings = ToLogKey(keys)
-	goassert.Equals(t, len(warnings), 0)
+	logKeys = ToLogKey(keys)
 	goassert.Equals(t, logKeys, *logKeyMask(KeyHTTP, KeyHTTPResp))
 	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyHTTP.String(), KeyHTTPResp.String()})
 
 	// Test that invalid log keys are ignored, and "+" suffixes are stripped.
 	keys = []string{"DCP", "WS+", "InvalidLogKey"}
-	logKeys, warnings = ToLogKey(keys)
-	goassert.Equals(t, len(warnings), 2)
+	logKeys = ToLogKey(keys)
 	goassert.Equals(t, logKeys, *logKeyMask(KeyDCP, KeyWebSocket))
 	goassert.DeepEquals(t, logKeys.EnabledLogKeys(), []string{KeyDCP.String(), KeyWebSocket.String()})
 }
@@ -187,7 +181,7 @@ func BenchmarkLogKeyName(b *testing.B) {
 
 func BenchmarkToLogKey(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, _ = ToLogKey([]string{"CRUD", "DCP", "Replicate"})
+		_ = ToLogKey([]string{"CRUD", "DCP", "Replicate"})
 	}
 }
 

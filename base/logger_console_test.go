@@ -88,7 +88,7 @@ func TestConsoleShouldLog(t *testing.T) {
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
 
-		l := newConsoleLoggerOrPanic(&ConsoleLoggerConfig{
+		l := newConsoleLoggerOrPanic(false, &ConsoleLoggerConfig{
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
@@ -109,7 +109,7 @@ func BenchmarkConsoleShouldLog(b *testing.B) {
 			test.loggerLevel.StringShort(), test.loggerKeys,
 			test.logToLevel.StringShort(), test.logToKey)
 
-		l := newConsoleLoggerOrPanic(&ConsoleLoggerConfig{
+		l := newConsoleLoggerOrPanic(false, &ConsoleLoggerConfig{
 			LogLevel: &test.loggerLevel,
 			LogKeys:  test.loggerKeys,
 			FileLoggerConfig: FileLoggerConfig{
@@ -175,7 +175,7 @@ func TestConsoleLogDefaults(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
-			logger, _, err := NewConsoleLogger(&test.config)
+			logger, err := NewConsoleLogger(false, &test.config)
 			assert.NoError(tt, err)
 			assert.Equal(tt, test.expected.Enabled, logger.Enabled)
 			assert.Equal(tt, *test.expected.LogLevel, *logger.LogLevel)

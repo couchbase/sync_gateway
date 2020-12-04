@@ -43,6 +43,7 @@ type FileLogger struct {
 	name            string
 	output          io.Writer
 	logger          *log.Logger
+	buffer          strings.Builder
 }
 
 type FileLoggerConfig struct {
@@ -61,7 +62,7 @@ type logRotationConfig struct {
 }
 
 // NewFileLogger returns a new FileLogger from a config.
-func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int) (*FileLogger, error) {
+func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
 
 	// validate and set defaults
 	if err := config.init(level, name, logFilePath, minAge); err != nil {
@@ -76,6 +77,10 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFile
 		logger:  log.New(config.Output, "", 0),
 	}
 
+	if buffer != nil {
+		logger.buffer = *buffer
+	}
+
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
 		logger.collateBuffer = make(chan string, *config.CollationBufferSize)
@@ -87,6 +92,12 @@ func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFile
 	}
 
 	return logger, nil
+}
+
+func (l *FileLogger) FlushBufferToLog() {
+	// Need to clear hanging new line to avoid empty line
+	logString := strings.TrimSuffix(l.buffer.String(), "\n")
+	l.logf(logString)
 }
 
 // Rotate will rotate the active log file.

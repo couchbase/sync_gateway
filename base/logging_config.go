@@ -2,6 +2,7 @@ package base
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -46,70 +47,116 @@ type LoggingConfig struct {
 }
 
 // Init will initialize logging, return any warnings that need to be logged at a later time.
-func (c *LoggingConfig) Init(defaultLogFilePath string) (warnings []DeferredLogFn, err error) {
+func (c *LoggingConfig) Init(defaultLogFilePath string) (err error) {
 	if c == nil {
-		return warnings, errors.New("nil LoggingConfig")
+		return errors.New("nil LoggingConfig")
 	}
 
-	consoleLogger, warnings, err = NewConsoleLogger(&c.Console)
+	consoleLogger, err = NewConsoleLogger(false, &c.Console)
 	if err != nil {
-		return warnings, err
+		return err
 	}
 
 	// If there's nowhere to specified put log files, we'll log an error, but continue anyway.
 	if !hasLogFilePath(&c.LogFilePath, defaultLogFilePath) {
-		warnings = append(warnings, func() {
-			Consolef(LevelInfo, KeyNone, "Logging: Files disabled")
-			// Explicitly log this error to console
-			Consolef(LevelError, KeyNone, ErrUnsetLogFilePath.Error())
-		})
-		return warnings, nil
+		Consolef(LevelInfo, KeyNone, "Logging: Files disabled")
+		// Explicitly log this error to console
+		Consolef(LevelError, KeyNone, ErrUnsetLogFilePath.Error())
+
+		// nil out other loggers
+		errorLogger = nil
+		warnLogger = nil
+		infoLogger = nil
+		debugLogger = nil
+		traceLogger = nil
+		statsLogger = nil
+
+		return nil
 	}
 
 	err = validateLogFilePath(&c.LogFilePath, defaultLogFilePath)
 	if err != nil {
-		return warnings, err
+		return err
 	} else {
-		warnings = append(warnings, func() {
-			Consolef(LevelInfo, KeyNone, "Logging: Files to %v", c.LogFilePath)
-		})
+		Consolef(LevelInfo, KeyNone, "Logging: Files to %v", c.LogFilePath)
 	}
 
-	errorLogger, err = NewFileLogger(c.Error, LevelError, LevelError.String(), c.LogFilePath, errorMinAge)
+	errorLogger, err = NewFileLogger(c.Error, LevelError, LevelError.String(), c.LogFilePath, errorMinAge, &errorLogger.buffer)
 	if err != nil {
-		return warnings, err
+		return err
 	}
 
-	warnLogger, err = NewFileLogger(c.Warn, LevelWarn, LevelWarn.String(), c.LogFilePath, warnMinAge)
+	warnLogger, err = NewFileLogger(c.Warn, LevelWarn, LevelWarn.String(), c.LogFilePath, warnMinAge, &warnLogger.buffer)
 	if err != nil {
-		return warnings, err
+		return err
 	}
 
-	infoLogger, err = NewFileLogger(c.Info, LevelInfo, LevelInfo.String(), c.LogFilePath, infoMinAge)
+	infoLogger, err = NewFileLogger(c.Info, LevelInfo, LevelInfo.String(), c.LogFilePath, infoMinAge, &infoLogger.buffer)
 	if err != nil {
-		return warnings, err
+		return err
 	}
 
-	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, LevelDebug.String(), c.LogFilePath, debugMinAge)
+	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, LevelDebug.String(), c.LogFilePath, debugMinAge, &debugLogger.buffer)
 	if err != nil {
-		return warnings, err
+		return err
 	}
 
-	traceLogger, err = NewFileLogger(c.Trace, LevelTrace, LevelTrace.String(), c.LogFilePath, traceMinAge)
+	traceLogger, err = NewFileLogger(c.Trace, LevelTrace, LevelTrace.String(), c.LogFilePath, traceMinAge, &traceLogger.buffer)
 	if err != nil {
-		return warnings, err
+		return err
 	}
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	statsLogger, err = NewFileLogger(c.Stats, LevelNone, "stats", c.LogFilePath, statsMinage)
+	statsLogger, err = NewFileLogger(c.Stats, LevelNone, "stats", c.LogFilePath, statsMinage, &statsLogger.buffer)
 	if err != nil {
-		return warnings, err
+		return err
 	}
 
 	// Initialize external loggers too
 	initExternalLoggers()
 
-	return warnings, nil
+	return nil
+}
+
+func NewMemoryLogger(level LogLevel) *FileLogger {
+	logger := &FileLogger{
+		Enabled: true,
+		level:   level,
+		name:    level.String(),
+	}
+	logger.output = &logger.buffer
+	logger.logger = log.New(&logger.buffer, "", 0)
+
+	return logger
+}
+func InitializeLoggers() {
+	errorLogger = NewMemoryLogger(LevelError)
+	warnLogger = NewMemoryLogger(LevelWarn)
+	infoLogger = NewMemoryLogger(LevelInfo)
+	debugLogger = NewMemoryLogger(LevelDebug)
+	traceLogger = NewMemoryLogger(LevelTrace)
+	statsLogger = NewMemoryLogger(LevelNone)
+}
+
+func FlushLoggerBuffers() {
+	if errorLogger != nil {
+		errorLogger.FlushBufferToLog()
+	}
+	if warnLogger != nil {
+		warnLogger.FlushBufferToLog()
+	}
+	if infoLogger != nil {
+		infoLogger.FlushBufferToLog()
+	}
+	if debugLogger != nil {
+		debugLogger.FlushBufferToLog()
+	}
+	if traceLogger != nil {
+		traceLogger.FlushBufferToLog()
+	}
+	if statsLogger != nil {
+		statsLogger.FlushBufferToLog()
+	}
 }
 
 // validateLogFilePath ensures the given path is created and is a directory.

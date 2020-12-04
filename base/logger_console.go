@@ -36,13 +36,13 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLogFn, error) {
+func NewConsoleLogger(isInitSetup bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	logKey, warnings := ToLogKey(config.LogKeys)
+	logKey := ToLogKey(config.LogKeys)
 	isStderr := config.FileOutput == "" && *config.Enabled
 
 	logger := &ConsoleLogger{
@@ -66,22 +66,23 @@ func NewConsoleLogger(config *ConsoleLoggerConfig) (*ConsoleLogger, []DeferredLo
 		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
+	// If this is our first setup from init() we should return now as non of the below logging can be performed yet
+	if isInitSetup {
+		return logger, nil
+	}
+
 	if *config.Enabled {
 		consoleOutput := "stderr"
 		if config.FileOutput != "" {
 			consoleOutput = config.FileOutput
 		}
+		Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
 
-		warnings = append(warnings, func() {
-			Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
-		})
 	} else {
-		warnings = append(warnings, func() {
-			Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
-		})
+		Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
 	}
 
-	return logger, warnings, nil
+	return logger, nil
 }
 
 func (l *ConsoleLogger) logf(format string, args ...interface{}) {
@@ -185,8 +186,8 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	return nil
 }
 
-func newConsoleLoggerOrPanic(config *ConsoleLoggerConfig) *ConsoleLogger {
-	logger, _, err := NewConsoleLogger(config)
+func newConsoleLoggerOrPanic(isInitSetup bool, config *ConsoleLoggerConfig) *ConsoleLogger {
+	logger, err := NewConsoleLogger(isInitSetup, config)
 	if err != nil {
 		panic(err)
 	}
