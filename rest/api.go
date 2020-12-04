@@ -155,35 +155,8 @@ func (h *handler) handleFlush() error {
 
 }
 
-type ResyncStatusResponse struct {
-	Status        string `json:"status"`
-	DocsChanged   int    `json:"docs_changed"`
-	DocsProcessed int    `json:"docs_processed"`
-}
-
-const (
-	ResyncStateRunning    = "running"
-	ResyncStateNotRunning = "not running"
-	ResyncStateStopping   = "stopping"
-)
-
 func (h *handler) handleGetResync() error {
-	dbState := atomic.LoadUint32(&h.db.State)
-
-	h.db.ResyncStatus.Mutex.Lock()
-	status := ResyncStatusResponse{
-		DocsChanged:   h.db.ResyncStatus.DocsChanged,
-		DocsProcessed: h.db.ResyncStatus.DocsProcessed,
-	}
-	h.db.ResyncStatus.Mutex.Unlock()
-
-	if dbState == db.DBResyncing {
-		status.Status = ResyncStateRunning
-		h.writeJSON(status)
-		return nil
-	}
-	status.Status = ResyncStateNotRunning
-	h.writeJSON(status)
+	h.writeJSON(h.db.ResyncManager.GetStatus())
 	return nil
 }
 
@@ -204,21 +177,16 @@ func (h *handler) handlePostResync() error {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 			go func() {
 				defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
+				defer h.db.ResyncManager.SetRunStatus(db.ResyncStateStopped)
 				_, err := h.db.UpdateAllDocChannels()
 				if err != nil {
 					base.Errorf("Error occurred running resync operation: %v", err)
+					h.db.ResyncManager.SetError(err)
 				}
 			}()
 
-			h.db.ResyncStatus.Mutex.Lock()
-			status := ResyncStatusResponse{
-				Status:        ResyncStateRunning,
-				DocsChanged:   h.db.ResyncStatus.DocsChanged,
-				DocsProcessed: h.db.ResyncStatus.DocsProcessed,
-			}
-			h.db.ResyncStatus.Mutex.Unlock()
-
-			h.writeJSON(status)
+			h.db.ResyncManager.SetRunStatus(db.ResyncStateRunning)
+			h.writeJSON(h.db.ResyncManager.GetStatus())
 		} else {
 			dbState := atomic.LoadUint32(&h.db.State)
 			if dbState == db.DBResyncing {
@@ -236,15 +204,9 @@ func (h *handler) handlePostResync() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
 		}
 
-		h.db.ResyncStatus.Mutex.Lock()
-		status := ResyncStatusResponse{
-			Status:        ResyncStateStopping,
-			DocsChanged:   h.db.ResyncStatus.DocsChanged,
-			DocsProcessed: h.db.ResyncStatus.DocsProcessed,
-		}
-		h.db.ResyncStatus.Mutex.Unlock()
-		h.writeJSON(status)
-		h.db.ResyncStatus.ResyncTerminator.Set(true)
+		h.db.ResyncManager.SetRunStatus(db.ResyncStateStopping)
+		h.writeJSON(h.db.ResyncManager.GetStatus())
+		h.db.ResyncManager.ResyncTerminator.Set(true)
 	}
 
 	return nil

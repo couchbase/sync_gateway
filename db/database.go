@@ -101,7 +101,7 @@ type DatabaseContext struct {
 	Options            DatabaseContextOptions  // Database Context Options
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
 	State              uint32                  // The runtime state of the DB from a service perspective
-	ResyncStatus       ResyncStatus
+	ResyncManager      ResyncManager
 	ExitChanges        chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders      auth.OIDCProviderMap     // OIDC clients
 	PurgeInterval      time.Duration            // Metadata purge interval
@@ -188,13 +188,6 @@ type ImportOptions struct {
 	ImportFilter     *ImportFilterFunction // Opt-in filter for document import
 	BackupOldRev     bool                  // Create temporary backup of old revision body when available
 	ImportPartitions uint16                // Number of partitions for import
-}
-
-type ResyncStatus struct {
-	ResyncTerminator base.AtomicBool // Allows resync operation to be cancelled while in progress
-	DocsProcessed    int
-	DocsChanged      int
-	Mutex            sync.Mutex // Used to lock the processed and changed ints
 }
 
 // Represents a simulated CouchDB database. A new instance is created for each HTTP request,
@@ -1101,10 +1094,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 	}
 
 	// Reset these values now that a new run has begun
-	db.ResyncStatus.Mutex.Lock()
-	db.ResyncStatus.DocsProcessed = 0
-	db.ResyncStatus.DocsChanged = 0
-	db.ResyncStatus.Mutex.Unlock()
+	db.ResyncManager.ResetStatus()
 
 	docsChanged := 0
 	docsProcessed := 0
@@ -1112,10 +1102,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 	// In the event of an early exit we would like to ensure these values are up to date which they wouldn't be if they
 	// were unable to reach the end of the batch iteration.
 	defer func() {
-		db.ResyncStatus.Mutex.Lock()
-		db.ResyncStatus.DocsProcessed = docsProcessed
-		db.ResyncStatus.DocsChanged = docsChanged
-		db.ResyncStatus.Mutex.Unlock()
+		db.ResyncManager.UpdateProcessedChanged(docsProcessed, docsChanged)
 	}()
 
 	for {
@@ -1129,7 +1116,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 
 		var importRow QueryIdRow
 		for results.Next(&importRow) {
-			if db.ResyncStatus.ResyncTerminator.CompareAndSwap(true, false) {
+			if db.ResyncManager.ResyncTerminator.CompareAndSwap(true, false) {
 				base.Infof(base.KeyAll, "Re-running of Sync Function was stopped before the operation could be "+
 					"completed. System maybe in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
 				closeErr := results.Close()
@@ -1254,10 +1241,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			}
 		}
 
-		db.ResyncStatus.Mutex.Lock()
-		db.ResyncStatus.DocsProcessed = docsProcessed
-		db.ResyncStatus.DocsChanged = docsChanged
-		db.ResyncStatus.Mutex.Unlock()
+		db.ResyncManager.UpdateProcessedChanged(docsProcessed, docsChanged)
 
 		// Close query results
 		closeErr := results.Close()
