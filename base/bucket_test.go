@@ -430,3 +430,40 @@ func TestTLSConfig(t *testing.T) {
 	conf = spec.TLSConfig()
 	assert.Empty(t, conf)
 }
+
+func TestBaseBucket(t *testing.T) {
+
+	tests := []struct {
+		name   string
+		bucket Bucket
+	}{
+		{
+			name:   "gocb",
+			bucket: &CouchbaseBucketGoCB{},
+		},
+		{
+			name:   "leaky",
+			bucket: &LeakyBucket{bucket: &CouchbaseBucketGoCB{}},
+		},
+		{
+			name:   "logging",
+			bucket: &LoggingBucket{bucket: &CouchbaseBucketGoCB{}},
+		},
+		{
+			name:   "leakyLogging",
+			bucket: &LeakyBucket{bucket: &LoggingBucket{bucket: &CouchbaseBucketGoCB{}}},
+		},
+		{
+			name:   "loggingLeaky",
+			bucket: &LoggingBucket{bucket: &LeakyBucket{bucket: &CouchbaseBucketGoCB{}}},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			baseBucket := GetBaseBucket(test.bucket)
+			_, ok := baseBucket.(*CouchbaseBucketGoCB)
+			assert.True(t, ok, "Base bucket wasn't gocb")
+		})
+	}
+}

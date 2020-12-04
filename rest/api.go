@@ -82,8 +82,10 @@ func (h *handler) handleVacuum() error {
 
 func (h *handler) handleFlush() error {
 
+	baseBucket := base.GetBaseBucket(h.db.Bucket)
+
 	// If it can be flushed, then flush it
-	if _, ok := h.db.Bucket.(sgbucket.FlushableStore); ok {
+	if _, ok := baseBucket.(sgbucket.FlushableStore); ok {
 
 		// If it's not a walrus bucket, don't allow flush unless the unsupported config is set
 		if !h.db.BucketSpec.IsWalrusBucket() {
@@ -129,7 +131,7 @@ func (h *handler) handleFlush() error {
 			return err2
 		}
 
-	} else if bucket, ok := h.db.Bucket.(sgbucket.DeleteableStore); ok {
+	} else if bucket, ok := baseBucket.(sgbucket.DeleteableStore); ok {
 
 		// If it's not flushable, but it's deletable, then delete it
 
