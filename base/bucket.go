@@ -49,6 +49,21 @@ const (
 	IndexBucket
 )
 
+// WrappingBucket interface used to identify buckets that wrap an underlying
+// bucket (leaky bucket, logging bucket)
+type WrappingBucket interface {
+	GetUnderlyingBucket() Bucket
+}
+
+// GetBaseBucket returns the lowest level non-wrapping bucket wrapped by one or more WrappingBuckets
+func GetBaseBucket(b Bucket) Bucket {
+	wb, ok := b.(WrappingBucket)
+	if ok {
+		return GetBaseBucket(wb.GetUnderlyingBucket())
+	}
+	return b
+}
+
 func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 
 	// Otherwise use the default driver for the bucket type
