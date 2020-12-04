@@ -1344,6 +1344,22 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	assertStatus(t, response, http.StatusBadRequest)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=invalid", "")
+	assertStatus(t, response, http.StatusBadRequest)
+
+	// Test empty action, should default to start
+	response = rt.SendAdminRequest("POST", "/db/_resync", "")
+	assertStatus(t, response, http.StatusOK)
+
+	err = rt.WaitForCondition(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		var body map[string]interface{}
+		err := json.Unmarshal(response.BodyBytes(), &body)
+		assert.NoError(t, err)
+		return body["status"].(string) == "not running"
+	})
+	assert.NoError(t, err)
 }
 
 func TestResyncStop(t *testing.T) {

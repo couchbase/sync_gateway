@@ -155,17 +155,35 @@ func (h *handler) handleFlush() error {
 
 }
 
+type ResyncStatusResponse struct {
+	Status        string `json:"status"`
+	DocsChanged   int    `json:"docs_changed"`
+	DocsProcessed int    `json:"docs_processed"`
+}
+
+const (
+	ResyncStateRunning    = "running"
+	ResyncStateNotRunning = "not running"
+	ResyncStateStopping   = "stopping"
+)
+
 func (h *handler) handleGetResync() error {
 	dbState := atomic.LoadUint32(&h.db.State)
+
+	h.db.ResyncStatus.Mutex.Lock()
+	status := ResyncStatusResponse{
+		DocsChanged:   h.db.ResyncStatus.DocsChanged,
+		DocsProcessed: h.db.ResyncStatus.DocsProcessed,
+	}
+	h.db.ResyncStatus.Mutex.Unlock()
+
 	if dbState == db.DBResyncing {
-		h.db.ResyncStatus.Mutex.Lock()
-		h.writeRawJSON([]byte(fmt.Sprintf(`{"status": "running", "docs_changed": %d, "docs_processed": %d}`, h.db.ResyncStatus.DocsChanged, h.db.ResyncStatus.DocsProcessed)))
-		h.db.ResyncStatus.Mutex.Unlock()
+		status.Status = ResyncStateRunning
+		h.writeJSON(status)
 		return nil
 	}
-	h.db.ResyncStatus.Mutex.Lock()
-	h.writeRawJSON([]byte(fmt.Sprintf(`{"status": "not running", "last_run_docs_changed": %d, "last_run_docs_processed": %d}`, h.db.ResyncStatus.DocsChanged, h.db.ResyncStatus.DocsProcessed)))
-	h.db.ResyncStatus.Mutex.Unlock()
+	status.Status = ResyncStateNotRunning
+	h.writeJSON(status)
 	return nil
 }
 
@@ -191,9 +209,16 @@ func (h *handler) handlePostResync() error {
 					base.Errorf("Error occurred running resync operation: %v", err)
 				}
 			}()
+
 			h.db.ResyncStatus.Mutex.Lock()
-			h.writeRawJSON([]byte(fmt.Sprintf(`{"status": "running", "docs_changed": %d, "docs_processed": %d}`, h.db.ResyncStatus.DocsChanged, h.db.ResyncStatus.DocsProcessed)))
+			status := ResyncStatusResponse{
+				Status:        ResyncStateRunning,
+				DocsChanged:   h.db.ResyncStatus.DocsChanged,
+				DocsProcessed: h.db.ResyncStatus.DocsProcessed,
+			}
 			h.db.ResyncStatus.Mutex.Unlock()
+
+			h.writeJSON(status)
 		} else {
 			dbState := atomic.LoadUint32(&h.db.State)
 			if dbState == db.DBResyncing {
@@ -211,7 +236,14 @@ func (h *handler) handlePostResync() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
 		}
 
-		h.writeRawJSON([]byte(`{"status": "stopping"}`))
+		h.db.ResyncStatus.Mutex.Lock()
+		status := ResyncStatusResponse{
+			Status:        ResyncStateStopping,
+			DocsChanged:   h.db.ResyncStatus.DocsChanged,
+			DocsProcessed: h.db.ResyncStatus.DocsProcessed,
+		}
+		h.db.ResyncStatus.Mutex.Unlock()
+		h.writeJSON(status)
 		h.db.ResyncStatus.ResyncTerminator.Set(true)
 	}
 
