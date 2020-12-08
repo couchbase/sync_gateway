@@ -596,7 +596,7 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	}
 
 	// Call deprecatedConfigLoggingFallback with DeprecatedLogFilePath and without DeprecatedDefaultLog
-	config = &ServerConfig{
+	config := &ServerConfig{
 		Logging:               &base.LoggingConfig{},
 		DeprecatedLogFilePath: base.StringPtr(deprecatedDefaultLogFilePathAsFile.Name()),
 		DeprecatedLog:         deprecatedLog,
@@ -887,7 +887,7 @@ func TestValidateServerContext(t *testing.T) {
 	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()
 
 	xattrs := base.TestUseXattrs()
-	config = &ServerConfig{
+	config := &ServerConfig{
 		Databases: map[string]*DbConfig{
 			"db1": {
 				BucketConfig: BucketConfig{
