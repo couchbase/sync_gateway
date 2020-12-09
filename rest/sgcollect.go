@@ -53,8 +53,7 @@ type sgCollect struct {
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilename string,
-	params sgCollectOptions) error {
+func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilename string, params sgCollectOptions) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
