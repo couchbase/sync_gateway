@@ -580,7 +580,11 @@ func (h *handler) handleSGCollect() error {
 
 	zipFilename := sgcollectFilename()
 
-	if err := sgcollectInstance.Start(h.server.config, h.serialNumber, zipFilename, params); err != nil {
+	var logFilePath string
+	if h.server.config != nil && h.server.config.Logging != nil && h.server.config.Logging.LogFilePath != "" {
+		logFilePath = h.server.config.Logging.LogFilePath
+	}
+	if err := sgcollectInstance.Start(logFilePath, h.serialNumber, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}
 
