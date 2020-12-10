@@ -434,7 +434,12 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 	cfgEvents := make(chan cbgt.CfgEvent)
 	err := l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_KNOWN), cfgEvents)
 	if err != nil {
-		Debugf(KeyCluster, "Error subscribing node changes: %v", err)
+		Debugf(KeyCluster, "Error subscribing NODE_DEFS_KNOWN changes: %v", err)
+		return err
+	}
+	err = l.cfg.Subscribe(cbgt.CfgNodeDefsKey(cbgt.NODE_DEFS_WANTED), cfgEvents)
+	if err != nil {
+		Debugf(KeyCluster, "Error subscribing NODE_DEFS_WANTED changes: %v", err)
 		return err
 	}
 	go func() {
@@ -463,21 +468,22 @@ func (l *importHeartbeatListener) subscribeNodeChanges() error {
 
 func (l *importHeartbeatListener) reloadNodes() (localNodePresent bool, err error) {
 
-	nodeSet, _, err := cbgt.CfgGetNodeDefs(l.cfg, cbgt.NODE_DEFS_KNOWN)
-	if err != nil {
-		return false, err
-	}
-
 	nodeUUIDs := make([]string, 0)
-	if nodeSet != nil {
-		for _, nodeDef := range nodeSet.NodeDefs {
-			nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
-			if nodeDef.UUID == l.mgr.UUID() {
-				localNodePresent = true
+	nodeDefTypes := []string{cbgt.NODE_DEFS_KNOWN, cbgt.NODE_DEFS_WANTED}
+	for _, nodeDefType := range nodeDefTypes {
+		nodeSet, _, err := cbgt.CfgGetNodeDefs(l.cfg, nodeDefType)
+		if err != nil {
+			return false, err
+		}
+		if nodeSet != nil {
+			for _, nodeDef := range nodeSet.NodeDefs {
+				nodeUUIDs = append(nodeUUIDs, nodeDef.UUID)
+				if nodeDef.UUID == l.mgr.UUID() {
+					localNodePresent = true
+				}
 			}
 		}
 	}
-
 	l.lock.Lock()
 	l.nodeIDs = nodeUUIDs
 	l.lock.Unlock()
