@@ -5267,7 +5267,8 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	assertStatus(t, response, http.StatusNotFound)
 
 	var doc map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.Get("doc1", &doc)
+	cas, err := rt.GetDatabase().Bucket.Get("doc1", &doc)
+	fmt.Println(cas)
 	assert.Error(t, err)
 }
 
