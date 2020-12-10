@@ -5249,6 +5249,28 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// CBG-1153
+func TestDeleteEmptyBodyDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+	response := rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, response, http.StatusCreated)
+	assert.NoError(t, json.Unmarshal(response.BodyBytes(), &body))
+	rev := body["rev"].(string)
+
+	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev="+rev, "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	var doc map[string]interface{}
+	_, err := rt.GetDatabase().Bucket.Get("doc1", &doc)
+	assert.Error(t, err)
+}
+
 func TestPutEmptyDoc(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

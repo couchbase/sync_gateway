@@ -1756,6 +1756,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				doc.inlineSyncData = true
 			}
 
+			// TODO: Review implications of adding currentXattr check here too
 			docExists := currentValue != nil || currentXattr != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
