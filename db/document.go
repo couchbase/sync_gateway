@@ -1008,7 +1008,9 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
 	if doc._rawBody != nil {
-		data = doc._rawBody
+		if !(doc.Deleted && len(doc._rawBody) == len(base.EmptyDocument)) {
+			data = doc._rawBody
+		}
 	} else {
 		body := doc._body
 		// If body is non-empty and non-deleted, unmarshal and return
