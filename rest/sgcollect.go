@@ -53,7 +53,7 @@ type sgCollect struct {
 }
 
 // Start will attempt to start sgcollect_info, if another is not already running.
-func (sg *sgCollect) Start(ctxSerialNumber uint64, zipFilename string, params sgCollectOptions) error {
+func (sg *sgCollect) Start(logFilePath string, ctxSerialNumber uint64, zipFilename string, params sgCollectOptions) error {
 	if atomic.LoadUint32(sg.status) == sgRunning {
 		return ErrSGCollectInfoAlreadyRunning
 	}
@@ -65,8 +65,8 @@ func (sg *sgCollect) Start(ctxSerialNumber uint64, zipFilename string, params sg
 
 	if params.OutputDirectory == "" {
 		// If no output directory specified, default to the configured LogFilePath
-		if config != nil && config.Logging != nil && config.Logging.LogFilePath != "" {
-			params.OutputDirectory = config.Logging.LogFilePath
+		if logFilePath != "" {
+			params.OutputDirectory = logFilePath
 			base.Debugf(base.KeyAdmin, "sgcollect_info: no output directory specified, using LogFilePath: %v", params.OutputDirectory)
 		} else {
 			// If LogFilePath is not set, and DefaultLogFilePath is not set via a service script, error out.

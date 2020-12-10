@@ -47,8 +47,6 @@ var (
 	defaultLogFilePath string
 )
 
-var config *ServerConfig
-
 const (
 	eeOnlyWarningMsg   = "EE only configuration option %s=%v - Reverting to default value for CE: %v"
 	minValueErrorMsg   = "minimum value for %s is: %v"
@@ -1290,10 +1288,6 @@ func HandleSighup() {
 			base.Warnf("Error rotating %v: %v", logger, err)
 		}
 	}
-}
-
-func GetConfig() *ServerConfig {
-	return config
 }
 
 func RegisterSignalHandler() {
