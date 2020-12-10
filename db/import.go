@@ -90,6 +90,9 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 		existingBucketDoc.Xattr = nil
 	} else {
 		existingBucketDoc.Body, existingBucketDoc.Xattr, err = existingDoc.MarshalWithXattr()
+		if existingDoc.Deleted && len(existingDoc._rawBody) == len(base.EmptyDocument) {
+			existingBucketDoc.Body = nil
+		}
 	}
 
 	if err != nil {

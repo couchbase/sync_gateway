@@ -5266,10 +5266,11 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 	response = rt.SendAdminRequest("GET", "/db/doc1", "")
 	assertStatus(t, response, http.StatusNotFound)
 
-	var doc map[string]interface{}
-	cas, err := rt.GetDatabase().Bucket.Get("doc1", &doc)
-	fmt.Println(cas)
-	assert.Error(t, err)
+	if base.TestUseXattrs() {
+		var doc map[string]interface{}
+		_, err := rt.GetDatabase().Bucket.Get("doc1", &doc)
+		assert.Error(t, err)
+	}
 }
 
 func TestPutEmptyDoc(t *testing.T) {
