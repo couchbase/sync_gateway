@@ -1192,6 +1192,8 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
 	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
+
+	supportsTombstoneCreation := bucket.IsSupported(sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted)
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		var mutateFlag gocb.SubdocDocFlag
@@ -1201,7 +1203,11 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		} else {
 			if cas == 0 {
 				// If the doc doesn't exist, set SubdocDocFlagMkDoc to allow us to write the xattr
-				mutateFlag = gocb.SubdocDocFlagMkDoc
+				if supportsTombstoneCreation {
+					mutateFlag = gocb.SubdocDocFlag(gocbcore.SubdocDocFlag(0x08)) | gocb.SubdocDocFlagAccessDeleted | gocb.SubdocDocFlagReplaceDoc
+				} else {
+					mutateFlag = gocb.SubdocDocFlagMkDoc
+				}
 			} else {
 				// Since the body _may_ not exist, we need to set SubdocDocFlagAccessDeleted
 				mutateFlag = gocb.SubdocDocFlagAccessDeleted
@@ -1209,8 +1215,9 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		}
 
 		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
-			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagCreatePath|gocb.SubdocFlagXattr).                      // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
+
 		if bucket.IsSupported(sgbucket.DataStoreFeatureCrc32cMacroExpansion) {
 			// Stamp the body hash on the xattr
 			if isDelete {
@@ -1222,6 +1229,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		if deleteBody {
 			builder.RemoveEx("", gocb.SubdocFlagNone) // Delete the document body
 		}
+
 		docFragment, removeErr := builder.Execute()
 
 		if removeErr != nil {
@@ -1624,7 +1632,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		}
 
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
-		deleteBody := len(value) > len(EmptyDocument)
+		deleteBody := value != nil
 		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
 
 		switch pkgerrors.Cause(writeErr) {
@@ -2329,6 +2337,8 @@ func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature
 	// Since Couchbase Eventing was introduced in Couchbase Server 5.5, the Crc32c macro expansion only needs to be done on 5.5 or later.
 	case sgbucket.DataStoreFeatureCrc32cMacroExpansion:
 		return isMinimumVersion(major, minor, 5, 5)
+	case sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted:
+		return isMinimumVersion(major, minor, 6, 6)
 	default:
 		return false
 	}
