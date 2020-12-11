@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -32,6 +33,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -5311,5 +5313,88 @@ func TestAttachmentContentType(t *testing.T) {
 		contentDisposition := response.Header().Get("Content-Disposition")
 
 		assert.Equal(t, "", contentDisposition)
+	}
+}
+
+func TestDeleteNonExistentDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("DELETE", "/db/fake", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("GET", "/db/fake", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	var body map[string]interface{}
+	_, err := rt.GetDatabase().Bucket.Get("fake", &body)
+
+	if base.TestUseXattrs() {
+		if rt.Bucket().IsSupported(sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted) {
+			assert.Error(t, err)
+		} else {
+			assert.Equal(t, map[string]interface{}{}, body)
+		}
+	} else {
+		assert.NoError(t, err)
+	}
+}
+
+// CBG-1153
+func TestDeleteEmptyBodyDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+	response := rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, response, http.StatusCreated)
+	assert.NoError(t, json.Unmarshal(response.BodyBytes(), &body))
+	rev := body["rev"].(string)
+
+	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev="+rev, "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	var doc map[string]interface{}
+	_, err := rt.GetDatabase().Bucket.Get("doc1", &doc)
+
+	if base.TestUseXattrs() {
+		assert.Error(t, err)
+	} else {
+		assert.NoError(t, err)
+	}
+}
+
+func TestPutEmptyDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("GET", "/db/doc", "")
+	assertStatus(t, response, http.StatusOK)
+}
+
+func TestTombstonedBulkDocs(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"doc", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	var body map[string]interface{}
+	_, err := rt.GetDatabase().Bucket.Get("doc", &body)
+
+	if base.TestUseXattrs() {
+		if rt.Bucket().IsSupported(sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted) {
+			assert.Error(t, err)
+		} else {
+			assert.Equal(t, map[string]interface{}{}, body)
+		}
+	} else {
+		assert.NoError(t, err)
 	}
 }
