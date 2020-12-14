@@ -2,15 +2,13 @@ package db
 
 import (
 	"sync"
-
-	"github.com/couchbase/sync_gateway/base"
 )
 
 type ResyncManager struct {
-	Status           ResyncStatus
-	LastError        error
-	Mutex            sync.Mutex      // Used to lock the Status and when setting / reading LastError
-	ResyncTerminator base.AtomicBool // Allows resync operation to be cancelled while in progress
+	Status     ResyncStatus
+	LastError  error
+	Terminator bool       // Allows resync operation to be cancelled while in progress
+	Mutex      sync.Mutex // Used to lock the Status, LastError and Terminator
 }
 
 type ResyncStatus struct {
@@ -31,6 +29,10 @@ func (rm *ResyncManager) GetStatus() *ResyncStatus {
 	rm.Mutex.Lock()
 	defer rm.Mutex.Unlock()
 
+	return rm._getStatus()
+}
+
+func (rm *ResyncManager) _getStatus() *ResyncStatus {
 	retStatus := ResyncStatus{
 		Status:        rm.Status.Status,
 		DocsChanged:   rm.Status.DocsChanged,
@@ -66,6 +68,7 @@ func (rm *ResyncManager) ResetStatus() {
 	rm.Status.DocsProcessed = 0
 	rm.Status.DocsChanged = 0
 	rm.LastError = nil
+	rm.Terminator = false
 }
 
 func (rm *ResyncManager) SetError(err error) {
@@ -74,4 +77,25 @@ func (rm *ResyncManager) SetError(err error) {
 
 	rm.LastError = err
 	rm.Status.Status = ResyncStateError
+}
+
+func (rm *ResyncManager) ShouldStop() bool {
+	rm.Mutex.Lock()
+	defer rm.Mutex.Unlock()
+
+	if rm.Terminator {
+		rm.Terminator = false
+		return true
+	}
+
+	return false
+}
+
+func (rm *ResyncManager) Stop() *ResyncStatus {
+	rm.Mutex.Lock()
+	defer rm.Mutex.Unlock()
+
+	rm.Status.Status = ResyncStateStopped
+	rm.Terminator = true
+	return rm._getStatus()
 }

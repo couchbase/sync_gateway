@@ -1116,9 +1116,9 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 
 		var importRow QueryIdRow
 		for results.Next(&importRow) {
-			if db.ResyncManager.ResyncTerminator.CompareAndSwap(true, false) {
-				base.Infof(base.KeyAll, "Re-running of Sync Function was stopped before the operation could be "+
-					"completed. System maybe in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
+			if db.ResyncManager.ShouldStop() {
+				base.Infof(base.KeyAll, "Resync was stopped before the operation could be completed. System "+
+					"maybe in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
 				closeErr := results.Close()
 				if closeErr != nil {
 					return 0, closeErr

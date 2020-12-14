@@ -204,9 +204,8 @@ func (h *handler) handlePostResync() error {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
 		}
 
-		h.db.ResyncManager.SetRunStatus(db.ResyncStateStopping)
-		h.writeJSON(h.db.ResyncManager.GetStatus())
-		h.db.ResyncManager.ResyncTerminator.Set(true)
+		status := h.db.ResyncManager.Stop()
+		h.writeJSON(status)
 	}
 
 	return nil
