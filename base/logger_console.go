@@ -36,7 +36,7 @@ type ConsoleLoggerConfig struct {
 }
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
-func NewConsoleLogger(isInitSetup bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
+func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
 	// validate and set defaults
 	if err := config.init(); err != nil {
 		return nil, err
@@ -66,20 +66,17 @@ func NewConsoleLogger(isInitSetup bool, config *ConsoleLoggerConfig) (*ConsoleLo
 		go logCollationWorker(logger.collateBuffer, logger.flushChan, logger.collateBufferWg, logger.logger, *config.CollationBufferSize, consoleLoggerCollateFlushTimeout)
 	}
 
-	// If this is our first setup from init() we should return now as non of the below logging can be performed yet
-	if isInitSetup {
-		return logger, nil
-	}
-
-	if *config.Enabled {
-		consoleOutput := "stderr"
-		if config.FileOutput != "" {
-			consoleOutput = config.FileOutput
+	// We can only log the console log location itself when logging has previously been set up and is being re-initialized from a config.
+	if shouldLogLocation {
+		if *config.Enabled {
+			consoleOutput := "stderr"
+			if config.FileOutput != "" {
+				consoleOutput = config.FileOutput
+			}
+			Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
+		} else {
+			Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
 		}
-		Consolef(LevelInfo, KeyNone, "Logging: Console to %v", consoleOutput)
-
-	} else {
-		Consolef(LevelInfo, KeyNone, "Logging: Console disabled")
 	}
 
 	return logger, nil
@@ -186,8 +183,8 @@ func (lcc *ConsoleLoggerConfig) init() error {
 	return nil
 }
 
-func newConsoleLoggerOrPanic(isInitSetup bool, config *ConsoleLoggerConfig) *ConsoleLogger {
-	logger, err := NewConsoleLogger(isInitSetup, config)
+func newConsoleLoggerOrPanic(config *ConsoleLoggerConfig) *ConsoleLogger {
+	logger, err := NewConsoleLogger(false, config)
 	if err != nil {
 		panic(err)
 	}
