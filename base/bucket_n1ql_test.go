@@ -249,9 +249,6 @@ func TestIndexMeta(t *testing.T) {
 // Ensure that n1ql query errors are handled and returned (and don't result in panic etc)
 func TestMalformedN1qlQuery(t *testing.T) {
 
-	// FIXME: Test fails regularly on a full test suite run, not exactly sure why.
-	t.Skip("WARNING: Disabled test")
-
 	if TestsDisableGSI() {
 		t.Skip("This test only works with Couchbase Server and UseViews=false")
 	}
