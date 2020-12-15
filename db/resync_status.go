@@ -39,6 +39,10 @@ func (rm *ResyncManager) _getStatus() *ResyncStatus {
 		DocsProcessed: rm.Status.DocsProcessed,
 	}
 
+	if retStatus.Status == "" {
+		retStatus.Status = ResyncStateStopped
+	}
+
 	if rm.LastError != nil {
 		retStatus.Error = rm.LastError.Error()
 	}
@@ -95,7 +99,7 @@ func (rm *ResyncManager) Stop() *ResyncStatus {
 	rm.Mutex.Lock()
 	defer rm.Mutex.Unlock()
 
-	rm.Status.Status = ResyncStateStopped
+	rm.Status.Status = ResyncStateStopping
 	rm.Terminator = true
 	return rm._getStatus()
 }
