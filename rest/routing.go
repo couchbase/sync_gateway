@@ -275,7 +275,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_config",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handlePutDbConfig)).Methods("PUT")
 	dbr.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handleResync)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, (*handler).handleGetResync)).Methods("GET")
+	dbr.Handle("/_resync",
+		makeOfflineHandler(sc, adminPrivs, (*handler).handlePostResync)).Methods("POST")
 	dbr.Handle("/_vacuum",
 		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_purge",

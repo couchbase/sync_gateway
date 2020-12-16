@@ -68,6 +68,7 @@ var (
 )
 
 var DefaultCompactInterval = uint32(60 * 60 * 24) // Default compact interval in seconds = 1 Day
+var DefaultResyncQueryLimit = 5000
 
 const (
 	CompactIntervalMinDays = float32(0.04) // ~1 Hour in days
@@ -81,25 +82,26 @@ const BGTCompletionMaxWait = 30 * time.Second
 // Basic description of a database. Shared between all Database objects on the same database.
 // This object is thread-safe so it can be shared between HTTP handlers.
 type DatabaseContext struct {
-	Name               string                   // Database name
-	UUID               string                   // UUID for this database instance. Used by cbgt and sgr
-	Bucket             base.Bucket              // Storage
-	BucketSpec         base.BucketSpec          // The BucketSpec
-	BucketLock         sync.RWMutex             // Control Access to the underlying bucket object
-	mutationListener   changeListener           // Caching feed listener
-	ImportListener     *importListener          // Import feed listener
-	sequences          *sequenceAllocator       // Source of new sequence numbers
-	ChannelMapper      *channels.ChannelMapper  // Runs JS 'sync' function
-	StartTime          time.Time                // Timestamp when context was instantiated
-	RevsLimit          uint32                   // Max depth a document's revision tree can grow to
-	autoImport         bool                     // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
-	revisionCache      RevisionCache            // Cache of recently-accessed doc revisions
-	changeCache        *changeCache             // Cache of recently-access channels
-	EventMgr           *EventManager            // Manages notification events
-	AllowEmptyPassword bool                     // Allow empty passwords?  Defaults to false
-	Options            DatabaseContextOptions   // Database Context Options
-	AccessLock         sync.RWMutex             // Allows DB offline to block until synchronous calls have completed
-	State              uint32                   // The runtime state of the DB from a service perspective
+	Name               string                  // Database name
+	UUID               string                  // UUID for this database instance. Used by cbgt and sgr
+	Bucket             base.Bucket             // Storage
+	BucketSpec         base.BucketSpec         // The BucketSpec
+	BucketLock         sync.RWMutex            // Control Access to the underlying bucket object
+	mutationListener   changeListener          // Caching feed listener
+	ImportListener     *importListener         // Import feed listener
+	sequences          *sequenceAllocator      // Source of new sequence numbers
+	ChannelMapper      *channels.ChannelMapper // Runs JS 'sync' function
+	StartTime          time.Time               // Timestamp when context was instantiated
+	RevsLimit          uint32                  // Max depth a document's revision tree can grow to
+	autoImport         bool                    // Add sync data to new untracked couchbase server docs?  (Xattr mode specific)
+	revisionCache      RevisionCache           // Cache of recently-accessed doc revisions
+	changeCache        *changeCache            // Cache of recently-access channels
+	EventMgr           *EventManager           // Manages notification events
+	AllowEmptyPassword bool                    // Allow empty passwords?  Defaults to false
+	Options            DatabaseContextOptions  // Database Context Options
+	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
+	State              uint32                  // The runtime state of the DB from a service perspective
+	ResyncManager      ResyncManager
 	ExitChanges        chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
 	OIDCProviders      auth.OIDCProviderMap     // OIDC clients
 	PurgeInterval      time.Duration            // Metadata purge interval
@@ -137,6 +139,7 @@ type DatabaseContextOptions struct {
 	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions        SGReplicateOptions
 	SlowQueryWarningThreshold time.Duration
+	ResyncQueryLimit          int // Limit used for pagination of resync queries. If not set defaults to DefaultResyncQueryLimit
 }
 
 type SGReplicateOptions struct {
@@ -1071,151 +1074,189 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 
 	base.Infof(base.KeyAll, "Recomputing document channels...")
 
-	results, err := db.QueryResync()
-	if err != nil {
-		return 0, err
-	}
-
 	// We are about to alter documents without updating their sequence numbers, which would
 	// really confuse the changeCache, so turn it off until we're done:
 	db.changeCache.EnableChannelIndexing(false)
 	defer db.changeCache.EnableChannelIndexing(true)
 
-	err = db.changeCache.Clear()
+	err := db.changeCache.Clear()
 	if err != nil {
 		return 0, err
 	}
 
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
-	changeCount := 0
-	docCount := 0
 
-	var importRow QueryIdRow
-	for results.Next(&importRow) {
-		docid := importRow.Id
-		key := realDocID(docid)
+	queryLimit := db.Options.ResyncQueryLimit
+	startSeq := uint64(0)
+	endSeq, err := db.sequences.getSequence()
+	if err != nil {
+		return 0, err
+	}
 
-		docCount++
-		documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
-			imported := false
-			if !doc.HasValidSyncData() {
-				// This is a document not known to the sync gateway. Ignore it:
-				return nil, false, nil, base.ErrUpdateCancel
-			} else {
-				base.Debugf(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
+	// Reset these values now that a new run has begun
+	db.ResyncManager.ResetStatus()
+
+	docsChanged := 0
+	docsProcessed := 0
+
+	// In the event of an early exit we would like to ensure these values are up to date which they wouldn't be if they
+	// were unable to reach the end of the batch iteration.
+	defer func() {
+		db.ResyncManager.UpdateProcessedChanged(docsProcessed, docsChanged)
+	}()
+
+	for {
+		results, err := db.QueryResync(queryLimit, startSeq, endSeq)
+		if err != nil {
+			return 0, err
+		}
+
+		queryRowCount := 0
+		highSeq := uint64(0)
+
+		var importRow QueryIdRow
+		for results.Next(&importRow) {
+			if db.ResyncManager.ShouldStop() {
+				base.Infof(base.KeyAll, "Resync was stopped before the operation could be completed. System "+
+					"may be in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
+				closeErr := results.Close()
+				if closeErr != nil {
+					return 0, closeErr
+				}
+				return docsChanged, nil
 			}
+			docid := importRow.Id
+			key := realDocID(docid)
+			queryRowCount++
+			docsProcessed++
+			documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
+				highSeq = doc.Sequence
+				imported := false
+				if !doc.HasValidSyncData() {
+					// This is a document not known to the sync gateway. Ignore it:
+					return nil, false, nil, base.ErrUpdateCancel
+				} else {
+					base.Debugf(base.KeyCRUD, "\tRe-syncing document %q", base.UD(docid))
+				}
 
-			// Run the sync fn over each current/leaf revision, in case there are conflicts:
-			changed := 0
-			doc.History.forEachLeaf(func(rev *RevInfo) {
-				bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
-				if err != nil {
-					base.Warnf("Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
-				}
-				var body Body
-				if err := body.Unmarshal(bodyBytes); err != nil {
-					base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
-					return
-				}
-				channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
-				if err != nil {
-					// Probably the validator rejected the doc
-					base.Warnf("Error calling sync() on doc %q: %v", base.UD(docid), err)
-					access = nil
-					channels = nil
-				}
-				rev.Channels = channels
-
-				if rev.ID == doc.CurrentRev {
-					changedChannels, err := doc.updateChannels(channels)
-					changed = len(doc.Access.updateAccess(doc, access)) +
-						len(doc.RoleAccess.updateAccess(doc, roles)) +
-						len(changedChannels)
+				// Run the sync fn over each current/leaf revision, in case there are conflicts:
+				changed := 0
+				doc.History.forEachLeaf(func(rev *RevInfo) {
+					bodyBytes, _, err := db.get1xRevFromDoc(doc, rev.ID, false)
 					if err != nil {
+						base.Warnf("Error getting rev from doc %s/%s %s", base.UD(docid), rev.ID, err)
+					}
+					var body Body
+					if err := body.Unmarshal(bodyBytes); err != nil {
+						base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 						return
 					}
-					// Only update document expiry based on the current (active) rev
-					if syncExpiry != nil {
-						doc.UpdateExpiry(*syncExpiry)
-						updatedExpiry = syncExpiry
+					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
+					if err != nil {
+						// Probably the validator rejected the doc
+						base.Warnf("Error calling sync() on doc %q: %v", base.UD(docid), err)
+						access = nil
+						channels = nil
 					}
-				}
-			})
-			shouldUpdate = changed > 0 || imported
-			return doc, shouldUpdate, updatedExpiry, nil
-		}
-		var err error
-		if db.UseXattrs() {
-			writeUpdateFunc := func(currentValue []byte, currentXattr []byte, cas uint64) (
-				raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
-				// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
-				// so deleteDoc is always returned as false.
-				if currentValue == nil || len(currentValue) == 0 {
-					return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
-				}
-				doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll)
-				if err != nil {
-					return nil, nil, deleteDoc, nil, err
-				}
+					rev.Channels = channels
 
-				updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
-				if err != nil {
-					return nil, nil, deleteDoc, nil, err
-				}
-				if shouldUpdate {
-					base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-					if updatedExpiry != nil {
-						updatedDoc.UpdateExpiry(*updatedExpiry)
+					if rev.ID == doc.CurrentRev {
+						changedChannels, err := doc.updateChannels(channels)
+						changed = len(doc.Access.updateAccess(doc, access)) +
+							len(doc.RoleAccess.updateAccess(doc, roles)) +
+							len(changedChannels)
+						if err != nil {
+							return
+						}
+						// Only update document expiry based on the current (active) rev
+						if syncExpiry != nil {
+							doc.UpdateExpiry(*syncExpiry)
+							updatedExpiry = syncExpiry
+						}
 					}
-					raw, rawXattr, err = updatedDoc.MarshalWithXattr()
-					return raw, rawXattr, deleteDoc, updatedExpiry, err
-				} else {
-					return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
-				}
+				})
+				shouldUpdate = changed > 0 || imported
+				return doc, shouldUpdate, updatedExpiry, nil
 			}
-			_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, nil, writeUpdateFunc)
-		} else {
-			_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
-				// Be careful: this block can be invoked multiple times if there are races!
-				if currentValue == nil {
-					return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
-				}
-				doc, err := unmarshalDocument(docid, currentValue)
-				if err != nil {
-					return nil, nil, false, err
-				}
-				updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
-				if err != nil {
-					return nil, nil, false, err
-				}
-				if shouldUpdate {
-					base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
-					if updatedExpiry != nil {
-						updatedDoc.UpdateExpiry(*updatedExpiry)
+			var err error
+			if db.UseXattrs() {
+				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, cas uint64) (
+					raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
+					// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
+					// so deleteDoc is always returned as false.
+					if currentValue == nil || len(currentValue) == 0 {
+						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
-					updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
-					return updatedBytes, updatedExpiry, false, marshalErr
-				} else {
-					return nil, nil, false, base.ErrUpdateCancel
+					doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll)
+					if err != nil {
+						return nil, nil, deleteDoc, nil, err
+					}
+
+					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
+					if err != nil {
+						return nil, nil, deleteDoc, nil, err
+					}
+					if shouldUpdate {
+						base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+						if updatedExpiry != nil {
+							updatedDoc.UpdateExpiry(*updatedExpiry)
+						}
+						raw, rawXattr, err = updatedDoc.MarshalWithXattr()
+						return raw, rawXattr, deleteDoc, updatedExpiry, err
+					} else {
+						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
+					}
 				}
-			})
+				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, nil, writeUpdateFunc)
+			} else {
+				_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
+					// Be careful: this block can be invoked multiple times if there are races!
+					if currentValue == nil {
+						return nil, nil, false, base.ErrUpdateCancel // someone deleted it?!
+					}
+					doc, err := unmarshalDocument(docid, currentValue)
+					if err != nil {
+						return nil, nil, false, err
+					}
+					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
+					if err != nil {
+						return nil, nil, false, err
+					}
+					if shouldUpdate {
+						base.Infof(base.KeyAccess, "Saving updated channels and access grants of %q", base.UD(docid))
+						if updatedExpiry != nil {
+							updatedDoc.UpdateExpiry(*updatedExpiry)
+						}
+						updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
+						return updatedBytes, updatedExpiry, false, marshalErr
+					} else {
+						return nil, nil, false, base.ErrUpdateCancel
+					}
+				})
+			}
+			if err == nil {
+				docsChanged++
+			} else if err != base.ErrUpdateCancel {
+				base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
+			}
 		}
-		if err == nil {
-			changeCount++
-		} else if err != base.ErrUpdateCancel {
-			base.Warnf("Error updating doc %q: %v", base.UD(docid), err)
+
+		db.ResyncManager.UpdateProcessedChanged(docsProcessed, docsChanged)
+
+		// Close query results
+		closeErr := results.Close()
+		if closeErr != nil {
+			return 0, closeErr
 		}
+
+		if queryRowCount < queryLimit || highSeq >= endSeq {
+			break
+		}
+		startSeq = highSeq + 1
 	}
+	base.Infof(base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
-	// Close query results
-	closeErr := results.Close()
-	if closeErr != nil {
-		return 0, closeErr
-	}
-
-	base.Infof(base.KeyAll, "Finished re-running sync function; %d/%d docs changed", changeCount, docCount)
-
-	if changeCount > 0 {
+	if docsChanged > 0 {
 		// Now invalidate channel cache of all users/roles:
 		base.Infof(base.KeyAll, "Invalidating channel caches of users/roles...")
 		users, roles, _ := db.AllPrincipalIDs()
@@ -1226,7 +1267,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			db.invalRoleChannels(name)
 		}
 	}
-	return changeCount, nil
+	return docsChanged, nil
 }
 
 func (db *Database) invalUserRoles(username string) {

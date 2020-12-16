@@ -102,7 +102,8 @@ var QueryStarChannel = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
-			"AND META().id NOT LIKE '%s' %s",
+			"AND META().id NOT LIKE '%s' %s"+
+			"ORDER BY $sync.sequence",
 		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard, activeOnlyFilter),
 	adhoc: false,
 }
@@ -334,8 +335,7 @@ func (context *DatabaseContext) buildRoleAccessQuery(username string) string {
 }
 
 // Query to compute the set of documents assigned to the specified channel within the sequence range
-func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint64, endSeq uint64, limit int,
-	activeOnly bool) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (sgbucket.QueryResultIterator, error) {
 
 	if context.Options.UseViews {
 		opts := changesViewOptions(channelName, startSeq, endSeq, limit)
@@ -375,12 +375,11 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 
 // Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
 // query is covering.
-func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int,
-	activeOnly bool) (statement string, params map[string]interface{}) {
+func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq uint64, endSeq uint64, limit int, activeOnly bool) (statement string, params map[string]interface{}) {
 
 	channelQuery := QueryChannels
 	index := sgIndexes[IndexChannels]
-	if channelName == "*" {
+	if channelName == channels.UserStarChannel {
 		channelQuery = QueryStarChannel
 		index = sgIndexes[IndexAllDocs]
 	}
@@ -408,20 +407,8 @@ func (context *DatabaseContext) buildChannelsQuery(channelName string, startSeq 
 	return channelQueryStatement, params
 }
 
-func (context *DatabaseContext) QueryResync() (sgbucket.QueryResultIterator, error) {
-
-	if context.Options.UseViews {
-		opts := Body{"stale": false, "reduce": false}
-		opts[QueryParamStartKey] = []interface{}{true}
-		return context.ViewQueryWithStats(DesignDocSyncHousekeeping(), ViewImport, opts)
-	}
-
-	// N1QL Query
-	var importQueryStatement string
-	importQueryStatement = replaceSyncTokensQuery(QueryResync.statement, context.UseXattrs())
-	importQueryStatement = replaceIndexTokensQuery(importQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
-
-	return context.N1QLQueryWithStats(QueryTypeResync, importQueryStatement, nil, gocb.RequestPlus, QueryResync.adhoc)
+func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) (sgbucket.QueryResultIterator, error) {
+	return context.QueryChannels(channels.UserStarChannel, startSeq, endSeq, limit, false)
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index

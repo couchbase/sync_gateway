@@ -196,6 +196,7 @@ type DbConfig struct {
 	SGReplicateWebsocketPingInterval *int                             `json:"sgreplicate_websocket_heartbeat_secs,omitempty"` // If set, uses this duration as a custom heartbeat interval for websocket ping frames
 	Replications                     map[string]*db.ReplicationConfig `json:"replications,omitempty"`                         // sg-replicate replication definitions
 	ServeInsecureAttachmentTypes     bool                             `json:"serve_insecure_attachment_types,omitempty"`      // Attachment content type will bypass the content-disposition handling, default false
+	ResyncQueryLimit                 *int                             `json:"resync_query_limit,omitempty"`
 }
 
 type DeltaSyncConfig struct {

@@ -155,27 +155,59 @@ func (h *handler) handleFlush() error {
 
 }
 
-func (h *handler) handleResync() error {
+func (h *handler) handleGetResync() error {
+	h.writeJSON(h.db.ResyncManager.GetStatus())
+	return nil
+}
 
-	//If the DB is already re syncing, return error to user
-	dbState := atomic.LoadUint32(&h.db.State)
-	if dbState == db.DBResyncing {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync is already in progress")
+func (h *handler) handlePostResync() error {
+	action := h.getQuery("action")
+	// TODO: To be added in CBG-837
+	// regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
+
+	if action != "" && action != db.ResyncActionStart && action != db.ResyncActionStop {
+		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
 	}
 
-	if dbState != db.DBOffline {
-		return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling /_resync")
+	if action == "" {
+		action = db.ResyncActionStart
 	}
 
-	if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
-		defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
-		docsChanged, err := h.db.UpdateAllDocChannels()
-		if err != nil {
-			return err
+	if action == db.ResyncActionStart {
+		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
+			go func() {
+				defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
+				defer h.db.ResyncManager.SetRunStatus(db.ResyncStateStopped)
+				_, err := h.db.UpdateAllDocChannels()
+				if err != nil {
+					base.Errorf("Error occurred running resync operation: %v", err)
+					h.db.ResyncManager.SetError(err)
+				}
+			}()
+
+			h.db.ResyncManager.SetRunStatus(db.ResyncStateRunning)
+			h.writeJSON(h.db.ResyncManager.GetStatus())
+		} else {
+			dbState := atomic.LoadUint32(&h.db.State)
+			if dbState == db.DBResyncing {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database _resync already in progress")
+			}
+
+			if dbState != db.DBOffline {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database must be _offline before calling _resync")
+			}
 		}
 
-		h.writeRawJSON([]byte(`{"changes":` + strconv.Itoa(docsChanged) + `}`))
+	} else if action == db.ResyncActionStop {
+		dbState := atomic.LoadUint32(&h.db.State)
+		if dbState != db.DBResyncing {
+			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")
+		}
+
+		status := h.db.ResyncManager.Stop()
+		h.writeJSON(status)
 	}
+
 	return nil
 }
 

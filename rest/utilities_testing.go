@@ -228,7 +228,7 @@ func (rt *RestTester) SetAdminParty(partyTime bool) {
 	guest.SetDisabled(!partyTime)
 	var chans channels.TimedSet
 	if partyTime {
-		chans = channels.AtSequence(base.SetOf("*"), 1)
+		chans = channels.AtSequence(base.SetOf(channels.UserStarChannel), 1)
 	}
 	guest.SetExplicitChannels(chans)
 	_ = a.Save(guest)
