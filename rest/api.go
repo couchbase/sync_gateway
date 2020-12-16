@@ -165,15 +165,15 @@ func (h *handler) handlePostResync() error {
 	// TODO: To be added in CBG-837
 	// regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
 
-	if action != "" && action != "start" && action != "stop" {
+	if action != "" && action != db.ResyncActionStart && action != db.ResyncActionStop {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
 	}
 
 	if action == "" {
-		action = "start"
+		action = db.ResyncActionStart
 	}
 
-	if action == "start" {
+	if action == db.ResyncActionStart {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
 			go func() {
 				defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
@@ -198,7 +198,7 @@ func (h *handler) handlePostResync() error {
 			}
 		}
 
-	} else if action == "stop" {
+	} else if action == db.ResyncActionStop {
 		dbState := atomic.LoadUint32(&h.db.State)
 		if dbState != db.DBResyncing {
 			return base.HTTPErrorf(http.StatusBadRequest, "Database _resync is not running")

@@ -1088,7 +1088,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 
 	queryLimit := db.Options.ResyncQueryLimit
 	startSeq := uint64(0)
-	endSeq, err := db.sequences.lastSequence()
+	endSeq, err := db.sequences.getSequence()
 	if err != nil {
 		return 0, err
 	}
@@ -1118,7 +1118,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		for results.Next(&importRow) {
 			if db.ResyncManager.ShouldStop() {
 				base.Infof(base.KeyAll, "Resync was stopped before the operation could be completed. System "+
-					"maybe in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
+					"may be in an inconsistent state. Docs changed: %d Docs Processed: %d", docsChanged, docsProcessed)
 				closeErr := results.Close()
 				if closeErr != nil {
 					return 0, closeErr

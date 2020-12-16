@@ -8,7 +8,7 @@ type ResyncManager struct {
 	Status     ResyncStatus
 	LastError  error
 	Terminator bool       // Allows resync operation to be cancelled while in progress
-	Mutex      sync.Mutex // Used to lock the Status, LastError and Terminator
+	lock       sync.Mutex // Used to lock the Status, LastError and Terminator
 }
 
 type ResyncStatus struct {
@@ -25,9 +25,14 @@ const (
 	ResyncStateError    = "stopped on error"
 )
 
+const (
+	ResyncActionStart = "start"
+	ResyncActionStop  = "stop"
+)
+
 func (rm *ResyncManager) GetStatus() *ResyncStatus {
-	rm.Mutex.Lock()
-	defer rm.Mutex.Unlock()
+	rm.lock.Lock()
+	defer rm.lock.Unlock()
 
 	return rm._getStatus()
 }
@@ -51,23 +56,23 @@ func (rm *ResyncManager) _getStatus() *ResyncStatus {
 }
 
 func (rm *ResyncManager) SetRunStatus(newStatus string) {
-	rm.Mutex.Lock()
-	defer rm.Mutex.Unlock()
+	rm.lock.Lock()
+	defer rm.lock.Unlock()
 
 	rm.Status.Status = newStatus
 }
 
 func (rm *ResyncManager) UpdateProcessedChanged(docsProcessed int, docsChanged int) {
-	rm.Mutex.Lock()
-	defer rm.Mutex.Unlock()
+	rm.lock.Lock()
+	defer rm.lock.Unlock()
 
 	rm.Status.DocsProcessed = docsProcessed
 	rm.Status.DocsChanged = docsChanged
 }
 
 func (rm *ResyncManager) ResetStatus() {
-	rm.Mutex.Lock()
-	defer rm.Mutex.Unlock()
+	rm.lock.Lock()
+	defer rm.lock.Unlock()
 
 	rm.Status.DocsProcessed = 0
 	rm.Status.DocsChanged = 0
@@ -76,16 +81,16 @@ func (rm *ResyncManager) ResetStatus() {
 }
 
 func (rm *ResyncManager) SetError(err error) {
-	rm.Mutex.Lock()
-	defer rm.Mutex.Unlock()
+	rm.lock.Lock()
+	defer rm.lock.Unlock()
 
 	rm.LastError = err
 	rm.Status.Status = ResyncStateError
 }
 
 func (rm *ResyncManager) ShouldStop() bool {
-	rm.Mutex.Lock()
-	defer rm.Mutex.Unlock()
+	rm.lock.Lock()
+	defer rm.lock.Unlock()
 
 	if rm.Terminator {
 		rm.Terminator = false
@@ -96,8 +101,8 @@ func (rm *ResyncManager) ShouldStop() bool {
 }
 
 func (rm *ResyncManager) Stop() *ResyncStatus {
-	rm.Mutex.Lock()
-	defer rm.Mutex.Unlock()
+	rm.lock.Lock()
+	defer rm.lock.Unlock()
 
 	rm.Status.Status = ResyncStateStopping
 	rm.Terminator = true

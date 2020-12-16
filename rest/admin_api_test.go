@@ -1236,7 +1236,7 @@ func TestResync(t *testing.T) {
 			name:               "Docs 1000, Limit 10",
 			docsCreated:        1000,
 			expectedSyncFnRuns: 2000,
-			expectedQueryCount: 100,
+			expectedQueryCount: 101,
 			queryLimit:         10,
 		},
 	}
