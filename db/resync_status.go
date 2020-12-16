@@ -22,7 +22,7 @@ const (
 	ResyncStateRunning  = "running"
 	ResyncStateStopped  = "stopped"
 	ResyncStateStopping = "stopping"
-	ResyncStateError    = "stopped on error"
+	ResyncStateError    = "error"
 )
 
 const (
