@@ -797,6 +797,21 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 			return pkgerrors.Wrapf(err, "Error calling base.JSONUnmarshal() in initEventHandlers")
 		}
 
+		// Load Webhook Filter Function.
+		for _, event := range eventHandlers.DocumentChanged {
+			if event.Filter != "" {
+				filter, err := loadJavaScript(event.Filter)
+				if err != nil {
+					return &JavaScriptLoadError{
+						JSLoadType: WebhookFilter,
+						Path:       event.Filter,
+						Err:        err,
+					}
+				}
+				event.Filter = filter
+			}
+		}
+
 		// Process document commit event handlers
 		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
 			return err

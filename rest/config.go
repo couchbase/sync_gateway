@@ -407,6 +407,7 @@ const (
 	SyncFunction     JSLoadType = iota // Sync Function JavaScript load.
 	ImportFilter                       // Import filter JavaScript load.
 	ConflictResolver                   // Conflict Resolver JavaScript load.
+	WebhookFilter                      // Webhook filter JavaScript load.
 )
 
 // String returns the string representation of a specific JSLoadType.

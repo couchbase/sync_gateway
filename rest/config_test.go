@@ -1789,3 +1789,79 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 		})
 	}
 }
+
+func TestWebhookFilterFunctionLoad(t *testing.T) {
+	const jsWebhookFilter = `function(doc) { if (doc.type != "mobile") { return false } return true }`
+	var tests = []struct {
+		name                 string
+		jsWebhookFilterInput func() (inlineFnOrPath string, teardownFn func())
+		errExpected          error
+	}{
+		{
+			name:                 "Load inline webhook filter function",
+			jsWebhookFilterInput: inlineJavaScript(jsWebhookFilter),
+			errExpected:          nil,
+		},
+		{
+			name:                 "Load webhook filter function from an external HTTP endpoint",
+			jsWebhookFilterInput: javaScriptHttpEndpoint(t, jsWebhookFilter),
+			errExpected:          nil,
+		},
+		{
+			name:                 "Load webhook filter function from an external endpoint that returns an error",
+			jsWebhookFilterInput: javaScriptHttpErrorEndpoint(),
+			errExpected:          errInternalServerError,
+		},
+		{
+			name:                 "Load webhook filter function from an external file",
+			jsWebhookFilterInput: javaScriptFile(t, jsWebhookFilter),
+			errExpected:          nil,
+		},
+		{
+			name:                 "Load webhook filter function from an external empty file",
+			jsWebhookFilterInput: emptyJavaScriptFile(t),
+			errExpected:          nil,
+		},
+		{
+			name:                 "Load webhook filter function from an external file that doesn't exist",
+			jsWebhookFilterInput: missingJavaScriptFile(),
+			errExpected:          nil,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			webhookFilter, teardownFn := test.jsWebhookFilterInput()
+			defer func() {
+				if teardownFn != nil {
+					teardownFn()
+				}
+			}()
+			dbConfig := DbConfig{
+				Name: "db",
+				EventHandlers: map[string]interface{}{
+					"max_processes":    500,
+					"wait_for_process": "100",
+					"document_changed": []map[string]interface{}{
+						{
+							"handler": "webhook",
+							"url":     "http://localhost:8080/",
+							"timeout": 0,
+							"filter":  webhookFilter,
+						},
+					},
+				},
+			}
+			if test.errExpected != nil {
+				test.errExpected = &JavaScriptLoadError{
+					JSLoadType: WebhookFilter,
+					Path:       webhookFilter,
+					Err:        test.errExpected,
+				}
+			}
+			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager()}
+			sc := &ServerContext{}
+			err := sc.initEventHandlers(ctx, &dbConfig)
+			require.Equal(t, test.errExpected, err)
+		})
+	}
+}
