@@ -1237,7 +1237,7 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 
 	// We don't have a way to wait for a upgrade that doesn't happen, but we can look for the warning that happens.
 	base.WaitForStat(func() int64 {
-		return rt.GetDatabase().DbStats.Cache().NonMobileSkippedUpgrade.Value()
+		return rt.GetDatabase().DbStats.Cache().NonMobileIgnoredCount.Value()
 	}, 1)
 }
 

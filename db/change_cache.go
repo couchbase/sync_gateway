@@ -456,7 +456,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 			syncData = &migratedDoc.SyncData
 		} else {
 			base.Infof(base.KeyCache, "changeCache: Doc %q does not have valid sync data.", base.UD(docID))
-			c.context.DbStats.Cache().NonMobileSkippedUpgrade.Add(1)
+			c.context.DbStats.Cache().NonMobileIgnoredCount.Add(1)
 			return
 		}
 	}
