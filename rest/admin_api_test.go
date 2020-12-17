@@ -1372,7 +1372,7 @@ func TestResyncStop(t *testing.T) {
 		&RestTesterConfig{
 			SyncFn: syncFn,
 			DatabaseConfig: &DbConfig{
-				ResyncQueryLimit: base.IntPtr(100),
+				ResyncQueryLimit: base.IntPtr(10),
 			},
 		},
 	)
@@ -1395,6 +1395,15 @@ func TestResyncStop(t *testing.T) {
 
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 	assertStatus(t, response, http.StatusOK)
+
+	err = rt.WaitForCondition(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		var status db.ResyncStatus
+		err := json.Unmarshal(response.BodyBytes(), &status)
+		assert.NoError(t, err)
+		return status.Status == db.ResyncStateStopped
+	})
+	assert.NoError(t, err)
 
 	syncFnCount := int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 	assert.True(t, syncFnCount < 2000)
