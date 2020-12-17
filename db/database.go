@@ -1044,8 +1044,7 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 // Re-runs the sync function on every current document in the database (if doCurrentDocs==true)
 // and/or imports docs in the bucket not known to the gateway (if doImportDocs==true).
 // To be used when the JavaScript sync function changes.
-func (db *Database) UpdateAllDocChannels() (int, error) {
-
+func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) {
 	base.Infof(base.KeyAll, "Recomputing document channels...")
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
 
@@ -1067,6 +1066,8 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 	defer func() {
 		db.ResyncManager.UpdateProcessedChanged(docsProcessed, docsChanged)
 	}()
+
+	var unusedSequences []uint64
 
 	for {
 		results, err := db.QueryResync(queryLimit, startSeq, endSeq)
@@ -1094,7 +1095,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 			docsProcessed++
 			documentUpdateFunc := func(doc *Document) (updatedDoc *Document, shouldUpdate bool, updatedExpiry *uint32, err error) {
 				highSeq = doc.Sequence
-				imported := false
+				forceUpdate := false
 				if !doc.HasValidSyncData() {
 					// This is a document not known to the sync gateway. Ignore it:
 					return nil, false, nil, base.ErrUpdateCancel
@@ -1124,6 +1125,15 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 					rev.Channels = channels
 
 					if rev.ID == doc.CurrentRev {
+
+						if regenerateSequences {
+							unusedSequences, err = db.assignSequence(0, doc, unusedSequences)
+							if err != nil {
+								base.Warnf("Unable to assign a sequence number: %v", err)
+							}
+							forceUpdate = true
+						}
+
 						changedChannels, err := doc.updateChannels(channels)
 						changed = len(doc.Access.updateAccess(doc, access)) +
 							len(doc.RoleAccess.updateAccess(doc, roles)) +
@@ -1138,7 +1148,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 						}
 					}
 				})
-				shouldUpdate = changed > 0 || imported
+				shouldUpdate = changed > 0 || forceUpdate
 				return doc, shouldUpdate, updatedExpiry, nil
 			}
 			var err error
@@ -1190,6 +1200,7 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 						if updatedExpiry != nil {
 							updatedDoc.UpdateExpiry(*updatedExpiry)
 						}
+
 						updatedBytes, marshalErr := base.JSONMarshal(updatedDoc)
 						return updatedBytes, updatedExpiry, false, marshalErr
 					} else {
@@ -1217,6 +1228,77 @@ func (db *Database) UpdateAllDocChannels() (int, error) {
 		}
 		startSeq = highSeq + 1
 	}
+
+	for _, sequence := range unusedSequences {
+		err := db.sequences.releaseSequence(sequence)
+		if err != nil {
+			base.Warnf("Error attempting to release sequence %d. Error %v", sequence, err)
+		}
+	}
+
+	if regenerateSequences {
+		users, roles, err := db.AllPrincipalIDs()
+		if err != nil {
+			return docsChanged, err
+		}
+
+		authr := db.Authenticator()
+		regeneratePrincipalSequences := func(princ auth.Principal, isUser bool) error {
+			nextSeq, err := db.DatabaseContext.sequences.nextSequence()
+			if err != nil {
+				return err
+			}
+			princ.SetSequence(nextSeq)
+
+			princChannels := princ.Channels()
+			for name := range princChannels {
+				princChannels[name] = channels.NewVbSimpleSequence(nextSeq)
+			}
+			princ.SetExplicitChannels(princChannels)
+
+			if isUser {
+				user := princ.(auth.User)
+				princRoles := user.ExplicitRoles()
+				for name := range princRoles {
+					princRoles[name] = channels.NewVbSimpleSequence(nextSeq)
+				}
+				user.SetExplicitRoles(princRoles)
+			}
+
+			err = authr.Save(princ)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		}
+
+		for _, role := range roles {
+			authr := db.Authenticator()
+			role, err := authr.GetRole(role)
+			if err != nil {
+				return docsChanged, err
+			}
+			err = regeneratePrincipalSequences(role, false)
+			if err != nil {
+				return docsChanged, err
+			}
+		}
+
+		for _, user := range users {
+			authr := db.Authenticator()
+			user, err := authr.GetUser(user)
+			if err != nil {
+				return docsChanged, err
+			}
+			err = regeneratePrincipalSequences(user, true)
+			if err != nil {
+				return docsChanged, err
+			}
+		}
+
+	}
+
 	base.Infof(base.KeyAll, "Finished re-running sync function; %d/%d docs changed", docsChanged, docsProcessed)
 
 	if docsChanged > 0 {

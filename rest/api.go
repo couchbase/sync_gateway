@@ -174,7 +174,7 @@ func (h *handler) handleGetResync() error {
 func (h *handler) handlePostResync() error {
 	action := h.getQuery("action")
 	// TODO: To be added in CBG-837
-	// regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
+	regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
 
 	if action != "" && action != db.ResyncActionStart && action != db.ResyncActionStop {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unknown parameter for 'action'. Must be start or stop")
@@ -191,7 +191,7 @@ func (h *handler) handlePostResync() error {
 			go func() {
 				defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
 				defer h.db.ResyncManager.SetRunStatus(db.ResyncStateStopped)
-				_, err := h.db.UpdateAllDocChannels()
+				_, err := h.db.UpdateAllDocChannels(regenerateSequences)
 				if err != nil {
 					base.Errorf("Error occurred running resync operation: %v", err)
 					h.db.ResyncManager.SetError(err)

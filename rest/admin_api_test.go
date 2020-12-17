@@ -1497,6 +1497,60 @@ func TestResyncStop(t *testing.T) {
 	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
 }
 
+func TestResyncRegenerateSequences(t *testing.T) {
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			SyncFn: syncFn,
+		},
+	)
+	defer rt.Close()
+
+	for i := 0; i < 10; i++ {
+		rt.createDoc(t, fmt.Sprintf("doc%d", i))
+	}
+
+	role := "role1"
+	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
+	assertStatus(t, response, http.StatusCreated)
+
+	username := "user1"
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
+	assertStatus(t, response, http.StatusOK)
+
+	err := rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().ResyncManager.GetStatus().Status == db.ResyncStateStopped
+	})
+	assert.NoError(t, err)
+
+	response = rt.SendAdminRequest("POST", "/db/_online", "")
+	assertStatus(t, response, http.StatusOK)
+
+	srv := httptest.NewServer(rt.TestAdminHandler())
+	defer srv.Close()
+
+	fmt.Println("==============================")
+	fmt.Println(srv.URL)
+
+	time.Sleep(10 * time.Minute)
+	fmt.Println("x")
+}
+
 // Single threaded bring DB online
 func TestDBOnlineSingle(t *testing.T) {
 
