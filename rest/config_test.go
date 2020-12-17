@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1841,7 +1842,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 				EventHandlers: map[string]interface{}{
 					"max_processes":    500,
 					"wait_for_process": "100",
-					"document_changed": []map[string]interface{}{
+					"db_state_changed": []map[string]interface{}{
 						{
 							"handler": "webhook",
 							"url":     "http://localhost:8080/",
@@ -1864,4 +1865,14 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			require.Equal(t, test.errExpected, err)
 		})
 	}
+}
+
+func TestJSLoadTypeString(t *testing.T) {
+	assert.Equal(t, "SyncFunction", SyncFunction.String())
+	assert.Equal(t, "ImportFilter", ImportFilter.String())
+	assert.Equal(t, "ConflictResolver", ConflictResolver.String())
+	assert.Equal(t, "WebhookFilter", WebhookFilter.String())
+
+	// Test out of bounds JSLoadType
+	assert.Equal(t, "JSLoadType(4294967295)", JSLoadType(math.MaxUint32).String())
 }

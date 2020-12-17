@@ -798,17 +798,17 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 		}
 
 		// Load Webhook Filter Function.
-		for _, event := range eventHandlers.DocumentChanged {
-			if event.Filter != "" {
-				filter, err := loadJavaScript(event.Filter)
+		for _, conf := range append(eventHandlers.DBStateChanged, eventHandlers.DocumentChanged...) {
+			if conf.Filter != "" {
+				filter, err := loadJavaScript(conf.Filter)
 				if err != nil {
 					return &JavaScriptLoadError{
 						JSLoadType: WebhookFilter,
-						Path:       event.Filter,
+						Path:       conf.Filter,
 						Err:        err,
 					}
 				}
-				event.Filter = filter
+				conf.Filter = filter
 			}
 		}
 
