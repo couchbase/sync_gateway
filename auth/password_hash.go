@@ -14,9 +14,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/couchbase/sync_gateway/base"
 )
 
 var (
@@ -31,27 +32,42 @@ var (
 
 var ErrInvalidBcryptCost = fmt.Errorf("invalid bcrypt cost")
 
-// Set of known-to-be-valid {password, bcryt-hash} pairs.
-// Keys are of the form SHA1 digest of password + bcrypt'ed hash of password
-var cachedHashes = map[string]struct{}{}
-var cacheLock sync.RWMutex
+var (
+	// Set of known-to-be-valid {password, bcryt-hash} pairs.
+	// Keys are of the form SHA1 digest of password + bcrypt'ed hash of password
+	cachedHashes     *Cache
+	cachedHashesOnce sync.Once // Allows the cachedHashes to be initialized only once.
+)
 
 // The maximum number of pairs to keep in the above cache
 const kMaxCacheSize = 25000
 
-// Optimized wrapper around bcrypt.CompareHashAndPassword that caches successful results in
-// memory to avoid the _very_ high overhead of calling bcrypt.
-func compareHashAndPassword(hash []byte, password []byte) bool {
-	// Actually we cache the SHA1 digest of the password to avoid keeping passwords in RAM.
+// initCachedHashes creates a new cache with room for upto 25000 password hashes.
+func initCachedHashes() {
+	cachedHashesOnce.Do(func() {
+		base.Debugf(base.KeyAuth, "Initializing auth cache [Capacity: %d] ...", kMaxCacheSize)
+		cachedHashes = NewCache(kMaxCacheSize)
+	})
+}
+
+// authKey returns the bcrypt hash + SHA1 digest of the password.
+func authKey(hash []byte, password []byte) (key string) {
 	s := sha1.New()
 	s.Write(password)
 	digest := string(s.Sum(nil))
-	key := digest + string(hash)
+	key = digest + string(hash)
+	return key
+}
 
-	cacheLock.RLock()
-	_, valid := cachedHashes[key]
-	cacheLock.RUnlock()
-	if valid {
+// Optimized wrapper around bcrypt.CompareHashAndPassword that caches successful results in
+// memory to avoid the _very_ high overhead of calling bcrypt.
+func compareHashAndPassword(hash []byte, password []byte) bool {
+	// Lazily initialize the auth cache once.
+	initCachedHashes()
+
+	// Actually we cache the SHA1 digest of the password to avoid keeping passwords in RAM.
+	key := authKey(hash, password)
+	if cachedHashes.Contains(key) {
 		return true
 	}
 
@@ -62,14 +78,7 @@ func compareHashAndPassword(hash []byte, password []byte) bool {
 		return false
 	}
 
-	cacheLock.Lock()
-	// TODO: Replace this with an LRU cache so the whole map doesn't get wiped
-	if len(cachedHashes) >= kMaxCacheSize {
-		cachedHashes = map[string]struct{}{}
-	}
-	cachedHashes[key] = struct{}{}
-	cacheLock.Unlock()
-
+	cachedHashes.Put(key)
 	return true
 }
 
