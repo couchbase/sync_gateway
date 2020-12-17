@@ -1232,14 +1232,12 @@ func TestCheckForUpgradeFeed(t *testing.T) {
 	nonMobileBody := make(map[string]interface{})
 	nonMobileBody["channels"] = "ABC"
 
-	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Val
-
 	_, err = bucket.Add(nonMobileKey, 0, nonMobileBody)
 	assert.NoError(t, err, "Error writing SDK doc")
 
 	// We don't have a way to wait for a upgrade that doesn't happen, but we can look for the warning that happens.
 	base.WaitForStat(func() int64 {
-		return base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Val - warnCountBefore
+		return rt.GetDatabase().DbStats.Cache().NonMobileIgnoredCount.Value()
 	}, 1)
 }
 
