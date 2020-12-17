@@ -709,14 +709,14 @@ func TestReplicationRebalancePull(t *testing.T) {
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
-
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
+
+	// Increase checkpoint persistence frequency for cross-node status verification
+	activeRT.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
 
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
@@ -744,6 +744,12 @@ func TestReplicationRebalancePull(t *testing.T) {
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.TestBucket)
 	defer activeRT2.Close()
+
+	// Increase checkpoint persistence frequency for cross-node status verification
+	activeRT2.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+
+	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
 
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
@@ -800,14 +806,15 @@ func TestReplicationRebalancePush(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
+
+	// Increase checkpoint persistence frequency for cross-node status verification
+	activeRT.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
 
 	// Create docs on active
 	docABC1 := t.Name() + "ABC1"
@@ -834,6 +841,12 @@ func TestReplicationRebalancePush(t *testing.T) {
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.TestBucket)
 	defer activeRT2.Close()
+
+	// Increase checkpoint persistence frequency for cross-node status verification
+	activeRT2.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+
+	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
 
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
@@ -945,14 +958,15 @@ func TestReplicationConcurrentPush(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyCRUD, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
+
+	// Increase checkpoint persistence frequency for cross-node status verification
+	activeRT.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
 
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
@@ -1076,8 +1090,6 @@ func addActiveRT(t *testing.T, testBucket *base.TestBucket) (activeRT *RestTeste
 		}
 	}
 
-	err := activeRT.GetDatabase().SGReplicateMgr.StartReplications()
-	require.NoError(t, err)
 	return activeRT
 }
 
@@ -2051,14 +2063,14 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
-	// Increase checkpoint persistence frequency for cross-node status verification
-	defer SetDefaultCheckpointInterval(50 * time.Millisecond)()
-
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
+
+	// Increase checkpoint persistence frequency for cross-node status verification
+	activeRT.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
 
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
@@ -2084,6 +2096,12 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	// Add another node to the active cluster
 	activeRT2 := addActiveRT(t, activeRT.TestBucket)
 	defer activeRT2.Close()
+
+	// Increase checkpoint persistence frequency for cross-node status verification
+	activeRT2.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+
+	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
+	require.NoError(t, err)
 
 	// Wait for replication to be rebalanced to activeRT2
 	activeRT.waitForAssignedReplications(1)
@@ -2115,7 +2133,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	assert.NoError(t, activeRT2Mgr.RemoveNode(activeRTUUID))
 
 	// Wait for nodes to add themselves back to cluster
-	err := activeRT.WaitForCondition(func() bool {
+	err = activeRT.WaitForCondition(func() bool {
 		clusterDef, err := activeRTMgr.GetSGRCluster()
 		if err != nil {
 			return false
@@ -2142,12 +2160,4 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	activeRT.GetDatabase().SGReplicateMgr = nil
 	activeRT2.GetDatabase().SGReplicateMgr.Stop()
 	activeRT2.GetDatabase().SGReplicateMgr = nil
-}
-
-func SetDefaultCheckpointInterval(d time.Duration) func() {
-	previousInterval := db.DefaultCheckpointInterval
-	db.DefaultCheckpointInterval = d
-	return func() {
-		db.DefaultCheckpointInterval = previousInterval
-	}
 }

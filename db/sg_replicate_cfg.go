@@ -333,16 +333,17 @@ func (rc *ReplicationConfig) Redacted() *ReplicationConfig {
 
 // sgReplicateManager should be used for all interactions with the stored cluster definition.
 type sgReplicateManager struct {
-	cfg                        cbgt.Cfg                      // Key-value store implementation
-	loggingCtx                 context.Context               // logging context for manager operations
-	heartbeatListener          *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
-	localNodeUUID              string                        // nodeUUID for this SG node
-	activeReplicators          map[string]*ActiveReplicator  // currently assigned replications
-	activeReplicatorsLock      sync.RWMutex                  // Mutex for activeReplications
-	clusterUpdateTerminator    chan struct{}                 // Terminator for cluster update retry
-	clusterSubscribeTerminator chan struct{}                 // Terminator for cluster change monitoring
-	closeWg                    sync.WaitGroup                // Teardown waitgroup for subscribe and retry goroutines
-	dbContext                  *DatabaseContext
+	cfg                               cbgt.Cfg                      // Key-value store implementation
+	loggingCtx                        context.Context               // logging context for manager operations
+	heartbeatListener                 *ReplicationHeartbeatListener // node heartbeat listener for replication distribution
+	localNodeUUID                     string                        // nodeUUID for this SG node
+	activeReplicators                 map[string]*ActiveReplicator  // currently assigned replications
+	activeReplicatorsLock             sync.RWMutex                  // Mutex for activeReplications
+	clusterUpdateTerminator           chan struct{}                 // Terminator for cluster update retry
+	clusterSubscribeTerminator        chan struct{}                 // Terminator for cluster change monitoring
+	closeWg                           sync.WaitGroup                // Teardown waitgroup for subscribe and retry goroutines
+	dbContext                         *DatabaseContext              // reference to the parent DatabaseContext
+	defaultCheckpointIntervalOverride time.Duration                 // The value to be used when a per-ActiveReplicator CheckpointInterval is not set
 }
 
 // alignState attempts to update the current replicator state to align with the provided targetState, if
@@ -474,6 +475,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
 		SGR1CheckpointID:   config.SGR1CheckpointID,
+		CheckpointInterval: m.defaultCheckpointIntervalOverride,
 	}
 
 	rc.MaxReconnectInterval = defaultMaxReconnectInterval
@@ -1328,6 +1330,10 @@ func (m *sgReplicateManager) GetReplicationStatusAll(options ReplicationStatusOp
 	}
 
 	return statuses, nil
+}
+
+func (m *sgReplicateManager) SetDefaultCheckpointIntervalOverride(d time.Duration) {
+	m.defaultCheckpointIntervalOverride = d
 }
 
 // ImportHeartbeatListener uses replication cfg to manage node list

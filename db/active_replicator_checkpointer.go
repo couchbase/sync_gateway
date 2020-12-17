@@ -16,7 +16,8 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-var DefaultCheckpointInterval = time.Second * 5
+// DefaultCheckpointerInterval is the value used when a Checkpointer has not had a CheckpointInterval value set.
+const DefaultCheckpointerInterval = time.Second * 5
 
 // Checkpointer implements replicator checkpointing, by keeping two lists of sequences. Those which we expect to be processing revs for (either push or pull), and a map for those which we have done so on.
 // Periodically (based on a time interval), these two lists are used to calculate the highest sequence number which we've not had a gap for yet, and send a SetCheckpoint message for this sequence.
@@ -194,7 +195,7 @@ func (c *Checkpointer) Start() {
 	c.closeWg.Add(1)
 	go func() {
 		defer c.closeWg.Done()
-		checkpointInterval := DefaultCheckpointInterval
+		checkpointInterval := DefaultCheckpointerInterval
 		if c.checkpointInterval > 0 {
 			checkpointInterval = c.checkpointInterval
 		}
