@@ -177,6 +177,7 @@ type CacheStats struct {
 	ChannelCacheRevsTombstone           *SgwIntStat `json:"chan_cache_tombstone_revs"`
 	HighSeqCached                       *SgwIntStat `json:"high_seq_cached"`
 	HighSeqStable                       *SgwIntStat `json:"high_seq_stable"`
+	NonMobileSkippedUpgrade             *SgwIntStat `json:"non_mobile_skipped_upgrade"`
 	NumActiveChannels                   *SgwIntStat `json:"num_active_channels"`
 	NumSkippedSeqs                      *SgwIntStat `json:"num_skipped_seqs"`
 	PendingSeqLen                       *SgwIntStat `json:"pending_seq_len"`
@@ -575,6 +576,7 @@ func (d *DbStats) initCacheStats() {
 		ChannelCacheRevsTombstone:           NewIntStat(SubsystemCacheKey, "chan_cache_tombstone_revs", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		HighSeqCached:                       NewIntStat(SubsystemCacheKey, "high_seq_cached", labelKeys, labelVals, prometheus.CounterValue, 0),
 		HighSeqStable:                       NewIntStat(SubsystemCacheKey, "high_seq_stable", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NonMobileSkippedUpgrade:             NewIntStat(SubsystemCacheKey, "non_mobile_skipped_upgrade", labelKeys, labelVals, prometheus.CounterValue, 0),
 		NumActiveChannels:                   NewIntStat(SubsystemCacheKey, "num_active_channels", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		NumSkippedSeqs:                      NewIntStat(SubsystemCacheKey, "num_skipped_seqs", labelKeys, labelVals, prometheus.CounterValue, 0),
 		PendingSeqLen:                       NewIntStat(SubsystemCacheKey, "pending_seq_len", labelKeys, labelVals, prometheus.GaugeValue, 0),
