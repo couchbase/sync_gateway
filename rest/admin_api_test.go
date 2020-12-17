@@ -1256,7 +1256,7 @@ func TestResync(t *testing.T) {
 					SyncFn: syncFn,
 				},
 			)
-			rt.Close()
+			defer rt.Close()
 
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.createDoc(t, fmt.Sprintf("doc%d", i))
@@ -1307,7 +1307,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 			SyncFn: syncFn,
 		},
 	)
-	rt.Close()
+	defer rt.Close()
 
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%d", i))
@@ -1376,7 +1376,7 @@ func TestResyncStop(t *testing.T) {
 			},
 		},
 	)
-	rt.Close()
+	defer rt.Close()
 
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%d", i))
