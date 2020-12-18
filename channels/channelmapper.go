@@ -20,11 +20,16 @@ import (
 
 /** Result of running a channel-mapper function. */
 type ChannelMapperOutput struct {
-	Channels  base.Set  // channels assigned to the document via channel() callback
-	Roles     AccessMap // roles granted to users via role() callback
-	Access    AccessMap // channels granted to users via access() callback
-	Rejection error     // Error associated with failed validate (require callbacks, etc)
-	Expiry    *uint32   // Expiry value specified by expiry() callback.  Standard CBS expiry format: seconds if less than 30 days, epoch time otherwise
+	Channels  base.Set        // channels assigned to the document via channel() callback
+	Roles     AccessMap       // roles granted to users via role() callback
+	Access    AccessMap       // channels granted to users via access() callback
+	Rejection SyncFnRejection // Error associated with failed validate (require callbacks, etc)
+	Expiry    *uint32         // Expiry value specified by expiry() callback.  Standard CBS expiry format: seconds if less than 30 days, epoch time otherwise
+}
+
+type SyncFnRejection struct {
+	Reason error
+	Quiet  bool
 }
 
 type ChannelMapper struct {

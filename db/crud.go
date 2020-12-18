@@ -1438,9 +1438,14 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 			access = output.Access
 			roles = output.Roles
 			expiry = output.Expiry
-			err = output.Rejection
-			if err != nil {
-				base.InfofCtx(db.Ctx, base.KeyAll, "Sync fn rejected doc %q / %q --> %s", base.UD(doc.ID), base.UD(doc.NewestRev), err)
+			rejection := output.Rejection
+			if rejection.Reason != nil {
+				err = rejection.Reason
+				if rejection.Quiet {
+					base.Debugf(base.KeyAll, "Sync fn quietly rejected: new=%+v  old=%s --> %s", base.UD(body), base.UD(oldJson), err)
+				} else {
+					base.Infof(base.KeyAll, "Sync fn rejected: new=%+v  old=%s --> %s", base.UD(body), base.UD(oldJson), err)
+				}
 				base.DebugfCtx(db.Ctx, base.KeyAll, "    rejected doc %q / %q : new=%+v  old=%s", base.UD(doc.ID), base.UD(doc.NewestRev), base.UD(body), base.UD(oldJson))
 				db.DbStats.StatsSecurity().Add(base.StatKeyNumDocsRejected, 1)
 				if isAccessError(err) {

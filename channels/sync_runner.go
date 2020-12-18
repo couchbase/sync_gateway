@@ -56,30 +56,30 @@ const funcWrapper = `
 			return false;
 		}
 
-		function requireAdmin() {
+		function requireAdmin(quiet) {
 			if (shouldValidate)
-				throw({forbidden: "%s"});
+				throw({forbidden: "%s", "quiet": quiet});
 		}
 
-		function requireUser(names) {
+		function requireUser(names, quiet) {
 				if (!shouldValidate) return;
 				names = makeArray(names);
 				if (!inArray(realUserCtx.name, names))
-					throw({forbidden: "%s"});
+					throw({forbidden: "%s", "quiet": quiet});
 		}
 
-		function requireRole(roles) {
+		function requireRole(roles, quiet) {
 				if (!shouldValidate) return;
 				roles = makeArray(roles);
 				if (!anyKeysInArray(realUserCtx.roles, roles))
-					throw({forbidden: "%s"});
+					throw({forbidden: "%s", "quiet": quiet});
 		}
 
-		function requireAccess(channels) {
+		function requireAccess(channels, quiet) {
 				if (!shouldValidate) return;
 				channels = makeArray(channels);
 				if (!anyInArray(realUserCtx.channels, channels))
-					throw({forbidden: "%s"});
+					throw({forbidden: "%s", "quiet": quiet});
 		}
 
 		return function (newDoc, oldDoc, _realUserCtx) {
@@ -95,10 +95,11 @@ const funcWrapper = `
 			try {
 				syncFn(newDoc, oldDoc);
 			} catch(x) {
+				var quiet = x.quiet ? x.quiet : false
 				if (x.forbidden)
-				reject(403, x.forbidden);
+				reject(403, x.forbidden, quiet);
 				else if (x.unauthorized)
-				reject(401, x.unauthorized);
+				reject(401, x.unauthorized, quiet);
 				else
 				throw(x);
 			}
@@ -147,13 +148,19 @@ func NewSyncRunner(funcSource string) (*SyncRunner, error) {
 
 	// Implementation of the 'reject()' callback:
 	runner.DefineNativeFunction("reject", func(call otto.FunctionCall) otto.Value {
-		if runner.output.Rejection == nil {
+		if runner.output.Rejection.Reason == nil {
 			if status, err := call.Argument(0).ToInteger(); err == nil && status >= 400 {
 				var message string
 				if len(call.ArgumentList) > 1 {
 					message = call.Argument(1).String()
 				}
-				runner.output.Rejection = base.HTTPErrorf(int(status), message)
+				var quiet bool
+				if len(call.ArgumentList) > 2 {
+					if q, err := call.Argument(2).ToBoolean(); err == nil {
+						quiet = q
+					}
+				}
+				runner.output.Rejection = SyncFnRejection{base.HTTPErrorf(int(status), message), quiet}
 			}
 		}
 		return otto.UndefinedValue()
