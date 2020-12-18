@@ -1312,6 +1312,26 @@ func TestResyncErrorScenarios(t *testing.T) {
 	leakyBucket, ok := rt.GetDatabase().Bucket.(*base.LeakyBucket)
 	require.True(t, ok)
 
+	var useCallback bool
+
+	if base.TestsDisableGSI() {
+		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+			if useCallback {
+				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				assertStatus(t, response, http.StatusServiceUnavailable)
+				useCallback = false
+			}
+		})
+	} else {
+		leakyBucket.SetPostN1QLQueryCallback(func() {
+			if useCallback {
+				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				assertStatus(t, response, http.StatusServiceUnavailable)
+				useCallback = false
+			}
+		})
+	}
+
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%d", i))
 	}
@@ -1328,20 +1348,9 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, http.StatusOK)
 
+	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
-
-	if base.TestsDisableGSI() {
-		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			assertStatus(t, response, http.StatusServiceUnavailable)
-		})
-	} else {
-		leakyBucket.SetPostN1QLQueryCallback(func() {
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-			assertStatus(t, response, http.StatusServiceUnavailable)
-		})
-	}
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1392,6 +1401,25 @@ func TestResyncStop(t *testing.T) {
 	leakyBucket, ok := rt.GetDatabase().Bucket.(*base.LeakyBucket)
 	require.True(t, ok)
 
+	var useCallback bool
+	if base.TestsDisableGSI() {
+		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+			if useCallback {
+				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+				assertStatus(t, response, http.StatusOK)
+				useCallback = false
+			}
+		})
+	} else {
+		leakyBucket.SetPostN1QLQueryCallback(func() {
+			if useCallback {
+				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+				assertStatus(t, response, http.StatusOK)
+				useCallback = false
+			}
+		})
+	}
+
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%d", i))
 	}
@@ -1404,21 +1432,9 @@ func TestResyncStop(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, http.StatusOK)
 
+	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
-
-	// Stop the resync action inside the post query callback as we can be sure we'll cancel it after only one query run
-	if base.TestsDisableGSI() {
-		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-			assertStatus(t, response, http.StatusOK)
-		})
-	} else {
-		leakyBucket.SetPostN1QLQueryCallback(func() {
-			response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-			assertStatus(t, response, http.StatusOK)
-		})
-	}
 
 	err = rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
