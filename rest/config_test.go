@@ -1868,6 +1868,9 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 }
 
 func TestJSLoadTypeString(t *testing.T) {
+	// Ensure number of JSLoadType constants, and names match.
+	assert.Equal(t, int(jsLoadTypeCount), len(jsLoadTypes))
+
 	assert.Equal(t, "SyncFunction", SyncFunction.String())
 	assert.Equal(t, "ImportFilter", ImportFilter.String())
 	assert.Equal(t, "ConflictResolver", ConflictResolver.String())

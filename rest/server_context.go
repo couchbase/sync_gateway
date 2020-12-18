@@ -798,8 +798,14 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 		}
 
 		// Load Webhook Filter Function.
-		for _, conf := range append(eventHandlers.DBStateChanged, eventHandlers.DocumentChanged...) {
-			if conf.Filter != "" {
+		eventHandlersByType := map[db.EventType][]*EventConfig{
+			db.DocumentChange: eventHandlers.DocumentChanged,
+			db.DBStateChange:  eventHandlers.DBStateChanged,
+		}
+
+		for eventType, handlers := range eventHandlersByType {
+			// Load external webhook filter function
+			for _, conf := range handlers {
 				filter, err := loadJavaScript(conf.Filter)
 				if err != nil {
 					return &JavaScriptLoadError{
@@ -810,17 +816,13 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 				}
 				conf.Filter = filter
 			}
+
+			// Register event handlers
+			if err = sc.processEventHandlersForEvent(handlers, eventType, dbcontext); err != nil {
+				return err
+			}
 		}
 
-		// Process document commit event handlers
-		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
-			return err
-		}
-
-		// Process db state change event handlers
-		if err = sc.processEventHandlersForEvent(eventHandlers.DBStateChanged, db.DBStateChange, dbcontext); err != nil {
-			return err
-		}
 		// WaitForProcess uses string, to support both omitempty and zero values
 		customWaitTime := int64(-1)
 		if eventHandlers.WaitForProcess != "" {
