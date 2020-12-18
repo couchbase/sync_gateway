@@ -16,9 +16,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-// DefaultCheckpointerInterval is the value used when a Checkpointer has not had a CheckpointInterval value set.
-const DefaultCheckpointerInterval = time.Second * 5
-
 // Checkpointer implements replicator checkpointing, by keeping two lists of sequences. Those which we expect to be processing revs for (either push or pull), and a map for those which we have done so on.
 // Periodically (based on a time interval), these two lists are used to calculate the highest sequence number which we've not had a gap for yet, and send a SetCheckpoint message for this sequence.
 type Checkpointer struct {
@@ -192,25 +189,23 @@ func (c *Checkpointer) AddExpectedSeqIDAndRevs(seqs map[IDAndRev]string) {
 
 func (c *Checkpointer) Start() {
 	// Start a time-based checkpointer goroutine
-	c.closeWg.Add(1)
-	go func() {
-		defer c.closeWg.Done()
-		checkpointInterval := DefaultCheckpointerInterval
-		if c.checkpointInterval > 0 {
-			checkpointInterval = c.checkpointInterval
-		}
-		ticker := time.NewTicker(checkpointInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				c.CheckpointNow()
-			case <-c.ctx.Done():
-				base.DebugfCtx(c.ctx, base.KeyReplicate, "checkpointer goroutine stopped")
-				return
+	if c.checkpointInterval > 0 {
+		c.closeWg.Add(1)
+		go func() {
+			defer c.closeWg.Done()
+			ticker := time.NewTicker(c.checkpointInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					c.CheckpointNow()
+				case <-c.ctx.Done():
+					base.DebugfCtx(c.ctx, base.KeyReplicate, "checkpointer goroutine stopped")
+					return
+				}
 			}
-		}
-	}()
+		}()
+	}
 }
 
 // CheckpointNow forces the checkpointer to send a checkpoint, and blocks until it has finished.

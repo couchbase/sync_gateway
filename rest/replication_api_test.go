@@ -716,7 +716,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	defer teardown()
 
 	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
@@ -746,7 +746,7 @@ func TestReplicationRebalancePull(t *testing.T) {
 	defer activeRT2.Close()
 
 	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT2.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
 	require.NoError(t, err)
@@ -814,7 +814,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	defer teardown()
 
 	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	// Create docs on active
 	docABC1 := t.Name() + "ABC1"
@@ -843,7 +843,7 @@ func TestReplicationRebalancePush(t *testing.T) {
 	defer activeRT2.Close()
 
 	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT2.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
 	require.NoError(t, err)
@@ -966,7 +966,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	defer teardown()
 
 	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	// Create push replications, verify running
 	activeRT.createReplication("rep_ABC", remoteURLString, db.ActiveReplicatorTypePush, []string{"ABC"}, true, db.ConflictResolverDefault)
@@ -2070,7 +2070,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	defer teardown()
 
 	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+	activeRT.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	// Create docs on remote
 	docABC1 := t.Name() + "ABC1"
@@ -2098,7 +2098,7 @@ func TestReplicationHeartbeatRemoval(t *testing.T) {
 	defer activeRT2.Close()
 
 	// Increase checkpoint persistence frequency for cross-node status verification
-	activeRT2.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+	activeRT2.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 	err := activeRT2.GetDatabase().SGReplicateMgr.StartReplications()
 	require.NoError(t, err)

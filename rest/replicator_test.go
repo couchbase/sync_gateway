@@ -472,7 +472,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			defer rt1.Close()
 
 			// Increase checkpoint persistence frequency for cross-node status verification
-			rt1.GetDatabase().SGReplicateMgr.SetDefaultCheckpointIntervalOverride(50 * time.Millisecond)
+			rt1.GetDatabase().SGReplicateMgr.CheckpointInterval = 50 * time.Millisecond
 
 			err = rt1.GetDatabase().SGReplicateMgr.StartReplications()
 			require.NoError(t, err)
@@ -604,11 +604,8 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:       true,
-		ChangesBatchSize: changesBatchSize,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval:  time.Minute * 5,
+		Continuous:          true,
+		ChangesBatchSize:    changesBatchSize,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
@@ -773,11 +770,8 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:       true,
-		ChangesBatchSize: changesBatchSize,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval:  time.Minute * 5,
+		Continuous:          true,
+		ChangesBatchSize:    changesBatchSize,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
@@ -1221,9 +1215,6 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		},
 		Continuous:       true,
 		ChangesBatchSize: changesBatchSize,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval: time.Minute * 5,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -1387,11 +1378,8 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:       true,
-		ChangesBatchSize: changesBatchSize,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval:  time.Minute * 5,
+		Continuous:          true,
+		ChangesBatchSize:    changesBatchSize,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
@@ -2433,10 +2421,7 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous: true,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval:  time.Minute * 5,
+		Continuous:          true,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
@@ -2589,9 +2574,6 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous: true,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval: time.Minute * 5,
 	}
 
 	// Create the first active replicator to pull from seq:0
@@ -2759,10 +2741,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous: true,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval:  time.Minute * 5,
+		Continuous:          true,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
@@ -2903,10 +2882,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous: true,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval:  time.Minute * 5,
+		Continuous:          true,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
@@ -3107,13 +3083,10 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
-		Continuous:       true,
-		ChangesBatchSize: changesBatchSize,
-		Filter:           base.ByChannelFilter,
-		FilterChannels:   []string{"chan1"},
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval:  time.Minute * 5,
+		Continuous:          true,
+		ChangesBatchSize:    changesBatchSize,
+		Filter:              base.ByChannelFilter,
+		FilterChannels:      []string{"chan1"},
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	}
 
@@ -3312,9 +3285,6 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 							DatabaseContext: rt1.GetDatabase(),
 						},
 						Continuous: true,
-						// test isn't long running enough to worry about time-based checkpoints,
-						// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-						CheckpointInterval: time.Minute * 5,
 						// aggressive reconnect intervals for testing purposes
 						InitialReconnectInterval: time.Millisecond,
 						MaxReconnectInterval:     time.Millisecond * 50,
@@ -3402,9 +3372,6 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous: true,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval: time.Minute * 5,
 		// aggressive reconnect intervals for testing purposes
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
@@ -3487,9 +3454,6 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous: true,
-		// test isn't long running enough to worry about time-based checkpoints,
-		// to keep testing simple, bumped these up for deterministic checkpointing via CheckpointNow()
-		CheckpointInterval: time.Minute * 5,
 		// aggressive reconnect intervals for testing purposes
 		InitialReconnectInterval: time.Millisecond,
 		MaxReconnectInterval:     time.Millisecond * 50,
