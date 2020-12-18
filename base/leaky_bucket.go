@@ -47,6 +47,8 @@ type LeakyBucketConfig struct {
 	FirstTimeViewCustomPartialError bool
 	PostQueryCallback               func(ddoc, viewName string, params map[string]interface{}) // Issues callback after issuing query when bucket.ViewQuery is called
 
+	PostN1QLQueryCallback func()
+
 	// UpdateCallback issues additional callback in WriteUpdate after standard callback completes, but prior to document write.  Allows
 	// tests to trigger CAS retry handling by modifying the underlying document in a UpdateCallback implementation.
 	UpdateCallback func(key string)
@@ -422,6 +424,10 @@ func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, 
 	b.config.PostQueryCallback = callback
 }
 
+func (b *LeakyBucket) SetPostN1QLQueryCallback(callback func()) {
+	b.config.PostN1QLQueryCallback = callback
+}
+
 func (b *LeakyBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	return b.bucket.IsSupported(feature)
 }
@@ -431,7 +437,13 @@ func (b *LeakyBucket) Query(statement string, params interface{}, consistency go
 	if !ok {
 		return nil, errors.New("Not GOCB Bucket")
 	}
-	return gocbBucket.Query(statement, params, consistency, adhoc)
+
+	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
+	if b.config.PostN1QLQueryCallback != nil {
+		b.config.PostN1QLQueryCallback()
+	}
+
+	return results, err
 }
 
 func (b *LeakyBucket) ExplainQuery(statement string, params interface{}) (plain map[string]interface{}, err error) {

@@ -1309,6 +1309,9 @@ func TestResyncErrorScenarios(t *testing.T) {
 	)
 	defer rt.Close()
 
+	leakyBucket, ok := rt.GetDatabase().Bucket.(*base.LeakyBucket)
+	require.True(t, ok)
+
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%d", i))
 	}
@@ -1328,10 +1331,17 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
 
-	// Unlikely but this may cause a race as we are expecting this POST to run before the 1000s doc re-sync occurs.
-	// May require a method to slowdown the resync process
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	assertStatus(t, response, http.StatusServiceUnavailable)
+	if base.TestsDisableGSI() {
+		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			assertStatus(t, response, http.StatusServiceUnavailable)
+		})
+	} else {
+		leakyBucket.SetPostN1QLQueryCallback(func() {
+			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+			assertStatus(t, response, http.StatusServiceUnavailable)
+		})
+	}
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1363,6 +1373,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 }
 
 func TestResyncStop(t *testing.T) {
+
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -1377,6 +1388,9 @@ func TestResyncStop(t *testing.T) {
 		},
 	)
 	defer rt.Close()
+
+	leakyBucket, ok := rt.GetDatabase().Bucket.(*base.LeakyBucket)
+	require.True(t, ok)
 
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%d", i))
@@ -1393,8 +1407,18 @@ func TestResyncStop(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-	assertStatus(t, response, http.StatusOK)
+	// Stop the resync action inside the post query callback as we can be sure we'll cancel it after only one query run
+	if base.TestsDisableGSI() {
+		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+			response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+			assertStatus(t, response, http.StatusOK)
+		})
+	} else {
+		leakyBucket.SetPostN1QLQueryCallback(func() {
+			response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+			assertStatus(t, response, http.StatusOK)
+		})
+	}
 
 	err = rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
