@@ -416,7 +416,6 @@ var jsLoadTypes = [...]string{"SyncFunction", "ImportFilter", "ConflictResolver"
 
 // String returns the string representation of a specific JSLoadType.
 func (t JSLoadType) String() string {
-	// jsLoadTypes := [...]string{"SyncFunction", "ImportFilter", "ConflictResolver", "WebhookFilter"}
 	if len(jsLoadTypes) < int(t) {
 		return fmt.Sprintf("JSLoadType(%d)", t)
 	}
