@@ -68,7 +68,7 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 // on the event type.
 func (wh *Webhook) HandleEvent(event Event) bool {
 
-	var payload *bytes.Buffer
+	var payload []byte
 	var contentType string
 	if wh.filter != nil {
 		// If filter function is defined, use it to determine whether to post
@@ -87,7 +87,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
 		contentType = "application/json"
-		payload = bytes.NewBuffer(event.DocBytes)
+		payload = event.DocBytes
 	case *DBStateChangeEvent:
 		// for DBStateChangeEvent, post JSON document with the following format
 		//{
@@ -103,13 +103,13 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 			return false
 		}
 		contentType = "application/json"
-		payload = bytes.NewBuffer(jsonOut)
+		payload = jsonOut
 	default:
 		base.Warnf("Webhook invoked for unsupported event type.")
 		return false
 	}
 	success := func() bool {
-		resp, err := wh.client.Post(wh.url, contentType, payload)
+		resp, err := wh.client.Post(wh.url, contentType, bytes.NewBuffer(payload))
 		defer func() {
 			// Ensure we're closing the response, so it can be reused
 			if resp != nil && resp.Body != nil {
@@ -132,7 +132,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		// Check Log Level first, as SanitizedUrl is expensive to evaluate.
 		if base.LogDebugEnabled(base.KeyEvents) {
 			base.Debugf(base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
-				base.UD(payload), base.UD(wh.SanitizedUrl()), resp.Status)
+				base.UD(string(payload)), base.UD(wh.SanitizedUrl()), resp.Status)
 		}
 		return true
 	}()
