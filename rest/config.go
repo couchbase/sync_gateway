@@ -412,7 +412,7 @@ const (
 )
 
 // jsLoadTypes represents the list of different possible JSLoadType.
-var jsLoadTypes = [...]string{"SyncFunction", "ImportFilter", "ConflictResolver", "WebhookFilter"}
+var jsLoadTypes = []string{"SyncFunction", "ImportFilter", "ConflictResolver", "WebhookFilter"}
 
 // String returns the string representation of a specific JSLoadType.
 func (t JSLoadType) String() string {
