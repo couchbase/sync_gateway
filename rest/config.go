@@ -408,11 +408,15 @@ const (
 	SyncFunction     JSLoadType = iota // Sync Function JavaScript load.
 	ImportFilter                       // Import filter JavaScript load.
 	ConflictResolver                   // Conflict Resolver JavaScript load.
+	WebhookFilter                      // Webhook filter JavaScript load.
+	jsLoadTypeCount                    // Number of JSLoadType constants.
 )
+
+// jsLoadTypes represents the list of different possible JSLoadType.
+var jsLoadTypes = []string{"SyncFunction", "ImportFilter", "ConflictResolver", "WebhookFilter"}
 
 // String returns the string representation of a specific JSLoadType.
 func (t JSLoadType) String() string {
-	jsLoadTypes := [...]string{"SyncFunction", "ImportFilter", "ConflictResolver"}
 	if len(jsLoadTypes) < int(t) {
 		return fmt.Sprintf("JSLoadType(%d)", t)
 	}

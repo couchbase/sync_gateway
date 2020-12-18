@@ -803,15 +803,32 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 			return pkgerrors.Wrapf(err, "Error calling base.JSONUnmarshal() in initEventHandlers")
 		}
 
-		// Process document commit event handlers
-		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
-			return err
+		// Load Webhook Filter Function.
+		eventHandlersByType := map[db.EventType][]*EventConfig{
+			db.DocumentChange: eventHandlers.DocumentChanged,
+			db.DBStateChange:  eventHandlers.DBStateChanged,
 		}
 
-		// Process db state change event handlers
-		if err = sc.processEventHandlersForEvent(eventHandlers.DBStateChanged, db.DBStateChange, dbcontext); err != nil {
-			return err
+		for eventType, handlers := range eventHandlersByType {
+			// Load external webhook filter function
+			for _, conf := range handlers {
+				filter, err := loadJavaScript(conf.Filter)
+				if err != nil {
+					return &JavaScriptLoadError{
+						JSLoadType: WebhookFilter,
+						Path:       conf.Filter,
+						Err:        err,
+					}
+				}
+				conf.Filter = filter
+			}
+
+			// Register event handlers
+			if err = sc.processEventHandlersForEvent(handlers, eventType, dbcontext); err != nil {
+				return err
+			}
 		}
+
 		// WaitForProcess uses string, to support both omitempty and zero values
 		customWaitTime := int64(-1)
 		if eventHandlers.WaitForProcess != "" {
