@@ -1243,6 +1243,33 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	err, cas = RetryLoopCas("UpdateXattr", worker, bucket.Spec.RetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during UpdateXattr with key %v", UD(k).Redact())
+		return cas, err
+	}
+
+	if isDelete && !supportsTombstoneCreation {
+		worker := func() (shouldRetry bool, err error, value interface{}) {
+			builder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), exp).RemoveEx("", gocb.SubdocFlagNone)
+			_, removeErr := builder.Execute()
+			if removeErr != nil {
+
+				// If there is a cas mismatch the body has since been updated and so we don't need to bother removing
+				// body in this operation
+				if IsCasMismatch(removeErr) {
+					return false, nil, nil
+				}
+
+				shouldRetry = isRecoverableWriteError(removeErr)
+				return shouldRetry, removeErr, nil
+			}
+			return false, nil, nil
+		}
+
+		err, _ = RetryLoop("UpdateXattrDeleteBodySecondOp", worker, bucket.Spec.RetrySleeper())
+		if err != nil {
+			err = pkgerrors.Wrapf(err, "Error during UpdateXattr delete op with key %v", UD(k).Redact())
+			return cas, err
+		}
+
 	}
 
 	return cas, err
