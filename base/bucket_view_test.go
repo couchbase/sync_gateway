@@ -4,10 +4,9 @@ import (
 	"log"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestView(t *testing.T) {

@@ -1828,7 +1828,7 @@ func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocumen
 	return putDDocForTombstones(ddoc.Name, data, goCBClient.CapiEps(), httpClient, username, password)
 }
 
-// putDDocForTombstones uses the provided client and endpoints to create a design doc with
+// putDDocForTombstones uses the provided client and endpoints to create a design doc with index_xattr_on_deleted_docs=true
 func putDDocForTombstones(name string, payload []byte, capiEps []string, client *http.Client, username string, password string) error {
 
 	// From gocb.Bucket.getViewEp() - pick view endpoint at random

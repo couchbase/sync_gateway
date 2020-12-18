@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb"
-
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
