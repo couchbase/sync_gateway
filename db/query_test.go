@@ -20,47 +20,45 @@ func TestQueryChannelsStatsView(t *testing.T) {
 		t.Skip("This test is Walrus and UseViews=true only")
 	}
 
-	base.ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
-		db := setupTestDBForBucket(t, bucket)
-		defer db.Close()
+	db := setupTestDB(t)
+	defer db.Close()
 
-		// docID -> Sequence
-		docSeqMap := make(map[string]uint64, 3)
+	// docID -> Sequence
+	docSeqMap := make(map[string]uint64, 3)
 
-		_, doc, err := db.Put("queryTestDoc1", Body{"channels": []string{"ABC"}})
-		require.NoError(t, err, "Put queryDoc1")
-		docSeqMap["queryTestDoc1"] = doc.Sequence
-		_, doc, err = db.Put("queryTestDoc2", Body{"channels": []string{"ABC"}})
-		require.NoError(t, err, "Put queryDoc2")
-		docSeqMap["queryTestDoc2"] = doc.Sequence
-		_, doc, err = db.Put("queryTestDoc3", Body{"channels": []string{"ABC"}})
-		require.NoError(t, err, "Put queryDoc3")
-		docSeqMap["queryTestDoc3"] = doc.Sequence
+	_, doc, err := db.Put("queryTestDoc1", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc1")
+	docSeqMap["queryTestDoc1"] = doc.Sequence
+	_, doc, err = db.Put("queryTestDoc2", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc2")
+	docSeqMap["queryTestDoc2"] = doc.Sequence
+	_, doc, err = db.Put("queryTestDoc3", Body{"channels": []string{"ABC"}})
+	require.NoError(t, err, "Put queryDoc3")
+	docSeqMap["queryTestDoc3"] = doc.Sequence
 
-		// Check expvar prior to test
-		queryExpvar := fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels)
+	// Check expvar prior to test
+	queryExpvar := fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels)
 
-		channelQueryCountBefore := db.DbStats.Query(queryExpvar).QueryCount.Value()
-		channelQueryTimeBefore := db.DbStats.Query(queryExpvar).QueryTime.Value()
-		channelQueryErrorCountBefore := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
+	channelQueryCountBefore := db.DbStats.Query(queryExpvar).QueryCount.Value()
+	channelQueryTimeBefore := db.DbStats.Query(queryExpvar).QueryTime.Value()
+	channelQueryErrorCountBefore := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
 
-		// Issue channels query
-		results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
-		assert.NoError(t, queryErr, "Query error")
+	// Issue channels query
+	results, queryErr := db.QueryChannels("ABC", docSeqMap["queryTestDoc1"], docSeqMap["queryTestDoc3"], 100, false)
+	assert.NoError(t, queryErr, "Query error")
 
-		assert.Equal(t, 3, countQueryResults(results))
+	assert.Equal(t, 3, countQueryResults(results))
 
-		closeErr := results.Close()
-		assert.NoError(t, closeErr, "Close error")
+	closeErr := results.Close()
+	assert.NoError(t, closeErr, "Close error")
 
-		channelQueryCountAfter := db.DbStats.Query(queryExpvar).QueryCount.Value()
-		channelQueryTimeAfter := db.DbStats.Query(queryExpvar).QueryTime.Value()
-		channelQueryErrorCountAfter := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
+	channelQueryCountAfter := db.DbStats.Query(queryExpvar).QueryCount.Value()
+	channelQueryTimeAfter := db.DbStats.Query(queryExpvar).QueryTime.Value()
+	channelQueryErrorCountAfter := db.DbStats.Query(queryExpvar).QueryErrorCount.Value()
 
-		assert.Equal(t, channelQueryCountBefore+1, channelQueryCountAfter)
-		assert.True(t, channelQueryTimeAfter > channelQueryTimeBefore, "Channel query time stat didn't change")
-		assert.Equal(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
-	})
+	assert.Equal(t, channelQueryCountBefore+1, channelQueryCountAfter)
+	assert.True(t, channelQueryTimeAfter > channelQueryTimeBefore, "Channel query time stat didn't change")
+	assert.Equal(t, channelQueryErrorCountBefore, channelQueryErrorCountAfter)
 
 }
 

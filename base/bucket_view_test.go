@@ -1,7 +1,9 @@
 package base
 
 import (
+	"fmt"
 	"log"
+	"strings"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -46,7 +48,26 @@ func TestView(t *testing.T) {
 		assert.NoError(t, getErr)
 		assert.NotNil(t, ddocCheck)
 
-		// stale
+		// wait for view readiness
+		worker := func() (shouldRetry bool, err error, value interface{}) {
+			viewParams := make(map[string]interface{})
+			_, viewErr := bucket.View(ddocName, viewName, viewParams)
+			if viewErr == nil {
+				return false, nil, nil
+			}
+			if strings.Contains(viewErr.Error(), "view_undefined") {
+				log.Printf("View undefined, retrying")
+				return true, nil, nil
+			}
+			return false, viewErr, nil
+		}
+
+		description := fmt.Sprintf("Wait for view readiness")
+		sleeper := CreateSleeperFunc(50, 100)
+		viewErr, _ := RetryLoop(description, worker, sleeper)
+		require.NoError(t, viewErr)
+
+		// stale=false
 		viewParams := make(map[string]interface{})
 		viewParams[ViewQueryParamStale] = false
 		result, viewErr := bucket.View(ddocName, viewName, viewParams)
@@ -125,7 +146,6 @@ func TestView(t *testing.T) {
 		var value interface{}
 		rowCount := 0
 		for iterator.Next(&value) {
-			log.Printf("view query value: %v", value)
 			rowCount++
 		}
 		assert.Equal(t, 3, rowCount)
@@ -139,7 +159,6 @@ func TestView(t *testing.T) {
 			if nextBytes == nil {
 				break
 			}
-			log.Printf("view query bytes value: %s", nextBytes)
 			rowCount++
 		}
 		assert.Equal(t, 3, rowCount)
