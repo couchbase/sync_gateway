@@ -1256,7 +1256,7 @@ func TestResync(t *testing.T) {
 					SyncFn: syncFn,
 				},
 			)
-			rt.Close()
+			defer rt.Close()
 
 			for i := 0; i < testCase.docsCreated; i++ {
 				rt.createDoc(t, fmt.Sprintf("doc%d", i))
@@ -1307,7 +1307,30 @@ func TestResyncErrorScenarios(t *testing.T) {
 			SyncFn: syncFn,
 		},
 	)
-	rt.Close()
+	defer rt.Close()
+
+	leakyBucket, ok := rt.GetDatabase().Bucket.(*base.LeakyBucket)
+	require.True(t, ok)
+
+	var useCallback bool
+
+	if base.TestsDisableGSI() {
+		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+			if useCallback {
+				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				assertStatus(t, response, http.StatusServiceUnavailable)
+				useCallback = false
+			}
+		})
+	} else {
+		leakyBucket.SetPostN1QLQueryCallback(func() {
+			if useCallback {
+				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
+				assertStatus(t, response, http.StatusServiceUnavailable)
+				useCallback = false
+			}
+		})
+	}
 
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%d", i))
@@ -1325,13 +1348,9 @@ func TestResyncErrorScenarios(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, http.StatusOK)
 
+	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
-
-	// Unlikely but this may cause a race as we are expecting this POST to run before the 1000s doc re-sync occurs.
-	// May require a method to slowdown the resync process
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
-	assertStatus(t, response, http.StatusServiceUnavailable)
 
 	err := rt.WaitForCondition(func() bool {
 		response := rt.SendAdminRequest("GET", "/db/_resync", "")
@@ -1363,6 +1382,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 }
 
 func TestResyncStop(t *testing.T) {
+
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -1372,11 +1392,33 @@ func TestResyncStop(t *testing.T) {
 		&RestTesterConfig{
 			SyncFn: syncFn,
 			DatabaseConfig: &DbConfig{
-				ResyncQueryLimit: base.IntPtr(100),
+				ResyncQueryLimit: base.IntPtr(10),
 			},
 		},
 	)
-	rt.Close()
+	defer rt.Close()
+
+	leakyBucket, ok := rt.GetDatabase().Bucket.(*base.LeakyBucket)
+	require.True(t, ok)
+
+	var useCallback bool
+	if base.TestsDisableGSI() {
+		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
+			if useCallback {
+				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+				assertStatus(t, response, http.StatusOK)
+				useCallback = false
+			}
+		})
+	} else {
+		leakyBucket.SetPostN1QLQueryCallback(func() {
+			if useCallback {
+				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
+				assertStatus(t, response, http.StatusOK)
+				useCallback = false
+			}
+		})
+	}
 
 	for i := 0; i < 1000; i++ {
 		rt.createDoc(t, fmt.Sprintf("doc%d", i))
@@ -1390,11 +1432,18 @@ func TestResyncStop(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, http.StatusOK)
 
+	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
 
-	response = rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
-	assertStatus(t, response, http.StatusOK)
+	err = rt.WaitForCondition(func() bool {
+		response := rt.SendAdminRequest("GET", "/db/_resync", "")
+		var status db.ResyncStatus
+		err := json.Unmarshal(response.BodyBytes(), &status)
+		assert.NoError(t, err)
+		return status.Status == db.ResyncStateStopped
+	})
+	assert.NoError(t, err)
 
 	syncFnCount := int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 	assert.True(t, syncFnCount < 2000)
