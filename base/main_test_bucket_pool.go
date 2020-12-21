@@ -411,7 +411,10 @@ func getBuckets(cm *gocb.ClusterManager) ([]*gocb.BucketSettings, error) {
 func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, bucketInitFunc TBPBucketInitFunc) error {
 
 	// keep references to opened buckets for use later in this function
-	openBuckets := make(map[string]*CouchbaseBucketGoCB, numBuckets)
+	var (
+		openBuckets     = make(map[string]*CouchbaseBucketGoCB, numBuckets)
+		openBucketsLock sync.Mutex // protects openBuckets
+	)
 
 	wg := sync.WaitGroup{}
 	wg.Add(numBuckets)
@@ -445,7 +448,9 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			if err != nil {
 				FatalfCtx(ctx, "Timed out trying to open new bucket: %v", err)
 			}
+			openBucketsLock.Lock()
 			openBuckets[bucketName] = b
+			openBucketsLock.Unlock()
 
 			_, err = b.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+BucketQueryToken+`%";`, nil, gocb.RequestPlus, true)
 			if err != nil {
