@@ -572,8 +572,8 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 	// If set of changes to prepend is empty, check whether validFrom should be updated
 	if len(changes) == 0 {
 		if changesValidFrom < c.validFrom && changesValidTo >= c.validFrom {
-			base.Debugf(base.KeyCache, " changesValidFrom (%d) < c.validFrom < changesValidTo (%d), setting c.validFrom from %v -> %v",
-				changesValidFrom, changesValidTo, c.validFrom, changesValidFrom)
+			base.Debugf(base.KeyCache, " changesValidFrom (%d) < c.validFrom < changesValidTo (%d), setting c.validFrom from %v -> %v for %q",
+				changesValidFrom, changesValidTo, c.validFrom, changesValidFrom, c.channelName)
 			c.validFrom = changesValidFrom
 		}
 		return 0
