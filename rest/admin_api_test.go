@@ -1389,7 +1389,9 @@ func TestResyncErrorScenarios(t *testing.T) {
 	assert.NoError(t, err)
 
 	// FIXME: PostQuery callbacks not firing, meaning we aren't testing concurrent/overlapping start actions
-	// assert.True(t, callbackFired, "expecting callback to be fired")
+	if false {
+		assert.True(t, callbackFired, "expecting callback to be fired")
+	}
 }
 
 func TestResyncStop(t *testing.T) {
