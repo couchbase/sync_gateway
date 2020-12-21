@@ -573,7 +573,7 @@ func (c *singleChannelCacheImpl) prependChanges(changes LogEntries, changesValid
 	if len(changes) == 0 {
 		if changesValidFrom < c.validFrom && changesValidTo >= c.validFrom {
 			base.Debugf(base.KeyCache, " changesValidFrom (%d) < c.validFrom < changesValidTo (%d), setting c.validFrom from %v -> %v for %q",
-				changesValidFrom, changesValidTo, c.validFrom, changesValidFrom, c.channelName)
+				changesValidFrom, changesValidTo, c.validFrom, changesValidFrom, base.UD(c.channelName))
 			c.validFrom = changesValidFrom
 		}
 		return 0
