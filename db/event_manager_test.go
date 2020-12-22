@@ -259,10 +259,10 @@ func TestUnhandledEvent(t *testing.T) {
 
 	resultChannel := make(chan interface{}, 10)
 
-	// create handler for UserAdd events
-	testHandler := &TestingHandler{HandledEvent: UserAdd}
+	// create handler for an unhandled event
+	testHandler := &TestingHandler{HandledEvent: math.MaxUint8}
 	testHandler.SetChannel(resultChannel)
-	em.RegisterEventHandler(testHandler, UserAdd)
+	em.RegisterEventHandler(testHandler, math.MaxUint8)
 
 	// send DocumentChange events to handler
 	for i := 0; i < 10; i++ {

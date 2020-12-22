@@ -27,7 +27,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -771,76 +770,48 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 }
 
 // Initialize event handlers, if present
-func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) error {
-	if config.EventHandlers != nil {
-
-		// Temporary solution to do validation of invalid event types in config.EventHandlers.
-		// config.EventHandlers is originally unmarshalled as interface{} so that we retain any
-		// invalid keys during the original config unmarshalling.  We validate the expected entries
-		// manually and throw an error for any invalid keys.  Then remarshal and
-		// unmarshal as EventHandlerConfig (considered manual reflection, but was too painful).  Comes with
-		// some overhead, but will only happen on startup/new config.
-		// Should be replaced when we implement full schema validation on config.
-
-		eventHandlers := &EventHandlerConfig{}
-		eventHandlersMap, ok := config.EventHandlers.(map[string]interface{})
-		if !ok {
-			return errors.New(fmt.Sprintf("Unable to parse event_handlers definition in config for db %s", dbcontext.Name))
-		}
-
-		// validate event-related keys
-		for k := range eventHandlersMap {
-			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed" {
-				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
-			}
-		}
-
-		eventHandlersJSON, err := base.JSONMarshal(eventHandlersMap)
-		if err != nil {
-			return pkgerrors.Wrapf(err, "Error calling base.JSONMarshal() in initEventHandlers")
-		}
-		if err := base.JSONUnmarshal(eventHandlersJSON, eventHandlers); err != nil {
-			return pkgerrors.Wrapf(err, "Error calling base.JSONUnmarshal() in initEventHandlers")
-		}
-
-		// Load Webhook Filter Function.
-		eventHandlersByType := map[db.EventType][]*EventConfig{
-			db.DocumentChange: eventHandlers.DocumentChanged,
-			db.DBStateChange:  eventHandlers.DBStateChanged,
-		}
-
-		for eventType, handlers := range eventHandlersByType {
-			// Load external webhook filter function
-			for _, conf := range handlers {
-				filter, err := loadJavaScript(conf.Filter)
-				if err != nil {
-					return &JavaScriptLoadError{
-						JSLoadType: WebhookFilter,
-						Path:       conf.Filter,
-						Err:        err,
-					}
-				}
-				conf.Filter = filter
-			}
-
-			// Register event handlers
-			if err = sc.processEventHandlersForEvent(handlers, eventType, dbcontext); err != nil {
-				return err
-			}
-		}
-
-		// WaitForProcess uses string, to support both omitempty and zero values
-		customWaitTime := int64(-1)
-		if eventHandlers.WaitForProcess != "" {
-			customWaitTime, err = strconv.ParseInt(eventHandlers.WaitForProcess, 10, 0)
-			if err != nil {
-				customWaitTime = -1
-				base.Warnf("Error parsing wait_for_process from config, using default %s", err)
-			}
-		}
-		dbcontext.EventMgr.Start(eventHandlers.MaxEventProc, int(customWaitTime))
-
+func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) (err error) {
+	if config.EventHandlers == nil {
+		return nil
 	}
+
+	// Load Webhook Filter Function.
+	eventHandlersByType := map[db.EventType][]*EventConfig{
+		db.DocumentChange: config.EventHandlers.DocumentChanged,
+		db.DBStateChange:  config.EventHandlers.DBStateChanged,
+	}
+
+	for eventType, handlers := range eventHandlersByType {
+		// Load external webhook filter function
+		for _, conf := range handlers {
+			filter, err := loadJavaScript(conf.Filter)
+			if err != nil {
+				return &JavaScriptLoadError{
+					JSLoadType: WebhookFilter,
+					Path:       conf.Filter,
+					Err:        err,
+				}
+			}
+			conf.Filter = filter
+		}
+
+		// Register event handlers
+		if err = sc.processEventHandlersForEvent(handlers, eventType, dbcontext); err != nil {
+			return err
+		}
+	}
+
+	// WaitForProcess uses string, to support both omitempty and zero values
+	customWaitTime := int64(-1)
+	if config.EventHandlers.WaitForProcess != "" {
+		customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
+		if err != nil {
+			customWaitTime = -1
+			base.Warnf("Error parsing wait_for_process from config, using default %s", err)
+		}
+	}
+	dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
+
 	return nil
 }
 

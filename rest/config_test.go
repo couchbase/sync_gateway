@@ -1839,15 +1839,15 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			}()
 			dbConfig := DbConfig{
 				Name: "db",
-				EventHandlers: map[string]interface{}{
-					"max_processes":    500,
-					"wait_for_process": "100",
-					"db_state_changed": []map[string]interface{}{
+				EventHandlers: &EventHandlerConfig{
+					MaxEventProc:   500,
+					WaitForProcess: "100",
+					DBStateChanged: []*EventConfig{
 						{
-							"handler": "webhook",
-							"url":     "http://localhost:8080/",
-							"timeout": 0,
-							"filter":  webhookFilter,
+							HandlerType: "webhook",
+							Url:         "http://localhost:8080/",
+							Timeout:     base.Uint64Ptr(0),
+							Filter:      webhookFilter,
 						},
 					},
 				},

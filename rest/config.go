@@ -169,7 +169,7 @@ type DbConfig struct {
 	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`                    // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
 	ImportFilter                     *string                          `json:"import_filter,omitempty"`                        // Filter function (import)
 	ImportBackupOldRev               bool                             `json:"import_backup_old_rev"`                          // Whether import should attempt to create a temporary backup of the previous revision body, when available.
-	EventHandlers                    interface{}                      `json:"event_handlers,omitempty"`                       // Event handlers (webhook)
+	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`                       // Event handlers (webhook)
 	FeedType                         string                           `json:"feed_type,omitempty"`                            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword               bool                             `json:"allow_empty_password,omitempty"`                 // Allow empty passwords?  Defaults to false
 	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                                // Cache settings
