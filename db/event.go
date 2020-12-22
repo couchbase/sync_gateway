@@ -10,13 +10,26 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-// Event type
+// EventType is an enum for each unique event type.
 type EventType uint8
 
 const (
-	DocumentChange EventType = iota
-	DBStateChange
+	DocumentChange EventType = iota // fires whenever a document is updated (even if the change did not cause the winning rev to change)
+	DBStateChange                   // fires when the database is created or is taken offline/online
+
+	eventTypeCount
 )
+
+var eventTypeNames = []string{"DocumentChange", "DBStateChange"}
+
+// String returns the string representation of an event type (e.g. "WinningRevChange")
+func (et EventType) String() string {
+	if et >= eventTypeCount {
+		return fmt.Sprintf("EventType(%d)", et)
+
+	}
+	return eventTypeNames[et]
+}
 
 // An event that can be raised during SG processing.
 type Event interface {
