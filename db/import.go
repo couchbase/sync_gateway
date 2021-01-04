@@ -265,7 +265,6 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		if err != nil {
 			return nil, nil, updatedExpiry, err
 		}
-		base.Debugf(base.KeyImport, "db context is: %+v", db.Ctx)
 		base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
 		// body[BodyRev] = newRev
 		newDoc.RevID = newRev

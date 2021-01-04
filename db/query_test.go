@@ -17,7 +17,7 @@ import (
 func TestQueryChannelsStatsView(t *testing.T) {
 
 	if !base.TestsDisableGSI() {
-		t.Skip("This test is Walrus and UseViews=true only")
+		t.Skip("This test is view only, but GSI is enabled")
 	}
 
 	db := setupTestDB(t)
