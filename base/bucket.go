@@ -369,7 +369,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 // If the given key is not found in the bucket, this function returns a result of zero.
 func GetCounter(bucket Bucket, k string) (result uint64, err error) {
 	_, err = bucket.Get(k, &result)
-	if IsKeyNotFoundError(bucket, err) {
+	if bucket.IsError(err, sgbucket.KeyNotFoundError) {
 		return 0, nil
 	}
 	return result, err
@@ -382,17 +382,7 @@ func IsKeyNotFoundError(bucket Bucket, err error) bool {
 	}
 
 	unwrappedErr := pkgerrors.Cause(err)
-
-	if unwrappedErr == gocb.ErrKeyNotFound {
-		return true
-	}
-
-	if _, ok := unwrappedErr.(sgbucket.MissingError); ok {
-		return true
-	}
-
-	return false
-
+	return bucket.IsError(unwrappedErr, sgbucket.KeyNotFoundError)
 }
 
 func IsCasMismatch(err error) bool {

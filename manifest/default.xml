@@ -31,13 +31,13 @@
 
   <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="93c74bac9ddc2979ab895a37087c225c998b03bf" remote="couchbaselabs"/>
 
-  <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="c97683613817eb20f69998df7d25a44cf9872ef2"/>
+  <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="e8d089489387294d441b25e17eb1d006178bbd3b"/>
 
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="ddac38b31c48eeb93df6b3446e68cd0d6786b56d"/>
 
   <!-- gocb v2 -->
-  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="171294ec44d0d95af8a261d4231205c567aa63a2" />
-  <project name="gocbcore" path="godeps/src/github.com/couchbase/gocbcore" remote="couchbase" revision="81e2e2022863fa5c42b7351cae8993b6b04c3b64"/>
+  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="9e841df93a43dd35e992eb08fe09c5211584d7e0" />
+  <project name="gocbcore" path="godeps/src/github.com/couchbase/gocbcore" remote="couchbase" revision="eeb14e0cf41831c798b832cedcbc49eba111d38d"/>
   <project name="golang-snappy"  path="godeps/src/github.com/golang/snappy" remote="couchbasedeps" revision="723cc1e459b8eea2dea4583200fd60757d40097a" />
 
   <!-- gocb v1 -->
@@ -50,7 +50,7 @@
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="83e1dde05ac9e4861d4d8d4985046e8920c1d760"/>
 
-  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="760bafa8b7c56dc36f5d4ced64ff496502253077"/>
+  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="4f1478f0a956cdabd36db119ea64dc4d9b071bdc"/>
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="couchbasedeps" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
 

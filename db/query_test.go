@@ -16,8 +16,8 @@ import (
 // Validate stats for view query
 func TestQueryChannelsStatsView(t *testing.T) {
 
-	if !base.UnitTestUrlIsWalrus() || !base.TestsDisableGSI() {
-		t.Skip("This test is Walrus and UseViews=true only")
+	if !base.TestsDisableGSI() {
+		t.Skip("This test is view only, but GSI is enabled")
 	}
 
 	db := setupTestDB(t)

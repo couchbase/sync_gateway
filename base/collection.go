@@ -98,16 +98,29 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
+	nodeCount := 1
+	router, routerErr := bucket.Internal().IORouter()
+	if routerErr == nil {
+		mgmtEps := router.MgmtEps()
+		if mgmtEps != nil && len(mgmtEps) > 0 {
+			nodeCount = len(mgmtEps)
+		}
+	}
+
+	viewOpsQueue := make(chan struct{}, MaxConcurrentViewOps*nodeCount)
 	collection := &Collection{
 		Collection: bucket.DefaultCollection(),
+		viewOps:    viewOpsQueue,
 	}
 
 	return collection, nil
 }
 
 type Collection struct {
-	*gocb.Collection            // underlying gocb Collection
-	Spec             BucketSpec // keep a copy of the BucketSpec for DCP usage
+	*gocb.Collection               // underlying gocb Collection
+	Spec             BucketSpec    // keep a copy of the BucketSpec for DCP usage
+	cluster          *gocb.Cluster // Associated cluster - required for N1QL operations
+	viewOps          chan struct{} // Manages max concurrent view ops (per kv node)
 }
 
 // DataStore
@@ -362,10 +375,10 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 }
 
 func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return errors.New("not implemented")
+	return errors.New("StartDCPFeed not implemented")
 }
 func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
-	return nil, errors.New("not implemented")
+	return nil, errors.New("StartTapFeed not implemented")
 }
 func (c *Collection) Dump() {
 	return
@@ -374,49 +387,22 @@ func (c *Collection) Dump() {
 // xattrStore
 
 func (c *Collection) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return 0, errors.New("not implemented")
+	return 0, errors.New("WriteCasWithXattr not implemented")
 }
 func (c *Collection) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
-	return 0, errors.New("not implemented")
+	return 0, errors.New("WriteWithXattr not implemented")
 }
 func (c *Collection) GetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
-	return 0, errors.New("not implemented")
+	return 0, errors.New("GetXattr not implemented")
 }
 func (c *Collection) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
-	return 0, errors.New("not implemented")
+	return 0, errors.New("GetWithXattr not implemented")
 }
 func (c *Collection) DeleteWithXattr(k string, xattrKey string) error {
-	return errors.New("not implemented")
+	return errors.New("DeleteWithXattr not implemented")
 }
 func (c *Collection) WriteUpdateWithXattr(k string, xattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	return 0, errors.New("not implemented")
-}
-
-// viewStore
-
-func (c *Collection) GetDDoc(docname string, into interface{}) error {
-	return errors.New("not implemented")
-}
-func (c *Collection) GetDDocs(into interface{}) error {
-	return errors.New("not implemented")
-}
-func (c *Collection) PutDDoc(docname string, value interface{}) error {
-	return errors.New("not implemented")
-}
-func (c *Collection) DeleteDDoc(docname string) error {
-	return errors.New("not implemented")
-}
-
-func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgbucket.ViewResult, error) {
-	return sgbucket.ViewResult{}, nil
-}
-
-func (c *Collection) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
-	return nil
-}
-
-func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
-	return nil, nil
+	return 0, errors.New("WriteUpdateWithXattr not implemented")
 }
 
 // CouchbaseStore
@@ -433,4 +419,16 @@ func (c *Collection) GetMaxVbno() (uint16, error) {
 
 func expAsDuration(exp uint32) time.Duration {
 	return time.Duration(exp) * time.Second
+}
+
+func (c *Collection) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
+	if err == nil {
+		return false
+	}
+	switch errorType {
+	case sgbucket.KeyNotFoundError:
+		return errors.Is(err, gocb.ErrDocumentNotFound)
+	default:
+		return false
+	}
 }

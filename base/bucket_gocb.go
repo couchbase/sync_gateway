@@ -11,7 +11,6 @@ package base
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"expvar"
 	"fmt"
@@ -1692,40 +1691,40 @@ func (bucket *CouchbaseBucketGoCB) Incr(k string, amt, def uint64, exp uint32) (
 
 }
 
-func (bucket *CouchbaseBucketGoCB) GetDDocs(into interface{}) error {
+func (bucket *CouchbaseBucketGoCB) GetDDocs() (ddocs map[string]sgbucket.DesignDoc, err error) {
 	bucketManager, err := bucket.getBucketManager()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	ddocs, err := bucketManager.GetDesignDocuments()
+	gocbDDocs, err := bucketManager.GetDesignDocuments()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	result := make(map[string]*gocb.DesignDocument, len(ddocs))
-	for _, ddoc := range ddocs {
+	result := make(map[string]*gocb.DesignDocument, len(gocbDDocs))
+	for _, ddoc := range gocbDDocs {
 		result[ddoc.Name] = ddoc
 	}
 
 	resultBytes, err := JSONMarshal(result)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Deserialize []byte into "into" empty interface
-	if err := JSONUnmarshal(resultBytes, into); err != nil {
-		return err
+	if err := JSONUnmarshal(resultBytes, &ddocs); err != nil {
+		return nil, err
 	}
 
-	return nil
+	return ddocs, nil
 }
 
-func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) error {
+func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string) (ddoc sgbucket.DesignDoc, err error) {
 
 	bucketManager, err := bucket.getBucketManager()
 	if err != nil {
-		return err
+		return ddoc, err
 	}
 
 	// TODO: Retry here for recoverable gocb errors?
@@ -1734,39 +1733,19 @@ func (bucket *CouchbaseBucketGoCB) GetDDoc(docname string, into interface{}) err
 		// GoCB doesn't provide an easy way to distinguish what the cause of the error was, so
 		// resort to a string pattern match for "not_found" and propagate a 404 error in that case.
 		if strings.Contains(err.Error(), "not_found") {
-			return ErrNotFound
+			return ddoc, ErrNotFound
 		}
-		return err
+		return ddoc, err
 	}
 
-	switch into.(type) {
-	case *interface{}:
-		// Shortcut around the marshal/unmarshal round trip by type asserting
-		// this into a pointer to an empty interface (if that's what "into" is)
-		intoEmptyInterfacePointer := into.(*interface{})
-
-		// And then setting the value that intoEmptyInterfacePointer points to to whatever designDocPointer points to
-		*intoEmptyInterfacePointer = *designDocPointer
-
-	default:
-
-		// If "into" is anything other than an empty interface pointer, than just past the cost of the
-		// marshal/unmarshal round trip
-
-		// Serialize DesignDocument into []byte
-		designDocBytes, err := JSONMarshal(designDocPointer)
-		if err != nil {
-			return err
-		}
-
-		// Deserialize []byte into "into" empty interface
-		if err := JSONUnmarshal(designDocBytes, into); err != nil {
-			return err
-		}
-
+	// Serialize/deserialize to convert to sgbucket.DesignDoc
+	designDocBytes, err := JSONMarshal(designDocPointer)
+	if err != nil {
+		return ddoc, err
 	}
 
-	return nil
+	err = JSONUnmarshal(designDocBytes, &ddoc)
+	return ddoc, err
 
 }
 
@@ -1782,18 +1761,7 @@ func (bucket *CouchbaseBucketGoCB) getBucketManager() (*gocb.BucketManager, erro
 	return manager, nil
 }
 
-func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, value interface{}) error {
-
-	// Convert whatever we got in the value empty interface into a sgbucket.DesignDoc
-	var sgDesignDoc sgbucket.DesignDoc
-	switch typeValue := value.(type) {
-	case sgbucket.DesignDoc:
-		sgDesignDoc = typeValue
-	case *sgbucket.DesignDoc:
-		sgDesignDoc = *typeValue
-	default:
-		return fmt.Errorf("CouchbaseBucketGoCB called with unexpected type.  Expected sgbucket.DesignDoc or *sgbucket.DesignDoc, got %T", value)
-	}
+func (bucket *CouchbaseBucketGoCB) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) error {
 
 	manager, err := bucket.getBucketManager()
 	if err != nil {
@@ -1840,9 +1808,14 @@ type XattrEnabledDesignDoc struct {
 // For the view engine to index tombstones, we need to set an explicit property in the design doc.
 //      see https://issues.couchbase.com/browse/MB-24616
 // This design doc property isn't exposed via the SDK (it's an internal-only property), so we need to
-// jump through some hoops to created the design doc.  Follows same approach used internally by gocb.
+// jump through some hoops to create the design doc.  Follows same approach used internally by gocb.
 func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
 
+	goCBClient := bucket.Bucket.IoRouter()
+
+	username, password := bucket.GetBucketCredentials()
+
+	httpClient := goCBClient.HttpClient()
 	xattrEnabledDesignDoc := XattrEnabledDesignDoc{
 		DesignDocument:         ddoc,
 		IndexXattrOnTombstones: true,
@@ -1852,18 +1825,21 @@ func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocumen
 		return err
 	}
 
-	// Based on implementation in gocb.BucketManager.UpsertDesignDocument
-	uri := fmt.Sprintf("/_design/%s", ddoc.Name)
-	body := bytes.NewReader(data)
+	return putDDocForTombstones(ddoc.Name, data, goCBClient.CapiEps(), httpClient, username, password)
+}
 
-	goCBClient := bucket.Bucket.IoRouter()
+// putDDocForTombstones uses the provided client and endpoints to create a design doc with index_xattr_on_deleted_docs=true
+func putDDocForTombstones(name string, payload []byte, capiEps []string, client *http.Client, username string, password string) error {
 
-	// From gocb.Bucket.getViewEp() - look up the view node endpoints and pick one at random
-	capiEps := goCBClient.CapiEps()
+	// From gocb.Bucket.getViewEp() - pick view endpoint at random
 	if len(capiEps) == 0 {
 		return errors.New("No available view nodes.")
 	}
 	viewEp := capiEps[rand.Intn(len(capiEps))]
+
+	// Based on implementation in gocb.BucketManager.UpsertDesignDocument
+	uri := fmt.Sprintf("/_design/%s", name)
+	body := bytes.NewReader(payload)
 
 	// Build the HTTP request
 	req, err := http.NewRequest("PUT", viewEp+uri, body)
@@ -1871,11 +1847,9 @@ func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocumen
 		return err
 	}
 	req.Header.Add("Content-Type", "application/json")
-	username, password := bucket.GetBucketCredentials()
 	req.SetBasicAuth(username, password)
 
-	// Use the bucket's HTTP client to make the request
-	resp, err := goCBClient.HttpClient().Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -1898,6 +1872,18 @@ func (bucket *CouchbaseBucketGoCB) putDDocForTombstones(ddoc *gocb.DesignDocumen
 
 func (bucket *CouchbaseBucketGoCB) IsKeyNotFoundError(err error) bool {
 	return pkgerrors.Cause(err) == gocb.ErrKeyNotFound
+}
+
+func (bucket *CouchbaseBucketGoCB) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
+	if err == nil {
+		return false
+	}
+	switch errorType {
+	case sgbucket.KeyNotFoundError:
+		return pkgerrors.Cause(err) == gocb.ErrKeyNotFound
+	default:
+		return false
+	}
 }
 
 // Check if this is a SubDocPathNotFound error
@@ -1997,99 +1983,6 @@ func (bucket *CouchbaseBucketGoCB) View(ddoc, name string, params map[string]int
 
 	return viewResult, nil
 
-}
-
-func (bucket *CouchbaseBucketGoCB) ViewCustom(ddoc, name string, params map[string]interface{}, vres interface{}) error {
-
-	bucket.waitForAvailViewOp()
-	defer bucket.releaseViewOp()
-
-	viewQuery := gocb.NewViewQuery(ddoc, name)
-
-	// convert params map to these params
-	if err := applyViewQueryOptions(viewQuery, params); err != nil {
-		return err
-	}
-
-	goCbViewResult, err := bucket.ExecuteViewQuery(viewQuery)
-
-	// If it's a view timeout error, return an error message specific to that.
-	if isGoCBQueryTimeoutError(err) {
-		return ErrViewTimeoutError
-	}
-
-	// If it's any other error, return it as-is
-	if err != nil {
-		return pkgerrors.WithStack(err)
-	}
-
-	// Define a struct to store the rows as raw bytes
-	viewResponse := struct {
-		TotalRows int                  `json:"total_rows,omitempty"`
-		Rows      []json.RawMessage    `json:"rows,omitempty"`
-		Errors    []sgbucket.ViewError `json:"errors,omitempty"`
-	}{
-		TotalRows: 0,
-		Rows:      []json.RawMessage{},
-		Errors:    []sgbucket.ViewError{},
-	}
-
-	if goCbViewResult != nil {
-
-		viewResponse.TotalRows = getTotalRows(goCbViewResult)
-
-		// Loop over
-		for {
-			bytes := goCbViewResult.NextBytes()
-			if bytes == nil {
-				break
-			}
-			viewResponse.Rows = append(viewResponse.Rows, json.RawMessage(bytes))
-
-		}
-
-	}
-
-	// Any error processing view results is returned on Close.  If Close() returns errors, it most likely means
-	// that there were "partial errors" (see SG issue #2702).  If there were multiple partial errors, Close()
-	// returns a gocb.MultiError, but if there was only a single partial error, it will be a gocb.viewErr
-	errClose := goCbViewResult.Close()
-	if errClose != nil {
-		switch v := errClose.(type) {
-		case *gocb.MultiError:
-			for _, multiErr := range v.Errors {
-				viewErr := sgbucket.ViewError{
-					// Since we only have the error interface, just add the Error() string to the Reason field
-					Reason: multiErr.Error(),
-				}
-				viewResponse.Errors = append(viewResponse.Errors, viewErr)
-			}
-		default:
-			viewErr := sgbucket.ViewError{
-				Reason: v.Error(),
-			}
-			viewResponse.Errors = append(viewResponse.Errors, viewErr)
-		}
-	}
-
-	// serialize the whole thing to a []byte
-	viewResponseBytes, err := JSONMarshal(viewResponse)
-	if err != nil {
-		return err
-	}
-
-	// unmarshal into vres
-	if err := JSONUnmarshal(viewResponseBytes, vres); err != nil {
-		return err
-	}
-
-	// Indicate the view response contained partial errors so consumers can determine
-	// if the result is valid to their particular use-case (see SG issue #2383)
-	if len(viewResponse.Errors) > 0 {
-		return ErrPartialViewErrors
-	}
-
-	return nil
 }
 
 func (bucket CouchbaseBucketGoCB) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {

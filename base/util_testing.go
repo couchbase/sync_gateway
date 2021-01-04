@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -416,4 +418,33 @@ func WaitForStat(getStatFunc func() int64, expected int64) (int64, bool) {
 	valInt64, ok := val.(int64)
 
 	return valInt64, err == nil && ok
+}
+
+type dataStore struct {
+	name   string
+	driver CouchbaseDriver
+}
+
+// ForAllDataStores is used to run a test against multiple data stores (gocb bucket, gocb collection)
+func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataStore)) {
+	dataStores := make([]dataStore, 0)
+	dataStores = append(dataStores, dataStore{
+		name:   "gocb.v1",
+		driver: GoCB,
+	})
+
+	if TestUseCouchbaseServer() {
+		dataStores = append(dataStores, dataStore{
+			name:   "gocb.v2",
+			driver: GoCBv2,
+		})
+	}
+
+	for _, dataStore := range dataStores {
+		t.Run(dataStore.name, func(t *testing.T) {
+			bucket := GetTestBucketForDriver(t, dataStore.driver)
+			defer bucket.Close()
+			testCallback(t, bucket)
+		})
+	}
 }

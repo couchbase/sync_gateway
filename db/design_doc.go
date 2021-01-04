@@ -1,12 +1,14 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -61,11 +63,11 @@ func (db *Database) checkDDocAccess(ddocName string) error {
 	return nil
 }
 
-func (db *Database) GetDesignDoc(ddocName string, result interface{}) (err error) {
-	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = db.Bucket.GetDDoc(ddocName, result)
+func (db *Database) GetDesignDoc(ddocName string) (ddoc sgbucket.DesignDoc, err error) {
+	if err = db.checkDDocAccess(ddocName); err != nil {
+		return ddoc, err
 	}
-	return
+	return db.Bucket.GetDDoc(ddocName)
 }
 
 func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err error) {
@@ -79,7 +81,7 @@ func (db *Database) PutDesignDoc(ddocName string, ddoc sgbucket.DesignDoc) (err 
 		wrapViews(&ddoc, db.GetUserViewsEnabled(), db.UseXattrs())
 	}
 	if err = db.checkDDocAccess(ddocName); err == nil {
-		err = db.Bucket.PutDDoc(ddocName, ddoc)
+		err = db.Bucket.PutDDoc(ddocName, &ddoc)
 	}
 	return
 }
@@ -323,12 +325,11 @@ func InitializeViews(bucket base.Bucket) error {
 func checkExistingDDocs(bucket base.Bucket) bool {
 
 	// Check whether design docs already exist
-	var result interface{}
-	getDDocErr := bucket.GetDDoc(DesignDocSyncGateway(), &result)
-	sgDDocExists := getDDocErr == nil && result != nil
+	_, getDDocErr := bucket.GetDDoc(DesignDocSyncGateway())
+	sgDDocExists := getDDocErr == nil
 
-	getDDocErr = bucket.GetDDoc(DesignDocSyncHousekeeping(), &result)
-	sgHousekeepingDDocExists := getDDocErr == nil && result != nil
+	_, getDDocErr = bucket.GetDDoc(DesignDocSyncHousekeeping())
+	sgHousekeepingDDocExists := getDDocErr == nil
 
 	if sgDDocExists && sgHousekeepingDDocExists {
 		base.Infof(base.KeyAll, "Design docs for current SG view version (%s) found.", DesignDocVersion)
@@ -554,7 +555,7 @@ func installViews(bucket base.Bucket) error {
 
 		//start a retry loop to put design document backing off double the delay each time
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			err = bucket.PutDDoc(designDocName, designDoc)
+			err = bucket.PutDDoc(designDocName, &designDoc)
 			if err != nil {
 				base.Warnf("Error installing Couchbase design doc: %v", err)
 			}
@@ -607,7 +608,6 @@ func WaitForViews(bucket base.Bucket) error {
 
 // Issues stale=false view queries to determine when view indexing is complete.  Retries on timeout
 func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) error {
-	var vres interface{}
 	opts := map[string]interface{}{"stale": false, "key": fmt.Sprintf("view_%s_ready_check", viewName), "limit": 1}
 
 	// Not using standard retry loop here, because we want to retry indefinitely on view timeout (since view indexing could potentially take hours), and
@@ -616,7 +616,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 	retrySleep := float64(100)
 	maxRetry := 18
 	for {
-		err := bucket.ViewCustom(ddocName, viewName, opts, &vres)
+		_, err := bucket.ViewQuery(ddocName, viewName, opts)
 		if err == nil {
 			return nil
 		}
@@ -668,8 +668,7 @@ func removeObsoleteDesignDocs(bucket base.Bucket, previewOnly bool, useViews boo
 					removedDesignDocs = append(removedDesignDocs, ddocName)
 				}
 			} else {
-				var result interface{}
-				existsDDocErr := bucket.GetDDoc(ddocName, &result)
+				_, existsDDocErr := bucket.GetDDoc(ddocName)
 				if existsDDocErr != nil && !IsMissingDDocError(existsDDocErr) {
 					base.Warnf("Unexpected error when checking existence of design doc %q: %s", ddocName, existsDDocErr)
 				}
@@ -699,6 +698,11 @@ func IsMissingDDocError(err error) bool {
 
 	// gocb
 	if strings.Contains(unwrappedErr.Error(), "not_found") {
+		return true
+	}
+
+	// gocb v2
+	if errors.Is(err, gocb.ErrDesignDocumentNotFound) {
 		return true
 	}
 
