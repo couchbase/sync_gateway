@@ -2290,3 +2290,30 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, sort.IsSorted(base.SortedUint64Slice(syncData.RecentSequences)))
 }
+
+func TestResyncUpdateAllDocChannels(t *testing.T) {
+
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	db := setupTestDBWithOptions(t, DatabaseContextOptions{ResyncQueryLimit: 5000})
+	_, err := db.UpdateSyncFun(syncFn)
+	assert.NoError(t, err)
+
+	defer db.Close()
+
+	for i := 0; i < 10; i++ {
+		updateBody := make(map[string]interface{})
+		updateBody["val"] = i
+		_, _, err := db.Put(fmt.Sprintf("doc%d", i), updateBody)
+		require.NoError(t, err)
+	}
+
+	_, err = db.UpdateAllDocChannels()
+	assert.NoError(t, err)
+
+	syncFnCount := int(db.DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, 20, syncFnCount)
+}

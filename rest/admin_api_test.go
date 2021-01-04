@@ -1297,6 +1297,12 @@ func TestResync(t *testing.T) {
 }
 
 func TestResyncErrorScenarios(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		// Limitation of setting LeakyBucket on RestTester
+		t.Skip("This test only works with walrus")
+	}
+
 	syncFn := `
 	function(doc) {
 		channel("x")
@@ -1312,7 +1318,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := leakyTestBucket.Bucket.(*base.LeakyBucket)
+	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
 	var (
@@ -1388,15 +1394,15 @@ func TestResyncErrorScenarios(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	// FIXME: PostQuery callbacks not firing, meaning we aren't testing concurrent/overlapping start actions
-	if false {
-		assert.True(t, callbackFired, "expecting callback to be fired")
-	}
+	assert.True(t, callbackFired, "expecting callback to be fired")
 }
 
 func TestResyncStop(t *testing.T) {
-	// FIXME: PostQuery callbacks not firing, meaning resync finishes successfully without being stopped
-	t.Skip("TEST DISABLED - PostQuery callbacks not firing, meaning resync finishes successfully without being stopped")
+
+	if !base.UnitTestUrlIsWalrus() {
+		// Limitation of setting LeakyBucket on RestTester
+		t.Skip("This test only works with walrus")
+	}
 
 	syncFn := `
 	function(doc) {
@@ -1416,7 +1422,7 @@ func TestResyncStop(t *testing.T) {
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := leakyTestBucket.Bucket.(*base.LeakyBucket)
+	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
 	var (
