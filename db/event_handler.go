@@ -68,8 +68,6 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 // on the event type.
 func (wh *Webhook) HandleEvent(event Event) bool {
 
-	var payload []byte
-	var contentType string
 	if wh.filter != nil {
 		// If filter function is defined, use it to determine whether to post
 		success, err := wh.filter.CallValidateFunction(event)
@@ -83,8 +81,14 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		}
 	}
 
+	var payload []byte
+	var contentType string
+
 	// Different events post different content by default
 	switch event := event.(type) {
+	case *WinningRevChangeEvent:
+		contentType = "application/json"
+		payload = event.DocBytes
 	case *DocumentChangeEvent:
 		contentType = "application/json"
 		payload = event.DocBytes
