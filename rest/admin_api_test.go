@@ -20,6 +20,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1268,6 +1269,11 @@ func TestResync(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_offline", "")
 			assertStatus(t, response, http.StatusOK)
 
+			waitAndAssertCondition(t, func() bool {
+				state := atomic.LoadUint32(&rt.GetDatabase().State)
+				return state == db.DBOffline
+			})
+
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			assertStatus(t, response, http.StatusOK)
 
@@ -1361,6 +1367,11 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, http.StatusOK)
+
+	waitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
 
 	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -1461,6 +1472,11 @@ func TestResyncStop(t *testing.T) {
 
 	response := rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, http.StatusOK)
+
+	waitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
 
 	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
