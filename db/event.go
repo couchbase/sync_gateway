@@ -16,7 +16,6 @@ type EventType uint8
 const (
 	DocumentChange EventType = iota
 	DBStateChange
-	UserAdd
 )
 
 // An event that can be raised during SG processing.

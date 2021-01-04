@@ -752,22 +752,32 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	}
 }
 
+// StringPtr returns a pointer to the given string literal.
 func StringPtr(value string) *string {
 	return &value
 }
 
+// Uint32Ptr returns a pointer to the given uint32 literal.
 func Uint32Ptr(u uint32) *uint32 {
 	return &u
 }
 
+// Uint64Ptr returns a pointer to the given uint64 literal.
+func Uint64Ptr(u uint64) *uint64 {
+	return &u
+}
+
+// UintPtr returns a pointer to the given uint literal.
 func UintPtr(u uint) *uint {
 	return &u
 }
 
+// IntPtr returns a pointer to the given int literal.
 func IntPtr(i int) *int {
 	return &i
 }
 
+// BoolPtr returns a pointer to the given bool literal.
 func BoolPtr(b bool) *bool {
 	return &b
 }

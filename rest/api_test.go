@@ -3462,39 +3462,30 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 	sc.Close()
 
 }
+
 func TestEventConfigValidationInvalid(t *testing.T) {
+	dbConfigJSON := `{
+  "name": "invalid",
+  "server": "walrus:",
+  "bucket": "invalid",
+  "event_handlers": {
+    "max_processes" : 1000,
+    "wait_for_process" : "15",
+    "document_scribbled_on": [
+      {"handler": "webhook",
+       "url": "http://localhost:8081/filtered",
+       "timeout": 0,
+       "filter": "function(doc){ return true }"
+      }
+    ]
+  }
+}`
 
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("This test only works under walrus")
-	}
-
-	sc := NewServerContext(&ServerConfig{})
-	defer sc.Close()
-
-	configJSON := `{"name": "invalid",
-        			"server": "walrus:",
-        			"bucket": "invalid",
-			        "event_handlers": {
-			          "max_processes" : 1000,
-			          "wait_for_process" : "15",
-			          "document_scribbled_on": [
-			            {"handler": "webhook",
-			             "url": "http://localhost:8081/filtered",
-			             "timeout": 0,
-			             "filter": "function(doc){ return true }"
-			            }
-			          ]
-			        }
-      			   }`
-
+	buf := bytes.NewBufferString(dbConfigJSON)
 	var dbConfig DbConfig
-	err := base.JSONUnmarshal([]byte(configJSON), &dbConfig)
-	goassert.True(t, err == nil)
-
-	_, err = sc.AddDatabaseFromConfig(&dbConfig)
-	goassert.True(t, err != nil)
-	goassert.True(t, strings.Contains(err.Error(), "document_scribbled_on"))
-
+	err := decodeAndSanitiseConfig(buf, &dbConfig)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "document_scribbled_on")
 }
 
 // Reproduces https://github.com/couchbase/sync_gateway/issues/2427
@@ -4531,8 +4522,12 @@ func TestWebhookProperties(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DbConfig{
-			AutoImport:    true,
-			EventHandlers: map[string]interface{}{"document_changed": []map[string]interface{}{{"url": s.URL, "filter": "function(doc){return true;}", "handler": "webhook"}}},
+			AutoImport: true,
+			EventHandlers: &EventHandlerConfig{
+				DocumentChanged: []*EventConfig{
+					{Url: s.URL, Filter: "function(doc){return true;}", HandlerType: "webhook"},
+				},
+			},
 		},
 	}
 	rt := NewRestTester(t, rtConfig)
@@ -4730,8 +4725,12 @@ func TestWebhookSpecialProperties(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DbConfig{
-			AutoImport:    true,
-			EventHandlers: map[string]interface{}{"document_changed": []map[string]interface{}{{"url": s.URL, "filter": "function(doc){return true;}", "handler": "webhook"}}},
+			AutoImport: true,
+			EventHandlers: &EventHandlerConfig{
+				DocumentChanged: []*EventConfig{
+					{Url: s.URL, Filter: "function(doc){return true;}", HandlerType: "webhook"},
+				},
+			},
 		},
 	}
 	rt := NewRestTester(t, rtConfig)
@@ -4778,9 +4777,11 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 	rtConfig := &RestTesterConfig{
 		DatabaseConfig: &DbConfig{
 			AutoImport: true,
-			EventHandlers: map[string]interface{}{
-				"document_changed": []map[string]interface{}{{
-					"url": s.URL, "filter": "function(doc){return true;}", "handler": "webhook"}}},
+			EventHandlers: &EventHandlerConfig{
+				DocumentChanged: []*EventConfig{
+					{Url: s.URL, Filter: "function(doc){return true;}", HandlerType: "webhook"},
+				},
+			},
 		},
 	}
 	rt := NewRestTester(t, rtConfig)
