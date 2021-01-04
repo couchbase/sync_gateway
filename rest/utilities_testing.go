@@ -55,6 +55,7 @@ type RestTester struct {
 	adminHandlerOnce        sync.Once
 	PublicHandler           http.Handler
 	publicHandlerOnce       sync.Once
+	closed                  bool
 }
 
 func NewRestTester(tb testing.TB, restConfig *RestTesterConfig) *RestTester {
@@ -75,6 +76,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
+	} else if rt.closed {
+		panic("RestTester was closed!")
 	}
 
 	if rt.testBucket != nil {
@@ -238,6 +241,7 @@ func (rt *RestTester) Close() {
 	if rt.tb == nil {
 		panic("RestTester not properly initialized please use NewRestTester function")
 	}
+	rt.closed = true
 	if rt.RestTesterServerContext != nil {
 		rt.RestTesterServerContext.Close()
 	}
