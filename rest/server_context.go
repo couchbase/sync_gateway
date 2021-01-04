@@ -160,9 +160,7 @@ func (sc *ServerContext) Close() {
 
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
-		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
-		}
+		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
 	}
 
 	sc.databases_ = nil
@@ -569,14 +567,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	if config.StartOffline {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
-		}
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
-		}
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
 	}
 
 	return dbcontext, nil
@@ -777,8 +771,9 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 	// Load Webhook Filter Function.
 	eventHandlersByType := map[db.EventType][]*EventConfig{
-		db.DocumentChange: config.EventHandlers.DocumentChanged,
-		db.DBStateChange:  config.EventHandlers.DBStateChanged,
+		db.DocumentChange:   config.EventHandlers.DocumentChanged,
+		db.DBStateChange:    config.EventHandlers.DBStateChanged,
+		db.WinningRevChange: config.EventHandlers.WinningRevChanged,
 	}
 
 	for eventType, handlers := range eventHandlersByType {

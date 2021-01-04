@@ -228,10 +228,11 @@ type CORSConfig struct {
 }
 
 type EventHandlerConfig struct {
-	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
-	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Max wait time when event queue is full (ms)
-	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document Commit
-	DBStateChanged  []*EventConfig `json:"db_state_changed,omitempty"` // DB state change
+	MaxEventProc      uint           `json:"max_processes,omitempty"`       // Max concurrent event handling goroutines
+	WaitForProcess    string         `json:"wait_for_process,omitempty"`    // Max wait time when event queue is full (ms)
+	DocumentChanged   []*EventConfig `json:"document_changed,omitempty"`    // Document changed
+	WinningRevChanged []*EventConfig `json:"winning_rev_changed,omitempty"` // Winning revision changed
+	DBStateChanged    []*EventConfig `json:"db_state_changed,omitempty"`    // DB state change
 }
 
 type EventConfig struct {

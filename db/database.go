@@ -693,11 +693,8 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		//set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
 
-		if dc.EventMgr.HasHandlerForEvent(DBStateChange) {
-			err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface)
-			if err != nil {
-				base.Debugf(base.KeyCRUD, "Error raising database state change event: %v", err)
-			}
+		if err := dc.EventMgr.RaiseDBStateChangeEvent(dc.Name, "offline", reason, *dc.Options.AdminInterface); err != nil {
+			base.Debugf(base.KeyCRUD, "Error raising database state change event: %v", err)
 		}
 
 		return nil

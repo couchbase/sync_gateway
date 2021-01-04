@@ -182,3 +182,22 @@ func (em *EventManager) RaiseDBStateChangeEvent(dbName string, state string, rea
 
 	return em.raiseEvent(event)
 }
+
+// Raises a winning rev change event based on the the document body and channel set.  If the
+// event manager doesn't have a listener for this event, ignores.
+func (em *EventManager) RaiseWinningRevChangeEvent(docBytes []byte, docID string, oldBodyJSON string, channels base.Set) error {
+
+	if !em.activeEventTypes[WinningRevChange] {
+		return nil
+	}
+	event := &WinningRevChangeEvent{
+		DocumentChangeEvent: DocumentChangeEvent{
+			DocID:    docID,
+			DocBytes: docBytes,
+			OldDoc:   oldBodyJSON,
+			Channels: channels,
+		},
+	}
+
+	return em.raiseEvent(event)
+}
