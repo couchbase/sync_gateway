@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -2311,9 +2312,34 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	err = db.TakeDbOffline("")
+	assert.NoError(t, err)
+
+	waitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&db.State)
+		return state == DBOffline
+	})
+
 	_, err = db.UpdateAllDocChannels()
 	assert.NoError(t, err)
 
+	waitAndAssertCondition(t, func() bool {
+		resyncState := db.DatabaseContext.ResyncManager.GetStatus()
+		return resyncState.Status == ResyncStateStopped
+	})
+
 	syncFnCount := int(db.DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 	assert.Equal(t, 20, syncFnCount)
+}
+
+func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
 }
