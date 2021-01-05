@@ -5398,3 +5398,25 @@ func TestTombstonedBulkDocs(t *testing.T) {
 		assert.NoError(t, err)
 	}
 }
+
+// This test is skipped usually as it requires code to be manually injected into bucket_gocb.go
+func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
+	// t.Skip("Requires manual intervention to run")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Couchbase buckets only")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	assert.True(t, ok)
+
+	// Force it to fall into the non CreateAsDeleted flag handling
+	gocbBucket.OverrideClusterCompatVersion(5, 5)
+
+	response := rt.SendAdminRequest("PUT", "/db/doc", `{"_deleted": true}`)
+	assertStatus(t, response, http.StatusCreated)
+
+}
