@@ -1220,7 +1220,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 
 		if bucket.IsSupported(sgbucket.DataStoreFeatureCrc32cMacroExpansion) {
 			// Stamp the body hash on the xattr
-			if isDelete {
+			if isDelete && supportsTombstoneCreation {
 				builder.UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr)
 			} else {
 				builder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros)
@@ -1247,24 +1247,26 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	}
 
 	if isDelete && !supportsTombstoneCreation {
-		worker := func() (shouldRetry bool, err error, value interface{}) {
-			builder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), exp).RemoveEx("", gocb.SubdocFlagNone)
-			_, removeErr := builder.Execute()
+		worker := func() (shouldRetry bool, err error, value uint64) {
+			builder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), exp).RemoveEx("", gocb.SubdocFlagNone).
+				UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr).
+				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros)
+			docFragment, removeErr := builder.Execute()
 			if removeErr != nil {
 
 				// If there is a cas mismatch the body has since been updated and so we don't need to bother removing
 				// body in this operation
 				if IsCasMismatch(removeErr) {
-					return false, nil, nil
+					return false, nil, cas
 				}
 
 				shouldRetry = isRecoverableWriteError(removeErr)
-				return shouldRetry, removeErr, nil
+				return shouldRetry, removeErr, uint64(0)
 			}
-			return false, nil, nil
+			return false, nil, uint64(docFragment.Cas())
 		}
 
-		err, _ = RetryLoop("UpdateXattrDeleteBodySecondOp", worker, bucket.Spec.RetrySleeper())
+		err, cas = RetryLoopCas("UpdateXattrDeleteBodySecondOp", worker, bucket.Spec.RetrySleeper())
 		if err != nil {
 			err = pkgerrors.Wrapf(err, "Error during UpdateXattr delete op with key %v", UD(k).Redact())
 			return cas, err
