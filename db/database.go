@@ -690,6 +690,8 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 		dc.AccessLock.Lock()
 		defer dc.AccessLock.Unlock()
 
+		dc.changeCache.Stop()
+
 		//set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
 
@@ -1073,31 +1075,6 @@ func (context *DatabaseContext) UpdateSyncFun(syncFun string) (changed bool, err
 func (db *Database) UpdateAllDocChannels() (int, error) {
 
 	base.Infof(base.KeyAll, "Recomputing document channels...")
-	//
-	// // We are about to alter documents without updating their sequence numbers, which would
-	// // really confuse the changeCache, so turn it off until we're done:
-	// db.changeCache.EnableChannelIndexing(false)
-	// defer db.changeCache.EnableChannelIndexing(true)
-
-	lastSeq, err := db.sequences.lastSequence()
-	if err != nil {
-		return 0, err
-	}
-
-	db.changeCache.Stop()
-
-	err = db.changeCache.Clear()
-	if err != nil {
-		return 0, err
-	}
-
-	defer func() {
-		err = db.changeCache.Start(lastSeq)
-		if err != nil {
-			base.Warnf("Failed to restart change cache: %v", err)
-		}
-	}()
-
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
 
 	queryLimit := db.Options.ResyncQueryLimit
