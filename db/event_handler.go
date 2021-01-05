@@ -81,8 +81,10 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
 		// skip event if this is for a non-winning rev and the winning rev only option is enabled
-		if val, ok := wh.options[EventOptionDocumentChangedWinningRevOnly]; ok && val.(bool) && !event.WinningRevChange {
-			return false
+		if !event.WinningRevChange && wh.options != nil {
+			if val, ok := wh.options[EventOptionDocumentChangedWinningRevOnly]; ok && val.(bool) {
+				return false
+			}
 		}
 		payload = event.DocBytes
 	case *DBStateChangeEvent:
