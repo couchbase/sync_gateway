@@ -2324,12 +2324,6 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 	})
 
 	_, err = db.UpdateAllDocChannels()
-	assert.NoError(t, err)
-
-	waitAndAssertCondition(t, func() bool {
-		resyncState := db.DatabaseContext.ResyncManager.GetStatus()
-		return resyncState.Status == ResyncStateStopped
-	})
 
 	syncFnCount := int(db.DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 	assert.Equal(t, 20, syncFnCount)
