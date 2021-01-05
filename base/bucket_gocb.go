@@ -1185,6 +1185,8 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	return cas, err
 }
 
+var ranBefore bool
+
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
 func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody, isDelete bool) (casOut uint64, err error) {
 
@@ -1246,11 +1248,17 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		return cas, err
 	}
 
+	if !ranBefore {
+		ranBefore = true
+		// bucket.WriteUpdateWithXattr(k, xattrKey)
+	}
+
 	if isDelete && !supportsTombstoneCreation {
 		worker := func() (shouldRetry bool, err error, value uint64) {
-			builder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), exp).RemoveEx("", gocb.SubdocFlagNone).
+			builder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), exp).
 				UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr).
-				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros)
+				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).
+				RemoveEx("", gocb.SubdocFlagNone)
 			docFragment, removeErr := builder.Execute()
 			if removeErr != nil {
 
@@ -2155,7 +2163,6 @@ func (bucket *CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 
 func (bucket *CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
 	return bucket.clusterCompatMajorVersion, bucket.clusterCompatMinorVersion, ""
-
 }
 
 func (bucket *CouchbaseBucketGoCB) UUID() (string, error) {
@@ -2543,6 +2550,11 @@ func (bucket *CouchbaseBucketGoCB) waitForAvailViewOp() {
 
 func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
 	<-bucket.viewOps
+}
+
+func (bucket *CouchbaseBucketGoCB) OverrideClusterCompatVersion(clusterCompatMajorVersion, clusterCompatMinorVersion uint64) {
+	bucket.clusterCompatMajorVersion = clusterCompatMajorVersion
+	bucket.clusterCompatMinorVersion = clusterCompatMinorVersion
 }
 
 // AsGoCBBucket tries to return the given bucket as a GoCBBucket.
