@@ -101,6 +101,9 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) *Database {
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	atomic.StoreUint32(&context.State, DBOnline)
+
 	return db
 }
 
@@ -2293,13 +2296,13 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 }
 
 func TestResyncUpdateAllDocChannels(t *testing.T) {
-
 	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
 
 	db := setupTestDBWithOptions(t, DatabaseContextOptions{ResyncQueryLimit: 5000})
+
 	_, err := db.UpdateSyncFun(syncFn)
 	assert.NoError(t, err)
 
