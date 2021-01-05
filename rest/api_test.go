@@ -4844,9 +4844,9 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 			EventHandlers: &EventHandlerConfig{
 				DocumentChanged: []*EventConfig{
 					{Url: s.URL + "?event=DocumentChanged", Filter: "function(doc){return true;}", HandlerType: "webhook"},
-				},
-				WinningRevChanged: []*EventConfig{
-					{Url: s.URL + "?event=WinningRevChanged", Filter: "function(doc){return true;}", HandlerType: "webhook"},
+					{Url: s.URL + "?event=WinningRevChanged", Filter: "function(doc){return true;}", HandlerType: "webhook",
+						Options: map[string]interface{}{db.EventOptionDocumentChangedWinningRevOnly: true},
+					},
 				},
 			},
 		},

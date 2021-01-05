@@ -228,18 +228,18 @@ type CORSConfig struct {
 }
 
 type EventHandlerConfig struct {
-	MaxEventProc      uint           `json:"max_processes,omitempty"`       // Max concurrent event handling goroutines
-	WaitForProcess    string         `json:"wait_for_process,omitempty"`    // Max wait time when event queue is full (ms)
-	DocumentChanged   []*EventConfig `json:"document_changed,omitempty"`    // Document changed
-	WinningRevChanged []*EventConfig `json:"winning_rev_changed,omitempty"` // Winning revision changed
-	DBStateChanged    []*EventConfig `json:"db_state_changed,omitempty"`    // DB state change
+	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
+	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Max wait time when event queue is full (ms)
+	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document changed
+	DBStateChanged  []*EventConfig `json:"db_state_changed,omitempty"` // DB state change
 }
 
 type EventConfig struct {
-	HandlerType string  `json:"handler"`           // Handler type
-	Url         string  `json:"url,omitempty"`     // Url (webhook)
-	Filter      string  `json:"filter,omitempty"`  // Filter function (webhook)
-	Timeout     *uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+	HandlerType string                 `json:"handler"`           // Handler type
+	Url         string                 `json:"url,omitempty"`     // Url (webhook)
+	Filter      string                 `json:"filter,omitempty"`  // Filter function (webhook)
+	Timeout     *uint64                `json:"timeout,omitempty"` // Timeout (webhook)
+	Options     map[string]interface{} `json:"options,omitempty"` // Options can be specified per-handler, and are specific to each type.
 }
 
 type CacheConfig struct {

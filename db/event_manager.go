@@ -145,16 +145,17 @@ func (em *EventManager) raiseEvent(event Event) error {
 
 // Raises a document change event based on the the document body and channel set.  If the
 // event manager doesn't have a listener for this event, ignores.
-func (em *EventManager) RaiseDocumentChangeEvent(docBytes []byte, docID string, oldBodyJSON string, channels base.Set) error {
+func (em *EventManager) RaiseDocumentChangeEvent(docBytes []byte, docID string, oldBodyJSON string, channels base.Set, winningRevChange bool) error {
 
 	if !em.activeEventTypes[DocumentChange] {
 		return nil
 	}
 	event := &DocumentChangeEvent{
-		DocID:    docID,
-		DocBytes: docBytes,
-		OldDoc:   oldBodyJSON,
-		Channels: channels,
+		DocID:            docID,
+		DocBytes:         docBytes,
+		OldDoc:           oldBodyJSON,
+		Channels:         channels,
+		WinningRevChange: winningRevChange,
 	}
 
 	return em.raiseEvent(event)
@@ -178,25 +179,6 @@ func (em *EventManager) RaiseDBStateChangeEvent(dbName string, state string, rea
 
 	event := &DBStateChangeEvent{
 		Doc: body,
-	}
-
-	return em.raiseEvent(event)
-}
-
-// Raises a winning rev change event based on the the document body and channel set.  If the
-// event manager doesn't have a listener for this event, ignores.
-func (em *EventManager) RaiseWinningRevChangeEvent(docBytes []byte, docID string, oldBodyJSON string, channels base.Set) error {
-
-	if !em.activeEventTypes[WinningRevChange] {
-		return nil
-	}
-	event := &WinningRevChangeEvent{
-		DocumentChangeEvent: DocumentChangeEvent{
-			DocID:    docID,
-			DocBytes: docBytes,
-			OldDoc:   oldBodyJSON,
-			Channels: channels,
-		},
 	}
 
 	return em.raiseEvent(event)

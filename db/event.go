@@ -14,9 +14,8 @@ import (
 type EventType uint8
 
 const (
-	DocumentChange   EventType = iota // fires whenever a document is updated (even if the change did not cause the winning rev to change)
-	DBStateChange                     // fires when the database is created or is taken offline/online
-	WinningRevChange                  // like DocumentChange, but fires only when the change caused the winning revision to change
+	DocumentChange EventType = iota // fires whenever a document is updated (even if the change did not cause the winning rev to change)
+	DBStateChange                   // fires when the database is created or is taken offline/online
 
 	eventTypeCount
 )
@@ -49,27 +48,15 @@ func (ae AsyncEvent) Synchronous() bool {
 	return false
 }
 
-// WinningRevChangeEvent is a DocumentChangeEvent that is only raised when the winning revision of a document has changed.
-type WinningRevChangeEvent struct {
-	DocumentChangeEvent
-}
-
-func (wrce *WinningRevChangeEvent) String() string {
-	return fmt.Sprintf("Winning rev change event for doc id: %s", wrce.DocID)
-}
-
-func (wrce *WinningRevChangeEvent) EventType() EventType {
-	return WinningRevChange
-}
-
 // DocumentChangeEvent is raised when a document has been successfully written to the backing
 // data store.  Event has the document body and channel set as properties.
 type DocumentChangeEvent struct {
 	AsyncEvent
-	DocBytes []byte
-	DocID    string
-	OldDoc   string
-	Channels base.Set
+	DocBytes         []byte
+	DocID            string
+	OldDoc           string
+	Channels         base.Set
+	WinningRevChange bool // whether this event is a change to the winning revision
 }
 
 func (dce *DocumentChangeEvent) String() string {
@@ -176,8 +163,6 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 		result, err = ef.Call(sgbucket.JSONString(event.DocBytes), sgbucket.JSONString(event.OldDoc))
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
-	case *WinningRevChangeEvent:
-		result, err = ef.Call(sgbucket.JSONString(event.DocBytes), sgbucket.JSONString(event.OldDoc))
 	default:
 		base.Warnf("unknown event %v tried to call function", event.EventType())
 		return "", fmt.Errorf("unknown event %v tried to call function", event.EventType())

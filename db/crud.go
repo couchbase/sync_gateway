@@ -1853,21 +1853,15 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		}
 		db.revisionCache.Put(documentRevision)
 
-		if db.EventMgr.HasHandlerForEvent(DocumentChange) || db.EventMgr.HasHandlerForEvent(WinningRevChange) {
+		if db.EventMgr.HasHandlerForEvent(DocumentChange) {
 			webhookJSON, err := doc.BodyWithSpecialProperties()
 			if err != nil {
 				base.Warnf("Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {
-				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels)
+				winningRevChange := newRevID == doc.CurrentRev
+				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
 				if err != nil {
 					base.Debugf(base.KeyCRUD, "Error raising document change event: %v", err)
-				}
-
-				if newRevID == doc.CurrentRev {
-					err = db.EventMgr.RaiseWinningRevChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels)
-					if err != nil {
-						base.Debugf(base.KeyCRUD, "Error raising winning rev change event: %v", err)
-					}
 				}
 			}
 		}
