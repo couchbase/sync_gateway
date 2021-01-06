@@ -251,41 +251,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	enabledDeltaSync := options.DeltaSyncOptions.Enabled
-	enabledImport := autoImport || options.EnableXattr
-	enabledViews := options.UseViews
-
-	var queryNames []string
-	if enabledViews {
-		queryNames = []string{
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccess),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewImport),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewSessions),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewTombstones),
-		}
-	} else {
-		queryNames = []string{
-			QueryTypeAccess,
-			QueryTypeRoleAccess,
-			QueryTypeChannels,
-			QueryTypeChannelsStar,
-			QueryTypeSequences,
-			QueryTypePrincipals,
-			QueryTypeSessions,
-			QueryTypeTombstones,
-			QueryTypeResync,
-			QueryTypeAllDocs,
-		}
-	}
-
-	dbStats := base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
-
 	dbContext := &DatabaseContext{
 		Name:       dbName,
 		UUID:       cbgt.NewUUID(),
@@ -293,7 +258,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		StartTime:  time.Now(),
 		autoImport: autoImport,
 		Options:    options,
-		DbStats:    dbStats,
+		DbStats:    initDatabaseStats(dbName, autoImport, options),
 	}
 
 	if dbContext.AllowConflicts() {
@@ -313,7 +278,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.EventMgr = NewEventManager()
 
 	var err error
-	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats.Database())
+	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +299,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Initialize the active channel counter
-	dbContext.activeChannels = channels.NewActiveChannels(dbStats.Cache().NumActiveChannels)
+	dbContext.activeChannels = channels.NewActiveChannels(dbContext.DbStats.Cache().NumActiveChannels)
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
@@ -1349,6 +1314,44 @@ func (context *DatabaseContext) FlushRevisionCacheForTest() {
 		context.DbStats.Cache(),
 	)
 
+}
+
+func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOptions) *base.DbStats {
+
+	enabledDeltaSync := options.DeltaSyncOptions.Enabled
+	enabledImport := autoImport || options.EnableXattr
+	enabledViews := options.UseViews
+
+	var queryNames []string
+	if enabledViews {
+		queryNames = []string{
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccess),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewImport),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewSessions),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewTombstones),
+		}
+	} else {
+		queryNames = []string{
+			QueryTypeAccess,
+			QueryTypeRoleAccess,
+			QueryTypeChannels,
+			QueryTypeChannelsStar,
+			QueryTypeSequences,
+			QueryTypePrincipals,
+			QueryTypeSessions,
+			QueryTypeTombstones,
+			QueryTypeResync,
+			QueryTypeAllDocs,
+		}
+	}
+
+	return base.SyncGatewayStats.NewDBStats(dbName, enabledDeltaSync, enabledImport, enabledViews, queryNames...)
 }
 
 // For test usage
