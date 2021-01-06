@@ -651,8 +651,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		`{"seq":"28:4","id":"pbs-4","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
 		`{"seq":"28:5","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":"28:6","id":"hbo-2","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
-		`{"seq":"28:15","id":"mix-1","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}`,
-		`{"seq":"28:16","id":"mix-2","removed":["PBS"],"changes":[{"rev":"2-5dcb551a0eb59eef3d98c64c29033d02"}]}`,
+		`{"seq":"28:15","id":"mix-1","changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}`,
+		`{"seq":"28:16","id":"mix-2","changes":[{"rev":"2-5dcb551a0eb59eef3d98c64c29033d02"}]}`,
 		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
 		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 	}
@@ -682,8 +682,8 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 	// ensure we don't backfill from the start, but have everything from the compound sequence onwards
 	expectedResults = []string{
 		`{"seq":"28:6","id":"hbo-2","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
-		`{"seq":"28:15","id":"mix-1","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}`,
-		`{"seq":"28:16","id":"mix-2","removed":["PBS"],"changes":[{"rev":"2-5dcb551a0eb59eef3d98c64c29033d02"}]}`,
+		`{"seq":"28:15","id":"mix-1","changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}`,
+		`{"seq":"28:16","id":"mix-2","changes":[{"rev":"2-5dcb551a0eb59eef3d98c64c29033d02"}]}`,
 		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
 		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 		`{"seq":29,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
@@ -704,6 +704,66 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		assert.Equal(t, expectedChange.Deleted, result.Deleted)
 		assert.Equal(t, expectedChange.Removed, result.Removed)
 	}
+}
+
+func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
+
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel);}`})
+	defer rt.Close()
+
+	// Create user with access to channel ABC:
+	a := rt.ServerContext().Database("db").Authenticator()
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
+
+	// Put several documents in channel PBS
+	pbs1 := rt.putDoc("pbs-1", `{"channel":["PBS"]}`)
+	pbs2 := rt.putDoc("pbs-2", `{"channel":["PBS"]}`)
+	pbs3 := rt.putDoc("pbs-3", `{"channel":["PBS"]}`)
+	pbs4 := rt.putDoc("pbs-4", `{"channel":["PBS"]}`)
+	cacheWaiter.AddAndWait(4)
+
+	// Mark the first four PBS docs as removals
+	_ = rt.putDoc("pbs-1", fmt.Sprintf(`{"_rev":%q}`, pbs1.Rev))
+	_ = rt.putDoc("pbs-2", fmt.Sprintf(`{"_rev":%q}`, pbs2.Rev))
+	_ = rt.putDoc("pbs-3", fmt.Sprintf(`{"_rev":%q}`, pbs3.Rev))
+	_ = rt.putDoc("pbs-4", fmt.Sprintf(`{"_rev":%q}`, pbs4.Rev))
+
+	cacheWaiter.AddAndWait(4)
+
+	// Add another pbs doc (with a higher sequence than the removals)
+	_ = rt.putDoc("pbs-5", `{"channel":["PBS"]}`)
+	cacheWaiter.AddAndWait(1)
+
+	// Grant user access to channel PBS
+	userResponse := rt.SendAdminRequest("PUT", "/db/_user/bernard", `{"admin_channels":["ABC","PBS"]}`)
+	assertStatus(t, userResponse, 200)
+
+	// Put several documents in channel ABC
+	_ = rt.putDoc("abc-1", `{"channel":["ABC"]}`)
+	_ = rt.putDoc("abc-2", `{"channel":["ABC"]}`)
+	_ = rt.putDoc("abc-3", `{"channel":["ABC"]}`)
+	cacheWaiter.AddAndWait(3)
+
+	// Issue changes request with limit less than 5.  Expect to get pbs-5, user doc, and abc-1
+	changes, err := rt.WaitForChanges(0, "/db/_changes?limit=3", "bernard", false)
+	assert.NoError(t, err)
+	require.Equal(t, len(changes.Results), 3)
+	assert.Equal(t, "pbs-5", changes.Results[0].ID)
+	assert.Equal(t, "_user/bernard", changes.Results[1].ID)
+	assert.Equal(t, "abc-1", changes.Results[2].ID)
+	lastSeq := changes.Last_Seq
+
+	// Issue a second changes request, expect to see 	changes, err := rt.WaitForChanges(0, "/db/_changes?limit=3", "bernard", false)
+	moreChanges, err := rt.WaitForChanges(0, fmt.Sprintf("/db/_changes?limit=3&since=%s", lastSeq), "bernard", false)
+	assert.NoError(t, err)
+	require.Equal(t, 2, len(moreChanges.Results))
+	assert.Equal(t, "abc-2", moreChanges.Results[0].ID)
+	assert.Equal(t, "abc-3", moreChanges.Results[1].ID)
 }
 
 // TestChangesFromCompoundSinceViaDocGrant ensures that a changes feed with a compound since value returns the correct result after a dynamic channel grant.
