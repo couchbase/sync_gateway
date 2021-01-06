@@ -215,6 +215,10 @@ func (c *changeCache) Start(initialSequence uint64) error {
 // Stops the cache. Clears its state and tells the housekeeping task to stop.
 func (c *changeCache) Stop() {
 
+	if c.IsStopped() {
+		return
+	}
+
 	// Signal to background goroutines that the changeCache has been stopped, so they can exit
 	// their loop
 	close(c.terminator)

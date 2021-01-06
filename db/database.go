@@ -683,14 +683,14 @@ func (dc *DatabaseContext) TakeDbOffline(reason string) error {
 
 	if atomic.CompareAndSwapUint32(&dc.State, DBOnline, DBStopping) {
 
+		dc.changeCache.Stop()
+
 		//notify all active _changes feeds to close
 		close(dc.ExitChanges)
 
 		//Block until all current calls have returned, including _changes feeds
 		dc.AccessLock.Lock()
 		defer dc.AccessLock.Unlock()
-
-		dc.changeCache.Stop()
 
 		//set DB state to Offline
 		atomic.StoreUint32(&dc.State, DBOffline)
