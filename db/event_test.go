@@ -13,7 +13,6 @@ func TestEventTypeNames(t *testing.T) {
 
 	assert.Equal(t, "DocumentChange", DocumentChange.String())
 	assert.Equal(t, "DBStateChange", DBStateChange.String())
-	assert.Equal(t, "WinningRevChange", WinningRevChange.String())
 
 	// Test out of bounds event type
 	assert.Equal(t, "EventType(255)", EventType(math.MaxUint8).String())

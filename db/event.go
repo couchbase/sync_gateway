@@ -20,9 +20,9 @@ const (
 	eventTypeCount
 )
 
-var eventTypeNames = []string{"DocumentChange", "DBStateChange", "WinningRevChange"}
+var eventTypeNames = []string{"DocumentChange", "DBStateChange"}
 
-// String returns the string representation of an event type (e.g. "WinningRevChange")
+// String returns the string representation of an event type (e.g. "DBStateChange")
 func (et EventType) String() string {
 	if et >= eventTypeCount {
 		return fmt.Sprintf("EventType(%d)", et)
