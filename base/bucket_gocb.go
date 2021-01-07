@@ -1185,8 +1185,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	return cas, err
 }
 
-var ranBefore bool
-
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
 func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody, isDelete bool) (casOut uint64, err error) {
 
@@ -1246,11 +1244,6 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during UpdateXattr with key %v", UD(k).Redact())
 		return cas, err
-	}
-
-	if !ranBefore {
-		ranBefore = true
-		// bucket.WriteUpdateWithXattr(k, xattrKey)
 	}
 
 	if isDelete && !supportsTombstoneCreation {
