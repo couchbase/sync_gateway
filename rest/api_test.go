@@ -5403,11 +5403,29 @@ func TestTombstonedBulkDocs(t *testing.T) {
 func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
 	// t.Skip("Requires manual intervention to run")
 
+	// In order to run this test obviously remove the above skip and then:
+	// Insert the below as global vars in base:
+	// ==========================
+	// var RunXattrCallback bool
+	// var UpdateXattrCallback func()
+	// ==========================
+
+	// Insert the below into UpdateXattr in bucket_gocb.go before the 'if isDelete && !supportsTombstoneCreation' check
+	// and after the first 'Kick off retry loop' block
+	// ==========================
+	// if RunXattrCallback {
+	//		RunXattrCallback = false
+	//		UpdateXattrCallback()
+	//	}
+	// ==========================
+
+	// Finally uncomment the lines below setting the callback to true and the callback
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Couchbase buckets only")
 	}
 
-	rt := NewRestTester(t, nil)
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AutoImport: true}})
 	defer rt.Close()
 
 	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
@@ -5416,7 +5434,26 @@ func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
 	// Force it to fall into the non CreateAsDeleted flag handling
 	gocbBucket.OverrideClusterCompatVersion(5, 5)
 
-	response := rt.SendAdminRequest("PUT", "/db/doc", `{"_deleted": true}`)
+	// base.RunXattrCallback = true
+	// base.UpdateXattrCallback = func() {
+	// 	response := rt.SendAdminRequest("PUT", "/db/doc", `{"val": "update"}`)
+	// 	assertStatus(t, response, http.StatusCreated)
+	// }
+
+	response := rt.SendAdminRequest("PUT", "/db/doc", `{"_deleted": true, "val": "original"}`)
 	assertStatus(t, response, http.StatusCreated)
 
+	response = rt.SendAdminRequest("GET", "/db/doc", "")
+	assertStatus(t, response, http.StatusOK)
+
+	var body db.Body
+	err := json.Unmarshal(response.BodyBytes(), &body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "update", body["val"])
+
+	// If xattrs being used ensure that this doc operation wasn't treated as an import (cas set correctly)
+	if base.TestUseXattrs() {
+		assert.Equal(t, 0, int(rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()))
+	}
 }
