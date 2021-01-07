@@ -44,6 +44,15 @@ func (tb TestBucket) Close() {
 	tb.closeFn()
 }
 
+// LeakyBucketClone wraps the underlying bucket on the TestBucket with a LeakyBucket and returns a new TestBucket handle.
+func (tb *TestBucket) LeakyBucketClone(c LeakyBucketConfig) *TestBucket {
+	return &TestBucket{
+		Bucket:     NewLeakyBucket(tb.Bucket, c),
+		BucketSpec: tb.BucketSpec,
+		closeFn:    tb.Close,
+	}
+}
+
 // NoCloseClone returns a leaky bucket with a no-op close function for the given bucket.
 func NoCloseClone(b Bucket) *LeakyBucket {
 	return NewLeakyBucket(b, LeakyBucketConfig{IgnoreClose: true})

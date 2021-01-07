@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -100,6 +101,9 @@ func setupTestDBWithCustomSyncSeq(t testing.TB, customSeq uint64) *Database {
 	assert.NoError(t, err, "Couldn't create context for database 'db'")
 	db, err := CreateDatabase(context)
 	assert.NoError(t, err, "Couldn't create database 'db'")
+
+	atomic.StoreUint32(&context.State, DBOnline)
+
 	return db
 }
 
@@ -2289,4 +2293,50 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 	syncData, err = db.GetDocSyncData("doc1")
 	require.NoError(t, err)
 	assert.True(t, sort.IsSorted(base.SortedUint64Slice(syncData.RecentSequences)))
+}
+
+func TestResyncUpdateAllDocChannels(t *testing.T) {
+	syncFn := `
+	function(doc) {
+		channel("x")
+	}`
+
+	db := setupTestDBWithOptions(t, DatabaseContextOptions{ResyncQueryLimit: 5000})
+
+	_, err := db.UpdateSyncFun(syncFn)
+	assert.NoError(t, err)
+
+	defer db.Close()
+
+	for i := 0; i < 10; i++ {
+		updateBody := make(map[string]interface{})
+		updateBody["val"] = i
+		_, _, err := db.Put(fmt.Sprintf("doc%d", i), updateBody)
+		require.NoError(t, err)
+	}
+
+	err = db.TakeDbOffline("")
+	assert.NoError(t, err)
+
+	waitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&db.State)
+		return state == DBOffline
+	})
+
+	_, err = db.UpdateAllDocChannels()
+
+	syncFnCount := int(db.DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, 20, syncFnCount)
+}
+
+func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
 }

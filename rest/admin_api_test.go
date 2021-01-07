@@ -20,6 +20,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1268,6 +1269,11 @@ func TestResync(t *testing.T) {
 			response = rt.SendAdminRequest("POST", "/db/_offline", "")
 			assertStatus(t, response, http.StatusOK)
 
+			waitAndAssertCondition(t, func() bool {
+				state := atomic.LoadUint32(&rt.GetDatabase().State)
+				return state == db.DBOffline
+			})
+
 			response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 			assertStatus(t, response, http.StatusOK)
 
@@ -1286,7 +1292,7 @@ func TestResync(t *testing.T) {
 			if base.TestsDisableGSI() {
 				queryName = fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncGateway(), db.ViewChannels)
 			} else {
-				queryName = db.QueryTypeAllDocs
+				queryName = db.QueryTypeChannels
 			}
 
 			assert.Equal(t, testCase.expectedQueryCount, int(rt.GetDatabase().DbStats.Query(queryName).QueryCount.Value()))
@@ -1297,26 +1303,39 @@ func TestResync(t *testing.T) {
 }
 
 func TestResyncErrorScenarios(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		// Limitation of setting LeakyBucket on RestTester
+		t.Skip("This test only works with walrus")
+	}
+
 	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
 
+	leakyTestBucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
+
 	rt := NewRestTester(t,
 		&RestTesterConfig{
-			SyncFn: syncFn,
+			SyncFn:     syncFn,
+			TestBucket: leakyTestBucket,
 		},
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := rt.GetDatabase().Bucket.(*base.LeakyBucket)
-	require.True(t, ok)
+	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
-	var useCallback bool
+	var (
+		useCallback   bool
+		callbackFired bool
+	)
 
 	if base.TestsDisableGSI() {
 		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			if useCallback {
+				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 				assertStatus(t, response, http.StatusServiceUnavailable)
 				useCallback = false
@@ -1325,6 +1344,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	} else {
 		leakyBucket.SetPostN1QLQueryCallback(func() {
 			if useCallback {
+				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 				assertStatus(t, response, http.StatusServiceUnavailable)
 				useCallback = false
@@ -1347,6 +1367,11 @@ func TestResyncErrorScenarios(t *testing.T) {
 
 	response = rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, http.StatusOK)
+
+	waitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
 
 	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
@@ -1379,14 +1404,23 @@ func TestResyncErrorScenarios(t *testing.T) {
 		return status.Status == db.ResyncStateStopped
 	})
 	assert.NoError(t, err)
+
+	assert.True(t, callbackFired, "expecting callback to be fired")
 }
 
 func TestResyncStop(t *testing.T) {
+
+	if !base.UnitTestUrlIsWalrus() {
+		// Limitation of setting LeakyBucket on RestTester
+		t.Skip("This test only works with walrus")
+	}
 
 	syncFn := `
 	function(doc) {
 		channel("x")
 	}`
+
+	leakyTestBucket := base.GetTestBucket(t).LeakyBucketClone(base.LeakyBucketConfig{})
 
 	rt := NewRestTester(t,
 		&RestTesterConfig{
@@ -1394,17 +1428,23 @@ func TestResyncStop(t *testing.T) {
 			DatabaseConfig: &DbConfig{
 				ResyncQueryLimit: base.IntPtr(10),
 			},
+			TestBucket: leakyTestBucket,
 		},
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := rt.GetDatabase().Bucket.(*base.LeakyBucket)
-	require.True(t, ok)
+	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
-	var useCallback bool
+	var (
+		useCallback   bool
+		callbackFired bool
+	)
+
 	if base.TestsDisableGSI() {
 		leakyBucket.SetPostQueryCallback(func(ddoc, viewName string, params map[string]interface{}) {
 			if useCallback {
+				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 				assertStatus(t, response, http.StatusOK)
 				useCallback = false
@@ -1413,6 +1453,7 @@ func TestResyncStop(t *testing.T) {
 	} else {
 		leakyBucket.SetPostN1QLQueryCallback(func() {
 			if useCallback {
+				callbackFired = true
 				response := rt.SendAdminRequest("POST", "/db/_resync?action=stop", "")
 				assertStatus(t, response, http.StatusOK)
 				useCallback = false
@@ -1432,6 +1473,11 @@ func TestResyncStop(t *testing.T) {
 	response := rt.SendAdminRequest("POST", "/db/_offline", "")
 	assertStatus(t, response, http.StatusOK)
 
+	waitAndAssertCondition(t, func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOffline
+	})
+
 	useCallback = true
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start", "")
 	assertStatus(t, response, http.StatusOK)
@@ -1445,8 +1491,10 @@ func TestResyncStop(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
+	assert.True(t, callbackFired, "expecting callback to be fired")
+
 	syncFnCount := int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
-	assert.True(t, syncFnCount < 2000)
+	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
 }
 
 // Single threaded bring DB online
