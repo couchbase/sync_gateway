@@ -5460,7 +5460,7 @@ func TestTombstonedBulkDocs(t *testing.T) {
 
 // This test is skipped usually as it requires code to be manually injected into bucket_gocb.go
 func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
-	// t.Skip("Requires manual intervention to run")
+	t.Skip("Requires manual intervention to run")
 
 	// In order to run this test obviously remove the above skip and then:
 	// Insert the below as global vars in base:
