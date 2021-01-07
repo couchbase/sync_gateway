@@ -33,7 +33,6 @@ import (
 	"testing"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
@@ -5396,11 +5395,8 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 	_, err := rt.GetDatabase().Bucket.Get("fake", &body)
 
 	if base.TestUseXattrs() {
-		if rt.Bucket().IsSupported(sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted) {
-			assert.Error(t, err)
-		} else {
-			assert.Equal(t, map[string]interface{}{}, body)
-		}
+		assert.Error(t, err)
+		assert.Nil(t, body)
 	} else {
 		assert.NoError(t, err)
 	}
@@ -5455,11 +5451,8 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	_, err := rt.GetDatabase().Bucket.Get("doc", &body)
 
 	if base.TestUseXattrs() {
-		if rt.Bucket().IsSupported(sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted) {
-			assert.Error(t, err)
-		} else {
-			assert.Equal(t, map[string]interface{}{}, body)
-		}
+		assert.Error(t, err)
+		assert.Nil(t, body)
 	} else {
 		assert.NoError(t, err)
 	}
