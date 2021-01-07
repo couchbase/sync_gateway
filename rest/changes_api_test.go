@@ -758,7 +758,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 	assert.Equal(t, "abc-1", changes.Results[2].ID)
 	lastSeq := changes.Last_Seq
 
-	// Issue a second changes request, expect to see 	changes, err := rt.WaitForChanges(0, "/db/_changes?limit=3", "bernard", false)
+	// Issue a second changes request, expect to see last 2 documents.
 	moreChanges, err := rt.WaitForChanges(0, fmt.Sprintf("/db/_changes?limit=3&since=%s", lastSeq), "bernard", false)
 	assert.NoError(t, err)
 	require.Equal(t, 2, len(moreChanges.Results))
