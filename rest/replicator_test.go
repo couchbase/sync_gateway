@@ -1830,7 +1830,7 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			if base.GTestBucketPool.NumUsableBuckets() < 2 {
 				t.Skipf("test requires at least 2 usable test buckets")
 			}
-			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+			defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD)()
 
 			// Passive
 			tb2 := base.GetTestBucket(t)
