@@ -2,11 +2,13 @@ package auth
 
 import (
 	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -63,4 +65,97 @@ func TestSetBcryptCost(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, bcryptDefaultCost, bcryptCost)
 	assert.True(t, bcryptCostChanged)
+}
+
+// Unique correct hash/passwords (to test filling the cache)
+func BenchmarkCacheFilling(b *testing.B) {
+	b.ReportAllocs()
+	maxCacheSize := 10
+	for i := 0; i < b.N; i++ {
+		cachedHashes = NewCache(maxCacheSize)
+		for i := 0; i < maxCacheSize; i++ {
+			password := []byte(fmt.Sprintf("foo%d", i))
+			hash, err := bcrypt.GenerateFromPassword(password, bcryptDefaultCost)
+			require.NoError(b, err)
+			assert.True(b, compareHashAndPassword(hash, password))
+		}
+	}
+}
+
+// Unique correct hash/passwords (to test replacing the cache)
+func BenchmarkCacheReplacement(b *testing.B) {
+	b.ReportAllocs()
+	b.StopTimer()
+
+	maxCacheSize := 10
+	cachedHashes = NewCache(maxCacheSize)
+	for i := 0; i < maxCacheSize; i++ {
+		password := []byte(fmt.Sprintf("foo%d", i))
+		hash, err := bcrypt.GenerateFromPassword(password, bcryptDefaultCost)
+		require.NoError(b, err)
+		require.NotEmpty(b, hash)
+		key := authKey(hash, password)
+		cachedHashes.Put(key)
+	}
+	require.Equal(b, maxCacheSize, cachedHashes.Len())
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		password := []byte(fmt.Sprintf("bar%d", rand.Intn(maxCacheSize)))
+		hash, err := bcrypt.GenerateFromPassword(password, bcryptDefaultCost)
+		require.NoError(b, err)
+		assert.True(b, compareHashAndPassword(hash, password))
+	}
+}
+
+// Same correct hash/password (to test the fast-path of Contains)
+func BenchmarkCacheContains(b *testing.B) {
+	b.ReportAllocs()
+	b.StopTimer()
+
+	maxCacheSize := 10
+	cachedHashes = NewCache(maxCacheSize)
+	for i := 0; i < maxCacheSize; i++ {
+		password := []byte(fmt.Sprintf("foo%d", i))
+		hash, err := bcrypt.GenerateFromPassword(password, bcryptDefaultCost)
+		require.NoError(b, err)
+		require.NotEmpty(b, hash)
+		key := authKey(hash, password)
+		cachedHashes.Put(key)
+	}
+	require.Equal(b, maxCacheSize, cachedHashes.Len())
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		password := []byte(fmt.Sprintf("foo%d", rand.Intn(maxCacheSize)))
+		hash, err := bcrypt.GenerateFromPassword(password, bcryptDefaultCost)
+		require.NoError(b, err)
+		assert.True(b, compareHashAndPassword(hash, password))
+	}
+}
+
+// Same incorrect hash/password (to verify we're still hitting the bcrypt slow-path and failing to insert)
+func BenchmarkCacheSlowBcrypt(b *testing.B) {
+	b.ReportAllocs()
+	b.StopTimer()
+
+	maxCacheSize := 10
+	cachedHashes = NewCache(maxCacheSize)
+	for i := 0; i < maxCacheSize; i++ {
+		password := []byte(fmt.Sprintf("foo%d", i))
+		hash, err := bcrypt.GenerateFromPassword(password, bcryptDefaultCost)
+		require.NoError(b, err)
+		require.NotEmpty(b, hash)
+		key := authKey(hash, password)
+		cachedHashes.Put(key)
+	}
+	require.Equal(b, maxCacheSize, cachedHashes.Len())
+
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		password := []byte(fmt.Sprintf("foo%d", rand.Intn(maxCacheSize)))
+		hash, err := bcrypt.GenerateFromPassword(password, bcryptDefaultCost)
+		require.NoError(b, err)
+		assert.False(b, compareHashAndPassword(hash, []byte("password")))
+	}
 }

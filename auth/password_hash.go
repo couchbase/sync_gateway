@@ -12,8 +12,6 @@ package auth
 import (
 	"crypto/sha1"
 	"fmt"
-	"sync"
-
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 
@@ -32,23 +30,12 @@ var (
 
 var ErrInvalidBcryptCost = fmt.Errorf("invalid bcrypt cost")
 
-var (
-	// Set of known-to-be-valid {password, bcryt-hash} pairs.
-	// Keys are of the form SHA1 digest of password + bcrypt'ed hash of password
-	cachedHashes     *Cache
-	cachedHashesOnce sync.Once // Allows the cachedHashes to be initialized only once.
-)
-
-// The maximum number of pairs to keep in the above cache
+// The maximum number of pairs to keep in the below auth cache.
 const kMaxCacheSize = 25000
 
-// initCachedHashes creates a new cache with room for upto 25000 password hashes.
-func initCachedHashes() {
-	cachedHashesOnce.Do(func() {
-		base.Debugf(base.KeyAuth, "Initializing auth cache [Capacity: %d] ...", kMaxCacheSize)
-		cachedHashes = NewCache(kMaxCacheSize)
-	})
-}
+// Set of known-to-be-valid {password, bcryt-hash} pairs.
+// Keys are of the form SHA1 digest of password + bcrypt'ed hash of password
+var cachedHashes = NewCache(kMaxCacheSize)
 
 // authKey returns the bcrypt hash + SHA1 digest of the password.
 func authKey(hash []byte, password []byte) (key string) {
@@ -62,8 +49,6 @@ func authKey(hash []byte, password []byte) (key string) {
 // Optimized wrapper around bcrypt.CompareHashAndPassword that caches successful results in
 // memory to avoid the _very_ high overhead of calling bcrypt.
 func compareHashAndPassword(hash []byte, password []byte) bool {
-	// Lazily initialize the auth cache once.
-	initCachedHashes()
 
 	// Actually we cache the SHA1 digest of the password to avoid keeping passwords in RAM.
 	key := authKey(hash, password)

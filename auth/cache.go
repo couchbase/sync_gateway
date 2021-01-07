@@ -8,7 +8,7 @@ import (
 // Cache represents a random replacement cache.
 type Cache struct {
 	size  int                 // Maximum size where this cache can potentially grow upto.
-	keys  []*string           // A slice of keys for choosing a random key for eviction.
+	keys  []string            // A slice of keys for choosing a random key for eviction.
 	cache map[string]struct{} // Set of keys for fast lookup.
 	lock  sync.RWMutex        // Protects both cache and keys from concurrent access.
 }
@@ -17,7 +17,8 @@ type Cache struct {
 func NewCache(size int) *Cache {
 	return &Cache{
 		size:  size,
-		cache: make(map[string]struct{}),
+		cache: make(map[string]struct{}, size),
+		keys:  make([]string, 0, size),
 	}
 }
 
@@ -41,10 +42,10 @@ func (c *Cache) Put(key string) {
 	}
 	if len(c.cache) >= c.size {
 		index := rand.Intn(len(c.keys))
-		delete(c.cache, *c.keys[index])
-		c.keys[index] = &key
+		delete(c.cache, c.keys[index])
+		c.keys[index] = key
 	} else {
-		c.keys = append(c.keys, &key)
+		c.keys = append(c.keys, key)
 	}
 	c.cache[key] = struct{}{}
 	c.lock.Unlock()
