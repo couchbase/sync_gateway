@@ -160,9 +160,7 @@ func (sc *ServerContext) Close() {
 
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
-		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
-		}
+		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", sc.config.AdminInterface)
 	}
 
 	sc.databases_ = nil
@@ -569,14 +567,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	if config.StartOffline {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
-		}
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", sc.config.AdminInterface)
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
-		}
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", sc.config.AdminInterface)
 	}
 
 	return dbcontext, nil
@@ -763,6 +757,38 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 
 }
 
+// validateEventConfigOptions returns errors for all invalid event type options.
+func validateEventConfigOptions(eventType db.EventType, eventConfig *EventConfig) error {
+	if eventConfig == nil || eventConfig.Options == nil {
+		return nil
+	}
+
+	var errs []error
+
+	switch eventType {
+	case db.DocumentChange:
+		for k, v := range eventConfig.Options {
+			switch k {
+			case db.EventOptionDocumentChangedWinningRevOnly:
+				if _, ok := v.(bool); !ok {
+					errs = append(errs, fmt.Errorf("Event option %q must be of type bool", db.EventOptionDocumentChangedWinningRevOnly))
+				}
+			default:
+				errs = append(errs, fmt.Errorf("unknown option %q found for event type %q", k, eventType))
+			}
+		}
+	default:
+		errs = append(errs, fmt.Errorf("unknown options %v found for event type %q", eventConfig.Options, eventType))
+	}
+
+	// If we only have 1 error, return it as-is for clarity in the logs.
+	if errs != nil && len(errs) > 0 {
+		return fmt.Errorf("Error(s) validating event config options: %v", errs)
+	}
+
+	return nil
+}
+
 // Initialize event handlers, if present
 func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) (err error) {
 	if config.EventHandlers == nil {
@@ -776,6 +802,12 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 	}
 
 	for eventType, handlers := range eventHandlersByType {
+		for _, conf := range handlers {
+			if err := validateEventConfigOptions(eventType, conf); err != nil {
+				return err
+			}
+		}
+
 		// Register event handlers
 		if err = sc.processEventHandlersForEvent(handlers, eventType, dbcontext); err != nil {
 			return err
@@ -807,7 +839,7 @@ func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eve
 	for _, event := range events {
 		switch event.HandlerType {
 		case "webhook":
-			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout)
+			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout, event.Options)
 			if err != nil {
 				base.Warnf("Error creating webhook %v", err)
 				return err
