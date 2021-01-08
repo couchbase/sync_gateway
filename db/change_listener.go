@@ -69,9 +69,13 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 			return err
 		}
 		go func() {
-			defer close(listener.FeedArgs.DoneChan)
-			defer base.FatalPanicHandler()
-			defer listener.notifyStopping()
+			defer func() {
+				if listener.FeedArgs.DoneChan != nil {
+					close(listener.FeedArgs.DoneChan)
+				}
+				base.FatalPanicHandler()
+				listener.notifyStopping()
+			}()
 			for event := range listener.tapFeed.Events() {
 				event.TimeReceived = time.Now()
 				listener.ProcessFeedEvent(event)
@@ -152,7 +156,7 @@ func (listener *changeListener) Stop() {
 	case <-listener.FeedArgs.DoneChan:
 		// Mutation feed worker goroutine is terminated and doneChan is already closed.
 	case <-time.After(waitTime):
-		base.Infof(base.KeyAll, "Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
+		base.Warnf("Timeout after %v of waiting for mutation feed worker to terminate", waitTime)
 	}
 }
 
