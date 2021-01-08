@@ -262,6 +262,9 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.
 				event.VbNo = uint16(VBHash(key, 1024))
 				vbTapFeed.channel <- event
 			}
+			if args.DoneChan != nil {
+				close(args.DoneChan)
+			}
 		}()
 		return vbTapFeed, nil
 
