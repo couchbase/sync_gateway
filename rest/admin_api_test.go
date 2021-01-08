@@ -1503,7 +1503,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		channel("x")
 	}`
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	// defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	rt := NewRestTester(t,
 		&RestTesterConfig{

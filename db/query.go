@@ -220,6 +220,7 @@ const (
 	QueryParamStartKey    = "startkey"
 	QueryParamEndKey      = "endkey"
 	QueryParamLimit       = "limit"
+	QueryParamSkip        = "skip"
 
 	// Variables in the select clause can't be parameterized, require additional handling
 	QuerySelectUserName = "$$selectUserName"
@@ -413,19 +414,31 @@ func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) 
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index
-func (context *DatabaseContext) QueryPrincipals(limit int) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryPrincipals(limit, offset int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
 		opts := map[string]interface{}{"stale": false}
+
+		if limit > 0 {
+			opts[QueryParamLimit] = limit
+		}
+
+		if offset > 0 {
+			opts[QueryParamSkip] = offset
+		}
+
 		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
 
 	if limit > 0 {
-		// ADD LIMIT
-		// queryStatement = fmt.Sprintf("")
+		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
+	}
+
+	if offset > 0 {
+		queryStatement = fmt.Sprintf("%s OFFSET %d", queryStatement, offset)
 	}
 
 	// N1QL Query

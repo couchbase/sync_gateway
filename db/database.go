@@ -840,49 +840,69 @@ type principalsViewRow struct {
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
 
-	results, err := db.QueryPrincipals()
-	if err != nil {
-		return nil, nil, err
-	}
+	offset := 0
+	limit := 2
 
-	var isUser bool
-	var principalName string
 	users = []string{}
 	roles = []string{}
-	lenUserKeyPrefix := len(base.UserPrefix)
+
+outerLoop:
 	for {
-		if db.Options.UseViews {
-			var viewRow principalsViewRow
-			found := results.Next(&viewRow)
-			if !found {
-				break
-			}
-			isUser = viewRow.Value
-			principalName = viewRow.Key
-		} else {
-			var queryRow QueryIdRow
-			found := results.Next(&queryRow)
-			if !found {
-				break
-			}
-			if len(queryRow.Id) < lenUserKeyPrefix {
-				continue
-			}
-			isUser = queryRow.Id[0:lenUserKeyPrefix] == base.UserPrefix
-			principalName = queryRow.Id[lenUserKeyPrefix:]
+		results, err := db.QueryPrincipals(limit, offset)
+		if err != nil {
+			return nil, nil, err
 		}
 
-		if principalName != "" {
-			if isUser {
-				users = append(users, principalName)
+		var isUser bool
+		var principalName string
+		lenUserKeyPrefix := len(base.UserPrefix)
+
+		resultCount := 0
+
+		for {
+			if db.Options.UseViews {
+				var viewRow principalsViewRow
+				found := results.Next(&viewRow)
+				if !found {
+					break
+				}
+				isUser = viewRow.Value
+				principalName = viewRow.Key
+				resultCount++
 			} else {
-				roles = append(roles, principalName)
+				var queryRow QueryIdRow
+				found := results.Next(&queryRow)
+				if !found {
+					break
+				}
+				if len(queryRow.Id) < lenUserKeyPrefix {
+					continue
+				}
+				isUser = queryRow.Id[0:lenUserKeyPrefix] == base.UserPrefix
+				principalName = queryRow.Id[lenUserKeyPrefix:]
+				resultCount++
+			}
+
+			if principalName != "" {
+				if isUser {
+					users = append(users, principalName)
+				} else {
+					roles = append(roles, principalName)
+				}
 			}
 		}
-	}
-	closeErr := results.Close()
-	if closeErr != nil {
-		return nil, nil, closeErr
+		closeErr := results.Close()
+		if closeErr != nil {
+			return nil, nil, closeErr
+		}
+
+		offset += limit
+
+		// TODO: Sort out this break
+		if resultCount < limit {
+			break outerLoop
+		}
+
 	}
 
 	return users, roles, nil
