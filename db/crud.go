@@ -1694,6 +1694,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		return nil, "", base.HTTPErrorf(400, "Invalid doc ID")
 	}
 
+	var prevCurrentRev string
 	var storedDoc *Document
 	var changedAccessPrincipals, changedRoleAccessUsers []string // Returned by documentUpdateFunc
 	var docSequence uint64                                       // Must be scoped outside callback, used over multiple iterations
@@ -1712,6 +1713,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
 			}
+			prevCurrentRev = doc.CurrentRev
 			docExists := currentValue != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
@@ -1745,6 +1747,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll); err != nil {
 				return
 			}
+			prevCurrentRev = doc.CurrentRev
 
 			// Check whether Sync Data originated in body
 			if currentXattr == nil && doc.Sequence > 0 {
@@ -1858,7 +1861,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if err != nil {
 				base.Warnf("Error marshalling doc with id %s and revid %s for webhook post: %v", base.UD(docid), base.UD(newRevID), err)
 			} else {
-				winningRevChange := newRevID == doc.CurrentRev
+				winningRevChange := prevCurrentRev != doc.CurrentRev
 				err = db.EventMgr.RaiseDocumentChangeEvent(webhookJSON, docid, oldBodyJSON, revChannels, winningRevChange)
 				if err != nil {
 					base.Debugf(base.KeyCRUD, "Error raising document change event: %v", err)

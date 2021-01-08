@@ -4811,6 +4811,8 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 // TestWebhookWinningRevChangedEvent ensures the winning_rev_changed event is only fired for a winning revision change, and checks that document_changed is always fired.
 func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyEvents)()
+
 	wg := sync.WaitGroup{}
 
 	var WinningRevChangedCount uint32
@@ -4871,9 +4873,31 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	wg.Add(1)
 
 	wg.Wait()
-
 	assert.Equal(t, 2, int(atomic.LoadUint32(&WinningRevChangedCount)))
 	assert.Equal(t, 3, int(atomic.LoadUint32(&DocumentChangedCount)))
+
+	// tombstone the winning branch and ensure we get a rev changed message for the promoted branch
+	res = rt.SendAdminRequest("DELETE", "/db/doc1?rev=3-buzz", ``)
+	assertStatus(t, res, http.StatusOK)
+	wg.Add(2)
+
+	wg.Wait()
+	assert.Equal(t, 3, int(atomic.LoadUint32(&WinningRevChangedCount)))
+	assert.Equal(t, 4, int(atomic.LoadUint32(&DocumentChangedCount)))
+
+	// push a separate winning branch
+	res = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+rev1Hash+`"]}}`)
+	assertStatus(t, res, http.StatusCreated)
+	wg.Add(2)
+
+	// tombstone the winning branch, we should get a second webhook fired for rev 2-buzzzzz now it's been resurrected
+	res = rt.SendAdminRequest("DELETE", "/db/doc1?rev=4-quux", ``)
+	assertStatus(t, res, http.StatusOK)
+	wg.Add(2)
+
+	wg.Wait()
+	assert.Equal(t, 5, int(atomic.LoadUint32(&WinningRevChangedCount)))
+	assert.Equal(t, 6, int(atomic.LoadUint32(&DocumentChangedCount)))
 }
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {

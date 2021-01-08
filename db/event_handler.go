@@ -27,7 +27,9 @@ type Webhook struct {
 	filter  *JSEventFunction
 	timeout time.Duration
 	client  *http.Client
-	options map[string]interface{}
+	options struct {
+		DocumentChangedWinningRevOnly bool
+	}
 }
 
 const (
@@ -48,8 +50,7 @@ func NewWebhook(url string, filterFnString string, timeout *uint64, options map[
 	}
 
 	wh := &Webhook{
-		url:     url,
-		options: options,
+		url: url,
 	}
 	if filterFnString != "" {
 		wh.filter = NewJSEventFunction(filterFnString)
@@ -66,6 +67,10 @@ func NewWebhook(url string, filterFnString string, timeout *uint64, options map[
 	transport.DisableKeepAlives = false
 	wh.client = &http.Client{Transport: transport, Timeout: wh.timeout}
 
+	if options != nil {
+		wh.options.DocumentChangedWinningRevOnly, _ = options[EventOptionDocumentChangedWinningRevOnly].(bool)
+	}
+
 	return wh, err
 }
 
@@ -81,10 +86,8 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
 		// skip event if this is for a non-winning rev and the winning rev only option is enabled
-		if !event.WinningRevChange && wh.options != nil {
-			if val, ok := wh.options[EventOptionDocumentChangedWinningRevOnly]; ok && val.(bool) {
-				return false
-			}
+		if !event.WinningRevChange && wh.options.DocumentChangedWinningRevOnly {
+			return false
 		}
 		payload = event.DocBytes
 	case *DBStateChangeEvent:
