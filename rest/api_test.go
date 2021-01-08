@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -4805,6 +4806,98 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 	assert.NotEqual(t, revIdAfterAttachment, doc1revId)
 	wg.Add(1)
 	wg.Wait()
+}
+
+// TestWebhookWinningRevChangedEvent ensures the winning_rev_changed event is only fired for a winning revision change, and checks that document_changed is always fired.
+func TestWebhookWinningRevChangedEvent(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyEvents)()
+
+	wg := sync.WaitGroup{}
+
+	var WinningRevChangedCount uint32
+	var DocumentChangedCount uint32
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		var body db.Body
+		d := base.JSONDecoder(r.Body)
+		require.NoError(t, d.Decode(&body))
+		require.Contains(t, body, db.BodyId)
+		require.Contains(t, body, db.BodyRev)
+
+		event := r.URL.Query().Get("event")
+		switch event {
+		case "WinningRevChanged":
+			atomic.AddUint32(&WinningRevChangedCount, 1)
+		case "DocumentChanged":
+			atomic.AddUint32(&DocumentChangedCount, 1)
+		default:
+			t.Fatalf("unknown event type: %s", event)
+		}
+
+		wg.Done()
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(handler))
+	defer s.Close()
+
+	rtConfig := &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			EventHandlers: &EventHandlerConfig{
+				DocumentChanged: []*EventConfig{
+					{Url: s.URL + "?event=DocumentChanged", Filter: "function(doc){return true;}", HandlerType: "webhook"},
+					{Url: s.URL + "?event=WinningRevChanged", Filter: "function(doc){return true;}", HandlerType: "webhook",
+						Options: map[string]interface{}{db.EventOptionDocumentChangedWinningRevOnly: true},
+					},
+				},
+			},
+		},
+	}
+	rt := NewRestTester(t, rtConfig)
+	defer rt.Close()
+
+	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo":"bar"}`)
+	assertStatus(t, res, http.StatusCreated)
+	wg.Add(2)
+	rev1 := respRevID(t, res)
+	_, rev1Hash := db.ParseRevID(rev1)
+
+	// push winning branch
+	res = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", `{"foo":"buzz","_revisions":{"start":3,"ids":["buzz","bar","`+rev1Hash+`"]}}`)
+	assertStatus(t, res, http.StatusCreated)
+	wg.Add(2)
+
+	// push non-winning branch
+	res = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", `{"foo":"buzzzzz","_revisions":{"start":2,"ids":["buzzzzz","`+rev1Hash+`"]}}`)
+	assertStatus(t, res, http.StatusCreated)
+	wg.Add(1)
+
+	wg.Wait()
+	assert.Equal(t, 2, int(atomic.LoadUint32(&WinningRevChangedCount)))
+	assert.Equal(t, 3, int(atomic.LoadUint32(&DocumentChangedCount)))
+
+	// tombstone the winning branch and ensure we get a rev changed message for the promoted branch
+	res = rt.SendAdminRequest("DELETE", "/db/doc1?rev=3-buzz", ``)
+	assertStatus(t, res, http.StatusOK)
+	wg.Add(2)
+
+	wg.Wait()
+	assert.Equal(t, 3, int(atomic.LoadUint32(&WinningRevChangedCount)))
+	assert.Equal(t, 4, int(atomic.LoadUint32(&DocumentChangedCount)))
+
+	// push a separate winning branch
+	res = rt.SendAdminRequest("PUT", "/db/doc1?new_edits=false", `{"foo":"quux","_revisions":{"start":4,"ids":["quux", "buzz","bar","`+rev1Hash+`"]}}`)
+	assertStatus(t, res, http.StatusCreated)
+	wg.Add(2)
+
+	// tombstone the winning branch, we should get a second webhook fired for rev 2-buzzzzz now it's been resurrected
+	res = rt.SendAdminRequest("DELETE", "/db/doc1?rev=4-quux", ``)
+	assertStatus(t, res, http.StatusOK)
+	wg.Add(2)
+
+	wg.Wait()
+	assert.Equal(t, 5, int(atomic.LoadUint32(&WinningRevChangedCount)))
+	assert.Equal(t, 6, int(atomic.LoadUint32(&DocumentChangedCount)))
 }
 
 func Benchmark_RestApiGetDocPerformance(b *testing.B) {
