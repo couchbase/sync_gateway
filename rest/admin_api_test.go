@@ -1512,17 +1512,42 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	)
 	defer rt.Close()
 
+	var response *TestResponse
+	var err error
+	var docSeqArr []float64
+	var body db.Body
+
 	for i := 0; i < 10; i++ {
-		rt.createDoc(t, fmt.Sprintf("doc%d", i))
+		docID := fmt.Sprintf("doc%d", i)
+		rt.createDoc(t, docID)
+
+		err := rt.WaitForCondition(func() bool {
+			response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+			return response.Code == http.StatusOK
+		})
+		require.NoError(t, err)
+
+		err = json.Unmarshal(response.BodyBytes(), &body)
+		assert.NoError(t, err)
+
+		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
 	}
 
 	role := "role1"
-	response := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
 	assertStatus(t, response, http.StatusCreated)
 
 	username := "user1"
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
 	assertStatus(t, response, http.StatusCreated)
+
+	_, err = rt.Bucket().Get(base.RolePrefix+"role1", &body)
+	assert.NoError(t, err)
+	role1SeqBefore := body["sequence"].(float64)
+
+	_, err = rt.Bucket().Get(base.UserPrefix+"user1", &body)
+	assert.NoError(t, err)
+	user1SeqBefore := body["sequence"].(float64)
 
 	response = rt.SendAdminRequest("GET", "/db/_resync", "")
 	assertStatus(t, response, http.StatusOK)
@@ -1533,13 +1558,39 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
 	assertStatus(t, response, http.StatusOK)
 
-	err := rt.WaitForCondition(func() bool {
+	err = rt.WaitForCondition(func() bool {
 		return rt.GetDatabase().ResyncManager.GetStatus().Status == db.ResyncStateStopped
 	})
 	assert.NoError(t, err)
 
+	_, err = rt.Bucket().Get(base.RolePrefix+"role1", &body)
+	assert.NoError(t, err)
+	role1SeqAfter := body["sequence"].(float64)
+
+	_, err = rt.Bucket().Get(base.UserPrefix+"user1", &body)
+	assert.NoError(t, err)
+	user1SeqAfter := body["sequence"].(float64)
+
+	assert.True(t, role1SeqAfter > role1SeqBefore)
+	assert.True(t, user1SeqAfter > user1SeqBefore)
+
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("doc%d", i)
+
+		doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
+	}
+
 	response = rt.SendAdminRequest("POST", "/db/_online", "")
 	assertStatus(t, response, http.StatusOK)
+
+	err = rt.WaitForCondition(func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOnline
+	})
+	assert.NoError(t, err)
 }
 
 // Single threaded bring DB online
