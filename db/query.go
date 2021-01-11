@@ -437,7 +437,7 @@ func (context *DatabaseContext) QueryPrincipals(startKey string, limit int) (sgb
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
 
-	params := make(map[string]interface{}, 0)
+	params := make(map[string]interface{})
 	if startKey != "" {
 		queryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startkey",
 			queryStatement, context.Bucket.GetName())

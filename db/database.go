@@ -885,13 +885,10 @@ outerLoop:
 				resultCount++
 			}
 
-			// Skip first result if using startKey as startKey results in an overlapping result
+			// Second part of or skips first result if using startKey as this results in an overlapping result
 			// This was cheaper than a contains check
-			if resultCount == 1 && startKey != "" {
-				continue
-			}
 
-			if principalName != "" {
+			if principalName != "" && (resultCount != 1 && startKey != "") {
 				if isUser {
 					users = append(users, principalName)
 				} else {

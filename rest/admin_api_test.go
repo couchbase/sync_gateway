@@ -1540,15 +1540,6 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	response = rt.SendAdminRequest("POST", "/db/_online", "")
 	assertStatus(t, response, http.StatusOK)
-
-	srv := httptest.NewServer(rt.TestAdminHandler())
-	defer srv.Close()
-
-	fmt.Println("==============================")
-	fmt.Println(srv.URL)
-
-	time.Sleep(10 * time.Minute)
-	fmt.Println("x")
 }
 
 // Single threaded bring DB online
