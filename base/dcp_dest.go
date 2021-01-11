@@ -350,6 +350,9 @@ func StartCbgtGocbFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArgumen
 			if err = feed.Close(); err != nil {
 				Debugf(KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(spec.BucketName), feedName, err)
 			}
+			if args.DoneChan != nil {
+				close(args.DoneChan)
+			}
 		}()
 	}
 
@@ -495,6 +498,9 @@ func StartCbgtCbdatasourceFeed(bucket Bucket, spec BucketSpec, args sgbucket.Fee
 			Tracef(KeyDCP, "Closing DCP Feed [%s-%s] based on termination notification", MD(spec.BucketName), feedName)
 			if err = feed.Close(); err != nil {
 				Debugf(KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(spec.BucketName), feedName, err)
+			}
+			if args.DoneChan != nil {
+				close(args.DoneChan)
 			}
 		}()
 	}
