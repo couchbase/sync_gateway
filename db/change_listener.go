@@ -73,9 +73,9 @@ func (listener *changeListener) StartMutationFeed(bucket base.Bucket, dbStats *e
 				if listener.FeedArgs.DoneChan != nil {
 					close(listener.FeedArgs.DoneChan)
 				}
-				base.FatalPanicHandler()
-				listener.notifyStopping()
 			}()
+			defer base.FatalPanicHandler()
+			defer listener.notifyStopping()
 			for event := range listener.tapFeed.Events() {
 				event.TimeReceived = time.Now()
 				listener.ProcessFeedEvent(event)
