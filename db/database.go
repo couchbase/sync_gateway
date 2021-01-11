@@ -840,7 +840,7 @@ type principalsViewRow struct {
 // Returns the IDs of all users and roles
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
 
-	offset := 0
+	startKey := ""
 	limit := 2
 
 	users = []string{}
@@ -848,7 +848,7 @@ func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) 
 
 outerLoop:
 	for {
-		results, err := db.QueryPrincipals(limit, offset)
+		results, err := db.QueryPrincipals(startKey, limit)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -868,6 +868,7 @@ outerLoop:
 				}
 				isUser = viewRow.Value
 				principalName = viewRow.Key
+				startKey = principalName
 				resultCount++
 			} else {
 				var queryRow QueryIdRow
@@ -880,7 +881,14 @@ outerLoop:
 				}
 				isUser = queryRow.Id[0:lenUserKeyPrefix] == base.UserPrefix
 				principalName = queryRow.Id[lenUserKeyPrefix:]
+				startKey = queryRow.Id
 				resultCount++
+			}
+
+			// Skip first result if using startKey as startKey results in an overlapping result
+			// This was cheaper than a contains check
+			if resultCount == 1 && startKey != "" {
+				continue
 			}
 
 			if principalName != "" {
@@ -891,12 +899,11 @@ outerLoop:
 				}
 			}
 		}
+
 		closeErr := results.Close()
 		if closeErr != nil {
 			return nil, nil, closeErr
 		}
-
-		offset += limit
 
 		// TODO: Sort out this break
 		if resultCount < limit {

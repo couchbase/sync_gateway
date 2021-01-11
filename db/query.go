@@ -414,7 +414,7 @@ func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) 
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index
-func (context *DatabaseContext) QueryPrincipals(limit, offset int) (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryPrincipals(startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
@@ -424,8 +424,8 @@ func (context *DatabaseContext) QueryPrincipals(limit, offset int) (sgbucket.Que
 			opts[QueryParamLimit] = limit
 		}
 
-		if offset > 0 {
-			opts[QueryParamSkip] = offset
+		if startKey != "" {
+			opts[QueryParamStartKey] = startKey
 		}
 
 		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewPrincipals, opts)
@@ -437,8 +437,11 @@ func (context *DatabaseContext) QueryPrincipals(limit, offset int) (sgbucket.Que
 		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
 	}
 
-	if offset > 0 {
-		queryStatement = fmt.Sprintf("%s OFFSET %d", queryStatement, offset)
+	params := make(map[string]interface{}, 0)
+	if startKey != "" {
+		queryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startkey",
+			queryStatement, context.Bucket.GetName())
+		params[QueryParamStartKey] = startKey
 	}
 
 	// N1QL Query
