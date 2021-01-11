@@ -252,6 +252,18 @@ func (auth *Authenticator) Save(p Principal) error {
 	return nil
 }
 
+// Used for resync
+func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
+	p.SetSequence(seq)
+	casOut, writeErr := auth.bucket.WriteCas(p.DocID(), 0, 0, p.Cas(), p, 0)
+	if writeErr != nil {
+		return writeErr
+	}
+	p.SetCas(casOut)
+
+	return nil
+}
+
 // Invalidates the channel list of a user/role by saving its Channels() property as nil.
 func (auth *Authenticator) InvalidateChannels(p Principal) error {
 	invalidateChannelsCallback := func(p Principal) (updatedPrincipal Principal, err error) {

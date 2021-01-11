@@ -220,7 +220,6 @@ const (
 	QueryParamStartKey    = "startkey"
 	QueryParamEndKey      = "endkey"
 	QueryParamLimit       = "limit"
-	QueryParamSkip        = "skip"
 
 	// Variables in the select clause can't be parameterized, require additional handling
 	QuerySelectUserName = "$$selectUserName"

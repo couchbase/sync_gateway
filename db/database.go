@@ -68,7 +68,10 @@ var (
 )
 
 var DefaultCompactInterval = uint32(60 * 60 * 24) // Default compact interval in seconds = 1 Day
-var DefaultResyncQueryLimit = 5000
+var (
+	DefaultResyncQueryLimit    = 5000
+	DefaultPrincipalQueryLimit = 5000
+)
 
 const (
 	CompactIntervalMinDays = float32(0.04) // ~1 Hour in days
@@ -140,6 +143,7 @@ type DatabaseContextOptions struct {
 	SGReplicateOptions        SGReplicateOptions
 	SlowQueryWarningThreshold time.Duration
 	ResyncQueryLimit          int // Limit used for pagination of resync queries. If not set defaults to DefaultResyncQueryLimit
+	PrincipalQueryLimit       int // Limit used for pagination of principal doc queries. If not set defaults to DefaultPrincipalQueryLimit
 }
 
 type SGReplicateOptions struct {
@@ -841,7 +845,7 @@ type principalsViewRow struct {
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
 
 	startKey := ""
-	limit := 2
+	limit := db.Options.PrincipalQueryLimit
 
 	users = []string{}
 	roles = []string{}
@@ -902,7 +906,6 @@ outerLoop:
 			return nil, nil, closeErr
 		}
 
-		// TODO: Sort out this break
 		if resultCount < limit {
 			break outerLoop
 		}
@@ -1267,29 +1270,13 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 		}
 
 		authr := db.Authenticator()
-		regeneratePrincipalSequences := func(princ auth.Principal, isUser bool) error {
+		regeneratePrincipalSequences := func(princ auth.Principal) error {
 			nextSeq, err := db.DatabaseContext.sequences.nextSequence()
 			if err != nil {
 				return err
 			}
-			princ.SetSequence(nextSeq)
 
-			princChannels := princ.Channels()
-			for name := range princChannels {
-				princChannels[name] = channels.NewVbSimpleSequence(nextSeq)
-			}
-			princ.SetExplicitChannels(princChannels)
-
-			if isUser {
-				user := princ.(auth.User)
-				princRoles := user.ExplicitRoles()
-				for name := range princRoles {
-					princRoles[name] = channels.NewVbSimpleSequence(nextSeq)
-				}
-				user.SetExplicitRoles(princRoles)
-			}
-
-			err = authr.Save(princ)
+			err = authr.UpdateSequenceNumber(princ, nextSeq)
 			if err != nil {
 				return err
 			}
@@ -1298,24 +1285,22 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 		}
 
 		for _, role := range roles {
-			authr := db.Authenticator()
 			role, err := authr.GetRole(role)
 			if err != nil {
 				return docsChanged, err
 			}
-			err = regeneratePrincipalSequences(role, false)
+			err = regeneratePrincipalSequences(role)
 			if err != nil {
 				return docsChanged, err
 			}
 		}
 
 		for _, user := range users {
-			authr := db.Authenticator()
 			user, err := authr.GetUser(user)
 			if err != nil {
 				return docsChanged, err
 			}
-			err = regeneratePrincipalSequences(user, true)
+			err = regeneratePrincipalSequences(user)
 			if err != nil {
 				return docsChanged, err
 			}

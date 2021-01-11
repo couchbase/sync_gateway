@@ -198,6 +198,7 @@ type DbConfig struct {
 	Replications                     map[string]*db.ReplicationConfig `json:"replications,omitempty"`                         // sg-replicate replication definitions
 	ServeInsecureAttachmentTypes     bool                             `json:"serve_insecure_attachment_types,omitempty"`      // Attachment content type will bypass the content-disposition handling, default false
 	ResyncQueryLimit                 *int                             `json:"resync_query_limit,omitempty"`
+	PrincipalQueryLimit              *int                             `json:"principal_query_limit,omitempty"`
 }
 
 type DeltaSyncConfig struct {

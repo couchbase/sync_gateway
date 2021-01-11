@@ -1501,9 +1501,15 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	syncFn := `
 	function(doc) {
 		channel("x")
+		console.log("====================")
+		console.log(JSON. stringify(doc))
+		if (doc.userdoc){
+			console.log("test")
+			channel("channel_1")
+		}
 	}`
 
-	// defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	rt := NewRestTester(t,
 		&RestTesterConfig{
@@ -1549,6 +1555,39 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 	user1SeqBefore := body["sequence"].(float64)
 
+	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	type ChangesResp struct {
+		Results []struct {
+			ID  string `json:"id"`
+			Seq int    `json:"seq"`
+		} `json:"results"`
+		LastSeq string `json:"last_seq"`
+	}
+
+	changesRespContains := func(changesResp ChangesResp, docid string) bool {
+		for _, resp := range changesResp.Results {
+			if resp.ID == docid {
+				return true
+			}
+		}
+		return false
+	}
+
+	var changesResp ChangesResp
+	request, _ := http.NewRequest("GET", "/db/_changes", nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+
 	response = rt.SendAdminRequest("GET", "/db/_resync", "")
 	assertStatus(t, response, http.StatusOK)
 
@@ -1591,6 +1630,29 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		return state == db.DBOnline
 	})
 	assert.NoError(t, err)
+
+	request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, http.StatusOK)
+
+	fmt.Println(string(response.BodyBytes()))
+
+	request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, http.StatusOK)
+	fmt.Println(string(response.BodyBytes()))
+
+	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+
 }
 
 // Single threaded bring DB online

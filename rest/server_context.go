@@ -688,6 +688,17 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	resyncQueryLimit := db.DefaultResyncQueryLimit
 	if config.ResyncQueryLimit != nil {
 		resyncQueryLimit = *config.ResyncQueryLimit
+		if *config.ResyncQueryLimit < 1 {
+			return db.DatabaseContextOptions{}, fmt.Errorf("resync_query_limit: %d must be greater than 0", *config.ResyncQueryLimit)
+		}
+	}
+
+	principalQueryLimit := db.DefaultPrincipalQueryLimit
+	if config.PrincipalQueryLimit != nil {
+		if *config.PrincipalQueryLimit < 2 {
+			return db.DatabaseContextOptions{}, fmt.Errorf("principal_query_limit: %d must be greater than 1", *config.PrincipalQueryLimit)
+		}
+		principalQueryLimit = *config.PrincipalQueryLimit
 	}
 
 	secureCookieOverride := sc.config.SSLCert != nil
@@ -729,6 +740,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		DeltaSyncOptions:          deltaSyncOptions,
 		CompactInterval:           compactIntervalSecs,
 		ResyncQueryLimit:          resyncQueryLimit,
+		PrincipalQueryLimit:       principalQueryLimit,
 		SGReplicateOptions: db.SGReplicateOptions{
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
