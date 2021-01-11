@@ -10,7 +10,6 @@ import (
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
@@ -46,7 +45,7 @@ func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error
 	params[QueryParamEndSeq] = math.MaxInt64
 
 	// Execute the query
-	results, err := bucket.Query(starChannelQueryStatement, params, gocb.RequestPlus, true)
+	results, err := bucket.Query(starChannelQueryStatement, params, base.RequestPlus, true)
 
 	// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 	// the index processes the bucket flush operation
@@ -63,15 +62,6 @@ func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error
 	}
 
 	return !found, nil
-}
-
-// Count how many rows are in gocb.QueryResults
-func ResultsEmpty(results gocb.QueryResults) (resultsEmpty bool) {
-
-	var queryRow AllDocsIndexQueryRow
-	found := results.Next(&queryRow)
-	return !found
-
 }
 
 func (db *DatabaseContext) CacheCompactActive() bool {

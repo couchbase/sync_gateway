@@ -124,7 +124,9 @@ func (c *Collection) View(ddoc, name string, params map[string]interface{}) (sgb
 	}
 
 	if gocbViewResult != nil {
-		viewResultIterator := NewGoCBQueryIterator(gocbViewResult)
+		viewResultIterator := &gocbRawIterator{
+			rawResult: gocbViewResult,
+		}
 		for {
 			viewRow := sgbucket.ViewRow{}
 			if gotRow := viewResultIterator.Next(&viewRow); gotRow == false {
@@ -172,11 +174,11 @@ func unmarshalViewMetadata(viewResult *gocb.ViewResultRaw) (viewMetadata, error)
 
 func (c *Collection) ViewQuery(ddoc, name string, params map[string]interface{}) (sgbucket.QueryResultIterator, error) {
 
-	goCbViewResult, err := c.executeViewQuery(ddoc, name, params)
+	gocbViewResult, err := c.executeViewQuery(ddoc, name, params)
 	if err != nil {
 		return nil, err
 	}
-	return NewGoCBQueryIterator(goCbViewResult), nil
+	return &gocbRawIterator{rawResult: gocbViewResult}, nil
 }
 
 func (c *Collection) executeViewQuery(ddoc, name string, params map[string]interface{}) (*gocb.ViewResultRaw, error) {
@@ -202,19 +204,34 @@ func (c *Collection) executeViewQuery(ddoc, name string, params map[string]inter
 	return goCbViewResult.Raw(), nil
 }
 
-// GoCBQueryIterator wraps a gocb v2 ViewResultRaw to implement sgbucket.QueryResultIterator
-type GoCBQueryIterator struct {
-	viewResult *gocb.ViewResultRaw
+type gocbResultRaw interface {
+
+	// NextBytes returns the next row as bytes.
+	NextBytes() []byte
+
+	// Err returns any errors that have occurred on the stream
+	Err() error
+
+	// Close marks the results as closed, returning any errors that occurred during reading the results.
+	Close() error
+
+	// MetaData returns any meta-data that was available from this query as bytes.
+	MetaData() ([]byte, error)
 }
 
-func NewGoCBQueryIterator(viewResult *gocb.ViewResultRaw) *GoCBQueryIterator {
-	return &GoCBQueryIterator{
-		viewResult: viewResult,
+// GoCBQueryIterator wraps a gocb v2 ViewResultRaw to implement sgbucket.QueryResultIterator
+type gocbRawIterator struct {
+	rawResult gocbResultRaw
+}
+
+func NewGoCBQueryIterator(viewResult *gocb.ViewResultRaw) *gocbRawIterator {
+	return &gocbRawIterator{
+		rawResult: viewResult,
 	}
 }
 
 // Unmarshal a single result row into valuePtr, and then close the iterator
-func (i *GoCBQueryIterator) One(valuePtr interface{}) error {
+func (i *gocbRawIterator) One(valuePtr interface{}) error {
 	if !i.Next(valuePtr) {
 		err := i.Close()
 		if err != nil {
@@ -230,9 +247,9 @@ func (i *GoCBQueryIterator) One(valuePtr interface{}) error {
 }
 
 // Unmarshal the next result row into valuePtr.  Returns false when reaching end of result set
-func (i *GoCBQueryIterator) Next(valuePtr interface{}) bool {
+func (i *gocbRawIterator) Next(valuePtr interface{}) bool {
 
-	nextBytes := i.viewResult.NextBytes()
+	nextBytes := i.rawResult.NextBytes()
 	if nextBytes == nil {
 		return false
 	}
@@ -246,13 +263,20 @@ func (i *GoCBQueryIterator) Next(valuePtr interface{}) bool {
 }
 
 // Retrieve raw bytes for the next result row
-func (i *GoCBQueryIterator) NextBytes() []byte {
-	return i.viewResult.NextBytes()
+func (i *gocbRawIterator) NextBytes() []byte {
+	return i.rawResult.NextBytes()
 }
 
 // Closes the iterator.  Returns any row-level errors seen during iteration.
-func (i *GoCBQueryIterator) Close() error {
-	return i.viewResult.Close()
+func (i *gocbRawIterator) Close() error {
+
+	// check for errors before closing?
+	closeErr := i.rawResult.Close()
+	if closeErr != nil {
+		return closeErr
+	}
+	resultErr := i.rawResult.Err()
+	return resultErr
 }
 
 // waitForAvailableViewOp prevents Sync Gateway from having too many concurrent

@@ -10,7 +10,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -27,9 +26,9 @@ const (
 // When running with xattrs, that gets replaced with META().xattrs._sync (or META(bucketname).xattrs._sync for query).
 // When running w/out xattrs, it's just replaced by the doc path `bucketname`._sync
 // This gets replaced before the statement is sent to N1QL by the replaceSyncTokens methods.
-var syncNoXattr = fmt.Sprintf("`%s`.%s", base.BucketQueryToken, base.SyncPropertyName)
+var syncNoXattr = fmt.Sprintf("`%s`.%s", base.KeyspaceQueryToken, base.SyncPropertyName)
 var syncXattr = "meta().xattrs." + base.SyncXattrName
-var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs.%s", base.BucketQueryToken, base.SyncXattrName) // Replacement for $sync token for xattr queries
+var syncXattrQuery = fmt.Sprintf("meta(`%s`).xattrs.%s", base.KeyspaceQueryToken, base.SyncXattrName) // Replacement for $sync token for xattr queries
 
 type SGIndexType int
 
@@ -147,7 +146,7 @@ func init() {
 		readinessQuery, ok := readinessQueries[i]
 		if ok {
 			sgIndex.required = true
-			sgIndex.readinessQuery = fmt.Sprintf(readinessQuery, base.BucketQueryToken)
+			sgIndex.readinessQuery = fmt.Sprintf(readinessQuery, base.KeyspaceQueryToken)
 		}
 
 		sgIndexes[i] = sgIndex
@@ -368,7 +367,7 @@ func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryState
 	retrySleeper := base.CreateMaxDoublingSleeperFunc(180, 100, 5000)
 	retryCount := 0
 	for {
-		_, err := bucket.Query(queryStatement, nil, gocb.RequestPlus, true)
+		_, err := bucket.Query(queryStatement, nil, base.RequestPlus, true)
 		if err == nil {
 			return nil
 		}
