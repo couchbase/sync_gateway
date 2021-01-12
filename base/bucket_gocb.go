@@ -51,6 +51,9 @@ const (
 
 	// CRC-32 checksum represents the body hash of "Deleted" document.
 	DeleteCrc32c = "0x00"
+
+	// Can be removed and usages swapped out once this is present in gocb
+	SubdocDocFlagCreateAsDeleted = gocb.SubdocDocFlag(gocbcore.SubdocDocFlag(0x08))
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
@@ -1193,6 +1196,8 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
 	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
 
+	var makeDocCalled bool
+
 	supportsTombstoneCreation := bucket.IsSupported(sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted)
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
@@ -1203,9 +1208,10 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		} else {
 			if cas == 0 {
 				// If the doc doesn't exist, set SubdocDocFlagMkDoc to allow us to write the xattr
-				if supportsTombstoneCreation {
-					mutateFlag = gocb.SubdocDocFlag(gocbcore.SubdocDocFlag(0x08)) | gocb.SubdocDocFlagAccessDeleted | gocb.SubdocDocFlagReplaceDoc
+				if supportsTombstoneCreation && isDelete {
+					mutateFlag = SubdocDocFlagCreateAsDeleted | gocb.SubdocDocFlagAccessDeleted | gocb.SubdocDocFlagReplaceDoc
 				} else {
+					makeDocCalled = true
 					mutateFlag = gocb.SubdocDocFlagMkDoc
 				}
 			} else {
@@ -1215,7 +1221,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		}
 
 		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
-			UpsertEx(xattrKey, xv, gocb.SubdocFlagCreatePath|gocb.SubdocFlagXattr).                      // Update the xattr
+			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
 
 		if bucket.IsSupported(sgbucket.DataStoreFeatureCrc32cMacroExpansion) {
@@ -1246,7 +1252,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		return cas, err
 	}
 
-	if isDelete && !supportsTombstoneCreation {
+	if isDelete && !supportsTombstoneCreation && makeDocCalled {
 		worker := func() (shouldRetry bool, err error, value uint64) {
 			builder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), exp).
 				UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr).
