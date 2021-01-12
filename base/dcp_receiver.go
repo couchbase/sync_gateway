@@ -327,9 +327,6 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 			if err := bds.Close(); err != nil {
 				Debugf(KeyDCP, "Error closing DCP Feed [%s-%s] based on termination notification, Error: %v", MD(bucketName), feedID, err)
 			}
-			if args.DoneChan != nil {
-				close(args.DoneChan)
-			}
 		}()
 	}
 
