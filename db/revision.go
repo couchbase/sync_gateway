@@ -254,7 +254,7 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 
 	// Without delta sync, store the old rev for in-flight replication purposes
 	if !db.DeltaSyncEnabled() || db.Options.DeltaSyncOptions.RevMaxAgeSeconds == 0 {
-		if oldRevId != "" {
+		if len(oldBody) > 0 {
 			_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.OldRevExpirySeconds)
 		}
 		return
