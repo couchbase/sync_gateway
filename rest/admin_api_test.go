@@ -1631,27 +1631,29 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
-	assertStatus(t, response, http.StatusOK)
+	// Data is wiped from walrus when brought back online
+	if !base.UnitTestUrlIsWalrus() {
+		request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
+		request.SetBasicAuth("user1", "letmein")
+		response = rt.Send(request)
+		assertStatus(t, response, http.StatusOK)
 
-	fmt.Println(string(response.BodyBytes()))
+		fmt.Println(string(response.BodyBytes()))
 
-	request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
-	assertStatus(t, response, http.StatusOK)
-	fmt.Println(string(response.BodyBytes()))
+		request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
+		request.SetBasicAuth("user1", "letmein")
+		response = rt.Send(request)
+		assertStatus(t, response, http.StatusOK)
 
-	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
-	request.SetBasicAuth("user1", "letmein")
-	response = rt.Send(request)
-	assertStatus(t, response, http.StatusOK)
-	err = json.Unmarshal(response.BodyBytes(), &changesResp)
-	assert.Len(t, changesResp.Results, 3)
-	assert.True(t, changesRespContains(changesResp, "userdoc"))
-	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+		request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+		request.SetBasicAuth("user1", "letmein")
+		response = rt.Send(request)
+		assertStatus(t, response, http.StatusOK)
+		err = json.Unmarshal(response.BodyBytes(), &changesResp)
+		assert.Len(t, changesResp.Results, 3)
+		assert.True(t, changesRespContains(changesResp, "userdoc"))
+		assert.True(t, changesRespContains(changesResp, "userdoc2"))
+	}
 
 }
 
