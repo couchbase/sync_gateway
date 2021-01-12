@@ -89,7 +89,15 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 		existingBucketDoc.Body, err = existingDoc.MarshalJSON()
 		existingBucketDoc.Xattr = nil
 	} else {
-		existingBucketDoc.Body, existingBucketDoc.Xattr, err = existingDoc.MarshalWithXattr()
+		if existingDoc.Deleted {
+			existingBucketDoc.Xattr, err = base.JSONMarshal(existingDoc.SyncData)
+		} else {
+			existingBucketDoc.Body, existingBucketDoc.Xattr, err = existingDoc.MarshalWithXattr()
+		}
+
+		// if existingDoc.Deleted {
+		// 	existingBucketDoc.Body = nil
+		// }
 	}
 
 	if err != nil {
