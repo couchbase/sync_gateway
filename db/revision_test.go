@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseRevID(t *testing.T) {
@@ -83,6 +84,55 @@ func TestParseRevisionsToAncestor(t *testing.T) {
 
 	shortRevisions := Revisions{RevisionsStart: 3, RevisionsIds: []string{"three"}}
 	assert.Equal(t, []string(nil), shortRevisions.parseAncestorRevisions("2-two"))
+}
+
+// TestBackupOldRevision ensures that old revisions are kept around temporarily for in-flight requests and delta sync purposes.
+func TestBackupOldRevision(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	deltasEnabled := base.IsEnterpriseEdition()
+	xattrsEnabled := base.TestUseXattrs()
+
+	db := setupTestDBWithOptions(t, DatabaseContextOptions{DeltaSyncOptions: DeltaSyncOptions{
+		Enabled: deltasEnabled,
+	}})
+
+	docID := t.Name()
+
+	rev1ID, _, err := db.Put(docID, Body{"test": true})
+	require.NoError(t, err)
+
+	// make sure we didn't accidentally store an empty old revision
+	_, err = db.getOldRevisionJSON(docID, "")
+	assert.Error(t, err)
+	assert.Equal(t, "404 missing", err.Error())
+
+	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
+	_, err = db.getOldRevisionJSON(docID, rev1ID)
+	if deltasEnabled && xattrsEnabled {
+		require.NoError(t, err)
+	} else {
+		require.Error(t, err)
+		assert.Equal(t, "404 missing", err.Error())
+	}
+
+	// create rev 2 and check backups for both revs
+	rev2ID := "2-abc"
+	_, _, err = db.PutExistingRevWithBody(docID, Body{"test": true, "updated": true}, []string{rev2ID, rev1ID}, true)
+	require.NoError(t, err)
+
+	// now in all cases we'll have rev 1 backed up (for at least 5 minutes)
+	_, err = db.getOldRevisionJSON(docID, rev1ID)
+	require.NoError(t, err)
+
+	// check for current rev backup in xattr+delta case (to support deltas by sdk imports)
+	_, err = db.getOldRevisionJSON(docID, rev2ID)
+	if deltasEnabled && xattrsEnabled {
+		require.NoError(t, err)
+	} else {
+		require.Error(t, err)
+		assert.Equal(t, "404 missing", err.Error())
+	}
 }
 
 func BenchmarkSpecialProperties(b *testing.B) {
