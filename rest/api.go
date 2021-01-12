@@ -175,6 +175,8 @@ func (h *handler) handlePostResync() error {
 
 	if action == db.ResyncActionStart {
 		if atomic.CompareAndSwapUint32(&h.db.State, db.DBOffline, db.DBResyncing) {
+			h.db.ResyncManager.SetRunStatus(db.ResyncStateRunning)
+			h.writeJSON(h.db.ResyncManager.GetStatus())
 			go func() {
 				defer atomic.CompareAndSwapUint32(&h.db.State, db.DBResyncing, db.DBOffline)
 				defer h.db.ResyncManager.SetRunStatus(db.ResyncStateStopped)
@@ -184,9 +186,6 @@ func (h *handler) handlePostResync() error {
 					h.db.ResyncManager.SetError(err)
 				}
 			}()
-
-			h.db.ResyncManager.SetRunStatus(db.ResyncStateRunning)
-			h.writeJSON(h.db.ResyncManager.GetStatus())
 		} else {
 			dbState := atomic.LoadUint32(&h.db.State)
 			if dbState == db.DBResyncing {
