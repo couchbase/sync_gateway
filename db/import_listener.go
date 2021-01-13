@@ -125,6 +125,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		// last attempt to exit processing if the importListener has been closed before attempting to write to the bucket
 		select {
 		case <-il.terminator:
+			base.Infof(base.KeyImport, "Aborting import for doc %q - importListener.terminator was closed", base.UD(docID))
 			return
 		default:
 		}
