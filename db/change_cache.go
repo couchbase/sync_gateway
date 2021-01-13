@@ -401,6 +401,7 @@ func (c *changeCache) DocChanged(event sgbucket.FeedEvent) {
 		if c.cfgEventCallback != nil {
 			c.cfgEventCallback(docID, event.Cas, nil)
 		}
+		return
 	}
 
 	// If this is a delete and there are no xattrs (no existing SG revision), we can ignore
