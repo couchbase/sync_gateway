@@ -111,14 +111,17 @@ var (
 	readinessQueries = map[SGIndexType]string{
 		IndexAccess: "SELECT $sync.access.foo as val " +
 			"FROM `%s` " +
+			"USE INDEX ($idx) " +
 			"WHERE ANY op in OBJECT_PAIRS($sync.access) SATISFIES op.name = 'foo' end " +
 			"LIMIT 1",
 		IndexRoleAccess: "SELECT $sync.role_access.foo as val " +
 			"FROM `%s` " +
+			"USE INDEX ($idx) " +
 			"WHERE ANY op in OBJECT_PAIRS($sync.role_access) SATISFIES op.name = 'foo' end " +
 			"LIMIT 1",
 		IndexChannels: "SELECT  [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)][1] AS sequence " +
 			"FROM `%s` " +
+			"USE INDEX ($idx) " +
 			"UNNEST OBJECT_PAIRS($sync.channels) AS op " +
 			"WHERE [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null), IFMISSING(op.val.del,null)]  BETWEEN  ['foo', 0] AND ['foo', 1] " +
 			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)] " +
@@ -335,6 +338,7 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 					queryStatement = replaceActiveOnlyFilter(queryStatement, false)
 				}
 				queryStatement = replaceSyncTokensQuery(queryStatement, useXattrs)
+				queryStatement = replaceIndexTokensQuery(queryStatement, index, useXattrs)
 				queryErr := waitForIndex(bucket, index.fullIndexName(useXattrs), queryStatement)
 				if queryErr != nil {
 					base.Warnf("Query error for statement [%s], err:%v", queryStatement, queryErr)
