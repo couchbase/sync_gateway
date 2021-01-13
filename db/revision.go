@@ -285,7 +285,9 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 	}
 
 	// Non-xattr only need to store the previous revision, as all writes come through SG
-	_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
+	if len(oldBody) > 0 {
+		_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
+	}
 }
 
 func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte, expiry uint32) error {
