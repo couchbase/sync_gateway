@@ -121,6 +121,14 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 			rawBody = nil
 		}
 		docID := string(event.Key)
+
+		// last attempt to exit processing if the importListener has been closed before attempting to write to the bucket
+		select {
+		case <-il.terminator:
+			return
+		default:
+		}
+
 		_, err := il.database.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
 		if err != nil {
 			if err == base.ErrImportCasFailure {
