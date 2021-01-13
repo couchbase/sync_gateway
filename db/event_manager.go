@@ -44,13 +44,10 @@ const kEventWaitTime = 100   // time (ms) to wait before dropping event, when ev
 // Creates a new event manager.  Sets up the event channel for async events, and the goroutine to
 // monitor and process that channel.
 func NewEventManager() *EventManager {
-
-	em := &EventManager{
-		eventHandlers: make(map[EventType][]EventHandler, 0),
+	return &EventManager{
+		eventHandlers:    make(map[EventType][]EventHandler, 0),
+		activeEventTypes: make(map[EventType]bool),
 	}
-	// Create channel for queued asynchronous events.
-	em.activeEventTypes = make(map[EventType]bool)
-	return em
 }
 
 // Starts the listener queue for the event manager
@@ -145,16 +142,17 @@ func (em *EventManager) raiseEvent(event Event) error {
 
 // Raises a document change event based on the the document body and channel set.  If the
 // event manager doesn't have a listener for this event, ignores.
-func (em *EventManager) RaiseDocumentChangeEvent(docBytes []byte, docID string, oldBodyJSON string, channels base.Set) error {
+func (em *EventManager) RaiseDocumentChangeEvent(docBytes []byte, docID string, oldBodyJSON string, channels base.Set, winningRevChange bool) error {
 
 	if !em.activeEventTypes[DocumentChange] {
 		return nil
 	}
 	event := &DocumentChangeEvent{
-		DocID:    docID,
-		DocBytes: docBytes,
-		OldDoc:   oldBodyJSON,
-		Channels: channels,
+		DocID:            docID,
+		DocBytes:         docBytes,
+		OldDoc:           oldBodyJSON,
+		Channels:         channels,
+		WinningRevChange: winningRevChange,
 	}
 
 	return em.raiseEvent(event)
@@ -163,15 +161,20 @@ func (em *EventManager) RaiseDocumentChangeEvent(docBytes []byte, docID string, 
 
 // Raises a DB state change event based on the db name, admininterface, new state, reason and local system time.
 // If the event manager doesn't have a listener for this event, ignores.
-func (em *EventManager) RaiseDBStateChangeEvent(dbName string, state string, reason string, adminInterface string) error {
+func (em *EventManager) RaiseDBStateChangeEvent(dbName string, state string, reason string, adminInterface *string) error {
 
 	if !em.activeEventTypes[DBStateChange] {
 		return nil
 	}
 
+	adminInterfaceStr := ""
+	if adminInterface != nil {
+		adminInterfaceStr = *adminInterface
+	}
+
 	body := make(Body, 5)
 	body["dbname"] = dbName
-	body["admininterface"] = adminInterface
+	body["admininterface"] = adminInterfaceStr
 	body["state"] = state
 	body["reason"] = reason
 	body["localtime"] = time.Now().Format(base.ISO8601Format)

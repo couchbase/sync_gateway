@@ -27,13 +27,20 @@ type Webhook struct {
 	filter  *JSEventFunction
 	timeout time.Duration
 	client  *http.Client
+	options struct {
+		DocumentChangedWinningRevOnly bool
+	}
 }
 
-// default HTTP post timeout
-const kDefaultWebhookTimeout = 60
+const (
+	// default HTTP post timeout
+	kDefaultWebhookTimeout = 60
+	// EventOptionDocumentChangedWinningRevOnly controls whether a document_changed event is processed for winning revs only.
+	EventOptionDocumentChangedWinningRevOnly = "winning_rev_only"
+)
 
 // Creates a new webhook handler based on the url and filter function.
-func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, error) {
+func NewWebhook(url string, filterFnString string, timeout *uint64, options map[string]interface{}) (*Webhook, error) {
 
 	var err error
 
@@ -60,6 +67,10 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 	transport.DisableKeepAlives = false
 	wh.client = &http.Client{Transport: transport, Timeout: wh.timeout}
 
+	if options != nil {
+		wh.options.DocumentChangedWinningRevOnly, _ = options[EventOptionDocumentChangedWinningRevOnly].(bool)
+	}
+
 	return wh, err
 }
 
@@ -68,26 +79,17 @@ func NewWebhook(url string, filterFnString string, timeout *uint64) (*Webhook, e
 // on the event type.
 func (wh *Webhook) HandleEvent(event Event) bool {
 
-	var payload *bytes.Buffer
-	var contentType string
-	if wh.filter != nil {
-		// If filter function is defined, use it to determine whether to post
-		success, err := wh.filter.CallValidateFunction(event)
-		if err != nil {
-			base.Warnf("Error calling webhook filter function: %v", err)
-		}
-
-		// If filter returns false, cancel webhook post
-		if !success {
-			return false
-		}
-	}
+	const contentType = "application/json"
+	var payload []byte
 
 	// Different events post different content by default
 	switch event := event.(type) {
 	case *DocumentChangeEvent:
-		contentType = "application/json"
-		payload = bytes.NewBuffer(event.DocBytes)
+		// skip event if this is for a non-winning rev and the winning rev only option is enabled
+		if !event.WinningRevChange && wh.options.DocumentChangedWinningRevOnly {
+			return false
+		}
+		payload = event.DocBytes
 	case *DBStateChangeEvent:
 		// for DBStateChangeEvent, post JSON document with the following format
 		//{
@@ -102,14 +104,27 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 			base.Warnf("Error marshalling doc for webhook post")
 			return false
 		}
-		contentType = "application/json"
-		payload = bytes.NewBuffer(jsonOut)
+		payload = jsonOut
 	default:
 		base.Warnf("Webhook invoked for unsupported event type.")
 		return false
 	}
+
+	if wh.filter != nil {
+		// If filter function is defined, use it to determine whether to post
+		success, err := wh.filter.CallValidateFunction(event)
+		if err != nil {
+			base.Warnf("Error calling webhook filter function: %v", err)
+		}
+
+		// If filter returns false, cancel webhook post
+		if !success {
+			return false
+		}
+	}
+
 	success := func() bool {
-		resp, err := wh.client.Post(wh.url, contentType, payload)
+		resp, err := wh.client.Post(wh.url, contentType, bytes.NewBuffer(payload))
 		defer func() {
 			// Ensure we're closing the response, so it can be reused
 			if resp != nil && resp.Body != nil {
@@ -132,7 +147,7 @@ func (wh *Webhook) HandleEvent(event Event) bool {
 		// Check Log Level first, as SanitizedUrl is expensive to evaluate.
 		if base.LogDebugEnabled(base.KeyEvents) {
 			base.Debugf(base.KeyEvents, "Webhook handler ran for event.  Payload %s posted to URL %s, got status %s",
-				base.UD(payload), base.UD(wh.SanitizedUrl()), resp.Status)
+				base.UD(string(payload)), base.UD(wh.SanitizedUrl()), resp.Status)
 		}
 		return true
 	}()

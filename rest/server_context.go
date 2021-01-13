@@ -27,7 +27,6 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	sgreplicate "github.com/couchbaselabs/sg-replicate"
-	pkgerrors "github.com/pkg/errors"
 )
 
 // The URL that stats will be reported to if deployment_id is set in the config
@@ -161,9 +160,7 @@ func (sc *ServerContext) Close() {
 
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
-		if ctx.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", *sc.config.AdminInterface)
-		}
+		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", sc.config.AdminInterface)
 	}
 
 	sc.databases_ = nil
@@ -570,14 +567,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 
 	if config.StartOffline {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", *sc.config.AdminInterface)
-		}
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", sc.config.AdminInterface)
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		if dbcontext.EventMgr.HasHandlerForEvent(db.DBStateChange) {
-			_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", *sc.config.AdminInterface)
-		}
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", sc.config.AdminInterface)
 	}
 
 	return dbcontext, nil
@@ -764,60 +757,74 @@ func (sc *ServerContext) TakeDbOnline(database *db.DatabaseContext) {
 
 }
 
-// Initialize event handlers, if present
-func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) error {
-	if config.EventHandlers != nil {
-
-		// Temporary solution to do validation of invalid event types in config.EventHandlers.
-		// config.EventHandlers is originally unmarshalled as interface{} so that we retain any
-		// invalid keys during the original config unmarshalling.  We validate the expected entries
-		// manually and throw an error for any invalid keys.  Then remarshal and
-		// unmarshal as EventHandlerConfig (considered manual reflection, but was too painful).  Comes with
-		// some overhead, but will only happen on startup/new config.
-		// Should be replaced when we implement full schema validation on config.
-
-		eventHandlers := &EventHandlerConfig{}
-		eventHandlersMap, ok := config.EventHandlers.(map[string]interface{})
-		if !ok {
-			return errors.New(fmt.Sprintf("Unable to parse event_handlers definition in config for db %s", dbcontext.Name))
-		}
-
-		// validate event-related keys
-		for k := range eventHandlersMap {
-			if k != "max_processes" && k != "wait_for_process" && k != "document_changed" && k != "db_state_changed" {
-				return errors.New(fmt.Sprintf("Unsupported event property '%s' defined for db %s", k, dbcontext.Name))
-			}
-		}
-
-		eventHandlersJSON, err := base.JSONMarshal(eventHandlersMap)
-		if err != nil {
-			return pkgerrors.Wrapf(err, "Error calling base.JSONMarshal() in initEventHandlers")
-		}
-		if err := base.JSONUnmarshal(eventHandlersJSON, eventHandlers); err != nil {
-			return pkgerrors.Wrapf(err, "Error calling base.JSONUnmarshal() in initEventHandlers")
-		}
-
-		// Process document commit event handlers
-		if err = sc.processEventHandlersForEvent(eventHandlers.DocumentChanged, db.DocumentChange, dbcontext); err != nil {
-			return err
-		}
-
-		// Process db state change event handlers
-		if err = sc.processEventHandlersForEvent(eventHandlers.DBStateChanged, db.DBStateChange, dbcontext); err != nil {
-			return err
-		}
-		// WaitForProcess uses string, to support both omitempty and zero values
-		customWaitTime := int64(-1)
-		if eventHandlers.WaitForProcess != "" {
-			customWaitTime, err = strconv.ParseInt(eventHandlers.WaitForProcess, 10, 0)
-			if err != nil {
-				customWaitTime = -1
-				base.Warnf("Error parsing wait_for_process from config, using default %s", err)
-			}
-		}
-		dbcontext.EventMgr.Start(eventHandlers.MaxEventProc, int(customWaitTime))
-
+// validateEventConfigOptions returns errors for all invalid event type options.
+func validateEventConfigOptions(eventType db.EventType, eventConfig *EventConfig) error {
+	if eventConfig == nil || eventConfig.Options == nil {
+		return nil
 	}
+
+	var errs []error
+
+	switch eventType {
+	case db.DocumentChange:
+		for k, v := range eventConfig.Options {
+			switch k {
+			case db.EventOptionDocumentChangedWinningRevOnly:
+				if _, ok := v.(bool); !ok {
+					errs = append(errs, fmt.Errorf("Event option %q must be of type bool", db.EventOptionDocumentChangedWinningRevOnly))
+				}
+			default:
+				errs = append(errs, fmt.Errorf("unknown option %q found for event type %q", k, eventType))
+			}
+		}
+	default:
+		errs = append(errs, fmt.Errorf("unknown options %v found for event type %q", eventConfig.Options, eventType))
+	}
+
+	// If we only have 1 error, return it as-is for clarity in the logs.
+	if errs != nil && len(errs) > 0 {
+		return fmt.Errorf("Error(s) validating event config options: %v", errs)
+	}
+
+	return nil
+}
+
+// Initialize event handlers, if present
+func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config *DbConfig) (err error) {
+	if config.EventHandlers == nil {
+		return nil
+	}
+
+	// Load Webhook Filter Function.
+	eventHandlersByType := map[db.EventType][]*EventConfig{
+		db.DocumentChange: config.EventHandlers.DocumentChanged,
+		db.DBStateChange:  config.EventHandlers.DBStateChanged,
+	}
+
+	for eventType, handlers := range eventHandlersByType {
+		for _, conf := range handlers {
+			if err := validateEventConfigOptions(eventType, conf); err != nil {
+				return err
+			}
+		}
+
+		// Register event handlers
+		if err = sc.processEventHandlersForEvent(handlers, eventType, dbcontext); err != nil {
+			return err
+		}
+	}
+
+	// WaitForProcess uses string, to support both omitempty and zero values
+	customWaitTime := int64(-1)
+	if config.EventHandlers.WaitForProcess != "" {
+		customWaitTime, err = strconv.ParseInt(config.EventHandlers.WaitForProcess, 10, 0)
+		if err != nil {
+			customWaitTime = -1
+			base.Warnf("Error parsing wait_for_process from config, using default %s", err)
+		}
+	}
+	dbcontext.EventMgr.Start(config.EventHandlers.MaxEventProc, int(customWaitTime))
+
 	return nil
 }
 
@@ -832,7 +839,7 @@ func (sc *ServerContext) processEventHandlersForEvent(events []*EventConfig, eve
 	for _, event := range events {
 		switch event.HandlerType {
 		case "webhook":
-			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout)
+			wh, err := db.NewWebhook(event.Url, event.Filter, event.Timeout, event.Options)
 			if err != nil {
 				base.Warnf("Error creating webhook %v", err)
 				return err

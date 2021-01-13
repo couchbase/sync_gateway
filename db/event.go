@@ -10,14 +10,26 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-// Event type
+// EventType is an enum for each unique event type.
 type EventType uint8
 
 const (
-	DocumentChange EventType = iota
-	DBStateChange
-	UserAdd
+	DocumentChange EventType = iota // fires whenever a document is updated (even if the change did not cause the winning rev to change)
+	DBStateChange                   // fires when the database is created or is taken offline/online
+
+	eventTypeCount
 )
+
+var eventTypeNames = []string{"DocumentChange", "DBStateChange"}
+
+// String returns the string representation of an event type (e.g. "DBStateChange")
+func (et EventType) String() string {
+	if et >= eventTypeCount {
+		return fmt.Sprintf("EventType(%d)", et)
+
+	}
+	return eventTypeNames[et]
+}
 
 // An event that can be raised during SG processing.
 type Event interface {
@@ -40,10 +52,11 @@ func (ae AsyncEvent) Synchronous() bool {
 // data store.  Event has the document body and channel set as properties.
 type DocumentChangeEvent struct {
 	AsyncEvent
-	DocBytes []byte
-	DocID    string
-	OldDoc   string
-	Channels base.Set
+	DocBytes         []byte
+	DocID            string
+	OldDoc           string
+	Channels         base.Set
+	WinningRevChange bool // whether this event is a change to the winning revision
 }
 
 func (dce *DocumentChangeEvent) String() string {
@@ -150,6 +163,9 @@ func (ef *JSEventFunction) CallFunction(event Event) (interface{}, error) {
 		result, err = ef.Call(sgbucket.JSONString(event.DocBytes), sgbucket.JSONString(event.OldDoc))
 	case *DBStateChangeEvent:
 		result, err = ef.Call(event.Doc)
+	default:
+		base.Warnf("unknown event %v tried to call function", event.EventType())
+		return "", fmt.Errorf("unknown event %v tried to call function", event.EventType())
 	}
 
 	if err != nil {
@@ -178,7 +194,7 @@ func (ef *JSEventFunction) CallValidateFunction(event Event) (bool, error) {
 		}
 		return boolResult, nil
 	default:
-		base.Warnf("Event validate function returned non-boolean result %v", result)
+		base.Warnf("Event validate function returned non-boolean result %T %v", result, result)
 		return false, errors.New("Validate function returned non-boolean value.")
 	}
 

@@ -175,7 +175,7 @@ type DbConfig struct {
 	ImportPartitions                 *uint16                          `json:"import_partitions,omitempty"`                    // Number of partitions for import sharding.  Impacts the total DCP concurrency for import
 	ImportFilter                     *string                          `json:"import_filter,omitempty"`                        // Filter function (import)
 	ImportBackupOldRev               bool                             `json:"import_backup_old_rev"`                          // Whether import should attempt to create a temporary backup of the previous revision body, when available.
-	EventHandlers                    interface{}                      `json:"event_handlers,omitempty"`                       // Event handlers (webhook)
+	EventHandlers                    *EventHandlerConfig              `json:"event_handlers,omitempty"`                       // Event handlers (webhook)
 	FeedType                         string                           `json:"feed_type,omitempty"`                            // Feed type - "DCP" or "TAP"; defaults based on Couchbase server version
 	AllowEmptyPassword               bool                             `json:"allow_empty_password,omitempty"`                 // Allow empty passwords?  Defaults to false
 	CacheConfig                      *CacheConfig                     `json:"cache,omitempty"`                                // Cache settings
@@ -235,15 +235,16 @@ type CORSConfig struct {
 type EventHandlerConfig struct {
 	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
 	WaitForProcess  string         `json:"wait_for_process,omitempty"` // Max wait time when event queue is full (ms)
-	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document Commit
+	DocumentChanged []*EventConfig `json:"document_changed,omitempty"` // Document changed
 	DBStateChanged  []*EventConfig `json:"db_state_changed,omitempty"` // DB state change
 }
 
 type EventConfig struct {
-	HandlerType string  `json:"handler"`           // Handler type
-	Url         string  `json:"url,omitempty"`     // Url (webhook)
-	Filter      string  `json:"filter,omitempty"`  // Filter function (webhook)
-	Timeout     *uint64 `json:"timeout,omitempty"` // Timeout (webhook)
+	HandlerType string                 `json:"handler"`           // Handler type
+	Url         string                 `json:"url,omitempty"`     // Url (webhook)
+	Filter      string                 `json:"filter,omitempty"`  // Filter function (webhook)
+	Timeout     *uint64                `json:"timeout,omitempty"` // Timeout (webhook)
+	Options     map[string]interface{} `json:"options,omitempty"` // Options can be specified per-handler, and are specific to each type.
 }
 
 type CacheConfig struct {
