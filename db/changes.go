@@ -205,6 +205,7 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 			}
 
 			// TODO: pass db.Ctx down to changeCache?
+			base.TracefCtx(db.Ctx, base.KeyChanges, "Querying channel %q with options: %+v", base.UD(singleChannelCache.ChannelName()), paginationOptions)
 			changes, err := singleChannelCache.GetChanges(paginationOptions)
 			if err != nil {
 				base.WarnfCtx(db.Ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelName()), err)
@@ -572,7 +573,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					// Newly added channel so initiate backfill:
 					chanOpts.Since = SequenceID{Seq: 0, TriggeredBy: seqAddedAt}
 				} else if backfillInOtherChannel {
-					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy}
+					chanOpts.Since = SequenceID{Seq: options.Since.TriggeredBy - 1}
 				}
 
 				feed := db.changesFeed(singleChannelCache, chanOpts, to)

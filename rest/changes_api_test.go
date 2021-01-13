@@ -675,15 +675,21 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 
 	cacheWaiter.AddAndWait(4)
 
-	// Issue another changes request - ensure we don't backfill again
+	// Issue a changes request with a compound since value from the last changes response
+	// ensure we don't backfill from the start, but have everything from the compound sequence onwards
 	expectedResults = []string{
+		`{"seq":"28:6","id":"hbo-2","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":"28:15","id":"mix-1","removed":["HBO"],"changes":[{"rev":"2-0321dde33081a5ef566eecbe42ca3583"}]}`,
+		`{"seq":"28:16","id":"mix-2","removed":["PBS"],"changes":[{"rev":"2-5dcb551a0eb59eef3d98c64c29033d02"}]}`,
+		`{"seq":"28:22","id":"mix-5","changes":[{"rev":"3-8192afec7aa6986420be1d57f1677960"}]}`,
+		`{"seq":28,"id":"_user/bernard","changes":[]}`,
 		`{"seq":29,"id":"pbs-5","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
 		`{"seq":30,"id":"abc-4","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
 		`{"seq":31,"id":"hbo-3","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
 		`{"seq":32,"id":"mix-7","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
 	}
 	changes, err = rt.WaitForChanges(len(expectedResults),
-		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+		fmt.Sprintf("/db/_changes?since=28:5"), "bernard", false)
 	require.NoError(t, err, "Error retrieving changes results")
 
 	for index, result := range changes.Results {
@@ -695,6 +701,114 @@ func TestPostChangesAdminChannelGrantRemoval(t *testing.T) {
 		assert.Equal(t, expectedChange.Deleted, result.Deleted)
 		assert.Equal(t, expectedChange.Removed, result.Removed)
 	}
+}
+
+// TestChangesFromCompoundSinceViaDocGrant ensures that a changes feed with a compound since value returns the correct result after a dynamic channel grant.
+func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
+
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyChanges, base.KeyHTTP)()
+
+	// Disable sequence batching for multi-RT tests (pending CBG-1000)
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{SyncFn: `function(doc) {
+	channel(doc.channel);
+	if (doc.grants) {
+		access(doc.grants.users, doc.grants.channels);
+	}
+}`})
+	defer rt.Close()
+
+	// Create user with access to channel NBC:
+	a := rt.ServerContext().Database("db").Authenticator()
+	alice, err := a.NewUser("alice", "letmein", channels.SetOf(t, "NBC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(alice))
+
+	// Create user with access to channel ABC:
+	bernard, err := a.NewUser("bernard", "letmein", channels.SetOf(t, "ABC"))
+	assert.NoError(t, err)
+	assert.NoError(t, a.Save(bernard))
+
+	cacheWaiter := rt.GetDatabase().NewDCPCachingCountWaiter(t)
+
+	// Create docs in various channels
+	_ = rt.putDoc("pbs-1", `{"channel":["PBS"]}`)
+	_ = rt.putDoc("hbo-1", `{"channel":["HBO"]}`)
+	pbs2 := rt.putDoc("pbs-2", `{"channel":["PBS"]}`)
+	hbo2 := rt.putDoc("hbo-2", `{"channel":["HBO"]}`)
+
+	// remove channels/tombstone a couple of docs to ensure they're not backfilled after a dynamic grant
+	_ = rt.putDoc("hbo-2", fmt.Sprintf(`{"_rev":%q}`, hbo2.Rev))
+	rt.deleteDoc(pbs2.ID, pbs2.Rev)
+
+	_ = rt.putDoc("abc-1", `{"channel":["ABC"]}`)
+	cacheWaiter.AddAndWait(7)
+
+	// Issue changes request and check the results, expect only the one doc in ABC
+	expectedResults := []string{
+		`{"seq":7,"id":"abc-1","changes":[{"rev":"1-0143105976caafbda3b90cf82948dc64"}]}`,
+	}
+	changes, err := rt.WaitForChanges(len(expectedResults), "/db/_changes", "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange, result)
+	}
+
+	// create doc that dynamically grants both users access to PBS and HBO
+	_ = rt.putDoc("grant-1", `{"channel": ["NBC"], "grants": {"users": ["alice", "bernard"], "channels": ["NBC", "PBS", "HBO"]}}`)
+
+	cacheWaiter.AddAndWait(1)
+
+	// Issue a new changes request with since=last_seq ensure that user receives all records for channels PBS, HBO.
+	expectedResults = []string{
+		`{"seq":"8:1","id":"pbs-1","changes":[{"rev":"1-82214a562e80c8fa7b2361719847bc73"}]}`,
+		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-c5098bb14d12d647c901850ff6a6292a"}]}`,
+	}
+	changes, err = rt.WaitForChanges(1,
+		fmt.Sprintf("/db/_changes?since=%s", changes.Last_Seq), "bernard", false)
+	require.NoError(t, err, "Error retrieving changes results")
+	for index, result := range changes.Results {
+		var expectedChange db.ChangeEntry
+		require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+		assert.Equal(t, expectedChange, result)
+	}
+
+	// Write another doc
+	_ = rt.putDoc("mix-1", `{"channel":["ABC", "PBS", "HBO"]}`)
+
+	cacheWaiter.AddAndWait(1)
+
+	// Issue a changes request with a compound since value from the last changes response
+	// ensure we don't backfill from the start, but have everything from the compound sequence onwards
+	expectedResults = []string{
+		`{"seq":"8:2","id":"hbo-1","changes":[{"rev":"1-46f8c67c004681619052ee1a1cc8e104"}]}`,
+		`{"seq":8,"id":"grant-1","changes":[{"rev":"1-c5098bb14d12d647c901850ff6a6292a"}]}`,
+		`{"seq":9,"id":"mix-1","changes":[{"rev":"1-32f69cdbf1772a8e064f15e928a18f85"}]}`,
+	}
+
+	t.Run("grant via existing channel", func(t *testing.T) {
+		changes, err = rt.WaitForChanges(len(expectedResults), "/db/_changes?since=8:1", "alice", false)
+		require.NoError(t, err, "Error retrieving changes results for alice")
+		for index, result := range changes.Results {
+			var expectedChange db.ChangeEntry
+			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+			assert.Equal(t, expectedChange, result)
+		}
+	})
+
+	t.Run("grant via new channel", func(t *testing.T) {
+		changes, err = rt.WaitForChanges(len(expectedResults), "/db/_changes?since=8:1", "bernard", false)
+		require.NoError(t, err, "Error retrieving changes results for bernard")
+		for index, result := range changes.Results {
+			var expectedChange db.ChangeEntry
+			require.NoError(t, base.JSONUnmarshal([]byte(expectedResults[index]), &expectedChange))
+			assert.Equal(t, expectedChange, result)
+		}
+	})
 }
 
 // Test low sequence handling of late arriving sequences to a continuous changes feed, ensuring that
