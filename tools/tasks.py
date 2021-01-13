@@ -70,22 +70,40 @@ class CouchbaseLogProcessor:
 
     def do(self, line):
         if "RedactLevel" in line:
-            return f'RedactLevel:partial,HashOfSalt: {hashlib.sha1(self.salt.encode()).hexdigest()}\n'
+            # salt + salt to maintain consistency with other
+            # occurrences of hashed salt in the logs.
+            return 'RedactLevel:partial,HashOfSalt:%s\n' \
+                   % generate_hash(self.salt + self.salt).hexdigest()
         else:
             return line
 
 
 class RegularLogProcessor:
+    rexes = [re.compile('(<ud>)(.+?)(</ud>)'),
+             # Redact the rest of the line in the case we encounter
+             # log-redaction-salt. Needed to redact ps output containing sgcollect flags safely.
+             re.compile('(log-redaction-salt)(.+)')]
+
     def __init__(self, salt):
         self.salt = salt
-        self.rex = re.compile('(<ud>)(.+?)(</ud>)')
 
     def _hash(self, match):
-        h = hashlib.sha1((self.salt + match.group(2)).encode()).hexdigest()
-        return match.group(1) + h + match.group(3)
+        result = match.group(1)
+        if match.lastindex == 3:
+            h = generate_hash(self.salt + match.group(2)).hexdigest()
+            result += h + match.group(3)
+        elif match.lastindex == 2:
+            result += " <redacted>"
+        return result
 
     def do(self, line):
-        return self.rex.sub(self._hash, line)
+        for rex in self.rexes:
+            line = rex.sub(self._hash, line)
+        return line
+
+
+def generate_hash(val):
+    return hashlib.sha1(val.encode())
 
 
 class AltExitC(object):
