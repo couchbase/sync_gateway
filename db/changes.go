@@ -218,6 +218,7 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 			base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelName()))
 
 			// Now write each log entry to the 'feed' channel in turn:
+			sentChanges := 0
 			for _, logEntry := range changes {
 				if logEntry.Sequence >= options.Since.TriggeredBy {
 					options.Since.TriggeredBy = 0
@@ -228,6 +229,12 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 				}
 
 				change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
+				lastSeq = logEntry.Sequence
+
+				// Don't include deletes or removals during initial channel backfill
+				if options.Since.TriggeredBy > 0 && (change.Deleted || len(change.Removed) > 0) {
+					continue
+				}
 
 				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s %s", seqID, base.UD(singleChannelCache.ChannelName()), base.UD(to))
 				select {
@@ -235,17 +242,17 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 					base.DebugfCtx(db.Ctx, base.KeyChanges, "Terminating channel feed %s", base.UD(to))
 					return
 				case feed <- &change:
-					lastSeq = logEntry.Sequence
+					sentChanges++
 				}
 			}
 
-			// If the query returned fewer results than the query limit, we're done
-			if len(changes) < queryLimit {
+			// If the query returned fewer results than the pagination limit, we're done
+			if len(changes) < paginationOptions.Limit {
 				return
 			}
 
 			// If we've reached the request limit, we're done
-			itemsSent += len(changes)
+			itemsSent += sentChanges
 			if requestLimit > 0 && itemsSent >= requestLimit {
 				return
 			}
@@ -650,7 +657,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					}
 				}
 
-				if options.ActiveOnly || minEntry.Seq.TriggeredBy > 0 {
+				if options.ActiveOnly {
 					if minEntry.Deleted || minEntry.allRemoved {
 						continue
 					}
