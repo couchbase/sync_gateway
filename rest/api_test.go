@@ -2756,7 +2756,8 @@ func TestRoleAccessChanges(t *testing.T) {
 
 	a := rt.ServerContext().Database("db").Authenticator()
 	guest, err := a.GetUser("")
-	assert.NoError(t, err)
+	require.NoError(t, err)
+
 	guest.SetDisabled(false)
 	err = a.Save(guest)
 	assert.NoError(t, err)
