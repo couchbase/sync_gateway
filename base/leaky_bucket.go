@@ -262,6 +262,7 @@ func (b *LeakyBucket) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.
 				event.VbNo = uint16(VBHash(key, 1024))
 				vbTapFeed.channel <- event
 			}
+			close(vbTapFeed.channel)
 		}()
 		return vbTapFeed, nil
 
@@ -302,6 +303,7 @@ func (b *LeakyBucket) wrapFeed(args sgbucket.FeedArguments, callback EventUpdate
 				wrapperFeed.channel <- event
 			}
 		}
+		close(wrapperFeed.channel)
 	}()
 	return wrapperFeed, nil
 }
@@ -336,7 +338,7 @@ func (b *LeakyBucket) wrapFeedForDeduplication(args sgbucket.FeedArguments, dbSt
 	}
 
 	go func() {
-
+		defer close(dupeTapFeed.channel)
 		// the buffer to hold tap events that are candidates for de-duplication
 		deDupeBuffer := []sgbucket.FeedEvent{}
 
