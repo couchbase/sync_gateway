@@ -173,7 +173,6 @@ func (h *handler) handleGetResync() error {
 
 func (h *handler) handlePostResync() error {
 	action := h.getQuery("action")
-	// TODO: To be added in CBG-837
 	regenerateSequences, _ := h.getOptBoolQuery("regenerate_sequences", false)
 
 	if action != "" && action != db.ResyncActionStart && action != db.ResyncActionStop {

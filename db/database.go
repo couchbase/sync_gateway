@@ -864,6 +864,12 @@ outerLoop:
 		resultCount := 0
 
 		for {
+			// Skips first result if using startKey as this results in an overlapping result
+			var skipAddition bool
+			if resultCount == 0 && startKey != "" {
+				skipAddition = true
+			}
+
 			if db.Options.UseViews {
 				var viewRow principalsViewRow
 				found := results.Next(&viewRow)
@@ -873,7 +879,6 @@ outerLoop:
 				isUser = viewRow.Value
 				principalName = viewRow.Key
 				startKey = principalName
-				resultCount++
 			} else {
 				var queryRow QueryIdRow
 				found := results.Next(&queryRow)
@@ -886,13 +891,10 @@ outerLoop:
 				isUser = queryRow.Id[0:lenUserKeyPrefix] == base.UserPrefix
 				principalName = queryRow.Id[lenUserKeyPrefix:]
 				startKey = queryRow.Id
-				resultCount++
 			}
+			resultCount++
 
-			// Second part of or skips first result if using startKey as this results in an overlapping result
-			// This was cheaper than a contains check
-
-			if principalName != "" && (resultCount != 1 && startKey != "") {
+			if principalName != "" && !skipAddition {
 				if isUser {
 					users = append(users, principalName)
 				} else {
