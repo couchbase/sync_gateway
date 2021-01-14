@@ -254,9 +254,7 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 
 	// Without delta sync, store the old rev for in-flight replication purposes
 	if !db.DeltaSyncEnabled() || db.Options.DeltaSyncOptions.RevMaxAgeSeconds == 0 {
-		if len(oldBody) > 0 {
-			_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.OldRevExpirySeconds)
-		}
+		_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.OldRevExpirySeconds)
 		return
 	}
 
@@ -285,12 +283,13 @@ func (db *Database) backupRevisionJSON(docId, newRevId, oldRevId string, newBody
 	}
 
 	// Non-xattr only need to store the previous revision, as all writes come through SG
-	if len(oldBody) > 0 {
-		_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
-	}
+	_ = db.setOldRevisionJSON(docId, oldRevId, oldBody, db.Options.DeltaSyncOptions.RevMaxAgeSeconds)
 }
 
 func (db *Database) setOldRevisionJSON(docid string, revid string, body []byte, expiry uint32) error {
+	if len(body) == 0 {
+		return nil
+	}
 
 	// Setting the binary flag isn't sufficient to make N1QL ignore the doc - the binary flag is only used by the SDKs.
 	// To ensure it's not available via N1QL, need to prefix the raw bytes with non-JSON data.
