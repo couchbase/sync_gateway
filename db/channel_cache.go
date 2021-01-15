@@ -56,6 +56,9 @@ type ChannelCache interface {
 
 	// Access to individual channel cache
 	getSingleChannelCache(channelName string) SingleChannelCache
+
+	// Stop stops the channel cache and it's background tasks.
+	Stop()
 }
 
 // ChannelQueryHandler interface is implemented by databaseContext.
@@ -68,6 +71,8 @@ type StableSequenceCallbackFunc func() uint64
 type channelCacheImpl struct {
 	queryHandler         ChannelQueryHandler       // Passed to singleChannelCacheImpl for view queries.
 	channelCaches        *base.RangeSafeCollection // A collection of singleChannelCaches
+	backgroundTasks      []BackgroundTask          // List of background tasks specific to channel cache.
+	dbName               string                    // Name of the database associated with the channel cache.
 	terminator           chan bool                 // Signal terminator of background goroutines
 	options              ChannelCacheOptions       // Channel cache options
 	lateSeqLock          sync.RWMutex              // Coordinates access to late sequence caches
@@ -82,19 +87,18 @@ type channelCacheImpl struct {
 	validFromLock        sync.RWMutex              // Mutex used to avoid race between AddToCache and addChannelCache.  See CBG-520 for more details
 }
 
-func NewChannelCacheForContext(backgroundTasks *[]BackgroundTask, terminator chan bool, options ChannelCacheOptions,
-	context *DatabaseContext) (*channelCacheImpl, error) {
-	return newChannelCache(context.Name, backgroundTasks, terminator, options, context, context.activeChannels, context.DbStats.Cache())
+func NewChannelCacheForContext(options ChannelCacheOptions, context *DatabaseContext) (*channelCacheImpl, error) {
+	return newChannelCache(context.Name, options, context, context.activeChannels, context.DbStats.Cache())
 }
 
-func newChannelCache(dbName string, backgroundTasks *[]BackgroundTask, terminator chan bool,
-	options ChannelCacheOptions, queryHandler ChannelQueryHandler, activeChannels *channels.ActiveChannels,
-	cacheStats *base.CacheStats) (*channelCacheImpl, error) {
+func newChannelCache(dbName string, options ChannelCacheOptions, queryHandler ChannelQueryHandler,
+	activeChannels *channels.ActiveChannels, cacheStats *base.CacheStats) (*channelCacheImpl, error) {
 
 	channelCache := &channelCacheImpl{
 		queryHandler:         queryHandler,
 		channelCaches:        base.NewRangeSafeCollection(),
-		terminator:           terminator,
+		dbName:               dbName,
+		terminator:           make(chan bool),
 		options:              options,
 		maxChannels:          options.MaxNumChannels,
 		compactHighWatermark: int(math.Round(float64(options.CompactHighWatermarkPercent) / 100 * float64(options.MaxNumChannels))),
@@ -102,11 +106,11 @@ func newChannelCache(dbName string, backgroundTasks *[]BackgroundTask, terminato
 		activeChannels:       activeChannels,
 		cacheStats:           cacheStats,
 	}
-	bgt, err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, terminator)
+	bgt, err := NewBackgroundTask("CleanAgedItems", dbName, channelCache.cleanAgedItems, options.ChannelCacheAge, channelCache.terminator)
 	if err != nil {
 		return nil, err
 	}
-	*backgroundTasks = append(*backgroundTasks, bgt)
+	channelCache.backgroundTasks = append(channelCache.backgroundTasks, bgt)
 	base.Debugf(base.KeyCache, "Initialized channel cache with maxChannels:%d, HWM: %d, LWM: %d",
 		channelCache.maxChannels, channelCache.compactHighWatermark, channelCache.compactLowWatermark)
 	return channelCache, nil
@@ -116,6 +120,15 @@ func (c *channelCacheImpl) Clear() {
 	c.seqLock.Lock()
 	c.channelCaches.Init()
 	c.seqLock.Unlock()
+}
+
+// Stop stops the channel cache and it's background tasks.
+func (c *channelCacheImpl) Stop() {
+	// Signal to terminate channel cache background tasks.
+	close(c.terminator)
+
+	// Wait for channel cache background tasks to finish.
+	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks, c.dbName)
 }
 
 func (c *channelCacheImpl) Init(initialSequence uint64) {

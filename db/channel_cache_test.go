@@ -76,10 +76,6 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	var backgroundTasks []BackgroundTask
-	terminator := make(chan bool)
-	defer close(terminator)
-
 	// Define cache with max channels 20, hwm will be 16, low water mark will be 12
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20
@@ -88,8 +84,9 @@ func TestChannelCacheSimpleCompact(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", &backgroundTasks, terminator, options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop()
 
 	// Add 16 channels to the cache.  Shouldn't trigger compaction (hwm is not exceeded)
 	for i := 1; i <= 16; i++ {
@@ -113,10 +110,6 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	var backgroundTasks []BackgroundTask
-	terminator := make(chan bool)
-	defer close(terminator)
-
 	// Define cache with max channels 20, watermarks 50/90
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20
@@ -127,8 +120,9 @@ func TestChannelCacheCompactInactiveChannels(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", &backgroundTasks, terminator, options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop()
 
 	// Add 16 channels to the cache.  Mark odd channels as active, even channels as inactive.
 	// Shouldn't trigger compaction (hwm is not exceeded)
@@ -171,10 +165,6 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
-	var backgroundTasks []BackgroundTask
-	terminator := make(chan bool)
-	defer close(terminator)
-
 	// Define cache with max channels 20, watermarks 50/90
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20
@@ -185,8 +175,9 @@ func TestChannelCacheCompactNRU(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", &backgroundTasks, terminator, options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop()
 
 	// Add 18 channels to the cache.  Mark channels 1-10 as active
 	// Shouldn't trigger compaction (hwm is not exceeded)
@@ -267,10 +258,6 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
 
-	var backgroundTasks []BackgroundTask
-	terminator := make(chan bool)
-	defer close(terminator)
-
 	// Define cache with max channels 20, watermarks 50/90
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 100
@@ -281,8 +268,9 @@ func TestChannelCacheHighLoadCacheHit(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", &backgroundTasks, terminator, options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop()
 
 	channelCount := 90
 	// define channel set
@@ -340,10 +328,6 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
 
-	var backgroundTasks []BackgroundTask
-	terminator := make(chan bool)
-	defer close(terminator)
-
 	// Define cache with max channels 100, watermarks 90/70
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 100
@@ -354,8 +338,9 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", &backgroundTasks, terminator, options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop()
 
 	channelCount := 200
 	// define channel set
@@ -408,10 +393,6 @@ func TestChannelCacheHighLoadCacheMiss(t *testing.T) {
 func TestChannelCacheBypass(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
 
-	var backgroundTasks []BackgroundTask
-	terminator := make(chan bool)
-	defer close(terminator)
-
 	// Define cache with max channels 20, watermarks 50/100
 	options := DefaultCacheOptions().ChannelCacheOptions
 	options.MaxNumChannels = 20
@@ -422,8 +403,9 @@ func TestChannelCacheBypass(t *testing.T) {
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", &backgroundTasks, terminator, options, queryHandler, activeChannels, testStats)
+	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
 	require.NoError(t, err, "Background task error whilst creating channel cache")
+	defer cache.Stop()
 
 	channelCount := 100
 	// define channel set
@@ -507,20 +489,20 @@ func (qh *testQueryHandler) seedEntries(seededEntries LogEntries) {
 
 func TestChannelCacheBackgroundTaskWithIllegalTimeInterval(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelWarn, base.KeyCache)()
-	var backgroundTasks []BackgroundTask
-	terminator := make(chan bool)
-	defer close(terminator)
-
 	options := DefaultCacheOptions().ChannelCacheOptions
+
 	// Specify illegal time interval for background task. Time interval should be > 0
 	options.ChannelCacheAge = 0
 	testStats := (base.NewSyncGatewayStats()).NewDBStats("", false, false, false).Cache()
+
 	queryHandler := &testQueryHandler{}
 	activeChannelStat := &base.SgwIntStat{}
 	activeChannels := channels.NewActiveChannels(activeChannelStat)
-	cache, err := newChannelCache("testDb", &backgroundTasks, terminator, options, queryHandler, activeChannels, testStats)
+
+	cache, err := newChannelCache("testDb", options, queryHandler, activeChannels, testStats)
 	assert.Error(t, err, "Background task error whilst creating channel cache")
 	assert.Nil(t, cache)
+
 	backgroundTaskError, ok := err.(*BackgroundTaskError)
 	require.True(t, ok)
 	assert.Equal(t, "CleanAgedItems", backgroundTaskError.TaskName)
