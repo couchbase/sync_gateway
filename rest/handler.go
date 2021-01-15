@@ -16,7 +16,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"math"
@@ -32,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -156,7 +156,9 @@ func (h *handler) invoke(method handlerMethod) error {
 		h.logRequestBody()
 	}
 
-	h.setHeader("Server", base.VersionString)
+	if h.shouldShowProductInfo() {
+		h.setHeader("Server", base.VersionString)
+	}
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
@@ -908,4 +910,10 @@ func (h *handler) formatSerialNumber() string {
 		h.formattedSerialNumber = fmt.Sprintf("#%03d", h.serialNumber)
 	}
 	return h.formattedSerialNumber
+}
+
+// shouldShowProductInfo returns whether the handler should show detailed product info (name and version).
+// Admin requests can always see this, regardless of the HideProductInfo setting.
+func (h *handler) shouldShowProductInfo() bool {
+	return h.privs == adminPrivs || !h.server.config.HideProductInfo
 }

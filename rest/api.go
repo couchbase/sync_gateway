@@ -37,21 +37,22 @@ const (
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
+	resp := make(map[string]interface{})
 
-	admin := ""
 	if h.privs == adminPrivs {
-		admin = `"ADMIN":true,`
+		resp["ADMIN"] = true
 	}
 
-	r := []byte(`{` +
-		admin +
-		`"couchdb":"Welcome",` +
-		`"vendor":{` +
-		`"name":"` + base.ProductName + `",` +
-		`"version":"` + base.VersionNumber +
-		`"},` +
-		`"version":"` + base.LongVersionString + `"}`)
-	h.writeRawJSON(r)
+	if h.shouldShowProductInfo() {
+		resp["couchdb"] = "Welcome"
+		resp["vendor"] = map[string]interface{}{
+			"name":    base.ProductName,
+			"version": base.VersionNumber,
+		}
+		resp["version"] = base.LongVersionString
+	}
+
+	h.writeJSON(resp)
 	return nil
 }
 
