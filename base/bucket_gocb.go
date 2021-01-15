@@ -1198,7 +1198,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 
 	var makeDocCalled bool
 
-	supportsTombstoneCreation := bucket.IsSupported(sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted)
+	supportsTombstoneCreation := bucket.IsSupported(sgbucket.DataStoreFeatureCreateDeletedWithXattr)
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		var mutateFlag gocb.SubdocDocFlag
@@ -1235,7 +1235,6 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		if deleteBody {
 			builder.RemoveEx("", gocb.SubdocFlagNone) // Delete the document body
 		}
-
 		docFragment, removeErr := builder.Execute()
 
 		if removeErr != nil {
@@ -1252,6 +1251,10 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		return cas, err
 	}
 
+	// In the case where the SubdocDocFlagCreateAsDeleted is not available and we are performing the creation of a
+	// tombstoned document we need to perform this second operation. This is due to the fact that SubdocDocFlagMkDoc
+	// will have been used above instead which will create an empty body {} which we then need to delete here. If there
+	// is a CAS mismatch we exit the operation as this means there has been a subsequent update to the body.
 	if isDelete && !supportsTombstoneCreation && makeDocCalled {
 		worker := func() (shouldRetry bool, err error, value uint64) {
 			builder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), exp).
@@ -2372,7 +2375,7 @@ func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature
 	// Since Couchbase Eventing was introduced in Couchbase Server 5.5, the Crc32c macro expansion only needs to be done on 5.5 or later.
 	case sgbucket.DataStoreFeatureCrc32cMacroExpansion:
 		return isMinimumVersion(major, minor, 5, 5)
-	case sgbucket.DataStoreFeatureXattrsSubdocDocCreateDeleted:
+	case sgbucket.DataStoreFeatureCreateDeletedWithXattr:
 		return isMinimumVersion(major, minor, 6, 6)
 	default:
 		return false
