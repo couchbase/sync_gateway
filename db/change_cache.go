@@ -170,7 +170,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		c.options = DefaultCacheOptions()
 	}
 
-	channelCache, err := NewChannelCacheForContext(c.backgroundTasks, c.terminator, c.options.ChannelCacheOptions, c.context)
+	channelCache, err := NewChannelCacheForContext(&c.backgroundTasks, c.terminator, c.options.ChannelCacheOptions, c.context)
 	if err != nil {
 		return err
 	}
