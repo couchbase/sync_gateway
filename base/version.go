@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-const VersionNumber = "3.0" // API/feature level
+const (
+	ProductName          = "Couchbase Sync Gateway"
+	ProductVersionNumber = "3.0" // API/feature level
+)
 
 var (
 	// VersionString appears in the "Server:" header of HTTP responses.
@@ -16,8 +19,8 @@ var (
 	// LongVersionString includes build number; appears in the response of "GET /" and the initial log message
 	LongVersionString string
 
-	// ProductName comes from Gerrit (jenkins builds) or Git (dev builds)
-	ProductName string
+	// ProductNameString comes from Gerrit (jenkins builds) or Git (dev builds)
+	ProductNameString string
 )
 
 func init() {
@@ -39,11 +42,16 @@ func init() {
 		}
 		LongVersionString = fmt.Sprintf("%s/%s(%s%.7s) %s", buildPlaceholderServerName, BuildVersionString, BuildNumberString, buildPlaceholderVersionCommitSHA, productEditionShortName)
 		VersionString = fmt.Sprintf("%s/%s %s", buildPlaceholderServerName, BuildVersionString, productEditionShortName)
-		ProductName = buildPlaceholderServerName
+		ProductNameString = buildPlaceholderServerName
 	} else {
-		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s) %s", GitProductName, GitBranch, GitCommit, GitDirty, productEditionShortName)
-		VersionString = fmt.Sprintf("%s/%s branch/%s commit/%.7s%s %s", GitProductName, VersionNumber, GitBranch, GitCommit, GitDirty, productEditionShortName)
-		ProductName = GitProductName
+		// GitProductName is set via the build script, but may not be set when unit testing.
+		productName := GitProductName
+		if productName == "" {
+			productName = ProductName
+		}
+		LongVersionString = fmt.Sprintf("%s/%s(%.7s%s) %s", productName, GitBranch, GitCommit, GitDirty, productEditionShortName)
+		VersionString = fmt.Sprintf("%s/%s branch/%s commit/%.7s%s %s", productName, ProductVersionNumber, GitBranch, GitCommit, GitDirty, productEditionShortName)
+		ProductNameString = productName
 	}
 }
 

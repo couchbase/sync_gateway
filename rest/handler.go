@@ -355,7 +355,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		if h.user == nil {
 			base.Infof(base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
 			if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
-				h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+				h.response.Header().Set("WWW-Authenticate", `Basic realm="`+base.ProductNameString+`"`)
 			}
 			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 		}
@@ -376,7 +376,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	}
 	if h.privs == regularPrivs && h.user.Disabled() {
 		if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
-			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+			h.response.Header().Set("WWW-Authenticate", `Basic realm="`+base.ProductNameString+`"`)
 		}
 		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 	}

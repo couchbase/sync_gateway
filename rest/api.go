@@ -46,8 +46,8 @@ func (h *handler) handleRoot() error {
 	if h.shouldShowProductInfo() {
 		resp["couchdb"] = "Welcome"
 		resp["vendor"] = map[string]interface{}{
-			"name":    base.ProductName,
-			"version": base.VersionNumber,
+			"name":    base.ProductNameString,
+			"version": base.ProductVersionNumber,
 		}
 		resp["version"] = base.LongVersionString
 	}

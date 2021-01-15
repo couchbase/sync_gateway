@@ -454,8 +454,8 @@ func (h *handler) handleGetStatus() error {
 	if h.shouldShowProductInfo() {
 		status.Version = base.LongVersionString
 		status.Vendor = Vendor{
-			Name:    base.ProductName,
-			Version: base.VersionNumber,
+			Name:    base.ProductNameString,
+			Version: base.ProductVersionNumber,
 		}
 	}
 
