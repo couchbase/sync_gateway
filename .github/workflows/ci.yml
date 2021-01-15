@@ -11,10 +11,7 @@ on:
 
 jobs:
   ci:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest] # windows-latest missing due to non-cross platform bootstrap process... Go modules should fix this
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v2
         with:
@@ -25,7 +22,7 @@ jobs:
           chmod +x bootstrap.sh
           ./bootstrap.sh -c $GITHUB_SHA
           echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
-      # When we're using Go modules, it should be feasible to use `actions/checkout@v2` for each of these jobs to be run in parallel without bootstrap
+      # When we're using Go modules, it should be feasible to use `actions/checkout@v2` for each of these jobs to be run in parallel without bootstrap as it's a lot quicker
       - name: build
         run: go build -v github.com/couchbase/sync_gateway
       - name: gofmt
@@ -35,4 +32,5 @@ jobs:
       - name: vet
         run: go vet github.com/couchbase/sync_gateway/...
       - name: test
-        run: go test -timeout=20m -race -count=1 -v github.com/couchbase/sync_gateway/...
+        # no -race (to speed up testing)
+        run: go test -timeout=20m -count=1 -v github.com/couchbase/sync_gateway/...
