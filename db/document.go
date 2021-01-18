@@ -156,6 +156,7 @@ type Document struct {
 	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas      uint64 // Document cas
 
+	IsNilDoc       bool
 	Deleted        bool
 	DocExpiry      uint32
 	RevID          string
@@ -987,9 +988,10 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
 	if len(data) == 0 && len(xdata) > 0 {
-		doc._body = Body{}
-		doc._rawBody = []byte(base.EmptyDocument)
+		doc._body = nil
+		doc._rawBody = []byte("")
 		doc.Deleted = true
+		doc.IsNilDoc = true
 	}
 	return nil
 }
