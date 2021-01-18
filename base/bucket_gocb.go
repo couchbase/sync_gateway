@@ -2376,7 +2376,7 @@ func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature
 	case sgbucket.DataStoreFeatureCrc32cMacroExpansion:
 		return isMinimumVersion(major, minor, 5, 5)
 	case sgbucket.DataStoreFeatureCreateDeletedWithXattr:
-		return isMinimumVersion(major, minor, 6, 6)
+		return isMinimumVersion(major, minor, 8, 8)
 	default:
 		return false
 	}
