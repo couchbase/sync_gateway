@@ -170,7 +170,7 @@ func (c *changeCache) Init(dbcontext *DatabaseContext, notifyChange func(base.Se
 		c.options = DefaultCacheOptions()
 	}
 
-	channelCache, err := NewChannelCacheForContext(c.backgroundTasks, c.terminator, c.options.ChannelCacheOptions, c.context)
+	channelCache, err := NewChannelCacheForContext(c.options.ChannelCacheOptions, c.context)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,10 @@ func (c *changeCache) Stop() {
 	close(c.terminator)
 
 	// Wait for changeCache background tasks to finish.
-	c.context.waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks)
+	waitForBGTCompletion(BGTCompletionMaxWait, c.backgroundTasks, c.context.Name)
+
+	// Stop the channel cache and it's background tasks.
+	c.channelCache.Stop()
 
 	c.lock.Lock()
 	c.logsDisabled = true

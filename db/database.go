@@ -567,7 +567,7 @@ func (context *DatabaseContext) Close() {
 	context.OIDCProviders.Stop()
 	close(context.terminator)
 	// Wait for database background tasks to finish.
-	context.waitForBGTCompletion(BGTCompletionMaxWait, context.backgroundTasks)
+	waitForBGTCompletion(BGTCompletionMaxWait, context.backgroundTasks, context.Name)
 	context.sequences.Stop()
 	context.mutationListener.Stop()
 	context.changeCache.Stop()
@@ -586,7 +586,7 @@ func (context *DatabaseContext) Close() {
 }
 
 // waitForBGTCompletion waits for all the background tasks to finish.
-func (context *DatabaseContext) waitForBGTCompletion(waitTimeMax time.Duration, tasks []BackgroundTask) {
+func waitForBGTCompletion(waitTimeMax time.Duration, tasks []BackgroundTask, dbName string) {
 	waitTime := waitTimeMax
 	for _, t := range tasks {
 		start := time.Now()
@@ -598,7 +598,7 @@ func (context *DatabaseContext) waitForBGTCompletion(waitTimeMax time.Duration, 
 			// Timeout after waiting for background task to terminate.
 		}
 		base.Infof(base.KeyAll, "Timeout after %v of waiting for background task %q to "+
-			"terminate, database: %s", waitTimeMax, t.taskName, context.Name)
+			"terminate, database: %s", waitTimeMax, t.taskName, dbName)
 	}
 }
 
