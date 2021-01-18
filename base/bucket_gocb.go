@@ -1226,7 +1226,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 
 		if bucket.IsSupported(sgbucket.DataStoreFeatureCrc32cMacroExpansion) {
 			// Stamp the body hash on the xattr
-			if isDelete && supportsTombstoneCreation {
+			if isDelete {
 				builder.UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr)
 			} else {
 				builder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros)
