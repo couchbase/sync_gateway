@@ -156,8 +156,10 @@ func (h *handler) invoke(method handlerMethod) error {
 		h.logRequestBody()
 	}
 
-	if h.shouldShowProductInfo() {
+	if h.shouldShowProductVersion() {
 		h.setHeader("Server", base.VersionString)
+	} else {
+		h.setHeader("Server", base.ProductNameString)
 	}
 
 	// If there is a "db" path variable, look up the database context:
@@ -349,10 +351,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		}
 	}
 
-	realm := ""
-	if h.shouldShowProductInfo() {
-		realm = ` realm="` + base.ProductNameString + `"`
-	}
+	realm := ` realm="` + base.ProductNameString + `"`
 
 	// Check basic auth first
 	if userName, password := h.getBasicAuth(); userName != "" {
@@ -917,8 +916,8 @@ func (h *handler) formatSerialNumber() string {
 	return h.formattedSerialNumber
 }
 
-// shouldShowProductInfo returns whether the handler should show detailed product info (name and version).
-// Admin requests can always see this, regardless of the HideProductInfo setting.
-func (h *handler) shouldShowProductInfo() bool {
-	return h.privs == adminPrivs || !h.server.config.HideProductInfo
+// shouldShowProductVersion returns whether the handler should show detailed product info (version).
+// Admin requests can always see this, regardless of the HideProductVersion setting.
+func (h *handler) shouldShowProductVersion() bool {
+	return h.privs == adminPrivs || !h.server.config.HideProductVersion
 }

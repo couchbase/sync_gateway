@@ -37,18 +37,20 @@ const (
 
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
-	resp := make(map[string]interface{})
+	// TODO: Lithium - remove couchdb welcome
+	resp := map[string]interface{}{
+		"couchdb": "Welcome",
+		"vendor": map[string]interface{}{
+			"name": base.ProductNameString,
+		},
+	}
 
 	if h.privs == adminPrivs {
 		resp["ADMIN"] = true
 	}
 
-	if h.shouldShowProductInfo() {
-		resp["couchdb"] = "Welcome"
-		resp["vendor"] = map[string]interface{}{
-			"name":    base.ProductNameString,
-			"version": base.ProductVersionNumber,
-		}
+	if h.shouldShowProductVersion() {
+		resp["vendor"].(map[string]interface{})["version"] = base.ProductVersionNumber
 		resp["version"] = base.LongVersionString
 	}
 

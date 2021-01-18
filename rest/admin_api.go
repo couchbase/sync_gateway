@@ -448,15 +448,13 @@ func (h *handler) handleGetStatus() error {
 	var status = Status{
 		Databases:   make(map[string]DatabaseStatus),
 		ActiveTasks: h.server.replicator.ActiveTasks(),
+		Vendor:      Vendor{Name: base.ProductNameString},
 	}
 
 	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.
-	if h.shouldShowProductInfo() {
+	if h.shouldShowProductVersion() {
 		status.Version = base.LongVersionString
-		status.Vendor = Vendor{
-			Name:    base.ProductNameString,
-			Version: base.ProductVersionNumber,
-		}
+		status.Vendor.Version = base.ProductVersionNumber
 	}
 
 	for _, database := range h.server.databases_ {

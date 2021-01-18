@@ -116,11 +116,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		adminInterface = &rt.RestTesterConfig.adminInterface
 	}
 	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
-		CORS:            corsConfig,
-		Facebook:        &FacebookConfig{},
-		AdminInterface:  adminInterface,
-		Replications:    rt.RestTesterConfig.sgr1Replications,
-		HideProductInfo: rt.RestTesterConfig.hideProductInfo,
+		CORS:               corsConfig,
+		Facebook:           &FacebookConfig{},
+		AdminInterface:     adminInterface,
+		Replications:       rt.RestTesterConfig.sgr1Replications,
+		HideProductVersion: rt.RestTesterConfig.hideProductInfo,
 	})
 
 	useXattrs := base.TestUseXattrs()
