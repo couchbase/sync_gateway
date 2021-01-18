@@ -88,6 +88,11 @@ func GenerateIndexName(dbName string) string {
 	return "db" + Crc32cHashString([]byte(dbName)) + "_index"
 }
 
+// Given a dbName, generates a name based on the approach used prior to CBG-626.  Used for upgrade handling
+func GenerateLegacyIndexName(dbName string) string {
+	return dbName + "_import"
+}
+
 // Creates a CBGT index definition for the specified bucket.  This adds the index definition
 // to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
@@ -134,8 +139,6 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 	// TODO: If this isn't well-formed JSON, cbgt emits errors when opening locally persisted pindex files.  Review
 	//       how this can be optimized if we're not actually using it in the indexImpl
 	indexParams := `{"name": "` + dbName + `"}`
-	indexName := GenerateIndexName(dbName)
-	InfofCtx(c.loggingCtx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
 
 	// Required for initial pools request, before BucketDataSourceOptions kick in
 	if spec.Certpath != "" && spec.Keypath != "" {
@@ -152,6 +155,10 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 		return err
 	}
 
+	// Determine index name and UUID
+	indexName, previousIndexUUID := dcpSafeIndexName(c, dbName)
+	InfofCtx(c.loggingCtx, KeyDCP, "Creating cbgt index %q for db %q", indexName, MD(dbName))
+
 	// Register bucketDataSource callback for new index if we need to configure TLS
 	cbgt.RegisterBucketDataSourceOptionsCallback(indexName, c.Manager.UUID(), func(options *cbdatasource.BucketDataSourceOptions) *cbdatasource.BucketDataSourceOptions {
 		if spec.IsTLS() {
@@ -163,7 +170,6 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 		return options
 	})
 
-	_, previousIndexUUID, err := getCBGTIndexUUID(c.Manager, indexName)
 	indexType := CBGTIndexTypeSyncGatewayImport + dbName
 	err = c.Manager.CreateIndex(
 		sourceType,        // sourceType
@@ -181,6 +187,38 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 	InfofCtx(c.loggingCtx, KeyDCP, "Initialized sharded DCP feed %s with %d partitions.", indexName, numPartitions)
 	return err
 
+}
+
+// dcpSafeIndexName returns an index name and previousIndexUUID to handle upgrade scenarios from the
+// legacy index name format ("dbname_import") to the new length-safe format ("db[crc32]_index").
+// Handles removal of legacy index definitions, except for the case where the legacy index is
+// the only index defined, and the name is safe.  In that case, continue using legacy index name
+// to avoid restarting the import processing from zero
+func dcpSafeIndexName(c *CbgtContext, dbName string) (safeIndexName, previousUUID string) {
+
+	indexName := GenerateIndexName(dbName)
+	legacyIndexName := GenerateLegacyIndexName(dbName)
+
+	_, indexUUID, _ := getCBGTIndexUUID(c.Manager, indexName)
+	_, legacyIndexUUID, _ := getCBGTIndexUUID(c.Manager, legacyIndexName)
+
+	// 200 is the recommended maximum DCP stream name length
+	// cbgt adds 41 characters to index name we provide when naming the DCP stream, rounding up to 50 defensively
+	safeIndexNameLen := 200 - 50
+
+	// Check for the case where we want to continue using legacy index name:
+	if legacyIndexUUID != "" && indexUUID == "" && len(legacyIndexName) < safeIndexNameLen {
+		return legacyIndexName, legacyIndexUUID
+	}
+
+	// Otherwise, remove legacy if it exists, and return new format
+	if legacyIndexUUID != "" {
+		deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
+		if deleteErr != nil {
+			Warnf("Error removing legacy import feed index: %v", deleteErr)
+		}
+	}
+	return indexName, indexUUID
 }
 
 // Check if this CBGT index already exists.
