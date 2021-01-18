@@ -5354,7 +5354,6 @@ func TestHideProductInfo(t *testing.T) {
 				assert.Equal(t, base.VersionString, resp.Header().Get("Server"))
 
 				body := string(resp.BodyBytes())
-				assert.Contains(t, body, base.ProductNameString)
 				assert.Contains(t, body, base.ProductVersionNumber)
 				return
 			}
@@ -5367,8 +5366,10 @@ func TestHideProductInfo(t *testing.T) {
 			body := string(resp.BodyBytes())
 
 			if test.hideProductInfo {
-				assert.Equal(t, "", serverHeader)
-				assert.NotContains(t, body, base.ProductNameString)
+				assert.Equal(t, base.ProductNameString, serverHeader)
+				assert.Contains(t, body, base.ProductNameString)
+				// no versions
+				assert.NotEqual(t, base.VersionString, serverHeader)
 				assert.NotContains(t, body, base.ProductVersionNumber)
 			} else {
 				assert.Equal(t, base.VersionString, serverHeader)
