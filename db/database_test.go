@@ -54,6 +54,15 @@ func setupTestDBWithOptions(t testing.TB, dbcOptions DatabaseContextOptions) *Da
 	return db
 }
 
+func setupTestDBWithOptionsAndImport(t testing.TB, dbcOptions DatabaseContextOptions) *Database {
+	AddOptionsFromEnvironmentVariables(&dbcOptions)
+	context, err := NewDatabaseContext("db", base.GetTestBucket(t), true, dbcOptions)
+	require.NoError(t, err, "Couldn't create context for database 'db'")
+	db, err := CreateDatabase(context)
+	require.NoError(t, err, "Couldn't create database 'db'")
+	return db
+}
+
 func setupTestDBWithCacheOptions(t testing.TB, options CacheOptions) *Database {
 
 	dbcOptions := DatabaseContextOptions{
@@ -2111,4 +2120,63 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 
 	syncData, err = db.GetDocSyncData("doc1")
 	assert.True(t, sort.IsSorted(base.SortedUint64Slice(syncData.RecentSequences)))
+}
+
+func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Requires gocb bucket")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("Xattrs required")
+	}
+
+	db := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
+	defer db.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
+	require.True(t, ok)
+
+	// Set something lower than version required for CreateAsDeleted subdoc flag
+	gocbBucket.OverrideClusterCompatVersion(5, 5)
+
+	// Ensure empty doc is imported correctly
+	added, err := db.Bucket.Add("doc1", 0, map[string]interface{}{})
+	assert.NoError(t, err)
+	assert.True(t, added)
+
+	waitAndAssertCondition(t, func() bool {
+		return db.DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+
+	// Ensure deleted doc with double operation isn't treated as import
+	_, _, err = db.Put("doc", map[string]interface{}{"_deleted": true})
+	assert.NoError(t, err)
+
+	var doc Body
+	var xattr Body
+
+	// Ensure document has been added
+	waitAndAssertCondition(t, func() bool {
+		_, err = db.Bucket.GetWithXattr("doc", "_sync", &doc, &xattr)
+		return err == nil
+	})
+
+	assert.Equal(t, int64(1), db.DbStats.SharedBucketImport().ImportCount.Value())
+
+	assert.Nil(t, doc)
+	assert.Equal(t, "1-2cac91faf7b3f5e5fd56ff377bdb5466", xattr["rev"])
+	assert.Equal(t, float64(2), xattr["sequence"])
+}
+
+func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...interface{}) {
+	for i := 0; i <= 20; i++ {
+		if i == 20 {
+			assert.Fail(t, "Condition failed to be satisfied", failureMsgAndArgs...)
+		}
+		if fn() {
+			break
+		}
+		time.Sleep(time.Millisecond * 100)
+	}
 }
