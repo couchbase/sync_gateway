@@ -431,16 +431,11 @@ type DatabaseStatus struct {
 	SGRCluster        *db.SGRCluster          `json:"cluster"`
 }
 
-type Vendor struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
-}
-
 type Status struct {
 	Databases   map[string]DatabaseStatus `json:"databases"`
 	ActiveTasks []base.Task               `json:"active_tasks"`
 	Version     string                    `json:"version"`
-	Vendor      Vendor                    `json:"vendor"`
+	Vendor      vendor                    `json:"vendor"`
 }
 
 func (h *handler) handleGetStatus() error {
@@ -448,7 +443,7 @@ func (h *handler) handleGetStatus() error {
 	var status = Status{
 		Databases:   make(map[string]DatabaseStatus),
 		ActiveTasks: h.server.replicator.ActiveTasks(),
-		Vendor:      Vendor{Name: base.ProductNameString},
+		Vendor:      vendor{Name: base.ProductNameString},
 	}
 
 	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.
