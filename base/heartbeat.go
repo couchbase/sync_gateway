@@ -20,6 +20,8 @@ type Heartbeater interface {
 	RegisterListener(listener HeartbeatListener) error
 	UnregisterListener(name string)
 	Start() error
+	StartSendingHeartbeats() error
+	StartCheckingHeartbeats() error
 	Stop()
 }
 
@@ -92,11 +94,11 @@ func NewCouchbaseHeartbeater(bucket Bucket, keyPrefix, nodeUUID string) (heartbe
 // starts scheduled goroutines for ongoing processing.
 func (h *couchbaseHeartBeater) Start() error {
 
-	if err := h.startSendingHeartbeats(); err != nil {
+	if err := h.StartSendingHeartbeats(); err != nil {
 		return err
 	}
 
-	if err := h.startCheckingHeartbeats(); err != nil {
+	if err := h.StartCheckingHeartbeats(); err != nil {
 		return err
 	}
 
@@ -130,7 +132,7 @@ func (h *couchbaseHeartBeater) Stop() {
 }
 
 // Send initial heartbeat, and start goroutine to schedule sendHeartbeat invocation
-func (h *couchbaseHeartBeater) startSendingHeartbeats() error {
+func (h *couchbaseHeartBeater) StartSendingHeartbeats() error {
 	if err := h.sendHeartbeat(); err != nil {
 		return err
 	}
@@ -158,7 +160,7 @@ func (h *couchbaseHeartBeater) startSendingHeartbeats() error {
 }
 
 // Perform initial heartbeat check, then start goroutine to schedule check for stale heartbeats
-func (h *couchbaseHeartBeater) startCheckingHeartbeats() error {
+func (h *couchbaseHeartBeater) StartCheckingHeartbeats() error {
 
 	if err := h.checkStaleHeartbeats(); err != nil {
 		Warnf("Error checking for stale heartbeats: %v", err)

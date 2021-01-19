@@ -239,44 +239,6 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		return nil, err
 	}
 
-	dbStats := base.SyncGatewayStats.NewDBStats(dbName)
-
-	if options.DeltaSyncOptions.Enabled {
-		dbStats.InitDeltaSyncStats()
-	}
-
-	if autoImport || options.EnableXattr {
-		dbStats.InitSharedBucketImportStats()
-	}
-
-	if options.UseViews {
-		dbStats.InitQueryStats(
-			true,
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccess),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewImport),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewSessions),
-			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewTombstones))
-	} else {
-		dbStats.InitQueryStats(
-			false,
-			QueryTypeAccess,
-			QueryTypeRoleAccess,
-			QueryTypeChannels,
-			QueryTypeChannelsStar,
-			QueryTypeSequences,
-			QueryTypePrincipals,
-			QueryTypeSessions,
-			QueryTypeTombstones,
-			QueryTypeResync,
-			QueryTypeAllDocs)
-	}
-
 	dbContext := &DatabaseContext{
 		Name:       dbName,
 		UUID:       cbgt.NewUUID(),
@@ -284,7 +246,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		StartTime:  time.Now(),
 		autoImport: autoImport,
 		Options:    options,
-		DbStats:    dbStats,
+		DbStats:    initDatabaseStats(dbName, autoImport, options),
 	}
 
 	if dbContext.AllowConflicts() {
@@ -304,7 +266,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	dbContext.EventMgr = NewEventManager()
 
 	var err error
-	dbContext.sequences, err = newSequenceAllocator(bucket, dbStats.Database())
+	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +287,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Initialize the active channel counter
-	dbContext.activeChannels = channels.NewActiveChannels(dbStats.Cache().NumActiveChannels)
+	dbContext.activeChannels = channels.NewActiveChannels(dbContext.DbStats.Cache().NumActiveChannels)
 
 	// Initialize the ChangeCache.  Will be locked and unusable until .Start() is called (SG #3558)
 	err = dbContext.changeCache.Init(
@@ -365,26 +327,19 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	importEnabled := dbContext.UseXattrs() && dbContext.autoImport
 	sgReplicateEnabled := dbContext.Options.SGReplicateOptions.Enabled
 
-	// Initialize node heartbeater in EE mode if sg-replicate or import enabled on the node
+	// Initialize node heartbeater in EE mode if sg-replicate or import enabled on the node.  This node must start
+	// sending heartbeats before registering itself to the cfg, to avoid triggering immediate removal by other active nodes.
 	if base.IsEnterpriseEdition() && (importEnabled || sgReplicateEnabled) {
 		// Create heartbeater
 		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, base.SyncPrefix, dbContext.UUID)
 		if err != nil {
 			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
 		}
-		err = heartbeater.Start()
+		err = heartbeater.StartSendingHeartbeats()
 		if err != nil {
 			return nil, err
 		}
 		dbContext.Heartbeater = heartbeater
-	}
-
-	// If this is an xattr import node, start import feed
-	if importEnabled {
-		dbContext.ImportListener = NewImportListener()
-		if importFeedErr := dbContext.ImportListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
-			return nil, importFeedErr
-		}
 	}
 
 	// If sgreplicate is enabled on this node, register this node to accept notifications
@@ -415,6 +370,15 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	err = dbContext.changeCache.Start(initialSequence)
 	if err != nil {
 		return nil, err
+	}
+
+	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
+	// subscription relies on the caching feed.
+	if importEnabled {
+		dbContext.ImportListener = NewImportListener()
+		if importFeedErr := dbContext.ImportListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
+			return nil, importFeedErr
+		}
 	}
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
@@ -511,6 +475,15 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	dbContext.ExitChanges = make(chan struct{})
+
+	// Start checking heartbeats for other nodes.  Must be done after caching feed starts, to ensure any removals
+	// are detected and processed by this node.
+	if dbContext.Heartbeater != nil {
+		err = dbContext.Heartbeater.StartCheckingHeartbeats()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return dbContext, nil
 }
@@ -1273,6 +1246,48 @@ func (context *DatabaseContext) FlushRevisionCacheForTest() {
 		context.DbStats.Cache(),
 	)
 
+}
+
+func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOptions) *base.DbStats {
+
+	dbStats := base.SyncGatewayStats.NewDBStats(dbName)
+
+	if options.DeltaSyncOptions.Enabled {
+		dbStats.InitDeltaSyncStats()
+	}
+
+	if autoImport || options.EnableXattr {
+		dbStats.InitSharedBucketImportStats()
+	}
+
+	if options.UseViews {
+		dbStats.InitQueryStats(
+			true,
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccess),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewAccessVbSeq),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewChannels),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewPrincipals),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccess),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncGateway(), ViewRoleAccessVbSeq),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewAllDocs),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewImport),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewSessions),
+			fmt.Sprintf(base.StatViewFormat, DesignDocSyncHousekeeping(), ViewTombstones))
+	} else {
+		dbStats.InitQueryStats(
+			false,
+			QueryTypeAccess,
+			QueryTypeRoleAccess,
+			QueryTypeChannels,
+			QueryTypeChannelsStar,
+			QueryTypeSequences,
+			QueryTypePrincipals,
+			QueryTypeSessions,
+			QueryTypeTombstones,
+			QueryTypeResync,
+			QueryTypeAllDocs)
+	}
+	return dbStats
 }
 
 // For test usage
