@@ -4,37 +4,86 @@ groups:
       - record: sgw::gsi::total_queries
         expr: sum by (instance, database, job) ({__name__=~"sgw_gsi_views_.*_count"})
       - alert: TooManyAuthFailuresInLastHour
-        expr: deriv(sgw_security_auth_failed_count[1h]) > 1000
+        expr: increase(sgw_security_auth_failed_count[1h]) > 1000
         for: 1m
         labels:
           severity: warning
         annotations:
           summary: Too Many Auth Failures in Last Hour
       - alert: TooManyDocumentAccessFailuresInLastHour
-        expr: deriv(sgw_security_num_access_errors[1h]) > 1000
+        expr: increase(sgw_security_num_access_errors[1h]) > 1000
         for: 1m
         labels:
           severity: warning
         annotations:
           summary: Too many Document Access Failures in Last Hour
       - alert: TooManyDocumentRejectionFailuresInLastHour
-        expr: deriv(sgw_security_num_docs_rejected[1h]) > 1000
+        expr: increase(sgw_security_num_docs_rejected[1h]) > 1000
         for: 1m
         labels:
           severity: warning
         annotations:
           summary: Too many Document Rejection Failures in Last Hour
       - alert: HighRevCacheMissRate
-        expr: sgw_cache_rev_cache_misses / (sgw_cache_rev_cache_misses + sgw_cache_rev_cache_hits) >= 1.0
+        expr: sgw_cache_rev_cache_misses / (sgw_cache_rev_cache_misses + sgw_cache_rev_cache_hits) >= 0.8
         for: 1m
         labels:
           severity: warning
         annotations:
           summary: High Rev Cache Miss Rate
       - alert: HighChannelCacheMissRate
-        expr: sgw_cache_chan_cache_misses / (sgw_cache_chan_cache_misses + sgw_cache_chan_cache_hits) >= 1.0
+        expr: sgw_cache_chan_cache_misses / (sgw_cache_chan_cache_misses + sgw_cache_chan_cache_hits) >= 0.8
         for: 1m
         labels:
           severity: warning
         annotations:
           summary: High Channel Cache Miss Rate
+      - alert: HighDeltaCacheMissRate
+        expr: sgw_delta_sync_delta_sync_miss / (sgw_delta_sync_delta_sync_miss + sgw_delta_sync_delta_cache_hit) >= 0.8
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: High Delta Cache Miss Rate
+      - alert: GlobalErrorCount
+        expr: increase(sgw_resource_utilization_error_count[1h]) > 1
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: An error occurred in the Last Hour
+      - alert: WarnChannelsPerDocCount
+        expr: increase(warn_channels_per_doc_count[1h]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: A document attempted to exceed the channels per doc limit in the lsat hour
+      - alert: WarnGrantsPerDoc
+        expr: increase(sgw_database_warn_grants_per_doc_count[1h]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: A document attempted to exceed the grants per doc limit in the last hour
+      - alert: WarnXattrSizeCount
+        expr: increase(sgw_database_warn_xattr_size_count[1h]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: A document had larger sync data than the maximum allowed by xattrs in the last hour
+      - alert: SGRNumDocsFailedToPull
+        expr: increase(sgw_replication_sgr_num_docs_failed_to_pull[1h]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: At least one document failed to be pulled with Inter Sync Gateway Replication in the last hour
+      - alert: SGRNumDocsFailedToPush
+        expr: increase(sgw_replication_sgr_num_docs_failed_to_push[1h]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: At least one document failed to be pushed with Inter Sync Gateway Replication in the last hour
