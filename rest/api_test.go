@@ -5396,6 +5396,7 @@ func TestDeleteNonExistentDoc(t *testing.T) {
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
 		assert.Nil(t, body)
 	} else {
 		assert.NoError(t, err)
@@ -5424,6 +5425,7 @@ func TestDeleteEmptyBodyDoc(t *testing.T) {
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
 	} else {
 		assert.NoError(t, err)
 	}
@@ -5438,6 +5440,14 @@ func TestPutEmptyDoc(t *testing.T) {
 
 	response = rt.SendAdminRequest("GET", "/db/doc", "")
 	assertStatus(t, response, http.StatusOK)
+	assert.Equal(t, `{"_id":"doc","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+
+	response = rt.SendAdminRequest("PUT", "/db/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("GET", "/db/doc", "")
+	assertStatus(t, response, http.StatusOK)
+	assert.Equal(t, `{"_id":"doc","_rev":"2-2f981cadffde70e8a1d9dc386a410e0d","val":"newval"}`, string(response.BodyBytes()))
 }
 
 func TestTombstonedBulkDocs(t *testing.T) {
@@ -5452,6 +5462,7 @@ func TestTombstonedBulkDocs(t *testing.T) {
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
 		assert.Nil(t, body)
 	} else {
 		assert.NoError(t, err)
