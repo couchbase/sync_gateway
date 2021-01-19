@@ -35,23 +35,34 @@ const (
 	profileRunning
 )
 
+type rootResponse struct {
+	Admin   bool   `json:"ADMIN,omitempty"`
+	CouchDB string `json:"couchdb,omitempty"` // TODO: Lithium - remove couchdb welcome
+	Vendor  vendor `json:"vendor,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+type vendor struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
 // HTTP handler for the root ("/")
 func (h *handler) handleRoot() error {
-
-	admin := ""
-	if h.privs == adminPrivs {
-		admin = `"ADMIN":true,`
+	resp := rootResponse{
+		Admin:   h.privs == adminPrivs,
+		CouchDB: "Welcome",
+		Vendor: vendor{
+			Name: base.ProductNameString,
+		},
 	}
 
-	r := []byte(`{` +
-		admin +
-		`"couchdb":"Welcome",` +
-		`"vendor":{` +
-		`"name":"` + base.ProductName + `",` +
-		`"version":"` + base.VersionNumber +
-		`"},` +
-		`"version":"` + base.LongVersionString + `"}`)
-	h.writeRawJSON(r)
+	if h.shouldShowProductVersion() {
+		resp.Version = base.LongVersionString
+		resp.Vendor.Version = base.ProductVersionNumber
+	}
+
+	h.writeJSON(resp)
 	return nil
 }
 

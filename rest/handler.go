@@ -16,7 +16,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"math"
@@ -32,6 +31,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/pkg/errors"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -156,7 +156,11 @@ func (h *handler) invoke(method handlerMethod) error {
 		h.logRequestBody()
 	}
 
-	h.setHeader("Server", base.VersionString)
+	if h.shouldShowProductVersion() {
+		h.setHeader("Server", base.VersionString)
+	} else {
+		h.setHeader("Server", base.ProductNameString)
+	}
 
 	// If there is a "db" path variable, look up the database context:
 	var dbContext *db.DatabaseContext
@@ -347,13 +351,15 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		}
 	}
 
+	wwwAuthenticateHeader := `Basic realm="` + base.ProductNameString + `"`
+
 	// Check basic auth first
 	if userName, password := h.getBasicAuth(); userName != "" {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
 		if h.user == nil {
 			base.Infof(base.KeyAll, "HTTP auth failed for username=%q", base.UD(userName))
 			if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
-				h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 			}
 			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
 		}
@@ -374,7 +380,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	}
 	if h.privs == regularPrivs && h.user.Disabled() {
 		if context.Options.SendWWWAuthenticateHeader == nil || *context.Options.SendWWWAuthenticateHeader {
-			h.response.Header().Set("WWW-Authenticate", `Basic realm="Couchbase Sync Gateway"`)
+			h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 		}
 		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 	}
@@ -908,4 +914,10 @@ func (h *handler) formatSerialNumber() string {
 		h.formattedSerialNumber = fmt.Sprintf("#%03d", h.serialNumber)
 	}
 	return h.formattedSerialNumber
+}
+
+// shouldShowProductVersion returns whether the handler should show detailed product info (version).
+// Admin requests can always see this, regardless of the HideProductVersion setting.
+func (h *handler) shouldShowProductVersion() bool {
+	return h.privs == adminPrivs || !h.server.config.HideProductVersion
 }

@@ -5313,3 +5313,69 @@ func TestAttachmentContentType(t *testing.T) {
 		assert.Equal(t, "", contentDisposition)
 	}
 }
+
+// TestHideProductInfo ensures that detailed product info is not shown on non-admin REST API responses if set.
+func TestHideProductInfo(t *testing.T) {
+	tests := []struct {
+		hideProductInfo, admin, expectedProductInfo bool
+	}{
+		{
+			hideProductInfo:     false,
+			admin:               false,
+			expectedProductInfo: true,
+		},
+		{
+			hideProductInfo:     false,
+			admin:               true,
+			expectedProductInfo: true,
+		},
+		{
+			hideProductInfo:     true,
+			admin:               true,
+			expectedProductInfo: true,
+		},
+		{
+			hideProductInfo:     true,
+			admin:               false,
+			expectedProductInfo: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("hide:%v admin:%v", test.hideProductInfo, test.admin), func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{hideProductInfo: test.hideProductInfo})
+			defer rt.Close()
+
+			// admins can always see product info, even if setting is enabled
+			if test.admin {
+				resp := rt.SendAdminRequest(http.MethodGet, "/", "")
+				assertStatus(t, resp, http.StatusOK)
+
+				assert.Equal(t, base.VersionString, resp.Header().Get("Server"))
+
+				body := string(resp.BodyBytes())
+				assert.Contains(t, body, base.ProductVersionNumber)
+				return
+			}
+
+			// non-admins can only see product info when the hideProductInfo option is disabled
+			resp := rt.SendRequest(http.MethodGet, "/", "")
+			assertStatus(t, resp, http.StatusOK)
+
+			serverHeader := resp.Header().Get("Server")
+			body := string(resp.BodyBytes())
+
+			if test.hideProductInfo {
+				assert.Equal(t, base.ProductNameString, serverHeader)
+				assert.Contains(t, body, base.ProductNameString)
+				// no versions
+				assert.NotEqual(t, base.VersionString, serverHeader)
+				assert.NotContains(t, body, base.ProductVersionNumber)
+			} else {
+				assert.Equal(t, base.VersionString, serverHeader)
+				assert.Contains(t, body, base.ProductNameString)
+				assert.Contains(t, body, base.ProductVersionNumber)
+			}
+		})
+	}
+}

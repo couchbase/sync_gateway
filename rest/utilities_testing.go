@@ -42,6 +42,7 @@ type RestTesterConfig struct {
 	adminInterface        string               // adminInterface overrides the default admin interface.
 	sgReplicateEnabled    bool                 // sgReplicateManager disabled by default for RestTester
 	sgr1Replications      []*ReplicateV1Config // sgr1Replications are a list of replications to enable on the server context.
+	hideProductInfo       bool
 }
 
 type RestTester struct {
@@ -115,10 +116,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 		adminInterface = &rt.RestTesterConfig.adminInterface
 	}
 	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
-		CORS:           corsConfig,
-		Facebook:       &FacebookConfig{},
-		AdminInterface: adminInterface,
-		Replications:   rt.RestTesterConfig.sgr1Replications,
+		CORS:               corsConfig,
+		Facebook:           &FacebookConfig{},
+		AdminInterface:     adminInterface,
+		Replications:       rt.RestTesterConfig.sgr1Replications,
+		HideProductVersion: rt.RestTesterConfig.hideProductInfo,
 	})
 
 	useXattrs := base.TestUseXattrs()
