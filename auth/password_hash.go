@@ -12,10 +12,12 @@ package auth
 import (
 	"crypto/sha1"
 	"fmt"
-	"github.com/pkg/errors"
-	"golang.org/x/crypto/bcrypt"
+	"math/rand"
+	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/pkg/errors"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -46,27 +48,6 @@ func authKey(hash []byte, password []byte) (key string) {
 	return key
 }
 
-// Optimized wrapper around bcrypt.CompareHashAndPassword that caches successful results in
-// memory to avoid the _very_ high overhead of calling bcrypt.
-func compareHashAndPassword(hash []byte, password []byte) bool {
-
-	// Actually we cache the SHA1 digest of the password to avoid keeping passwords in RAM.
-	key := authKey(hash, password)
-	if cachedHashes.Contains(key) {
-		return true
-	}
-
-	// Cache missed; now we make the very slow (~100ms) bcrypt call:
-	if err := bcrypt.CompareHashAndPassword(hash, password); err != nil {
-		// Note: It's important to only cache successful matches, not failures.
-		// Failure is supposed to be slow, to make online attacks impractical.
-		return false
-	}
-
-	cachedHashes.Put(key)
-	return true
-}
-
 // SetBcryptCost will set the bcrypt cost for Sync Gateway to use
 // Values of zero or less will use bcryptDefaultCost instead
 // An error is returned if the cost is not between bcryptDefaultCost and bcrypt.MaxCost
@@ -88,4 +69,76 @@ func SetBcryptCost(cost int) error {
 	bcryptCostChanged = true
 
 	return nil
+}
+
+// Cache represents a random replacement cache.
+type Cache struct {
+	size  int                 // Maximum size where this cache can potentially grow upto.
+	keys  []string            // A slice of keys for choosing a random key for eviction.
+	cache map[string]struct{} // Set of keys for fast lookup.
+	lock  sync.RWMutex        // Protects both cache and keys from concurrent access.
+}
+
+// Creates a new cache that can potentially grow upto the provided size.
+func NewCache(size int) *Cache {
+	return &Cache{
+		size:  size,
+		cache: make(map[string]struct{}, size),
+		keys:  make([]string, 0, size),
+	}
+}
+
+// Contains returns true if the provided key is present
+// in the cache and false otherwise.
+func (c *Cache) Contains(key string) (ok bool) {
+	c.lock.RLock()
+	_, ok = c.cache[key]
+	c.lock.RUnlock()
+	return ok
+}
+
+// Put adds a key to the cache. Eviction occurs when memory is
+// over filled or greater than the specified size in the cache.
+// Keys are evicted randomly from the cache.
+func (c *Cache) Put(key string) {
+	c.lock.Lock()
+	if _, ok := c.cache[key]; ok {
+		c.lock.Unlock()
+		return
+	}
+	if len(c.cache) >= c.size {
+		index := rand.Intn(len(c.keys))
+		delete(c.cache, c.keys[index])
+		c.keys[index] = key
+	} else {
+		c.keys = append(c.keys, key)
+	}
+	c.cache[key] = struct{}{}
+	c.lock.Unlock()
+}
+
+// Len returns the number of keys in the cache.
+func (c *Cache) Len() int {
+	c.lock.RLock()
+	length := len(c.cache)
+	c.lock.RUnlock()
+	return length
+}
+
+// CompareHashAndPassword is an optimized wrapper around bcrypt.CompareHashAndPassword that
+// caches successful results in memory to avoid the _very_ high overhead of calling bcrypt.
+func (c *Cache) CompareHashAndPassword(hash []byte, password []byte) bool {
+	// Actually we cache the SHA1 digest of the password to avoid keeping passwords in RAM.
+	key := authKey(hash, password)
+	if c.Contains(key) {
+		return true
+	}
+	// Cache missed; now we make the very slow (~100ms) bcrypt call:
+	if err := bcrypt.CompareHashAndPassword(hash, password); err != nil {
+		// Note: It's important to only cache successful matches, not failures.
+		// Failure is supposed to be slow, to make online attacks impractical.
+		return false
+	}
+	c.Put(key)
+	return true
 }

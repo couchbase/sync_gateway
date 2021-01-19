@@ -180,7 +180,7 @@ func (user *userImpl) Authenticate(password string) bool {
 
 	// bcrypt hash present
 	if user.PasswordHash_ != nil {
-		if !compareHashAndPassword(user.PasswordHash_, []byte(password)) {
+		if !cachedHashes.CompareHashAndPassword(user.PasswordHash_, []byte(password)) {
 			// incorrect password
 			return false
 		}
