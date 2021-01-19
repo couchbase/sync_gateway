@@ -14,14 +14,10 @@ import (
 	"testing"
 	"time"
 
-	pkgerrors "github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"gopkg.in/couchbase/gocb.v1"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestActiveReplicatorBlipsync uses an ActiveReplicator with another RestTester instance to connect and cleanly disconnect.
@@ -3936,8 +3932,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		var rawBody db.Body
 		_, err := bucket.Get(docID, &rawBody)
 		if base.TestUseXattrs() {
-			require.Error(t, err)
-			require.Equal(t, gocb.ErrKeyNotFound, pkgerrors.Cause(err))
+			require.True(t, base.IsDocNotFoundError(err))
 			require.Len(t, rawBody, 0)
 		} else {
 			require.NoError(t, err)
