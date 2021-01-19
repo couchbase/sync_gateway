@@ -1,9 +1,6 @@
 name: ci
 
 on:
-  push:
-    branches:
-      - 'gh_actions_for_testing'
   pull_request:
     branches:
       - 'master'
@@ -20,7 +17,7 @@ jobs:
         run: |
           wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
           chmod +x bootstrap.sh
-          ./bootstrap.sh -c $GITHUB_SHA
+          ./bootstrap.sh -c ${{ github.event.pull_request.head.sha }}
           echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
       - name: build
         run: go build -v github.com/couchbase/sync_gateway
@@ -41,7 +38,7 @@ jobs:
         run: |
           wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
           chmod +x bootstrap.sh
-          ./bootstrap.sh -c $GITHUB_SHA
+          ./bootstrap.sh -c ${{ github.event.pull_request.head.sha }}
           echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
       - name: 'test'
         run: go test -timeout=30m -count=1 -v github.com/couchbase/sync_gateway/...
@@ -56,7 +53,7 @@ jobs:
         run: |
           wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
           chmod +x bootstrap.sh
-          ./bootstrap.sh -c $GITHUB_SHA
+          ./bootstrap.sh -c ${{ github.event.pull_request.head.sha }}
           echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
       - name: 'test -race'
         run: go test -race -timeout=30m -count=1 -v github.com/couchbase/sync_gateway/...
