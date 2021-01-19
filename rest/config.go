@@ -99,6 +99,7 @@ type ServerConfig struct {
 	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
 	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
 	MetricsInterface           *string                  `json:"metricsInterface,omitempty"`       // Interface to bind metrics to. If not set then metrics isn't accessible
+	HideProductVersion         bool                     `json:"hide_product_version,omitempty"`   // Determines whether product versions removed from Server headers and REST API responses. This setting does not apply to the Admin REST API.
 }
 
 // Bucket configuration elements - used by db, index
