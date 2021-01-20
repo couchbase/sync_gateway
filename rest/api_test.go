@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -5381,5 +5382,152 @@ func TestHideProductInfo(t *testing.T) {
 				assert.Contains(t, body, base.ProductVersionNumber)
 			}
 		})
+	}
+}
+
+func TestDeleteNonExistentDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("DELETE", "/db/fake", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("GET", "/db/fake", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	var body map[string]interface{}
+	_, err := rt.GetDatabase().Bucket.Get("fake", &body)
+
+	if base.TestUseXattrs() {
+		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
+		assert.Nil(t, body)
+	} else {
+		assert.NoError(t, err)
+	}
+}
+
+// CBG-1153
+func TestDeleteEmptyBodyDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+	response := rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, response, http.StatusCreated)
+	assert.NoError(t, json.Unmarshal(response.BodyBytes(), &body))
+	rev := body["rev"].(string)
+
+	response = rt.SendAdminRequest("DELETE", "/db/doc1?rev="+rev, "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, response, http.StatusNotFound)
+
+	var doc map[string]interface{}
+	_, err := rt.GetDatabase().Bucket.Get("doc1", &doc)
+
+	if base.TestUseXattrs() {
+		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
+	} else {
+		assert.NoError(t, err)
+	}
+}
+
+func TestPutEmptyDoc(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("GET", "/db/doc", "")
+	assertStatus(t, response, http.StatusOK)
+	assert.Equal(t, `{"_id":"doc","_rev":"1-ca9ad22802b66f662ff171f226211d5c"}`, string(response.BodyBytes()))
+
+	response = rt.SendAdminRequest("PUT", "/db/doc?rev=1-ca9ad22802b66f662ff171f226211d5c", `{"val": "newval"}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("GET", "/db/doc", "")
+	assertStatus(t, response, http.StatusOK)
+	assert.Equal(t, `{"_id":"doc","_rev":"2-2f981cadffde70e8a1d9dc386a410e0d","val":"newval"}`, string(response.BodyBytes()))
+}
+
+func TestTombstonedBulkDocs(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"doc", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	var body map[string]interface{}
+	_, err := rt.GetDatabase().Bucket.Get("doc", &body)
+
+	if base.TestUseXattrs() {
+		assert.Error(t, err)
+		assert.True(t, base.IsDocNotFoundError(err))
+		assert.Nil(t, body)
+	} else {
+		assert.NoError(t, err)
+	}
+}
+
+// This test is skipped usually as it requires code to be manually injected into bucket_gocb.go
+func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
+	t.Skip("Requires manual intervention to run")
+
+	// In order to run this test obviously remove the above skip and then:
+	// Insert the below as global vars in base:
+	// ==========================
+	// var RunXattrCallback bool
+	// var UpdateXattrCallback func()
+	// ==========================
+
+	// Insert the below into UpdateXattr in bucket_gocb.go before the 'if isDelete && !supportsTombstoneCreation' check
+	// and after the first 'Kick off retry loop' block
+	// ==========================
+	// if RunXattrCallback {
+	//		RunXattrCallback = false
+	//		UpdateXattrCallback()
+	//	}
+	// ==========================
+
+	// Finally uncomment the lines below setting the callback to true and the callback
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Couchbase buckets only")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AutoImport: true}})
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	assert.True(t, ok)
+
+	// Force it to fall into the non CreateAsDeleted flag handling
+	gocbBucket.OverrideClusterCompatVersion(5, 5)
+
+	// base.RunXattrCallback = true
+	// base.UpdateXattrCallback = func() {
+	// 	response := rt.SendAdminRequest("PUT", "/db/doc", `{"val": "update"}`)
+	// 	assertStatus(t, response, http.StatusCreated)
+	// }
+
+	response := rt.SendAdminRequest("PUT", "/db/doc", `{"_deleted": true, "val": "original"}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("GET", "/db/doc", "")
+	assertStatus(t, response, http.StatusOK)
+
+	var body db.Body
+	err := json.Unmarshal(response.BodyBytes(), &body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "update", body["val"])
+
+	// If xattrs being used ensure that this doc operation wasn't treated as an import (cas set correctly)
+	if base.TestUseXattrs() {
+		assert.Equal(t, 0, int(rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()))
 	}
 }

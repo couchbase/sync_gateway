@@ -51,6 +51,9 @@ const (
 
 	// CRC-32 checksum represents the body hash of "Deleted" document.
 	DeleteCrc32c = "0x00"
+
+	// Can be removed and usages swapped out once this is present in gocb
+	SubdocDocFlagCreateAsDeleted = gocb.SubdocDocFlag(gocbcore.SubdocDocFlag(0x08))
 )
 
 var recoverableGoCBErrors = map[string]struct{}{
@@ -1193,6 +1196,10 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
 	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
+
+	var makeDocCalled bool
+
+	supportsTombstoneCreation := bucket.IsSupported(sgbucket.BucketFeatureCreateDeletedWithXattr)
 	worker := func() (shouldRetry bool, err error, value uint64) {
 
 		var mutateFlag gocb.SubdocDocFlag
@@ -1202,7 +1209,12 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 		} else {
 			if cas == 0 {
 				// If the doc doesn't exist, set SubdocDocFlagMkDoc to allow us to write the xattr
-				mutateFlag = gocb.SubdocDocFlagMkDoc
+				if supportsTombstoneCreation && isDelete {
+					mutateFlag = SubdocDocFlagCreateAsDeleted | gocb.SubdocDocFlagAccessDeleted | gocb.SubdocDocFlagReplaceDoc
+				} else {
+					makeDocCalled = true
+					mutateFlag = gocb.SubdocDocFlagMkDoc
+				}
 			} else {
 				// Since the body _may_ not exist, we need to set SubdocDocFlagAccessDeleted
 				mutateFlag = gocb.SubdocDocFlagAccessDeleted
@@ -1236,6 +1248,40 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 	err, cas = RetryLoopCas("UpdateXattr", worker, bucket.Spec.RetrySleeper())
 	if err != nil {
 		err = pkgerrors.Wrapf(err, "Error during UpdateXattr with key %v", UD(k).Redact())
+		return cas, err
+	}
+
+	// In the case where the SubdocDocFlagCreateAsDeleted is not available and we are performing the creation of a
+	// tombstoned document we need to perform this second operation. This is due to the fact that SubdocDocFlagMkDoc
+	// will have been used above instead which will create an empty body {} which we then need to delete here. If there
+	// is a CAS mismatch we exit the operation as this means there has been a subsequent update to the body.
+	if isDelete && !supportsTombstoneCreation && makeDocCalled {
+		worker := func() (shouldRetry bool, err error, value uint64) {
+			builder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagNone, gocb.Cas(cas), exp).
+				UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr).
+				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros).
+				RemoveEx("", gocb.SubdocFlagNone)
+			docFragment, removeErr := builder.Execute()
+			if removeErr != nil {
+
+				// If there is a cas mismatch the body has since been updated and so we don't need to bother removing
+				// body in this operation
+				if IsCasMismatch(removeErr) {
+					return false, nil, cas
+				}
+
+				shouldRetry = isRecoverableWriteError(removeErr)
+				return shouldRetry, removeErr, uint64(0)
+			}
+			return false, nil, uint64(docFragment.Cas())
+		}
+
+		err, cas = RetryLoopCas("UpdateXattrDeleteBodySecondOp", worker, bucket.Spec.RetrySleeper())
+		if err != nil {
+			err = pkgerrors.Wrapf(err, "Error during UpdateXattr delete op with key %v", UD(k).Redact())
+			return cas, err
+		}
+
 	}
 
 	return cas, err
@@ -1708,7 +1754,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		}
 
 		// Attempt to write the updated document to the bucket.  Mark body for deletion if previous body was non-empty
-		deleteBody := len(value) > len(EmptyDocument)
+		deleteBody := value != nil
 		casOut, writeErr := bucket.WriteWithXattr(k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
 
 		switch pkgerrors.Cause(writeErr) {
@@ -2307,7 +2353,6 @@ func (bucket *CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 
 func (bucket *CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
 	return bucket.clusterCompatMajorVersion, bucket.clusterCompatMinorVersion, ""
-
 }
 
 func (bucket *CouchbaseBucketGoCB) UUID() (string, error) {
@@ -2517,6 +2562,8 @@ func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.BucketFeature) b
 	// Since Couchbase Eventing was introduced in Couchbase Server 5.5, the Crc32c macro expansion only needs to be done on 5.5 or later.
 	case sgbucket.BucketFeatureCrc32cMacroExpansion:
 		return isMinimumVersion(major, minor, 5, 5)
+	case sgbucket.BucketFeatureCreateDeletedWithXattr:
+		return isMinimumVersion(major, minor, 6, 6)
 	default:
 		return false
 	}
@@ -2692,6 +2739,11 @@ func (bucket *CouchbaseBucketGoCB) waitForAvailViewOp() {
 
 func (bucket *CouchbaseBucketGoCB) releaseViewOp() {
 	<-bucket.viewOps
+}
+
+func (bucket *CouchbaseBucketGoCB) OverrideClusterCompatVersion(clusterCompatMajorVersion, clusterCompatMinorVersion uint64) {
+	bucket.clusterCompatMajorVersion = clusterCompatMajorVersion
+	bucket.clusterCompatMinorVersion = clusterCompatMinorVersion
 }
 
 // AsGoCBBucket tries to return the given bucket as a GoCBBucket.
