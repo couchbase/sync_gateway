@@ -8,6 +8,7 @@ pipeline {
         GVM = "/root/.gvm/bin/gvm"
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
+        GOTOOLS = "${WORKSPACE}/gotools"
         GOCACHE = "${WORKSPACE}/.gocache"
         BRANCH = "${BRANCH_NAME}"
         COVERALLS_TOKEN = credentials('SG_COVERALLS_TOKEN')
@@ -63,7 +64,8 @@ pipeline {
                         }
                         stage('Get Tools') {
                             steps {
-                                withEnv(["PATH+=${GO}", "GOPATH=${GOPATH}"]) {
+                                withEnv(["PATH+=${GO}", "GOPATH=${GOTOOLS}"]) {
+                                    sh "go env"
                                     sh "go version"
                                     // unhandled error checker
                                     sh 'go get -v -u github.com/kisielk/errcheck'
@@ -86,14 +88,14 @@ pipeline {
             parallel {
                 stage('CE Linux') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             sh "GOOS=linux go build -o sync_gateway_ce-linux -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('EE Linux') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             sh "GOOS=linux go build -o sync_gateway_ee-linux -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
                     }
@@ -102,7 +104,7 @@ pipeline {
                     // TODO: Remove skip
                     when { expression { return false } }
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             echo 'TODO: figure out why build issues are caused by gosigar'
                             sh "GOOS=darwin go build -o sync_gateway_ce-darwin -v ${SGW_REPO}"
                         }
@@ -112,7 +114,7 @@ pipeline {
                     // TODO: Remove skip
                     when { expression { return false } }
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             echo 'TODO: figure out why build issues are caused by gosigar'
                             sh "GOOS=darwin go build -o sync_gateway_ee-darwin -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
@@ -120,21 +122,21 @@ pipeline {
                 }
                 stage('CE Windows') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             sh "GOOS=windows go build -o sync_gateway_ce-windows -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('EE Windows') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             sh "GOOS=windows go build -o sync_gateway_ee-windows -tags ${EE_BUILD_TAG} -v ${SGW_REPO}"
                         }
                     }
                 }
                 stage('Windows Service') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             sh "GOOS=windows go build -o sync_gateway_ce-windows-service -v ${SGW_REPO}/service/sg-windows/sg-service"
                         }
                     }
@@ -146,7 +148,7 @@ pipeline {
             parallel {
                 stage('gofmt') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             script {
                                 try {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-gofmt', description: 'Running', status: 'PENDING')
@@ -167,7 +169,7 @@ pipeline {
                 }
                 stage('go vet') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             warnError(message: "go vet failed") {
                                 sh "go vet ${SGW_REPO}/..."
                             }
@@ -176,7 +178,7 @@ pipeline {
                 }
                 stage('go fix') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}"]) {
                             warnError(message: "go fix failed") {
                                 sh "go tool fix -diff ${GOPATH}/src/${SGW_REPO} | tee gofix.out"
                                 sh "test -z \"\$(cat gofix.out)\""
@@ -186,7 +188,7 @@ pipeline {
                 }
                 stage('errcheck') {
                     steps {
-                        withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                        withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
                             script {
                                 try {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-errcheck', description: 'Running', status: 'PENDING')
@@ -215,7 +217,7 @@ pipeline {
                         stage('CE') {
                             steps{
                                 // Travis-related variables are required as coveralls.io only officially supports a certain set of CI tools.
-                                withEnv(["PATH+=${GO}:${GOPATH}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
+                                withEnv(["PATH+=${GO}:${GOTOOLS}/bin", "TRAVIS_BRANCH=${env.BRANCH}", "TRAVIS_PULL_REQUEST=${env.CHANGE_ID}", "TRAVIS_JOB_ID=${env.BUILD_NUMBER}"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ce-unit-tests', description: 'CE Unit Tests Running', status: 'PENDING')
 
                                     // Build CE coverprofiles
@@ -267,7 +269,7 @@ pipeline {
 
                         stage('EE') {
                             steps {
-                                withEnv(["PATH+=${GO}:${GOPATH}/bin"]) {
+                                withEnv(["PATH+=${GO}:${GOTOOLS}/bin"]) {
                                     githubNotify(credentialsId: "${GH_ACCESS_TOKEN_CREDENTIAL}", context: 'sgw-pipeline-ee-unit-tests', description: 'EE Unit Tests Running', status: 'PENDING')
 
                                     // Build EE coverprofiles
