@@ -54,7 +54,11 @@ func TestVerifyHTTPSSupport(t *testing.T) {
 	}
 
 	resp, err := http.Get("https://google.com")
-	defer func() { _ = resp.Body.Close() }()
+	defer func() {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+	}()
 
 	if err != nil {
 		// Skip test if dial tcp fails with no such host.
