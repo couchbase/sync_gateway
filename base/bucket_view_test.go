@@ -3,7 +3,6 @@ package base
 import (
 	"fmt"
 	"log"
-	"strings"
 	"testing"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -55,11 +54,8 @@ func TestView(t *testing.T) {
 			if viewErr == nil {
 				return false, nil, nil
 			}
-			if strings.Contains(viewErr.Error(), "view_undefined") {
-				log.Printf("View undefined, retrying")
-				return true, nil, nil
-			}
-			return false, viewErr, nil
+			log.Printf("Unexpected error querying view for readiness, retrying: %v", err)
+			return true, viewErr, nil
 		}
 
 		description := fmt.Sprintf("Wait for view readiness")
