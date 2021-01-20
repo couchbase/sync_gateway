@@ -54,20 +54,8 @@ func TestBodyUnmarshal(t *testing.T) {
 		t.Run(test.name, func(ts *testing.T) {
 			var b Body
 			err := b.Unmarshal(test.inputBytes)
-
-			// Unmarshal using json.Unmarshal for comparison below
-			var jsonUnmarshalBody Body
-			unmarshalErr := base.JSONUnmarshal(test.inputBytes, &jsonUnmarshalBody)
-
-			if unmarshalErr != nil {
-				// If json.Unmarshal returns error for input, body.Unmarshal should do the same
-				assert.True(t, err != nil, fmt.Sprintf("Expected error when unmarshalling %s", test.name))
-			} else {
-				assert.NoError(t, err, fmt.Sprintf("Expected no error when unmarshalling %s", test.name))
-				goassert.DeepEquals(t, b, test.expectedBody) // Check against expected body
-				goassert.DeepEquals(t, b, jsonUnmarshalBody) // Check against json.Unmarshal results
-			}
-
+			assert.NoError(t, err, fmt.Sprintf("Expected no error when unmarshalling %s", test.name))
+			goassert.DeepEquals(t, b, test.expectedBody) // Check against expected body
 		})
 	}
 }

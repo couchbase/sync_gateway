@@ -12,7 +12,6 @@ package db
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -58,7 +57,9 @@ const (
 func (b *Body) Unmarshal(data []byte) error {
 
 	if len(data) == 0 {
-		return errors.New("Unexpected empty JSON input to body.Unmarshal")
+		b = nil
+		return nil
+		// return errors.New("Unexpected empty JSON input to body.Unmarshal")
 	}
 
 	// Use decoder for unmarshalling to preserve large numbers

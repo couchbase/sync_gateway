@@ -2127,9 +2127,11 @@ func TestDeletedEmptyDocumentImport(t *testing.T) {
 	assert.Equal(t, http.StatusOK, response.Code)
 	rawResponse := make(map[string]interface{})
 	err = base.JSONUnmarshal(response.Body.Bytes(), &rawResponse)
-	assert.NoError(t, err, "Unable to unmarshal raw response")
+	require.NoError(t, err, "Unable to unmarshal raw response")
 
-	assert.True(t, rawResponse[db.BodyDeleted].(bool))
+	deleted, ok := rawResponse[db.BodyDeleted].(bool)
+	require.True(t, ok)
+	assert.True(t, deleted)
 	syncMeta := rawResponse["_sync"].(map[string]interface{})
 	assert.Equal(t, "2-5d3308aae9930225ed7f6614cf115366", syncMeta["rev"])
 }

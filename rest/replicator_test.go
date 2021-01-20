@@ -4196,7 +4196,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			//	- e.g. local is 3-a(T), remote is 3-b
 			name:             "revGenTieLocalDigestLower",
 			remoteBodyValues: []string{"baz", "EADGBE"},
-			expectedRevID:    "4-c6fe7cde8f7187705f9e048322a9c350",
+			expectedRevID:    "4-3823441c5f4a7219a884c7d1aab7fdcf",
 		},
 		{
 			// Revision tie with local digest is higher than the remote digest.
@@ -4204,7 +4204,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			//	- e.g. local is 3-c(T), remote is 3-b
 			name:             "revGenTieLocalDigestHigher",
 			remoteBodyValues: []string{"baz", "qux"},
-			expectedRevID:    "4-a210e8a790415d7e842e78e1d051cb3d",
+			expectedRevID:    "4-afc7da5789b7e2b7c550c4d105b9b56c",
 		},
 		{
 			// Local revision generation is lower than remote revision generation.
@@ -4212,7 +4212,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			//  - e.g. local is 3-a(T), remote is 4-b
 			name:             "revGenLocalLower",
 			remoteBodyValues: []string{"baz", "qux", "grunt"},
-			expectedRevID:    "5-fe3ac95144be01e9b455bfa163687f0e",
+			expectedRevID:    "5-3f22b63213d9713603df04c90724db11",
 		},
 		{
 			// Local revision generation is higher than remote revision generation.
@@ -4220,7 +4220,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			//	- e.g. local is 3-a(T), remote is 2-b
 			name:             "revGenLocalHigher",
 			remoteBodyValues: []string{"baz"},
-			expectedRevID:    "4-232b1f34f6b9341c54435eaf5447d85d",
+			expectedRevID:    "4-80ac8db3e9b9f064d2f9204e94f30050",
 		},
 	}
 
@@ -4313,17 +4313,17 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			// Wait for default conflict resolution policy to be applied through replication and
 			// the winning revision to be written to both rt1 and rt2 buckets. Check whether the
 			// winning revision is a tombstone; tombstone revision wins over non-tombstone revision.
-			waitForTombstone(t, rt2, docID)
-			waitForTombstone(t, rt1, docID)
+			waitForTombstone(tt, rt2, docID)
+			waitForTombstone(tt, rt1, docID)
 
-			requireRevID(t, rt2, docID, test.expectedRevID)
-			requireRevID(t, rt1, docID, test.expectedRevID)
+			requireRevID(tt, rt2, docID, test.expectedRevID)
+			requireRevID(tt, rt1, docID, test.expectedRevID)
 
 			// Ensure that the document body of the winning tombstone revision written to both
 			// rt1 and rt2 is empty, i.e., An attempt to read the document body of a tombstone
 			// revision via SDK should return a "key not found" error.
-			requireErrorKeyNotFound(t, rt2, docID)
-			requireErrorKeyNotFound(t, rt1, docID)
+			requireErrorKeyNotFound(tt, rt2, docID)
+			requireErrorKeyNotFound(tt, rt1, docID)
 		})
 	}
 }
