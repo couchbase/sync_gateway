@@ -1137,7 +1137,6 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.Contains(t, err.Error(), "404 missing")
 	assert.Empty(t, bodyBytes, "Provided revision doesn't exists")
 	assert.False(t, removed, "This shouldn't be a removed revision")
-	assert.Error(t, response.Unmarshal(bodyBytes), "Unexpected empty JSON input to body.Unmarshal")
 
 	// Deletes the document, by adding a new revision whose _deleted property is true.
 	body := Body{BodyDeleted: true, BodyRev: rev2}
@@ -1166,7 +1165,6 @@ func TestGet1xRevFromDoc(t *testing.T) {
 	assert.Contains(t, err.Error(), "404 deleted")
 	assert.Empty(t, bodyBytes, "Document body bytes should be empty")
 	assert.False(t, removed, "This shouldn't be a removed document")
-	assert.Error(t, response.Unmarshal(bodyBytes), "Unexpected empty JSON input to body.Unmarshal")
 }
 
 func TestMergeAttachments(t *testing.T) {

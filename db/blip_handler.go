@@ -672,7 +672,13 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		ID:    docID,
 		RevID: revID,
 	}
-	newDoc.UpdateBodyBytes(bodyBytes)
+	newDoc.Deleted = revMessage.Deleted()
+
+	if !newDoc.Deleted || string(bodyBytes) != "null" {
+		newDoc.UpdateBodyBytes(bodyBytes)
+	} else {
+		fmt.Printf("xxx")
+	}
 
 	injectedAttachmentsForDelta := false
 	if deltaSrcRevID, isDelta := revMessage.DeltaSrc(); isDelta {
@@ -734,8 +740,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		newDoc.DocExpiry = expiry
 		newDoc.UpdateBody(body)
 	}
-
-	newDoc.Deleted = revMessage.Deleted()
 
 	// noconflicts flag from LiteCore
 	// https://github.com/couchbase/couchbase-lite-core/wiki/Replication-Protocol#rev

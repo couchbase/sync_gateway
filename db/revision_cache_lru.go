@@ -277,10 +277,13 @@ func (value *revCacheValue) load(backingStore RevisionCacheBackingStore, include
 // Populate value.Body by unmarshalling value.bodyBytes
 func (value *revCacheValue) updateBody() (err error) {
 	var body Body
-	if err := body.Unmarshal(value.bodyBytes); err != nil {
-		// On unmarshal error, warn return docRev without body
-		base.Warnf("Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.key.DocID), value.key.RevID)
-		return err
+
+	if len(value.bodyBytes) > 0 {
+		if err := body.Unmarshal(value.bodyBytes); err != nil {
+			// On unmarshal error, warn return docRev without body
+			base.Warnf("Unable to marshal BodyBytes in revcache for %s %s", base.UD(value.key.DocID), value.key.RevID)
+			return err
+		}
 	}
 
 	value.lock.Lock()

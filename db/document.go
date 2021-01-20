@@ -158,6 +158,7 @@ type Document struct {
 	rawUserXattr []byte // Raw user xattr as retrieved from the bucket
 
 	Deleted        bool
+	IsNilDoc       bool
 	DocExpiry      uint32
 	RevID          string
 	DocAttachments AttachmentsMeta
@@ -237,6 +238,10 @@ func (doc *Document) Body() Body {
 		caller = base.GetCallersName(1, true)
 	}
 
+	if doc._body == nil && len(doc._rawBody) == 0 {
+		return nil
+	}
+
 	if doc._body != nil {
 		base.Tracef(base.KeyAll, "Already had doc body %s/%s from %s", base.UD(doc.ID), base.UD(doc.RevID), caller)
 		return doc._body
@@ -258,6 +263,9 @@ func (doc *Document) Body() Body {
 
 // Get a deep mutable copy of the body, using _rawBody.  Initializes _rawBody based on _body if not already present.
 func (doc *Document) GetDeepMutableBody() Body {
+	if doc.IsNilBody() {
+		return Body{}
+	}
 
 	// If doc._rawBody isn't present, marshal from doc.Body
 	if doc._rawBody == nil {
@@ -281,6 +289,18 @@ func (doc *Document) GetDeepMutableBody() Body {
 	}
 
 	return mutableBody
+}
+
+// func (doc *Document) GetDeepMutableBodyNil() Body {
+// 	if doc.IsNilBody() {
+// 		return Body{}
+// 	}
+// 	return doc.GetDeepMutableBody()
+// }
+
+func (doc *Document) IsNilBody() bool {
+	// return doc.IsNilDoc
+	return doc._body == nil && len(doc._rawBody) == 0
 }
 
 func (doc *Document) RemoveBody() {
@@ -1013,9 +1033,10 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 
 	// If there's no body, but there is an xattr, set deleted flag and initialize an empty body
 	if len(data) == 0 && len(xdata) > 0 {
-		doc._body = Body{}
-		doc._rawBody = []byte(base.EmptyDocument)
+		doc._body = nil
+		doc._rawBody = []byte("")
 		doc.Deleted = true
+		doc.IsNilDoc = true
 	}
 	return nil
 }
