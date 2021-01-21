@@ -2295,14 +2295,20 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok := client1.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac") // docid, revid to get the message
 	assert.True(t, ok)
-	assert.Equal(t, db.MessageRev, msg.Profile(), "unexpected profile for message %v in %v",
-		msg.SerialNumber(), client1.pullReplication.GetMessages())
+	if !assert.Equal(t, db.MessageRev, msg.Profile()) {
+		t.Logf("unexpected profile for message %v in %v",
+			msg.SerialNumber(), client1.pullReplication.GetMessages())
+	}
 	msgBody, err := msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v",
-		msg.SerialNumber(), client1.pullReplication.GetMessages())
-	assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted], "unexpected deleted property for message %v in %v",
-		msg.SerialNumber(), client1.pullReplication.GetMessages())
+	if !assert.Equal(t, `{}`, string(msgBody)) {
+		t.Logf("unexpected body for message %v in %v",
+			msg.SerialNumber(), client1.pullReplication.GetMessages())
+	}
+	if !assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted]) {
+		t.Logf("unexpected deleted property for message %v in %v",
+			msg.SerialNumber(), client1.pullReplication.GetMessages())
+	}
 
 	// Sync Gateway will have cached the tombstone delta, so client 2 should be able to retrieve it from the cache
 	err = client2.StartOneshotPull()
@@ -2314,14 +2320,20 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
 	msg, ok = client2.WaitForBlipRevMessage("doc1", "2-ed278cbc310c9abeea414da15d0b2cac")
 	assert.True(t, ok)
-	assert.Equal(t, db.MessageRev, msg.Profile(), "unexpected profile for message %v in %v",
-		msg.SerialNumber(), client2.pullReplication.GetMessages())
+	if !assert.Equal(t, db.MessageRev, msg.Profile()) {
+		t.Logf("unexpected profile for message %v in %v",
+			msg.SerialNumber(), client2.pullReplication.GetMessages())
+	}
 	msgBody, err = msg.Body()
 	assert.NoError(t, err)
-	assert.Equal(t, `{}`, string(msgBody), "unexpected body for message %v in %v",
-		msg.SerialNumber(), client2.pullReplication.GetMessages())
-	assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted], "unexpected deleted property for message %v in %v",
-		msg.SerialNumber(), client2.pullReplication.GetMessages())
+	if !assert.Equal(t, `{}`, string(msgBody)) {
+		t.Logf("unexpected body for message %v in %v",
+			msg.SerialNumber(), client2.pullReplication.GetMessages())
+	}
+	if !assert.Equal(t, "1", msg.Properties[db.RevMessageDeleted]) {
+		t.Logf("unexpected deleted property for message %v in %v",
+			msg.SerialNumber(), client2.pullReplication.GetMessages())
+	}
 
 	var deltaCacheHitsEnd int64
 	var deltaCacheMissesEnd int64
