@@ -16,14 +16,14 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: Too many Document Access Failures in Last Hour
+          summary: Too many Document Access Failures in last hour
       - alert: TooManyDocumentRejectionFailuresInLastHour
         expr: increase(sgw_security_num_docs_rejected[1h]) > 1000
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: Too many Document Rejection Failures in Last Hour
+          summary: Too many Document Rejection Failures in last hour
       - alert: HighRevCacheMissRate
         expr: sgw_cache_rev_cache_misses / (sgw_cache_rev_cache_misses + sgw_cache_rev_cache_hits) >= 0.8
         for: 1m
@@ -51,21 +51,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: An error occurred in the Last Hour
-      - alert: WarnChannelsPerDocCount
-        expr: increase(warn_channels_per_doc_count[1h]) > 0
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: A document attempted to exceed the channels per doc limit in the lsat hour
-      - alert: WarnGrantsPerDoc
-        expr: increase(sgw_database_warn_grants_per_doc_count[1h]) > 0
-        for: 1m
-        labels:
-          severity: warning
-        annotations:
-          summary: A document attempted to exceed the grants per doc limit in the last hour
+          summary: An error occurred in the last hour
       - alert: WarnXattrSizeCount
         expr: increase(sgw_database_warn_xattr_size_count[1h]) > 0
         for: 1m
