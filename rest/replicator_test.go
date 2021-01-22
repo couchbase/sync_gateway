@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -3927,6 +3928,17 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		},
 	}
 
+	isDeleted := func(val int) bool {
+		if val == channels.Deleted {
+			return true
+		} else if val == channels.Branched|channels.Deleted {
+			return true
+		} else if val == channels.Branched|channels.Hidden|channels.Deleted {
+			return true
+		}
+		return false
+	}
+
 	// requireTombstone validates tombstoned revision.
 	requireTombstone := func(t *testing.T, bucket *base.TestBucket, docID string) {
 		var rawBody db.Body
@@ -3937,10 +3949,11 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		} else {
 			require.NoError(t, err)
 			require.Len(t, rawBody, 1)
-			rawSyncData, ok := rawBody[base.SyncXattrName].(map[string]interface{})
+			rawSyncData, ok := rawBody[base.SyncPropertyName].(map[string]interface{})
 			require.True(t, ok)
-			_, ok = rawSyncData["tombstoned_at"].(float64)
+			val, ok := rawSyncData["flags"].(float64)
 			require.True(t, ok)
+			require.True(t, isDeleted(int(val)))
 		}
 	}
 
