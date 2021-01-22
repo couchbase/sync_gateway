@@ -633,9 +633,6 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
 				cacheOptions.CompactLowWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
 			}
-			if config.CacheConfig.ChannelCacheConfig.QueryLimit != nil && *config.CacheConfig.ChannelCacheConfig.QueryLimit > 0 {
-				cacheOptions.ChannelQueryLimit = *config.CacheConfig.ChannelCacheConfig.QueryLimit
-			}
 		}
 
 		if config.CacheConfig.RevCacheConfig != nil {
@@ -685,21 +682,19 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		compactIntervalSecs = uint32(*config.CompactIntervalDays * 60 * 60 * 24)
 	}
 
-	resyncQueryLimit := db.DefaultResyncQueryLimit
-	if config.ResyncQueryLimit != nil {
-		resyncQueryLimit = *config.ResyncQueryLimit
-		if *config.ResyncQueryLimit < 1 {
-			return db.DatabaseContextOptions{}, fmt.Errorf("resync_query_limit: %d must be greater than 0", *config.ResyncQueryLimit)
+	queryPaginationLimit := db.DefaultQueryPaginationLimit
+	if config.QueryPaginationLimit != nil {
+		queryPaginationLimit = *config.QueryPaginationLimit
+	} else {
+		if config.CacheConfig != nil && config.CacheConfig.ChannelCacheConfig != nil && config.CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit != nil {
+			queryPaginationLimit = *config.CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit
 		}
 	}
 
-	principalQueryLimit := db.DefaultPrincipalQueryLimit
-	if config.PrincipalQueryLimit != nil {
-		if *config.PrincipalQueryLimit < 2 {
-			return db.DatabaseContextOptions{}, fmt.Errorf("principal_query_limit: %d must be greater than 1", *config.PrincipalQueryLimit)
-		}
-		principalQueryLimit = *config.PrincipalQueryLimit
+	if queryPaginationLimit < 2 {
+		return db.DatabaseContextOptions{}, fmt.Errorf("query_pagination_limit: %d must be greater than 1", queryPaginationLimit)
 	}
+	cacheOptions.ChannelQueryLimit = queryPaginationLimit
 
 	secureCookieOverride := sc.config.SSLCert != nil
 	if config.SecureCookieOverride != nil {
@@ -739,8 +734,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		DeltaSyncOptions:          deltaSyncOptions,
 		CompactInterval:           compactIntervalSecs,
-		ResyncQueryLimit:          resyncQueryLimit,
-		PrincipalQueryLimit:       principalQueryLimit,
+		QueryPaginationLimit:      queryPaginationLimit,
 		SGReplicateOptions: db.SGReplicateOptions{
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,

@@ -2357,7 +2357,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		channel("x")
 	}`
 
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{ResyncQueryLimit: 5000})
+	db := setupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
 
 	_, err := db.UpdateSyncFun(syncFn)
 	assert.NoError(t, err)

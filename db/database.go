@@ -69,8 +69,7 @@ var (
 
 var DefaultCompactInterval = uint32(60 * 60 * 24) // Default compact interval in seconds = 1 Day
 var (
-	DefaultResyncQueryLimit    = 5000
-	DefaultPrincipalQueryLimit = 5000
+	DefaultQueryPaginationLimit = 5000
 )
 
 const (
@@ -142,8 +141,7 @@ type DatabaseContextOptions struct {
 	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions        SGReplicateOptions
 	SlowQueryWarningThreshold time.Duration
-	ResyncQueryLimit          int // Limit used for pagination of resync queries. If not set defaults to DefaultResyncQueryLimit
-	PrincipalQueryLimit       int // Limit used for pagination of principal doc queries. If not set defaults to DefaultPrincipalQueryLimit
+	QueryPaginationLimit      int // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
 }
 
 type SGReplicateOptions struct {
@@ -845,7 +843,7 @@ type principalsViewRow struct {
 func (db *DatabaseContext) AllPrincipalIDs() (users, roles []string, err error) {
 
 	startKey := ""
-	limit := db.Options.PrincipalQueryLimit
+	limit := db.Options.QueryPaginationLimit
 
 	users = []string{}
 	roles = []string{}
@@ -1077,7 +1075,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 	base.Infof(base.KeyAll, "Recomputing document channels...")
 	base.Infof(base.KeyAll, "Re-running sync function on all documents...")
 
-	queryLimit := db.Options.ResyncQueryLimit
+	queryLimit := db.Options.QueryPaginationLimit
 	startSeq := uint64(0)
 	endSeq, err := db.sequences.getSequence()
 	if err != nil {

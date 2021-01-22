@@ -197,8 +197,7 @@ type DbConfig struct {
 	SGReplicateWebsocketPingInterval *int                             `json:"sgreplicate_websocket_heartbeat_secs,omitempty"` // If set, uses this duration as a custom heartbeat interval for websocket ping frames
 	Replications                     map[string]*db.ReplicationConfig `json:"replications,omitempty"`                         // sg-replicate replication definitions
 	ServeInsecureAttachmentTypes     bool                             `json:"serve_insecure_attachment_types,omitempty"`      // Attachment content type will bypass the content-disposition handling, default false
-	ResyncQueryLimit                 *int                             `json:"resync_query_limit,omitempty"`
-	PrincipalQueryLimit              *int                             `json:"principal_query_limit,omitempty"`
+	QueryPaginationLimit             *int                             `json:"query_pagination_limit,omitempty"`
 }
 
 type DeltaSyncConfig struct {
@@ -279,7 +278,7 @@ type ChannelCacheConfig struct {
 	MaxLength            *int    `json:"max_length,omitempty"`                 // Maximum number of entries maintained in cache per channel
 	MinLength            *int    `json:"min_length,omitempty"`                 // Minimum number of entries maintained in cache per channel
 	ExpirySeconds        *int    `json:"expiry_seconds,omitempty"`             // Time (seconds) to keep entries in cache beyond the minimum retained
-	QueryLimit           *int    `json:"query_limit,omitempty"`                // Limit used for channel queries, if not specified by client
+	DeprecatedQueryLimit *int    `json:"query_limit,omitempty"`                // Limit used for channel queries, if not specified by client DEPRECATED in favour of db.QueryPaginationLimit
 }
 
 type UnsupportedServerConfig struct {

@@ -1004,7 +1004,7 @@ func TestConfigToDatabaseOptions(t *testing.T) {
 	database, addDatabaseError := sc.AddDatabaseFromConfig(config.Databases["db"])
 	require.NoError(t, addDatabaseError)
 
-	assert.Equal(t, *config.Databases["db"].CacheConfig.ChannelCacheConfig.QueryLimit, database.Options.CacheOptions.ChannelQueryLimit)
+	assert.Equal(t, *config.Databases["db"].CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit, database.Options.QueryPaginationLimit)
 
 }
 

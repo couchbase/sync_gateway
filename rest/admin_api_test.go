@@ -1224,14 +1224,14 @@ func TestResync(t *testing.T) {
 			docsCreated:        0,
 			expectedSyncFnRuns: 0,
 			expectedQueryCount: 1,
-			queryLimit:         db.DefaultResyncQueryLimit,
+			queryLimit:         db.DefaultQueryPaginationLimit,
 		},
 		{
 			name:               "Docs 1000, Limit Default",
 			docsCreated:        1000,
 			expectedSyncFnRuns: 2000,
 			expectedQueryCount: 1,
-			queryLimit:         db.DefaultResyncQueryLimit,
+			queryLimit:         db.DefaultQueryPaginationLimit,
 		},
 		{
 			name:               "Docs 1000, Limit 10",
@@ -1252,7 +1252,7 @@ func TestResync(t *testing.T) {
 			rt := NewRestTester(t,
 				&RestTesterConfig{
 					DatabaseConfig: &DbConfig{
-						ResyncQueryLimit: &testCase.queryLimit,
+						QueryPaginationLimit: &testCase.queryLimit,
 					},
 					SyncFn: syncFn,
 				},
@@ -1426,7 +1426,7 @@ func TestResyncStop(t *testing.T) {
 		&RestTesterConfig{
 			SyncFn: syncFn,
 			DatabaseConfig: &DbConfig{
-				ResyncQueryLimit: base.IntPtr(10),
+				QueryPaginationLimit: base.IntPtr(10),
 			},
 			TestBucket: leakyTestBucket,
 		},
@@ -1511,16 +1511,27 @@ func TestResyncRegenerateSequences(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
+	var testBucket *base.TestBucket
+
+	if base.UnitTestUrlIsWalrus() {
+		var closeFn func()
+		testBucket, closeFn = base.GetPersistentWalrusBucket(t)
+		defer closeFn()
+	} else {
+		testBucket = base.GetTestBucket(t)
+	}
+
 	rt := NewRestTester(t,
 		&RestTesterConfig{
-			SyncFn: syncFn,
+			SyncFn:     syncFn,
+			TestBucket: testBucket,
 		},
 	)
 	defer rt.Close()
 
 	var response *TestResponse
-	var err error
 	var docSeqArr []float64
+	// var err error
 	var body db.Body
 
 	for i := 0; i < 10; i++ {
@@ -1547,7 +1558,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
 	assertStatus(t, response, http.StatusCreated)
 
-	_, err = rt.Bucket().Get(base.RolePrefix+"role1", &body)
+	_, err := rt.Bucket().Get(base.RolePrefix+"role1", &body)
 	assert.NoError(t, err)
 	role1SeqBefore := body["sequence"].(float64)
 
@@ -1632,28 +1643,16 @@ func TestResyncRegenerateSequences(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Data is wiped from walrus when brought back online
-	if !base.UnitTestUrlIsWalrus() {
-		request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
-		request.SetBasicAuth("user1", "letmein")
-		response = rt.Send(request)
-		assertStatus(t, response, http.StatusOK)
-
-		fmt.Println(string(response.BodyBytes()))
-
-		request, _ = http.NewRequest("GET", "/db/_all_docs", nil)
-		request.SetBasicAuth("user1", "letmein")
-		response = rt.Send(request)
-		assertStatus(t, response, http.StatusOK)
-
-		request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
-		request.SetBasicAuth("user1", "letmein")
-		response = rt.Send(request)
-		assertStatus(t, response, http.StatusOK)
-		err = json.Unmarshal(response.BodyBytes(), &changesResp)
-		assert.Len(t, changesResp.Results, 3)
-		assert.True(t, changesRespContains(changesResp, "userdoc"))
-		assert.True(t, changesRespContains(changesResp, "userdoc2"))
-	}
+	// if !base.UnitTestUrlIsWalrus() {
+	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+	// }
 
 }
 
