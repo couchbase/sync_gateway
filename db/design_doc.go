@@ -518,8 +518,8 @@ func installViews(bucket base.Bucket) error {
 		               }`
 	roleAccess_vbSeq_map = fmt.Sprintf(roleAccess_vbSeq_map, syncData, base.SyncPrefix)
 
-	designDocMap := map[string]sgbucket.DesignDoc{}
-	designDocMap[DesignDocSyncGateway()] = sgbucket.DesignDoc{
+	designDocMap := map[string]*sgbucket.DesignDoc{}
+	designDocMap[DesignDocSyncGateway()] = &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			ViewChannels:        sgbucket.ViewDef{Map: channels_map},
 			ViewAccess:          sgbucket.ViewDef{Map: access_map},
@@ -533,7 +533,7 @@ func installViews(bucket base.Bucket) error {
 		},
 	}
 
-	designDocMap[DesignDocSyncHousekeeping()] = sgbucket.DesignDoc{
+	designDocMap[DesignDocSyncHousekeeping()] = &sgbucket.DesignDoc{
 		Views: sgbucket.ViewMap{
 			ViewAllDocs:    sgbucket.ViewDef{Map: alldocs_map, Reduce: "_count"},
 			ViewImport:     sgbucket.ViewDef{Map: import_map, Reduce: "_count"},
@@ -555,7 +555,7 @@ func installViews(bucket base.Bucket) error {
 
 		//start a retry loop to put design document backing off double the delay each time
 		worker := func() (shouldRetry bool, err error, value interface{}) {
-			err = bucket.PutDDoc(designDocName, &designDoc)
+			err = bucket.PutDDoc(designDocName, designDoc)
 			if err != nil {
 				base.Warnf("Error installing Couchbase design doc: %v", err)
 			}

@@ -194,7 +194,10 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 			FatalfCtx(ctx, "nil TestBucketPool, but not using a Walrus test URL")
 		}
 
-		walrusBucket := walrus.NewBucket(tbpBucketNamePrefix + "walrus_" + GenerateRandomID())
+		walrusBucket, err := walrus.GetBucket(s.Server, DefaultPool, tbpBucketNamePrefix+"walrus_"+GenerateRandomID())
+		if err != nil {
+			FatalfCtx(ctx, "couldn't get walrus bucket: %v", err)
+		}
 
 		// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
 		b = &LeakyBucket{bucket: walrusBucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
@@ -203,7 +206,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 		tbp.Logf(ctx, "Creating new walrus test bucket")
 
 		initFuncStart := time.Now()
-		err := tbp.bucketInitFunc(ctx, b, tbp)
+		err = tbp.bucketInitFunc(ctx, b, tbp)
 		if err != nil {
 			FatalfCtx(ctx, "couldn't run bucket init func: %v", err)
 		}
