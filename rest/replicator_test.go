@@ -3928,17 +3928,6 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		},
 	}
 
-	isDeleted := func(val int) bool {
-		if val == channels.Deleted {
-			return true
-		} else if val == channels.Branched|channels.Deleted {
-			return true
-		} else if val == channels.Branched|channels.Hidden|channels.Deleted {
-			return true
-		}
-		return false
-	}
-
 	// requireTombstone validates tombstoned revision.
 	requireTombstone := func(t *testing.T, bucket *base.TestBucket, docID string) {
 		var rawBody db.Body
@@ -3953,7 +3942,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			require.True(t, ok)
 			val, ok := rawSyncData["flags"].(float64)
 			require.True(t, ok)
-			require.True(t, isDeleted(int(val)))
+			require.NotEqual(t, 0, int(val)&channels.Deleted)
 		}
 	}
 
