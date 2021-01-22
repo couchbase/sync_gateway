@@ -5527,3 +5527,24 @@ func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
 		assert.Equal(t, 0, int(rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value()))
 	}
 }
+
+func TestUptimeStat(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	uptime1 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String()
+	duration1, err := time.ParseDuration(uptime1)
+	require.NoError(t, err)
+
+	uptime2 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String()
+	duration2, err := time.ParseDuration(uptime2)
+	require.NoError(t, err)
+
+	uptime3 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String()
+	duration3, err := time.ParseDuration(uptime3)
+	require.NoError(t, err)
+
+	log.Printf("uptime1: %s, uptime2: %s, uptime3: %s", uptime1, uptime2, uptime3)
+	assert.True(t, (duration1 < duration2) && (duration1 < duration3))
+	assert.True(t, duration2 < duration3)
+}
