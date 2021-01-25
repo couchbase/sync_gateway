@@ -181,6 +181,53 @@ func (tbp *TestBucketPool) markBucketClosed(t testing.TB, b Bucket) {
 	}
 }
 
+func (tbp *TestBucketPool) GetWalrusTestBucket(t testing.TB, url string) (b Bucket, s BucketSpec, teardown func()) {
+	testCtx := testCtx(t)
+	if !UnitTestUrlIsWalrus() {
+		FatalfCtx(testCtx, "nil TestBucketPool, but not using a Walrus test URL")
+	}
+
+	walrusBucket, err := walrus.GetBucket(url, DefaultPool, tbpBucketNamePrefix+"walrus_"+GenerateRandomID())
+	if err != nil {
+		FatalfCtx(testCtx, "couldn't get walrus bucket: %v", err)
+	}
+
+	// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
+	b = &LeakyBucket{bucket: walrusBucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
+
+	ctx := bucketCtx(testCtx, b)
+	tbp.Logf(ctx, "Creating new walrus test bucket")
+
+	initFuncStart := time.Now()
+	err = tbp.bucketInitFunc(ctx, b, tbp)
+	if err != nil {
+		FatalfCtx(ctx, "couldn't run bucket init func: %v", err)
+	}
+	atomic.AddInt32(&tbp.stats.TotalBucketInitCount, 1)
+	atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(initFuncStart).Nanoseconds())
+	tbp.markBucketOpened(t, b)
+
+	atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
+	openedStart := time.Now()
+	bucketClosed := &AtomicBool{}
+
+	bucketSpec := getBucketSpec(tbpBucketName(b.GetName()))
+	bucketSpec.Server = url
+
+	return b, bucketSpec, func() {
+		if !bucketClosed.CompareAndSwap(false, true) {
+			tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
+			return
+		}
+
+		tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
+		atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
+		atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
+		tbp.markBucketClosed(t, b)
+		b.Close()
+	}
+}
+
 // GetTestBucketAndSpec returns a bucket to be used during a test.
 // The returned teardownFn MUST be called once the test is done,
 // which closes the bucket, readies it for a new test, and releases back into the pool.
@@ -190,45 +237,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
-		if !UnitTestUrlIsWalrus() {
-			FatalfCtx(ctx, "nil TestBucketPool, but not using a Walrus test URL")
-		}
-
-		walrusBucket, err := walrus.GetBucket(s.Server, DefaultPool, tbpBucketNamePrefix+"walrus_"+GenerateRandomID())
-		if err != nil {
-			FatalfCtx(ctx, "couldn't get walrus bucket: %v", err)
-		}
-
-		// Wrap Walrus buckets with a leaky bucket to support vbucket IDs on feed.
-		b = &LeakyBucket{bucket: walrusBucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
-
-		ctx := bucketCtx(ctx, b)
-		tbp.Logf(ctx, "Creating new walrus test bucket")
-
-		initFuncStart := time.Now()
-		err = tbp.bucketInitFunc(ctx, b, tbp)
-		if err != nil {
-			FatalfCtx(ctx, "couldn't run bucket init func: %v", err)
-		}
-		atomic.AddInt32(&tbp.stats.TotalBucketInitCount, 1)
-		atomic.AddInt64(&tbp.stats.TotalBucketInitDurationNano, time.Since(initFuncStart).Nanoseconds())
-		tbp.markBucketOpened(t, b)
-
-		atomic.AddInt32(&tbp.stats.NumBucketsOpened, 1)
-		openedStart := time.Now()
-		bucketClosed := &AtomicBool{}
-		return b, getBucketSpec(tbpBucketName(b.GetName())), func() {
-			if !bucketClosed.CompareAndSwap(false, true) {
-				tbp.Logf(ctx, "Bucket teardown was already called. Ignoring.")
-				return
-			}
-
-			tbp.Logf(ctx, "Teardown called - Closing walrus test bucket")
-			atomic.AddInt32(&tbp.stats.NumBucketsClosed, 1)
-			atomic.AddInt64(&tbp.stats.TotalInuseBucketNano, time.Since(openedStart).Nanoseconds())
-			tbp.markBucketClosed(t, b)
-			b.Close()
-		}
+		return tbp.GetWalrusTestBucket(t, "")
 	}
 
 	if atomic.LoadUint32(&tbp.preservedBucketCount) >= uint32(cap(tbp.readyBucketPool)) {

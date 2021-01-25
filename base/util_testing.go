@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -75,6 +77,29 @@ func GetTestBucket(t testing.TB) *TestBucket {
 		BucketSpec: spec,
 		closeFn:    closeFn,
 	}
+}
+
+// Gets a Walrus bucket which will be persisted to a temporary directory
+// Returns both the test bucket which is persisted and a function which can be used to remove the created temporary
+// directory once the test has finished with it.
+func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
+	tempDir, err := ioutil.TempDir("", "walrustemp")
+	require.NoError(t, err)
+
+	walrusFile := filepath.Join("walrus://", tempDir)
+	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, walrusFile)
+
+	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
+	removeFileFunc := func() {
+		err := os.RemoveAll(tempDir)
+		require.NoError(t, err)
+	}
+
+	return &TestBucket{
+		Bucket:     bucket,
+		BucketSpec: spec,
+		closeFn:    closeFn,
+	}, removeFileFunc
 }
 
 func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
