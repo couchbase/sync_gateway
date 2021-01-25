@@ -182,6 +182,7 @@
             "start_build": 138
         },
         "manifest/2.7.xml": {
+            "do-build": false,
             "release": "2.7.4",
             "release_name": "Couchbase Sync Gateway 2.7.4",
             "production": true,
