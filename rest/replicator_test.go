@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/couchbase/sync_gateway/channels"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -3865,11 +3866,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
-	// FIXME: CBG-1171
-	if !base.TestUseXattrs() {
-		t.Skip("Test broken under xattrs=false - CBG-1171")
-	}
-
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
@@ -3932,7 +3928,26 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 		},
 	}
 
+	// requireTombstone validates tombstoned revision.
+	requireTombstone := func(t *testing.T, bucket *base.TestBucket, docID string) {
+		var rawBody db.Body
+		_, err := bucket.Get(docID, &rawBody)
+		if base.TestUseXattrs() {
+			require.True(t, base.IsDocNotFoundError(err))
+			require.Len(t, rawBody, 0)
+		} else {
+			require.NoError(t, err)
+			require.Len(t, rawBody, 1)
+			rawSyncData, ok := rawBody[base.SyncPropertyName].(map[string]interface{})
+			require.True(t, ok)
+			val, ok := rawSyncData["flags"].(float64)
+			require.True(t, ok)
+			require.NotEqual(t, 0, int(val)&channels.Deleted)
+		}
+	}
+
 	for _, test := range tombstoneTests {
+
 		t.Run(test.name, func(t *testing.T) {
 			defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket, base.KeyReplicate)()
 
@@ -4030,9 +4045,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				localActiveRT.deleteDoc("docid2", revid)
 
 				// Validate local is CBS tombstone, expect not found error
-				var getRaw []byte
-				_, getErr := tb1.Get("docid2", getRaw)
-				assert.Error(t, getErr, "Expect KeyNotFound error retrieving local tombstone pre-replication")
+				// Expect KeyNotFound error retrieving local tombstone pre-replication
+				requireTombstone(t, tb1, "docid2")
 
 			} else {
 				// Delete doc on localActiveRT (active / local)
@@ -4044,9 +4058,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				remotePassiveRT.deleteDoc("docid2", revid)
 
 				// Validate local is CBS tombstone, expect not found error
-				var getRaw []byte
-				_, getErr := tb2.Get("docid2", getRaw)
-				assert.Error(t, getErr, "Expect KeyNotFound error retrieving remote tombstone pre-replication")
+				// Expect KeyNotFound error retrieving remote tombstone pre-replication
+				requireTombstone(t, tb2, "docid2")
 			}
 
 			// Start up repl again
@@ -4059,9 +4072,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				assert.NoError(t, err)
 				if doc.SyncData.CurrentRev == "5-4a5f5a35196c37c117737afd5be1fc9b" {
 					// Validate local is CBS tombstone, expect not found error
-					var getRaw []byte
-					_, getErr := tb1.Get("docid2", getRaw)
-					assert.Error(t, getErr, "Expect KeyNotFound error retrieving local tombstone post-replication")
+					// Expect KeyNotFound error retrieving local tombstone post-replication
+					requireTombstone(t, tb1, "docid2")
 					return true
 				}
 				return false
@@ -4073,9 +4085,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				assert.NoError(t, err)
 				if doc.SyncData.CurrentRev == "5-4a5f5a35196c37c117737afd5be1fc9b" {
 					// Validate remote is CBS tombstone
-					var getRaw []byte
-					_, getErr := tb2.Get("docid2", getRaw)
-					assert.Error(t, getErr, "Expect KeyNotFound error retrieving remote tombstone post-replication")
+					// Expect KeyNotFound error retrieving remote tombstone post-replication
+					requireTombstone(t, tb2, "docid2")
 					return true
 				}
 				return false
