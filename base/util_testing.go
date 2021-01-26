@@ -7,7 +7,6 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -86,7 +85,7 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 	tempDir, err := ioutil.TempDir("", "walrustemp")
 	require.NoError(t, err)
 
-	walrusFile := filepath.Join("walrus://", tempDir)
+	walrusFile := fmt.Sprintf("walrus:%s", tempDir)
 	bucket, spec, closeFn := GTestBucketPool.GetWalrusTestBucket(t, walrusFile)
 
 	// Return this separate to closeFn as we want to avoid this being removed on database close (/_offline handling)
