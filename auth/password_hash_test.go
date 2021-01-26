@@ -242,102 +242,62 @@ func TestCacheRace(t *testing.T) {
 	}
 }
 
-func BenchmarkPut(b *testing.B) {
-	const maxCacheSize = kMaxCacheSize
-	benchmarks := []struct {
-		name  string
-		cache Cache
-	}{
-		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
-		{"NoReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
-	}
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			b.ReportAllocs()
-			cache := bm.cache
-			for i := 0; i < b.N; i++ {
-				cache.Put(key())
-			}
-		})
-	}
-}
+func BenchmarkPutAndOverflow(b *testing.B) {
+	const maxCacheSize = 100
 
-func BenchmarkParallelPutRandReplKeyCache(b *testing.B) {
-	const maxCacheSize = kMaxCacheSize
-	b.ReportAllocs()
-	cache := NewRandReplKeyCache(maxCacheSize)
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			cache.Put(key())
+	setupCache := func(cacheType cacheType, warmupCache bool) (cache Cache) {
+		if cacheType == randReplKeyCache {
+			cache = NewRandReplKeyCache(maxCacheSize)
+		} else if cacheType == noReplKeyCache {
+			cache = NewNoReplKeyCache(maxCacheSize)
 		}
-	})
-}
-
-func BenchmarkParallelPutNoReplKeyCache(b *testing.B) {
-	const maxCacheSize = kMaxCacheSize
-	b.ReportAllocs()
-	cache := NewNoReplKeyCache(maxCacheSize)
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			cache.Put(key())
-		}
-	})
-}
-
-func BenchmarkPutOverflow(b *testing.B) {
-	const maxCacheSize = kMaxCacheSize
-	benchmarks := []struct {
-		name  string
-		cache Cache
-	}{
-		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
-		{"NoReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
-	}
-	for _, bm := range benchmarks {
-		b.Run(bm.name, func(b *testing.B) {
-			b.ReportAllocs()
-			cache := bm.cache
+		if warmupCache {
 			for i := 0; i < maxCacheSize; i++ {
 				cache.Put(key())
 			}
+		}
+		return cache
+	}
+
+	benchmarks := []struct {
+		name        string
+		cacheType   cacheType
+		warmupCache bool
+		runParallel bool
+	}{
+		{"FillRandReplKeyCache", randReplKeyCache, false, false},
+		{"FillNoReplKeyCache", noReplKeyCache, false, false},
+
+		{"RefillRandReplKeyCache", randReplKeyCache, true, false},
+		{"RefillNoReplKeyCache", noReplKeyCache, true, false},
+
+		{"ParallelFillRandReplKeyCache", randReplKeyCache, false, true},
+		{"ParallelFillNoReplKeyCache", noReplKeyCache, false, true},
+
+		{"ParallelRefillRandReplKeyCache", randReplKeyCache, true, true},
+		{"ParallelRefillNoReplKeyCache", noReplKeyCache, true, true},
+	}
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			cache := setupCache(bm.cacheType, bm.warmupCache)
 			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				cache.Put(key())
+			if bm.runParallel {
+				b.RunParallel(func(pb *testing.PB) {
+					b.ReportAllocs()
+					for pb.Next() {
+						cache.Put(key())
+					}
+				})
+			} else {
+				b.Run(bm.name, func(b *testing.B) {
+					b.ReportAllocs()
+					for i := 0; i < b.N; i++ {
+						cache.Put(key())
+					}
+				})
 			}
 		})
 	}
-}
-
-func BenchmarkParallelPutOverflowRandReplKeyCache(b *testing.B) {
-	const maxCacheSize = kMaxCacheSize
-	b.ReportAllocs()
-	cache := NewRandReplKeyCache(maxCacheSize)
-	for i := 0; i < maxCacheSize; i++ {
-		cache.Put(key())
-	}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			cache.Put(key())
-		}
-	})
-}
-
-func BenchmarkParallelPutOverflowNoReplKeyCache(b *testing.B) {
-	const maxCacheSize = kMaxCacheSize
-	b.ReportAllocs()
-	cache := NewNoReplKeyCache(maxCacheSize)
-	for i := 0; i < maxCacheSize; i++ {
-		cache.Put(key())
-	}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			cache.Put(key())
-		}
-	})
 }
 
 func BenchmarkContains(b *testing.B) {
@@ -347,7 +307,7 @@ func BenchmarkContains(b *testing.B) {
 		cache Cache
 	}{
 		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
-		{"NoReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
+		{"NoReplKeyCache", NewNoReplKeyCache(maxCacheSize)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
@@ -400,7 +360,7 @@ func BenchmarkCompareHashAndPassword100PercentCacheHit(b *testing.B) {
 		cache Cache
 	}{
 		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
-		{"NoReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
+		{"NoReplKeyCache", NewNoReplKeyCache(maxCacheSize)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
@@ -425,7 +385,7 @@ func BenchmarkCompareHashAndPasswordCacheMissAndFill(b *testing.B) {
 		cache Cache
 	}{
 		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
-		{"NoReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
+		{"NoReplKeyCache", NewNoReplKeyCache(maxCacheSize)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
@@ -450,7 +410,7 @@ func BenchmarkCompareHashAndPassword100PercentIncorrect(b *testing.B) {
 		cache Cache
 	}{
 		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
-		{"NoReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
+		{"NoReplKeyCache", NewNoReplKeyCache(maxCacheSize)},
 	}
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
@@ -462,6 +422,38 @@ func BenchmarkCompareHashAndPassword100PercentIncorrect(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				_ = compareHashAndPassword(cache, hash, []byte("baz"))
+			}
+		})
+	}
+}
+
+func BenchmarkPutAndContains(b *testing.B) {
+	const (
+		maxCacheSize = 100
+		numKeys      = 200
+	)
+	benchmarks := []struct {
+		name  string
+		cache Cache
+	}{
+		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
+		{"NoReplKeyCache", NewNoReplKeyCache(maxCacheSize)},
+	}
+
+	for _, bm := range benchmarks {
+		b.Run(bm.name, func(b *testing.B) {
+			b.ReportAllocs()
+			cache := bm.cache
+			defer cache.Purge()
+			testData := generateTestData(b, cache, true, "foo", numKeys)
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				hashAndPassword := testData[i%numKeys]
+				key := authKey(hashAndPassword.hash, hashAndPassword.password)
+				if !cache.Contains(key) {
+					cache.Put(key)
+				}
 			}
 		})
 	}
