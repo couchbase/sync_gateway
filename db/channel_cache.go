@@ -21,7 +21,6 @@ var (
 	DefaultChannelCacheMaxNumber       = 50000            // Default of 50k channel caches
 	DefaultCompactHighWatermarkPercent = 80               // Default compaction high watermark (percent of MaxNumber)
 	DefaultCompactLowWatermarkPercent  = 60               // Default compaction low watermark (percent of MaxNumber)
-	DefaultChannelQueryLimit           = 5000             // Default channel query limit
 )
 
 type ChannelCache interface {

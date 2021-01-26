@@ -141,7 +141,7 @@ func DefaultCacheOptions() CacheOptions {
 			MaxNumChannels:              DefaultChannelCacheMaxNumber,
 			CompactHighWatermarkPercent: DefaultCompactHighWatermarkPercent,
 			CompactLowWatermarkPercent:  DefaultCompactLowWatermarkPercent,
-			ChannelQueryLimit:           DefaultChannelQueryLimit,
+			ChannelQueryLimit:           DefaultQueryPaginationLimit,
 		},
 	}
 }

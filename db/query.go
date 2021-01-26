@@ -140,8 +140,9 @@ var QueryPrincipals = SGQuery{
 			"USE INDEX($idx) "+
 			"WHERE META(`%s`).id LIKE '%s' "+
 			"AND (META(`%s`).id LIKE '%s' "+
-			"OR META(`%s`).id LIKE '%s')",
-		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard, base.BucketQueryToken, `\\_sync:user:%`, base.BucketQueryToken, `\\_sync:role:%`),
+			"OR META(`%s`).id LIKE '%s')"+
+			"ORDER BY META(`%s`).id",
+		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard, base.BucketQueryToken, `\\_sync:user:%`, base.BucketQueryToken, `\\_sync:role:%`, base.BucketQueryToken),
 	adhoc: false,
 }
 
@@ -412,15 +413,35 @@ func (context *DatabaseContext) QueryResync(limit int, startSeq, endSeq uint64) 
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index
-func (context *DatabaseContext) QueryPrincipals() (sgbucket.QueryResultIterator, error) {
+func (context *DatabaseContext) QueryPrincipals(startKey string, limit int) (sgbucket.QueryResultIterator, error) {
 
 	// View Query
 	if context.Options.UseViews {
 		opts := map[string]interface{}{"stale": false}
+
+		if limit > 0 {
+			opts[QueryParamLimit] = limit
+		}
+
+		if startKey != "" {
+			opts[QueryParamStartKey] = startKey
+		}
+
 		return context.ViewQueryWithStats(DesignDocSyncGateway(), ViewPrincipals, opts)
 	}
 
 	queryStatement := replaceIndexTokensQuery(QueryPrincipals.statement, sgIndexes[IndexSyncDocs], context.UseXattrs())
+
+	if limit > 0 {
+		queryStatement = fmt.Sprintf("%s LIMIT %d", queryStatement, limit)
+	}
+
+	params := make(map[string]interface{})
+	if startKey != "" {
+		queryStatement = fmt.Sprintf("%s AND META(`%s`).id >= $startkey",
+			queryStatement, context.Bucket.GetName())
+		params[QueryParamStartKey] = startKey
+	}
 
 	// N1QL Query
 	return context.N1QLQueryWithStats(QueryTypePrincipals, queryStatement, nil, gocb.RequestPlus, QueryPrincipals.adhoc)

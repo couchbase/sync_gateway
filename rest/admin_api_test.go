@@ -1224,14 +1224,14 @@ func TestResync(t *testing.T) {
 			docsCreated:        0,
 			expectedSyncFnRuns: 0,
 			expectedQueryCount: 1,
-			queryLimit:         db.DefaultResyncQueryLimit,
+			queryLimit:         db.DefaultQueryPaginationLimit,
 		},
 		{
 			name:               "Docs 1000, Limit Default",
 			docsCreated:        1000,
 			expectedSyncFnRuns: 2000,
 			expectedQueryCount: 1,
-			queryLimit:         db.DefaultResyncQueryLimit,
+			queryLimit:         db.DefaultQueryPaginationLimit,
 		},
 		{
 			name:               "Docs 1000, Limit 10",
@@ -1252,7 +1252,7 @@ func TestResync(t *testing.T) {
 			rt := NewRestTester(t,
 				&RestTesterConfig{
 					DatabaseConfig: &DbConfig{
-						ResyncQueryLimit: &testCase.queryLimit,
+						QueryPaginationLimit: &testCase.queryLimit,
 					},
 					SyncFn: syncFn,
 				},
@@ -1426,7 +1426,7 @@ func TestResyncStop(t *testing.T) {
 		&RestTesterConfig{
 			SyncFn: syncFn,
 			DatabaseConfig: &DbConfig{
-				ResyncQueryLimit: base.IntPtr(10),
+				QueryPaginationLimit: base.IntPtr(10),
 			},
 			TestBucket: leakyTestBucket,
 		},
@@ -1495,6 +1495,165 @@ func TestResyncStop(t *testing.T) {
 
 	syncFnCount := int(rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 	assert.True(t, syncFnCount < 2000, "Expected syncFnCount < 2000 but syncFnCount=%d", syncFnCount)
+}
+
+func TestResyncRegenerateSequences(t *testing.T) {
+	syncFn := `
+	function(doc) {
+		channel("x")
+		console.log("====================")
+		console.log(JSON. stringify(doc))
+		if (doc.userdoc){
+			console.log("test")
+			channel("channel_1")
+		}
+	}`
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	var testBucket *base.TestBucket
+
+	if base.UnitTestUrlIsWalrus() {
+		var closeFn func()
+		testBucket, closeFn = base.GetPersistentWalrusBucket(t)
+		defer closeFn()
+	} else {
+		testBucket = base.GetTestBucket(t)
+	}
+
+	rt := NewRestTester(t,
+		&RestTesterConfig{
+			SyncFn:     syncFn,
+			TestBucket: testBucket,
+		},
+	)
+	defer rt.Close()
+
+	var response *TestResponse
+	var docSeqArr []float64
+	// var err error
+	var body db.Body
+
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("doc%d", i)
+		rt.createDoc(t, docID)
+
+		err := rt.WaitForCondition(func() bool {
+			response = rt.SendAdminRequest("GET", "/db/_raw/"+docID, "")
+			return response.Code == http.StatusOK
+		})
+		require.NoError(t, err)
+
+		err = json.Unmarshal(response.BodyBytes(), &body)
+		assert.NoError(t, err)
+
+		docSeqArr = append(docSeqArr, body["_sync"].(map[string]interface{})["sequence"].(float64))
+	}
+
+	role := "role1"
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_role/%s", role), fmt.Sprintf(`{"name":"%s", "admin_channels":["channel_1"]}`, role))
+	assertStatus(t, response, http.StatusCreated)
+
+	username := "user1"
+	response = rt.SendAdminRequest("PUT", fmt.Sprintf("/db/_user/%s", username), fmt.Sprintf(`{"name":"%s", "password":"letmein", "admin_channels":["channel_1"], "admin_roles": ["%s"]}`, username, role))
+	assertStatus(t, response, http.StatusCreated)
+
+	_, err := rt.Bucket().Get(base.RolePrefix+"role1", &body)
+	assert.NoError(t, err)
+	role1SeqBefore := body["sequence"].(float64)
+
+	_, err = rt.Bucket().Get(base.UserPrefix+"user1", &body)
+	assert.NoError(t, err)
+	user1SeqBefore := body["sequence"].(float64)
+
+	response = rt.SendAdminRequest("PUT", "/db/userdoc", `{"userdoc": true}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	response = rt.SendAdminRequest("PUT", "/db/userdoc2", `{"userdoc": true}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	type ChangesResp struct {
+		Results []struct {
+			ID  string `json:"id"`
+			Seq int    `json:"seq"`
+		} `json:"results"`
+		LastSeq string `json:"last_seq"`
+	}
+
+	changesRespContains := func(changesResp ChangesResp, docid string) bool {
+		for _, resp := range changesResp.Results {
+			if resp.ID == docid {
+				return true
+			}
+		}
+		return false
+	}
+
+	var changesResp ChangesResp
+	request, _ := http.NewRequest("GET", "/db/_changes", nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+
+	response = rt.SendAdminRequest("GET", "/db/_resync", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_offline", "")
+	assertStatus(t, response, http.StatusOK)
+
+	response = rt.SendAdminRequest("POST", "/db/_resync?action=start&regenerate_sequences=true", "")
+	assertStatus(t, response, http.StatusOK)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().ResyncManager.GetStatus().Status == db.ResyncStateStopped
+	})
+	assert.NoError(t, err)
+
+	_, err = rt.Bucket().Get(base.RolePrefix+"role1", &body)
+	assert.NoError(t, err)
+	role1SeqAfter := body["sequence"].(float64)
+
+	_, err = rt.Bucket().Get(base.UserPrefix+"user1", &body)
+	assert.NoError(t, err)
+	user1SeqAfter := body["sequence"].(float64)
+
+	assert.True(t, role1SeqAfter > role1SeqBefore)
+	assert.True(t, user1SeqAfter > user1SeqBefore)
+
+	for i := 0; i < 10; i++ {
+		docID := fmt.Sprintf("doc%d", i)
+
+		doc, err := rt.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
+		assert.NoError(t, err)
+
+		assert.True(t, float64(doc.Sequence) > docSeqArr[i])
+	}
+
+	response = rt.SendAdminRequest("POST", "/db/_online", "")
+	assertStatus(t, response, http.StatusOK)
+
+	err = rt.WaitForCondition(func() bool {
+		state := atomic.LoadUint32(&rt.GetDatabase().State)
+		return state == db.DBOnline
+	})
+	assert.NoError(t, err)
+
+	// Data is wiped from walrus when brought back online
+	// if !base.UnitTestUrlIsWalrus() {
+	request, _ = http.NewRequest("GET", "/db/_changes?since="+changesResp.LastSeq, nil)
+	request.SetBasicAuth("user1", "letmein")
+	response = rt.Send(request)
+	assertStatus(t, response, http.StatusOK)
+	err = json.Unmarshal(response.BodyBytes(), &changesResp)
+	assert.Len(t, changesResp.Results, 3)
+	assert.True(t, changesRespContains(changesResp, "userdoc"))
+	assert.True(t, changesRespContains(changesResp, "userdoc2"))
+	// }
+
 }
 
 // Single threaded bring DB online

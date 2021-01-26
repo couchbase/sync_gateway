@@ -2899,7 +2899,7 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	queryLimit := 5
-	rtConfig.DatabaseConfig = &DbConfig{CacheConfig: &CacheConfig{ChannelCacheConfig: &ChannelCacheConfig{QueryLimit: &queryLimit}}}
+	rtConfig.DatabaseConfig = &DbConfig{CacheConfig: &CacheConfig{ChannelCacheConfig: &ChannelCacheConfig{DeprecatedQueryLimit: &queryLimit}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 

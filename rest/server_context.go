@@ -633,9 +633,6 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 			if config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent != nil && *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent > 0 {
 				cacheOptions.CompactLowWatermarkPercent = *config.CacheConfig.ChannelCacheConfig.HighWatermarkPercent
 			}
-			if config.CacheConfig.ChannelCacheConfig.QueryLimit != nil && *config.CacheConfig.ChannelCacheConfig.QueryLimit > 0 {
-				cacheOptions.ChannelQueryLimit = *config.CacheConfig.ChannelCacheConfig.QueryLimit
-			}
 		}
 
 		if config.CacheConfig.RevCacheConfig != nil {
@@ -685,10 +682,33 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		compactIntervalSecs = uint32(*config.CompactIntervalDays * 60 * 60 * 24)
 	}
 
-	resyncQueryLimit := db.DefaultResyncQueryLimit
-	if config.ResyncQueryLimit != nil {
-		resyncQueryLimit = *config.ResyncQueryLimit
+	var queryPaginationLimit int
+
+	// If QueryPaginationLimit has been set use that first
+	if config.QueryPaginationLimit != nil {
+		queryPaginationLimit = *config.QueryPaginationLimit
 	}
+
+	// If DeprecatedQueryLimit is set we need to handle this
+	if config.CacheConfig != nil && config.CacheConfig.ChannelCacheConfig != nil && config.CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit != nil {
+		// If QueryPaginationLimit has not been set use the deprecated option
+		if queryPaginationLimit == 0 {
+			base.Warnf("Using deprecated config parameter 'cache.channel_cache.query_limit'. Use 'query_pagination_limit' instead")
+			queryPaginationLimit = *config.CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit
+		} else {
+			base.Warnf("Both query_pagination_limit and the deprecated cache.channel_cache.query_limit have been specified in config - using query_pagination_limit")
+		}
+	}
+
+	// If no limit has been set (or is set to 0) we will now choose the default
+	if queryPaginationLimit == 0 {
+		queryPaginationLimit = db.DefaultQueryPaginationLimit
+	}
+
+	if queryPaginationLimit < 2 {
+		return db.DatabaseContextOptions{}, fmt.Errorf("query_pagination_limit: %d must be greater than 1", queryPaginationLimit)
+	}
+	cacheOptions.ChannelQueryLimit = queryPaginationLimit
 
 	secureCookieOverride := sc.config.SSLCert != nil
 	if config.SecureCookieOverride != nil {
@@ -728,7 +748,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		DeltaSyncOptions:          deltaSyncOptions,
 		CompactInterval:           compactIntervalSecs,
-		ResyncQueryLimit:          resyncQueryLimit,
+		QueryPaginationLimit:      queryPaginationLimit,
 		SGReplicateOptions: db.SGReplicateOptions{
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,

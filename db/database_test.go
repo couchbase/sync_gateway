@@ -2357,7 +2357,7 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		channel("x")
 	}`
 
-	db := setupTestDBWithOptions(t, DatabaseContextOptions{ResyncQueryLimit: 5000})
+	db := setupTestDBWithOptions(t, DatabaseContextOptions{QueryPaginationLimit: 5000})
 
 	_, err := db.UpdateSyncFun(syncFn)
 	assert.NoError(t, err)
@@ -2379,7 +2379,8 @@ func TestResyncUpdateAllDocChannels(t *testing.T) {
 		return state == DBOffline
 	})
 
-	_, err = db.UpdateAllDocChannels()
+	_, err = db.UpdateAllDocChannels(false)
+	assert.NoError(t, err)
 
 	syncFnCount := int(db.DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 	assert.Equal(t, 20, syncFnCount)
