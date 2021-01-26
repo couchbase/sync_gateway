@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -106,6 +107,7 @@ func (g *GlobalStat) initResourceUtilizationStats() {
 		SystemMemoryTotal:                   NewIntStat(ResourceUtilizationSubsystem, "system_memory_total", nil, nil, prometheus.GaugeValue, 0),
 		WarnCount:                           NewIntStat(ResourceUtilizationSubsystem, "warn_count", nil, nil, prometheus.CounterValue, 0),
 		CpuPercentUtil:                      NewFloatStat(ResourceUtilizationSubsystem, "process_cpu_percent_utilization", nil, nil, prometheus.GaugeValue, 0),
+		Uptime:                              NewDurStat(ResourceUtilizationSubsystem, "uptime", nil, nil, prometheus.CounterValue, time.Now()),
 	}
 }
 
@@ -144,6 +146,7 @@ type ResourceUtilization struct {
 	PublicNetworkInterfaceBytesSent     *SgwIntStat   `json:"pub_net_bytes_sent"`
 	SystemMemoryTotal                   *SgwIntStat   `json:"system_memory_total"`
 	WarnCount                           *SgwIntStat   `json:"warn_count"`
+	Uptime                              *SgwDurStat   `json:"uptime"`
 }
 
 type DbStats struct {
@@ -504,6 +507,44 @@ func (s *SgwFloatStat) String() string {
 
 func (s *SgwFloatStat) Value() float64 {
 	return math.Float64frombits(atomic.LoadUint64(&s.Val))
+}
+
+// SgwDurStat is a wrapper around SgwStat for reporting time duration stats.
+type SgwDurStat struct {
+	SgwStat             // SGW stats for sending metrics to Prometheus.
+	StartTime time.Time // Start time to calculate the time duration.
+}
+
+// NewDurStat creates a new collector for time duration metric, registers it with the
+// Prometheus's DefaultRegisterer and returns the collector. It panics if any error
+// occurs while registering the collector on Prometheus registry.
+func NewDurStat(subsystem string, key string, labelKeys []string, labelVals []string,
+	statValueType prometheus.ValueType, initialValue time.Time) *SgwDurStat {
+	stat := &SgwDurStat{
+		SgwStat:   *newSGWStat(subsystem, key, labelKeys, labelVals, statValueType),
+		StartTime: initialValue,
+	}
+	prometheus.MustRegister(stat)
+	return stat
+}
+
+func (s *SgwDurStat) Describe(ch chan<- *prometheus.Desc) {
+	return
+}
+
+func (s *SgwDurStat) Collect(ch chan<- prometheus.Metric) {
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType,
+		float64(time.Since(s.StartTime)), s.labelValues...)
+}
+
+// MarshalJSON returns the JSON encoding of duration - the time elapsed since s.Val.
+func (s *SgwDurStat) MarshalJSON() ([]byte, error) {
+	return []byte(strconv.Itoa(int(time.Since(s.StartTime).Nanoseconds()))), nil
+}
+
+// String returns the String representation of duration - the time elapsed since s.Val.
+func (s *SgwDurStat) String() string {
+	return strconv.Itoa(int(time.Since(s.StartTime).Nanoseconds()))
 }
 
 type QueryStat struct {
