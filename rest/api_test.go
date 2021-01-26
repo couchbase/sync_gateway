@@ -5532,10 +5532,12 @@ func TestUptimeStat(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	uptime1 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String()
-	uptime2 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String()
-	uptime3 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String()
+	uptime1, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String())
+	require.NoError(t, err)
+	time.Sleep(10 * time.Nanosecond)
 
-	log.Printf("uptime1: %s, uptime2: %s, uptime3: %s", uptime1, uptime2, uptime3)
-	assert.True(t, (uptime1 < uptime2) && (uptime1 < uptime3) && (uptime2 < uptime3))
+	uptime2, err := strconv.Atoi(base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().Uptime.String())
+	require.NoError(t, err)
+	log.Printf("uptime1: %d, uptime2: %d", uptime1, uptime2)
+	assert.True(t, uptime1 < uptime2)
 }

@@ -539,7 +539,7 @@ func (s *SgwDurStat) Collect(ch chan<- prometheus.Metric) {
 
 // MarshalJSON returns the JSON encoding of duration - the time elapsed since s.Val.
 func (s *SgwDurStat) MarshalJSON() ([]byte, error) {
-	return []byte(strconv.Itoa(int(time.Since(s.StartTime).Nanoseconds()))), nil
+	return []byte(s.String()), nil
 }
 
 // String returns the String representation of duration - the time elapsed since s.Val.
