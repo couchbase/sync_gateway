@@ -12,6 +12,7 @@ package auth
 import (
 	"crypto/sha1"
 	"fmt"
+	"math/rand"
 	"sync"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -31,45 +32,37 @@ var (
 
 var ErrInvalidBcryptCost = fmt.Errorf("invalid bcrypt cost")
 
-// Set of known-to-be-valid {password, bcryt-hash} pairs.
-// Keys are of the form SHA1 digest of password + bcrypt'ed hash of password
-var cachedHashes = map[string]struct{}{}
-var cacheLock sync.RWMutex
-
-// The maximum number of pairs to keep in the above cache
+// The maximum number of pairs to keep in the below auth cache.
 const kMaxCacheSize = 25000
 
-// Optimized wrapper around bcrypt.CompareHashAndPassword that caches successful results in
-// memory to avoid the _very_ high overhead of calling bcrypt.
-func compareHashAndPassword(hash []byte, password []byte) bool {
-	// Actually we cache the SHA1 digest of the password to avoid keeping passwords in RAM.
+// Set of known-to-be-valid {password, bcryt-hash} pairs.
+// Keys are of the form SHA1 digest of password + bcrypt'ed hash of password
+var cachedHashes = NewRandReplKeyCache(kMaxCacheSize)
+
+// authKey returns the bcrypt hash + SHA1 digest of the password.
+func authKey(hash []byte, password []byte) (key string) {
 	s := sha1.New()
 	s.Write(password)
 	digest := string(s.Sum(nil))
-	key := digest + string(hash)
+	key = digest + string(hash)
+	return key
+}
 
-	cacheLock.RLock()
-	_, valid := cachedHashes[key]
-	cacheLock.RUnlock()
-	if valid {
+// compareHashAndPassword is an optimized wrapper around bcrypt.CompareHashAndPassword that
+// caches successful results in memory to avoid the _very_ high overhead of calling bcrypt.
+func compareHashAndPassword(cache Cache, hash []byte, password []byte) bool {
+	// Actually we cache the SHA1 digest of the password to avoid keeping passwords in RAM.
+	key := authKey(hash, password)
+	if cache.Contains(key) {
 		return true
 	}
-
 	// Cache missed; now we make the very slow (~100ms) bcrypt call:
 	if err := bcrypt.CompareHashAndPassword(hash, password); err != nil {
 		// Note: It's important to only cache successful matches, not failures.
 		// Failure is supposed to be slow, to make online attacks impractical.
 		return false
 	}
-
-	cacheLock.Lock()
-	// TODO: Replace this with an LRU cache so the whole map doesn't get wiped
-	if len(cachedHashes) >= kMaxCacheSize {
-		cachedHashes = map[string]struct{}{}
-	}
-	cachedHashes[key] = struct{}{}
-	cacheLock.Unlock()
-
+	cache.Put(key)
 	return true
 }
 
@@ -94,4 +87,83 @@ func SetBcryptCost(cost int) error {
 	bcryptCostChanged = true
 
 	return nil
+}
+
+// Cache is an interface to a key only cache.
+type Cache interface {
+
+	// Contains returns true if the provided key is present
+	// in the cache and false otherwise.
+	Contains(key string) bool
+
+	// Len returns the number of keys in the cache.
+	Len() int
+
+	// Put adds a key to the cache.
+	Put(key string)
+
+	// Purge deletes all items from the cache.
+	Purge()
+}
+
+// RandReplKeyCache represents a random replacement cache.
+type RandReplKeyCache struct {
+	size  int                 // Maximum size where this cache can potentially grow upto.
+	keys  []string            // A slice of keys for choosing a random key for eviction.
+	cache map[string]struct{} // Set of keys for fast lookup.
+	lock  sync.RWMutex        // Protects both cache and keys from concurrent access.
+}
+
+// Returns a new random replacement key-only cache that can
+// potentially grow upto the provided size.
+func NewRandReplKeyCache(size int) *RandReplKeyCache {
+	return &RandReplKeyCache{
+		size:  size,
+		cache: make(map[string]struct{}),
+	}
+}
+
+// Contains returns true if the provided key is present
+// in the cache and false otherwise.
+func (c *RandReplKeyCache) Contains(key string) (ok bool) {
+	c.lock.RLock()
+	_, ok = c.cache[key]
+	c.lock.RUnlock()
+	return ok
+}
+
+// Put adds a key to the cache. Eviction occurs when memory is
+// over filled or greater than the specified size in the cache.
+// Keys are evicted randomly from the cache.
+func (c *RandReplKeyCache) Put(key string) {
+	c.lock.Lock()
+	if _, ok := c.cache[key]; ok {
+		c.lock.Unlock()
+		return
+	}
+	if len(c.cache) >= c.size {
+		index := rand.Intn(len(c.keys))
+		delete(c.cache, c.keys[index])
+		c.keys[index] = key
+	} else {
+		c.keys = append(c.keys, key)
+	}
+	c.cache[key] = struct{}{}
+	c.lock.Unlock()
+}
+
+// Len returns the number of keys in the cache.
+func (c *RandReplKeyCache) Len() int {
+	c.lock.RLock()
+	length := len(c.cache)
+	c.lock.RUnlock()
+	return length
+}
+
+// Purge deletes all items from the cache.
+func (c *RandReplKeyCache) Purge() {
+	c.lock.Lock()
+	c.keys = nil
+	c.cache = map[string]struct{}{}
+	c.lock.Unlock()
 }
