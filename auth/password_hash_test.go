@@ -160,17 +160,17 @@ func TestCache(t *testing.T) {
 				assert.Equal(t, 0, cache.Len())
 			}()
 
-			k1 := key()
+			k1 := "k1"
 			cache.Put(k1)
 			assert.Equal(t, 1, cache.Len())
 			assert.True(t, cache.Contains(k1))
 
-			k2 := key()
+			k2 := "k2"
 			cache.Put(k2)
 			assert.Equal(t, 2, cache.Len())
 			assert.True(t, cache.Contains(k1) && cache.Contains(k2))
 
-			k3 := key()
+			k3 := "k3"
 			cache.Put(k3)
 			if tt.cacheType == randReplKeyCache {
 				assert.Equal(t, 2, cache.Len())
@@ -180,7 +180,7 @@ func TestCache(t *testing.T) {
 				assert.True(t, cache.Contains(k3) && !cache.Contains(k1) && !cache.Contains(k2))
 			}
 
-			k4 := key()
+			k4 := "k4"
 			cache.Put(k4)
 			assert.Equal(t, 2, cache.Len())
 			if tt.cacheType == randReplKeyCache {
@@ -307,9 +307,9 @@ type cacheStat struct {
 	cacheMisses int
 }
 
-func showCacheStat(stats []cacheStat) {
+func showCacheStat(b *testing.B, stats []cacheStat) {
 	for idx, stat := range stats {
-		fmt.Printf("Iteration: %d, Cache Name: %v, Cache Hits: %d, Cache Misses: %d\n",
+		b.Logf("Iteration: %d, Cache Name: %v, Cache Hits: %d, Cache Misses: %d\n",
 			idx, stat.cacheName, stat.cacheHits, stat.cacheMisses)
 	}
 }
@@ -346,7 +346,7 @@ func BenchmarkContains(b *testing.B) {
 			b.StartTimer()
 		})
 	}
-	showCacheStat(stats)
+	showCacheStat(b, stats)
 }
 
 func randKey(limit int) string {
@@ -498,5 +498,5 @@ func BenchmarkPutAndContains(b *testing.B) {
 			b.StartTimer()
 		})
 	}
-	showCacheStat(stats)
+	showCacheStat(b, stats)
 }
