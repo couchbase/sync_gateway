@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -300,8 +301,21 @@ func BenchmarkPutAndOverflow(b *testing.B) {
 	}
 }
 
+type cacheStat struct {
+	cacheName   string
+	cacheHits   int
+	cacheMisses int
+}
+
+func showCacheStat(stats []cacheStat) {
+	for idx, stat := range stats {
+		fmt.Printf("Iteration: %d, Cache Name: %v, Cache Hits: %d, Cache Misses: %d\n",
+			idx, stat.cacheName, stat.cacheHits, stat.cacheMisses)
+	}
+}
+
 func BenchmarkContains(b *testing.B) {
-	const maxCacheSize = 1
+	const maxCacheSize = kMaxCacheSize
 	benchmarks := []struct {
 		name  string
 		cache Cache
@@ -309,17 +323,34 @@ func BenchmarkContains(b *testing.B) {
 		{"RandReplKeyCache", NewRandReplKeyCache(maxCacheSize)},
 		{"NoReplKeyCache", NewNoReplKeyCache(maxCacheSize)},
 	}
+
+	stats := make([]cacheStat, 0)
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
+			cacheHits, cacheMisses := 0, 0
 			b.ReportAllocs()
 			cache := bm.cache
-			cache.Put("foo")
+			cache.Put(randKey(maxCacheSize))
+
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = cache.Contains("foo")
+				if cache.Contains(randKey(maxCacheSize)) {
+					cacheHits++
+				} else {
+					cacheMisses++
+				}
 			}
+			b.StopTimer()
+			stat := cacheStat{cacheName: bm.name, cacheHits: cacheHits, cacheMisses: cacheMisses}
+			stats = append(stats, stat)
+			b.StartTimer()
 		})
 	}
+	showCacheStat(stats)
+}
+
+func randKey(limit int) string {
+	return fmt.Sprintf("foo%d", rand.Intn(limit))
 }
 
 // bcryptHash returns the bcrypt hash of the given password.
@@ -429,8 +460,8 @@ func BenchmarkCompareHashAndPassword100PercentIncorrect(b *testing.B) {
 
 func BenchmarkPutAndContains(b *testing.B) {
 	const (
-		maxCacheSize = 100
-		numKeys      = 200
+		maxCacheSize = kMaxCacheSize
+		numKeys      = 2 * maxCacheSize
 	)
 	benchmarks := []struct {
 		name  string
@@ -440,21 +471,32 @@ func BenchmarkPutAndContains(b *testing.B) {
 		{"NoReplKeyCache", NewNoReplKeyCache(maxCacheSize)},
 	}
 
+	stats := make([]cacheStat, 0)
 	for _, bm := range benchmarks {
 		b.Run(bm.name, func(b *testing.B) {
+			cacheHits, cacheMisses := 0, 0
 			b.ReportAllocs()
 			cache := bm.cache
 			defer cache.Purge()
-			testData := generateTestData(b, cache, true, "foo", numKeys)
-
+			for i := 0; i < maxCacheSize; i++ {
+				key := randKey(maxCacheSize)
+				cache.Put(key)
+			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				hashAndPassword := testData[i%numKeys]
-				key := authKey(hashAndPassword.hash, hashAndPassword.password)
+				key := randKey(numKeys)
 				if !cache.Contains(key) {
 					cache.Put(key)
+					cacheMisses++
+				} else {
+					cacheHits++
 				}
 			}
+			b.StopTimer()
+			stat := cacheStat{cacheName: bm.name, cacheHits: cacheHits, cacheMisses: cacheMisses}
+			stats = append(stats, stat)
+			b.StartTimer()
 		})
 	}
+	showCacheStat(stats)
 }
