@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"sync"
 	"testing"
@@ -192,13 +193,6 @@ func TestCache(t *testing.T) {
 	}
 }
 
-// key returns a unique key.
-func key() (key string) {
-	uniq := time.Now().UnixNano()
-	key = fmt.Sprintf("k%d", uniq)
-	return key
-}
-
 func TestCacheRace(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
 	const maxCacheSize = 5
@@ -254,7 +248,7 @@ func BenchmarkPutAndOverflow(b *testing.B) {
 		}
 		if warmupCache {
 			for i := 0; i < maxCacheSize; i++ {
-				cache.Put(key())
+				cache.Put(randKey(math.MaxUint32))
 			}
 		}
 		return cache
@@ -286,14 +280,14 @@ func BenchmarkPutAndOverflow(b *testing.B) {
 				b.RunParallel(func(pb *testing.PB) {
 					b.ReportAllocs()
 					for pb.Next() {
-						cache.Put(key())
+						cache.Put(randKey(math.MaxUint32))
 					}
 				})
 			} else {
 				b.Run(bm.name, func(b *testing.B) {
 					b.ReportAllocs()
 					for i := 0; i < b.N; i++ {
-						cache.Put(key())
+						cache.Put(randKey(math.MaxUint32))
 					}
 				})
 			}
