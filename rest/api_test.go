@@ -4705,9 +4705,10 @@ func TestDeletedPutReplicator2(t *testing.T) {
 func TestWebhookSpecialProperties(t *testing.T) {
 
 	wg := sync.WaitGroup{}
+	wg.Add(1)
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		wg.Done()
+		defer wg.Done()
 
 		var body db.Body
 		d := base.JSONDecoder(r.Body)
@@ -4736,7 +4737,6 @@ func TestWebhookSpecialProperties(t *testing.T) {
 
 	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar", "_deleted": true}`)
 	assertStatus(t, res, http.StatusCreated)
-	wg.Add(1)
 	wg.Wait()
 }
 
