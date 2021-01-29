@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/gocb"
+
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -209,7 +211,7 @@ func buildIndexes(s N1QLStore, indexNames []string) error {
 	return err
 }
 
-// Waits for index state to be online.  Waits no longer than provided timeout
+// Waits for index state to be online
 func WaitForIndexOnline(store N1QLStore, indexName string) error {
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		exists, indexMeta, getMetaErr := store.GetIndexMeta(indexName)
@@ -249,7 +251,7 @@ func GetIndexMeta(store N1QLStore, indexName string) (exists bool, meta *IndexMe
 		exists, meta, err := getIndexMetaWithoutRetry(store, indexName)
 		if err != nil {
 			// retry
-			Warnf("Error from GetIndexMeta: %v will retry", err)
+			Warnf("Error from GetIndexMeta for index %s: %v will retry", indexName, err)
 			return true, err, nil
 		}
 		return false, nil, getIndexMetaRetryValues{
@@ -392,4 +394,81 @@ func StringSliceToN1QLArray(values []string, quote string) string {
 		asString = fmt.Sprintf("%s,%s%s%s", asString, quote, values[i], quote)
 	}
 	return asString
+}
+
+// gocbResultRaw wraps a raw gocb result (both view and n1ql) to implement
+// the sgbucket.QueryResultIterator interface
+type gocbResultRaw interface {
+
+	// NextBytes returns the next row as bytes.
+	NextBytes() []byte
+
+	// Err returns any errors that have occurred on the stream
+	Err() error
+
+	// Close marks the results as closed, returning any errors that occurred during reading the results.
+	Close() error
+
+	// MetaData returns any meta-data that was available from this query as bytes.
+	MetaData() ([]byte, error)
+}
+
+// GoCBQueryIterator wraps a gocb v2 ViewResultRaw to implement sgbucket.QueryResultIterator
+type gocbRawIterator struct {
+	rawResult gocbResultRaw
+}
+
+func NewGoCBQueryIterator(viewResult *gocb.ViewResultRaw) *gocbRawIterator {
+	return &gocbRawIterator{
+		rawResult: viewResult,
+	}
+}
+
+// Unmarshal a single result row into valuePtr, and then close the iterator
+func (i *gocbRawIterator) One(valuePtr interface{}) error {
+	if !i.Next(valuePtr) {
+		err := i.Close()
+		if err != nil {
+			return nil
+		}
+		return gocb.ErrNoResult
+	}
+
+	// Ignore any errors occurring after we already have our result
+	//  - follows approach used by gocb v1 One() implementation
+	_ = i.Close()
+	return nil
+}
+
+// Unmarshal the next result row into valuePtr.  Returns false when reaching end of result set
+func (i *gocbRawIterator) Next(valuePtr interface{}) bool {
+
+	nextBytes := i.rawResult.NextBytes()
+	if nextBytes == nil {
+		return false
+	}
+
+	err := JSONUnmarshal(nextBytes, &valuePtr)
+	if err != nil {
+		Warnf("Unable to marshal view result row into value: %v", err)
+		return false
+	}
+	return true
+}
+
+// Retrieve raw bytes for the next result row
+func (i *gocbRawIterator) NextBytes() []byte {
+	return i.rawResult.NextBytes()
+}
+
+// Closes the iterator.  Returns any row-level errors seen during iteration.
+func (i *gocbRawIterator) Close() error {
+
+	// check for errors before closing?
+	closeErr := i.rawResult.Close()
+	if closeErr != nil {
+		return closeErr
+	}
+	resultErr := i.rawResult.Err()
+	return resultErr
 }

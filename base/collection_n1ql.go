@@ -19,7 +19,7 @@ func (c *Collection) Keyspace() string {
 
 func (c *Collection) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (resultsIterator sgbucket.QueryResultIterator, err error) {
 
-	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, c.Bucket().Name(), -1)
+	bucketStatement := strings.Replace(statement, KeyspaceQueryToken, c.Keyspace(), -1)
 
 	n1qlOptions := &gocb.QueryOptions{
 		ScanConsistency: gocb.QueryScanConsistency(consistency),
@@ -29,7 +29,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 
 	waitTime := 10 * time.Millisecond
 	for i := 1; i <= MaxQueryRetries; i++ {
-		Tracef(KeyQuery, "Executing N1QL query: %v", UD(bucketStatement))
+		Tracef(KeyQuery, "Executing N1QL query: %v - %+v", UD(bucketStatement), UD(params))
 		queryResults, queryErr := c.cluster.Query(bucketStatement, n1qlOptions)
 		if queryErr == nil {
 			resultsIterator := &gocbRawIterator{
@@ -57,7 +57,7 @@ func (c *Collection) Query(statement string, params map[string]interface{}, cons
 		waitTime = waitTime * 2
 	}
 
-	Warnf("Exceeded max retries for query when querying index using statement: [%s], err:%v", UD(bucketStatement), err)
+	Warnf("Exceeded max retries for query when querying index using statement: [%s] parameters: [%+v], err:%v", UD(bucketStatement), UD(params), err)
 	return nil, err
 }
 
