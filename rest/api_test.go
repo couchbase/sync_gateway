@@ -4734,7 +4734,7 @@ func TestWebhookSpecialProperties(t *testing.T) {
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
-	res := rt.SendAdminRequest("PUT", "/db/doc1", `{"foo": "bar", "_deleted": true}`)
+	res := rt.SendAdminRequest("PUT", "/db/"+t.Name(), `{"foo": "bar", "_deleted": true}`)
 	assertStatus(t, res, http.StatusCreated)
 	wg.Add(1)
 	wg.Wait()
@@ -5454,11 +5454,11 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"doc", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
+	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	assertStatus(t, response, http.StatusCreated)
 
 	var body map[string]interface{}
-	_, err := rt.GetDatabase().Bucket.Get("doc", &body)
+	_, err := rt.GetDatabase().Bucket.Get(t.Name(), &body)
 
 	if base.TestUseXattrs() {
 		assert.Error(t, err)
