@@ -464,7 +464,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 			openBuckets[bucketName] = b
 			openBucketsLock.Unlock()
 
-			_, err = b.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+BucketQueryToken+`%";`, nil, gocb.RequestPlus, true)
+			_, err = b.Query(`DELETE FROM system:prepareds WHERE statement LIKE "%`+KeyspaceQueryToken+`%";`, nil, RequestPlus, true)
 			if err != nil {
 				Fatalf("Couldn't remove old prepared statements: %v", err)
 			}
@@ -599,7 +599,7 @@ var PrimaryIndexInitFunc TBPBucketInitFunc = func(ctx context.Context, b Bucket,
 		return nil
 	}
 
-	if hasPrimary, _, err := gocbBucket.getIndexMetaWithoutRetry(PrimaryIndexName); err != nil {
+	if hasPrimary, _, err := getIndexMetaWithoutRetry(gocbBucket, PrimaryIndexName); err != nil {
 		return err
 	} else if !hasPrimary {
 		err := gocbBucket.CreatePrimaryIndex(PrimaryIndexName, nil)
@@ -621,7 +621,7 @@ var FlushBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *C
 // N1QLBucketEmptierFunc ensures the bucket is empty by using N1QL deletes. This is the preferred approach when using GSI.
 // Will be used when GSI is re-enabled (CBG-813)
 var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *CouchbaseBucketGoCB, tbp *TestBucketPool) error {
-	if hasPrimary, _, err := b.getIndexMetaWithoutRetry(PrimaryIndexName); err != nil {
+	if hasPrimary, _, err := getIndexMetaWithoutRetry(b, PrimaryIndexName); err != nil {
 		return err
 	} else if !hasPrimary {
 		return fmt.Errorf("bucket does not have primary index, so can't empty bucket using N1QL")
@@ -636,7 +636,7 @@ var N1QLBucketEmptierFunc TBPBucketReadierFunc = func(ctx context.Context, b *Co
 		// Use N1QL to empty bucket, with the hope that the query service is happier to deal with this than a bucket flush/rollback.
 		// Requires a primary index on the bucket.
 		// TODO: How can we delete xattr only docs from here too? It would avoid needing to call db.emptyAllDocsIndex in ViewsAndGSIBucketReadier
-		res, err := b.Query(`DELETE FROM $_bucket`, nil, gocb.RequestPlus, true)
+		res, err := b.Query(fmt.Sprintf(`DELETE FROM %s`, KeyspaceQueryToken), nil, RequestPlus, true)
 		if err != nil {
 			return err
 		}

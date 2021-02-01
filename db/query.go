@@ -10,7 +10,6 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 // Used for queries that only return doc id
@@ -44,7 +43,7 @@ var QueryAccess = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.access) satisfies op.name = $userName end;",
-		base.BucketQueryToken),
+		base.KeyspaceQueryToken),
 	adhoc: true,
 }
 
@@ -55,7 +54,7 @@ var QueryRoleAccess = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"WHERE any op in object_pairs($sync.role_access) satisfies op.name = $userName end;",
-		base.BucketQueryToken),
+		base.KeyspaceQueryToken),
 	adhoc: true,
 }
 
@@ -88,7 +87,7 @@ var QueryChannels = SGQuery{
 			"BETWEEN  [$channelName, $startSeq] AND [$channelName, $endSeq]) "+
 			"%s"+
 			"ORDER BY [op.name, LEAST($sync.sequence, op.val.seq),IFMISSING(op.val.rev,null),IFMISSING(op.val.del,null)]",
-		base.BucketQueryToken, base.BucketQueryToken, activeOnlyFilter),
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken, activeOnlyFilter),
 	adhoc: false,
 }
 
@@ -104,7 +103,7 @@ var QueryStarChannel = SGQuery{
 			"WHERE $sync.sequence >= $startSeq AND $sync.sequence < $endSeq "+
 			"AND META().id NOT LIKE '%s' %s"+
 			"ORDER BY $sync.sequence",
-		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard, activeOnlyFilter),
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard, activeOnlyFilter),
 	adhoc: false,
 }
 
@@ -119,7 +118,7 @@ var QuerySequences = SGQuery{
 			"USE INDEX($idx) "+
 			"WHERE $sync.sequence IN $inSequences "+
 			"AND META().id NOT LIKE '%s'",
-		base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
 	adhoc: false,
 }
 
@@ -140,9 +139,9 @@ var QueryPrincipals = SGQuery{
 			"USE INDEX($idx) "+
 			"WHERE META(`%s`).id LIKE '%s' "+
 			"AND (META(`%s`).id LIKE '%s' "+
-			"OR META(`%s`).id LIKE '%s')"+
+			"OR META(`%s`).id LIKE '%s') "+
 			"ORDER BY META(`%s`).id",
-		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard, base.BucketQueryToken, `\\_sync:user:%`, base.BucketQueryToken, `\\_sync:role:%`, base.BucketQueryToken),
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard, base.KeyspaceQueryToken, `\\_sync:user:%`, base.KeyspaceQueryToken, `\\_sync:role:%`, base.KeyspaceQueryToken),
 	adhoc: false,
 }
 
@@ -155,7 +154,7 @@ var QuerySessions = SGQuery{
 			"WHERE META(`%s`).id LIKE '%s' "+
 			"AND META(`%s`).id LIKE '%s' "+
 			"AND username = $userName",
-		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard, base.BucketQueryToken, `\\_sync:session:%`),
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard, base.KeyspaceQueryToken, `\\_sync:session:%`),
 	adhoc: false,
 }
 var QueryTombstones = SGQuery{
@@ -165,7 +164,7 @@ var QueryTombstones = SGQuery{
 			"FROM `%s` "+
 			"USE INDEX ($idx) "+
 			"WHERE $sync.tombstoned_at BETWEEN 0 AND $olderThan",
-		base.BucketQueryToken, base.BucketQueryToken),
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken),
 	adhoc: false,
 }
 
@@ -181,7 +180,7 @@ var QueryResync = SGQuery{
 			"USE INDEX ($idx) "+
 			"WHERE META(`%s`).id NOT LIKE '%s' "+
 			"AND $sync.sequence > 0", // Required to use IndexAllDocs
-		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
 	adhoc: false,
 }
 
@@ -204,7 +203,7 @@ var QueryAllDocs = SGQuery{
 			"META(`%s`).id NOT LIKE '%s' "+
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
-		base.BucketQueryToken, base.BucketQueryToken, base.BucketQueryToken, SyncDocWildcard),
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
 	adhoc: false,
 }
 
@@ -226,7 +225,7 @@ const (
 )
 
 // N1QlQueryWithStats is a wrapper for gocbBucket.Query that performs additional diagnostic processing (expvars, slow query logging)
-func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (results gocb.QueryResults, err error) {
+func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement string, params map[string]interface{}, consistency base.ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
 
 	startTime := time.Now()
 	if threshold := context.Options.SlowQueryWarningThreshold; threshold > 0 {
@@ -289,7 +288,7 @@ func (context *DatabaseContext) QueryAccess(username string) (sgbucket.QueryResu
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
 
-	return context.N1QLQueryWithStats(QueryAccess.name, accessQueryStatement, params, gocb.RequestPlus, QueryAccess.adhoc)
+	return context.N1QLQueryWithStats(QueryAccess.name, accessQueryStatement, params, base.RequestPlus, QueryAccess.adhoc)
 }
 
 // Builds the query statement for an access N1QL query.
@@ -321,7 +320,7 @@ func (context *DatabaseContext) QueryRoleAccess(username string) (sgbucket.Query
 	accessQueryStatement := context.buildRoleAccessQuery(username)
 	params := make(map[string]interface{}, 0)
 	params[QueryParamUserName] = username
-	return context.N1QLQueryWithStats(QueryTypeRoleAccess, accessQueryStatement, params, gocb.RequestPlus, QueryRoleAccess.adhoc)
+	return context.N1QLQueryWithStats(QueryTypeRoleAccess, accessQueryStatement, params, base.RequestPlus, QueryRoleAccess.adhoc)
 }
 
 // Builds the query statement for a roleAccess N1QL query.
@@ -349,7 +348,7 @@ func (context *DatabaseContext) QueryChannels(channelName string, startSeq uint6
 	// QueryChannels result schema (removal handling isn't needed for the star channel).
 	channelQueryStatement, params := context.buildChannelsQuery(channelName, startSeq, endSeq, limit, activeOnly)
 
-	return context.N1QLQueryWithStats(QueryChannels.name, channelQueryStatement, params, gocb.RequestPlus, QueryChannels.adhoc)
+	return context.N1QLQueryWithStats(QueryChannels.name, channelQueryStatement, params, base.RequestPlus, QueryChannels.adhoc)
 }
 
 // Query to retrieve keys for the specified sequences.  View query uses star channel, N1QL query uses IndexAllDocs
@@ -371,7 +370,7 @@ func (context *DatabaseContext) QuerySequences(sequences []uint64) (sgbucket.Que
 	params := make(map[string]interface{})
 	params[QueryParamInSequences] = sequences
 
-	return context.N1QLQueryWithStats(QuerySequences.name, sequenceQueryStatement, params, gocb.RequestPlus, QueryChannels.adhoc)
+	return context.N1QLQueryWithStats(QuerySequences.name, sequenceQueryStatement, params, base.RequestPlus, QueryChannels.adhoc)
 }
 
 // Builds the query statement and query parameters for a channels N1QL query.  Also used by unit tests to validate
@@ -444,7 +443,7 @@ func (context *DatabaseContext) QueryPrincipals(startKey string, limit int) (sgb
 	}
 
 	// N1QL Query
-	return context.N1QLQueryWithStats(QueryTypePrincipals, queryStatement, nil, gocb.RequestPlus, QueryPrincipals.adhoc)
+	return context.N1QLQueryWithStats(QueryTypePrincipals, queryStatement, nil, base.RequestPlus, QueryPrincipals.adhoc)
 }
 
 // Query to retrieve the set of user and role doc ids, using the primary index
@@ -463,7 +462,7 @@ func (context *DatabaseContext) QuerySessions(userName string) (sgbucket.QueryRe
 	// N1QL Query
 	params := make(map[string]interface{}, 1)
 	params[QueryParamUserName] = userName
-	return context.N1QLQueryWithStats(QueryTypeSessions, queryStatement, params, gocb.RequestPlus, QuerySessions.adhoc)
+	return context.N1QLQueryWithStats(QueryTypeSessions, queryStatement, params, base.RequestPlus, QuerySessions.adhoc)
 }
 
 type AllDocsViewQueryRow struct {
@@ -518,7 +517,7 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 	allDocsQueryStatement = fmt.Sprintf("%s ORDER BY META(`%s`).id",
 		allDocsQueryStatement, bucketName)
 
-	return context.N1QLQueryWithStats(QueryTypeAllDocs, allDocsQueryStatement, params, gocb.RequestPlus, QueryAllDocs.adhoc)
+	return context.N1QLQueryWithStats(QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc)
 }
 
 func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {
@@ -547,7 +546,7 @@ func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int) 
 		QueryParamOlderThan: olderThan.Unix(),
 	}
 
-	return context.N1QLQueryWithStats(QueryTypeTombstones, tombstoneQueryStatement, params, gocb.RequestPlus, QueryTombstones.adhoc)
+	return context.N1QLQueryWithStats(QueryTypeTombstones, tombstoneQueryStatement, params, base.RequestPlus, QueryTombstones.adhoc)
 }
 
 func changesViewOptions(channelName string, startSeq, endSeq uint64, limit int) map[string]interface{} {

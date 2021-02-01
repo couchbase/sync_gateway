@@ -8,7 +8,6 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 // A wrapper around a Bucket to support forced errors.  For testing use only.
@@ -424,13 +423,21 @@ func (b *LeakyBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	return b.bucket.IsSupported(feature)
 }
 
-func (b *LeakyBucket) Query(statement string, params interface{}, consistency gocb.ConsistencyMode, adhoc bool) (results gocb.QueryResults, err error) {
-	gocbBucket, ok := AsGoCBBucket(b.bucket)
+func (b *LeakyBucket) Keyspace() string {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
-		return nil, errors.New("Not GOCB Bucket")
+		return ""
+	}
+	return n1qlStore.Keyspace()
+}
+
+func (b *LeakyBucket) Query(statement string, params map[string]interface{}, consistency ConsistencyMode, adhoc bool) (results sgbucket.QueryResultIterator, err error) {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return nil, errors.New("Not N1QL Store")
 	}
 
-	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
+	results, err = n1qlStore.Query(statement, params, consistency, adhoc)
 	if b.config.PostN1QLQueryCallback != nil {
 		b.config.PostN1QLQueryCallback()
 	}
@@ -438,59 +445,59 @@ func (b *LeakyBucket) Query(statement string, params interface{}, consistency go
 	return results, err
 }
 
-func (b *LeakyBucket) ExplainQuery(statement string, params interface{}) (plain map[string]interface{}, err error) {
-	gocbBucket, ok := AsGoCBBucket(b.bucket)
+func (b *LeakyBucket) ExplainQuery(statement string, params map[string]interface{}) (plain map[string]interface{}, err error) {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
-		return nil, errors.New("Not GOCB Bucket")
+		return nil, errors.New("Not N1QL Store")
 	}
-	return gocbBucket.ExplainQuery(statement, params)
+	return n1qlStore.ExplainQuery(statement, params)
 }
 
 func (b *LeakyBucket) CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error {
-	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
-		return errors.New("Not GOCB Bucket")
+		return errors.New("Not N1QL Store")
 	}
-	return gocbBucket.CreateIndex(indexName, expression, filterExpression, options)
+	return n1qlStore.CreateIndex(indexName, expression, filterExpression, options)
 }
 
 func (b *LeakyBucket) BuildDeferredIndexes(indexSet []string) error {
-	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
-		return errors.New("Not GOCB Bucket")
+		return errors.New("Not N1QL Store")
 	}
-	return gocbBucket.BuildDeferredIndexes(indexSet)
+	return n1qlStore.BuildDeferredIndexes(indexSet)
 }
 
 func (b *LeakyBucket) CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error {
-	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
-		return errors.New("Not GOCB Bucket")
+		return errors.New("Not N1QL Store")
 	}
-	return gocbBucket.CreatePrimaryIndex(indexName, options)
+	return n1qlStore.CreatePrimaryIndex(indexName, options)
 }
 
 func (b *LeakyBucket) WaitForIndexOnline(indexName string) error {
-	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
-		return errors.New("Not GOCB Bucket")
+		return errors.New("Not N1QL Store")
 	}
-	return gocbBucket.WaitForIndexOnline(indexName)
+	return n1qlStore.WaitForIndexOnline(indexName)
 }
 
-func (b *LeakyBucket) GetIndexMeta(indexName string) (exists bool, meta *gocb.IndexInfo, err error) {
-	gocbBucket, ok := AsGoCBBucket(b.bucket)
+func (b *LeakyBucket) GetIndexMeta(indexName string) (exists bool, meta *IndexMeta, err error) {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
-		return false, nil, errors.New("Not GOCB Bucket")
+		return false, nil, errors.New("Not N1QL Store")
 	}
-	return gocbBucket.GetIndexMeta(indexName)
+	return n1qlStore.GetIndexMeta(indexName)
 }
 
 func (b *LeakyBucket) DropIndex(indexName string) error {
 
-	gocbBucket, ok := AsGoCBBucket(b.bucket)
+	n1qlStore, ok := AsN1QLStore(b.bucket)
 	if !ok {
-		return errors.New("Not GOCB Bucket")
+		return errors.New("Not N1QL Store")
 	}
 
 	if len(b.config.DropIndexErrorNames) > 0 {
@@ -501,7 +508,31 @@ func (b *LeakyBucket) DropIndex(indexName string) error {
 		}
 	}
 
-	return gocbBucket.DropIndex(indexName)
+	return n1qlStore.DropIndex(indexName)
+}
+
+func (b *LeakyBucket) executeQuery(statement string) (results sgbucket.QueryResultIterator, err error) {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return nil, errors.New("Not N1QL Store")
+	}
+	return n1qlStore.executeQuery(statement)
+}
+
+func (b *LeakyBucket) executeStatement(statement string) error {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return errors.New("Not N1QL Store")
+	}
+	return n1qlStore.executeStatement(statement)
+}
+
+func (b *LeakyBucket) IsErrNoResults(err error) bool {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return false
+	}
+	return n1qlStore.IsErrNoResults(err)
 }
 
 func (b *LeakyBucket) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {

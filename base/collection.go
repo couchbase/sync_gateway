@@ -110,6 +110,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 	viewOpsQueue := make(chan struct{}, MaxConcurrentViewOps*nodeCount)
 	collection := &Collection{
 		Collection: bucket.DefaultCollection(),
+		cluster:    cluster,
 		viewOps:    viewOpsQueue,
 	}
 
