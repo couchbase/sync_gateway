@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	_ "github.com/robertkrimen/otto/underscore"
 )
@@ -51,9 +51,19 @@ func NewDefaultChannelMapper() *ChannelMapper {
 	return NewChannelMapper(`function(doc){channel(doc.channels);}`)
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userXattrs []byte, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 	numberFixBody := ConvertJSONNumbers(body)
-	result1, err := mapper.Call(numberFixBody, sgbucket.JSONString(oldBodyJSON), userCtx)
+
+	var userXattrsObj interface{}
+	if len(userXattrs) > 0 {
+		err := json.Unmarshal(userXattrs, &userXattrsObj)
+		if err != nil {
+			base.Errorf("Unable to unmarshal user xattrs value, will be nil in sync fn: %v", err)
+		}
+	}
+	numberFixXattr := ConvertJSONNumbers(userXattrsObj)
+
+	result1, err := mapper.Call(numberFixBody, sgbucket.JSONString(oldBodyJSON), numberFixXattr, userCtx)
 	if err != nil {
 		return nil, err
 	}

@@ -399,8 +399,16 @@ func (h *handler) handleGetRawDoc() error {
 
 	rawBytes, err = base.InjectJSONProperties(rawBytes, base.KVPair{Key: base.SyncPropertyName, Val: syncData})
 	if err != nil {
-
 		return err
+	}
+
+	// TODO: Review this, do we want to still output something like null if its not there? Just to make debug clear its
+	// actually checking that one exists.
+	if len(doc.RawUserXattr) > 0 {
+		rawBytes, err = base.InjectJSONPropertiesFromBytes(rawBytes, base.KVPairBytes{Key: base.SyncSupplName, Val: doc.RawUserXattr})
+		if err != nil {
+			return err
+		}
 	}
 
 	h.writeRawJSON(rawBytes)

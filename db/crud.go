@@ -58,6 +58,10 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 			return nil, err
 		}
 
+		if len(rawBucketDoc.UserXattr) > 0 {
+			doc.RawUserXattr = rawBucketDoc.UserXattr
+		}
+
 		isSgWrite, crc32Match := doc.IsSGWrite(rawBucketDoc.Body)
 		if crc32Match {
 			db.DbStats.Database().Crc32MatchCount.Add(1)
@@ -66,7 +70,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
+			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, importErr
 			}
@@ -106,6 +110,11 @@ func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUn
 		return nil, nil, getErr
 	}
 
+	_, userXattrError := db.Bucket.GetXattr(key, base.SyncSupplName, &rawBucketDoc.UserXattr)
+	if userXattrError != nil && !base.IsDocNotFoundError(userXattrError) {
+		fmt.Printf("ANOTHER ERROR Version 1: %v\n", userXattrError)
+	}
+
 	var unmarshalErr error
 	doc, unmarshalErr = unmarshalDocumentWithXattr(key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas, unmarshalLevel)
 	if unmarshalErr != nil {
@@ -126,10 +135,15 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 	if db.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		var rawDoc, rawXattr []byte
+		var rawDoc, rawXattr, userXattr []byte
 		cas, getErr := db.Bucket.GetWithXattr(key, base.SyncXattrName, &rawDoc, &rawXattr)
 		if getErr != nil {
 			return emptySyncData, getErr
+		}
+
+		_, userXattrError := db.Bucket.GetXattr(key, base.SyncSupplName, &userXattr)
+		if userXattrError != nil && !base.IsDocNotFoundError(userXattrError) {
+			fmt.Printf("ANOTHER ERROR Version 2: %v\n", userXattrError)
 		}
 
 		// Unmarshal xattr only
@@ -138,7 +152,9 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 			return emptySyncData, unmarshalErr
 		}
 
+		doc.RawUserXattr = userXattr
 		isSgWrite, crc32Match := doc.IsSGWrite(rawDoc)
+
 		if crc32Match {
 			db.DbStats.Database().Crc32MatchCount.Add(1)
 		}
@@ -147,7 +163,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 		if !isSgWrite {
 			var importErr error
 
-			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
+			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, userXattr, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
@@ -176,12 +192,12 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, cas uint64) (docOut *Document, err error) {
+func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
 	importDb := Database{DatabaseContext: db, user: nil}
 	var importErr error
 
-	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, nil, ImportOnDemand)
+	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, rawUserXattr, isDelete, cas, nil, ImportOnDemand)
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as not found
 		return nil, base.HTTPErrorf(404, "Not imported")
@@ -1389,8 +1405,8 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 
 // Run the sync function on the given document and body. Need to inject the document ID and rev ID temporarily to run
 // the sync function.
-func (db *Database) runSyncFn(doc *Document, body Body, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
-	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, newRevId)
+func (db *Database) runSyncFn(doc *Document, body Body, userXattrs []byte, newRevId string) (*uint32, string, base.Set, channels.AccessMap, channels.AccessMap, error) {
+	channelSet, access, roles, syncExpiry, oldBody, err := db.getChannelsAndAccess(doc, body, userXattrs, newRevId)
 	if err != nil {
 		return nil, ``, nil, nil, nil, err
 	}
@@ -1415,7 +1431,7 @@ func (db *Database) recalculateSyncFnForActiveRev(doc *Document, newRevID string
 	if curBody != nil {
 		base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q causes %q to become current again",
 			base.UD(doc.ID), newRevID, doc.CurrentRev)
-		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(doc, curBody, doc.CurrentRev)
+		channelSet, access, roles, syncExpiry, oldBodyJSON, err = db.getChannelsAndAccess(doc, curBody, doc.RawUserXattr, doc.CurrentRev)
 		if err != nil {
 			return
 		}
@@ -1625,7 +1641,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		syncFnBody[BodyDeleted] = true
 	}
 
-	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, syncFnBody, newRevID)
+	syncExpiry, oldBodyJSON, channelSet, access, roles, err := db.runSyncFn(doc, syncFnBody, doc.RawUserXattr, newRevID)
 	if err != nil {
 		return
 	}
@@ -1742,7 +1758,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1753,6 +1769,12 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if currentXattr == nil && doc.Sequence > 0 {
 				doc.inlineSyncData = true
 			}
+
+			userXattrs := currentUserXattr
+			if existingDoc != nil {
+				userXattrs = existingDoc.UserXattr
+			}
+			doc.RawUserXattr = userXattrs
 
 			docExists := currentValue != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
@@ -1771,7 +1793,8 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			deleteDoc = currentRevFromHistory.Deleted
 
 			// Return the new raw document value for the bucket to store.
-			raw, rawXattr, err = doc.MarshalWithXattr()
+
+			raw, rawXattr, err = doc.MarshalWithXattr(true)
 			docBytes = len(raw)
 
 			// Warn when sync data is larger than a configured threshold
@@ -1784,6 +1807,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			}
 
 			base.DebugfCtx(db.Ctx, base.KeyCRUD, "Saving doc (seq: #%d, id: %v rev: %v)", doc.Sequence, base.UD(doc.ID), doc.CurrentRev)
+
 			return raw, rawXattr, deleteDoc, syncFuncExpiry, err
 		})
 		if err != nil {
@@ -1999,7 +2023,7 @@ func (db *Database) Purge(key string) error {
 
 // Calls the JS sync function to assign the doc to channels, grant users
 // access to channels, and reject invalid documents.
-func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string) (
+func (db *Database) getChannelsAndAccess(doc *Document, body Body, userXattrs []byte, revID string) (
 	result base.Set,
 	access channels.AccessMap,
 	roles channels.AccessMap,
@@ -2021,7 +2045,7 @@ func (db *Database) getChannelsAndAccess(doc *Document, body Body, revID string)
 		db.DbStats.CBLReplicationPush().SyncFunctionCount.Add(1)
 
 		var output *channels.ChannelMapperOutput
-		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson,
+		output, err = db.ChannelMapper.MapToChannelsAndAccess(body, oldJson, userXattrs,
 			makeUserCtx(db.user))
 
 		db.DbStats.CBLReplicationPush().SyncFunctionTime.Add(time.Since(startTime).Nanoseconds())

@@ -196,19 +196,19 @@ func TestParseXattr(t *testing.T) {
 	dcpBody = append(dcpBody, zeroByte)
 	dcpBody = append(dcpBody, body...)
 
-	resultBody, resultXattr, err := parseXattrStreamData(base.SyncXattrName, dcpBody)
+	resultBody, resultXattr, _, err := parseXattrStreamData(base.SyncXattrName, base.SyncSupplName, dcpBody)
 	assert.NoError(t, err, "Unexpected error parsing dcp body")
 	goassert.Equals(t, string(resultBody), string(body))
 	goassert.Equals(t, string(resultXattr), string(xattrValue))
 
 	// Attempt to retrieve non-existent xattr
-	resultBody, resultXattr, err = parseXattrStreamData("nonexistent", dcpBody)
+	resultBody, resultXattr, _, err = parseXattrStreamData("nonexistent", base.SyncSupplName, dcpBody)
 	assert.NoError(t, err, "Unexpected error parsing dcp body")
 	goassert.Equals(t, string(resultBody), string(body))
 	goassert.Equals(t, string(resultXattr), "")
 
 	// Attempt to retrieve xattr from empty dcp body
-	emptyBody, emptyXattr, emptyErr := parseXattrStreamData(base.SyncXattrName, []byte{})
+	emptyBody, emptyXattr, _, emptyErr := parseXattrStreamData(base.SyncXattrName, base.SyncSupplName, []byte{})
 	goassert.Equals(t, emptyErr, base.ErrEmptyMetadata)
 	assert.True(t, emptyBody == nil, "Nil body expected")
 	assert.True(t, emptyXattr == nil, "Nil xattr expected")

@@ -207,8 +207,8 @@ func (b *LeakyBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas 
 
 func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	if b.config.UpdateCallback != nil {
-		wrapperCallback := func(current []byte, xattr []byte, cas uint64) (updated []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
-			updated, updatedXattr, deletedDoc, expiry, err = callback(current, xattr, cas)
+		wrapperCallback := func(current []byte, xattr []byte, userXattr []byte, cas uint64) (updated []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
+			updated, updatedXattr, deletedDoc, expiry, err = callback(current, xattr, userXattr, cas)
 			b.config.UpdateCallback(k)
 			return updated, updatedXattr, deletedDoc, expiry, err
 		}

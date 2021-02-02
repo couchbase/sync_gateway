@@ -5541,3 +5541,209 @@ func TestUptimeStat(t *testing.T) {
 	log.Printf("uptime1: %d, uptime2: %d", uptime1, uptime2)
 	assert.True(t, uptime1 < uptime2)
 }
+
+func TestXattrsRead(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+		},
+		SyncFn: `
+			function (doc, oldDoc, userXattrs) {
+				console.log(JSON.stringify(userXattrs));
+				console.log(doc);
+				console.log(userXattrs === undefined);
+			   	channel(doc.channels);
+			}
+		`})
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	var body db.Body
+	err := json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	revID := body["rev"].(string)
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	require.True(t, ok)
+
+	err = gocbBucket.WriteXattr("doc1", base.SyncSupplName, []byte("{}"))
+	assert.NoError(t, err)
+
+	resp = rt.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	resp = rt.SendAdminRequest("PUT", "/db/doc1?rev="+revID, "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	syncFnCount := rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value()
+	assert.Equal(t, 3, int(syncFnCount))
+}
+
+func TestXattrsOnDemandImportGet(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+		},
+		SyncFn: `
+			function (doc, oldDoc, userXattrs) {
+				if (userXattrs !== undefined){
+					channel("xattrs")
+				}
+			}
+		`})
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	require.True(t, ok)
+
+	err := gocbBucket.WriteXattr("doc1", base.SyncSupplName, []byte(`{"x": "y"}`))
+	assert.NoError(t, err)
+
+	resp = rt.SendAdminRequest("GET", "/db/_raw/doc1", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	var doc struct {
+		SyncData db.SyncData `json:"_sync"`
+	}
+	err = json.Unmarshal(resp.BodyBytes(), &doc)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"xattrs"}, doc.SyncData.History["1-ca9ad22802b66f662ff171f226211d5c"].Channels.ToArray())
+
+	syncFnCount := rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value()
+	assert.Equal(t, int(syncFnCount), 2)
+}
+
+func TestXattrsChangeNoImport(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport: false,
+		},
+		SyncFn: `
+			function (doc, oldDoc, userXattrs) {
+				console.log(userXattrs);
+				console.log(JSON.stringify(userXattrs));
+				console.log(doc);
+				console.log(JSON.stringify(doc));
+				console.log(userXattrs === undefined);
+			}
+		`})
+	defer rt.Close()
+
+	// Put doc with sgw
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	require.True(t, ok)
+
+	// Add xattr
+	err := gocbBucket.WriteXattr("doc1", base.SyncSupplName, []byte(`{"x": "y"}`))
+	assert.NoError(t, err)
+
+	// Trigger import using GET
+	resp = rt.SendAdminRequest("GET", "/db/_raw/doc1", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	// Write xattr but same one so no changes
+	err = gocbBucket.WriteXattr("doc1", base.SyncSupplName, []byte(`{"x": "y"}`))
+	assert.NoError(t, err)
+
+	// GET shouldn't trigger another import
+	resp = rt.SendAdminRequest("GET", "/db/_raw/doc1", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	syncFnCount := rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value()
+	assert.Equal(t, 2, int(syncFnCount))
+}
+
+func TestXattrInRawDoc(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	require.True(t, ok)
+
+	err := gocbBucket.WriteXattr("doc", base.SyncSupplName, []byte(`{"x": "y"}`))
+	assert.NoError(t, err)
+
+	resp = rt.SendAdminRequest("GET", "/db/_raw/doc", "{}")
+	assertStatus(t, resp, http.StatusOK)
+
+	var body db.Body
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	require.NoError(t, err)
+
+	xatrrData, ok := body[base.SyncSupplName].(map[string]interface{})
+	require.True(t, ok)
+
+	assert.Equal(t, map[string]interface{}{"x": "y"}, xatrrData)
+}
+
+func TestNoRevIncreaseOnXattrChange(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	require.True(t, ok)
+
+	err := gocbBucket.WriteXattr("doc", base.SyncSupplName, []byte(`{"x": "y"}`))
+	assert.NoError(t, err)
+
+	type docReq struct {
+		SyncData db.SyncData `json:"_sync"`
+	}
+
+	var docReq1 docReq
+	resp = rt.SendAdminRequest("GET", "/db/_raw/doc", "{}")
+	err = json.Unmarshal(resp.BodyBytes(), &docReq1)
+	require.NoError(t, err)
+
+	err = gocbBucket.WriteXattr("doc", base.SyncSupplName, []byte(`{"xx": "y"}`))
+	assert.NoError(t, err)
+
+	var docReq2 docReq
+	resp = rt.SendAdminRequest("GET", "/db/_raw/doc", "{}")
+	err = json.Unmarshal(resp.BodyBytes(), &docReq2)
+	require.NoError(t, err)
+
+	assert.True(t, docReq2.SyncData.Sequence > docReq1.SyncData.Sequence)
+	assert.Equal(t, docReq1.SyncData.CurrentRev, docReq2.SyncData.CurrentRev)
+}

@@ -82,7 +82,7 @@ const funcWrapper = `
 					throw({forbidden: "%s"});
 		}
 
-		return function (newDoc, oldDoc, _realUserCtx) {
+		return function (newDoc, oldDoc, userXattrs, _realUserCtx) {
 			realUserCtx = _realUserCtx;
 
 			if (oldDoc) {
@@ -93,7 +93,7 @@ const funcWrapper = `
 			shouldValidate = (realUserCtx != null && realUserCtx.name != null);
 
 			try {
-				syncFn(newDoc, oldDoc);
+				syncFn(newDoc, oldDoc, userXattrs);
 			} catch(x) {
 				if (x.forbidden)
 				reject(403, x.forbidden);

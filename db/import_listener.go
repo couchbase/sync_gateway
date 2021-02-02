@@ -97,7 +97,7 @@ func (il *importListener) ProcessFeedEvent(event sgbucket.FeedEvent) (shouldPers
 func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 
 	// Unmarshal the doc metadata (if present) to determine if this mutation requires import.
-	syncData, rawBody, rawXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, false)
+	syncData, rawBody, rawXattr, rawUserXattr, err := UnmarshalDocumentSyncDataFromFeed(event.Value, event.DataType, false)
 	if err != nil {
 		base.Debugf(base.KeyImport, "Found sync metadata, but unable to unmarshal for feed document %q.  Will not be imported.  Error: %v", base.UD(event.Key), err)
 		if err == base.ErrEmptyMetadata {
@@ -109,7 +109,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 	var isSGWrite bool
 	var crc32Match bool
 	if syncData != nil {
-		isSGWrite, crc32Match = syncData.IsSGWrite(event.Cas, rawBody)
+		isSGWrite, crc32Match = syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
 		if crc32Match {
 			il.stats.Crc32MatchCount.Add(1)
 		}
@@ -131,7 +131,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 		default:
 		}
 
-		_, err := il.database.ImportDocRaw(docID, rawBody, rawXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
+		_, err := il.database.ImportDocRaw(docID, rawBody, rawXattr, rawUserXattr, isDelete, event.Cas, &event.Expiry, ImportFromFeed)
 		if err != nil {
 			if err == base.ErrImportCasFailure {
 				base.Debugf(base.KeyImport, "Not importing mutation - document %s has been subsequently updated and will be imported based on that mutation.", base.UD(docID))

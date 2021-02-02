@@ -14,11 +14,11 @@ func TestRequireUser(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), parse(`{"name": "alpha"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), nil, parse(`{"name": "alpha"}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["beta", "gamma"]}`), parse(`{"name": "beta"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["beta", "gamma"]}`), nil, parse(`{"name": "beta"}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["delta"]}`), parse(`{"name": "beta"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["delta"]}`), nil, parse(`{"name": "beta"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorWrongUser))
 }
 
@@ -27,11 +27,11 @@ func TestRequireRole(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), parse(`{"name": "", "roles": {"alpha":""}}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), nil, parse(`{"name": "", "roles": {"alpha":""}}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["beta", "gamma"]}`), parse(`{"name": "", "roles": {"beta": ""}}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["beta", "gamma"]}`), nil, parse(`{"name": "", "roles": {"beta": ""}}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["delta"]}`), parse(`{"name": "", "roles": {"beta":""}}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["delta"]}`), nil, parse(`{"name": "", "roles": {"beta":""}}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorMissingRole))
 }
 
@@ -40,11 +40,11 @@ func TestRequireAccess(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), parse(`{"name": "", "channels": ["alpha"]}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), nil, parse(`{"name": "", "channels": ["alpha"]}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["beta", "gamma"]}`), parse(`{"name": "", "channels": ["beta"]}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["beta", "gamma"]}`), nil, parse(`{"name": "", "channels": ["beta"]}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["delta"]}`), parse(`{"name": "", "channels": ["beta"]}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["delta"]}`), nil, parse(`{"name": "", "channels": ["beta"]}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorMissingChannelAccess))
 }
 
@@ -53,13 +53,13 @@ func TestRequireAdmin(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), nil, parse(`{}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": ""}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), nil, parse(`{"name": ""}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": "GUEST"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), nil, parse(`{"name": "GUEST"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), parse(`{"name": "beta"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), nil, parse(`{"name": "beta"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
 }
 

@@ -20,7 +20,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -51,10 +51,11 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Body:   value,
-		Xattr:  xattrValue,
-		Cas:    cas,
-		Expiry: *expiry,
+		Body:      value,
+		Xattr:     xattrValue,
+		UserXattr: userXattrValue,
+		Cas:       cas,
+		Expiry:    *expiry,
 	}
 	return db.importDoc(docid, body, isDelete, existingBucketDoc, mode)
 }
@@ -79,8 +80,9 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Cas:    existingDoc.Cas,
-		Expiry: *expiry,
+		Cas:       existingDoc.Cas,
+		Expiry:    *expiry,
+		UserXattr: existingDoc.RawUserXattr,
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData
@@ -92,7 +94,7 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 		if existingDoc.Deleted {
 			existingBucketDoc.Xattr, err = base.JSONMarshal(existingDoc.SyncData)
 		} else {
-			existingBucketDoc.Body, existingBucketDoc.Xattr, err = existingDoc.MarshalWithXattr()
+			existingBucketDoc.Body, existingBucketDoc.Xattr, err = existingDoc.MarshalWithXattr(false)
 		}
 	}
 
@@ -125,14 +127,14 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 	}
 
 	newDoc := &Document{
-		ID:      docid,
-		Deleted: isDelete,
+		ID:           docid,
+		Deleted:      isDelete,
+		RawUserXattr: existingDoc.UserXattr,
 	}
 
 	var newRev string
 	var alreadyImportedDoc *Document
 	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
-
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
 		if doc.Cas != existingDoc.Cas {
@@ -207,7 +209,12 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		}
 
 		// Is this doc an SG Write?
-		isSgWrite, crc32Match := doc.IsSGWrite(existingDoc.Body)
+		sgWriteBody := existingDoc.Body
+		if len(existingDoc.UserXattr) > 0 {
+			sgWriteBody = append(sgWriteBody, existingDoc.UserXattr...)
+		}
+
+		isSgWrite, crc32Match := doc.IsSGWrite(sgWriteBody)
 		if crc32Match {
 			db.DbStats.Database().Crc32MatchCount.Add(1)
 		}
@@ -248,10 +255,6 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			}
 		}
 
-		// The active rev is the parent for an import
-		parentRev := doc.CurrentRev
-		generation, _ := ParseRevID(parentRev)
-		generation++
 		var rawBodyForRevID []byte
 		var wasStripped bool
 		if len(existingDoc.Body) > 0 {
@@ -265,6 +268,18 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			}
 		}
 
+		// Is body the same this import was triggered by an xattr change meaning we want to skip the below new rev
+		// handling
+		if !doc.BodyChanged(existingDoc.Body) {
+			newDoc._rawBody = rawBodyForRevID
+			newDoc.RevID = doc.CurrentRev
+			return newDoc, nil, updatedExpiry, nil
+		}
+
+		// The active rev is the parent for an import
+		parentRev := doc.CurrentRev
+		generation, _ := ParseRevID(parentRev)
+		generation++
 		newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
 		if err != nil {
 			return nil, nil, updatedExpiry, err
@@ -340,6 +355,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 		return nil, false, unmarshalErr
 	}
 	doc.Cas = existingDoc.Cas
+	doc.RawUserXattr = existingDoc.UserXattr
 
 	// If no sync metadata is present, return for import handling
 	if !doc.HasValidSyncData() {
@@ -354,7 +370,7 @@ func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbuck
 	}
 
 	// Persist the document in xattr format
-	value, xattrValue, marshalErr := doc.MarshalWithXattr()
+	value, xattrValue, marshalErr := doc.MarshalWithXattr(false)
 	if marshalErr != nil {
 		return nil, false, marshalErr
 	}

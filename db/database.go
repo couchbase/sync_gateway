@@ -1142,7 +1142,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 						base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 						return
 					}
-					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
+					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, doc.RawUserXattr, rev.ID)
 					if err != nil {
 						// Probably the validator rejected the doc
 						base.Warnf("Error calling sync() on doc %q: %v", base.UD(docid), err)
@@ -1180,7 +1180,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 			}
 			var err error
 			if db.UseXattrs() {
-				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, cas uint64) (
+				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, userXattr []byte, cas uint64) (
 					raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
 					// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 					// so deleteDoc is always returned as false.
@@ -1191,6 +1191,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
 					}
+					doc.RawUserXattr = userXattr
 
 					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
 					if err != nil {
@@ -1201,7 +1202,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 						if updatedExpiry != nil {
 							updatedDoc.UpdateExpiry(*updatedExpiry)
 						}
-						raw, rawXattr, err = updatedDoc.MarshalWithXattr()
+						raw, rawXattr, err = updatedDoc.MarshalWithXattr(true)
 						return raw, rawXattr, deleteDoc, updatedExpiry, err
 					} else {
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
