@@ -2963,11 +2963,6 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	})
 	defer rt2.Close()
 
-	rt2docID := t.Name() + "rt2doc1"
-	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+rt2docID, `{"source":"rt2","channels":["alice"]}`)
-	assertStatus(t, resp, http.StatusCreated)
-	rt2revID := respRevID(t, resp)
-
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
@@ -2978,7 +2973,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	defer rt1.Close()
 
 	rt1docID := t.Name() + "rt1doc1"
-	resp = rt1.SendAdminRequest(http.MethodPut, "/db/"+rt1docID, `{"source":"rt1","channels":["alice"]}`)
+	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+rt1docID, `{"source":"rt1","channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	rt1revID := respRevID(t, resp)
 
@@ -2999,6 +2994,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		ActiveDB: &db.Database{
 			DatabaseContext: rt1.GetDatabase(),
 		},
+		Continuous:          true,
 		ChangesBatchSize:    200,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})
@@ -3010,11 +3006,10 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.NoError(t, ar.Start())
 
 	// wait for the document originally written to rt1 to arrive at rt2
-	changesResults, err := rt2.WaitForChanges(2, "/db/_changes?since=0", "", true)
+	changesResults, err := rt2.WaitForChanges(1, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
-	require.Len(t, changesResults.Results, 2)
-	assert.Equal(t, rt2docID, changesResults.Results[0].ID)
-	assert.Equal(t, rt1docID, changesResults.Results[1].ID)
+	require.Len(t, changesResults.Results, 1)
+	assert.Equal(t, rt1docID, changesResults.Results[0].ID)
 
 	doc, err := rt2.GetDatabase().GetDocument(rt1docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
@@ -3022,7 +3017,13 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.Equal(t, rt1revID, doc.SyncData.CurrentRev)
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 
-	// wait for the document originally written to rt2 to arrive at rt1
+	// write a doc on rt2 ...
+	rt2docID := t.Name() + "rt2doc1"
+	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+rt2docID, `{"source":"rt2","channels":["alice"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	rt2revID := respRevID(t, resp)
+
+	// ... and wait to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(2, "/db/_changes?since=0", "", true)
 	require.NoError(t, err)
 	require.Len(t, changesResults.Results, 2)
@@ -3035,13 +3036,15 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.Equal(t, rt2revID, doc.SyncData.CurrentRev)
 	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
 
-	rt1localDoc, err := rt1.GetDatabase().GetDocument(rt1docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-	assert.Equal(t, strconv.FormatUint(rt1localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
+	arStatus := ar.GetStatus()
 
-	rt2localDoc, err := rt1.GetDatabase().GetDocument(rt2docID, db.DocUnmarshalAll)
+	rt1RemoteDoc, err := rt2.GetDatabase().GetDocument(rt1docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
-	assert.Equal(t, strconv.FormatUint(rt2localDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
+	assert.Equal(t, strconv.FormatUint(rt1RemoteDoc.Sequence, 10), arStatus.LastSeqPush)
+
+	rt2RemoteDoc, err := rt2.GetDatabase().GetDocument(rt2docID, db.DocUnmarshalAll)
+	assert.NoError(t, err)
+	assert.Equal(t, strconv.FormatUint(rt2RemoteDoc.Sequence, 10), arStatus.LastSeqPull)
 }
 
 // TestActiveReplicatorPullFromCheckpointModifiedHash:
