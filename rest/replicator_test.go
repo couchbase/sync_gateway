@@ -3035,16 +3035,6 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 
 	assert.Equal(t, rt2revID, doc.SyncData.CurrentRev)
 	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
-
-	arStatus := ar.GetStatus()
-
-	rt1RemoteDoc, err := rt2.GetDatabase().GetDocument(rt1docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-	assert.Equal(t, strconv.FormatUint(rt1RemoteDoc.Sequence, 10), arStatus.LastSeqPush)
-
-	rt2RemoteDoc, err := rt2.GetDatabase().GetDocument(rt2docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
-	assert.Equal(t, strconv.FormatUint(rt2RemoteDoc.Sequence, 10), arStatus.LastSeqPull)
 }
 
 // TestActiveReplicatorPullFromCheckpointModifiedHash:
