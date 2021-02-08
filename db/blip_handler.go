@@ -212,13 +212,14 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 		// sendChanges runs until blip context closes, or fails due to error
 		startTime := time.Now()
 		_ = bh.sendChanges(rq.Sender, &sendChangesOptions{
-			docIDs:     subChangesParams.docIDs(),
-			since:      subChangesParams.Since(),
-			continuous: continuous,
-			activeOnly: subChangesParams.activeOnly(),
-			batchSize:  subChangesParams.batchSize(),
-			channels:   channels,
-			clientType: clientType,
+			docIDs:            subChangesParams.docIDs(),
+			since:             subChangesParams.Since(),
+			continuous:        continuous,
+			activeOnly:        subChangesParams.activeOnly(),
+			batchSize:         subChangesParams.batchSize(),
+			channels:          channels,
+			clientType:        clientType,
+			ignoreNoConflicts: clientType == clientTypeSGR2, // force this side to accept a "changes" message, even in no conflicts mode for SGR2.
 		})
 		base.DebugfCtx(bh.loggingCtx, base.KeySyncMsg, "#%d: Type:%s   --> Time:%v", bh.serialNumber, rq.Profile(), time.Since(startTime))
 	}()
