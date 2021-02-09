@@ -38,6 +38,7 @@ import (
 var (
 	DefaultInterface              = ":4984"
 	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
+	DefaultMetricsInterface       = "127.0.0.1:4986" // Only accessible on localhost!
 	DefaultServer                 = "walrus:"
 	DefaultPool                   = "default"
 	DefaultMinimumTLSVersionConst = tls.VersionTLS10
@@ -997,6 +998,10 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		}
 	}
 
+	if config.MetricsInterface == nil {
+		config.MetricsInterface = &DefaultMetricsInterface
+	}
+
 	return config, err
 }
 
@@ -1093,10 +1098,8 @@ func RunServer(config *ServerConfig) {
 
 	go sc.PostStartup()
 
-	if config.MetricsInterface != nil {
-		base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", *config.MetricsInterface)
-		go config.Serve(*config.MetricsInterface, CreateMetricHandler(sc))
-	}
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", *config.MetricsInterface)
+	go config.Serve(*config.MetricsInterface, CreateMetricHandler(sc))
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", *config.AdminInterface)
 	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
