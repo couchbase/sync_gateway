@@ -676,8 +676,6 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 	if !newDoc.Deleted || string(bodyBytes) != "null" {
 		newDoc.UpdateBodyBytes(bodyBytes)
-	} else {
-		fmt.Printf("xxx")
 	}
 
 	injectedAttachmentsForDelta := false
