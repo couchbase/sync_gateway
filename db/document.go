@@ -157,7 +157,6 @@ type Document struct {
 	Cas      uint64 // Document cas
 
 	Deleted        bool
-	IsNilDoc       bool
 	DocExpiry      uint32
 	RevID          string
 	DocAttachments AttachmentsMeta
@@ -289,13 +288,6 @@ func (doc *Document) GetDeepMutableBody() Body {
 
 	return mutableBody
 }
-
-// func (doc *Document) GetDeepMutableBodyNil() Body {
-// 	if doc.IsNilBody() {
-// 		return Body{}
-// 	}
-// 	return doc.GetDeepMutableBody()
-// }
 
 func (doc *Document) IsNilBody() bool {
 	// return doc.IsNilDoc
@@ -1010,7 +1002,6 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 		doc._body = nil
 		doc._rawBody = []byte("")
 		doc.Deleted = true
-		doc.IsNilDoc = true
 	}
 	return nil
 }
