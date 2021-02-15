@@ -897,7 +897,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 
 	// Dummy write update function that increments 'counter' in the doc and 'seq' in the xattr
-	writeUpdateFunc := func(doc []byte, xattr []byte, cas uint64) (
+	writeUpdateFunc := func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (
 		updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, err error) {
 
 		var docMap map[string]interface{}
@@ -946,7 +946,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	}
 
 	// Insert
-	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, nil, writeUpdateFunc)
+	_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, writeUpdateFunc)
 	if err != nil {
 		t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 	}
@@ -962,7 +962,7 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 	goassert.Equals(t, retrievedXattr["seq"], float64(1))
 
 	// Update
-	_, err = bucket.WriteUpdateWithXattr(key, xattrName, 0, nil, writeUpdateFunc)
+	_, err = bucket.WriteUpdateWithXattr(key, xattrName, "", 0, nil, writeUpdateFunc)
 	if err != nil {
 		t.Errorf("Error doing WriteUpdateWithXattr: %+v", err)
 	}
@@ -974,6 +974,109 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 
 	goassert.Equals(t, retrievedVal["counter"], float64(2))
 	goassert.Equals(t, retrievedXattr["seq"], float64(2))
+
+}
+
+func TestWriteXattr(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
+
+	key := t.Name()
+
+	err := testBucket.Set(key, 0, nil)
+	assert.NoError(t, err)
+
+	xattrKey := "TestXattr"
+	xattrVal := map[string]interface{}{"val": "val"}
+
+	_, err = testBucket.WriteXattr(key, xattrKey, &xattrVal)
+	assert.NoError(t, err)
+
+	var gotVal interface{}
+	_, err = testBucket.GetXattr(key, xattrKey, &gotVal)
+	assert.Equal(t, xattrVal, gotVal)
+
+}
+
+func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+
+	testBucket := GetTestBucket(t)
+	defer testBucket.Close()
+
+	// Doc vals
+	key := t.Name()
+	// val := map[string]interface{}{"val": "val"}
+
+	// Xattr vals
+	xattrKey := SyncXattrName
+	// xattrVal := map[string]interface{}{"seq": float64(1), "rev": "1-abc"}
+
+	userXattrKey := "UserXattr"
+
+	writeUpdateFunc := func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, err error) {
+
+		var docMap map[string]interface{}
+		var xattrMap map[string]interface{}
+
+		if len(doc) > 0 {
+			err = JSONUnmarshal(xattr, &docMap)
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+		} else {
+			docMap = make(map[string]interface{})
+		}
+
+		if len(xattr) > 0 {
+			err = JSONUnmarshal(xattr, &xattrMap)
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+		} else {
+			xattrMap = make(map[string]interface{})
+		}
+
+		var userXattrMap map[string]interface{}
+		if len(userXattr) > 0 {
+			err = JSONUnmarshal(userXattr, &userXattrMap)
+			if err != nil {
+				return nil, nil, false, nil, err
+			}
+		} else {
+			userXattrMap = nil
+		}
+
+		docMap["userXattrVal"] = userXattrMap
+
+		updatedDoc, _ = JSONMarshal(docMap)
+		updatedXattr, _ = JSONMarshal(xattrMap)
+
+		return updatedDoc, updatedXattr, false, nil, nil
+	}
+
+	_, err := testBucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
+	assert.NoError(t, err)
+
+	var gotBody map[string]interface{}
+	_, err = testBucket.Get(key, &gotBody)
+	assert.NoError(t, err)
+	assert.Equal(t, nil, gotBody["userXattrVal"])
+
+	userXattrVal := map[string]interface{}{"val": "val"}
+
+	_, err = testBucket.WriteXattr(key, userXattrKey, userXattrVal)
+	assert.NoError(t, err)
+
+	_, err = testBucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
+	assert.NoError(t, err)
+
+	_, err = testBucket.Get(key, &gotBody)
+	assert.NoError(t, err)
+
+	assert.Equal(t, userXattrVal, gotBody["userXattrVal"])
 
 }
 

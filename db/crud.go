@@ -1742,7 +1742,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.UserXattrKeyOrEmpty(), expiry, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1753,6 +1753,12 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if currentXattr == nil && doc.Sequence > 0 {
 				doc.inlineSyncData = true
 			}
+
+			userXattrs := currentUserXattr
+			if existingDoc != nil {
+				userXattrs = existingDoc.UserXattr
+			}
+			doc.RawUserXattr = userXattrs
 
 			docExists := currentValue != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
