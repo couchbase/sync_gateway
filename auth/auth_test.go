@@ -83,7 +83,7 @@ func TestValidateUserEmail(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 	auth := NewAuthenticator(bucket, nil)
-	badEmails := []string{"", "foo", "foo@", "@bar", "foo @bar", "foo@.bar"}
+	badEmails := []string{"", "foo", "foo@", "@bar", "foo@bar@buzz"}
 	for _, e := range badEmails {
 		assert.False(t, IsValidEmail(e))
 	}
