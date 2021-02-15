@@ -1618,12 +1618,22 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 	}
 }
 
+func (bucket *CouchbaseBucketGoCB) WriteXattr(k string, xattrKey string, v interface{}) (uint64, error) {
+	docFrag, err := bucket.Bucket.MutateIn(k, 0, 0).UpsertEx(xattrKey, v, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).Execute()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(docFrag.Cas()), nil
+}
+
 // WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
 // failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
-func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
 	var xattrValue []byte
+	var userXattrValue []byte
 	var cas uint64
 	emptyCas := uint64(0)
 
@@ -1632,6 +1642,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		value = previous.Body
 		xattrValue = previous.Xattr
 		cas = previous.Cas
+		userXattrValue = previous.UserXattr
 	}
 
 	for {
@@ -1651,10 +1662,31 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 				value = nil
 				xattrValue = nil
 			}
+
+			// If user xattrs is enabled
+			if userXattrKey != "" {
+				userXattrCas, err := bucket.GetXattr(k, userXattrKey, &userXattrValue)
+				switch pkgerrors.Cause(err) {
+				case gocb.ErrKeyNotFound, gocb.ErrSubDocBadMulti, nil:
+					// Occurs if doc / xattr is unavailable or no error
+				default:
+					// An unknown error occurred
+					Debugf(KeyCRUD, "Retrieval of user xattr failed during WriteUpdateWithXattr for key=%s, userXattrKey=%s: %v", UD(k), UD(xattrKey), err)
+					return 0, err
+				}
+
+				// If cas doesn't match retry
+				// If an error occurred and we're at this point the error is expected and we can continue
+				if cas != userXattrCas && err == nil {
+					cas = 0
+					continue
+				}
+			}
+
 		}
 
 		// Invoke callback to get updated value
-		updatedValue, updatedXattrValue, isDelete, callbackExpiry, err := callback(value, xattrValue, cas)
+		updatedValue, updatedXattrValue, isDelete, callbackExpiry, err := callback(value, xattrValue, userXattrValue, cas)
 
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {

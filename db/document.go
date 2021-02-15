@@ -150,11 +150,12 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 // "_sync" property.
 // Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type Document struct {
-	SyncData        // Sync metadata
-	_body    Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
-	_rawBody []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
-	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
-	Cas      uint64 // Document cas
+	SyncData            // Sync metadata
+	_body        Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
+	_rawBody     []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
+	ID           string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
+	Cas          uint64 // Document cas
+	RawUserXattr []byte // Raw user xattr as retrieved from the bucket
 
 	Deleted        bool
 	DocExpiry      uint32

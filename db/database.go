@@ -142,6 +142,7 @@ type DatabaseContextOptions struct {
 	SGReplicateOptions        SGReplicateOptions
 	SlowQueryWarningThreshold time.Duration
 	QueryPaginationLimit      int // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
+	UserXattrKey              *string
 }
 
 type SGReplicateOptions struct {
@@ -706,6 +707,20 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	return authenticator
 }
 
+func (context *DatabaseContext) UserXattrsEnabled() bool {
+	if context.Options.UserXattrKey != nil {
+		return true
+	}
+	return false
+}
+
+func (context *DatabaseContext) UserXattrKeyOrEmpty() string {
+	if context.Options.UserXattrKey == nil {
+		return ""
+	}
+	return *context.Options.UserXattrKey
+}
+
 // Makes a Database object given its name and bucket.
 func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
 	return &Database{DatabaseContext: context, user: user}, nil
@@ -1180,7 +1195,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 			}
 			var err error
 			if db.UseXattrs() {
-				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, cas uint64) (
+				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
 					raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
 					// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 					// so deleteDoc is always returned as false.
@@ -1191,7 +1206,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
 					}
-
+					doc.RawUserXattr = currentUserXattr
 					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
@@ -1207,7 +1222,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
 				}
-				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, nil, writeUpdateFunc)
+				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.UserXattrKeyOrEmpty(), 0, nil, writeUpdateFunc)
 			} else {
 				_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 					// Be careful: this block can be invoked multiple times if there are races!
