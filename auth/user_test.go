@@ -119,30 +119,87 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 }
 
 func TestIsValidEmail(t *testing.T) {
-	// Valid Email Addresses
-	assert.True(t, IsValidEmail("alice@couchbase.com"))       // Valid Email Address Check
-	assert.True(t, IsValidEmail("a1ice@couchbase.com"))       // Numbers and letters in the address field
-	assert.True(t, IsValidEmail("alice.bob@couchbase.com"))   // Email contains dot in the address field
-	assert.True(t, IsValidEmail("alice@couchbase.lab.com"))   // Email contains dot with sub-domain
-	assert.True(t, IsValidEmail("alice+bob@couchbase.com"))   // Plus sign is considered valid character
-	assert.True(t, IsValidEmail("alice@127.0.0.1"))           // Domain is valid IP address
-	assert.True(t, IsValidEmail("1234567890@couchbase.com"))  // Digits in address are valid
-	assert.True(t, IsValidEmail("alice@couchbase-com"))       // Dash in domain name is valid
-	assert.True(t, IsValidEmail("_______@couchbase-com"))     // Underscore in the address field is valid
-	assert.True(t, IsValidEmail("alice@couchbase.name"))      // .name is valid Top Level Domain name
-	assert.True(t, IsValidEmail("alice@couchbase.co.jp"))     // Dot in Top Level Domain name is considered valid
-	assert.True(t, IsValidEmail("alice-bob@couchbase.co.jp")) // Dash in address field is valid
+	t.Run("Valid addresses", func(t *testing.T) {
+		validEmails := map[string]string{
+			`alice@couchbase.com`:       "Valid Email Address Check",
+			`a1ice@couchbase.com`:       "Numbers and letters in the address field",
+			`alice.bob@couchbase.com`:   "Email contains dot in the address field",
+			`alice@couchbase.lab.com`:   "Email contains dot with sub-domain",
+			`alice+bob@couchbase.com`:   "Plus sign is considered valid character",
+			`alice@127.0.0.1`:           "Domain is valid IP address",
+			`1234567890@couchbase.com`:  "Digits in address are valid",
+			`alice@couchbase-com`:       "Dash in domain name is valid",
+			`_______@couchbase-com`:     "Underscore in the address field is valid",
+			`alice@couchbase.name`:      ".name is valid Top Level Domain name",
+			`alice@couchbase.co.jp`:     "Dot in Top Level Domain name is considered valid",
+			`alice-bob@couchbase.co.jp`: "Dash in address field is valid",
+			`alice'bob@couchbase.com`:   "apostrophe in address",
+			// Examples from Wikipedia page on Email Addresses
+			`simple@example.com`:                             "",
+			`very.common@example.com`:                        "",
+			`disposable.style.email.with+symbol@example.com`: "",
+			`other.email-with-hyphen@example.com`:            "",
+			`fully-qualified-domain@example.com`:             "",
+			`user.name+tag+sorting@example.com`:              "(may go to user.name@example.com inbox depending on mail server)",
+			`x@example.com`:                                  "(one-letter local-part)",
+			`example-indeed@strange-example.com`:             "",
+			`admin@mailserver1`:                              "(local domain name with no TLD, although ICANN highly discourages dotless email addresses[10])",
+			`example@s.example`:                              "(see the List of Internet top-level domains)",
+			`" "@example.org`:                                "(space between the quotes)",
+			`"john..doe"@example.org`:                        "(quoted double dot)",
+			`mailhost!username@example.org`:                  "(bangified host route used for uucp mailers)",
+			`user%example.com@example.org`:                   "(% escaped mail route to user@example.com via example.org)",
+			`ser-@example.org`:                               "(local part ending with non-alphanumeric character from the list of allowed printable characters)",
+		}
 
-	// Invalid Email Addresses
-	assert.False(t, IsValidEmail("aliceatcouchbasedotcom"))          // Missing @ sign and domain
-	assert.False(t, IsValidEmail("#@%^%#$@#$@#.com"))                // Garbage value
-	assert.False(t, IsValidEmail("@couchbase.com"))                  // Missing username
-	assert.False(t, IsValidEmail("Alice Bob <alice@couchbase.com>")) // Encoded html within email is invalid
-	assert.False(t, IsValidEmail("email.couchbase.com"))             // Missing @
-	assert.False(t, IsValidEmail("alice@couchbase@couchbase.com"))   // Two @ sign
-	assert.False(t, IsValidEmail("áĺíćé@couchbase.com"))             // Unicode char as address
-	assert.False(t, IsValidEmail("alice@couchbase.com (Alice Bob)")) // Text followed email is not allowed
-	assert.False(t, IsValidEmail("alice@-couchbase.com"))            // Leading dash in front of domain is invalid
+		for email, description := range validEmails {
+			t.Run(email, func(t *testing.T) {
+				assert.True(t, IsValidEmail(email), description)
+			})
+		}
+	})
+
+	t.Run("Invalid addresses", func(t *testing.T) {
+		invalidEmails := map[string]string{
+			`aliceatcouchbasedotcom`:        "Missing @ sign and domain",
+			`#@%^%#$@#$@#.com`:              "Garbage value",
+			`@couchbase.com`:                "Missing username",
+			`email.couchbase.com`:           "Missing @",
+			`alice@couchbase@couchbase.com`: "Two @ sign",
+			// Examples from Wikipedia page on Email Addresses
+			`Abc.example.com`:   "no @ character",
+			`A@b@c@example.com`: "only one @ is allowed outside quotation marks",
+		}
+
+		for email, description := range invalidEmails {
+			t.Run(email, func(t *testing.T) {
+				assert.False(t, IsValidEmail(email), description)
+			})
+		}
+	})
+
+	// Because our validator is permissive rather than strict, these technically invalid emails still pass the validator.
+	// We'll assert on current behaviour and log in case this changes in the future.
+	t.Run("Allowed Invalid addresses", func(t *testing.T) {
+		invalidEmails := map[string]string{
+			`Alice Bob <alice@couchbase.com>`: "Encoded html within email is invalid",
+			`áĺíćé@couchbase.com`:             "Unicode char as address",
+			// Examples from Wikipedia page on Email Addresses
+			`a"b(c)d,e:f;g<h>i[j\k]l@example.com`:                                            "none of the special characters in this local-part are allowed outside quotation marks",
+			`just"not"right@example.com`:                                                     "quoted strings must be dot separated or the only element making up the local-part",
+			`this is"not\allowed@example.com`:                                                "spaces, quotes, and backslashes may only exist when within quoted strings and preceded by a backslash",
+			`this\ still\"not\\allowed@example.com`:                                          "even if escaped (preceded by a backslash), spaces, quotes, and backslashes must still be contained by quotes",
+			`1234567890123456789012345678901234567890123456789012345678901234+x@example.com`: "local-part is longer than 64 characters",
+			`i_like_underscore@but_its_not_allowed_in_this_part.example.com`:                 "Underscore is not allowed in domain part",
+		}
+
+		for email, description := range invalidEmails {
+			t.Run(email, func(t *testing.T) {
+				require.True(t, IsValidEmail(email), "Expected this invalid email to pass with the permissive validator - Have we decided to be more strict about validating? - %s", description)
+			})
+		}
+	})
+
 }
 
 func TestCanSeeChannelSince(t *testing.T) {
