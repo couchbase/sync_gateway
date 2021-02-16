@@ -1366,16 +1366,16 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 			kvPairs = append(kvPairs, base.KVPair{Key: BodyDeleted, Val: true})
 		}
 
-		// Stamp _attachments and _deleted into rev tree bodies
+		// If body is nil initialize empty body to allow values to be stamped in
 		if len(oldBodyJson) == 0 {
 			oldBodyJson = []byte("{}")
 		}
 
+		// Stamp _attachments and _deleted into rev tree bodies
 		oldBodyJson, marshalErr = base.InjectJSONProperties(oldBodyJson, kvPairs...)
 		if marshalErr != nil {
 			base.WarnfCtx(db.Ctx, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
 		}
-
 		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage())
 	}
 	// Store the new revision body into the doc:

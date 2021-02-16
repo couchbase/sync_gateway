@@ -262,6 +262,7 @@ func (doc *Document) Body() Body {
 
 // Get a deep mutable copy of the body, using _rawBody.  Initializes _rawBody based on _body if not already present.
 func (doc *Document) GetDeepMutableBody() Body {
+	// If document body is nil return initialized body allowing it to be modified
 	if doc.IsNilBody() {
 		return Body{}
 	}

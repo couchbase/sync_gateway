@@ -59,7 +59,6 @@ func (b *Body) Unmarshal(data []byte) error {
 	if len(data) == 0 {
 		b = nil
 		return nil
-		// return errors.New("Unexpected empty JSON input to body.Unmarshal")
 	}
 
 	// Use decoder for unmarshalling to preserve large numbers

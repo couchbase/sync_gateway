@@ -674,6 +674,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 	}
 	newDoc.Deleted = revMessage.Deleted()
 
+	// If doc is deleted or receive "null" as body don't set the document body and leave as default nil
 	if !newDoc.Deleted || string(bodyBytes) != "null" {
 		newDoc.UpdateBodyBytes(bodyBytes)
 	}
