@@ -5541,3 +5541,41 @@ func TestUptimeStat(t *testing.T) {
 	log.Printf("uptime1: %d, uptime2: %d", uptime1, uptime2)
 	assert.True(t, uptime1 < uptime2)
 }
+
+func TestUserXattrSyncFn(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Couchbase buckets only")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `function(doc, oldDoc, meta){if(meta.xattrs.myxattr !== undefined){channel(meta.xattrs.myxattr);}}`,
+		DatabaseConfig: &DbConfig{
+			UserXattrKey: base.StringPtr("myxattr"),
+		},
+	})
+	defer rt.Close()
+
+	var doc struct {
+		SyncData db.SyncData `json:"_sync"`
+	}
+	res := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, res, http.StatusCreated)
+
+	res = rt.SendAdminRequest("GET", "/db/_raw/doc", "")
+	assertStatus(t, res, http.StatusOK)
+	err := json.Unmarshal(res.BodyBytes(), &doc)
+	require.NoError(t, err)
+	assert.Equal(t, []string{}, doc.SyncData.Channels.KeySet())
+
+	_, err = rt.Bucket().WriteXattr("doc", "myxattr", "channel")
+	assert.NoError(t, err)
+
+	res = rt.SendAdminRequest("PUT", "/db/doc?rev="+doc.SyncData.CurrentRev, "{}")
+	assertStatus(t, res, http.StatusCreated)
+
+	res = rt.SendAdminRequest("GET", "/db/_raw/doc", "")
+	assertStatus(t, res, http.StatusOK)
+	err = json.Unmarshal(res.BodyBytes(), &doc)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"channel"}, doc.SyncData.Channels.KeySet())
+}

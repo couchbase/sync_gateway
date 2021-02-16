@@ -1150,7 +1150,11 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 						base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 						return
 					}
-					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, rev.ID)
+					metaMap, err := doc.GetMetaMap(db.UserXattrKeyOrEmpty())
+					if err != nil {
+						return
+					}
+					channels, access, roles, syncExpiry, _, err := db.getChannelsAndAccess(doc, body, metaMap, rev.ID)
 					if err != nil {
 						// Probably the validator rejected the doc
 						base.Warnf("Error calling sync() on doc %q: %v", base.UD(docid), err)
