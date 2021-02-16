@@ -10,7 +10,7 @@
 # as part of validating a github pull request.
 #
 # Here are the actions performed:
-# 
+#
 # 1. Fetches manifest from the given url
 # 2. Updates the given project revision to match the given commit
 # 3. Emits modified manifest to stdout
@@ -21,17 +21,20 @@
 #
 # If your existing manifest contained a project entry like:
 #
-#     <project name="your-project" path="somepath" remote="someremote"/> 
+#     <project name="your-project" path="somepath" remote="someremote"/>
 #
 # the above command would modify it to be:
 #
-#     <project name="your-project" path="somepath" revision="new-sha" remote="someremote"/> 
+#     <project name="your-project" path="somepath" revision="new-sha" remote="someremote"/>
 #
 # and emit it to stdout, which you can redirect to overwrite your .repo/manifest.xml file
 
 import optparse
 import xml.etree.ElementTree as ET
-import urllib2
+try:
+    from urllib.request import urlopen
+except ImportError:
+    from urllib2 import urlopen
 import sys
 
 def parse_args():
@@ -66,16 +69,19 @@ if __name__=="__main__":
 
    # validate arguments
    validate_args(parser, manifest_url, project_name, set_revision)
-   
-   # fetch manifest content and parse xml 
-   tree = ET.ElementTree(file=urllib2.urlopen(manifest_url))
+
+   # fetch manifest content and parse xml
+   tree = ET.ElementTree(file=urlopen(manifest_url))
 
    # modify xml according to parameters
    root = tree.getroot()
    for element in root:
        if element.get("name") == project_name:
            element.set("revision", set_revision)
-           
+
    # write modified xml to stdout
-   tree.write(sys.stdout)
+   if sys.version_info >= (3, 0):
+       tree.write(sys.stdout.buffer)
+   else:
+       tree.write(sys.stdout)
    sys.stdout.write("\n") # trailing newline
