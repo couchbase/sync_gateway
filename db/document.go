@@ -316,6 +316,22 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	return doc._rawBody, nil
 }
 
+func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, error) {
+	var userXattr interface{}
+	if len(doc.RawUserXattr) > 0 {
+		err := base.JSONUnmarshal(doc.RawUserXattr, &userXattr)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return map[string]interface{}{
+		"xattrs": map[string]interface{}{
+			userXattrKey: userXattr,
+		},
+	}, nil
+}
+
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
 // UseNumber handling is applied to numbers in the body.
 func unmarshalDocument(docid string, data []byte) (*Document, error) {
