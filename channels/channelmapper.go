@@ -13,7 +13,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"github.com/couchbase/sg-bucket"
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	_ "github.com/robertkrimen/otto/underscore"
 )
@@ -51,9 +51,11 @@ func NewDefaultChannelMapper() *ChannelMapper {
 	return NewChannelMapper(`function(doc){channel(doc.channels);}`)
 }
 
-func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
+func (mapper *ChannelMapper) MapToChannelsAndAccess(body map[string]interface{}, oldBodyJSON string, metaMap map[string]interface{}, userCtx map[string]interface{}) (*ChannelMapperOutput, error) {
 	numberFixBody := ConvertJSONNumbers(body)
-	result1, err := mapper.Call(numberFixBody, sgbucket.JSONString(oldBodyJSON), userCtx)
+	numberFixMetaMap := ConvertJSONNumbers(metaMap)
+
+	result1, err := mapper.Call(numberFixBody, sgbucket.JSONString(oldBodyJSON), numberFixMetaMap, userCtx)
 	if err != nil {
 		return nil, err
 	}
