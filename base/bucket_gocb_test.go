@@ -467,6 +467,8 @@ func TestXattrWriteCasSimple(t *testing.T) {
 	}
 
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
@@ -532,6 +534,8 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	}
 
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
@@ -554,6 +558,8 @@ func TestXattrWriteCasUpsert(t *testing.T) {
 	xattrVal2 := make(map[string]interface{})
 	xattrVal2["seq"] = float64(124)
 	xattrVal2["rev"] = "2-5678"
+	crc32 = CRC32HashFromBody(t, val2)
+	xattrVal2["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val2, xattrVal2)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
@@ -597,6 +603,8 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	}
 
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	assert.NoError(t, err, "WriteCasWithXattr error")
 	log.Printf("Post-write, cas is %d", cas)
@@ -621,6 +629,8 @@ func TestXattrWriteCasWithXattrCasCheck(t *testing.T) {
 	// Attempt to update with the previous CAS
 	val["sg_field"] = "sg_value_mod"
 	xattrVal["rev"] = "2-1234"
+	crc32 = CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	_, err = bucket.WriteCasWithXattr(key, xattrName, 0, getCas, val, xattrVal)
 	goassert.Equals(t, pkgerrors.Cause(err), gocb.ErrKeyExists)
 
@@ -663,6 +673,8 @@ func TestXattrWriteCasRaw(t *testing.T) {
 	xattrVal := make(map[string]interface{})
 	xattrVal["seq"] = float64(123)
 	xattrVal["rev"] = "1-1234"
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	xattrValRaw, _ := JSONMarshal(xattrVal)
 
 	var existsVal map[string]interface{}
@@ -725,6 +737,8 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 
 	// Write document with xattr
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -756,6 +770,8 @@ func TestXattrWriteCasTombstoneResurrect(t *testing.T) {
 	xattrVal = make(map[string]interface{})
 	xattrVal["seq"] = float64(456)
 	xattrVal["rev"] = "2-2345"
+	crc32 = CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -809,6 +825,8 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 
 	// Write document with xattr
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -840,6 +858,8 @@ func TestXattrWriteCasTombstoneUpdate(t *testing.T) {
 	xattrVal = make(map[string]interface{})
 	xattrVal["seq"] = float64(456)
 	xattrVal["rev"] = "2-2345"
+	crc32 = CRC32HashFromBody(t, nil)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, nil, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1089,6 +1109,8 @@ func TestXattrDeleteDocument(t *testing.T) {
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1144,6 +1166,8 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect success)
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1170,6 +1194,8 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 	// Update the xattr only
 	xattrVal["seq"] = 2
 	xattrVal["rev"] = "1-1234"
+	crc32 = CRC32HashFromBody(t, nil)
+	xattrVal["value_crc32c"] = crc32
 	casOut, writeErr := bucket.WriteCasWithXattr(key, xattrName, 0, getCas, nil, xattrVal)
 	assert.NoError(t, writeErr, "Error updating xattr post-delete")
 	log.Printf("WriteCasWithXattr cas: %d", casOut)
@@ -1217,6 +1243,8 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 
 	// Create w/ XATTR, delete doc and XATTR, retrieve doc (expect fail), retrieve XATTR (expect fail)
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1274,6 +1302,8 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas1 := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1294,6 +1324,8 @@ func TestXattrTombstoneDocAndUpdateXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas3int := uint64(0)
+	crc32 = CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1374,6 +1406,8 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas1 := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1394,6 +1428,8 @@ func TestXattrDeleteDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas3int := uint64(0)
+	crc32 = CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1442,7 +1478,7 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 
 	key := t.Name()
 	xattrName := SyncXattrName
-	createTombstonedDoc(bucket, key, xattrName)
+	createTombstonedDoc(t, bucket, key, xattrName)
 
 	numTimesCalledBack := 0
 	callback := func(b CouchbaseBucketGoCB, k string, xattrKey string) {
@@ -1460,6 +1496,8 @@ func TestDeleteWithXattrWithSimulatedRaceResurrect(t *testing.T) {
 		xattrVal := make(map[string]interface{})
 		xattrVal["seq"] = float64(456)
 		xattrVal["rev"] = "2-2345"
+		crc32 := CRC32HashFromBody(t, updatedVal)
+		xattrVal["value_crc32c"] = crc32
 		_, writeErr := bucket.WriteCasWithXattr(k, xattrKey, 0, 0, updatedVal, xattrVal)
 		if writeErr != nil {
 			panic(fmt.Sprintf("Unexpected error in WriteCasWithXattr: %v", writeErr))
@@ -1507,6 +1545,8 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1527,6 +1567,8 @@ func TestXattrRetrieveDocumentAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas = uint64(0)
+	crc32 = CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1599,6 +1641,8 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas1 := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas1, err = bucket.WriteCasWithXattr(key1, xattrName, 0, cas1, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1620,6 +1664,8 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 
 	// Create w/ XATTR
 	cas3int := uint64(0)
+	crc32 = CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas3int, err = bucket.WriteCasWithXattr(key3, xattrName, 0, cas3int, val, xattrVal)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1643,6 +1689,8 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	// Attempt to mutate all 4 docs
 	exp := uint32(0)
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key1)
+	crc32 = CRC32HashFromBody(t, updatedVal)
+	updatedXattrVal["value_crc32c"] = crc32
 	_, key1err := bucket.WriteCasWithXattr(key1, xattrName, exp, cas1, &updatedVal, &updatedXattrVal)
 	assert.NoError(t, key1err, fmt.Sprintf("Unexpected error mutating %s", key1))
 	var key1DocResult map[string]interface{}
@@ -1652,6 +1700,8 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	goassert.Equals(t, key1XattrResult["rev"], "2-1234")
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key2)
+	crc32 = CRC32HashFromBody(t, updatedVal)
+	updatedXattrVal["value_crc32c"] = crc32
 	_, key2err := bucket.WriteCasWithXattr(key2, xattrName, exp, uint64(cas2), &updatedVal, &updatedXattrVal)
 	assert.NoError(t, key2err, fmt.Sprintf("Unexpected error mutating %s", key2))
 	var key2DocResult map[string]interface{}
@@ -1661,6 +1711,8 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	goassert.Equals(t, key2XattrResult["rev"], "2-1234")
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key3)
+	crc32 = CRC32HashFromBody(t, updatedVal)
+	updatedXattrVal["value_crc32c"] = crc32
 	_, key3err := bucket.WriteCasWithXattr(key3, xattrName, exp, uint64(cas3), &updatedVal, &updatedXattrVal)
 	assert.NoError(t, key3err, fmt.Sprintf("Unexpected error mutating %s", key3))
 	var key3DocResult map[string]interface{}
@@ -1670,6 +1722,8 @@ func TestXattrMutateDocAndXattr(t *testing.T) {
 	goassert.Equals(t, key3XattrResult["rev"], "2-1234")
 
 	updatedVal["type"] = fmt.Sprintf("updated_%s", key4)
+	crc32 = CRC32HashFromBody(t, updatedVal)
+	updatedXattrVal["value_crc32c"] = crc32
 	_, key4err := bucket.WriteCasWithXattr(key4, xattrName, exp, uint64(cas4), &updatedVal, &updatedXattrVal)
 	assert.NoError(t, key4err, fmt.Sprintf("Unexpected error mutating %s", key4))
 	var key4DocResult map[string]interface{}
@@ -1724,6 +1778,8 @@ func TestGetXattr(t *testing.T) {
 
 	//Create w/ XATTR
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val1)
+	xattrVal1["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, val1, xattrVal1)
 	if err != nil {
 		t.Errorf("Error doing WriteCasWithXattr: %+v", err)
@@ -1749,6 +1805,8 @@ func TestGetXattr(t *testing.T) {
 	assert.Equal(t, gocbcore.ErrKeyNotFound, pkgerrors.Cause(err))
 
 	//Get Xattr From Tombstoned Doc With Existing Xattr
+	crc32 = CRC32HashFromBody(t, val2)
+	xattrVal2["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, cas, val2, xattrVal2)
 	_, err = bucket.Remove(key2, cas)
 	require.NoError(t, err)
@@ -1761,6 +1819,8 @@ func TestGetXattr(t *testing.T) {
 	assert.Equal(t, gocbcore.ErrKeyNotFound, pkgerrors.Cause(err))
 
 	////Get Xattr From Deleted Doc With Deleted Xattr -> SubDocMultiPathFailureDeleted
+	crc32 = CRC32HashFromBody(t, val3)
+	xattrVal3["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
 	_, err = bucket.Remove(key3, cas)
 	require.NoError(t, err)
@@ -2092,7 +2152,7 @@ EKTcWGekdmdDPsHloRNtsiCa697B2O9IFA==
 	return certPath, keyPath, cleanupFn
 }
 
-func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
+func createTombstonedDoc(t *testing.T, bucket *CouchbaseBucketGoCB, key, xattrName string) {
 
 	// Create document with XATTR
 
@@ -2110,6 +2170,8 @@ func createTombstonedDoc(bucket *CouchbaseBucketGoCB, key, xattrName string) {
 
 	// Create w/ doc and XATTR
 	cas := uint64(0)
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err = bucket.WriteCasWithXattr(key, xattrName, 0, cas, val, xattrVal)
 	if err != nil {
 		panic(fmt.Sprintf("Error doing WriteCasWithXattr: %+v", err))
@@ -2186,6 +2248,8 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 
 	cas := uint64(0)
 	// CAS-safe write of the document and it's associated named extended attributes
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err := bucket.WriteCasWithXattr(key, xattrKey, 0, cas, val, xattrVal)
 	require.NoError(t, err, "Error doing WriteCasWithXattr")
 
@@ -2227,6 +2291,8 @@ func TestUpdateXattrWithDeleteBodyAndIsNotDelete(t *testing.T) {
 
 	cas := uint64(0)
 	// CAS-safe write of the document and it's associated named extended attributes
+	crc32 := CRC32HashFromBody(t, val)
+	xattrVal["value_crc32c"] = crc32
 	cas, err := bucket.WriteCasWithXattr(key, xattrKey, 0, cas, val, xattrVal)
 	require.NoError(t, err, "Error doing WriteCasWithXattr")
 
@@ -2308,4 +2374,11 @@ func TestUserXattrGetWithXattrNil(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, docVal, docValRet)
 	assert.Equal(t, syncXattrVal, syncXattrValRet)
+}
+
+func CRC32HashFromBody(t *testing.T, input interface{}) string {
+	json, err := JSONMarshal(input)
+	assert.NoError(t, err)
+
+	return Crc32cHashString(json)
 }

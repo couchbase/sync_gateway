@@ -1205,6 +1205,10 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 						if updatedExpiry != nil {
 							updatedDoc.UpdateExpiry(*updatedExpiry)
 						}
+						err = doc.GenerateAndSetCRC32Hashes()
+						if err != nil {
+							return nil, nil, deleteDoc, nil, err
+						}
 						raw, rawXattr, err = updatedDoc.MarshalWithXattr()
 						return raw, rawXattr, deleteDoc, updatedExpiry, err
 					} else {

@@ -1107,12 +1107,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	// WriteCasWithXattr always stamps the xattr with the new cas using macro expansion, into a top-level property called 'cas'.
 	// This is the only use case for macro expansion today - if more cases turn up, should change the sg-bucket API to handle this more generically.
 	xattrCasProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
-	xattrBodyHashProperty := fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
-
-	crc32cMacroExpansionSupported := bucket.IsSupported(sgbucket.DataStoreFeatureCrc32cMacroExpansion)
-	if err != nil {
-		return 0, err
-	}
 
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -1128,9 +1122,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagReplaceDoc, 0, exp).
 				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
-			if crc32cMacroExpansionSupported {
-				mutateInBuilder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the body hash on the xattr
-			}
 			mutateInBuilder.UpsertEx("", v, gocb.SubdocFlagNone) // Update the document body
 			docFragment, err := mutateInBuilder.Execute()
 
@@ -1148,9 +1139,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagMkDoc, gocb.Cas(cas), exp).
 				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
-			if crc32cMacroExpansionSupported {
-				mutateInBuilder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the body hash on the xattr
-			}
 			mutateInBuilder.UpsertEx("", v, gocb.SubdocFlagNone) // Update the document body
 			docFragment, err := mutateInBuilder.Execute()
 
@@ -1164,9 +1152,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 			mutateInBuilder := bucket.Bucket.MutateInEx(k, gocb.SubdocDocFlagAccessDeleted, gocb.Cas(cas), exp).
 				UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 				UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
-			if crc32cMacroExpansionSupported {
-				mutateInBuilder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the body hash on the xattr
-			}
 			docFragment, err := mutateInBuilder.Execute()
 
 			if err != nil {
@@ -1224,14 +1209,11 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
 			UpsertEx(xattrCasProperty, "${Mutation.CAS}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros) // Stamp the cas on the xattr
 
-		if bucket.IsSupported(sgbucket.DataStoreFeatureCrc32cMacroExpansion) {
-			// Stamp the body hash on the xattr
-			if isDelete {
-				builder.UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr)
-			} else {
-				builder.UpsertEx(xattrBodyHashProperty, "${Mutation.value_crc32c}", gocb.SubdocFlagXattr|gocb.SubdocFlagUseMacros)
-			}
+		// Stamp the body hash on the xattr
+		if isDelete {
+			builder.UpsertEx(xattrBodyHashProperty, DeleteCrc32c, gocb.SubdocFlagXattr)
 		}
+
 		if deleteBody {
 			builder.RemoveEx("", gocb.SubdocFlagNone) // Delete the document body
 		}

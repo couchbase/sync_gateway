@@ -52,21 +52,22 @@ type AttachmentsMeta map[string]interface{} // AttachmentsMeta metadata as inclu
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	CurrentRev      string              `json:"rev"`
-	NewestRev       string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags           uint8               `json:"flags,omitempty"`
-	Sequence        uint64              `json:"sequence,omitempty"`
-	UnusedSequences []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	History         RevTree             `json:"history"`
-	Channels        channels.ChannelMap `json:"channels,omitempty"`
-	Access          UserAccessMap       `json:"access,omitempty"`
-	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
-	Expiry          *time.Time          `json:"exp,omitempty"`           // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas             string              `json:"cas"`                     // String representation of a cas value, populated via macro expansion
-	Crc32c          string              `json:"value_crc32c"`            // String representation of crc32c hash of doc body, populated via macro expansion
-	TombstonedAt    int64               `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
-	Attachments     AttachmentsMeta     `json:"attachments,omitempty"`
+	CurrentRev        string              `json:"rev"`
+	NewestRev         string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags             uint8               `json:"flags,omitempty"`
+	Sequence          uint64              `json:"sequence,omitempty"`
+	UnusedSequences   []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences   []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	History           RevTree             `json:"history"`
+	Channels          channels.ChannelMap `json:"channels,omitempty"`
+	Access            UserAccessMap       `json:"access,omitempty"`
+	RoleAccess        UserAccessMap       `json:"role_access,omitempty"`
+	Expiry            *time.Time          `json:"exp,omitempty"`           // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas               string              `json:"cas"`                     // String representation of a cas value, populated via macro expansion
+	Crc32c            string              `json:"value_crc32c"`            // String representation of crc32c hash of doc body
+	Crc32CombinedHash string              `json:"combined_crc32c"`         // String respresentation of crc32 hash of doc body and user xattr combined
+	TombstonedAt      int64               `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
+	Attachments       AttachmentsMeta     `json:"attachments,omitempty"`
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -1018,24 +1019,10 @@ func (doc *Document) UnmarshalWithXattr(data []byte, xdata []byte, unmarshalLeve
 
 func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	// Grab the rawBody if it's already marshalled, otherwise unmarshal the body
-	if doc._rawBody != nil {
-		if !doc.IsDeleted() {
-			data = doc._rawBody
-		}
-	} else {
-		body := doc._body
-		// If body is non-empty and non-deleted, unmarshal and return
-		if body != nil {
-			// TODO: Could we check doc.Deleted?
-			//       apparently we can't... doing this causes invalid argument errors from Couchbase Server
-			//       when running 'TestGetRemovedAndDeleted' and 'TestNoConflictsMode' for some reason...
-			deleted, _ := body[BodyDeleted].(bool)
-			if !deleted {
-				data, err = base.JSONMarshal(body)
-				if err != nil {
-					return nil, nil, pkgerrors.WithStack(base.RedactErrorf("Failed to MarshalWithXattr() doc body with id: %s.  Error: %v", base.UD(doc.ID), err))
-				}
-			}
+	if !doc.Deleted || !doc.IsDeleted() {
+		data, err = doc.BodyBytes()
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
@@ -1045,4 +1032,23 @@ func (doc *Document) MarshalWithXattr() (data []byte, xdata []byte, err error) {
 	}
 
 	return data, xdata, nil
+}
+
+// Should be ran prior to MarshalWithXattr() avoids additional marshal
+func (doc *Document) GenerateAndSetCRC32Hashes() error {
+	var bodyBytes []byte
+	var err error
+
+	if !doc.Deleted || !doc.IsDeleted() {
+		bodyBytes, err = doc.BodyBytes()
+		if err != nil {
+			return err
+		}
+	}
+
+	combined := append(bodyBytes, doc.rawUserXattr...)
+	doc.Crc32c = base.Crc32cHashString(bodyBytes)
+	doc.Crc32CombinedHash = base.Crc32cHashString(combined)
+
+	return nil
 }
