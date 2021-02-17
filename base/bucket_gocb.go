@@ -1618,8 +1618,8 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 	}
 }
 
-func (bucket *CouchbaseBucketGoCB) WriteXattr(k string, xattrKey string, v interface{}) (uint64, error) {
-	docFrag, err := bucket.Bucket.MutateIn(k, 0, 0).UpsertEx(xattrKey, v, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).Execute()
+func (bucket *CouchbaseBucketGoCB) WriteXattr(docKey string, xattrKey string, xattrVal interface{}) (uint64, error) {
+	docFrag, err := bucket.Bucket.MutateIn(docKey, 0, 0).UpsertEx(xattrKey, xattrVal, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).Execute()
 	if err != nil {
 		return 0, err
 	}

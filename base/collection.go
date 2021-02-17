@@ -402,8 +402,8 @@ func (c *Collection) GetWithXattr(k string, xattrKey string, rv interface{}, xv 
 func (c *Collection) DeleteWithXattr(k string, xattrKey string) error {
 	return errors.New("DeleteWithXattr not implemented")
 }
-func (c *Collection) WriteXattr(k string, xattrKey string, v interface{}) (casOut uint64, err error) {
-	return 0, errors.New("WriteUpdateWithXattr not implemented")
+func (c *Collection) WriteXattr(docKey string, xattrKey string, xattrVal interface{}) (casOut uint64, err error) {
+	return 0, errors.New("WriteXattr not implemented")
 }
 func (c *Collection) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	return 0, errors.New("WriteUpdateWithXattr not implemented")

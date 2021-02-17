@@ -707,13 +707,6 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	return authenticator
 }
 
-func (context *DatabaseContext) UserXattrsEnabled() bool {
-	if context.Options.UserXattrKey != nil {
-		return true
-	}
-	return false
-}
-
 func (context *DatabaseContext) UserXattrKeyOrEmpty() string {
 	if context.Options.UserXattrKey == nil {
 		return ""
