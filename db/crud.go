@@ -1783,6 +1783,10 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			deleteDoc = currentRevFromHistory.Deleted
 
 			// Return the new raw document value for the bucket to store.
+			err = doc.GenerateAndSetCRC32Hashes()
+			if err != nil {
+				return
+			}
 			raw, rawXattr, err = doc.MarshalWithXattr()
 			docBytes = len(raw)
 
