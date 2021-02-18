@@ -65,6 +65,7 @@ type SyncData struct {
 	Expiry          *time.Time          `json:"exp,omitempty"`           // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
 	Cas             string              `json:"cas"`                     // String representation of a cas value, populated via macro expansion
 	Crc32c          string              `json:"value_crc32c"`            // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr string              `json:"user_xattr_value_crc32c"` // String representation of crc32c hash of user xattr
 	TombstonedAt    int64               `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
 	Attachments     AttachmentsMeta     `json:"attachments,omitempty"`
 
@@ -334,6 +335,12 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 	return map[string]interface{}{
 		"xattrs": xattrsMap,
 	}, nil
+}
+
+func (doc *Document) SetCrc32cUserXattrHash() {
+	if len(doc.rawUserXattr) > 0 {
+		doc.SyncData.Crc32cUserXattr = base.Crc32cHashString(doc.rawUserXattr)
+	}
 }
 
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
