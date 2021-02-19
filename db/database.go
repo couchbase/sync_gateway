@@ -142,7 +142,7 @@ type DatabaseContextOptions struct {
 	SGReplicateOptions        SGReplicateOptions
 	SlowQueryWarningThreshold time.Duration
 	QueryPaginationLimit      int // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
-	UserXattrKey              *string
+	UserXattrKey              string
 }
 
 type SGReplicateOptions struct {
@@ -707,13 +707,6 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	return authenticator
 }
 
-func (context *DatabaseContext) UserXattrKeyOrEmpty() string {
-	if context.Options.UserXattrKey == nil {
-		return ""
-	}
-	return *context.Options.UserXattrKey
-}
-
 // Makes a Database object given its name and bucket.
 func GetDatabase(context *DatabaseContext, user auth.User) (*Database, error) {
 	return &Database{DatabaseContext: context, user: user}, nil
@@ -1199,7 +1192,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
 					}
-					doc.RawUserXattr = currentUserXattr
+					doc.rawUserXattr = currentUserXattr
 					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
@@ -1215,7 +1208,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
 				}
-				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.UserXattrKeyOrEmpty(), 0, nil, writeUpdateFunc)
+				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, 0, nil, writeUpdateFunc)
 			} else {
 				_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 					// Be careful: this block can be invoked multiple times if there are races!

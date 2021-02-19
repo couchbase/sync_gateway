@@ -204,10 +204,6 @@ func (b *LeakyBucket) WriteWithXattr(k string, xattrKey string, exp uint32, cas 
 	return b.bucket.WriteWithXattr(k, xattrKey, exp, cas, value, xattrValue, isDelete, deleteBody)
 }
 
-func (b *LeakyBucket) WriteXattr(docKey string, xattrKey string, xattrVal interface{}) (casOut uint64, err error) {
-	return b.bucket.WriteXattr(docKey, xattrKey, xattrVal)
-}
-
 func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 	if b.config.UpdateCallback != nil {
 		wrapperCallback := func(current []byte, xattr []byte, userXattr []byte, cas uint64) (updated []byte, updatedXattr []byte, deletedDoc bool, expiry *uint32, err error) {
@@ -220,8 +216,8 @@ func (b *LeakyBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKey 
 	return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, previous, callback)
 }
 
-func (b *LeakyBucket) GetWithXattr(k string, xattr string, rv interface{}, xv interface{}) (cas uint64, err error) {
-	return b.bucket.GetWithXattr(k, xattr, rv, xv)
+func (b *LeakyBucket) GetWithXattr(k string, xattr string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
+	return b.bucket.GetWithXattr(k, xattr, userXattrKey, rv, xv, uxv)
 }
 
 func (b *LeakyBucket) DeleteWithXattr(k string, xattr string) error {
