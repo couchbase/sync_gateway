@@ -2340,7 +2340,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
 	// Ensure document has been added
 	waitAndAssertCondition(t, func() bool {
-		_, err = db.Bucket.GetWithXattr("doc", "_sync", &doc, &xattr)
+		_, err = db.Bucket.GetWithXattr("doc", "_sync", "", &doc, &xattr, nil)
 		return err == nil
 	})
 

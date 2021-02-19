@@ -1288,7 +1288,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 }
 
 // Retrieve a document and it's associated named xattr
-func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 
 	// Until we get a fix for https://issues.couchbase.com/browse/MB-23522, need to disable the singleOp handling because of the potential for a nested call to bucket.Get
 	/*
@@ -1324,7 +1324,6 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 			}
 			cas = uint64(res.Cas())
-			return false, nil, cas
 
 		case gocbcore.ErrSubDocMultiPathFailureDeleted:
 			//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr may exist but doc is deleted (tombstone)
@@ -1341,6 +1340,25 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 			shouldRetry = isRecoverableReadError(lookupErr)
 			return shouldRetry, lookupErr, uint64(0)
 		}
+
+		if userXattrKey != "" {
+			userXattrCas, err := bucket.GetXattr(k, userXattrKey, uxv)
+			switch pkgerrors.Cause(err) {
+			case gocb.ErrKeyNotFound, gocb.ErrSubDocBadMulti:
+				// Xattr doesn't exist, can skip
+
+			case nil:
+				if cas != userXattrCas {
+					return true, err, uint64(0)
+				}
+			default:
+				// Unknown error occurred
+				shouldRetry = isRecoverableWriteError(err)
+				return shouldRetry, err, uint64(0)
+			}
+		}
+
+		return false, nil, cas
 
 	}
 
@@ -1491,7 +1509,7 @@ func (bucket *CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string,
 	//  Do get w/ xattr in order to get cas
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
+	getCas, err := bucket.GetWithXattr(k, xattrKey, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		return err
 	}
@@ -1618,15 +1636,6 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 	}
 }
 
-func (bucket *CouchbaseBucketGoCB) WriteXattr(docKey string, xattrKey string, xattrVal interface{}) (uint64, error) {
-	docFrag, err := bucket.Bucket.MutateIn(docKey, 0, 0).UpsertEx(xattrKey, xattrVal, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).Execute()
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(docFrag.Cas()), nil
-}
-
 // WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
 // failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
 func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
@@ -1650,7 +1659,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		// If no existing value has been provided, retrieve the current value from the bucket
 		if cas == 0 {
 			// Load the existing value.
-			cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
+			cas, err = bucket.GetWithXattr(k, xattrKey, userXattrKey, &value, &xattrValue, &userXattrValue)
 
 			if err != nil {
 				if !bucket.IsKeyNotFoundError(err) {
@@ -1661,26 +1670,6 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 				// Key not found - initialize values
 				value = nil
 				xattrValue = nil
-			}
-
-			// If user xattrs is enabled
-			if userXattrKey != "" {
-				userXattrCas, err := bucket.GetXattr(k, userXattrKey, &userXattrValue)
-				switch pkgerrors.Cause(err) {
-				case gocb.ErrKeyNotFound, gocb.ErrSubDocBadMulti, nil:
-					// Occurs if doc / xattr is unavailable or no error
-				default:
-					// An unknown error occurred
-					Debugf(KeyCRUD, "Retrieval of user xattr failed during WriteUpdateWithXattr for key=%s, userXattrKey=%s: %v", UD(k), UD(xattrKey), err)
-					return 0, err
-				}
-
-				// If cas doesn't match retry
-				// If an error occurred and we're at this point the error is expected and we can continue
-				if cas != userXattrCas && err == nil {
-					cas = 0
-					continue
-				}
 			}
 
 		}

@@ -101,7 +101,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, rawBucketDoc *sgbucket.BucketDocument, err error) {
 	rawBucketDoc = &sgbucket.BucketDocument{}
 	var getErr error
-	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, base.SyncXattrName, &rawBucketDoc.Body, &rawBucketDoc.Xattr)
+	rawBucketDoc.Cas, getErr = db.Bucket.GetWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, &rawBucketDoc.Body, &rawBucketDoc.Xattr, &rawBucketDoc.UserXattr)
 	if getErr != nil {
 		return nil, nil, getErr
 	}
@@ -126,8 +126,8 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 	if db.UseXattrs() {
 		// Retrieve doc and xattr from bucket, unmarshal only xattr.
 		// Triggers on-demand import when document xattr doesn't match cas.
-		var rawDoc, rawXattr []byte
-		cas, getErr := db.Bucket.GetWithXattr(key, base.SyncXattrName, &rawDoc, &rawXattr)
+		var rawDoc, rawXattr, rawUserXattr []byte
+		cas, getErr := db.Bucket.GetWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, &rawDoc, &rawXattr, &rawUserXattr)
 		if getErr != nil {
 			return emptySyncData, getErr
 		}
@@ -1742,7 +1742,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	if db.UseXattrs() || upgradeInProgress {
 		var casOut uint64
 		// Update the document, storing metadata in extended attribute
-		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.UserXattrKeyOrEmpty(), expiry, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
+		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
 			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll); err != nil {
 				return
@@ -1754,11 +1754,10 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				doc.inlineSyncData = true
 			}
 
-			userXattrs := currentUserXattr
 			if existingDoc != nil {
-				userXattrs = existingDoc.UserXattr
+				doc.rawUserXattr = existingDoc.UserXattr
 			}
-			doc.RawUserXattr = userXattrs
+			doc.rawUserXattr = currentUserXattr
 
 			docExists := currentValue != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)

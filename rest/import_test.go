@@ -1673,7 +1673,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 		docID := "TestImportDecimalScale" + strconv.Itoa(i)
 		var docBody []byte
 		var syncData db.SyncData
-		_, err := rt.Bucket().GetWithXattr(docID, base.SyncXattrName, &docBody, &syncData)
+		_, err := rt.Bucket().GetWithXattr(docID, base.SyncXattrName, "", &docBody, &syncData, nil)
 		require.NoError(t, err)
 
 		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
@@ -1738,7 +1738,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 		docID := "TestImportDecimalPlacesScientificNotation" + strconv.Itoa(i)
 		var docBody []byte
 		var syncData db.SyncData
-		_, err := rt.Bucket().GetWithXattr(docID, base.SyncXattrName, &docBody, &syncData)
+		_, err := rt.Bucket().GetWithXattr(docID, base.SyncXattrName, "", &docBody, &syncData, nil)
 		require.NoError(t, err)
 
 		assert.NotEqualf(t, "", syncData.CurrentRev, "Expecting non-empty rev ID for imported doc %v", docID)
@@ -2093,7 +2093,7 @@ func rawDocWithSyncMeta() string {
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := bucket.GetWithXattr(key, base.SyncXattrName, nil, &xattr)
+	_, err := bucket.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	goassert.True(t, ok)

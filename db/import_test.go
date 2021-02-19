@@ -269,7 +269,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 				"time_saved": "2017-11-29T12:46:13.456631-08:00"
 			}`
 
-			cas, _ := db.Bucket.GetWithXattr(key, base.SyncXattrName, &body, &xattr)
+			cas, _ := db.Bucket.GetWithXattr(key, base.SyncXattrName, "", &body, &xattr, nil)
 			_, err := db.Bucket.WriteCasWithXattr(key, base.SyncXattrName, 0, cas, []byte(valStr), []byte(xattrStr))
 			assert.NoError(t, err)
 		}
@@ -319,7 +319,7 @@ func TestImportWithCasFailureUpdate(t *testing.T) {
 			var bodyOut map[string]interface{}
 			var xattrOut map[string]interface{}
 
-			_, err = db.Bucket.GetWithXattr(testcase.docname, base.SyncXattrName, &bodyOut, &xattrOut)
+			_, err = db.Bucket.GetWithXattr(testcase.docname, base.SyncXattrName, "", &bodyOut, &xattrOut, nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, "2-abc", xattrOut["rev"])
@@ -400,7 +400,7 @@ func TestImportNullDocRaw(t *testing.T) {
 
 func assertXattrSyncMetaRevGeneration(t *testing.T, bucket base.Bucket, key string, expectedRevGeneration int) {
 	xattr := map[string]interface{}{}
-	_, err := bucket.GetWithXattr(key, base.SyncXattrName, nil, &xattr)
+	_, err := bucket.GetWithXattr(key, base.SyncXattrName, "", nil, &xattr, nil)
 	assert.NoError(t, err, "Error Getting Xattr")
 	revision, ok := xattr["rev"]
 	goassert.True(t, ok)
