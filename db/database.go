@@ -141,8 +141,8 @@ type DatabaseContextOptions struct {
 	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions        SGReplicateOptions
 	SlowQueryWarningThreshold time.Duration
-	QueryPaginationLimit      int // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
-	UserXattrKey              string
+	QueryPaginationLimit      int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
+	UserXattrKey              string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 }
 
 type SGReplicateOptions struct {

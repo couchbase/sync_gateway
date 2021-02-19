@@ -111,6 +111,11 @@ func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUn
 	if unmarshalErr != nil {
 		return nil, nil, unmarshalErr
 	}
+
+	if len(rawBucketDoc.UserXattr) > 0 {
+		doc.rawUserXattr = rawBucketDoc.UserXattr
+	}
+
 	return doc, rawBucketDoc, nil
 }
 
