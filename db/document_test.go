@@ -124,7 +124,7 @@ func BenchmarkDocUnmarshal(b *testing.B) {
 	for _, bm := range unmarshalBenchmarks {
 		b.Run(bm.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, _ = unmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, 1, bm.unmarshalLevel)
+				_, _ = unmarshalDocumentWithXattr("doc_1k", doc1k_body, doc1k_meta, nil, 1, bm.unmarshalLevel)
 			}
 		})
 	}

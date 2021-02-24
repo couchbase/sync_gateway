@@ -2280,3 +2280,32 @@ func TestUserXattrGetWithXattr(t *testing.T) {
 	assert.Equal(t, syncXattrVal, syncXattrValRet)
 	assert.Equal(t, userXattrVal, userXattrValRet)
 }
+
+func TestUserXattrGetWithXattrNil(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
+	bucket := GetTestBucket(t)
+	defer bucket.Close()
+
+	bucketGoCB, ok := bucket.Bucket.(*CouchbaseBucketGoCB)
+	if !ok {
+		t.Skip("Can't cast to bucket")
+	}
+
+	docKey := t.Name()
+
+	docVal := map[string]interface{}{"val": "docVal"}
+	syncXattrVal := map[string]interface{}{"val": "syncVal"}
+
+	err := bucketGoCB.Set(docKey, 0, docVal)
+	assert.NoError(t, err)
+
+	_, err = WriteXattr(bucketGoCB, docKey, "_sync", syncXattrVal)
+	assert.NoError(t, err)
+
+	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
+	_, err = bucket.GetWithXattr(docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
+	assert.NoError(t, err)
+	assert.Equal(t, docVal, docValRet)
+	assert.Equal(t, syncXattrVal, syncXattrValRet)
+}

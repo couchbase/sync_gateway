@@ -107,13 +107,9 @@ func (db *DatabaseContext) GetDocWithXattr(key string, unmarshalLevel DocumentUn
 	}
 
 	var unmarshalErr error
-	doc, unmarshalErr = unmarshalDocumentWithXattr(key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas, unmarshalLevel)
+	doc, unmarshalErr = unmarshalDocumentWithXattr(key, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas, unmarshalLevel)
 	if unmarshalErr != nil {
 		return nil, nil, unmarshalErr
-	}
-
-	if len(rawBucketDoc.UserXattr) > 0 {
-		doc.rawUserXattr = rawBucketDoc.UserXattr
 	}
 
 	return doc, rawBucketDoc, nil
@@ -138,7 +134,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 		}
 
 		// Unmarshal xattr only
-		doc, unmarshalErr := unmarshalDocumentWithXattr(docid, nil, rawXattr, cas, DocUnmarshalSync)
+		doc, unmarshalErr := unmarshalDocumentWithXattr(docid, nil, rawXattr, rawUserXattr, cas, DocUnmarshalSync)
 		if unmarshalErr != nil {
 			return emptySyncData, unmarshalErr
 		}
@@ -1749,7 +1745,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 		// Update the document, storing metadata in extended attribute
 		casOut, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, expiry, existingDoc, func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (raw []byte, rawXattr []byte, deleteDoc bool, syncFuncExpiry *uint32, err error) {
 			// Be careful: this block can be invoked multiple times if there are races!
-			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll); err != nil {
+			if doc, err = unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll); err != nil {
 				return
 			}
 			prevCurrentRev = doc.CurrentRev
@@ -1758,11 +1754,6 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if currentXattr == nil && doc.Sequence > 0 {
 				doc.inlineSyncData = true
 			}
-
-			if existingDoc != nil {
-				doc.rawUserXattr = existingDoc.UserXattr
-			}
-			doc.rawUserXattr = currentUserXattr
 
 			docExists := currentValue != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
@@ -2214,7 +2205,7 @@ func (db *Database) RevDiff(docid string, revids []string) (missing, possible []
 			missing = revids
 			return
 		}
-		doc, err := unmarshalDocumentWithXattr(docid, nil, xattrValue, cas, DocUnmarshalSync)
+		doc, err := unmarshalDocumentWithXattr(docid, nil, xattrValue, nil, cas, DocUnmarshalSync)
 		if err != nil {
 			base.ErrorfCtx(db.Ctx, "RevDiff(%q) Doc Unmarshal Failed: %T %v", base.UD(docid), err, err)
 		}

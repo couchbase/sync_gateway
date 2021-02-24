@@ -1341,10 +1341,18 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userX
 			return shouldRetry, lookupErr, uint64(0)
 		}
 
+		// TODO: We may be able to improve in the future by having this secondary op as part of the first. At present
+		// there is no support to obtain more than one xattr in a single operation however MB-28041 is filed for this.
 		if userXattrKey != "" {
 			userXattrCas, err := bucket.GetXattr(k, userXattrKey, uxv)
 			switch pkgerrors.Cause(err) {
-			case gocb.ErrKeyNotFound, gocb.ErrSubDocBadMulti:
+
+			case gocb.ErrKeyNotFound:
+				// If key not found it has been deleted in between the first op and this op. We should retry to now get
+				// the tombstoned xattr.
+				return true, err, uint64(0)
+
+			case gocb.ErrSubDocBadMulti:
 				// Xattr doesn't exist, can skip
 
 			case nil:
