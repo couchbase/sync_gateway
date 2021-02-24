@@ -1188,11 +1188,10 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 					if currentValue == nil || len(currentValue) == 0 {
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
-					doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll)
+					doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
 					}
-					doc.rawUserXattr = currentUserXattr
 					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
