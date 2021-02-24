@@ -318,8 +318,8 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 
 func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, error) {
 	var userXattr interface{}
-	if len(doc.RawUserXattr) > 0 {
-		err := base.JSONUnmarshal(doc.RawUserXattr, &userXattr)
+	if len(doc.rawUserXattr) > 0 {
+		err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
 		if err != nil {
 			return nil, err
 		}

@@ -1608,7 +1608,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	}
 
 	// Marshal raw user xattrs for use in Sync Fn. If this fails we can bail out so we should do early as possible.
-	metaMap, err := doc.GetMetaMap(db.UserXattrKeyOrEmpty())
+	metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
 	if err != nil {
 		return
 	}

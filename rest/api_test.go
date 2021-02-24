@@ -5550,10 +5550,15 @@ func TestUserXattrSyncFn(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc, oldDoc, meta){if(meta.xattrs.myxattr !== undefined){channel(meta.xattrs.myxattr);}}`,
 		DatabaseConfig: &DbConfig{
-			UserXattrKey: base.StringPtr("myxattr"),
+			UserXattrKey: "myxattr",
 		},
 	})
 	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
 
 	var doc struct {
 		SyncData db.SyncData `json:"_sync"`
@@ -5567,7 +5572,7 @@ func TestUserXattrSyncFn(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{}, doc.SyncData.Channels.KeySet())
 
-	_, err = rt.Bucket().WriteXattr("doc", "myxattr", "channel")
+	_, err = base.WriteXattr(gocbBucket, "doc", "myxattr", "channel")
 	assert.NoError(t, err)
 
 	res = rt.SendAdminRequest("PUT", "/db/doc?rev="+doc.SyncData.CurrentRev, "{}")
