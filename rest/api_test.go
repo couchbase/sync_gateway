@@ -5455,8 +5455,34 @@ func TestPutEmptyDoc(t *testing.T) {
 }
 
 func TestTombstonedBulkDocs(t *testing.T) {
-	rt := NewRestTester(t, nil)
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `function(doc,oldDoc){
+			console.log("doc:"+JSON.stringify(doc))
+			console.log("oldDoc:"+JSON.stringify(oldDoc))
+		}`,
+	})
 	defer rt.Close()
+
+	bucket := rt.Bucket()
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	assert.True(t, ok)
+
+	// Create the document to trigger cas failure
+	value := make(map[string]interface{})
+	value["foo"] = "bar"
+	insCas, insErr := gocbBucket.Bucket.Insert("doc", value, 0)
+	if insErr != nil {
+		log.Printf("insert error: %v", insErr)
+	}
+	log.Printf("Document inserted to generate cas failure in UpdateXattr")
+
+	// Delete document
+	_, remErr := gocbBucket.Bucket.Remove("doc", insCas)
+	if remErr != nil {
+		log.Printf("remove error: %v", remErr)
+	}
+	log.Printf("Document removed to generate cas failure in UpdateXattr")
 
 	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"doc", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
 	assertStatus(t, response, http.StatusCreated)
