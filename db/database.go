@@ -1143,7 +1143,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 						base.Warnf("Error unmarshalling body %s/%s for sync function %s", base.UD(docid), rev.ID, err)
 						return
 					}
-					metaMap, err := doc.GetMetaMap(db.UserXattrKeyOrEmpty())
+					metaMap, err := doc.GetMetaMap(db.Options.UserXattrKey)
 					if err != nil {
 						return
 					}
