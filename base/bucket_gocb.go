@@ -1189,8 +1189,6 @@ func (bucket *CouchbaseBucketGoCB) WriteCasWithXattr(k string, xattrKey string, 
 	return cas, err
 }
 
-var debugOnce sync.Once
-
 // CAS-safe update of a document's xattr (only).  Deletes the document body if deleteBody is true.
 func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp uint32, cas uint64, xv interface{}, deleteBody, isDelete bool) (casOut uint64, err error) {
 
@@ -1224,27 +1222,6 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 				mutateFlag = gocb.SubdocDocFlagAccessDeleted
 			}
 		}
-
-		/*
-			debugOnce.Do(func() {
-				// Create the document to trigger cas failure
-				value := make(map[string]interface{})
-				value["foo"] = "bar"
-				insCas, err := bucket.Bucket.Insert(k, value, 0)
-				if err != nil {
-					log.Printf("insert error: %v", err)
-				}
-				log.Printf("Document inserted to generate cas failure in UpdateXattr")
-
-				// Delete document
-				_, remErr := bucket.Bucket.Remove(k, insCas)
-				if remErr != nil {
-					log.Printf("remove error: %v", remErr)
-				}
-				log.Printf("Document removed to generate cas failure in UpdateXattr")
-
-			})
-		*/
 
 		builder := bucket.Bucket.MutateInEx(k, mutateFlag, gocb.Cas(cas), exp).
 			UpsertEx(xattrKey, xv, gocb.SubdocFlagXattr).                                                // Update the xattr
@@ -1355,8 +1332,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 			//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr may exist but doc is deleted (tombstone)
 			xattrContentErr := res.Content(xattrKey, xv)
 			if xattrContentErr != nil {
-				// No doc, no xattr means the doc isn't found
-				return false, gocb.ErrKeyNotFound, uint64(0)
+				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 			}
 			cas = uint64(res.Cas())
 			return false, nil, cas
