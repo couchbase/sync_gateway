@@ -5469,6 +5469,43 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	}
 }
 
+func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs to be enabled")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `function(doc,oldDoc){
+			console.log("doc:"+JSON.stringify(doc))
+			console.log("oldDoc:"+JSON.stringify(oldDoc))
+		}`,
+	})
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	if !ok {
+		t.Skip("Requires Couchbase bucket")
+	}
+
+	_, err := gocbBucket.Bucket.Insert(t.Name(), map[string]interface{}{"val": "val"}, 0)
+	require.NoError(t, err)
+
+	resp := rt.SendAdminRequest("POST", "/db/_purge", `{"`+t.Name()+`": ["*"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	var body map[string]interface{}
+	_, err = rt.GetDatabase().Bucket.Get(t.Name(), &body)
+
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
+	assert.Nil(t, body)
+
+}
+
 func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("Test requires xattrs to be enabled")
