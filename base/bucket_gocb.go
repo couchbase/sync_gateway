@@ -1329,11 +1329,12 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 		case gocbcore.ErrSubDocMultiPathFailureDeleted:
 			//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr may exist but doc is deleted (tombstone)
 			xattrContentErr := res.Content(xattrKey, xv)
+			cas = uint64(res.Cas())
 			if xattrContentErr != nil {
 				// No doc, no xattr means the doc isn't found
-				return false, gocb.ErrKeyNotFound, uint64(0)
+				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
+				return false, gocb.ErrKeyNotFound, cas
 			}
-			cas = uint64(res.Cas())
 			return false, nil, cas
 
 		default:
@@ -1646,8 +1647,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 					Debugf(KeyCRUD, "Retrieval of existing doc failed during WriteUpdateWithXattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), err)
 					return emptyCas, err
 				}
-				// Key not found - initialize cas and values
-				cas = 0
+				// Key not found - initialize values
 				value = nil
 				xattrValue = nil
 			}

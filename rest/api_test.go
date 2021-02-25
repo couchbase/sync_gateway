@@ -5469,6 +5469,47 @@ func TestTombstonedBulkDocs(t *testing.T) {
 	}
 }
 
+func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs to be enabled")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `function(doc,oldDoc){
+			console.log("doc:"+JSON.stringify(doc))
+			console.log("oldDoc:"+JSON.stringify(oldDoc))
+		}`,
+	})
+	defer rt.Close()
+
+	bucket := rt.Bucket()
+	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	if !ok {
+		t.Skip("Requires Couchbase bucket")
+	}
+
+	// Create the document to trigger cas failure
+	value := make(map[string]interface{})
+	value["foo"] = "bar"
+	insCas, err := gocbBucket.Bucket.Insert(t.Name(), value, 0)
+	require.NoError(t, err)
+
+	// Delete document
+	_, err = gocbBucket.Bucket.Remove(t.Name(), insCas)
+	require.NoError(t, err)
+
+	response := rt.SendAdminRequest("POST", "/db/_bulk_docs", `{"new_edits": false, "docs": [{"_id":"`+t.Name()+`", "_deleted": true, "_revisions":{"start":9, "ids":["c45c049b7fe6cf64cd8595c1990f6504", "6e01ac52ffd5ce6a4f7f4024c08d296f"]}}]}`)
+	assertStatus(t, response, http.StatusCreated)
+
+	var body map[string]interface{}
+	_, err = rt.GetDatabase().Bucket.Get(t.Name(), &body)
+
+	assert.Error(t, err)
+	assert.True(t, base.IsDocNotFoundError(err))
+	assert.Nil(t, body)
+}
+
 // This test is skipped usually as it requires code to be manually injected into bucket_gocb.go
 func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
 	t.Skip("Requires manual intervention to run")
