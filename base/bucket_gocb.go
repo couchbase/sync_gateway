@@ -1348,9 +1348,8 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userX
 			switch pkgerrors.Cause(err) {
 
 			case gocb.ErrKeyNotFound:
-				// If key not found it has been deleted in between the first op and this op. We should retry to now get
-				// the tombstoned xattr.
-				return true, err, uint64(0)
+				// If key not found it has been deleted in between the first op and this op.
+				return false, err, uint64(0)
 
 			case gocb.ErrSubDocBadMulti:
 				// Xattr doesn't exist, can skip
