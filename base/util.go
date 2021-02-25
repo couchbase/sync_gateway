@@ -438,7 +438,7 @@ func RetryLoopCas(description string, worker RetryCasWorker, sleeper RetrySleepe
 		shouldRetry, err, value := worker()
 		if !shouldRetry {
 			if err != nil {
-				return err, 0
+				return err, value
 			}
 			return nil, value
 		}
