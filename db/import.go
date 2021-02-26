@@ -20,7 +20,7 @@ const (
 )
 
 // Imports a document that was written by someone other than sync gateway, given the existing state of the doc in raw bytes
-func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
+func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, userXattrValue []byte, isDelete bool, cas uint64, expiry *uint32, mode ImportMode) (docOut *Document, err error) {
 
 	var body Body
 	if isDelete {
@@ -51,10 +51,11 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 	}
 
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Body:   value,
-		Xattr:  xattrValue,
-		Cas:    cas,
-		Expiry: *expiry,
+		Body:      value,
+		Xattr:     xattrValue,
+		UserXattr: userXattrValue,
+		Cas:       cas,
+		Expiry:    *expiry,
 	}
 	return db.importDoc(docid, body, isDelete, existingBucketDoc, mode)
 }
@@ -79,8 +80,9 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 	// TODO: We need to remarshal the existing doc into bytes.  Less performance overhead than the previous bucket op to get the value in WriteUpdateWithXattr,
 	//       but should refactor import processing to support using the already-unmarshalled doc.
 	existingBucketDoc := &sgbucket.BucketDocument{
-		Cas:    existingDoc.Cas,
-		Expiry: *expiry,
+		Cas:       existingDoc.Cas,
+		Expiry:    *expiry,
+		UserXattr: existingDoc.rawUserXattr,
 	}
 
 	// If we marked this as having inline Sync Data ensure that the existingBucketDoc we pass to importDoc has syncData

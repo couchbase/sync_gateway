@@ -66,7 +66,7 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 		// If existing doc wasn't an SG Write, import the doc.
 		if !isSgWrite {
 			var importErr error
-			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.Cas)
+			doc, importErr = db.OnDemandImportForGet(docid, rawBucketDoc.Body, rawBucketDoc.Xattr, rawBucketDoc.UserXattr, rawBucketDoc.Cas)
 			if importErr != nil {
 				return nil, importErr
 			}
@@ -148,7 +148,7 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 		if !isSgWrite {
 			var importErr error
 
-			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, cas)
+			doc, importErr = db.OnDemandImportForGet(docid, rawDoc, rawXattr, rawUserXattr, cas)
 			if importErr != nil {
 				return emptySyncData, importErr
 			}
@@ -177,12 +177,12 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 
 // OnDemandImportForGet.  Attempts to import the doc based on the provided id, contents and cas.  ImportDocRaw does cas retry handling
 // if the document gets updated after the initial retrieval attempt that triggered this.
-func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, cas uint64) (docOut *Document, err error) {
+func (db *DatabaseContext) OnDemandImportForGet(docid string, rawDoc []byte, rawXattr []byte, rawUserXattr []byte, cas uint64) (docOut *Document, err error) {
 	isDelete := rawDoc == nil
 	importDb := Database{DatabaseContext: db, user: nil}
 	var importErr error
 
-	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, isDelete, cas, nil, ImportOnDemand)
+	docOut, importErr = importDb.ImportDocRaw(docid, rawDoc, rawXattr, rawUserXattr, isDelete, cas, nil, ImportOnDemand)
 	if importErr == base.ErrImportCancelledFilter {
 		// If the import was cancelled due to filter, treat as not found
 		return nil, base.HTTPErrorf(404, "Not imported")
