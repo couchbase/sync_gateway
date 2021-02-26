@@ -1206,7 +1206,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 							updatedDoc.UpdateExpiry(*updatedExpiry)
 						}
 
-						doc.SetCrc32cUserXattrHash()
+						doc.SetCrc32cUserXattrHash(db.Options.UserXattrKey)
 						raw, rawXattr, err = updatedDoc.MarshalWithXattr()
 						return raw, rawXattr, deleteDoc, updatedExpiry, err
 					} else {

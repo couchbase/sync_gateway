@@ -337,9 +337,16 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 	}, nil
 }
 
-func (doc *Document) SetCrc32cUserXattrHash() {
+func (doc *Document) SetCrc32cUserXattrHash(userXattrKey string) {
 	if len(doc.rawUserXattr) > 0 {
 		doc.SyncData.Crc32cUserXattr = base.Crc32cHashString(doc.rawUserXattr)
+		return
+	}
+
+	// If no key is defined but there is a value in its crc32 then we should update the crc32 to be empty. This would
+	// happen if the feature was enabled but later disabled.
+	if userXattrKey == "" && doc.SyncData.Crc32cUserXattr != "" {
+		doc.SyncData.Crc32cUserXattr = ""
 	}
 }
 
