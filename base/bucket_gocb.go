@@ -1349,7 +1349,7 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userX
 
 			case gocb.ErrKeyNotFound:
 				// If key not found it has been deleted in between the first op and this op.
-				return false, err, uint64(0)
+				return false, err, userXattrCas
 
 			case gocb.ErrSubDocBadMulti:
 				// Xattr doesn't exist, can skip
