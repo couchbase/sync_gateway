@@ -2073,7 +2073,7 @@ func TestMakeFeedBytes(t *testing.T) {
 
 	rawBytes := makeFeedBytes(base.SyncPropertyName, `{"rev":"foo"}`, `{"k":"val"}`)
 
-	body, xattr, err := parseXattrStreamData(base.SyncXattrName, rawBytes)
+	body, xattr, _, err := parseXattrStreamData(base.SyncXattrName, "", rawBytes)
 	assert.NoError(t, err)
 	require.Len(t, body, 11)
 	require.Len(t, xattr, 13)
