@@ -146,6 +146,13 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 	return redactedSyncData
 }
 
+func (s *SyncData) BodyChanged(rawBody []byte) bool {
+	if s.Crc32c == base.Crc32cHashString(rawBody) {
+		return false
+	}
+	return true
+}
+
 // A document as stored in Couchbase. Contains the body of the current revision plus metadata.
 // In its JSON form, the body's properties are at top-level while the SyncData is in a special
 // "_sync" property.

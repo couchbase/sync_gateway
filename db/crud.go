@@ -817,7 +817,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 	delete(body, BodyRevisions)
 
 	allowImport := db.UseXattrs()
-	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	doc, newRevID, err = db.updateAndReturnDoc(newDoc.ID, allowImport, expiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, importFromUserXattrs bool, updatedExpiry *uint32, resultErr error) {
 
 		var isSgWrite bool
 		var crc32Match bool
@@ -835,7 +835,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		if doc != nil && !isSgWrite && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(newDoc.ID, doc, deleted)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, false, nil, err
 			}
 		}
 
@@ -846,27 +846,27 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 				// PUT with no parent rev given, but there is an existing current revision.
 				// This is OK as long as the current one is deleted.
 				if !doc.History[matchRev].Deleted {
-					return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
+					return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document exists")
 				}
 				generation, _ = ParseRevID(matchRev)
 				generation++
 			}
 		} else if !doc.History.isLeaf(matchRev) || db.IsIllegalConflict(doc, matchRev, deleted, false, nil) {
-			return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+			return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 		}
 
 		// Process the attachments, and populate _sync with metadata. This alters 'body' so it has to
 		// be done before calling CreateRevID (the ID is based on the digest of the body.)
 		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, matchRev, nil)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, false, nil, err
 		}
 
 		// Make up a new _rev, and add it to the history:
 		bodyWithoutSpecialProps, wasStripped := stripSpecialProperties(body)
 		canonicalBytesForRevID, err := base.JSONMarshalCanonical(bodyWithoutSpecialProps)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, false, nil, err
 		}
 		newRev := CreateRevIDWithBytes(generation, matchRev, canonicalBytesForRevID)
 
@@ -887,7 +887,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 
 		if err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: matchRev, Deleted: deleted}); err != nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "Failed to add revision ID: %s, for doc: %s, error: %v", newRev, base.UD(docid), err)
-			return nil, nil, nil, base.ErrRevTreeAddRevFailure
+			return nil, nil, false, nil, base.ErrRevTreeAddRevFailure
 		}
 
 		// move _attachment metadata to syncdata of doc after rev-id generation
@@ -895,7 +895,7 @@ func (db *Database) Put(docid string, body Body) (newRevID string, doc *Document
 		newDoc.RevID = newRev
 		newDoc.Deleted = deleted
 
-		return newDoc, newAttachments, nil, nil
+		return newDoc, newAttachments, false, nil, nil
 	})
 
 	return newRevID, doc, err
@@ -919,7 +919,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 	}
 
 	allowImport := db.UseXattrs()
-	doc, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error) {
+	doc, _, err = db.updateAndReturnDoc(newDoc.ID, allowImport, newDoc.DocExpiry, nil, func(doc *Document) (resultDoc *Document, resultAttachmentData AttachmentData, importFromUserXattrs bool, updatedExpiry *uint32, resultErr error) {
 		// (Be careful: this block can be invoked multiple times if there are races!)
 
 		var isSgWrite bool
@@ -937,7 +937,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		if doc != nil && !isSgWrite && db.UseXattrs() {
 			err := db.OnDemandImportForWrite(newDoc.ID, doc, newDoc.Deleted)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, false, nil, err
 			}
 		}
 
@@ -954,7 +954,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		if currentRevIndex == 0 {
 			base.DebugfCtx(db.Ctx, base.KeyCRUD, "PutExistingRevWithBody(%q): No new revisions to add", base.UD(newDoc.ID))
 			newDoc.RevID = newRev
-			return nil, nil, nil, base.ErrUpdateCancel // No new revisions to add
+			return nil, nil, false, nil, base.ErrUpdateCancel // No new revisions to add
 		}
 
 		// Conflict-free mode check
@@ -965,12 +965,12 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		if !allowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts, docHistory) {
 			//if !forceAllowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
 			if conflictResolver == nil {
-				return nil, nil, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
+				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
 			_, updatedHistory, err := db.resolveConflict(doc, newDoc, docHistory, conflictResolver)
 			if err != nil {
 				base.InfofCtx(db.Ctx, base.KeyCRUD, "Error resolving conflict for %s: %v", base.UD(doc.ID), err)
-				return nil, nil, nil, err
+				return nil, nil, false, nil, err
 			}
 			if updatedHistory != nil {
 				docHistory = updatedHistory
@@ -999,7 +999,7 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 					Deleted: i == 0 && newDoc.Deleted})
 
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, false, nil, err
 			}
 			parent = docHistory[i]
 		}
@@ -1008,13 +1008,13 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		parentRevID := doc.History[newRev].Parent
 		newAttachments, err := db.storeAttachments(doc, newDoc.DocAttachments, generation, parentRevID, docHistory)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, false, nil, err
 		}
 
 		doc.SyncData.Attachments = newDoc.DocAttachments
 		newDoc.RevID = newRev
 
-		return newDoc, newAttachments, nil, nil
+		return newDoc, newAttachments, false, nil, nil
 	})
 
 	return doc, newRev, err
@@ -1602,7 +1602,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	}
 
 	// Invoke the callback to update the document and return a new revision body:
-	newDoc, newAttachments, updatedExpiry, err := callback(doc)
+	newDoc, newAttachments, importFromUserXattrs, updatedExpiry, err := callback(doc)
 	if err != nil {
 		return
 	}
@@ -1653,7 +1653,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	if doc.CurrentRev != prevCurrentRev {
+	if doc.CurrentRev != prevCurrentRev || importFromUserXattrs {
 		// Most of the time this update will change the doc's current rev. (The exception is
 		// if the new rev is a conflict that doesn't win the revid comparison.) If so, we
 		// need to update the doc's top-level Channels and Access properties to correspond
@@ -1668,6 +1668,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		changedAccessPrincipals = doc.Access.updateAccess(doc, access)
 		changedRoleAccessUsers = doc.RoleAccess.updateAccess(doc, roles)
 	} else {
+
 		base.DebugfCtx(db.Ctx, base.KeyCRUD, "updateDoc(%q): Rev %q leaves %q still current",
 			base.UD(doc.ID), newRevID, prevCurrentRev)
 	}
@@ -1688,7 +1689,7 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 }
 
 // Function type for the callback passed into updateAndReturnDoc
-type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAttachmentData AttachmentData, updatedExpiry *uint32, resultErr error)
+type updateAndReturnDocCallback func(*Document) (resultDoc *Document, resultAttachmentData AttachmentData, importFromUserXattrs bool, updatedExpiry *uint32, resultErr error)
 
 // Calling updateAndReturnDoc directly allows callers to:
 //   1. Receive the updated document body in the response

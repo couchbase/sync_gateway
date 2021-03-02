@@ -6021,3 +6021,82 @@ func TestRemovingUserXattr(t *testing.T) {
 		})
 	}
 }
+
+func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	docKey := t.Name()
+	xattrKey := "myXattr"
+	channelName := "testChan"
+
+	// Sync function to set channel access to whatever xattr is
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+					console.log(JSON.stringify(meta));
+				}
+			}`,
+	})
+
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	// Initial PUT
+	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Wait for PUT to write
+	_, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+
+	// Get current sync data
+	var syncData db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	assert.NoError(t, err)
+
+	// Write xattr to trigger import of user xattr
+	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	// Ensure import worked and sequence incremented but that sequence did not
+	var syncData2 db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, syncData.CurrentRev, syncData2.CurrentRev)
+	assert.True(t, syncData2.Sequence > syncData.Sequence)
+	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
+
+	err = gocbBucket.Set(docKey, 0, `{"update": "update"}`)
+	assert.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	var syncData3 db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	assert.NoError(t, err)
+
+	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
+}
