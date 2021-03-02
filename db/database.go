@@ -141,7 +141,8 @@ type DatabaseContextOptions struct {
 	CompactInterval           uint32           // Interval in seconds between compaction is automatically ran - 0 means don't run
 	SGReplicateOptions        SGReplicateOptions
 	SlowQueryWarningThreshold time.Duration
-	QueryPaginationLimit      int // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
+	QueryPaginationLimit      int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
+	UserXattrKey              string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
 }
 
 type SGReplicateOptions struct {
@@ -1180,18 +1181,17 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 			}
 			var err error
 			if db.UseXattrs() {
-				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, cas uint64) (
+				writeUpdateFunc := func(currentValue []byte, currentXattr []byte, currentUserXattr []byte, cas uint64) (
 					raw []byte, rawXattr []byte, deleteDoc bool, expiry *uint32, err error) {
 					// There's no scenario where a doc should from non-deleted to deleted during UpdateAllDocChannels processing,
 					// so deleteDoc is always returned as false.
 					if currentValue == nil || len(currentValue) == 0 {
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
-					doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, cas, DocUnmarshalAll)
+					doc, err := unmarshalDocumentWithXattr(docid, currentValue, currentXattr, currentUserXattr, cas, DocUnmarshalAll)
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
 					}
-
 					updatedDoc, shouldUpdate, updatedExpiry, err := documentUpdateFunc(doc)
 					if err != nil {
 						return nil, nil, deleteDoc, nil, err
@@ -1207,7 +1207,7 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 						return nil, nil, deleteDoc, nil, base.ErrUpdateCancel
 					}
 				}
-				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, 0, nil, writeUpdateFunc)
+				_, err = db.Bucket.WriteUpdateWithXattr(key, base.SyncXattrName, db.Options.UserXattrKey, 0, nil, writeUpdateFunc)
 			} else {
 				_, err = db.Bucket.Update(key, 0, func(currentValue []byte) ([]byte, *uint32, bool, error) {
 					// Be careful: this block can be invoked multiple times if there are races!

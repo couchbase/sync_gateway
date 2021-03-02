@@ -150,11 +150,12 @@ func (sd *SyncData) HashRedact(salt string) SyncData {
 // "_sync" property.
 // Document doesn't do any locking - document instances aren't intended to be shared across multiple goroutines.
 type Document struct {
-	SyncData        // Sync metadata
-	_body    Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
-	_rawBody []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
-	ID       string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
-	Cas      uint64 // Document cas
+	SyncData            // Sync metadata
+	_body        Body   // Marshalled document body.  Unmarshalled lazily - should be accessed using Body()
+	_rawBody     []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
+	ID           string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
+	Cas          uint64 // Document cas
+	rawUserXattr []byte // Raw user xattr as retrieved from the bucket
 
 	Deleted        bool
 	DocExpiry      uint32
@@ -334,7 +335,7 @@ func unmarshalDocument(docid string, data []byte) (*Document, error) {
 	return doc, nil
 }
 
-func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
+func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, userXattrData []byte, cas uint64, unmarshalLevel DocumentUnmarshalLevel) (doc *Document, err error) {
 
 	if xattrData == nil || len(xattrData) == 0 {
 		// If no xattr data, unmarshal as standard doc
@@ -346,6 +347,11 @@ func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, cas
 	if err != nil {
 		return nil, err
 	}
+
+	if len(userXattrData) > 0 {
+		doc.rawUserXattr = userXattrData
+	}
+
 	doc.Cas = cas
 	return doc, nil
 }

@@ -1288,7 +1288,7 @@ func (bucket *CouchbaseBucketGoCB) UpdateXattr(k string, xattrKey string, exp ui
 }
 
 // Retrieve a document and it's associated named xattr
-func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv interface{}, xv interface{}) (cas uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 
 	// Until we get a fix for https://issues.couchbase.com/browse/MB-23522, need to disable the singleOp handling because of the potential for a nested call to bucket.Get
 	/*
@@ -1324,7 +1324,6 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 			}
 			cas = uint64(res.Cas())
-			return false, nil, cas
 
 		case gocbcore.ErrSubDocMultiPathFailureDeleted:
 			//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr may exist but doc is deleted (tombstone)
@@ -1341,6 +1340,32 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, rv in
 			shouldRetry = isRecoverableReadError(lookupErr)
 			return shouldRetry, lookupErr, uint64(0)
 		}
+
+		// TODO: We may be able to improve in the future by having this secondary op as part of the first. At present
+		// there is no support to obtain more than one xattr in a single operation however MB-28041 is filed for this.
+		if userXattrKey != "" {
+			userXattrCas, err := bucket.GetXattr(k, userXattrKey, uxv)
+			switch pkgerrors.Cause(err) {
+
+			case gocb.ErrKeyNotFound:
+				// If key not found it has been deleted in between the first op and this op.
+				return false, err, userXattrCas
+
+			case gocb.ErrSubDocBadMulti:
+				// Xattr doesn't exist, can skip
+
+			case nil:
+				if cas != userXattrCas {
+					return true, errors.New("cas mismatch between user xattr and document body"), uint64(0)
+				}
+			default:
+				// Unknown error occurred
+				// Shouldn't retry as any recoverable error will have been retried already in GetXattr
+				return false, err, uint64(0)
+			}
+		}
+
+		return false, nil, cas
 
 	}
 
@@ -1491,7 +1516,7 @@ func (bucket *CouchbaseBucketGoCB) deleteDocXattrOnly(k string, xattrKey string,
 	//  Do get w/ xattr in order to get cas
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	getCas, err := bucket.GetWithXattr(k, xattrKey, &retrievedVal, &retrievedXattr)
+	getCas, err := bucket.GetWithXattr(k, xattrKey, "", &retrievedVal, &retrievedXattr, nil)
 	if err != nil {
 		return err
 	}
@@ -1620,10 +1645,11 @@ func (bucket *CouchbaseBucketGoCB) Update(k string, exp uint32, callback sgbucke
 
 // WriteUpdateWithXattr retrieves the existing doc from the bucket, invokes the callback to update the document, then writes the new document to the bucket.  Will repeat this process on cas
 // failure.  If previousValue/xattr/cas are provided, will use those on the first iteration instead of retrieving from the bucket.
-func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
+func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
 
 	var value []byte
 	var xattrValue []byte
+	var userXattrValue []byte
 	var cas uint64
 	emptyCas := uint64(0)
 
@@ -1632,6 +1658,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		value = previous.Body
 		xattrValue = previous.Xattr
 		cas = previous.Cas
+		userXattrValue = previous.UserXattr
 	}
 
 	for {
@@ -1639,7 +1666,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		// If no existing value has been provided, retrieve the current value from the bucket
 		if cas == 0 {
 			// Load the existing value.
-			cas, err = bucket.GetWithXattr(k, xattrKey, &value, &xattrValue)
+			cas, err = bucket.GetWithXattr(k, xattrKey, userXattrKey, &value, &xattrValue, &userXattrValue)
 
 			if err != nil {
 				if !bucket.IsKeyNotFoundError(err) {
@@ -1654,7 +1681,7 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 		}
 
 		// Invoke callback to get updated value
-		updatedValue, updatedXattrValue, isDelete, callbackExpiry, err := callback(value, xattrValue, cas)
+		updatedValue, updatedXattrValue, isDelete, callbackExpiry, err := callback(value, xattrValue, userXattrValue, cas)
 
 		// If it's an ErrCasFailureShouldRetry, then retry by going back through the for loop
 		if err == ErrCasFailureShouldRetry {
