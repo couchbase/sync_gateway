@@ -1356,12 +1356,12 @@ func (bucket *CouchbaseBucketGoCB) GetWithXattr(k string, xattrKey string, userX
 
 			case nil:
 				if cas != userXattrCas {
-					return true, err, uint64(0)
+					return true, errors.New("cas mismatch between user xattr and document body"), uint64(0)
 				}
 			default:
 				// Unknown error occurred
-				shouldRetry = isRecoverableWriteError(err)
-				return shouldRetry, err, uint64(0)
+				// Shouldn't retry as any recoverable error will have been retried already in GetXattr
+				return false, err, uint64(0)
 			}
 		}
 
@@ -1678,7 +1678,6 @@ func (bucket *CouchbaseBucketGoCB) WriteUpdateWithXattr(k string, xattrKey strin
 				value = nil
 				xattrValue = nil
 			}
-
 		}
 
 		// Invoke callback to get updated value
