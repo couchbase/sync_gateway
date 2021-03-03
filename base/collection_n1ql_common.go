@@ -74,8 +74,10 @@ func CreateIndex(store N1QLStore, indexName string, expression string, filterExp
 	createStatement = strings.Replace(createStatement, KeyspaceQueryToken, store.Keyspace(), -1)
 
 	createErr := createIndex(store, indexName, createStatement, options)
-	if createErr != nil && strings.Contains(createErr.Error(), "already exists") {
-		return ErrAlreadyExists
+	if createErr != nil {
+		if strings.Contains(createErr.Error(), "already exists") || strings.Contains(createErr.Error(), "duplicate index name") {
+			return ErrAlreadyExists
+		}
 	}
 	return createErr
 }
