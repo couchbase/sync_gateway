@@ -5929,3 +5929,74 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 }
+
+func TestRemovingUserXattr(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	docKey := t.Name()
+	xattrKey := "myXattr"
+	channelName := "testChan"
+
+	// Sync function to set channel access to whatever xattr is
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+				}
+			}`,
+	})
+
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	// Initial PUT
+	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Add xattr
+	_, err := base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	// Get sync data for doc and ensure user xattr has been used correctly to set channel
+	var syncData db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+
+	// Delete user xattr
+	_, err = base.DeleteXattr(gocbBucket, docKey, xattrKey)
+	assert.NoError(t, err)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	// Ensure old channel set with user xattr has been removed
+	var syncData2 db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
+}

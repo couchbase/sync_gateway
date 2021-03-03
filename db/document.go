@@ -544,7 +544,7 @@ func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (i
 		return true, false
 	}
 
-	if len(rawUserXattr) > 0 && base.Crc32cHashString(rawUserXattr) != s.Crc32cUserXattr {
+	if len(rawUserXattr) == 0 && s.Crc32cUserXattr != "" || len(rawUserXattr) > 0 && base.Crc32cHashString(rawUserXattr) != s.Crc32cUserXattr {
 		return false, false
 	}
 
@@ -576,7 +576,11 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 		return true, false
 	}
 
-	if len(doc.rawUserXattr) > 0 && base.Crc32cHashString(doc.rawUserXattr) != doc.Crc32cUserXattr {
+	// If user xattr is empty but there is a crc32c hash available then the xattr has since been removed so should
+	// trigger an import.
+	// If user xattr is available but doesn't match current hash then the xattr has since been updated so should trigger
+	// an import
+	if len(doc.rawUserXattr) == 0 && doc.Crc32cUserXattr != "" || len(doc.rawUserXattr) > 0 && base.Crc32cHashString(doc.rawUserXattr) != doc.Crc32cUserXattr {
 		return false, false
 	}
 
