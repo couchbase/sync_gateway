@@ -238,10 +238,8 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 		IndexTombstones: i.shouldIndexTombstones(useXattrs),
 	}
 
-	sleeper := base.CreateDoublingSleeperFunc(
-		11, //MaxNumRetries approx 10 seconds total retry duration
-		5,  //InitialRetrySleepTimeMS
-	)
+	// Initial retry 500ms, max wait 1s, waits up to ~15s
+	sleeper := base.CreateMaxDoublingSleeperFunc(15, 500, 1000)
 
 	//start a retry loop to create index,
 	worker := func() (shouldRetry bool, err error, value interface{}) {
