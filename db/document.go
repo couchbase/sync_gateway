@@ -338,18 +338,13 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 }
 
 func (doc *Document) SetCrc32cUserXattrHash(userXattrKey string) {
-	if len(doc.rawUserXattr) > 0 {
-		doc.SyncData.Crc32cUserXattr = base.Crc32cHashString(doc.rawUserXattr)
+	// If user xattr is nil or feature is disabled then set hash to ""
+	if len(doc.rawUserXattr) == 0 || userXattrKey == "" {
+		doc.SyncData.Crc32cUserXattr = ""
 		return
 	}
 
-	// If userXattrKey is still set and there is no rawUserXattr then the xattr has been removed from the doc and we can
-	// set to empty hash.
-	// If userXattr key is no longer set but the crc32 hash is still set then we can set it to empty hash. This likely
-	// means the feature was enabled but later disabled.
-	if len(doc.rawUserXattr) == 0 && userXattrKey != "" || userXattrKey == "" && doc.SyncData.Crc32cUserXattr != "" {
-		doc.SyncData.Crc32cUserXattr = ""
-	}
+	doc.SyncData.Crc32cUserXattr = base.Crc32cHashString(doc.rawUserXattr)
 }
 
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
