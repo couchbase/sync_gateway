@@ -343,9 +343,11 @@ func (doc *Document) SetCrc32cUserXattrHash(userXattrKey string) {
 		return
 	}
 
-	// If no key is defined but there is a value in its crc32 then we should update the crc32 to be empty. This would
-	// happen if the feature was enabled but later disabled.
-	if userXattrKey == "" && doc.SyncData.Crc32cUserXattr != "" {
+	// If userXattrKey is still set and there is no rawUserXattr then the xattr has been removed from the doc and we can
+	// set to empty hash.
+	// If userXattr key is no longer set but the crc32 hash is still set then we can set it to empty hash. This likely
+	// means the feature was enabled but later disabled.
+	if len(doc.rawUserXattr) == 0 && userXattrKey != "" || userXattrKey == "" && doc.SyncData.Crc32cUserXattr != "" {
 		doc.SyncData.Crc32cUserXattr = ""
 	}
 }
