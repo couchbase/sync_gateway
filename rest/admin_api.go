@@ -403,6 +403,17 @@ func (h *handler) handleGetRawDoc() error {
 		return err
 	}
 
+	if h.db.Options.UserXattrKey != "" {
+		rawUserXattrVal := doc.RawUserXattr
+		if len(rawUserXattrVal) == 0 {
+			rawUserXattrVal = []byte("null")
+		}
+		rawBytes, err = base.InjectJSONPropertiesFromBytes(rawBytes, base.KVPairBytes{Key: h.db.Options.UserXattrKey, Val: rawUserXattrVal})
+		if err != nil {
+			return err
+		}
+	}
+
 	h.writeRawJSON(rawBytes)
 	return nil
 }

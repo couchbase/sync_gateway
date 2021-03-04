@@ -2692,3 +2692,41 @@ func TestAdhocReplicationStatus(t *testing.T) {
 	})
 	assert.NoError(t, stateError)
 }
+
+func TestUserXattrsRawGet(t *testing.T) {
+	docKey := t.Name()
+	xattrKey := "xattrKey"
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		},
+	})
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+	assertStatus(t, resp, http.StatusCreated)
+	_, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+	assert.NoError(t, err)
+
+	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, "val")
+	assert.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImportStats.ImportCount.Value() == 1
+	})
+
+	resp = rt.SendAdminRequest("GET", "/db/_raw/"+docKey, "")
+	assertStatus(t, resp, http.StatusOK)
+
+	var body map[string]interface{}
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+
+	assert.Equal(t, "val", body[xattrKey])
+}
