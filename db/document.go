@@ -316,6 +316,26 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	return doc._rawBody, nil
 }
 
+// Builds the Meta Map for use in the Sync Function. This meta map currently only includes the user xattr, however, this
+// can be expanded upon in the future.
+// NOTE: emptyMetaMap() is used within tests in channelmapper_test.go and therefore this should be expanded if the below is
+func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, error) {
+	xattrsMap := map[string]interface{}{}
+
+	if userXattrKey != "" {
+		var userXattr interface{}
+		err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
+		if err != nil {
+			return nil, err
+		}
+		xattrsMap[userXattrKey] = userXattr
+	}
+
+	return map[string]interface{}{
+		"xattrs": xattrsMap,
+	}, nil
+}
+
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
 // UseNumber handling is applied to numbers in the body.
 func unmarshalDocument(docid string, data []byte) (*Document, error) {
