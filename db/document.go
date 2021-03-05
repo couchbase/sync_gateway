@@ -337,9 +337,9 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 	}, nil
 }
 
-func (doc *Document) SetCrc32cUserXattrHash(userXattrKey string) {
-	// If user xattr is nil or feature is disabled then set hash to ""
-	if len(doc.rawUserXattr) == 0 || userXattrKey == "" {
+func (doc *Document) SetCrc32cUserXattrHash() {
+	// If user xattr is nil then the feature has either been disabled or simply this doc doesn't have a user xattr
+	if len(doc.rawUserXattr) == 0 {
 		doc.SyncData.Crc32cUserXattr = ""
 		return
 	}
