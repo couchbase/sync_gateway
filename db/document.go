@@ -318,10 +318,11 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 
 // Builds the Meta Map for use in the Sync Function. This meta map currently only includes the user xattr, however, this
 // can be expanded upon in the future.
+// NOTE: emptyMetaMap() is used within tests in channelmapper_test.go and therefore this should be expanded if the below is
 func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, error) {
 	xattrsMap := map[string]interface{}{}
 
-	if len(doc.rawUserXattr) > 0 {
+	if userXattrKey != "" {
 		var userXattr interface{}
 		err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
 		if err != nil {

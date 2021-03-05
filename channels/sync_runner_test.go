@@ -14,11 +14,11 @@ func TestRequireUser(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), nil, parse(`{"name": "alpha"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_names": "alpha"}`), emptyMetaMap(), parse(`{"name": "alpha"}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["beta", "gamma"]}`), nil, parse(`{"name": "beta"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "beta"}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["delta"]}`), nil, parse(`{"name": "beta"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_names": ["delta"]}`), emptyMetaMap(), parse(`{"name": "beta"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorWrongUser))
 }
 
@@ -27,11 +27,11 @@ func TestRequireRole(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), nil, parse(`{"name": "", "roles": {"alpha":""}}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["alpha"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"alpha":""}}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["beta", "gamma"]}`), nil, parse(`{"name": "", "roles": {"beta": ""}}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"beta": ""}}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["delta"]}`), nil, parse(`{"name": "", "roles": {"beta":""}}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_roles": ["delta"]}`), emptyMetaMap(), parse(`{"name": "", "roles": {"beta":""}}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorMissingRole))
 }
 
@@ -40,11 +40,11 @@ func TestRequireAccess(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), nil, parse(`{"name": "", "channels": ["alpha"]}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["alpha"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["alpha"]}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["beta", "gamma"]}`), nil, parse(`{"name": "", "channels": ["beta"]}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["beta", "gamma"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["delta"]}`), nil, parse(`{"name": "", "channels": ["beta"]}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{"_access": ["delta"]}`), emptyMetaMap(), parse(`{"name": "", "channels": ["beta"]}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorMissingChannelAccess))
 }
 
@@ -53,13 +53,13 @@ func TestRequireAdmin(t *testing.T) {
 	runner, err := NewSyncRunner(funcSource)
 	require.NoError(t, err)
 	var result interface{}
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), nil, parse(`{}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{}`))
 	assertNotRejected(t, result)
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), nil, parse(`{"name": ""}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": ""}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), nil, parse(`{"name": "GUEST"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": "GUEST"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
-	result, _ = runner.Call(parse(`{}`), parse(`{}`), nil, parse(`{"name": "beta"}`))
+	result, _ = runner.Call(parse(`{}`), parse(`{}`), emptyMetaMap(), parse(`{"name": "beta"}`))
 	assertRejected(t, result, base.HTTPErrorf(http.StatusForbidden, base.SyncFnErrorAdminRequired))
 }
 
