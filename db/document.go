@@ -62,11 +62,11 @@ type SyncData struct {
 	Channels        channels.ChannelMap `json:"channels,omitempty"`
 	Access          UserAccessMap       `json:"access,omitempty"`
 	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
-	Expiry          *time.Time          `json:"exp,omitempty"`           // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas             string              `json:"cas"`                     // String representation of a cas value, populated via macro expansion
-	Crc32c          string              `json:"value_crc32c"`            // String representation of crc32c hash of doc body, populated via macro expansion
-	Crc32cUserXattr string              `json:"user_xattr_value_crc32c"` // String representation of crc32c hash of user xattr
-	TombstonedAt    int64               `json:"tombstoned_at,omitempty"` // Time the document was tombstoned.  Used for view compaction
+	Expiry          *time.Time          `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas             string              `json:"cas"`                               // String representation of a cas value, populated via macro expansion
+	Crc32c          string              `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr string              `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
+	TombstonedAt    int64               `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
 	Attachments     AttachmentsMeta     `json:"attachments,omitempty"`
 
 	// Only used for performance metrics:
