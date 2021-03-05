@@ -2725,8 +2725,13 @@ func TestUserXattrsRawGet(t *testing.T) {
 	resp = rt.SendAdminRequest("GET", "/db/_raw/"+docKey, "")
 	assertStatus(t, resp, http.StatusOK)
 
-	var body map[string]interface{}
-	err = json.Unmarshal(resp.BodyBytes(), &body)
+	var RawReturn struct {
+		Meta struct {
+			Xattrs map[string]interface{} `json:"xattrs"`
+		} `json:"_meta"`
+	}
 
-	assert.Equal(t, "val", body[xattrKey])
+	err = json.Unmarshal(resp.BodyBytes(), &RawReturn)
+
+	assert.Equal(t, "val", RawReturn.Meta.Xattrs[xattrKey])
 }
