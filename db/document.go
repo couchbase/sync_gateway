@@ -316,19 +316,22 @@ func (doc *Document) BodyBytes() ([]byte, error) {
 	return doc._rawBody, nil
 }
 
+// Builds the Meta Map for use in the Sync Function. This meta map currently only includes the user xattr, however, this
+// can be expanded upon in the future.
 func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, error) {
-	var userXattr interface{}
+	xattrsMap := map[string]interface{}{}
+
 	if len(doc.rawUserXattr) > 0 {
+		var userXattr interface{}
 		err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
 		if err != nil {
 			return nil, err
 		}
+		xattrsMap[userXattrKey] = userXattr
 	}
 
 	return map[string]interface{}{
-		"xattrs": map[string]interface{}{
-			userXattrKey: userXattr,
-		},
+		"xattrs": xattrsMap,
 	}, nil
 }
 
