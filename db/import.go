@@ -263,42 +263,37 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			}
 		}
 
-		// If the body is the same then this import was triggered by an xattr change meaning we want to skip the below
-		// new revision handling
-		if !doc.BodyChanged(existingDoc.Body) {
-			doc.RemoveBody()
-			newDoc.UpdateBody(body)
-			if !wasStripped && !isDelete {
-				newDoc._rawBody = rawBodyForRevID
+		importFromUserXattrs = !doc.BodyChanged(existingDoc.Body)
+
+		// If the body has changed then the document has been updated and we should generate a new revision. Otherwise
+		// the import was triggered by a user xattr mutation and therefore should not generate a new revision.
+		if !importFromUserXattrs {
+			// The active rev is the parent for an import
+			parentRev := doc.CurrentRev
+			generation, _ := ParseRevID(parentRev)
+			generation++
+			newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
+			if err != nil {
+				return nil, nil, false, updatedExpiry, err
 			}
+			base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
+			// body[BodyRev] = newRev
+			newDoc.RevID = newRev
+			err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
+			if err != nil {
+				base.InfofCtx(db.Ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
+			}
+
+			// If the previous revision body is available in the rev cache,
+			// make a temporary copy in the bucket for other nodes/clusters
+			if db.DatabaseContext.Options.ImportOptions.BackupOldRev && doc.CurrentRev != "" {
+				backupErr := db.backupPreImportRevision(newDoc.ID, doc.CurrentRev)
+				if backupErr != nil {
+					base.Infof(base.KeyImport, "Optimistic backup of previous revision failed due to %s", backupErr)
+				}
+			}
+		} else {
 			newDoc.RevID = doc.CurrentRev
-
-			return newDoc, nil, true, updatedExpiry, nil
-		}
-
-		// The active rev is the parent for an import
-		parentRev := doc.CurrentRev
-		generation, _ := ParseRevID(parentRev)
-		generation++
-		newRev = CreateRevIDWithBytes(generation, parentRev, rawBodyForRevID)
-		if err != nil {
-			return nil, nil, false, updatedExpiry, err
-		}
-		base.DebugfCtx(db.Ctx, base.KeyImport, "Created new rev ID for doc %q / %q", base.UD(newDoc.ID), newRev)
-		// body[BodyRev] = newRev
-		newDoc.RevID = newRev
-		err := doc.History.addRevision(newDoc.ID, RevInfo{ID: newRev, Parent: parentRev, Deleted: isDelete})
-		if err != nil {
-			base.InfofCtx(db.Ctx, base.KeyImport, "Error adding new rev ID for doc %q / %q, Error: %v", base.UD(newDoc.ID), newRev, err)
-		}
-
-		// If the previous revision body is available in the rev cache,
-		// make a temporary copy in the bucket for other nodes/clusters
-		if db.DatabaseContext.Options.ImportOptions.BackupOldRev && doc.CurrentRev != "" {
-			backupErr := db.backupPreImportRevision(newDoc.ID, doc.CurrentRev)
-			if backupErr != nil {
-				base.Infof(base.KeyImport, "Optimistic backup of previous revision failed due to %s", backupErr)
-			}
 		}
 
 		// During import, oldDoc (doc.Body) is nil (since it's not guaranteed to be available)
@@ -311,7 +306,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 
-		return newDoc, nil, false, updatedExpiry, nil
+		return newDoc, nil, importFromUserXattrs, updatedExpiry, nil
 	})
 
 	switch err {
