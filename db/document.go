@@ -156,7 +156,7 @@ type Document struct {
 	_rawBody     []byte // Raw document body, as retrieved from the bucket.  Marshaled lazily - should be accessed using BodyBytes()
 	ID           string `json:"-"` // Doc id.  (We're already using a custom MarshalJSON for *document that's based on body, so the json:"-" probably isn't needed here)
 	Cas          uint64 // Document cas
-	RawUserXattr []byte // Raw user xattr as retrieved from the bucket
+	rawUserXattr []byte // Raw user xattr as retrieved from the bucket
 
 	Deleted        bool
 	DocExpiry      uint32
@@ -326,8 +326,8 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 	if userXattrKey != "" {
 		var userXattr interface{}
 
-		if len(doc.RawUserXattr) > 0 {
-			err := base.JSONUnmarshal(doc.RawUserXattr, &userXattr)
+		if len(doc.rawUserXattr) > 0 {
+			err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
 			if err != nil {
 				return nil, err
 			}
@@ -342,12 +342,12 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 
 func (doc *Document) SetCrc32cUserXattrHash() {
 	// If user xattr is nil then the feature has either been disabled or simply this doc doesn't have a user xattr
-	if len(doc.RawUserXattr) == 0 {
+	if len(doc.rawUserXattr) == 0 {
 		doc.SyncData.Crc32cUserXattr = ""
 		return
 	}
 
-	doc.SyncData.Crc32cUserXattr = base.Crc32cHashString(doc.RawUserXattr)
+	doc.SyncData.Crc32cUserXattr = base.Crc32cHashString(doc.rawUserXattr)
 }
 
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
@@ -383,7 +383,7 @@ func unmarshalDocumentWithXattr(docid string, data []byte, xattrData []byte, use
 	}
 
 	if len(userXattrData) > 0 {
-		doc.RawUserXattr = userXattrData
+		doc.rawUserXattr = userXattrData
 	}
 
 	doc.Cas = cas
@@ -561,14 +561,6 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	// If raw body isn't available, first do the inexpensive cas check
 	if doc.Cas == doc.SyncData.GetSyncCas() {
 		return true, false
-	}
-
-	// If user xattr is empty but there is a crc32c hash available then the xattr has since been removed so should
-	// trigger an import.
-	// If user xattr is available but doesn't match current hash then the xattr has since been updated so should trigger
-	// an import
-	if len(doc.RawUserXattr) == 0 && doc.Crc32cUserXattr != "" || len(doc.RawUserXattr) > 0 && base.Crc32cHashString(doc.RawUserXattr) != doc.Crc32cUserXattr {
-		return false, false
 	}
 
 	// Since raw body isn't available, marshal from the document to perform body hash comparison

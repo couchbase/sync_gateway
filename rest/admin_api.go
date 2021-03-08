@@ -403,19 +403,16 @@ func (h *handler) handleGetRawDoc() error {
 		return err
 	}
 
-	metaMap, err := doc.GetMetaMap(h.db.Options.UserXattrKey)
-	if err != nil {
-		return err
-	}
+	if h.db.Options.UserXattrKey != "" {
+		metaMap, err := doc.GetMetaMap(h.db.Options.UserXattrKey)
+		if err != nil {
+			return err
+		}
 
-	metaMapBytes, err := base.JSONMarshal(metaMap)
-	if err != nil {
-		return err
-	}
-
-	rawBytes, err = base.InjectJSONPropertiesFromBytes(rawBytes, base.KVPairBytes{Key: "_meta", Val: metaMapBytes})
-	if err != nil {
-		return err
+		rawBytes, err = base.InjectJSONProperties(rawBytes, base.KVPair{Key: "_meta", Val: metaMap})
+		if err != nil {
+			return err
+		}
 	}
 
 	h.writeRawJSON(rawBytes)
