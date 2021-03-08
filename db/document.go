@@ -333,7 +333,7 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 	}
 
 	return map[string]interface{}{
-		"xattrs": xattrsMap,
+		base.MetaMapXattrsKey: xattrsMap,
 	}, nil
 }
 
