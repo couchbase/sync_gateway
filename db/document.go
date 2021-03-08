@@ -325,9 +325,12 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 
 	if userXattrKey != "" {
 		var userXattr interface{}
-		err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
-		if err != nil {
-			return nil, err
+
+		if len(doc.rawUserXattr) > 0 {
+			err := base.JSONUnmarshal(doc.rawUserXattr, &userXattr)
+			if err != nil {
+				return nil, err
+			}
 		}
 		xattrsMap[userXattrKey] = userXattr
 	}
