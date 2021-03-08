@@ -120,6 +120,9 @@ const (
 	SyncPropertyName = "_sync"
 	SyncXattrName    = "_sync"
 
+	// Intended to be used in Meta Map and related tests
+	MetaMapXattrsKey = "xattrs"
+
 	SGRStatusPrefix = SyncPrefix + "sgrStatus:"
 
 	// Prefix for transaction metadata documents

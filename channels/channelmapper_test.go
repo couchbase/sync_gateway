@@ -32,7 +32,7 @@ func parse(jsonStr string) map[string]interface{} {
 
 func emptyMetaMap() map[string]interface{} {
 	return map[string]interface{}{
-		"xattrs": nil,
+		base.MetaMapXattrsKey: nil,
 	}
 }
 
@@ -515,7 +515,7 @@ func TestMetaMap(t *testing.T) {
 	channels := []string{"chan1", "chan2"}
 
 	metaMap := map[string]interface{}{
-		"xattrs": map[string]interface{}{
+		base.MetaMapXattrsKey: map[string]interface{}{
 			"myxattr": map[string]interface{}{
 				"channels": channels,
 			},
@@ -532,7 +532,7 @@ func TestNilMetaMap(t *testing.T) {
 	mapper := NewChannelMapper(`function(doc, oldDoc, meta) {channel(meta.xattrs.myxattr.val);}`)
 
 	metaMap := map[string]interface{}{
-		"xattrs": map[string]interface{}{
+		base.MetaMapXattrsKey: map[string]interface{}{
 			"": nil,
 		},
 	}
