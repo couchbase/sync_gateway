@@ -536,6 +536,20 @@ func (s *SyncData) GetSyncCas() uint64 {
 	return base.HexCasToUint64(s.Cas)
 }
 
+func HasUserXattrChanged(rawUserXattr []byte, rawUserXattrHash string) bool {
+	// If doc has no user xattr but crc indicates there used to be one trigger import.
+	if len(rawUserXattr) == 0 && rawUserXattrHash != "" {
+		return true
+	}
+
+	// If doc has a user xattr set and crc doesn't match there has been a change. Trigger import
+	if len(rawUserXattr) > 0 && base.Crc32cHashString(rawUserXattr) != rawUserXattrHash {
+		return true
+	}
+
+	return false
+}
+
 // SyncData.IsSGWrite - used during feed-based import
 func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (isSGWrite bool, crc32Match bool) {
 
@@ -544,7 +558,7 @@ func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (i
 		return true, false
 	}
 
-	if len(rawUserXattr) == 0 && s.Crc32cUserXattr != "" || len(rawUserXattr) > 0 && base.Crc32cHashString(rawUserXattr) != s.Crc32cUserXattr {
+	if HasUserXattrChanged(rawUserXattr, s.Crc32cUserXattr) {
 		return false, false
 	}
 
@@ -576,11 +590,7 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 		return true, false
 	}
 
-	// If user xattr is empty but there is a crc32c hash available then the xattr has since been removed so should
-	// trigger an import.
-	// If user xattr is available but doesn't match current hash then the xattr has since been updated so should trigger
-	// an import
-	if len(doc.rawUserXattr) == 0 && doc.Crc32cUserXattr != "" || len(doc.rawUserXattr) > 0 && base.Crc32cHashString(doc.rawUserXattr) != doc.Crc32cUserXattr {
+	if HasUserXattrChanged(doc.rawUserXattr, doc.Crc32cUserXattr) {
 		return false, false
 	}
 
