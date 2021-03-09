@@ -341,13 +341,15 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 }
 
 func (doc *Document) SetCrc32cUserXattrHash() {
-	// If user xattr is nil then the feature has either been disabled or simply this doc doesn't have a user xattr
-	if len(doc.rawUserXattr) == 0 {
-		doc.SyncData.Crc32cUserXattr = ""
-		return
-	}
+	doc.SyncData.Crc32cUserXattr = userXattrCrc32cHash(doc.rawUserXattr)
+}
 
-	doc.SyncData.Crc32cUserXattr = base.Crc32cHashString(doc.rawUserXattr)
+func userXattrCrc32cHash(userXattr []byte) string {
+	// If user xattr is empty then set hash to empty (feature has been disabled or doc doesn't have xattr)
+	if len(userXattr) == 0 {
+		return ""
+	}
+	return base.Crc32cHashString(userXattr)
 }
 
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
@@ -506,11 +508,11 @@ func parseXattrStreamData(xattrName string, userXattrName string, data []byte) (
 		if xattrName == xattrKey {
 			xattr = components[1]
 		}
-		if userXattrName == xattrKey {
+		if userXattrName != "" && userXattrName == xattrKey {
 			userXattr = components[1]
 		}
 
-		if len(userXattr) > 0 && (len(xattr) > 0 || userXattrName == "") {
+		if len(xattr) > 0 && (len(userXattr) > 0 || userXattrName == "") {
 			return body, xattr, userXattr, nil
 		}
 
@@ -536,18 +538,14 @@ func (s *SyncData) GetSyncCas() uint64 {
 	return base.HexCasToUint64(s.Cas)
 }
 
-func HasUserXattrChanged(rawUserXattr []byte, rawUserXattrHash string) bool {
-	// If doc has no user xattr but crc indicates there used to be one trigger import.
-	if len(rawUserXattr) == 0 && rawUserXattrHash != "" {
+func HasUserXattrChanged(userXattr []byte, prevUserXattrHash string) bool {
+	// If hash is empty but userXattr is not empty an xattr has been added. Import
+	if prevUserXattrHash == "" && len(userXattr) > 0 {
 		return true
 	}
 
-	// If doc has a user xattr set and crc doesn't match there has been a change. Trigger import
-	if len(rawUserXattr) > 0 && base.Crc32cHashString(rawUserXattr) != rawUserXattrHash {
-		return true
-	}
-
-	return false
+	// Otherwise check hash value
+	return userXattrCrc32cHash(userXattr) != prevUserXattrHash
 }
 
 // SyncData.IsSGWrite - used during feed-based import
@@ -563,11 +561,11 @@ func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (i
 	}
 
 	// If crc32c hash of body matches value stored in SG metadata, SG metadata is still valid
-	if base.Crc32cHashString(rawBody) == s.Crc32c {
-		return true, true
+	if base.Crc32cHashString(rawBody) != s.Crc32c {
+		return false, false
 	}
 
-	return false, false
+	return true, true
 }
 
 // doc.IsSGWrite - used during on-demand import.  Doesn't invoke SyncData.IsSGWrite so that we
@@ -591,6 +589,7 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	}
 
 	if HasUserXattrChanged(doc.rawUserXattr, doc.Crc32cUserXattr) {
+		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
 		return false, false
 	}
 
@@ -609,12 +608,12 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	}
 
 	// If the current body crc32c matches the one in doc.SyncData, this was an SG write (i.e. has already been imported)
-	if currentBodyCrc32c == doc.SyncData.Crc32c {
-		return true, true
+	if currentBodyCrc32c != doc.SyncData.Crc32c {
+		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
+		return false, false
 	}
 
-	base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
-	return false, false
+	return true, true
 }
 
 func (doc *Document) hasFlag(flag uint8) bool {
