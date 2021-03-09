@@ -504,7 +504,6 @@ func parseXattrStreamData(xattrName string, userXattrName string, data []byte) (
 			return nil, nil, nil, fmt.Errorf("Unexpected number of components found in xattr pair: %s", pairBytes)
 		}
 		xattrKey := string(components[0])
-		// If this is the xattr we're looking for , we're done
 		if xattrName == xattrKey {
 			xattr = components[1]
 		}
@@ -512,6 +511,7 @@ func parseXattrStreamData(xattrName string, userXattrName string, data []byte) (
 			userXattr = components[1]
 		}
 
+		// Exit if we have xattrs we want (either both or one if the latter is disabled)
 		if len(xattr) > 0 && (len(userXattr) > 0 || userXattrName == "") {
 			return body, xattr, userXattr, nil
 		}
