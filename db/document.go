@@ -506,8 +506,7 @@ func parseXattrStreamData(xattrName string, userXattrName string, data []byte) (
 		xattrKey := string(components[0])
 		if xattrName == xattrKey {
 			xattr = components[1]
-		}
-		if userXattrName != "" && userXattrName == xattrKey {
+		} else if userXattrName != "" && userXattrName == xattrKey {
 			userXattr = components[1]
 		}
 

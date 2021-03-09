@@ -5625,6 +5625,10 @@ func TestUserXattrAutoImport(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	docKey := t.Name()
@@ -5737,6 +5741,10 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	docKey := t.Name()
@@ -5827,6 +5835,10 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	docKey := t.Name()
@@ -5902,6 +5914,10 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 func TestRemovingUserXattr(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
 	}
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
