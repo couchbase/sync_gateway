@@ -185,13 +185,29 @@ func (rc *LRURevisionCache) Put(docRev DocumentRevision) {
 	value.store(docRev)
 }
 
-// Update a revision
+// Updates a revision in the cache.
 func (rc *LRURevisionCache) Update(docRev DocumentRevision) {
-	value := rc.getValue(docRev.DocID, docRev.RevID, false)
-	if value != nil {
-		rc.removeValue(value)
+	rc.lock.Lock()
+
+	key := IDAndRev{DocID: docRev.DocID, RevID: docRev.RevID}
+
+	// If element exists remove from lrulist
+	if elem := rc.cache[key]; elem != nil {
+		rc.lruList.Remove(elem)
 	}
-	rc.Put(docRev)
+
+	// Add new value and overwrite existing cache key, pushing to front to maintain order
+	value := &revCacheValue{key: key}
+	rc.cache[key] = rc.lruList.PushFront(value)
+
+	// Purge oldest item if required
+	for len(rc.cache) > int(rc.capacity) {
+		rc.purgeOldest_()
+	}
+
+	value.store(docRev)
+
+	rc.lock.Unlock()
 }
 
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
