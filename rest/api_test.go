@@ -6027,6 +6027,10 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	docKey := t.Name()
