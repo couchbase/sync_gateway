@@ -6067,6 +6067,11 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
+	docRev, err := rt.GetDatabase().GetRevisionCacheForTest().Get(docKey, syncData.CurrentRev, true, false)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(docRev.Channels.ToArray()))
+	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
+
 	// Write xattr to trigger import of user xattr
 	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
 	assert.NoError(t, err)
@@ -6082,9 +6087,14 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
+	docRev2, err := rt.GetDatabase().GetRevisionCacheForTest().Get(docKey, syncData.CurrentRev, true, false)
+	assert.NoError(t, err)
+	assert.Equal(t, syncData2.CurrentRev, docRev2.RevID)
+
 	assert.Equal(t, syncData.CurrentRev, syncData2.CurrentRev)
 	assert.True(t, syncData2.Sequence > syncData.Sequence)
 	assert.Equal(t, []string{channelName}, syncData2.Channels.KeySet())
+	assert.Equal(t, syncData2.Channels.KeySet(), docRev2.Channels.ToArray())
 
 	err = gocbBucket.Set(docKey, 0, `{"update": "update"}`)
 	assert.NoError(t, err)

@@ -54,6 +54,10 @@ func (sc *ShardedLRURevisionCache) Put(docRev DocumentRevision) {
 	sc.getShard(docRev.DocID).Put(docRev)
 }
 
+func (sc *ShardedLRURevisionCache) Update(docRev DocumentRevision) {
+	sc.getShard(docRev.DocID).Update(docRev)
+}
+
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
 	cache        map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
@@ -179,6 +183,15 @@ func (rc *LRURevisionCache) Put(docRev DocumentRevision) {
 	}
 	value := rc.getValue(docRev.DocID, docRev.RevID, true)
 	value.store(docRev)
+}
+
+// Update a revision
+func (rc *LRURevisionCache) Update(docRev DocumentRevision) {
+	value := rc.getValue(docRev.DocID, docRev.RevID, false)
+	if value != nil {
+		rc.removeValue(value)
+	}
+	rc.Put(docRev)
 }
 
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {

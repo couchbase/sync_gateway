@@ -79,6 +79,11 @@ func (rc *BypassRevisionCache) Put(docRev DocumentRevision) {
 	// no-op
 }
 
+// Update is a no-op for a BypassRevisionCache
+func (rc *BypassRevisionCache) Update(docRev DocumentRevision) {
+	// no-op
+}
+
 // UpdateDelta is a no-op for a BypassRevisionCache
 func (rc *BypassRevisionCache) UpdateDelta(docID, revID string, toDelta RevisionDelta) {
 	// no-op
