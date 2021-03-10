@@ -339,7 +339,7 @@ func TestRebuildRoleChannels(t *testing.T) {
 	auth := NewAuthenticator(bucket, &computer)
 	role, err := auth.NewRole("testRole", ch.SetOf(t, "explicit1"))
 	assert.NoError(t, err)
-	err = auth.InvalidateChannels(role)
+	err = auth.InvalidateChannels(role, 1)
 	assert.Equal(t, nil, err)
 
 	role2, err := auth.GetRole("testRole")
@@ -355,7 +355,7 @@ func TestRebuildChannelsError(t *testing.T) {
 	auth := NewAuthenticator(bucket, &computer)
 	role, err := auth.NewRole("testRole2", ch.SetOf(t, "explicit1"))
 	assert.NoError(t, err)
-	assert.Equal(t, nil, auth.InvalidateChannels(role))
+	assert.Equal(t, nil, auth.InvalidateChannels(role, 1))
 
 	computer.err = errors.New("I'm sorry, Dave.")
 
@@ -383,7 +383,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	goassert.DeepEquals(t, user1.RoleNames(), expected)
 
 	// Invalidate the roles, triggers rebuild
-	err = auth.InvalidateRoles(user1)
+	err = auth.InvalidateRoles(user1, 1)
 	assert.Equal(t, nil, err)
 
 	user2, err := auth.GetUser("testUser")
@@ -522,7 +522,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 			t.Errorf("User is nil prior to invalidate channels, error: %v", getErr)
 		}
 
-		invalidateErr := auth.InvalidateChannels(user)
+		invalidateErr := auth.InvalidateChannels(user, 1)
 		if invalidateErr != nil {
 			t.Errorf("Error invalidating user's channels: %v", invalidateErr)
 		}
@@ -554,7 +554,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 			t.Errorf("User is nil prior to invalidate roles, error: %v", getErr)
 		}
 
-		updateErr := auth.InvalidateRoles(user)
+		updateErr := auth.InvalidateRoles(user, 1)
 		if updateErr != nil {
 			t.Errorf("Error invalidating roles: %v", updateErr)
 		}
@@ -1239,4 +1239,1074 @@ func TestAuthenticateUntrustedJWT(t *testing.T) {
 		assert.Error(t, err, "Error authenticating with trusted JWT")
 		assert.Nil(t, user, "User shouldn't be returned without signature verification")
 	})
+}
+
+type mockComputerV2 struct {
+	channels     map[string]ch.TimedSet
+	roles        map[string]ch.TimedSet
+	roleChannels map[string]ch.TimedSet
+	err          error
+}
+
+func (m mockComputerV2) ComputeChannelsForPrincipal(principal Principal) (ch.TimedSet, error) {
+	if user, ok := principal.(User); ok {
+		return m.channels[user.Name()].Copy(), nil
+	} else {
+		return m.roleChannels[principal.Name()].Copy(), nil
+	}
+}
+
+func (m mockComputerV2) ComputeRolesForUser(user User) (ch.TimedSet, error) {
+	return m.roles[user.Name()].Copy(), nil
+}
+
+func (m mockComputerV2) addRoleChannels(t *testing.T, auth *Authenticator, princ Principal, roleName, channelName string, invalSeq uint64) {
+	if _, ok := m.roleChannels[roleName]; !ok {
+		m.roleChannels[roleName] = ch.TimedSet{}
+	}
+
+	m.roleChannels[roleName].Add(ch.AtSequence(ch.SetOf(t, channelName), invalSeq))
+	err := auth.InvalidateChannels(princ, invalSeq)
+	assert.NoError(t, err)
+	err = auth.Save(princ)
+	assert.NoError(t, err)
+}
+
+func (m mockComputerV2) removeRoleChannel(t *testing.T, auth *Authenticator, princ Principal, roleName, channelName string, invalSeq uint64) {
+	delete(m.roleChannels[roleName], channelName)
+	err := auth.InvalidateChannels(princ, invalSeq)
+	assert.NoError(t, err)
+	err = auth.Save(princ)
+	assert.NoError(t, err)
+}
+
+func (m mockComputerV2) addRole(t *testing.T, auth *Authenticator, user User, userName, roleName string, invalSeq uint64) {
+	if _, ok := m.roles[userName]; !ok {
+		m.roles[userName] = ch.TimedSet{}
+	}
+
+	m.roles[userName].Add(ch.AtSequence(ch.SetOf(t, roleName), invalSeq))
+	err := auth.InvalidateRoles(user, invalSeq)
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+}
+
+func (m mockComputerV2) removeRole(t *testing.T, auth *Authenticator, user User, userName, roleName string, invalSeq uint64) {
+	delete(m.roles[userName], roleName)
+	err := auth.InvalidateRoles(user, invalSeq)
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+}
+
+// func setupRevocationScenarios(t *testing.T) (computer, user, role) {
+//
+// }
+
+func TestRevocationScenario1(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	// Get Principals / Rebuild
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should have access to ch1 via role
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	// Get Principals / Rebuild
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes to access
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	// Get Principals / Rebuild
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes to access
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Get Principals / Rebuild
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User has no access to channel via role
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+}
+
+func TestRevocationScenario2(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	// Get Principals / Rebuild Seq 25
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should have access to ch1 via role
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+
+	// Get Principals / Rebuild Seq 50
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should no longer have access to doc
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	// Rebuild seq 80
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should have access to ch1
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Rebuild seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok = aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
+
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+}
+
+func TestRevocationScenario3(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	// Get Principals / Rebuild Seq 25
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should have access to ch1 via role
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	// Rebuild seq 60
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	// Rebuild seq 80
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Has access to doc
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Rebuild seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	userRoleHistory, ok = aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
+
+	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+
+	assert.Equal(t, SomeEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, SomeEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
+}
+
+func TestRevocationScenario4(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	// Get Principals / Rebuild Seq 25
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should have access to ch1 via role
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+
+	// Get Principals / Rebuild Seq 70
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	// Get Principals / Rebuild Seq 80
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+	// TODO: User has access
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Get Principals / Rebuild Seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, SomeEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
+}
+
+func TestRevocationScenario5(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	// Get Principals / Rebuild Seq 25
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should have access to ch1 via role
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	// Get Principals / Rebuild Seq 80
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Get Principals / Rebuild Seq 80
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+}
+
+func TestRevocationScenario6(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	// Get Principals / Rebuild Seq 25
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should have access to ch1 via role
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+
+	// Rebuild seq 90
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Rebuild seq 100
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+
+	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+}
+
+func TestRevocationScenario7(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	// Get Principals / Rebuild Seq 25
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: User should have access to ch1 via role
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Get Principals / Rebuild Seq 100
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+
+	// Get Principals / Rebuild Seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes - doc is still revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+}
+
+func TestRevocationScenario8(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+
+	// Get Principals / Rebuild Seq 50
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Rebuild seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+}
+
+func TestRevocationScenario9(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	// Get Principals / Rebuild Seq 60
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Rebuild seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+}
+
+func TestRevocationScenario10(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+
+	// Get Principals / Rebuild Seq 70
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Rebuild seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+}
+
+func TestRevocationScenario11(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	// Get Principals / Rebuild Seq 80
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Has access to doc
+	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Rebuild seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: Doc revoked
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+
+	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+}
+
+func TestRevocationScenario12(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+
+	// Get Principals / Rebuild Seq 90
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Rebuild seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, SomeEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+}
+
+func TestRevocationScenario13(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	getPrincipals := func(auth *Authenticator) (*userImpl, Principal) {
+		principal, err := auth.GetPrincipal("alice", true)
+		assert.NoError(t, err)
+		userPrincipal, ok := principal.(*userImpl)
+		assert.True(t, ok)
+		rolePrincipal, err := auth.GetPrincipal("foo", false)
+		assert.NoError(t, err)
+		return userPrincipal, rolePrincipal
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+
+	user, err := auth.NewUser("alice", "password", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	role, err := auth.NewRole("foo", ch.SetOf(t))
+	assert.NoError(t, err)
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get principals to do initial ops on
+	alicePrincipal, err := auth.GetPrincipal("alice", true)
+	assert.NoError(t, err)
+	aliceUserPrincipal, ok := alicePrincipal.(*userImpl)
+	assert.True(t, ok)
+	fooPrincipal, err := auth.GetPrincipal("foo", false)
+	assert.NoError(t, err)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 55)
+
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 65)
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 75)
+
+	testMockComputer.removeRoleChannel(t, auth, fooPrincipal, "foo", "ch1", 85)
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 95)
+
+	// Get Principals / Rebuild Seq 100
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
+
+	// Rebuild seq 110
+	aliceUserPrincipal, fooPrincipal = getPrincipals(auth)
+
+	// TODO: No changes
+	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 }

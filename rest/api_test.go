@@ -5662,3 +5662,196 @@ func TestUserXattrSyncFn(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"channel"}, doc.SyncData.Channels.KeySet())
 }
+
+func fillToSeq(rt *RestTester, revid string, seq uint64) (string, error) {
+
+	currentSeq, err := rt.GetDatabase().LastSequence()
+	if err != nil {
+		return "", err
+	}
+
+	loopCount := seq - currentSeq - 1
+	for i := 0; i < int(loopCount); i++ {
+		requestURL := "/db/fillerDoc"
+		if revid != "" {
+			requestURL += "?rev=" + revid
+		}
+		resp := rt.SendAdminRequest("PUT", requestURL, "{}")
+		if resp.Code != http.StatusCreated {
+			return "", fmt.Errorf("not correct resp code")
+		}
+
+		var body db.Body
+		err = json.Unmarshal(resp.BodyBytes(), &body)
+		if err != nil {
+			return "", err
+		}
+
+		revid = body["rev"].(string)
+	}
+
+	return revid, nil
+}
+
+func (rt *RestTester) createDocReturnRev(t *testing.T, docid string, revid string, bodyIn interface{}) string {
+	bodyJSON, err := base.JSONMarshal(bodyIn)
+	assert.NoError(t, err)
+
+	url := "/db/" + docid
+	if url != "" {
+		url += "?rev=" + revid
+	}
+
+	resp := rt.SendAdminRequest("PUT", url, string(bodyJSON))
+	assertStatus(t, resp, http.StatusCreated)
+
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &body))
+	goassert.Equals(t, body["ok"], true)
+	revid = body["rev"].(string)
+	if revid == "" {
+		t.Fatalf("No revid in response for PUT doc")
+	}
+	return revid
+}
+
+func TestRevocationV1(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `
+			function (doc, oldDoc){
+				if (doc._id === 'userRoles'){
+					for (var key in doc.roles){
+						role(key, doc.roles[key]);
+					}
+				}
+				if (doc._id === 'roleChannels'){
+					for (var key in doc.channels){
+						access(key, doc.channels[key]);
+					}
+				}
+				if (doc._id === 'userChannels'){
+					for (var key in doc.channels){
+						access(key, doc.channels[key]);
+					}
+				}
+				if (doc._id === 'doc1'){
+					channel('ch1');
+				}
+				
+			}`,
+	})
+
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "pass", "email": "user@couchbase.com"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db/_role/foo", `{}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	type UserRoles struct {
+		Roles map[string][]string `json:"roles"`
+	}
+
+	type Channels struct {
+		Channels map[string][]string `json:"channels"`
+	}
+
+	userRoles := UserRoles{Roles: map[string][]string{}}
+	_ = userRoles
+
+	roleChannels := Channels{Channels: map[string][]string{}}
+	_ = roleChannels
+
+	userChannels := Channels{Channels: map[string][]string{}}
+	_ = userChannels
+
+	revid, err := fillToSeq(rt, "", 5)
+	assert.NoError(t, err)
+
+	roleChannels.Channels["role:foo"] = []string{"ch1"}
+	roleChannelsRev := rt.createDocReturnRev(t, "roleChannels", "", roleChannels)
+
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=0", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	revid, err = fillToSeq(rt, revid, 20)
+	assert.NoError(t, err)
+
+	userRoles.Roles["user"] = []string{"role:foo"}
+	userRolesRev := rt.createDocReturnRev(t, "userRoles", "", userRoles)
+
+	revid, err = fillToSeq(rt, revid, 26)
+	assert.NoError(t, err)
+
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=5", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	revid, err = fillToSeq(rt, revid, 41)
+	assert.NoError(t, err)
+
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=25", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	revid, err = fillToSeq(rt, revid, 45)
+	assert.NoError(t, err)
+
+	userRoles.Roles["user"] = []string{}
+	userRolesRev = rt.createDocReturnRev(t, "userRoles", userRolesRev, userRoles)
+
+	revid, err = fillToSeq(rt, revid, 55)
+	assert.NoError(t, err)
+
+	roleChannels.Channels["role:foo"] = []string{}
+	roleChannelsRev = rt.createDocReturnRev(t, "roleChannels", roleChannelsRev, roleChannels)
+
+	revid, err = fillToSeq(rt, revid, 65)
+	assert.NoError(t, err)
+
+	userRoles.Roles["user"] = []string{"role:foo"}
+	userRolesRev = rt.createDocReturnRev(t, "userRoles", userRolesRev, userRoles)
+
+	revid, err = fillToSeq(rt, revid, 75)
+	assert.NoError(t, err)
+
+	roleChannels.Channels["role:foo"] = []string{"ch1"}
+	roleChannelsRev = rt.createDocReturnRev(t, "roleChannels", roleChannelsRev, roleChannels)
+
+	revid, err = fillToSeq(rt, revid, 81)
+	assert.NoError(t, err)
+
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=40", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	revid, err = fillToSeq(rt, revid, 85)
+	assert.NoError(t, err)
+
+	roleChannels.Channels["role:foo"] = []string{}
+	roleChannelsRev = rt.createDocReturnRev(t, "roleChannels", roleChannelsRev, roleChannels)
+
+	revid, err = fillToSeq(rt, revid, 95)
+	assert.NoError(t, err)
+
+	userRoles.Roles["user"] = []string{}
+	userRolesRev = rt.createDocReturnRev(t, "userRoles", userRolesRev, userRoles)
+
+	revid, err = fillToSeq(rt, revid, 111)
+	assert.NoError(t, err)
+
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=80", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	t.Fail()
+}

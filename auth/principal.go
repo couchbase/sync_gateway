@@ -33,10 +33,14 @@ type Principal interface {
 	SetExplicitChannels(ch.TimedSet)
 
 	// The previous set of channels the Principal was granted.  Used to maintain sequence history.
-	PreviousChannels() ch.TimedSet
+	PreviousChannels() *PreviousChannelsOrRole
 
 	// Sets the previous set of channels the Principal has access to.
-	SetPreviousChannels(ch.TimedSet)
+	SetPreviousChannels(*PreviousChannelsOrRole)
+
+	ChannelHistory() ChannelOrRoleHistory
+
+	SetChannelHistory(history ChannelOrRoleHistory)
 
 	// Returns true if the Principal has access to the given channel.
 	CanSeeChannel(channel string) bool
@@ -54,6 +58,8 @@ type Principal interface {
 	// Returns an appropriate HTTPError for unauthorized access -- a 401 if the receiver is
 	// the guest user, else 403.
 	UnauthError(message string) error
+
+	RevokedChannels(sinceSeq uint64) []string
 
 	DocID() string
 	accessViewKey() string
@@ -101,6 +107,14 @@ type User interface {
 	// Sets the explicit roles the user belongs to.
 	SetExplicitRoles(ch.TimedSet)
 
+	PreviousRoles() *PreviousChannelsOrRole
+
+	SetPreviousRoles(set *PreviousChannelsOrRole)
+
+	SetRoleHistory(history ChannelOrRoleHistory)
+
+	RoleHistory() ChannelOrRoleHistory
+
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet
 
@@ -111,6 +125,8 @@ type User interface {
 	// Returns a TimedSet containing only the channels from the input set that the user has access
 	// to, annotated with the sequence number at which access was granted.
 	FilterToAvailableChannels(channels base.Set) ch.TimedSet
+
+	GetRevokedChannelsCombined(since uint64) []string
 
 	setRolesSince(ch.TimedSet)
 }

@@ -1888,7 +1888,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	doc.deleteRemovedRevisionBodies(db.Bucket)
 
 	// Mark affected users/roles as needing to recompute their channel access:
-	db.MarkPrincipalsChanged(docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers)
+	db.MarkPrincipalsChanged(docid, newRevID, changedAccessPrincipals, changedRoleAccessUsers, doc.Sequence)
 	return doc, newRevID, nil
 }
 
@@ -1912,7 +1912,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 	}
 }
 
-func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changedPrincipals, changedRoleUsers []string) {
+func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changedPrincipals, changedRoleUsers []string, invalSeq uint64) {
 
 	reloadActiveUser := false
 
@@ -1920,7 +1920,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 	if len(changedPrincipals) > 0 {
 		base.InfofCtx(db.Ctx, base.KeyAccess, "Rev %q / %q invalidates channels of %s", base.UD(docid), newRevID, changedPrincipals)
 		for _, changedAccessPrincipalName := range changedPrincipals {
-			db.invalUserOrRoleChannels(changedAccessPrincipalName)
+			db.invalUserOrRoleChannels(changedAccessPrincipalName, invalSeq)
 			// Check whether the active user needs to be recalculated.  Skip check if reload has already been identified
 			// as required for a previous changedPrincipal
 			if db.user != nil && reloadActiveUser == false {
@@ -1947,7 +1947,7 @@ func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changed
 	if len(changedRoleUsers) > 0 {
 		base.InfofCtx(db.Ctx, base.KeyAccess, "Rev %q / %q invalidates roles of %s", base.UD(docid), newRevID, base.UD(changedRoleUsers))
 		for _, name := range changedRoleUsers {
-			db.invalUserRoles(name)
+			db.invalUserRoles(name, invalSeq)
 			//If this is the current in memory db.user, reload to generate updated roles
 			if db.user != nil && db.user.Name() == name {
 				base.DebugfCtx(db.Ctx, base.KeyAccess, "Role set for active user has been modified - user %q will be reloaded.", base.UD(db.user.Name()))

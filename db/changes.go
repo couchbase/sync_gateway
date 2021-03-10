@@ -47,6 +47,7 @@ type ChangeEntry struct {
 	ID           string          `json:"id"`
 	Deleted      bool            `json:"deleted,omitempty"`
 	Removed      base.Set        `json:"removed,omitempty"`
+	Revoked      bool            `json:"revoked,omitempty"`
 	Doc          json.RawMessage `json:"doc,omitempty"`
 	Changes      []ChangeRev     `json:"changes"`
 	Err          error           `json:"err,omitempty"` // Used to notify feed consumer of errors
@@ -170,6 +171,52 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 	}
 }
 
+func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
+
+	feed := make(chan *ChangeEntry, 1)
+
+	// Iterate up to here
+	sinceVal := options.Since.Seq
+	_ = sinceVal
+
+	// Copy changesOptions so we can modify since and limit. Start at 0.
+	paginationOptions := options
+	paginationOptions.Since.Seq = 0
+	paginationOptions.Since.LowSeq = 0
+
+	go func() {
+		defer close(feed)
+
+		changes, err := singleChannelCache.GetChanges(paginationOptions)
+		if err != nil {
+			fmt.Println("error")
+		}
+
+		for _, logEntry := range changes {
+			seqID := SequenceID{
+				Seq:         logEntry.Sequence,
+				TriggeredBy: 85,
+			}
+
+			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName(), true)
+			select {
+			case <-options.Terminator:
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "Revoked thing stopped")
+				return
+
+			case feed <- &change:
+				fmt.Println("Yay Did a change")
+			}
+
+		}
+
+		return
+
+	}()
+
+	return feed
+}
+
 // Creates a Go-channel of all the changes made on a channel.
 // Does NOT handle the Wait option. Does NOT check authorization.
 func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
@@ -228,7 +275,7 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 					TriggeredBy: options.Since.TriggeredBy,
 				}
 
-				change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
+				change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName(), false)
 				lastSeq = logEntry.Sequence
 
 				// Don't include deletes or removals during initial channel backfill
@@ -263,7 +310,7 @@ func (db *Database) changesFeed(singleChannelCache SingleChannelCache, options C
 	return feed
 }
 
-func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) ChangeEntry {
+func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string, revoked bool) ChangeEntry {
 	change := ChangeEntry{
 		Seq:          seqID,
 		ID:           logEntry.DocID,
@@ -275,6 +322,10 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 
 	if logEntry.Flags&channels.Removed != 0 {
 		change.Removed = base.SetOf(channelName)
+	}
+
+	if revoked {
+		change.Revoked = true
 	}
 
 	return change
@@ -591,6 +642,19 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// If the user object has changed, create a special pseudo-feed for it:
 			if db.user != nil {
 				feeds, names = db.appendUserFeed(feeds, names, options)
+			}
+
+			// get revoked from user
+			// Get channelHistory / roleHistory from user and roles
+			// Ensure since seq is within one of the bounds
+			// Ensure that the chosen channels aren't within the current channels list
+			// Once you have the list of channels: iterate over channels, iterate over docs make change entry with revoked true
+			// triggeredby endseq. Iterate over docs from 0 to since.
+			channelsToRevoke := db.user.GetRevokedChannelsCombined(options.Since.SafeSequence())
+			for _, channel := range channelsToRevoke {
+				feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, "")
+				feeds = append(feeds, feed)
+				names = append(names, channel)
 			}
 
 			current := make([]*ChangeEntry, len(feeds))
@@ -917,7 +981,7 @@ func (db *Database) getLateFeed(feedHandler *lateSequenceFeed, singleChannelCach
 			seqID := SequenceID{
 				Seq: logEntry.Sequence,
 			}
-			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
+			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName(), false)
 			feed <- &change
 		}
 	}()

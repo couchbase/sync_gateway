@@ -20,13 +20,31 @@ import (
 
 /** A group that users can belong to, with associated channel permissions. */
 type roleImpl struct {
-	Name_             string      `json:"name,omitempty"`
-	ExplicitChannels_ ch.TimedSet `json:"admin_channels,omitempty"`
-	Channels_         ch.TimedSet `json:"all_channels"`
-	Sequence_         uint64      `json:"sequence"`
-	PreviousChannels_ ch.TimedSet `json:"previous_channels,omitempty"`
+	Name_             string                  `json:"name,omitempty"`
+	ExplicitChannels_ ch.TimedSet             `json:"admin_channels,omitempty"`
+	Channels_         ch.TimedSet             `json:"all_channels"`
+	Sequence_         uint64                  `json:"sequence"`
+	PreviousChannels_ *PreviousChannelsOrRole `json:"previous_channels,omitempty"`
+	ChannelHistory_   ChannelOrRoleHistory    `json:"channel_history,omitempty"`
 	vbNo              *uint16
 	cas               uint64
+}
+
+type PreviousChannelsOrRole struct {
+	InvalSeq uint64      `json:"inval_seq"`
+	Entries  ch.TimedSet `json:"entries"`
+}
+
+type ChannelOrRoleHistory map[string]ChannelOrRoleHistoryEntry
+
+type ChannelOrRoleHistoryEntry struct {
+	UpdatedAt int64       `json:"updated_at"`
+	Entries   []SomeEntry `json:"entries"`
+}
+
+type SomeEntry struct {
+	Seq    uint64 `json:"seq"`
+	EndSeq uint64 `json:"end_seq"`
 }
 
 var kValidNameRegexp = regexp.MustCompile(`^[-+.@%\w]*$`)
@@ -105,12 +123,20 @@ func (role *roleImpl) SetExplicitChannels(channels ch.TimedSet) {
 	role.setChannels(nil)
 }
 
-func (role *roleImpl) PreviousChannels() ch.TimedSet {
+func (role *roleImpl) PreviousChannels() *PreviousChannelsOrRole {
 	return role.PreviousChannels_
 }
 
-func (role *roleImpl) SetPreviousChannels(channels ch.TimedSet) {
+func (role *roleImpl) SetPreviousChannels(channels *PreviousChannelsOrRole) {
 	role.PreviousChannels_ = channels
+}
+
+func (role *roleImpl) SetChannelHistory(history ChannelOrRoleHistory) {
+	role.ChannelHistory_ = history
+}
+
+func (role *roleImpl) ChannelHistory() ChannelOrRoleHistory {
+	return role.ChannelHistory_
 }
 
 // Checks whether this role object contains valid data; if not, returns an error.
@@ -151,6 +177,20 @@ func (role *roleImpl) AuthorizeAllChannels(channels base.Set) error {
 
 func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(role, channels)
+}
+
+func (role *roleImpl) RevokedChannels(sinceSeq uint64) (revokedChannels []string) {
+	for channelHistoryName, history := range role.ChannelHistory() {
+		if !role.Channels().Contains(channelHistoryName) {
+			for _, historyEntry := range history.Entries {
+				if historyEntry.Seq <= sinceSeq && historyEntry.EndSeq >= sinceSeq {
+					revokedChannels = append(revokedChannels, channelHistoryName)
+				}
+			}
+		}
+	}
+
+	return revokedChannels
 }
 
 // Returns an HTTP 403 error if the Principal is not allowed to access all the given channels.

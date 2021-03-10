@@ -157,30 +157,59 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	channels := princ.ExplicitChannels().Copy()
 
-	// Changes for vbucket sequence management.  We can't determine relative ordering of sequences
-	// across vbuckets. To avoid redundant channel backfills during changes processing, we maintain
-	// the previous vb/seq for a channel in PreviousChannels.  If that channel is still present during
-	// this rebuild, we reuse the vb/seq from PreviousChannels (using UpdateIfPresent).  If PreviousChannels
-	// is nil, reverts to normal sequence handling.
-
-	previousChannels := princ.PreviousChannels().Copy()
-	if previousChannels != nil {
-		channels.UpdateIfPresent(previousChannels)
-	}
-
 	if auth.channelComputer != nil {
 		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
 		if err != nil {
 			base.Warnf("channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
 			return err
 		}
-		if previousChannels != nil {
-			viewChannels.UpdateIfPresent(previousChannels)
-		}
 		channels.Add(viewChannels)
 	}
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
+
+	var previousChannelEntries ch.TimedSet
+	var previousInvalSeq uint64
+
+	if princ.PreviousChannels() != nil {
+		previousChannelEntries = princ.PreviousChannels().Entries
+		previousInvalSeq = princ.PreviousChannels().InvalSeq
+	}
+
+	removedChannels := ch.TimedSet{}
+	for previousChannelName, previousChannelInfo := range previousChannelEntries {
+		if _, ok := channels[previousChannelName]; !ok {
+			removedChannels[previousChannelName] = previousChannelInfo
+		}
+	}
+
+	channelHistory := princ.ChannelHistory()
+	if channelHistory == nil {
+		channelHistory = map[string]ChannelOrRoleHistoryEntry{}
+	}
+
+	for name, channelInfo := range removedChannels {
+		currentChannelHistory, ok := channelHistory[name]
+
+		if !ok {
+			currentChannelHistory = ChannelOrRoleHistoryEntry{}
+		}
+
+		currentChannelHistory.UpdatedAt = time.Now().UnixNano()
+		currentChannelHistory.Entries = append(currentChannelHistory.Entries, SomeEntry{
+			Seq:    channelInfo.Sequence,
+			EndSeq: previousInvalSeq,
+		})
+
+		channelHistory[name] = currentChannelHistory
+	}
+
+	if len(channelHistory) != 0 {
+		princ.SetChannelHistory(channelHistory)
+	}
+
+	fmt.Printf("Removed Channel Grants: %v\n", removedChannels.String())
+	fmt.Printf("Channel History: %v\n", channelHistory)
 
 	base.Infof(base.KeyAccess, "Recomputed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
 	princ.SetPreviousChannels(nil)
@@ -208,8 +237,51 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(explicit)
 	}
 
+	var previousRoleEntries ch.TimedSet
+	var previousInvalSeq uint64
+
+	if user.PreviousRoles() != nil {
+		previousRoleEntries = user.PreviousRoles().Entries
+		previousInvalSeq = user.PreviousRoles().InvalSeq
+	}
+
+	removedRoles := ch.TimedSet{}
+	for previousRoleName, previousRoleInfo := range previousRoleEntries {
+		if _, ok := roles[previousRoleName]; !ok {
+			removedRoles[previousRoleName] = previousRoleInfo
+		}
+	}
+
+	roleHistory := user.RoleHistory()
+	if roleHistory == nil {
+		roleHistory = map[string]ChannelOrRoleHistoryEntry{}
+	}
+
+	for name, roleInfo := range removedRoles {
+		currentRoleHistory, ok := roleHistory[name]
+		if !ok {
+			currentRoleHistory = ChannelOrRoleHistoryEntry{}
+		}
+
+		currentRoleHistory.UpdatedAt = time.Now().UnixNano()
+		currentRoleHistory.Entries = append(currentRoleHistory.Entries, SomeEntry{
+			Seq:    roleInfo.Sequence,
+			EndSeq: previousInvalSeq,
+		})
+
+		roleHistory[name] = currentRoleHistory
+	}
+
+	if len(roleHistory) != 0 {
+		user.SetRoleHistory(roleHistory)
+	}
+
+	fmt.Printf("Removed Role Grants: %v\n", removedRoles.String())
+	fmt.Printf("Role History: %v\n", roleHistory)
+
 	base.Infof(base.KeyAccess, "Computed roles for %q: %s", base.UD(user.Name()), base.UD(roles))
 	user.setRolesSince(roles)
+	user.SetPreviousRoles(nil)
 	return nil
 }
 
@@ -265,7 +337,7 @@ func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 }
 
 // Invalidates the channel list of a user/role by saving its Channels() property as nil.
-func (auth *Authenticator) InvalidateChannels(p Principal) error {
+func (auth *Authenticator) InvalidateChannels(p Principal, invalSeq uint64) error {
 	invalidateChannelsCallback := func(p Principal) (updatedPrincipal Principal, err error) {
 
 		if p == nil || p.Channels() == nil {
@@ -273,6 +345,14 @@ func (auth *Authenticator) InvalidateChannels(p Principal) error {
 		}
 
 		base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(p.Name()))
+
+		if p.PreviousChannels() == nil {
+			p.SetPreviousChannels(&PreviousChannelsOrRole{
+				Entries:  p.Channels(),
+				InvalSeq: invalSeq,
+			})
+		}
+
 		p.setChannels(nil)
 		return p, nil
 	}
@@ -280,7 +360,7 @@ func (auth *Authenticator) InvalidateChannels(p Principal) error {
 }
 
 // Invalidates the role list of a user by saving its Roles() property as nil.
-func (auth *Authenticator) InvalidateRoles(user User) error {
+func (auth *Authenticator) InvalidateRoles(user User, invalSeq uint64) error {
 
 	invalidateRolesCallback := func(p Principal) (updatedPrincipal Principal, err error) {
 		user, ok := p.(User)
@@ -291,6 +371,15 @@ func (auth *Authenticator) InvalidateRoles(user User) error {
 			return p, base.ErrUpdateCancel
 		}
 		base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(user.Name()))
+
+		if user.PreviousRoles() == nil {
+			roleNames := user.RoleNames()
+			user.SetPreviousRoles(&PreviousChannelsOrRole{
+				InvalSeq: invalSeq,
+				Entries:  roleNames,
+			})
+		}
+
 		user.setRolesSince(nil)
 		return user, nil
 	}

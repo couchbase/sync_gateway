@@ -29,15 +29,62 @@ type userImpl struct {
 	roles []Role
 }
 
+func (user *userImpl) GetRevokedChannelsCombined(since uint64) []string {
+	rolesToRedact := []string{}
+	roleHistory := user.RoleHistory()
+	for roleName, history := range roleHistory {
+		if !user.RoleNames().Contains(roleName) {
+			for _, entry := range history.Entries {
+				if entry.Seq <= since && entry.EndSeq >= since {
+					rolesToRedact = append(rolesToRedact, roleName)
+				}
+			}
+		}
+	}
+
+	userRevokedChannels := user.RevokedChannels(since)
+	combinedRevokedChannels := make([]string, len(userRevokedChannels))
+
+	for idx, revChan := range userRevokedChannels {
+		combinedRevokedChannels[idx] = revChan
+	}
+
+	for _, roleName := range rolesToRedact {
+		role, err := user.auth.GetRole(roleName)
+		if err != nil {
+			panic(err)
+		}
+		for _, revChan := range role.RevokedChannels(since) {
+			combinedRevokedChannels = append(combinedRevokedChannels, revChan)
+		}
+	}
+
+	// Make unique, do some smart stuff
+	seen := make(map[string]struct{}, len(combinedRevokedChannels))
+	i := 0
+	for _, revChan := range combinedRevokedChannels {
+		if _, ok := seen[revChan]; ok {
+			continue
+		}
+		seen[revChan] = struct{}{}
+		combinedRevokedChannels[i] = revChan
+		i++
+	}
+
+	return combinedRevokedChannels[:i]
+}
+
 // Marshallable data is stored in separate struct from userImpl,
 // to work around limitations of JSON marshaling.
 type userImplBody struct {
-	Email_           string      `json:"email,omitempty"`
-	Disabled_        bool        `json:"disabled,omitempty"`
-	PasswordHash_    []byte      `json:"passwordhash_bcrypt,omitempty"`
-	OldPasswordHash_ interface{} `json:"passwordhash,omitempty"` // For pre-beta compatibility
-	ExplicitRoles_   ch.TimedSet `json:"explicit_roles,omitempty"`
-	RolesSince_      ch.TimedSet `json:"rolesSince"`
+	Email_           string                  `json:"email,omitempty"`
+	Disabled_        bool                    `json:"disabled,omitempty"`
+	PasswordHash_    []byte                  `json:"passwordhash_bcrypt,omitempty"`
+	OldPasswordHash_ interface{}             `json:"passwordhash,omitempty"` // For pre-beta compatibility
+	ExplicitRoles_   ch.TimedSet             `json:"explicit_roles,omitempty"`
+	RolesSince_      ch.TimedSet             `json:"rolesSince"`
+	PreviousRoles_   *PreviousChannelsOrRole `json:"previous_roles,omitempty"`
+	RoleHistory_     ChannelOrRoleHistory    `json:"role_history,omitempty"`
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
@@ -146,6 +193,14 @@ func (user *userImpl) setRolesSince(rolesSince ch.TimedSet) {
 	user.roles = nil // invalidate in-memory cache list of Role objects
 }
 
+func (user *userImpl) PreviousRoles() *PreviousChannelsOrRole {
+	return user.PreviousRoles_
+}
+
+func (user *userImpl) SetPreviousRoles(roles *PreviousChannelsOrRole) {
+	user.PreviousRoles_ = roles
+}
+
 func (user *userImpl) ExplicitRoles() ch.TimedSet {
 	return user.ExplicitRoles_
 }
@@ -153,6 +208,14 @@ func (user *userImpl) ExplicitRoles() ch.TimedSet {
 func (user *userImpl) SetExplicitRoles(roles ch.TimedSet) {
 	user.ExplicitRoles_ = roles
 	user.setRolesSince(nil) // invalidate persistent cache of role names
+}
+
+func (user *userImpl) SetRoleHistory(history ChannelOrRoleHistory) {
+	user.RoleHistory_ = history
+}
+
+func (user *userImpl) RoleHistory() ChannelOrRoleHistory {
+	return user.RoleHistory_
 }
 
 // Returns true if the given password is correct for this user, and the account isn't disabled.
