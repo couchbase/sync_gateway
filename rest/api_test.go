@@ -5620,17 +5620,35 @@ func TestUptimeStat(t *testing.T) {
 	assert.True(t, uptime1 < uptime2)
 }
 
-func TestUserXattrSyncFn(t *testing.T) {
+func TestUserXattrAutoImport(t *testing.T) {
 	if base.UnitTestUrlIsWalrus() {
-		t.Skip("Couchbase buckets only")
+		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	docKey := t.Name()
+	xattrKey := "myXattr"
+	channelName := "testChan"
+
+	// Sync function to set channel access to whatever xattr is
 	rt := NewRestTester(t, &RestTesterConfig{
-		SyncFn: `function(doc, oldDoc, meta){if(meta.xattrs.myxattr !== undefined){channel(meta.xattrs.myxattr);}}`,
 		DatabaseConfig: &DbConfig{
-			UserXattrKey: "myxattr",
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
 		},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+				}
+			}`,
 	})
+
 	defer rt.Close()
 
 	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
@@ -5638,27 +5656,368 @@ func TestUserXattrSyncFn(t *testing.T) {
 		t.Skip("Test requires Couchbase Bucket")
 	}
 
-	var doc struct {
-		SyncData db.SyncData `json:"_sync"`
-	}
-	res := rt.SendAdminRequest("PUT", "/db/doc", "{}")
-	assertStatus(t, res, http.StatusCreated)
+	// Add doc
+	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+	assertStatus(t, resp, http.StatusCreated)
 
-	res = rt.SendAdminRequest("GET", "/db/_raw/doc", "")
-	assertStatus(t, res, http.StatusOK)
-	err := json.Unmarshal(res.BodyBytes(), &doc)
-	require.NoError(t, err)
-	assert.Equal(t, []string{}, doc.SyncData.Channels.KeySet())
-
-	_, err = base.WriteXattr(gocbBucket, "doc", "myxattr", "channel")
+	// Add xattr to doc
+	_, err := base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
-	res = rt.SendAdminRequest("PUT", "/db/doc?rev="+doc.SyncData.CurrentRev, "{}")
-	assertStatus(t, res, http.StatusCreated)
+	// Wait for doc to be imported
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
 
-	res = rt.SendAdminRequest("GET", "/db/_raw/doc", "")
-	assertStatus(t, res, http.StatusOK)
-	err = json.Unmarshal(res.BodyBytes(), &doc)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"channel"}, doc.SyncData.Channels.KeySet())
+	// Ensure sync function has ran twice (once for PUT and once for xattr addition)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+
+	// Get Xattr and ensure channel value set correctly
+	var syncData db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+
+	// Update xattr again but same value and ensure it isn't imported again (crc32 hash should match)
+	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	var syncData2 db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
+	assert.Equal(t, syncData.Crc32cUserXattr, syncData2.Crc32cUserXattr)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+
+	// Update body but same value and ensure it isn't imported again (crc32 hash should match)
+	err = gocbBucket.Set(docKey, 0, map[string]interface{}{})
+	assert.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.Database().Crc32MatchCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	var syncData3 db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData3)
+	assert.NoError(t, err)
+
+	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
+	assert.Equal(t, syncData2.Crc32cUserXattr, syncData3.Crc32cUserXattr)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value())
+
+	// Update body and ensure import occurs
+	updateVal := []byte(`{"prop":"val"}`)
+	err = gocbBucket.Set(docKey, 0, updateVal)
+	assert.NoError(t, err)
+
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+
+	var syncData4 db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData4)
+	assert.NoError(t, err)
+
+	assert.Equal(t, base.Crc32cHashString(updateVal), syncData4.Crc32c)
+	assert.Equal(t, syncData3.Crc32cUserXattr, syncData4.Crc32cUserXattr)
+}
+
+func TestUserXattrOnDemandImportGET(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	docKey := t.Name()
+	xattrKey := "myXattr"
+	channelName := "testChan"
+
+	// Sync function to set channel access to whatever xattr is
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:   false,
+			UserXattrKey: xattrKey,
+		},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+				}
+			}`,
+	})
+
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	// Add doc with SDK
+	err := gocbBucket.Set(docKey, 0, []byte(`{}`))
+	assert.NoError(t, err)
+
+	// GET to trigger import
+	resp := rt.SendAdminRequest("GET", "/db/"+docKey, "")
+	assertStatus(t, resp, http.StatusOK)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has been ran on import
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+
+	// Write user xattr
+	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// GET to trigger import
+	resp = rt.SendAdminRequest("GET", "/db/"+docKey, "")
+	assertStatus(t, resp, http.StatusOK)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has ran on import
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+
+	// Get sync data for doc and ensure user xattr has been used correctly to set channel
+	var syncData db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+
+	// Write same xattr value
+	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// Perform GET and ensure import isn't triggered as crc32 hash is the same
+	resp = rt.SendAdminRequest("GET", "/db/"+docKey, "")
+	assertStatus(t, resp, http.StatusOK)
+
+	var syncData2 db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	assert.NoError(t, err)
+
+	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
+	assert.Equal(t, syncData.Crc32cUserXattr, syncData2.Crc32cUserXattr)
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+}
+
+func TestUserXattrOnDemandImportWrite(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	docKey := t.Name()
+	xattrKey := "myXattr"
+	channelName := "testChan"
+
+	// Sync function to set channel access to whatever xattr is
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:   false,
+			UserXattrKey: xattrKey,
+		},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+				}
+			}`,
+	})
+
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	// Initial PUT
+	resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// SDK PUT
+	err := gocbBucket.Set(docKey, 0, []byte(`{"update": "update"}`))
+	assert.NoError(t, err)
+
+	// Trigger Import
+	resp = rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+	assertStatus(t, resp, http.StatusConflict)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has ran on import
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+
+	// Write user xattr
+	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	assert.NoError(t, err)
+
+	// Trigger import
+	resp = rt.SendAdminRequest("PUT", "/db/"+docKey, `{"update": "update"}`)
+	assertStatus(t, resp, http.StatusConflict)
+
+	// Wait for import
+	err = rt.WaitForCondition(func() bool {
+		return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+	})
+	assert.NoError(t, err)
+
+	// Ensure sync function has ran on import
+	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
+
+	var syncData db.SyncData
+	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	assert.NoError(t, err)
+
+	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+}
+
+func TestRemovingUserXattr(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	testCases := []struct {
+		name          string
+		autoImport    bool
+		importTrigger func(t *testing.T, rt *RestTester, docKey string)
+	}{
+		{
+			name:       "GET",
+			autoImport: false,
+			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
+				resp := rt.SendAdminRequest("GET", "/db/"+docKey, "")
+				assertStatus(t, resp, http.StatusOK)
+			},
+		},
+		{
+			name:       "PUT",
+			autoImport: false,
+			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
+				resp := rt.SendAdminRequest("PUT", "/db/"+docKey, "{}")
+				assertStatus(t, resp, http.StatusConflict)
+			},
+		},
+		{
+			name:       "Auto",
+			autoImport: true,
+			importTrigger: func(t *testing.T, rt *RestTester, docKey string) {
+				// No op
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			docKey := testCase.name
+			xattrKey := "myXattr"
+			channelName := "testChan"
+
+			// Sync function to set channel access to whatever xattr is
+			rt := NewRestTester(t, &RestTesterConfig{
+				DatabaseConfig: &DbConfig{
+					AutoImport:   testCase.autoImport,
+					UserXattrKey: xattrKey,
+				},
+				SyncFn: `
+			function (doc, oldDoc, meta){
+				if (meta.xattrs.myXattr !== undefined){
+					channel(meta.xattrs.myXattr);
+				}
+			}`,
+			})
+
+			defer rt.Close()
+
+			gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+			if !ok {
+				t.Skip("Test requires Couchbase Bucket")
+			}
+
+			// Initial PUT
+			resp := rt.SendAdminRequest("PUT", "/db/"+docKey, `{}`)
+			assertStatus(t, resp, http.StatusCreated)
+
+			// Add xattr
+			_, err := base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+			assert.NoError(t, err)
+
+			// Trigger import
+			testCase.importTrigger(t, rt, docKey)
+			err = rt.WaitForCondition(func() bool {
+				return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 1
+			})
+			assert.NoError(t, err)
+
+			// Get sync data for doc and ensure user xattr has been used correctly to set channel
+			var syncData db.SyncData
+			_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+			assert.NoError(t, err)
+
+			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
+
+			// Delete user xattr
+			_, err = base.DeleteXattr(gocbBucket, docKey, xattrKey)
+			assert.NoError(t, err)
+
+			// Trigger import
+			testCase.importTrigger(t, rt, docKey)
+			err = rt.WaitForCondition(func() bool {
+				return rt.GetDatabase().DbStats.SharedBucketImport().ImportCount.Value() == 2
+			})
+			assert.NoError(t, err)
+
+			// Ensure old channel set with user xattr has been removed
+			var syncData2 db.SyncData
+			_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+			assert.NoError(t, err)
+
+			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
+		})
+	}
 }

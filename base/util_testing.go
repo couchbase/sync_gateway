@@ -463,6 +463,15 @@ func WriteXattr(gocbBucket *CouchbaseBucketGoCB, docKey string, xattrKey string,
 	return uint64(docFrag.Cas()), nil
 }
 
+func DeleteXattr(gocbBucket *CouchbaseBucketGoCB, docKey string, xattrKey string) (uint64, error) {
+	docFrag, err := gocbBucket.Bucket.MutateIn(docKey, 0, 0).RemoveEx(xattrKey, gocb.SubdocFlagXattr).Execute()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(docFrag.Cas()), nil
+}
+
 type dataStore struct {
 	name   string
 	driver CouchbaseDriver

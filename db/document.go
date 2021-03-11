@@ -341,13 +341,15 @@ func (doc *Document) GetMetaMap(userXattrKey string) (map[string]interface{}, er
 }
 
 func (doc *Document) SetCrc32cUserXattrHash() {
-	// If user xattr is nil then the feature has either been disabled or simply this doc doesn't have a user xattr
-	if len(doc.rawUserXattr) == 0 {
-		doc.SyncData.Crc32cUserXattr = ""
-		return
-	}
+	doc.SyncData.Crc32cUserXattr = userXattrCrc32cHash(doc.rawUserXattr)
+}
 
-	doc.SyncData.Crc32cUserXattr = base.Crc32cHashString(doc.rawUserXattr)
+func userXattrCrc32cHash(userXattr []byte) string {
+	// If user xattr is empty then set hash to empty (feature has been disabled or doc doesn't have xattr)
+	if len(userXattr) == 0 {
+		return ""
+	}
+	return base.Crc32cHashString(userXattr)
 }
 
 // Unmarshals a document from JSON data. The doc ID isn't in the data and must be given.  Uses decode to ensure
@@ -412,7 +414,7 @@ func UnmarshalDocumentSyncData(data []byte, needHistory bool) (*SyncData, error)
 // Returns the raw body, in case it's needed for import.
 
 // TODO: Using a pool of unmarshal workers may help prevent memory spikes under load
-func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory bool) (result *SyncData, rawBody []byte, rawXattr []byte, err error) {
+func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, userXattrKey string, needHistory bool) (result *SyncData, rawBody []byte, rawXattr []byte, rawUserXattr []byte, err error) {
 
 	var body []byte
 
@@ -420,9 +422,10 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 	// Note that there could be a non-sync xattr present
 	if dataType&base.MemcachedDataTypeXattr != 0 {
 		var syncXattr []byte
-		body, syncXattr, err = parseXattrStreamData(base.SyncXattrName, data)
+		var userXattr []byte
+		body, syncXattr, userXattr, err = parseXattrStreamData(base.SyncXattrName, userXattrKey, data)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 
 		// If the sync xattr is present, use that to build SyncData
@@ -433,9 +436,9 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 			}
 			err = base.JSONUnmarshal(syncXattr, result)
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
-			return result, body, syncXattr, nil
+			return result, body, syncXattr, userXattr, nil
 		}
 	} else {
 		// Xattr flag not set - data is just the document body
@@ -444,7 +447,7 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 
 	// Non-xattr data, or sync xattr not present.  Attempt to retrieve sync metadata from document body
 	result, err = UnmarshalDocumentSyncData(body, needHistory)
-	return result, body, nil, err
+	return result, body, rawUserXattr, nil, err
 }
 
 // parseXattrStreamData returns the raw bytes of the body and the requested xattr (when present) from the raw DCP data bytes.
@@ -471,16 +474,16 @@ func UnmarshalDocumentSyncDataFromFeed(data []byte, dataType uint8, needHistory 
 	The 0x00 byte after the key saves us from storing a key length, and the trailing 0x00 is just for convenience to allow us to use string functions to search in them.
 */
 
-func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []byte, err error) {
+func parseXattrStreamData(xattrName string, userXattrName string, data []byte) (body []byte, xattr []byte, userXattr []byte, err error) {
 
 	if len(data) < 4 {
-		return nil, nil, base.ErrEmptyMetadata
+		return nil, nil, nil, base.ErrEmptyMetadata
 	}
 
 	xattrsLen := binary.BigEndian.Uint32(data[0:4])
 	body = data[xattrsLen+4:]
 	if xattrsLen == 0 {
-		return body, nil, nil
+		return body, nil, nil, nil
 	}
 
 	// In the xattr key/value pairs, key and value are both terminated by 0x00 (byte(0)).  Use this as a separator to split the byte slice
@@ -491,24 +494,31 @@ func parseXattrStreamData(xattrName string, data []byte) (body []byte, xattr []b
 	for pos < xattrsLen {
 		pairLen := binary.BigEndian.Uint32(data[pos : pos+4])
 		if pairLen == 0 || int(pos+pairLen) > len(data) {
-			return nil, nil, fmt.Errorf("Unexpected xattr pair length (%d) - unable to parse xattrs", pairLen)
+			return nil, nil, nil, fmt.Errorf("Unexpected xattr pair length (%d) - unable to parse xattrs", pairLen)
 		}
 		pos += 4
 		pairBytes := data[pos : pos+pairLen]
 		components := bytes.Split(pairBytes, separator)
 		// xattr pair has the format [key]0x00[value]0x00, and so should split into three components
 		if len(components) != 3 {
-			return nil, nil, fmt.Errorf("Unexpected number of components found in xattr pair: %s", pairBytes)
+			return nil, nil, nil, fmt.Errorf("Unexpected number of components found in xattr pair: %s", pairBytes)
 		}
 		xattrKey := string(components[0])
-		// If this is the xattr we're looking for , we're done
 		if xattrName == xattrKey {
-			return body, components[1], nil
+			xattr = components[1]
+		} else if userXattrName != "" && userXattrName == xattrKey {
+			userXattr = components[1]
 		}
+
+		// Exit if we have xattrs we want (either both or one if the latter is disabled)
+		if len(xattr) > 0 && (len(userXattr) > 0 || userXattrName == "") {
+			return body, xattr, userXattr, nil
+		}
+
 		pos += pairLen
 	}
 
-	return body, xattr, nil
+	return body, xattr, userXattr, nil
 }
 
 func (doc *SyncData) HasValidSyncData() bool {
@@ -527,20 +537,34 @@ func (s *SyncData) GetSyncCas() uint64 {
 	return base.HexCasToUint64(s.Cas)
 }
 
+func HasUserXattrChanged(userXattr []byte, prevUserXattrHash string) bool {
+	// If hash is empty but userXattr is not empty an xattr has been added. Import
+	if prevUserXattrHash == "" && len(userXattr) > 0 {
+		return true
+	}
+
+	// Otherwise check hash value
+	return userXattrCrc32cHash(userXattr) != prevUserXattrHash
+}
+
 // SyncData.IsSGWrite - used during feed-based import
-func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte) (isSGWrite bool, crc32Match bool) {
+func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (isSGWrite bool, crc32Match bool) {
 
 	// If cas matches, it was a SG write
 	if cas == s.GetSyncCas() {
 		return true, false
 	}
 
-	// If crc32c hash of body matches value stored in SG metadata, SG metadata is still valid
-	if base.Crc32cHashString(rawBody) == s.Crc32c {
-		return true, true
+	if HasUserXattrChanged(rawUserXattr, s.Crc32cUserXattr) {
+		return false, false
 	}
 
-	return false, false
+	// If crc32c hash of body matches value stored in SG metadata, SG metadata is still valid
+	if base.Crc32cHashString(rawBody) != s.Crc32c {
+		return false, false
+	}
+
+	return true, true
 }
 
 // doc.IsSGWrite - used during on-demand import.  Doesn't invoke SyncData.IsSGWrite so that we
@@ -550,7 +574,7 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	// If the raw body is available, use SyncData.IsSGWrite
 	if rawBody != nil && len(rawBody) > 0 {
 
-		isSgWriteFeed, crc32MatchFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody)
+		isSgWriteFeed, crc32MatchFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr)
 		if !isSgWriteFeed {
 			base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
 		}
@@ -561,6 +585,11 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	// If raw body isn't available, first do the inexpensive cas check
 	if doc.Cas == doc.SyncData.GetSyncCas() {
 		return true, false
+	}
+
+	if HasUserXattrChanged(doc.rawUserXattr, doc.Crc32cUserXattr) {
+		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
+		return false, false
 	}
 
 	// Since raw body isn't available, marshal from the document to perform body hash comparison
@@ -578,12 +607,12 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	}
 
 	// If the current body crc32c matches the one in doc.SyncData, this was an SG write (i.e. has already been imported)
-	if currentBodyCrc32c == doc.SyncData.Crc32c {
-		return true, true
+	if currentBodyCrc32c != doc.SyncData.Crc32c {
+		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
+		return false, false
 	}
 
-	base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
-	return false, false
+	return true, true
 }
 
 func (doc *Document) hasFlag(flag uint8) bool {
