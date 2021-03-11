@@ -133,7 +133,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 	var newRev string
 	var alreadyImportedDoc *Document
-	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, avoidRevIDGeneration bool, updatedExpiry *uint32, resultErr error) {
+	docOut, _, err = db.updateAndReturnDoc(newDoc.ID, true, existingDoc.Expiry, existingDoc, func(doc *Document) (resultDocument *Document, resultAttachmentData AttachmentData, newRevIDGenerated bool, updatedExpiry *uint32, resultErr error) {
 
 		// Perform cas mismatch check first, as we want to identify cas mismatch before triggering migrate handling.
 		// If there's a cas mismatch, the doc has been updated since the version that triggered the import.  Handling depends on import mode.
@@ -263,11 +263,11 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			}
 		}
 
-		avoidRevIDGeneration = !doc.BodyChanged(existingDoc.Body)
+		newRevIDGenerated = !doc.BodyChanged(existingDoc.Body)
 
 		// If the body has changed then the document has been updated and we should generate a new revision. Otherwise
 		// the import was triggered by a user xattr mutation and therefore should not generate a new revision.
-		if !avoidRevIDGeneration {
+		if !newRevIDGenerated {
 			// The active rev is the parent for an import
 			parentRev := doc.CurrentRev
 			generation, _ := ParseRevID(parentRev)
@@ -306,7 +306,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 
-		return newDoc, nil, avoidRevIDGeneration, updatedExpiry, nil
+		return newDoc, nil, newRevIDGenerated, updatedExpiry, nil
 	})
 
 	switch err {

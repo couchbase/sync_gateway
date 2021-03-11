@@ -33,7 +33,7 @@ type RevisionCache interface {
 	Put(docRev DocumentRevision)
 
 	// Update will remove existing value and re-create new one
-	Update(docRev DocumentRevision)
+	Upsert(docRev DocumentRevision)
 
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(docID, revID string, toDelta RevisionDelta)

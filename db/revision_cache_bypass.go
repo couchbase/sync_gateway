@@ -80,7 +80,7 @@ func (rc *BypassRevisionCache) Put(docRev DocumentRevision) {
 }
 
 // Update is a no-op for a BypassRevisionCache
-func (rc *BypassRevisionCache) Update(docRev DocumentRevision) {
+func (rc *BypassRevisionCache) Upsert(docRev DocumentRevision) {
 	// no-op
 }
 
