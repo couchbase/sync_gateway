@@ -109,7 +109,7 @@ func (il *importListener) ImportFeedEvent(event sgbucket.FeedEvent) {
 	var isSGWrite bool
 	var crc32Match bool
 	if syncData != nil {
-		isSGWrite, crc32Match = syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
+		isSGWrite, crc32Match, _ = syncData.IsSGWrite(event.Cas, rawBody, rawUserXattr)
 		if crc32Match {
 			il.stats.Crc32MatchCount.Add(1)
 		}
