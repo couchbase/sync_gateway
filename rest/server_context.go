@@ -839,7 +839,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 			}
 
 			// Load external webhook filter function
-			filter, err := loadJavaScript(conf.Filter)
+			filter, err := loadJavaScript(conf.Filter, config.Unsupported.RemoteConfigTlsSkipVerify)
 			if err != nil {
 				return &JavaScriptLoadError{
 					JSLoadType: WebhookFilter,
