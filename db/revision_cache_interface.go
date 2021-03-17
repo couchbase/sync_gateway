@@ -35,6 +35,9 @@ type RevisionCache interface {
 	// Update will remove existing value and re-create new one
 	Upsert(docRev DocumentRevision)
 
+	// Invalidate
+	Invalidate(docID, revID string)
+
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(docID, revID string, toDelta RevisionDelta)
 }
@@ -105,6 +108,7 @@ type DocumentRevision struct {
 	Delta       *RevisionDelta
 	Deleted     bool
 	Removed     bool // True if the revision is a removal.
+	Invalid     bool
 
 	_shallowCopyBody Body // an unmarshalled body that can produce shallow copies
 }

@@ -58,6 +58,10 @@ func (sc *ShardedLRURevisionCache) Upsert(docRev DocumentRevision) {
 	sc.getShard(docRev.DocID).Upsert(docRev)
 }
 
+func (sc *ShardedLRURevisionCache) Invalidate(docID, revID string) {
+	sc.getShard(docID).Invalidate(docID, revID)
+}
+
 // An LRU cache of document revision bodies, together with their channel access.
 type LRURevisionCache struct {
 	cache        map[IDAndRev]*list.Element // Fast lookup of list element by doc/rev ID
@@ -83,6 +87,7 @@ type revCacheValue struct {
 	lock        sync.RWMutex    // Synchronizes access to this struct
 	body        Body            // unmarshalled body (if available)
 	removed     bool            // True if revision is a removal
+	invalid     bool            // Marks a revision as invalid meaning it won't be used
 }
 
 // Creates a revision cache with the given capacity and an optional loader function.
@@ -130,6 +135,11 @@ func (rc *LRURevisionCache) getFromCache(docID, revID string, loadOnCacheMiss bo
 	if value == nil {
 		return DocumentRevision{}, nil
 	}
+
+	if value.invalid {
+		return rc.LoadInvalidRevFromBackingStore(value.key, includeBody, includeDelta)
+	}
+
 	docRev, statEvent, err := value.load(rc.backingStore, includeBody, includeDelta)
 	rc.statsRecorderFunc(statEvent)
 
@@ -137,6 +147,33 @@ func (rc *LRURevisionCache) getFromCache(docID, revID string, loadOnCacheMiss bo
 		rc.removeValue(value) // don't keep failed loads in the cache
 	}
 	return docRev, err
+}
+
+func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(key IDAndRev, includeBody bool, includeDelta bool) (DocumentRevision, error) {
+	var delta *RevisionDelta
+	var docRevBody Body
+
+	value := revCacheValue{
+		key:     key,
+		invalid: true,
+	}
+	value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(rc.backingStore, key, includeBody)
+
+	if includeDelta {
+		delta = value.delta
+	}
+
+	if includeBody {
+		docRevBody = value.body
+	}
+
+	docRev, err := value.asDocumentRevision(docRevBody, delta)
+
+	// Classify operation as a cache miss
+	rc.statsRecorderFunc(false)
+
+	return docRev, err
+
 }
 
 // Attempts to retrieve the active revision for a document from the cache.  Requires retrieval
@@ -158,6 +195,11 @@ func (rc *LRURevisionCache) GetActive(docID string, includeBody bool) (DocumentR
 
 	// Retrieve from or add to rev cache
 	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
+
+	if value.invalid {
+		return rc.LoadInvalidRevFromBackingStore(value.key, includeBody, false)
+	}
+
 	docRev, statEvent, err := value.loadForDoc(rc.backingStore, bucketDoc, includeBody)
 	rc.statsRecorderFunc(statEvent)
 
@@ -206,6 +248,13 @@ func (rc *LRURevisionCache) Upsert(docRev DocumentRevision) {
 	rc.lock.Unlock()
 
 	value.store(docRev)
+}
+
+func (rc *LRURevisionCache) Invalidate(docID, revID string) {
+	value := rc.getValue(docID, revID, false)
+	if value != nil {
+		value.setInvalidFlag()
+	}
 }
 
 func (rc *LRURevisionCache) getValue(docID, revID string, create bool) (value *revCacheValue) {
@@ -332,6 +381,7 @@ func (value *revCacheValue) asDocumentRevision(body Body, delta *RevisionDelta) 
 		Attachments: value.attachments.ShallowCopy(), // Avoid caller mutating the stored attachments
 		Deleted:     value.deleted,
 		Removed:     value.removed,
+		Invalid:     value.invalid,
 	}
 	if body != nil {
 		docRev._shallowCopyBody = body.ShallowCopy()
@@ -410,5 +460,11 @@ func (value *revCacheValue) store(docRev DocumentRevision) {
 func (value *revCacheValue) updateDelta(toDelta RevisionDelta) {
 	value.lock.Lock()
 	value.delta = &toDelta
+	value.lock.Unlock()
+}
+
+func (value *revCacheValue) setInvalidFlag() {
+	value.lock.Lock()
+	value.invalid = true
 	value.lock.Unlock()
 }

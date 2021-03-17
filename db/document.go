@@ -555,7 +555,7 @@ func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (i
 		return true, false, false
 	}
 
-	// If crc32c hash of body matches value stored in SG metadata, SG metadata is still valid
+	// If crc32c hash of body doesn't match value stored in SG metadata then import is required
 	if base.Crc32cHashString(rawBody) != s.Crc32c {
 		return false, false, true
 	}

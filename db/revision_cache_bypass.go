@@ -84,6 +84,10 @@ func (rc *BypassRevisionCache) Upsert(docRev DocumentRevision) {
 	// no-op
 }
 
+func (rc *BypassRevisionCache) Invalidate(docID, revID string) {
+	// nop
+}
+
 // UpdateDelta is a no-op for a BypassRevisionCache
 func (rc *BypassRevisionCache) UpdateDelta(docID, revID string, toDelta RevisionDelta) {
 	// no-op
