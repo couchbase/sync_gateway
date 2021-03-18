@@ -149,6 +149,8 @@ func (rc *LRURevisionCache) getFromCache(docID, revID string, loadOnCacheMiss bo
 	return docRev, err
 }
 
+// In the event that a revision in invalid it needs to be replaced later and the revision cache value should not be
+// used. This function grabs the value directly from the bucket.
 func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(key IDAndRev, includeBody bool, includeDelta bool) (DocumentRevision, error) {
 	var delta *RevisionDelta
 	var docRevBody Body
