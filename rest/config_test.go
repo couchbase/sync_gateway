@@ -11,7 +11,6 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1420,7 +1419,7 @@ func TestLoadJavaScript(t *testing.T) {
 			jsInput:            javaScriptHttpsEndpoint(t, js),
 			insecureSkipVerify: false,
 			jsExpected:         "",
-			errExpected:        &url.Error{},
+			errExpected:        httpSSLVerifyError{},
 		},
 		{
 			name:               "Load JavaScript from an external https endpoint with ssl verification disabled",
@@ -1501,7 +1500,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			jsSyncInput:        javaScriptHttpsEndpoint(t, jsSync),
 			insecureSkipVerify: false,
 			jsSyncFnExpected:   "",
-			errExpected:        &url.Error{},
+			errExpected:        httpSSLVerifyError{},
 		},
 		{
 			name:               "Load sync function from an external https endpoint with ssl verification disabled",
@@ -1600,7 +1599,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			jsImportFilterInput:    javaScriptHttpsEndpoint(t, jsImportFilter),
 			insecureSkipVerify:     false,
 			jsImportFilterExpected: "",
-			errExpected:            &url.Error{},
+			errExpected:            httpSSLVerifyError{},
 		},
 		{
 			name:                   "Load import filter from an external https endpoint with ssl verification disabled",
@@ -1705,7 +1704,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 			jsConflictResInput:    javaScriptHttpsEndpoint(t, jsConflictResolution),
 			insecureSkipVerify:    false,
 			jsConflictResExpected: "",
-			errExpected:           &url.Error{},
+			errExpected:           httpSSLVerifyError{},
 		},
 		{
 			name:                  "Load conflict resolution function from an external http endpoint with ssl verification disabled",
@@ -1808,7 +1807,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			name:                 "Load webhook filter function from an external https endpoint with ssl verification enabled",
 			jsWebhookFilterInput: javaScriptHttpsEndpoint(t, jsWebhookFilter),
 			insecureSkipVerify:   false,
-			errExpected:          &url.Error{},
+			errExpected:          httpSSLVerifyError{},
 		},
 		{
 			name:                 "Load webhook filter function from an external https endpoint with ssl verification disabled",

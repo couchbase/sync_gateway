@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -382,6 +383,20 @@ func (dbConfig *DbConfig) setup(name string) error {
 	return nil
 }
 
+// httpSSLVerifyError results when loading config from HTTPS endpoint that's using a
+// self-signed certificate, but the unsupported remote_config_tls_skip_verify option
+// is not set. SSL certificate verification is turned on by default.
+type httpSSLVerifyError struct {
+	// cause contains an error that may be helpful in determining the
+	// underlying cause of SSL certificate verification failure.
+	cause error
+}
+
+func (e httpSSLVerifyError) Error() string {
+	return fmt.Sprintf("%v. SSL certificate verification is turned on by default when loading config over HTTPS. "+
+		"Can be overriden by the unsupported \"remote_config_tls_skip_verify\" option", e.cause)
+}
+
 // loadJavaScript loads the JavaScript source from an external file or and HTTP/HTTPS endpoint.
 // If the specified path does not qualify for a valid file or an URI, it returns the input path
 // as-is with the assumption that it is an inline JavaScript source. Returns error if there is
@@ -394,6 +409,14 @@ func loadJavaScript(path string, insecureSkipVerify bool) (js string, err error)
 		return path, nil
 	}
 	if err != nil {
+		if !insecureSkipVerify {
+			switch errors.Unwrap(err).(type) {
+			case x509.UnknownAuthorityError:
+				return "", httpSSLVerifyError{cause: err}
+			default:
+				return "", err
+			}
+		}
 		return "", err
 	}
 	defer func() { _ = rc.Close() }()
