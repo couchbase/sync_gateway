@@ -137,7 +137,7 @@ func (rc *LRURevisionCache) getFromCache(docID, revID string, loadOnCacheMiss bo
 	}
 
 	if value.invalid {
-		return rc.LoadInvalidRevFromBackingStore(value.key, includeBody, includeDelta)
+		return rc.LoadInvalidRevFromBackingStore(value.key, nil, includeBody, includeDelta)
 	}
 
 	docRev, statEvent, err := value.load(rc.backingStore, includeBody, includeDelta)
@@ -151,7 +151,7 @@ func (rc *LRURevisionCache) getFromCache(docID, revID string, loadOnCacheMiss bo
 
 // In the event that a revision in invalid it needs to be replaced later and the revision cache value should not be
 // used. This function grabs the value directly from the bucket.
-func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(key IDAndRev, includeBody bool, includeDelta bool) (DocumentRevision, error) {
+func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(key IDAndRev, doc *Document, includeBody bool, includeDelta bool) (DocumentRevision, error) {
 	var delta *RevisionDelta
 	var docRevBody Body
 
@@ -159,7 +159,14 @@ func (rc *LRURevisionCache) LoadInvalidRevFromBackingStore(key IDAndRev, include
 		key:     key,
 		invalid: true,
 	}
-	value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(rc.backingStore, key, includeBody)
+
+	// If doc has been passed in use this to grab values. Otherwise run revCacheLoader which will grab the Document
+	// first
+	if doc != nil {
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoaderForDocument(rc.backingStore, doc, key.RevID)
+	} else {
+		value.bodyBytes, value.body, value.history, value.channels, value.removed, value.attachments, value.deleted, value.expiry, value.err = revCacheLoader(rc.backingStore, key, includeBody)
+	}
 
 	if includeDelta {
 		delta = value.delta
@@ -199,7 +206,7 @@ func (rc *LRURevisionCache) GetActive(docID string, includeBody bool) (DocumentR
 	value := rc.getValue(docID, bucketDoc.CurrentRev, true)
 
 	if value.invalid {
-		return rc.LoadInvalidRevFromBackingStore(value.key, includeBody, false)
+		return rc.LoadInvalidRevFromBackingStore(value.key, bucketDoc, includeBody, false)
 	}
 
 	docRev, statEvent, err := value.loadForDoc(rc.backingStore, bucketDoc, includeBody)
