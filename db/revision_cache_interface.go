@@ -32,6 +32,14 @@ type RevisionCache interface {
 	// Put will store the given docRev in the cache
 	Put(docRev DocumentRevision)
 
+	// Update will remove existing value and re-create new one
+	Upsert(docRev DocumentRevision)
+
+	// Invalidate marks a revision in the cache as invalid. This is used to call into LoadInvalidRevFromBackingStore in LRU.
+	// Marked revision denotes that this value should not be used and should be replaced. Used in the event of an user
+	// xattr only update where there is no revision change.
+	Invalidate(docID, revID string)
+
 	// UpdateDelta stores the given toDelta value in the given rev if cached
 	UpdateDelta(docID, revID string, toDelta RevisionDelta)
 }
@@ -102,6 +110,7 @@ type DocumentRevision struct {
 	Delta       *RevisionDelta
 	Deleted     bool
 	Removed     bool // True if the revision is a removal.
+	Invalid     bool
 
 	_shallowCopyBody Body // an unmarshalled body that can produce shallow copies
 }

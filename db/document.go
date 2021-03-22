@@ -548,55 +548,50 @@ func HasUserXattrChanged(userXattr []byte, prevUserXattrHash string) bool {
 }
 
 // SyncData.IsSGWrite - used during feed-based import
-func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (isSGWrite bool, crc32Match bool) {
+func (s *SyncData) IsSGWrite(cas uint64, rawBody []byte, rawUserXattr []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 
 	// If cas matches, it was a SG write
 	if cas == s.GetSyncCas() {
-		return true, false
+		return true, false, false
+	}
+
+	// If crc32c hash of body doesn't match value stored in SG metadata then import is required
+	if base.Crc32cHashString(rawBody) != s.Crc32c {
+		return false, false, true
 	}
 
 	if HasUserXattrChanged(rawUserXattr, s.Crc32cUserXattr) {
-		return false, false
+		return false, false, false
 	}
 
-	// If crc32c hash of body matches value stored in SG metadata, SG metadata is still valid
-	if base.Crc32cHashString(rawBody) != s.Crc32c {
-		return false, false
-	}
-
-	return true, true
+	return true, true, false
 }
 
 // doc.IsSGWrite - used during on-demand import.  Doesn't invoke SyncData.IsSGWrite so that we
 // can complete the inexpensive cas check before the (potential) doc marshalling.
-func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool) {
+func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool, bodyChanged bool) {
 
 	// If the raw body is available, use SyncData.IsSGWrite
 	if rawBody != nil && len(rawBody) > 0 {
 
-		isSgWriteFeed, crc32MatchFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr)
+		isSgWriteFeed, crc32MatchFeed, bodyChangedFeed := doc.SyncData.IsSGWrite(doc.Cas, rawBody, doc.rawUserXattr)
 		if !isSgWriteFeed {
 			base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
 		}
 
-		return isSgWriteFeed, crc32MatchFeed
+		return isSgWriteFeed, crc32MatchFeed, bodyChangedFeed
 	}
 
 	// If raw body isn't available, first do the inexpensive cas check
 	if doc.Cas == doc.SyncData.GetSyncCas() {
-		return true, false
-	}
-
-	if HasUserXattrChanged(doc.rawUserXattr, doc.Crc32cUserXattr) {
-		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
-		return false, false
+		return true, false, false
 	}
 
 	// Since raw body isn't available, marshal from the document to perform body hash comparison
 	bodyBytes, err := doc.BodyBytes()
 	if err != nil {
 		base.Warnf("Unable to marshal doc body during SG write check for doc %s. Error: %v", base.UD(doc.ID), err)
-		return false, false
+		return false, false, false
 	}
 	// The bodyBytes would be replaced with "{}" if the document is a "Delete" and it can’t be used for
 	// CRC-32 checksum comparison to determine whether the document has already been imported. So the value
@@ -609,10 +604,15 @@ func (doc *Document) IsSGWrite(rawBody []byte) (isSGWrite bool, crc32Match bool)
 	// If the current body crc32c matches the one in doc.SyncData, this was an SG write (i.e. has already been imported)
 	if currentBodyCrc32c != doc.SyncData.Crc32c {
 		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on cas and body hash. cas:%x syncCas:%q", base.UD(doc.ID), doc.Cas, doc.SyncData.Cas)
-		return false, false
+		return false, false, true
 	}
 
-	return true, true
+	if HasUserXattrChanged(doc.rawUserXattr, doc.Crc32cUserXattr) {
+		base.Debugf(base.KeyCRUD, "Doc %s is not an SG write, based on user xattr hash", base.UD(doc.ID))
+		return false, false, false
+	}
+
+	return true, true, false
 }
 
 func (doc *Document) hasFlag(flag uint8) bool {
