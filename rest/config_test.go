@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -1419,7 +1420,7 @@ func TestLoadJavaScript(t *testing.T) {
 			jsInput:            javaScriptHttpsEndpoint(t, js),
 			insecureSkipVerify: false,
 			jsExpected:         "",
-			errExpected:        httpSSLVerifyError{},
+			errExpected:        x509.UnknownAuthorityError{},
 		},
 		{
 			name:               "Load JavaScript from an external https endpoint with ssl verification disabled",
@@ -1466,7 +1467,9 @@ func TestLoadJavaScript(t *testing.T) {
 				}
 			}()
 			js, err := loadJavaScript(inputJavaScriptOrPath, test.insecureSkipVerify)
-			require.IsType(t, err, test.errExpected)
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			}
 			assert.Equal(t, test.jsExpected, js)
 		})
 	}
@@ -1500,7 +1503,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 			jsSyncInput:        javaScriptHttpsEndpoint(t, jsSync),
 			insecureSkipVerify: false,
 			jsSyncFnExpected:   "",
-			errExpected:        httpSSLVerifyError{},
+			errExpected:        x509.UnknownAuthorityError{},
 		},
 		{
 			name:               "Load sync function from an external https endpoint with ssl verification disabled",
@@ -1563,8 +1566,9 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
-			require.IsType(t, test.errExpected, err)
-			if test.errExpected == nil {
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			} else {
 				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
 			}
 		})
@@ -1599,7 +1603,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 			jsImportFilterInput:    javaScriptHttpsEndpoint(t, jsImportFilter),
 			insecureSkipVerify:     false,
 			jsImportFilterExpected: "",
-			errExpected:            httpSSLVerifyError{},
+			errExpected:            x509.UnknownAuthorityError{},
 		},
 		{
 			name:                   "Load import filter from an external https endpoint with ssl verification disabled",
@@ -1662,8 +1666,9 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
-			require.IsType(t, test.errExpected, err)
-			if test.errExpected == nil {
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			} else {
 				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
 			}
 		})
@@ -1704,7 +1709,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 			jsConflictResInput:    javaScriptHttpsEndpoint(t, jsConflictResolution),
 			insecureSkipVerify:    false,
 			jsConflictResExpected: "",
-			errExpected:           httpSSLVerifyError{},
+			errExpected:           x509.UnknownAuthorityError{},
 		},
 		{
 			name:                  "Load conflict resolution function from an external http endpoint with ssl verification disabled",
@@ -1773,8 +1778,9 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
-			require.IsType(t, test.errExpected, err)
-			if test.errExpected == nil {
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			} else {
 				require.NotNil(t, dbConfig.Replications["replication1"])
 				conflictResolutionFnActual := dbConfig.Replications["replication1"].ConflictResolutionFn
 				assert.Equal(t, test.jsConflictResExpected, conflictResolutionFnActual)
@@ -1807,7 +1813,7 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			name:                 "Load webhook filter function from an external https endpoint with ssl verification enabled",
 			jsWebhookFilterInput: javaScriptHttpsEndpoint(t, jsWebhookFilter),
 			insecureSkipVerify:   false,
-			errExpected:          httpSSLVerifyError{},
+			errExpected:          x509.UnknownAuthorityError{},
 		},
 		{
 			name:                 "Load webhook filter function from an external https endpoint with ssl verification disabled",
@@ -1878,7 +1884,9 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager()}
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(ctx, &dbConfig)
-			require.IsType(t, test.errExpected, err)
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			}
 		})
 	}
 }
