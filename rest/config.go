@@ -398,9 +398,8 @@ func loadJavaScript(path string, insecureSkipVerify bool) (js string, err error)
 		if !insecureSkipVerify {
 			var unkAuthErr x509.UnknownAuthorityError
 			if errors.As(err, &unkAuthErr) {
-				return "", fmt.Errorf("%w. SSL certificate verification is turned "+
-					"on by default when loading config over HTTPS. Can be overriden by "+
-					"the unsupported \"remote_config_tls_skip_verify\" option", err)
+				return "", fmt.Errorf("%w. TLS certificate failed verification.  TLS verification "+
+					"can be disabled using the unsupported \"remote_config_tls_skip_verify\" option", err)
 			}
 			return "", err
 		}
