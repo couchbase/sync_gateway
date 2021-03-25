@@ -42,7 +42,7 @@ var (
 	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
 	DefaultMetricsInterface       = "127.0.0.1:4986" // Only accessible on localhost!
 	DefaultServer                 = "walrus:"
-	DefaultMinimumTLSVersionConst = tls.VersionTLS10
+	DefaultMinimumTLSVersionConst = tls.VersionTLS12
 
 	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
