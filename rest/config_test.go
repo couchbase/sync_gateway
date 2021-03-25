@@ -3,6 +3,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -1377,49 +1378,84 @@ func javaScriptHttpErrorEndpoint() func() (path string, teardownFn func()) {
 	}
 }
 
+// javaScriptHttpsEndpoint returns a callable function to setup an HTTPS endpoint that exposes
+// the given JavaScript source and returns a teardown function to terminate the underlying
+// httptest server instance.
+func javaScriptHttpsEndpoint(t *testing.T, js string) func() (path string, teardownFn func()) {
+	return func() (path string, teardownFn func()) {
+		ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := fmt.Fprint(w, js)
+			require.NoError(t, err)
+		}))
+		teardownFn = func() { ts.Close() }
+		return ts.URL, teardownFn
+	}
+}
+
 func TestLoadJavaScript(t *testing.T) {
 	const js = `function (doc, oldDoc) { if (doc.published) { channel("public"); } }`
 	var tests = []struct {
-		name        string
-		jsInput     func() (path string, teardownFn func())
-		jsExpected  string
-		errExpected error
+		name               string
+		jsInput            func() (path string, teardownFn func())
+		insecureSkipVerify bool
+		jsExpected         string
+		errExpected        error
 	}{
 		{
-			name:        "Load inline JavaScript",
-			jsInput:     inlineJavaScript(js),
-			jsExpected:  js,
-			errExpected: nil,
+			name:               "Load inline JavaScript",
+			jsInput:            inlineJavaScript(js),
+			insecureSkipVerify: false,
+			jsExpected:         js,
+			errExpected:        nil,
 		},
 		{
-			name:        "Load JavaScript from an external HTTP endpoint",
-			jsInput:     javaScriptHttpEndpoint(t, js),
-			jsExpected:  js,
-			errExpected: nil,
+			name:               "Load JavaScript from an external http endpoint",
+			jsInput:            javaScriptHttpEndpoint(t, js),
+			insecureSkipVerify: false,
+			jsExpected:         js,
+			errExpected:        nil,
 		},
 		{
-			name:        "Load JavaScript from an external endpoint that returns an error",
-			jsInput:     javaScriptHttpErrorEndpoint(),
-			jsExpected:  "",
-			errExpected: errInternalServerError,
+			name:               "Load JavaScript from an external https endpoint with ssl verification enabled",
+			jsInput:            javaScriptHttpsEndpoint(t, js),
+			insecureSkipVerify: false,
+			jsExpected:         "",
+			errExpected:        x509.UnknownAuthorityError{},
 		},
 		{
-			name:        "Load JavaScript from an external file",
-			jsInput:     javaScriptFile(t, js),
-			jsExpected:  js,
-			errExpected: nil,
+			name:               "Load JavaScript from an external https endpoint with ssl verification disabled",
+			jsInput:            javaScriptHttpsEndpoint(t, js),
+			insecureSkipVerify: true,
+			jsExpected:         js,
+			errExpected:        nil,
 		},
 		{
-			name:        "Load JavaScript from an external empty file",
-			jsInput:     emptyJavaScriptFile(t),
-			jsExpected:  "",
-			errExpected: nil,
+			name:               "Load JavaScript from an external endpoint that returns an error",
+			jsInput:            javaScriptHttpErrorEndpoint(),
+			insecureSkipVerify: false,
+			jsExpected:         "",
+			errExpected:        errInternalServerError,
 		},
 		{
-			name:        "Load JavaScript from an external file that doesn't exist",
-			jsInput:     missingJavaScriptFile(),
-			jsExpected:  missingJavaScriptFilePath,
-			errExpected: nil,
+			name:               "Load JavaScript from an external file",
+			jsInput:            javaScriptFile(t, js),
+			insecureSkipVerify: false,
+			jsExpected:         js,
+			errExpected:        nil,
+		},
+		{
+			name:               "Load JavaScript from an external empty file",
+			jsInput:            emptyJavaScriptFile(t),
+			insecureSkipVerify: false,
+			jsExpected:         "",
+			errExpected:        nil,
+		},
+		{
+			name:               "Load JavaScript from an external file that doesn't exist",
+			jsInput:            missingJavaScriptFile(),
+			insecureSkipVerify: false,
+			jsExpected:         missingJavaScriptFilePath,
+			errExpected:        nil,
 		},
 	}
 	for _, test := range tests {
@@ -1430,8 +1466,10 @@ func TestLoadJavaScript(t *testing.T) {
 					teardownFn()
 				}
 			}()
-			js, err := loadJavaScript(inputJavaScriptOrPath)
-			require.Equal(t, test.errExpected, err)
+			js, err := loadJavaScript(inputJavaScriptOrPath, test.insecureSkipVerify)
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			}
 			assert.Equal(t, test.jsExpected, js)
 		})
 	}
@@ -1440,46 +1478,67 @@ func TestLoadJavaScript(t *testing.T) {
 func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 	const jsSync = `function (doc, oldDoc) { if (doc.published) { channel("public"); } }`
 	var tests = []struct {
-		name             string
-		jsSyncInput      func() (path string, teardownFn func())
-		jsSyncFnExpected string
-		errExpected      error
+		name               string
+		jsSyncInput        func() (path string, teardownFn func())
+		insecureSkipVerify bool
+		jsSyncFnExpected   string
+		errExpected        error
 	}{
 		{
-			name:             "Load inline sync function",
-			jsSyncInput:      inlineJavaScript(jsSync),
-			jsSyncFnExpected: jsSync,
-			errExpected:      nil,
+			name:               "Load inline sync function",
+			jsSyncInput:        inlineJavaScript(jsSync),
+			insecureSkipVerify: false,
+			jsSyncFnExpected:   jsSync,
+			errExpected:        nil,
 		},
 		{
-			name:             "Load sync function from an external HTTP endpoint",
-			jsSyncInput:      javaScriptHttpEndpoint(t, jsSync),
-			jsSyncFnExpected: jsSync,
-			errExpected:      nil,
+			name:               "Load sync function from an external http endpoint",
+			jsSyncInput:        javaScriptHttpEndpoint(t, jsSync),
+			insecureSkipVerify: false,
+			jsSyncFnExpected:   jsSync,
+			errExpected:        nil,
 		},
 		{
-			name:             "Load sync function from an external endpoint that returns an error",
-			jsSyncInput:      javaScriptHttpErrorEndpoint(),
-			jsSyncFnExpected: "",
-			errExpected:      errInternalServerError,
+			name:               "Load sync function from an external https endpoint with ssl verification enabled",
+			jsSyncInput:        javaScriptHttpsEndpoint(t, jsSync),
+			insecureSkipVerify: false,
+			jsSyncFnExpected:   "",
+			errExpected:        x509.UnknownAuthorityError{},
 		},
 		{
-			name:             "Load sync function from an external file",
-			jsSyncInput:      javaScriptFile(t, jsSync),
-			jsSyncFnExpected: jsSync,
-			errExpected:      nil,
+			name:               "Load sync function from an external https endpoint with ssl verification disabled",
+			jsSyncInput:        javaScriptHttpsEndpoint(t, jsSync),
+			insecureSkipVerify: true,
+			jsSyncFnExpected:   jsSync,
+			errExpected:        nil,
 		},
 		{
-			name:             "Load sync function from an external empty file",
-			jsSyncInput:      emptyJavaScriptFile(t),
-			jsSyncFnExpected: "",
-			errExpected:      nil,
+			name:               "Load sync function from an external endpoint that returns an error",
+			jsSyncInput:        javaScriptHttpErrorEndpoint(),
+			insecureSkipVerify: false,
+			jsSyncFnExpected:   "",
+			errExpected:        errInternalServerError,
 		},
 		{
-			name:             "Load sync function from an external file that doesn't exist",
-			jsSyncInput:      missingJavaScriptFile(),
-			jsSyncFnExpected: missingJavaScriptFilePath,
-			errExpected:      nil,
+			name:               "Load sync function from an external file",
+			jsSyncInput:        javaScriptFile(t, jsSync),
+			insecureSkipVerify: false,
+			jsSyncFnExpected:   jsSync,
+			errExpected:        nil,
+		},
+		{
+			name:               "Load sync function from an external empty file",
+			jsSyncInput:        emptyJavaScriptFile(t),
+			insecureSkipVerify: false,
+			jsSyncFnExpected:   "",
+			errExpected:        nil,
+		},
+		{
+			name:               "Load sync function from an external file that doesn't exist",
+			jsSyncInput:        missingJavaScriptFile(),
+			insecureSkipVerify: false,
+			jsSyncFnExpected:   missingJavaScriptFilePath,
+			errExpected:        nil,
 		},
 	}
 	for _, test := range tests {
@@ -1494,6 +1553,11 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 				Name: "db",
 				Sync: base.StringPtr(sync),
 			}
+			if test.insecureSkipVerify {
+				dbConfig.Unsupported = db.UnsupportedOptions{
+					RemoteConfigTlsSkipVerify: true,
+				}
+			}
 			if test.errExpected != nil {
 				test.errExpected = &JavaScriptLoadError{
 					JSLoadType: SyncFunction,
@@ -1502,8 +1566,9 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
-			require.Equal(t, test.errExpected, err)
-			if test.errExpected == nil {
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			} else {
 				assert.Equal(t, test.jsSyncFnExpected, *dbConfig.Sync)
 			}
 		})
@@ -1515,42 +1580,63 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 	var tests = []struct {
 		name                   string
 		jsImportFilterInput    func() (inlineFnOrPath string, teardownFn func())
+		insecureSkipVerify     bool
 		jsImportFilterExpected string
 		errExpected            error
 	}{
 		{
 			name:                   "Load inline import filter function",
 			jsImportFilterInput:    inlineJavaScript(jsImportFilter),
+			insecureSkipVerify:     false,
 			jsImportFilterExpected: jsImportFilter,
 			errExpected:            nil,
 		},
 		{
 			name:                   "Load import filter function from an external HTTP endpoint",
 			jsImportFilterInput:    javaScriptHttpEndpoint(t, jsImportFilter),
+			insecureSkipVerify:     false,
+			jsImportFilterExpected: jsImportFilter,
+			errExpected:            nil,
+		},
+		{
+			name:                   "Load import filter from an external https endpoint with ssl verification enabled",
+			jsImportFilterInput:    javaScriptHttpsEndpoint(t, jsImportFilter),
+			insecureSkipVerify:     false,
+			jsImportFilterExpected: "",
+			errExpected:            x509.UnknownAuthorityError{},
+		},
+		{
+			name:                   "Load import filter from an external https endpoint with ssl verification disabled",
+			jsImportFilterInput:    javaScriptHttpsEndpoint(t, jsImportFilter),
+			insecureSkipVerify:     true,
 			jsImportFilterExpected: jsImportFilter,
 			errExpected:            nil,
 		},
 		{
 			name:                   "Load import filter function from an external endpoint that returns an error",
 			jsImportFilterInput:    javaScriptHttpErrorEndpoint(),
+			insecureSkipVerify:     false,
 			jsImportFilterExpected: "",
 			errExpected:            errInternalServerError,
 		},
 		{
 			name:                   "Load import filter function from an external file",
 			jsImportFilterInput:    javaScriptFile(t, jsImportFilter),
+			insecureSkipVerify:     false,
 			jsImportFilterExpected: jsImportFilter,
 			errExpected:            nil,
 		},
 		{
 			name:                   "Load import filter function from an external empty file",
 			jsImportFilterInput:    emptyJavaScriptFile(t),
+			insecureSkipVerify:     false,
 			jsImportFilterExpected: "",
 			errExpected:            nil,
 		},
 		{
 			name:                   "Load import filter function from an external file that doesn't exist",
 			jsImportFilterInput:    missingJavaScriptFile(),
+			insecureSkipVerify:     false,
 			jsImportFilterExpected: missingJavaScriptFilePath,
 			errExpected:            nil,
 		},
@@ -1567,6 +1653,11 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 				Name:         "db",
 				ImportFilter: base.StringPtr(importFilter),
 			}
+			if test.insecureSkipVerify {
+				dbConfig.Unsupported = db.UnsupportedOptions{
+					RemoteConfigTlsSkipVerify: true,
+				}
+			}
 			if test.errExpected != nil {
 				test.errExpected = &JavaScriptLoadError{
 					JSLoadType: ImportFilter,
@@ -1575,8 +1666,9 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
-			require.Equal(t, test.errExpected, err)
-			if test.errExpected == nil {
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			} else {
 				assert.Equal(t, test.jsImportFilterExpected, *dbConfig.ImportFilter)
 			}
 		})
@@ -1594,42 +1686,63 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 	var tests = []struct {
 		name                  string
 		jsConflictResInput    func() (inlineFnOrPath string, teardownFn func())
+		insecureSkipVerify    bool
 		jsConflictResExpected string
 		errExpected           error
 	}{
 		{
 			name:                  "Load an inline conflict resolution function",
 			jsConflictResInput:    inlineJavaScript(jsConflictResolution),
+			insecureSkipVerify:    false,
 			jsConflictResExpected: jsConflictResolution,
 			errExpected:           nil,
 		},
 		{
-			name:                  "Load conflict resolution function from an external HTTP endpoint",
+			name:                  "Load conflict resolution function from an external http endpoint",
 			jsConflictResInput:    javaScriptHttpEndpoint(t, jsConflictResolution),
+			insecureSkipVerify:    false,
+			jsConflictResExpected: jsConflictResolution,
+			errExpected:           nil,
+		},
+		{
+			name:                  "Load conflict resolution function from an external http endpoint with ssl verification enabled",
+			jsConflictResInput:    javaScriptHttpsEndpoint(t, jsConflictResolution),
+			insecureSkipVerify:    false,
+			jsConflictResExpected: "",
+			errExpected:           x509.UnknownAuthorityError{},
+		},
+		{
+			name:                  "Load conflict resolution function from an external http endpoint with ssl verification disabled",
+			jsConflictResInput:    javaScriptHttpsEndpoint(t, jsConflictResolution),
+			insecureSkipVerify:    true,
 			jsConflictResExpected: jsConflictResolution,
 			errExpected:           nil,
 		},
 		{
 			name:                  "Load conflict resolution function from an external endpoint that returns an error",
 			jsConflictResInput:    javaScriptHttpErrorEndpoint(),
+			insecureSkipVerify:    false,
 			jsConflictResExpected: "",
 			errExpected:           errInternalServerError,
 		},
 		{
 			name:                  "Load conflict resolution function from an external file",
 			jsConflictResInput:    javaScriptFile(t, jsConflictResolution),
+			insecureSkipVerify:    false,
 			jsConflictResExpected: jsConflictResolution,
 			errExpected:           nil,
 		},
 		{
 			name:                  "Load conflict resolution function from an external empty file",
 			jsConflictResInput:    emptyJavaScriptFile(t),
+			insecureSkipVerify:    false,
 			jsConflictResExpected: "",
 			errExpected:           nil,
 		},
 		{
 			name:                  "Load conflict resolution function from an external file that doesn't exist",
 			jsConflictResInput:    missingJavaScriptFile(),
+			insecureSkipVerify:    false,
 			jsConflictResExpected: missingJavaScriptFilePath,
 			errExpected:           nil,
 		},
@@ -1652,6 +1765,11 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					},
 				},
 			}
+			if test.insecureSkipVerify {
+				dbConfig.Unsupported = db.UnsupportedOptions{
+					RemoteConfigTlsSkipVerify: true,
+				}
+			}
 			if test.errExpected != nil {
 				test.errExpected = &JavaScriptLoadError{
 					JSLoadType: ConflictResolver,
@@ -1660,8 +1778,9 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 				}
 			}
 			err := dbConfig.setup(dbConfig.Name)
-			require.Equal(t, test.errExpected, err)
-			if test.errExpected == nil {
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			} else {
 				require.NotNil(t, dbConfig.Replications["replication1"])
 				conflictResolutionFnActual := dbConfig.Replications["replication1"].ConflictResolutionFn
 				assert.Equal(t, test.jsConflictResExpected, conflictResolutionFnActual)
@@ -1675,36 +1794,55 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 	var tests = []struct {
 		name                 string
 		jsWebhookFilterInput func() (inlineFnOrPath string, teardownFn func())
+		insecureSkipVerify   bool
 		errExpected          error
 	}{
 		{
 			name:                 "Load inline webhook filter function",
 			jsWebhookFilterInput: inlineJavaScript(jsWebhookFilter),
+			insecureSkipVerify:   false,
 			errExpected:          nil,
 		},
 		{
-			name:                 "Load webhook filter function from an external HTTP endpoint",
+			name:                 "Load webhook filter function from an external http endpoint",
 			jsWebhookFilterInput: javaScriptHttpEndpoint(t, jsWebhookFilter),
+			insecureSkipVerify:   false,
+			errExpected:          nil,
+		},
+		{
+			name:                 "Load webhook filter function from an external https endpoint with ssl verification enabled",
+			jsWebhookFilterInput: javaScriptHttpsEndpoint(t, jsWebhookFilter),
+			insecureSkipVerify:   false,
+			errExpected:          x509.UnknownAuthorityError{},
+		},
+		{
+			name:                 "Load webhook filter function from an external https endpoint with ssl verification disabled",
+			jsWebhookFilterInput: javaScriptHttpsEndpoint(t, jsWebhookFilter),
+			insecureSkipVerify:   true,
 			errExpected:          nil,
 		},
 		{
 			name:                 "Load webhook filter function from an external endpoint that returns an error",
 			jsWebhookFilterInput: javaScriptHttpErrorEndpoint(),
+			insecureSkipVerify:   false,
 			errExpected:          errInternalServerError,
 		},
 		{
 			name:                 "Load webhook filter function from an external file",
 			jsWebhookFilterInput: javaScriptFile(t, jsWebhookFilter),
+			insecureSkipVerify:   false,
 			errExpected:          nil,
 		},
 		{
 			name:                 "Load webhook filter function from an external empty file",
 			jsWebhookFilterInput: emptyJavaScriptFile(t),
+			insecureSkipVerify:   false,
 			errExpected:          nil,
 		},
 		{
 			name:                 "Load webhook filter function from an external file that doesn't exist",
 			jsWebhookFilterInput: missingJavaScriptFile(),
+			insecureSkipVerify:   false,
 			errExpected:          nil,
 		},
 	}
@@ -1731,6 +1869,11 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 					},
 				},
 			}
+			if test.insecureSkipVerify {
+				dbConfig.Unsupported = db.UnsupportedOptions{
+					RemoteConfigTlsSkipVerify: true,
+				}
+			}
 			if test.errExpected != nil {
 				test.errExpected = &JavaScriptLoadError{
 					JSLoadType: WebhookFilter,
@@ -1741,7 +1884,9 @@ func TestWebhookFilterFunctionLoad(t *testing.T) {
 			ctx := &db.DatabaseContext{EventMgr: db.NewEventManager()}
 			sc := &ServerContext{}
 			err := sc.initEventHandlers(ctx, &dbConfig)
-			require.Equal(t, test.errExpected, err)
+			if test.errExpected != nil {
+				require.True(t, errors.As(err, &test.errExpected))
+			}
 		})
 	}
 }

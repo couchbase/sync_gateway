@@ -12,6 +12,7 @@ package rest
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -340,7 +341,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 
 	// Load Sync Function.
 	if dbConfig.Sync != nil {
-		sync, err := loadJavaScript(*dbConfig.Sync)
+		sync, err := loadJavaScript(*dbConfig.Sync, dbConfig.Unsupported.RemoteConfigTlsSkipVerify)
 		if err != nil {
 			return &JavaScriptLoadError{
 				JSLoadType: SyncFunction,
@@ -353,7 +354,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 
 	// Load Import Filter Function.
 	if dbConfig.ImportFilter != nil {
-		importFilter, err := loadJavaScript(*dbConfig.ImportFilter)
+		importFilter, err := loadJavaScript(*dbConfig.ImportFilter, dbConfig.Unsupported.RemoteConfigTlsSkipVerify)
 		if err != nil {
 			return &JavaScriptLoadError{
 				JSLoadType: ImportFilter,
@@ -367,7 +368,7 @@ func (dbConfig *DbConfig) setup(name string) error {
 	// Load Conflict Resolution Function.
 	for _, rc := range dbConfig.Replications {
 		if rc.ConflictResolutionFn != "" {
-			conflictResolutionFn, err := loadJavaScript(rc.ConflictResolutionFn)
+			conflictResolutionFn, err := loadJavaScript(rc.ConflictResolutionFn, dbConfig.Unsupported.RemoteConfigTlsSkipVerify)
 			if err != nil {
 				return &JavaScriptLoadError{
 					JSLoadType: ConflictResolver,
@@ -386,14 +387,22 @@ func (dbConfig *DbConfig) setup(name string) error {
 // If the specified path does not qualify for a valid file or an URI, it returns the input path
 // as-is with the assumption that it is an inline JavaScript source. Returns error if there is
 // any failure in reading the JavaScript file or URI.
-func loadJavaScript(path string) (js string, err error) {
-	rc, err := readFromPath(path)
+func loadJavaScript(path string, insecureSkipVerify bool) (js string, err error) {
+	rc, err := readFromPath(path, insecureSkipVerify)
 	if errors.Is(err, ErrPathNotFound) {
 		// If rc is nil and readFromPath returns no error, treat the
 		// the given path as an inline JavaScript and return it as-is.
 		return path, nil
 	}
 	if err != nil {
+		if !insecureSkipVerify {
+			var unkAuthErr x509.UnknownAuthorityError
+			if errors.As(err, &unkAuthErr) {
+				return "", fmt.Errorf("%w. TLS certificate failed verification. TLS verification "+
+					"can be disabled using the unsupported \"remote_config_tls_skip_verify\" option", err)
+			}
+			return "", err
+		}
 		return "", err
 	}
 	defer func() { _ = rc.Close() }()
@@ -446,11 +455,12 @@ var ErrPathNotFound = errors.New("path not found")
 
 // readFromPath creates a ReadCloser from the given path. The path must be either a valid file
 // or an HTTP/HTTPS endpoint. Returns an error if there is any failure in building ReadCloser.
-func readFromPath(path string) (rc io.ReadCloser, err error) {
+func readFromPath(path string, insecureSkipVerify bool) (rc io.ReadCloser, err error) {
 	messageFormat := "Loading content from [%s] ..."
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		base.Infof(base.KeyAll, messageFormat, path)
-		resp, err := http.Get(path)
+		client := base.GetHttpClient(insecureSkipVerify)
+		resp, err := client.Get(path)
 		if err != nil {
 			return nil, err
 		} else if resp.StatusCode >= 300 {
@@ -752,7 +762,7 @@ func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 
 // LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
 func LoadServerConfig(path string) (config *ServerConfig, err error) {
-	rc, err := readFromPath(path)
+	rc, err := readFromPath(path, false)
 	if err != nil {
 		return nil, err
 	}
