@@ -401,7 +401,7 @@ func TestTLSMinimumVersionSetting(t *testing.T) {
 		{
 			name:        `No TLS set, should default to 1.0`,
 			tlsString:   ``,
-			expectedTLS: tls.VersionTLS10,
+			expectedTLS: tls.VersionTLS12,
 		},
 	}
 
