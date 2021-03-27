@@ -170,7 +170,7 @@ type OIDCProvider struct {
 
 	// clientOnce synchronises access to the GetClient() and ensures that
 	// the OpenID Connect client only gets initialized exactly once.
-	clientOnce sync.Once
+	clientOnce base.Once
 
 	// IsDefault indicates whether this OpenID Connect provider (the current
 	// instance of OIDCProvider is explicitly specified as default provider
@@ -261,6 +261,11 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OID
 		}
 	})
 
+	// If the provider is not available in the first place, force to reinitialize the client
+	// exactly once to reach the provider in the subsequent request without restarting SG.
+	if op.client == nil {
+		op.clientOnce.Reset()
+	}
 	return op.client
 }
 

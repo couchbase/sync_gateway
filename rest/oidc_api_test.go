@@ -2080,3 +2080,86 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 		})
 	}
 }
+
+func TestOIDCImplicitFlowEventuallyReachableProvider(t *testing.T) {
+	const notReachableProviderURL = "http://0.0.0.0:65492"
+	type test struct {
+		name                string
+		providers           auth.OIDCProviderMap
+		defaultProvider     string
+		expectedError       forceError
+		requireExistingUser bool
+	}
+	tests := []test{
+		{
+			name: "successful new user authentication against an eventually reachable provider",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithRegister("foo"),
+			},
+			defaultProvider: "foo",
+		}, {
+			name: "successful registered user authentication against an eventually reachable provider",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProvider("foo"),
+			},
+			defaultProvider:     "foo",
+			requireExistingUser: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
+			mockAuthServer.Start()
+			defer mockAuthServer.Shutdown()
+			mockAuthServer.options.issuer = mockAuthServer.URL + "/" + tc.defaultProvider
+
+			// Make the provider not reachable
+			refreshProviderConfig(tc.providers, notReachableProviderURL)
+
+			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
+			restTesterConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &opts}}
+			restTester := NewRestTester(t, &restTesterConfig)
+			restTester.SetAdminParty(false)
+			defer restTester.Close()
+
+			// Create the user first if the test requires a registered user.
+			if tc.requireExistingUser {
+				createUser(t, restTester, "foo_noah")
+			}
+
+			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+			defer mockSyncGateway.Close()
+			mockSyncGatewayURL := mockSyncGateway.URL
+
+			token, err := mockAuthServer.makeToken(claimsAuthentic())
+			require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+			require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+			sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
+
+			// Send the first auth request, provider is not reachable at this time.
+			request, err := http.NewRequest(http.MethodPost, sessionEndpoint, strings.NewReader(`{}`))
+			require.NoError(t, err, "Error creating new request")
+			request.Header.Add("Authorization", BearerToken+" "+token)
+			response, err := http.DefaultClient.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			assertHttpResponse(t, response, forceError{
+				errorType:            noAutoRegistrationErr,
+				expectedErrorCode:    http.StatusUnauthorized,
+				expectedErrorMessage: "Invalid login",
+			})
+
+			// Make the provider reachable and send the next request.
+			refreshProviderConfig(restTester.DatabaseConfig.OIDCConfig.Providers, mockAuthServer.URL)
+			response, err = http.DefaultClient.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			checkGoodAuthResponse(t, response, "foo_noah")
+
+			// Make the provider unreachable again and send the next request.
+			refreshProviderConfig(restTester.DatabaseConfig.OIDCConfig.Providers, notReachableProviderURL)
+			response, err = http.DefaultClient.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			checkGoodAuthResponse(t, response, "foo_noah")
+		})
+	}
+}
