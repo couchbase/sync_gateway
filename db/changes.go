@@ -171,7 +171,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 	}
 }
 
-func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, to string) <-chan *ChangeEntry {
+func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, to string, triggeredBy uint64) <-chan *ChangeEntry {
 
 	feed := make(chan *ChangeEntry, 1)
 
@@ -195,7 +195,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 		for _, logEntry := range changes {
 			seqID := SequenceID{
 				Seq:         logEntry.Sequence,
-				TriggeredBy: 85,
+				TriggeredBy: triggeredBy,
 			}
 
 			change := makeChangeEntry(logEntry, seqID, singleChannelCache.ChannelName(), true)
@@ -651,8 +651,8 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			// Once you have the list of channels: iterate over channels, iterate over docs make change entry with revoked true
 			// triggeredby endseq. Iterate over docs from 0 to since.
 			channelsToRevoke := db.user.GetRevokedChannelsCombined(options.Since.SafeSequence())
-			for _, channel := range channelsToRevoke {
-				feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, "")
+			for channel, triggeredBy := range channelsToRevoke {
+				feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, "", triggeredBy)
 				feeds = append(feeds, feed)
 				names = append(names, channel)
 			}

@@ -59,7 +59,7 @@ type Principal interface {
 	// the guest user, else 403.
 	UnauthError(message string) error
 
-	RevokedChannels(sinceSeq uint64) []string
+	RevokedChannels(sinceSeq uint64) map[string]uint64
 
 	DocID() string
 	accessViewKey() string
@@ -126,7 +126,7 @@ type User interface {
 	// to, annotated with the sequence number at which access was granted.
 	FilterToAvailableChannels(channels base.Set) ch.TimedSet
 
-	GetRevokedChannelsCombined(since uint64) []string
+	GetRevokedChannelsCombined(since uint64) map[string]uint64
 
 	setRolesSince(ch.TimedSet)
 }

@@ -29,49 +29,76 @@ type userImpl struct {
 	roles []Role
 }
 
-func (user *userImpl) GetRevokedChannelsCombined(since uint64) []string {
-	rolesToRedact := []string{}
+// TODO: Probably make this return map with channels and max endseq (for triggered by use)
+// Can then use map for uniqueness
+func (user *userImpl) GetRevokedChannelsCombined(since uint64) map[string]uint64 {
+
+	// Grab all channels user has access to
+	accessibleChannels := user.InheritedChannels()
+
+	// Get revoked roles
+	rolesToRevoke := map[string]uint64{}
 	roleHistory := user.RoleHistory()
 	for roleName, history := range roleHistory {
 		if !user.RoleNames().Contains(roleName) {
 			for _, entry := range history.Entries {
 				if entry.Seq <= since && entry.EndSeq >= since {
-					rolesToRedact = append(rolesToRedact, roleName)
+					mostRecentEndSeq := history.Entries[len(history.Entries)-1]
+					rolesToRevoke[roleName] = mostRecentEndSeq.EndSeq
 				}
 			}
 		}
 	}
 
-	userRevokedChannels := user.RevokedChannels(since)
-	combinedRevokedChannels := make([]string, len(userRevokedChannels))
+	combinedRevokedChannels := map[string]uint64{}
 
-	for idx, revChan := range userRevokedChannels {
-		combinedRevokedChannels[idx] = revChan
+	addToCombined := func(chanName string, triggeredBy uint64) {
+		if currentVal, ok := combinedRevokedChannels[chanName]; !ok || triggeredBy > currentVal {
+			combinedRevokedChannels[chanName] = currentVal
+		}
 	}
 
-	for _, roleName := range rolesToRedact {
+	revokeChannelHistoryProcessing := func(princ Principal) {
+		for chanName, history := range princ.ChannelHistory() {
+			if !accessibleChannels.Contains(chanName) {
+				for _, entry := range history.Entries {
+					if entry.Seq <= since && entry.EndSeq >= since {
+						mostRecentEndSeq := history.Entries[len(history.Entries)-1]
+						addToCombined(chanName, mostRecentEndSeq.EndSeq)
+					}
+				}
+			}
+		}
+	}
+
+	// Iterate over revoked roles and revoke ALL channels (current and previous) from revoked roles that we don't have from another grant
+	for roleName, triggeredBy := range rolesToRevoke {
+		// TODO: Deal with err, probably check for exist error
 		role, err := user.auth.GetRole(roleName)
 		if err != nil {
-			panic(err)
-		}
-		for _, revChan := range role.RevokedChannels(since) {
-			combinedRevokedChannels = append(combinedRevokedChannels, revChan)
-		}
-	}
-
-	// Make unique, do some smart stuff
-	seen := make(map[string]struct{}, len(combinedRevokedChannels))
-	i := 0
-	for _, revChan := range combinedRevokedChannels {
-		if _, ok := seen[revChan]; ok {
 			continue
 		}
-		seen[revChan] = struct{}{}
-		combinedRevokedChannels[i] = revChan
-		i++
+
+		for _, chanName := range role.Channels().AllChannels() {
+			if !accessibleChannels.Contains(chanName) {
+				addToCombined(chanName, triggeredBy)
+			}
+		}
+		revokeChannelHistoryProcessing(role)
 	}
 
-	return combinedRevokedChannels[:i]
+	// Get current roles
+	currentRoles := user.GetRoles()
+
+	// Loop over current roles and revoke any revoked channels inside role provided that channel isn't in previously obtained access
+	for _, role := range currentRoles {
+		revokeChannelHistoryProcessing(role)
+	}
+
+	// Finally check the user itself
+	revokeChannelHistoryProcessing(user)
+
+	return combinedRevokedChannels
 }
 
 // Marshallable data is stored in separate struct from userImpl,

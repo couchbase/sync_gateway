@@ -5663,34 +5663,126 @@ func TestUserXattrSyncFn(t *testing.T) {
 	assert.Equal(t, []string{"channel"}, doc.SyncData.Channels.KeySet())
 }
 
-func fillToSeq(rt *RestTester, revid string, seq uint64) (string, error) {
+type UserRoles struct {
+	Roles map[string][]string `json:"roles"`
+}
+
+type Channels struct {
+	Channels map[string][]string `json:"channels"`
+}
+
+type ChannelRevocationTester struct {
+	restTester *RestTester
+	test       *testing.T
+
+	fillerDocRev   string
+	roleRev        string
+	roleChannelRev string
+	userChannelRev string
+
+	roles        UserRoles
+	roleChannels Channels
+	userChannels Channels
+}
+
+func (tester *ChannelRevocationTester) addRole(user, role string) {
+	if tester.roles.Roles == nil {
+		tester.roles.Roles = map[string][]string{}
+	}
+
+	tester.roles.Roles[user] = append(tester.roles.Roles[user], fmt.Sprintf("role:%s", role))
+	revID := tester.restTester.createDocReturnRev(tester.test, "userRoles", tester.roleRev, tester.roles)
+	tester.roleRev = revID
+}
+
+func (tester *ChannelRevocationTester) removeRole(user, role string) {
+	delIdx := -1
+	roles := tester.roles.Roles[user]
+	for idx, val := range roles {
+		if val == fmt.Sprintf("role:%s", role) {
+			delIdx = idx
+			break
+		}
+	}
+	tester.roles.Roles[user] = append(roles[:delIdx], roles[delIdx+1:]...)
+	tester.roleRev = tester.restTester.createDocReturnRev(tester.test, "userRoles", tester.roleRev, tester.roles)
+}
+
+func (tester *ChannelRevocationTester) addRoleChannel(role, channel string) {
+	if tester.roleChannels.Channels == nil {
+		tester.roleChannels.Channels = map[string][]string{}
+	}
+
+	role = fmt.Sprintf("role:%s", role)
+
+	tester.roleChannels.Channels[role] = append(tester.roleChannels.Channels[role], channel)
+	tester.roleChannelRev = tester.restTester.createDocReturnRev(tester.test, "roleChannels", tester.roleChannelRev, tester.roleChannels)
+}
+
+func (tester *ChannelRevocationTester) removeRoleChannel(role, channel string) {
+	delIdx := -1
+	role = fmt.Sprintf("role:%s", role)
+	channelsSlice := tester.roleChannels.Channels[role]
+	for idx, val := range channelsSlice {
+		if val == channel {
+			delIdx = idx
+			break
+		}
+	}
+	tester.roleChannels.Channels[role] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
+	tester.roleChannelRev = tester.restTester.createDocReturnRev(tester.test, "roleChannels", tester.roleChannelRev, tester.roleChannels)
+}
+
+func (tester *ChannelRevocationTester) addUserChannel(user, channel string) {
+	if tester.userChannels.Channels == nil {
+		tester.userChannels.Channels = map[string][]string{}
+	}
+
+	tester.userChannels.Channels[user] = append(tester.userChannels.Channels[user], channel)
+	tester.userChannelRev = tester.restTester.createDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannels)
+}
+
+func (tester *ChannelRevocationTester) removeUserChannel(user, channel string) {
+	delIdx := -1
+	channelsSlice := tester.userChannels.Channels[user]
+	for idx, val := range channelsSlice {
+		if val == channel {
+			delIdx = idx
+			break
+		}
+	}
+	tester.userChannels.Channels[user] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
+	tester.userChannelRev = tester.restTester.createDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannels)
+}
+
+func (tester *ChannelRevocationTester) fillToSeq(rt *RestTester, seq uint64) error {
 
 	currentSeq, err := rt.GetDatabase().LastSequence()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	loopCount := seq - currentSeq - 1
 	for i := 0; i < int(loopCount); i++ {
 		requestURL := "/db/fillerDoc"
-		if revid != "" {
-			requestURL += "?rev=" + revid
+		if tester.fillerDocRev != "" {
+			requestURL += "?rev=" + tester.fillerDocRev
 		}
 		resp := rt.SendAdminRequest("PUT", requestURL, "{}")
 		if resp.Code != http.StatusCreated {
-			return "", fmt.Errorf("not correct resp code")
+			return fmt.Errorf("not correct resp code")
 		}
 
 		var body db.Body
 		err = json.Unmarshal(resp.BodyBytes(), &body)
 		if err != nil {
-			return "", err
+			return err
 		}
 
-		revid = body["rev"].(string)
+		tester.fillerDocRev = body["rev"].(string)
 	}
 
-	return revid, nil
+	return nil
 }
 
 func (rt *RestTester) createDocReturnRev(t *testing.T, docid string, revid string, bodyIn interface{}) string {
@@ -5715,9 +5807,8 @@ func (rt *RestTester) createDocReturnRev(t *testing.T, docid string, revid strin
 	return revid
 }
 
-func TestRevocationV1(t *testing.T) {
+func TestRevocationScenario1(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
-
 	defer db.SuspendSequenceBatching()()
 
 	rt := NewRestTester(t, &RestTesterConfig{
@@ -5747,6 +5838,11 @@ func TestRevocationV1(t *testing.T) {
 
 	defer rt.Close()
 
+	revocationTester := ChannelRevocationTester{
+		test:       t,
+		restTester: rt,
+	}
+
 	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "pass", "email": "user@couchbase.com"}`)
 	assertStatus(t, resp, http.StatusCreated)
 
@@ -5756,102 +5852,206 @@ func TestRevocationV1(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/doc1", "{}")
 	assertStatus(t, resp, http.StatusCreated)
 
-	type UserRoles struct {
-		Roles map[string][]string `json:"roles"`
-	}
-
 	type Channels struct {
 		Channels map[string][]string `json:"channels"`
 	}
 
-	userRoles := UserRoles{Roles: map[string][]string{}}
-	_ = userRoles
-
-	roleChannels := Channels{Channels: map[string][]string{}}
-	_ = roleChannels
-
-	userChannels := Channels{Channels: map[string][]string{}}
-	_ = userChannels
-
-	revid, err := fillToSeq(rt, "", 5)
+	err := revocationTester.fillToSeq(rt, 5)
 	assert.NoError(t, err)
 
-	roleChannels.Channels["role:foo"] = []string{"ch1"}
-	roleChannelsRev := rt.createDocReturnRev(t, "roleChannels", "", roleChannels)
+	revocationTester.addRoleChannel("foo", "ch1")
 
 	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=0", "", nil, "user", "pass")
 	assertStatus(t, resp, http.StatusOK)
 	fmt.Println(string(resp.BodyBytes()))
 
-	revid, err = fillToSeq(rt, revid, 20)
+	err = revocationTester.fillToSeq(rt, 20)
 	assert.NoError(t, err)
 
-	userRoles.Roles["user"] = []string{"role:foo"}
-	userRolesRev := rt.createDocReturnRev(t, "userRoles", "", userRoles)
+	revocationTester.addRole("user", "foo")
 
-	revid, err = fillToSeq(rt, revid, 26)
+	err = revocationTester.fillToSeq(rt, 26)
 	assert.NoError(t, err)
 
 	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=5", "", nil, "user", "pass")
 	assertStatus(t, resp, http.StatusOK)
 	fmt.Println(string(resp.BodyBytes()))
 
-	revid, err = fillToSeq(rt, revid, 41)
+	err = revocationTester.fillToSeq(rt, 41)
 	assert.NoError(t, err)
 
 	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=25", "", nil, "user", "pass")
 	assertStatus(t, resp, http.StatusOK)
 	fmt.Println(string(resp.BodyBytes()))
 
-	revid, err = fillToSeq(rt, revid, 45)
+	err = revocationTester.fillToSeq(rt, 45)
 	assert.NoError(t, err)
 
-	userRoles.Roles["user"] = []string{}
-	userRolesRev = rt.createDocReturnRev(t, "userRoles", userRolesRev, userRoles)
+	revocationTester.removeRole("user", "foo")
 
-	revid, err = fillToSeq(rt, revid, 55)
+	err = revocationTester.fillToSeq(rt, 55)
 	assert.NoError(t, err)
 
-	roleChannels.Channels["role:foo"] = []string{}
-	roleChannelsRev = rt.createDocReturnRev(t, "roleChannels", roleChannelsRev, roleChannels)
+	revocationTester.removeRoleChannel("foo", "ch1")
 
-	revid, err = fillToSeq(rt, revid, 65)
+	err = revocationTester.fillToSeq(rt, 65)
 	assert.NoError(t, err)
 
-	userRoles.Roles["user"] = []string{"role:foo"}
-	userRolesRev = rt.createDocReturnRev(t, "userRoles", userRolesRev, userRoles)
+	revocationTester.addRole("user", "foo")
 
-	revid, err = fillToSeq(rt, revid, 75)
+	err = revocationTester.fillToSeq(rt, 75)
 	assert.NoError(t, err)
 
-	roleChannels.Channels["role:foo"] = []string{"ch1"}
-	roleChannelsRev = rt.createDocReturnRev(t, "roleChannels", roleChannelsRev, roleChannels)
+	revocationTester.addRoleChannel("foo", "ch1")
 
-	revid, err = fillToSeq(rt, revid, 81)
+	err = revocationTester.fillToSeq(rt, 81)
 	assert.NoError(t, err)
 
 	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=40", "", nil, "user", "pass")
 	assertStatus(t, resp, http.StatusOK)
 	fmt.Println(string(resp.BodyBytes()))
 
-	revid, err = fillToSeq(rt, revid, 85)
+	err = revocationTester.fillToSeq(rt, 85)
 	assert.NoError(t, err)
 
-	roleChannels.Channels["role:foo"] = []string{}
-	roleChannelsRev = rt.createDocReturnRev(t, "roleChannels", roleChannelsRev, roleChannels)
+	revocationTester.removeRoleChannel("foo", "ch1")
 
-	revid, err = fillToSeq(rt, revid, 95)
+	err = revocationTester.fillToSeq(rt, 95)
 	assert.NoError(t, err)
 
-	userRoles.Roles["user"] = []string{}
-	userRolesRev = rt.createDocReturnRev(t, "userRoles", userRolesRev, userRoles)
+	revocationTester.removeRole("user", "foo")
 
-	revid, err = fillToSeq(rt, revid, 111)
+	err = revocationTester.fillToSeq(rt, 111)
 	assert.NoError(t, err)
 
 	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=80", "", nil, "user", "pass")
 	assertStatus(t, resp, http.StatusOK)
 	fmt.Println(string(resp.BodyBytes()))
+}
 
-	t.Fail()
+func TestRevocationScenario2(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `
+			function (doc, oldDoc){
+				if (doc._id === 'userRoles'){
+					for (var key in doc.roles){
+						role(key, doc.roles[key]);
+					}
+				}
+				if (doc._id === 'roleChannels'){
+					for (var key in doc.channels){
+						access(key, doc.channels[key]);
+					}
+				}
+				if (doc._id === 'userChannels'){
+					for (var key in doc.channels){
+						access(key, doc.channels[key]);
+					}
+				}
+				if (doc._id === 'doc1'){
+					channel('ch1');
+				}
+				
+			}`,
+	})
+
+	defer rt.Close()
+
+	revocationTester := ChannelRevocationTester{
+		test:       t,
+		restTester: rt,
+	}
+
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "pass", "email": "user@couchbase.com"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db/_role/foo", `{}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db/doc1", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	type Channels struct {
+		Channels map[string][]string `json:"channels"`
+	}
+
+	err := revocationTester.fillToSeq(rt, 5)
+	assert.NoError(t, err)
+
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	fmt.Println("Seq 5: Since 0")
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=0", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	err = revocationTester.fillToSeq(rt, 20)
+	assert.NoError(t, err)
+
+	revocationTester.addRole("user", "foo")
+
+	err = revocationTester.fillToSeq(rt, 26)
+	assert.NoError(t, err)
+
+	fmt.Println("Seq 25: Since 5")
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=5", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	err = revocationTester.fillToSeq(rt, 45)
+	assert.NoError(t, err)
+
+	revocationTester.removeRole("user", "foo")
+
+	err = revocationTester.fillToSeq(rt, 51)
+	assert.NoError(t, err)
+
+	fmt.Println("Seq 50: Since 25")
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=25", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	err = revocationTester.fillToSeq(rt, 55)
+	assert.NoError(t, err)
+
+	revocationTester.removeRoleChannel("foo", "ch1")
+
+	err = revocationTester.fillToSeq(rt, 65)
+	assert.NoError(t, err)
+
+	revocationTester.addRole("user", "foo")
+
+	err = revocationTester.fillToSeq(rt, 75)
+	assert.NoError(t, err)
+
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	err = revocationTester.fillToSeq(rt, 81)
+	assert.NoError(t, err)
+
+	fmt.Println("Seq 80: Since 50")
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=50", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
+
+	err = revocationTester.fillToSeq(rt, 85)
+	assert.NoError(t, err)
+
+	revocationTester.removeRoleChannel("foo", "ch1")
+
+	err = revocationTester.fillToSeq(rt, 95)
+	assert.NoError(t, err)
+
+	revocationTester.removeRole("user", "foo")
+
+	err = revocationTester.fillToSeq(rt, 111)
+	assert.NoError(t, err)
+
+	fmt.Println("Seq 110: Since 80")
+	resp = rt.SendUserRequestWithHeaders("GET", "/db/_changes?since=80", "", nil, "user", "pass")
+	assertStatus(t, resp, http.StatusOK)
+	fmt.Println(string(resp.BodyBytes()))
 }

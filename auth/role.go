@@ -179,12 +179,14 @@ func (role *roleImpl) AuthorizeAnyChannel(channels base.Set) error {
 	return authorizeAnyChannel(role, channels)
 }
 
-func (role *roleImpl) RevokedChannels(sinceSeq uint64) (revokedChannels []string) {
+func (role *roleImpl) RevokedChannels(sinceSeq uint64) map[string]uint64 {
+	revokedChannels := map[string]uint64{}
 	for channelHistoryName, history := range role.ChannelHistory() {
 		if !role.Channels().Contains(channelHistoryName) {
 			for _, historyEntry := range history.Entries {
 				if historyEntry.Seq <= sinceSeq && historyEntry.EndSeq >= sinceSeq {
-					revokedChannels = append(revokedChannels, channelHistoryName)
+					triggeredBySeq := history.Entries[len(history.Entries)-1].EndSeq
+					revokedChannels[channelHistoryName] = triggeredBySeq
 				}
 			}
 		}
