@@ -561,7 +561,7 @@ func (bsc *BlipSyncContext) sendRevAsDelta(sender *blip.Sender, docID, revID, de
 	revDelta, redactedRev, err := handleChangesResponseDb.GetDelta(docID, deltaSrcRevID, revID)
 	if err == ErrForbidden {
 		return err
-	} else if base.IsDeltaError(err) {
+	} else if base.IsFleeceDeltaError(err) {
 		// Something went wrong in the diffing library. We want to know about this!
 		base.WarnfCtx(bsc.loggingCtx, "Falling back to full body replication. Error generating delta from %s to %s for key %s - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 		return bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
@@ -713,6 +713,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 
 		deltaSrcMap := map[string]interface{}(deltaSrcBody)
 		err = base.Patch(&deltaSrcMap, newDoc.Body())
+		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
 			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for key %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)

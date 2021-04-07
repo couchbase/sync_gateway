@@ -19,20 +19,11 @@ func init() {
 	fleecedelta.StringDiffTimeout = time.Millisecond // Aggressive string diff timeout
 }
 
-// DeltaError is a typed error wrapped around any error returned from go-fleecedelta.
-type DeltaError error
-
-// IsDeltaError returns true if the given delta originates from go-fleecedelta.
-func IsDeltaError(err error) bool {
-	_, isDeltaError := err.(DeltaError)
-	return isDeltaError
-}
-
 // Diff will return the fleece delta between old and new.
 func Diff(old, new map[string]interface{}) (delta []byte, err error) {
 	delta, err = fleecedelta.DiffJSON(old, new)
 	if err != nil {
-		return nil, DeltaError(err)
+		return nil, FleeceDeltaError{e: err}
 	}
 	return delta, nil
 }
@@ -41,7 +32,7 @@ func Diff(old, new map[string]interface{}) (delta []byte, err error) {
 func Patch(old *map[string]interface{}, delta map[string]interface{}) (err error) {
 	err = fleecedelta.PatchJSONWithUnmarshalledDelta(old, delta)
 	if err != nil {
-		return DeltaError(err)
+		return FleeceDeltaError{e: err}
 	}
 	return nil
 }

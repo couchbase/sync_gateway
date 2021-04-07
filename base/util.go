@@ -1128,6 +1128,15 @@ func DefaultHTTPTransport() *http.Transport {
 	return http.DefaultTransport.(*http.Transport).Clone()
 }
 
+// IsFleeceDeltaError returns true if the given error originates from go-fleecedelta.
+func IsFleeceDeltaError(err error) bool { return errors.As(err, &FleeceDeltaError{}) }
+
+// FleeceDeltaError is a typed error wrapped around any error returned from go-fleecedelta.
+type FleeceDeltaError struct{ e error }
+
+func (e FleeceDeltaError) Error() string { return e.e.Error() }
+func (e FleeceDeltaError) Unwrap() error { return e.e }
+
 func ContainsString(s []string, e string) bool {
 	for _, a := range s {
 		if a == e {
