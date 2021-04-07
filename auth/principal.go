@@ -33,10 +33,14 @@ type Principal interface {
 	SetExplicitChannels(ch.TimedSet)
 
 	// The previous set of channels the Principal was granted.  Used to maintain sequence history.
-	PreviousChannels() ch.TimedSet
+	PreviousChannels() *PreviousChannelsOrRole
 
 	// Sets the previous set of channels the Principal has access to.
-	SetPreviousChannels(ch.TimedSet)
+	SetPreviousChannels(*PreviousChannelsOrRole)
+
+	ChannelHistory() ChannelOrRoleHistory
+
+	SetChannelHistory(history ChannelOrRoleHistory)
 
 	// Returns true if the Principal has access to the given channel.
 	CanSeeChannel(channel string) bool
@@ -100,6 +104,14 @@ type User interface {
 
 	// Sets the explicit roles the user belongs to.
 	SetExplicitRoles(ch.TimedSet)
+
+	PreviousRoles() *PreviousChannelsOrRole
+
+	SetPreviousRoles(set *PreviousChannelsOrRole)
+
+	SetRoleHistory(history ChannelOrRoleHistory)
+
+	RoleHistory() ChannelOrRoleHistory
 
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet

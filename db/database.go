@@ -1322,49 +1322,49 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 		base.Infof(base.KeyAll, "Invalidating channel caches of users/roles...")
 		users, roles, _ := db.AllPrincipalIDs()
 		for _, name := range users {
-			db.invalUserChannels(name)
+			db.invalUserChannels(name, endSeq)
 		}
 		for _, name := range roles {
-			db.invalRoleChannels(name)
+			db.invalRoleChannels(name, endSeq)
 		}
 	}
 	return docsChanged, nil
 }
 
-func (db *Database) invalUserRoles(username string) {
+func (db *Database) invalUserRoles(username string, invalSeq uint64) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
-		if err := authr.InvalidateRoles(user); err != nil {
+		if err := authr.InvalidateRoles(user, invalSeq); err != nil {
 			base.Warnf("Error invalidating roles for user %s: %v", base.UD(username), err)
 		}
 	}
 }
 
-func (db *Database) invalUserChannels(username string) {
+func (db *Database) invalUserChannels(username string, invalSeq uint64) {
 	authr := db.Authenticator()
 	if user, _ := authr.GetUser(username); user != nil {
-		if err := authr.InvalidateChannels(user); err != nil {
+		if err := authr.InvalidateChannels(user, invalSeq); err != nil {
 			base.Warnf("Error invalidating channels for user %s: %v", base.UD(username), err)
 		}
 	}
 }
 
-func (db *Database) invalRoleChannels(rolename string) {
+func (db *Database) invalRoleChannels(rolename string, invalSeq uint64) {
 	authr := db.Authenticator()
 	if role, _ := authr.GetRole(rolename); role != nil {
-		if err := authr.InvalidateChannels(role); err != nil {
+		if err := authr.InvalidateChannels(role, invalSeq); err != nil {
 			base.Warnf("Error invalidating channels for role %s: %v", base.UD(rolename), err)
 		}
 	}
 }
 
-func (db *Database) invalUserOrRoleChannels(name string) {
+func (db *Database) invalUserOrRoleChannels(name string, invalSeq uint64) {
 
 	principalName, isRole := channels.AccessNameToPrincipalName(name)
 	if isRole {
-		db.invalRoleChannels(principalName)
+		db.invalRoleChannels(principalName, invalSeq)
 	} else {
-		db.invalUserChannels(principalName)
+		db.invalUserChannels(principalName, invalSeq)
 	}
 }
 
