@@ -54,7 +54,7 @@ func (user *userImpl) GetRevokedChannelsCombined(since uint64) map[string]uint64
 
 	addToCombined := func(chanName string, triggeredBy uint64) {
 		if currentVal, ok := combinedRevokedChannels[chanName]; !ok || triggeredBy > currentVal {
-			combinedRevokedChannels[chanName] = currentVal
+			combinedRevokedChannels[chanName] = triggeredBy
 		}
 	}
 
