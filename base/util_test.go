@@ -10,6 +10,7 @@
 package base
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -724,6 +725,57 @@ func TestDefaultHTTPTransport(t *testing.T) {
 		transport := DefaultHTTPTransport()
 		assert.NotNil(t, transport, "Returned DefaultHTTPTransport was unexpectedly nil")
 	})
+}
+
+func TestIsDeltaError(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		deltaError bool
+	}{
+		{
+			name:       "nil",
+			err:        nil,
+			deltaError: false,
+		},
+		{
+			name:       "non-delta error",
+			err:        errors.New("foo"),
+			deltaError: false,
+		},
+		{
+			name:       "empty delta error",
+			err:        FleeceDeltaError{},
+			deltaError: true,
+		},
+		{
+			name:       "delta error",
+			err:        FleeceDeltaError{e: errors.New("foo")},
+			deltaError: true,
+		},
+		{
+			name:       "1.13 wrapped delta error",
+			err:        fmt.Errorf("bar: %w", FleeceDeltaError{e: errors.New("foo")}),
+			deltaError: true,
+		},
+		{
+			name:       "1.13 wrapped non-delta error",
+			err:        fmt.Errorf("bar: %w", errors.New("foo")),
+			deltaError: false,
+		},
+		// errors wrapped with pkg/errors don't support Go 1.13's errors.As/errors.Is
+		// {
+		// 	name:       "pkgerr wrapped delta error",
+		// 	err:        pkgerrors.Wrap(FleeceDeltaError{errors.New("foo")}, "bar"),
+		// 	deltaError: true,
+		// },
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.deltaError, IsFleeceDeltaError(test.err))
+		})
+	}
 }
 
 // Test to ensure that InjectJSONProperties does not mutate the given byte slice, and instead only returns a modified copy.
