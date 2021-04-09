@@ -179,6 +179,7 @@ func (h *handler) handleChanges() error {
 		options.Conflicts = h.getQuery("style") == "all_docs"
 		options.ActiveOnly = h.getBoolQuery("active_only")
 		options.IncludeDocs = h.getBoolQuery("include_docs")
+		options.Revocations = h.getBoolQuery("revocations")
 		filter = h.getQuery("filter")
 		channelsParam := h.getQuery("channels")
 		if channelsParam != "" {
