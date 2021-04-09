@@ -71,14 +71,15 @@ func (apr *ActivePullReplicator) _connect() error {
 	}
 
 	subChangesRequest := SubChangesRequest{
-		Continuous:     apr.config.Continuous,
-		Batch:          apr.config.ChangesBatchSize,
-		Since:          apr.Checkpointer.lastCheckpointSeq,
-		Filter:         apr.config.Filter,
-		FilterChannels: apr.config.FilterChannels,
-		DocIDs:         apr.config.DocIDs,
-		ActiveOnly:     apr.config.ActiveOnly,
-		clientType:     clientTypeSGR2,
+		Continuous:      apr.config.Continuous,
+		Batch:           apr.config.ChangesBatchSize,
+		Since:           apr.Checkpointer.lastCheckpointSeq,
+		Filter:          apr.config.Filter,
+		FilterChannels:  apr.config.FilterChannels,
+		DocIDs:          apr.config.DocIDs,
+		ActiveOnly:      apr.config.ActiveOnly,
+		clientType:      clientTypeSGR2,
+		EnableAutoPurge: apr.config.EnableAutoPurge,
 	}
 
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {

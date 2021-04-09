@@ -97,6 +97,7 @@ type ReplicationConfig struct {
 	Cancel                 bool                      `json:"cancel,omitempty"`
 	Adhoc                  bool                      `json:"adhoc,omitempty"`
 	BatchSize              int                       `json:"batch_size,omitempty"`
+	EnableAutoPurge        bool                      `json:"enable_auto_purge,omitempty"`
 }
 
 func DefaultReplicationConfig() ReplicationConfig {
@@ -109,6 +110,7 @@ func DefaultReplicationConfig() ReplicationConfig {
 		Continuous:             false,
 		Adhoc:                  false,
 		BatchSize:              defaultChangesBatchSize,
+		EnableAutoPurge:        false,
 	}
 }
 
@@ -139,6 +141,7 @@ type ReplicationUpsertConfig struct {
 	Cancel                 *bool       `json:"cancel,omitempty"`
 	Adhoc                  *bool       `json:"adhoc,omitempty"`
 	BatchSize              *int        `json:"batch_size,omitempty"`
+	EnableAutoPurge        *bool       `json:"enable_auto_purge,omitempty"`
 	SGR1CheckpointID       *string     `json:"sgr1_checkpoint_id,omitempty"`
 }
 
@@ -285,6 +288,10 @@ func (rc *ReplicationConfig) Upsert(c *ReplicationUpsertConfig) {
 
 	if c.BatchSize != nil {
 		rc.BatchSize = *c.BatchSize
+	}
+
+	if c.EnableAutoPurge != nil {
+		rc.EnableAutoPurge = *c.EnableAutoPurge
 	}
 
 	if c.QueryParams != nil {
@@ -478,6 +485,7 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
 		SGR1CheckpointID:   config.SGR1CheckpointID,
 		CheckpointInterval: m.CheckpointInterval,
+		EnableAutoPurge:    config.EnableAutoPurge,
 	}
 
 	rc.MaxReconnectInterval = defaultMaxReconnectInterval

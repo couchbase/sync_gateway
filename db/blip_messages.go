@@ -15,14 +15,15 @@ type BLIPMessageSender interface {
 
 // SubChangesRequest is a strongly typed 'subChanges' request.
 type SubChangesRequest struct {
-	Continuous     bool     // Continuous can be set to true if the requester wants change notifications to be sent indefinitely (optional)
-	Batch          uint16   // Batch controls the maximum number of changes to send in a single change message (optional)
-	Since          string   // Since represents the latest sequence ID already known to the requester (optional)
-	Filter         string   // Filter is the name of a filter function known to the recipient (optional)
-	FilterChannels []string // FilterChannels are a set of channels used with a 'sync_gateway/bychannel' filter (optional)
-	DocIDs         []string // DocIDs specifies which doc IDs the recipient should send changes for (optional)
-	ActiveOnly     bool     // ActiveOnly is set to `true` if the requester doesn't want to be sent tombstones. (optional)
-	clientType     clientType
+	Continuous      bool     // Continuous can be set to true if the requester wants change notifications to be sent indefinitely (optional)
+	Batch           uint16   // Batch controls the maximum number of changes to send in a single change message (optional)
+	Since           string   // Since represents the latest sequence ID already known to the requester (optional)
+	Filter          string   // Filter is the name of a filter function known to the recipient (optional)
+	FilterChannels  []string // FilterChannels are a set of channels used with a 'sync_gateway/bychannel' filter (optional)
+	DocIDs          []string // DocIDs specifies which doc IDs the recipient should send changes for (optional)
+	ActiveOnly      bool     // ActiveOnly is set to `true` if the requester doesn't want to be sent tombstones. (optional)
+	EnableAutoPurge bool
+	clientType      clientType
 }
 
 var _ BLIPMessageSender = &SubChangesRequest{}
@@ -49,6 +50,7 @@ func (rq *SubChangesRequest) marshalBLIPRequest() (*blip.Message, error) {
 	setOptionalProperty(msg.Properties, SubChangesSince, rq.Since)
 	setOptionalProperty(msg.Properties, SubChangesFilter, rq.Filter)
 	setOptionalProperty(msg.Properties, SubChangesChannels, strings.Join(rq.FilterChannels, ","))
+	setOptionalProperty(msg.Properties, SubChangesRevocations, rq.EnableAutoPurge)
 
 	if len(rq.DocIDs) > 0 {
 		if err := msg.SetJSONBody(map[string]interface{}{

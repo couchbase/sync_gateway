@@ -111,6 +111,7 @@ func (apr *ActivePushReplicator) _connect() error {
 			continuous:        apr.config.Continuous,
 			activeOnly:        apr.config.ActiveOnly,
 			batchSize:         int(apr.config.ChangesBatchSize),
+			revocations:       apr.config.EnableAutoPurge,
 			channels:          channels,
 			clientType:        clientTypeSGR2,
 			ignoreNoConflicts: true, // force the passive side to accept a "changes" message, even in no conflicts mode.
