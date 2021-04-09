@@ -183,34 +183,37 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 
 // Calculates history for either roles or channels
 func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimeSetHistory) TimeSetHistory {
-	removedGrants := ch.TimedSet{}
-
-	// Check which grants have been removed
-	for previousName, previousInfo := range invalGrants {
-		if _, ok := newGrants[previousName]; !ok {
-			removedGrants[previousName] = previousInfo
-		}
-	}
-
 	// Initialize history if currently empty
 	if currentHistory == nil {
 		currentHistory = map[string]TimeSetHistoryEntries{}
 	}
 
-	// Iterate over removed grants and build history
-	for name, info := range removedGrants {
-		currentHistoryForGrant, ok := currentHistory[name]
+	// Iterate over invalidated grants
+	for previousName, previousInfo := range invalGrants {
+
+		// Check if the invalidated grant exists in the new set
+		// If principal still has access to this grant then we don't need to build any history for it so skip
+		if _, ok := newGrants[previousName]; ok {
+			continue
+		}
+
+		// If we got here we know the grant has been revoked from the principal
+
+		// Start building history for the principal. If it currently doesn't exist initialize it.
+		currentHistoryForGrant, ok := currentHistory[previousName]
 		if !ok {
 			currentHistoryForGrant = TimeSetHistoryEntries{}
 		}
 
+		// TODO: Will perform pruning here once full
+
+		// Add grant to history
 		currentHistoryForGrant.UpdatedAt = time.Now().UnixNano()
 		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, TimeSetHistoryEntry{
-			Seq:    info.Sequence,
+			Seq:    previousInfo.Sequence,
 			EndSeq: invalSeq,
 		})
-
-		currentHistory[name] = currentHistoryForGrant
+		currentHistory[previousName] = currentHistoryForGrant
 	}
 
 	return currentHistory
