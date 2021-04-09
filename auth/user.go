@@ -164,7 +164,7 @@ func (user *userImpl) GetRoleInvalSeq() uint64 {
 	return user.RoleInvalSeq
 }
 
-func (user *userImpl) SetRoleInvaliSeq(invalSeq uint64) {
+func (user *userImpl) SetRoleInvalSeq(invalSeq uint64) {
 	user.RoleInvalSeq = invalSeq
 }
 
@@ -240,8 +240,8 @@ func (user *userImpl) SetPassword(password string) {
 
 func (user *userImpl) GetRoles() []Role {
 	if user.roles == nil {
-		roles := make([]Role, 0, len(user.RolesSince_))
-		for name := range user.RolesSince_ {
+		roles := make([]Role, 0, len(user.RoleNames()))
+		for name := range user.RoleNames() {
 			role, err := user.auth.GetRole(name)
 			//base.Infof(base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
 			if err != nil {
@@ -288,7 +288,7 @@ func (user *userImpl) AuthorizeAnyChannel(channels base.Set) error {
 func (user *userImpl) InheritedChannels() ch.TimedSet {
 	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
-		roleSince := user.RolesSince_[role.Name()]
+		roleSince := user.RoleNames()[role.Name()]
 		channels.AddAtSequence(role.Channels(), roleSince.Sequence)
 	}
 	return channels

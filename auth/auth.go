@@ -168,46 +168,52 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	previousChannelEntries := princ.InvalidatedChannels()
-	previousInvalSeq := princ.GetChannelInvalSeq()
-
-	removedChannels := ch.TimedSet{}
-	for previousChannelName, previousChannelInfo := range previousChannelEntries {
-		if _, ok := channels[previousChannelName]; !ok {
-			removedChannels[previousChannelName] = previousChannelInfo
-		}
-	}
-
-	channelHistory := princ.ChannelHistory()
-	if channelHistory == nil {
-		channelHistory = map[string]TimeSetHistoryEntries{}
-	}
-
-	for name, channelInfo := range removedChannels {
-		currentChannelHistory, ok := channelHistory[name]
-		if !ok {
-			currentChannelHistory = TimeSetHistoryEntries{}
-		}
-
-		currentChannelHistory.UpdatedAt = time.Now().UnixNano()
-		currentChannelHistory.Entries = append(currentChannelHistory.Entries, TimeSetHistoryEntry{
-			Seq:    channelInfo.Sequence,
-			EndSeq: previousInvalSeq,
-		})
-
-		channelHistory[name] = currentChannelHistory
-	}
+	channelHistory := auth.calculateHistory(princ.GetChannelInvalSeq(), princ.InvalidatedChannels(), channels, princ.ChannelHistory())
 
 	if len(channelHistory) != 0 {
 		princ.SetChannelHistory(channelHistory)
 	}
 
 	base.Infof(base.KeyAccess, "Recomputed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
-	princ.SetChannelInvaliSeq(0)
+	princ.SetChannelInvalSeq(0)
 	princ.setChannels(channels)
 
 	return nil
+}
 
+// Calculates history for either roles or channels
+func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimeSetHistory) TimeSetHistory {
+	removedGrants := ch.TimedSet{}
+
+	// Check which grants have been removed
+	for previousName, previousInfo := range invalGrants {
+		if _, ok := newGrants[previousName]; !ok {
+			removedGrants[previousName] = previousInfo
+		}
+	}
+
+	// Initialize history if currently empty
+	if currentHistory == nil {
+		currentHistory = map[string]TimeSetHistoryEntries{}
+	}
+
+	// Iterate over removed grants and build history
+	for name, info := range removedGrants {
+		currentHistoryForGrant, ok := currentHistory[name]
+		if !ok {
+			currentHistoryForGrant = TimeSetHistoryEntries{}
+		}
+
+		currentHistoryForGrant.UpdatedAt = time.Now().UnixNano()
+		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, TimeSetHistoryEntry{
+			Seq:    info.Sequence,
+			EndSeq: invalSeq,
+		})
+
+		currentHistory[name] = currentHistoryForGrant
+	}
+
+	return currentHistory
 }
 
 func (auth *Authenticator) rebuildRoles(user User) error {
@@ -228,42 +234,14 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(explicit)
 	}
 
-	previousRoleEntries := user.InvalidatedRoles()
-	previousInvalSeq := user.GetRoleInvalSeq()
-
-	removedRoles := ch.TimedSet{}
-	for previousRoleName, previousRoleInfo := range previousRoleEntries {
-		if _, ok := roles[previousRoleName]; !ok {
-			removedRoles[previousRoleName] = previousRoleInfo
-		}
-	}
-
-	roleHistory := user.RoleHistory()
-	if roleHistory == nil {
-		roleHistory = map[string]TimeSetHistoryEntries{}
-	}
-
-	for name, roleInfo := range removedRoles {
-		currentRoleHistory, ok := roleHistory[name]
-		if !ok {
-			currentRoleHistory = TimeSetHistoryEntries{}
-		}
-
-		currentRoleHistory.UpdatedAt = time.Now().UnixNano()
-		currentRoleHistory.Entries = append(currentRoleHistory.Entries, TimeSetHistoryEntry{
-			Seq:    roleInfo.Sequence,
-			EndSeq: previousInvalSeq,
-		})
-
-		roleHistory[name] = currentRoleHistory
-	}
+	roleHistory := auth.calculateHistory(user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
 
 	if len(roleHistory) != 0 {
 		user.SetRoleHistory(roleHistory)
 	}
 
 	base.Infof(base.KeyAccess, "Computed roles for %q: %s", base.UD(user.Name()), base.UD(roles))
-	user.SetRoleInvaliSeq(0)
+	user.SetRoleInvalSeq(0)
 	user.setRolesSince(roles)
 	return nil
 }
@@ -329,7 +307,7 @@ func (auth *Authenticator) InvalidateChannels(p Principal, invalSeq uint64) erro
 
 		base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(p.Name()))
 
-		p.SetChannelInvaliSeq(invalSeq)
+		p.SetChannelInvalSeq(invalSeq)
 		return p, nil
 	}
 	return auth.casUpdatePrincipal(p, invalidateChannelsCallback)
@@ -348,7 +326,7 @@ func (auth *Authenticator) InvalidateRoles(user User, invalSeq uint64) error {
 		}
 		base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(user.Name()))
 
-		user.SetRoleInvaliSeq(invalSeq)
+		user.SetRoleInvalSeq(invalSeq)
 		return user, nil
 	}
 

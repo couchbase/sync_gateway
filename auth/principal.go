@@ -35,7 +35,7 @@ type Principal interface {
 
 	GetChannelInvalSeq() uint64
 
-	SetChannelInvaliSeq(uint64)
+	SetChannelInvalSeq(uint64)
 
 	// The set of invalidated channels
 	// Returns nil if not invalidated
@@ -111,7 +111,7 @@ type User interface {
 
 	GetRoleInvalSeq() uint64
 
-	SetRoleInvaliSeq(uint64)
+	SetRoleInvalSeq(uint64)
 
 	// The set of invalidated roles
 	// Returns nil if not invalidated

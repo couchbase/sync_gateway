@@ -125,7 +125,7 @@ func (role *roleImpl) GetChannelInvalSeq() uint64 {
 	return role.ChannelInvalSeq
 }
 
-func (role *roleImpl) SetChannelInvaliSeq(invalSeq uint64) {
+func (role *roleImpl) SetChannelInvalSeq(invalSeq uint64) {
 	role.ChannelInvalSeq = invalSeq
 }
 

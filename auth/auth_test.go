@@ -321,7 +321,7 @@ func TestRebuildUserChannels(t *testing.T) {
 	computer := mockComputer{channels: ch.AtSequence(ch.SetOf(t, "derived1", "derived2"), 1)}
 	auth := NewAuthenticator(bucket, &computer)
 	user, _ := auth.NewUser("testUser", "password", ch.SetOf(t, "explicit1"))
-	user.SetChannelInvaliSeq(2)
+	user.SetChannelInvalSeq(2)
 	err := auth.Save(user)
 	assert.Equal(t, nil, err)
 
