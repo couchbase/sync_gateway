@@ -168,13 +168,8 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	var previousChannelEntries ch.TimedSet
-	var previousInvalSeq uint64
-
-	if princ.PreviousChannels() != nil {
-		previousChannelEntries = princ.PreviousChannels().Entries
-		previousInvalSeq = princ.PreviousChannels().InvalSeq
-	}
+	previousChannelEntries := princ.InvalidatedChannels()
+	previousInvalSeq := princ.GetChannelInvalSeq()
 
 	removedChannels := ch.TimedSet{}
 	for previousChannelName, previousChannelInfo := range previousChannelEntries {
@@ -185,17 +180,17 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 
 	channelHistory := princ.ChannelHistory()
 	if channelHistory == nil {
-		channelHistory = map[string]ChannelOrRoleHistoryEntries{}
+		channelHistory = map[string]TimeSetHistoryEntries{}
 	}
 
 	for name, channelInfo := range removedChannels {
 		currentChannelHistory, ok := channelHistory[name]
 		if !ok {
-			currentChannelHistory = ChannelOrRoleHistoryEntries{}
+			currentChannelHistory = TimeSetHistoryEntries{}
 		}
 
 		currentChannelHistory.UpdatedAt = time.Now().UnixNano()
-		currentChannelHistory.Entries = append(currentChannelHistory.Entries, ChannelOrRoleHistoryEntry{
+		currentChannelHistory.Entries = append(currentChannelHistory.Entries, TimeSetHistoryEntry{
 			Seq:    channelInfo.Sequence,
 			EndSeq: previousInvalSeq,
 		})
@@ -208,7 +203,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	}
 
 	base.Infof(base.KeyAccess, "Recomputed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
-	princ.SetPreviousChannels(nil)
+	princ.SetChannelInvaliSeq(0)
 	princ.setChannels(channels)
 
 	return nil
@@ -233,13 +228,8 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(explicit)
 	}
 
-	var previousRoleEntries ch.TimedSet
-	var previousInvalSeq uint64
-
-	if user.PreviousRoles() != nil {
-		previousRoleEntries = user.PreviousRoles().Entries
-		previousInvalSeq = user.PreviousRoles().InvalSeq
-	}
+	previousRoleEntries := user.InvalidatedRoles()
+	previousInvalSeq := user.GetRoleInvalSeq()
 
 	removedRoles := ch.TimedSet{}
 	for previousRoleName, previousRoleInfo := range previousRoleEntries {
@@ -250,17 +240,17 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 
 	roleHistory := user.RoleHistory()
 	if roleHistory == nil {
-		roleHistory = map[string]ChannelOrRoleHistoryEntries{}
+		roleHistory = map[string]TimeSetHistoryEntries{}
 	}
 
 	for name, roleInfo := range removedRoles {
 		currentRoleHistory, ok := roleHistory[name]
 		if !ok {
-			currentRoleHistory = ChannelOrRoleHistoryEntries{}
+			currentRoleHistory = TimeSetHistoryEntries{}
 		}
 
 		currentRoleHistory.UpdatedAt = time.Now().UnixNano()
-		currentRoleHistory.Entries = append(currentRoleHistory.Entries, ChannelOrRoleHistoryEntry{
+		currentRoleHistory.Entries = append(currentRoleHistory.Entries, TimeSetHistoryEntry{
 			Seq:    roleInfo.Sequence,
 			EndSeq: previousInvalSeq,
 		})
@@ -273,8 +263,8 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 	}
 
 	base.Infof(base.KeyAccess, "Computed roles for %q: %s", base.UD(user.Name()), base.UD(roles))
+	user.SetRoleInvaliSeq(0)
 	user.setRolesSince(roles)
-	user.SetPreviousRoles(nil)
 	return nil
 }
 
@@ -339,14 +329,7 @@ func (auth *Authenticator) InvalidateChannels(p Principal, invalSeq uint64) erro
 
 		base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(p.Name()))
 
-		if p.PreviousChannels() == nil {
-			p.SetPreviousChannels(&PreviousChannelsOrRole{
-				Entries:  p.Channels(),
-				InvalSeq: invalSeq,
-			})
-		}
-
-		p.setChannels(nil)
+		p.SetChannelInvaliSeq(invalSeq)
 		return p, nil
 	}
 	return auth.casUpdatePrincipal(p, invalidateChannelsCallback)
@@ -365,15 +348,7 @@ func (auth *Authenticator) InvalidateRoles(user User, invalSeq uint64) error {
 		}
 		base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(user.Name()))
 
-		if user.PreviousRoles() == nil {
-			roleNames := user.RoleNames()
-			user.SetPreviousRoles(&PreviousChannelsOrRole{
-				Entries:  roleNames,
-				InvalSeq: invalSeq,
-			})
-		}
-
-		user.setRolesSince(nil)
+		user.SetRoleInvaliSeq(invalSeq)
 		return user, nil
 	}
 

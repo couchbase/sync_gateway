@@ -32,14 +32,14 @@ type userImpl struct {
 // Marshallable data is stored in separate struct from userImpl,
 // to work around limitations of JSON marshaling.
 type userImplBody struct {
-	Email_           string                  `json:"email,omitempty"`
-	Disabled_        bool                    `json:"disabled,omitempty"`
-	PasswordHash_    []byte                  `json:"passwordhash_bcrypt,omitempty"`
-	OldPasswordHash_ interface{}             `json:"passwordhash,omitempty"` // For pre-beta compatibility
-	ExplicitRoles_   ch.TimedSet             `json:"explicit_roles,omitempty"`
-	RolesSince_      ch.TimedSet             `json:"rolesSince"`
-	PreviousRoles_   *PreviousChannelsOrRole `json:"previous_roles,omitempty"`
-	RoleHistory_     ChannelOrRoleHistory    `json:"role_history,omitempty"`
+	Email_           string         `json:"email,omitempty"`
+	Disabled_        bool           `json:"disabled,omitempty"`
+	PasswordHash_    []byte         `json:"passwordhash_bcrypt,omitempty"`
+	OldPasswordHash_ interface{}    `json:"passwordhash,omitempty"` // For pre-beta compatibility
+	ExplicitRoles_   ch.TimedSet    `json:"explicit_roles,omitempty"`
+	RolesSince_      ch.TimedSet    `json:"rolesSince"`
+	RoleInvalSeq     uint64         `json:"role_inval_seq"`
+	RoleHistory_     TimeSetHistory `json:"role_history,omitempty"`
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
@@ -140,20 +140,15 @@ func (user *userImpl) SetEmail(email string) error {
 }
 
 func (user *userImpl) RoleNames() ch.TimedSet {
+	if user.RoleInvalSeq != 0 {
+		return nil
+	}
 	return user.RolesSince_
 }
 
 func (user *userImpl) setRolesSince(rolesSince ch.TimedSet) {
 	user.RolesSince_ = rolesSince
 	user.roles = nil // invalidate in-memory cache list of Role objects
-}
-
-func (user *userImpl) PreviousRoles() *PreviousChannelsOrRole {
-	return user.PreviousRoles_
-}
-
-func (user *userImpl) SetPreviousRoles(roles *PreviousChannelsOrRole) {
-	user.PreviousRoles_ = roles
 }
 
 func (user *userImpl) ExplicitRoles() ch.TimedSet {
@@ -165,11 +160,26 @@ func (user *userImpl) SetExplicitRoles(roles ch.TimedSet) {
 	user.setRolesSince(nil) // invalidate persistent cache of role names
 }
 
-func (user *userImpl) SetRoleHistory(history ChannelOrRoleHistory) {
+func (user *userImpl) GetRoleInvalSeq() uint64 {
+	return user.RoleInvalSeq
+}
+
+func (user *userImpl) SetRoleInvaliSeq(invalSeq uint64) {
+	user.RoleInvalSeq = invalSeq
+}
+
+func (user *userImpl) InvalidatedRoles() ch.TimedSet {
+	if user.RoleInvalSeq != 0 {
+		return user.RolesSince_
+	}
+	return nil
+}
+
+func (user *userImpl) SetRoleHistory(history TimeSetHistory) {
 	user.RoleHistory_ = history
 }
 
-func (user *userImpl) RoleHistory() ChannelOrRoleHistory {
+func (user *userImpl) RoleHistory() TimeSetHistory {
 	return user.RoleHistory_
 }
 

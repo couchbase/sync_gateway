@@ -24,6 +24,7 @@ type Principal interface {
 	SetSequence(sequence uint64)
 
 	// The set of channels the Principal belongs to, and what sequence access was granted.
+	// Returns nil if invalidated
 	Channels() ch.TimedSet
 
 	// The channels the Principal was explicitly granted access to thru the admin API.
@@ -32,15 +33,17 @@ type Principal interface {
 	// Sets the explicit channels the Principal has access to.
 	SetExplicitChannels(ch.TimedSet)
 
-	// The previous set of channels the Principal was granted.  Used to maintain sequence history.
-	PreviousChannels() *PreviousChannelsOrRole
+	GetChannelInvalSeq() uint64
 
-	// Sets the previous set of channels the Principal has access to.
-	SetPreviousChannels(*PreviousChannelsOrRole)
+	SetChannelInvaliSeq(uint64)
 
-	ChannelHistory() ChannelOrRoleHistory
+	// The set of invalidated channels
+	// Returns nil if not invalidated
+	InvalidatedChannels() ch.TimedSet
 
-	SetChannelHistory(history ChannelOrRoleHistory)
+	ChannelHistory() TimeSetHistory
+
+	SetChannelHistory(history TimeSetHistory)
 
 	// Returns true if the Principal has access to the given channel.
 	CanSeeChannel(channel string) bool
@@ -97,6 +100,7 @@ type User interface {
 	SetPassword(password string)
 
 	// The set of Roles the user belongs to (including ones given to it by the sync function)
+	// Returns nil if invalidated
 	RoleNames() ch.TimedSet
 
 	// The roles the user was explicitly granted access to thru the admin API.
@@ -105,13 +109,17 @@ type User interface {
 	// Sets the explicit roles the user belongs to.
 	SetExplicitRoles(ch.TimedSet)
 
-	PreviousRoles() *PreviousChannelsOrRole
+	GetRoleInvalSeq() uint64
 
-	SetPreviousRoles(set *PreviousChannelsOrRole)
+	SetRoleInvaliSeq(uint64)
 
-	SetRoleHistory(history ChannelOrRoleHistory)
+	// The set of invalidated roles
+	// Returns nil if not invalidated
+	InvalidatedRoles() ch.TimedSet
 
-	RoleHistory() ChannelOrRoleHistory
+	SetRoleHistory(history TimeSetHistory)
+
+	RoleHistory() TimeSetHistory
 
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet

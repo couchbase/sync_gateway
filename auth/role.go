@@ -20,31 +20,26 @@ import (
 
 /** A group that users can belong to, with associated channel permissions. */
 type roleImpl struct {
-	Name_             string                  `json:"name,omitempty"`
-	ExplicitChannels_ ch.TimedSet             `json:"admin_channels,omitempty"`
-	Channels_         ch.TimedSet             `json:"all_channels"`
-	Sequence_         uint64                  `json:"sequence"`
-	PreviousChannels_ *PreviousChannelsOrRole `json:"previous_channels,omitempty"`
-	ChannelHistory_   ChannelOrRoleHistory    `json:"channel_history,omitempty"`
+	Name_             string         `json:"name,omitempty"`
+	ExplicitChannels_ ch.TimedSet    `json:"admin_channels,omitempty"`
+	Channels_         ch.TimedSet    `json:"all_channels"`
+	Sequence_         uint64         `json:"sequence"`
+	ChannelHistory_   TimeSetHistory `json:"channel_history,omitempty"`
+	ChannelInvalSeq   uint64         `json:"channel_inval_seq"`
 	vbNo              *uint16
 	cas               uint64
 }
 
-type PreviousChannelsOrRole struct {
-	InvalSeq uint64      `json:"inval_seq"`
-	Entries  ch.TimedSet `json:"entries"`
+type TimeSetHistory map[string]TimeSetHistoryEntries
+
+type TimeSetHistoryEntries struct {
+	UpdatedAt int64                 `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
+	Entries   []TimeSetHistoryEntry `json:"entries"`    // Entry for a specific grant period
 }
 
-type ChannelOrRoleHistory map[string]ChannelOrRoleHistoryEntries
-
-type ChannelOrRoleHistoryEntries struct {
-	UpdatedAt int64                       `json:"updated_at"`
-	Entries   []ChannelOrRoleHistoryEntry `json:"entries"`
-}
-
-type ChannelOrRoleHistoryEntry struct {
-	Seq    uint64 `json:"seq"`
-	EndSeq uint64 `json:"end_seq"`
+type TimeSetHistoryEntry struct {
+	Seq    uint64 `json:"seq"`     // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
+	EndSeq uint64 `json:"end_seq"` // Sequence when access to a role / channel was revoked.
 }
 
 var kValidNameRegexp = regexp.MustCompile(`^[-+.@%\w]*$`)
@@ -107,6 +102,9 @@ func (role *roleImpl) SetCas(cas uint64) {
 }
 
 func (role *roleImpl) Channels() ch.TimedSet {
+	if role.ChannelInvalSeq != 0 {
+		return nil
+	}
 	return role.Channels_
 }
 
@@ -123,19 +121,26 @@ func (role *roleImpl) SetExplicitChannels(channels ch.TimedSet) {
 	role.setChannels(nil)
 }
 
-func (role *roleImpl) PreviousChannels() *PreviousChannelsOrRole {
-	return role.PreviousChannels_
+func (role *roleImpl) GetChannelInvalSeq() uint64 {
+	return role.ChannelInvalSeq
 }
 
-func (role *roleImpl) SetPreviousChannels(channels *PreviousChannelsOrRole) {
-	role.PreviousChannels_ = channels
+func (role *roleImpl) SetChannelInvaliSeq(invalSeq uint64) {
+	role.ChannelInvalSeq = invalSeq
 }
 
-func (role *roleImpl) SetChannelHistory(history ChannelOrRoleHistory) {
+func (role *roleImpl) InvalidatedChannels() ch.TimedSet {
+	if role.ChannelInvalSeq != 0 {
+		return role.Channels_
+	}
+	return nil
+}
+
+func (role *roleImpl) SetChannelHistory(history TimeSetHistory) {
 	role.ChannelHistory_ = history
 }
 
-func (role *roleImpl) ChannelHistory() ChannelOrRoleHistory {
+func (role *roleImpl) ChannelHistory() TimeSetHistory {
 	return role.ChannelHistory_
 }
 
@@ -159,14 +164,14 @@ func (role *roleImpl) UnauthError(message string) error {
 // Returns true if the Role is allowed to access the channel.
 // A nil Role means access control is disabled, so the function will return true.
 func (role *roleImpl) CanSeeChannel(channel string) bool {
-	return role == nil || role.Channels_.Contains(channel) || role.Channels_.Contains(ch.UserStarChannel)
+	return role == nil || role.Channels().Contains(channel) || role.Channels().Contains(ch.UserStarChannel)
 }
 
 // Returns the sequence number since which the Role has been able to access the channel, else zero.
 func (role *roleImpl) CanSeeChannelSince(channel string) uint64 {
-	seq := role.Channels_[channel]
+	seq := role.Channels()[channel]
 	if seq.Sequence == 0 {
-		seq = role.Channels_[ch.UserStarChannel]
+		seq = role.Channels()[ch.UserStarChannel]
 	}
 	return seq.Sequence
 }
