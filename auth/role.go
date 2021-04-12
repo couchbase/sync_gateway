@@ -30,14 +30,14 @@ type roleImpl struct {
 	cas               uint64
 }
 
-type TimedSetHistory map[string]TimedSetHistoryEntries
+type TimedSetHistory map[string]GrantHistory
 
-type TimedSetHistoryEntries struct {
-	UpdatedAt int64                  `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
-	Entries   []TimedSetHistoryEntry `json:"entries"`    // Entry for a specific grant period
+type GrantHistory struct {
+	UpdatedAt int64               `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
+	Entries   []GrantHistoryEntry `json:"entries"`    // Entry for a specific grant period
 }
 
-type TimedSetHistoryEntry struct {
+type GrantHistoryEntry struct {
 	Seq    uint64 `json:"seq"`     // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
 	EndSeq uint64 `json:"end_seq"` // Sequence when access to a role / channel was revoked.
 }

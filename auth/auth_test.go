@@ -1399,10 +1399,10 @@ func TestRevocationScenario1(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
 }
 
 func TestRevocationScenario2(t *testing.T) {
@@ -1442,7 +1442,7 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 
@@ -1456,7 +1456,7 @@ func TestRevocationScenario2(t *testing.T) {
 	// Ensure user can see ch1 (via role)
 	// Verify history
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 
@@ -1471,12 +1471,12 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok = aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
+	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
@@ -1519,11 +1519,11 @@ func TestRevocationScenario3(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
@@ -1552,14 +1552,14 @@ func TestRevocationScenario3(t *testing.T) {
 
 	userRoleHistory, ok = aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
+	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
 
 	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
 
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
+	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
@@ -1604,7 +1604,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
@@ -1631,11 +1631,11 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
+	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
@@ -1693,10 +1693,10 @@ func TestRevocationScenario5(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
@@ -1743,7 +1743,7 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
@@ -1757,11 +1757,11 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 
 	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
@@ -1809,11 +1809,11 @@ func TestRevocationScenario7(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
@@ -1873,7 +1873,7 @@ func TestRevocationScenario8(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
@@ -1968,7 +1968,7 @@ func TestRevocationScenario10(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 }
@@ -2017,11 +2017,11 @@ func TestRevocationScenario11(t *testing.T) {
 
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
@@ -2070,7 +2070,7 @@ func TestRevocationScenario12(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, TimedSetHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 }
