@@ -10,9 +10,12 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -33,13 +36,45 @@ type roleImpl struct {
 type TimedSetHistory map[string]GrantHistory
 
 type GrantHistory struct {
-	UpdatedAt int64               `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
-	Entries   []GrantHistoryEntry `json:"entries"`    // Entry for a specific grant period
+	UpdatedAt int64                      `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
+	Entries   []GrantHistorySequencePair `json:"entries"`    // Entry for a specific grant period
 }
 
-type GrantHistoryEntry struct {
-	Seq    uint64 `json:"seq"`     // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
-	EndSeq uint64 `json:"end_seq"` // Sequence when access to a role / channel was revoked.
+// Struct is for ease of internal use
+// Bucket store has each entry as a string "seq-endSeq"
+type GrantHistorySequencePair struct {
+	Seq    uint64 // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
+	EndSeq uint64 // Sequence when access to a role / channel was revoked.
+}
+
+// MarshalJSON will handle conversion from having a seq / endSeq struct to the bucket format of "seq-endSeq"
+func (pair *GrantHistorySequencePair) MarshalJSON() ([]byte, error) {
+	stringPair := fmt.Sprintf("%d-%d", pair.Seq, pair.EndSeq)
+	return base.JSONMarshal(stringPair)
+}
+
+// UnmarshalJSON will handle conversion from the bucket format of "seq-endSeq" to the internal struct containing
+// seq / endSeq elements
+func (pair *GrantHistorySequencePair) UnmarshalJSON(data []byte) error {
+	var stringPair string
+	err := json.Unmarshal(data, &stringPair)
+	if err != nil {
+		return err
+	}
+
+	splitPair := strings.Split(stringPair, "-")
+
+	pair.Seq, err = strconv.ParseUint(splitPair[0], 10, 64)
+	if err != nil {
+		return err
+	}
+
+	pair.EndSeq, err = strconv.ParseUint(splitPair[1], 10, 64)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 var kValidNameRegexp = regexp.MustCompile(`^[-+.@%\w]*$`)

@@ -1333,6 +1333,10 @@ func initializeScenario(t *testing.T, auth *Authenticator) (*userImpl, Principal
 // https://docs.google.com/spreadsheets/d/1pTLyJqrSdde-dAxDfMkKGXi0ttWF4GVCOBFJg7hRY0U/edit?usp=sharing
 // =======================================================================================================
 
+// Scenario 1
+// Get Doc
+// Revoke / Re-grant - no-op
+// Re-revoke
 func TestRevocationScenario1(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1399,12 +1403,17 @@ func TestRevocationScenario1(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
 }
 
+// Scenario 2
+// Get Doc
+// Revoke doc role
+// Re-grant
+// Re-revoke via both role and channel
 func TestRevocationScenario2(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1442,7 +1451,7 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 
@@ -1456,7 +1465,7 @@ func TestRevocationScenario2(t *testing.T) {
 	// Ensure user can see ch1 (via role)
 	// Verify history
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
-	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 
@@ -1471,16 +1480,21 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok = aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
+// Scenario 3
+// Get Doc
+// Revoke via both role and channel
+// Re-grant
+// Re-revoke via both role and channel
 func TestRevocationScenario3(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1519,11 +1533,11 @@ func TestRevocationScenario3(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
@@ -1552,18 +1566,24 @@ func TestRevocationScenario3(t *testing.T) {
 
 	userRoleHistory, ok = aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[1])
 
 	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
 
-	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
-	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
+// Scenario 4
+// Get Doc
+// Revoke via both role and channel
+// Re-grant only role revoke
+// Re-grant channel - has access
+// Re-revoke via both role and channel
 func TestRevocationScenario4(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1604,7 +1624,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
@@ -1631,14 +1651,18 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
-	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 75, EndSeq: 85}, channelHistory.Entries[1])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
+// Scenario 5
+// Get Doc
+// Revoke / Re-grant - no-op
+// Re-revoke
 func TestRevocationScenario5(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1693,13 +1717,17 @@ func TestRevocationScenario5(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
+// Scenario 6
+// Get Doc
+// Revoke
+// Still revoked - noop
 func TestRevocationScenario6(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1743,7 +1771,7 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
@@ -1757,14 +1785,18 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 
 	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
+// Scenario 7
+// Get Doc
+// Revoke
+// Still revoked - noop
 func TestRevocationScenario7(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1809,11 +1841,11 @@ func TestRevocationScenario7(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
@@ -1829,6 +1861,9 @@ func TestRevocationScenario7(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
+// Scenario 8
+// Revoke doc - noop
+// Grant/revoke - noop
 func TestRevocationScenario8(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1873,11 +1908,14 @@ func TestRevocationScenario8(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
+// Scenario 9
+// Revoke doc - noop
+// Grant/revoke - noop
 func TestRevocationScenario9(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1924,6 +1962,9 @@ func TestRevocationScenario9(t *testing.T) {
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 }
 
+// Scenario 10
+// Revoke doc - noop
+// Grant/revoke - noop
 func TestRevocationScenario10(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -1968,11 +2009,15 @@ func TestRevocationScenario10(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 }
 
+// Scenario 11
+// Revoke doc - noop
+// Grant - get doc
+// Revoke
 func TestRevocationScenario11(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2017,15 +2062,18 @@ func TestRevocationScenario11(t *testing.T) {
 
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 75, EndSeq: 85}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 }
 
+// Scenario 12
+// Revoke role - noop
+// Revoke channel - noop
 func TestRevocationScenario12(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -2070,11 +2118,13 @@ func TestRevocationScenario12(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistoryEntry{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{Seq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 }
 
+// Scenario 13
+// Never had access
 func TestRevocationScenario13(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
