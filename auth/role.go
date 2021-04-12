@@ -20,24 +20,24 @@ import (
 
 /** A group that users can belong to, with associated channel permissions. */
 type roleImpl struct {
-	Name_             string         `json:"name,omitempty"`
-	ExplicitChannels_ ch.TimedSet    `json:"admin_channels,omitempty"`
-	Channels_         ch.TimedSet    `json:"all_channels"`
-	Sequence_         uint64         `json:"sequence"`
-	ChannelHistory_   TimeSetHistory `json:"channel_history,omitempty"`
-	ChannelInvalSeq   uint64         `json:"channel_inval_seq"`
+	Name_             string          `json:"name,omitempty"`
+	ExplicitChannels_ ch.TimedSet     `json:"admin_channels,omitempty"`
+	Channels_         ch.TimedSet     `json:"all_channels"`
+	Sequence_         uint64          `json:"sequence"`
+	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`
+	ChannelInvalSeq   uint64          `json:"channel_inval_seq"`
 	vbNo              *uint16
 	cas               uint64
 }
 
-type TimeSetHistory map[string]TimeSetHistoryEntries
+type TimedSetHistory map[string]TimedSetHistoryEntries
 
-type TimeSetHistoryEntries struct {
-	UpdatedAt int64                 `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
-	Entries   []TimeSetHistoryEntry `json:"entries"`    // Entry for a specific grant period
+type TimedSetHistoryEntries struct {
+	UpdatedAt int64                  `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning
+	Entries   []TimedSetHistoryEntry `json:"entries"`    // Entry for a specific grant period
 }
 
-type TimeSetHistoryEntry struct {
+type TimedSetHistoryEntry struct {
 	Seq    uint64 `json:"seq"`     // Sequence at which a grant was performed to give access to a role / channel. Only populated once endSeq is available.
 	EndSeq uint64 `json:"end_seq"` // Sequence when access to a role / channel was revoked.
 }
@@ -136,11 +136,11 @@ func (role *roleImpl) InvalidatedChannels() ch.TimedSet {
 	return nil
 }
 
-func (role *roleImpl) SetChannelHistory(history TimeSetHistory) {
+func (role *roleImpl) SetChannelHistory(history TimedSetHistory) {
 	role.ChannelHistory_ = history
 }
 
-func (role *roleImpl) ChannelHistory() TimeSetHistory {
+func (role *roleImpl) ChannelHistory() TimedSetHistory {
 	return role.ChannelHistory_
 }
 

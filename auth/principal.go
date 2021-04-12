@@ -41,9 +41,9 @@ type Principal interface {
 	// Returns nil if not invalidated
 	InvalidatedChannels() ch.TimedSet
 
-	ChannelHistory() TimeSetHistory
+	ChannelHistory() TimedSetHistory
 
-	SetChannelHistory(history TimeSetHistory)
+	SetChannelHistory(history TimedSetHistory)
 
 	// Returns true if the Principal has access to the given channel.
 	CanSeeChannel(channel string) bool
@@ -117,9 +117,9 @@ type User interface {
 	// Returns nil if not invalidated
 	InvalidatedRoles() ch.TimedSet
 
-	SetRoleHistory(history TimeSetHistory)
+	SetRoleHistory(history TimedSetHistory)
 
-	RoleHistory() TimeSetHistory
+	RoleHistory() TimedSetHistory
 
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet

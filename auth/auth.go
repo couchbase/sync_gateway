@@ -182,10 +182,10 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 }
 
 // Calculates history for either roles or channels
-func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimeSetHistory) TimeSetHistory {
+func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory) TimedSetHistory {
 	// Initialize history if currently empty
 	if currentHistory == nil {
-		currentHistory = map[string]TimeSetHistoryEntries{}
+		currentHistory = map[string]TimedSetHistoryEntries{}
 	}
 
 	// Iterate over invalidated grants
@@ -202,14 +202,14 @@ func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.Time
 		// Start building history for the principal. If it currently doesn't exist initialize it.
 		currentHistoryForGrant, ok := currentHistory[previousName]
 		if !ok {
-			currentHistoryForGrant = TimeSetHistoryEntries{}
+			currentHistoryForGrant = TimedSetHistoryEntries{}
 		}
 
 		// TODO: Will perform pruning here once full
 
 		// Add grant to history
 		currentHistoryForGrant.UpdatedAt = time.Now().UnixNano()
-		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, TimeSetHistoryEntry{
+		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, TimedSetHistoryEntry{
 			Seq:    previousInfo.Sequence,
 			EndSeq: invalSeq,
 		})
