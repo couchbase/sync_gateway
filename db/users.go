@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -109,7 +110,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 			if isUser {
 				isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
 				if !isValid {
-					err = base.HTTPErrorf(http.StatusBadRequest, reason)
+					err = base.HTTPErrorf(http.StatusBadRequest, "Error creating user: %s", reason)
 					return replaced, err
 				}
 				user, err = authenticator.NewUser(*newInfo.Name, "", nil)
@@ -118,7 +119,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 				princ, err = authenticator.NewRole(*newInfo.Name, nil)
 			}
 			if err != nil {
-				return replaced, err
+				return replaced, fmt.Errorf("Error creating user/role: %w", err)
 			}
 			changed = true
 		} else if !allowReplace {
@@ -127,7 +128,7 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 		} else if isUser && newInfo.Password != nil {
 			isValid, reason := newInfo.IsPasswordValid(dbc.AllowEmptyPassword)
 			if !isValid {
-				err = base.HTTPErrorf(http.StatusBadRequest, reason)
+				err = base.HTTPErrorf(http.StatusBadRequest, "Error updating user/role: %s", reason)
 				return replaced, err
 			}
 		}
