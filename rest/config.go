@@ -833,9 +833,15 @@ func expandEnv(config []byte) (value []byte, errs error) {
 	})), errs
 }
 
-// ErrEnvVarUndefined is returned when a specified variable can’t be resolved from the system environment or no
-// default value is supplied in the configuration — startup will be aborted.
-const ErrEnvVarUndefined = "undefined environment variable '${%s}' is specified in the config without default value"
+// ErrEnvVarUndefined is returned when a specified variable can’t be resolved from
+// the system environment and no default value is supplied in the configuration.
+type ErrEnvVarUndefined struct {
+	key string // Environment variable identifier.
+}
+
+func (e ErrEnvVarUndefined) Error() string {
+	return fmt.Sprintf("undefined environment variable '${%s}' is specified in the config without default value", e.key)
+}
 
 // envDefaultExpansion implements the ${foo:-bar} parameter expansion from
 // https://pubs.opengroup.org/onlinepubs/009695399/utilities/xcu_chap02.html#tag_02_06_02
@@ -849,7 +855,7 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}' with "+
 			"default value specified", key)
 	} else if value == "" && len(kvPair) != 2 {
-		return "", fmt.Errorf(ErrEnvVarUndefined, key)
+		return "", ErrEnvVarUndefined{key: key}
 	} else {
 		base.Debugf(base.KeyAll, "Replacing config environment variable '${%s}'", key)
 	}

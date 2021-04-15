@@ -1015,51 +1015,49 @@ func TestEnvDefaultExpansion(t *testing.T) {
 		envKey        string
 		envValue      string
 		expectedValue string
-		expectedError string
+		expectedError error
 	}{
 		{
 			name:          "no value, no default",
 			envKey:        "PASSWORD",
 			envValue:      "",
 			expectedValue: "",
-			expectedError: fmt.Sprintf(ErrEnvVarUndefined, "PASSWORD"),
+			expectedError: ErrEnvVarUndefined{key: "PASSWORD"},
 		},
 		{
 			name:          "value, no default",
 			envKey:        "PASSWORD",
 			envValue:      "pa55w0rd",
 			expectedValue: "pa55w0rd",
-			expectedError: "",
+			expectedError: nil,
 		},
 		{
 			name:          "value, default",
 			envKey:        "PASSWORD:-pa55w0rd",
 			envValue:      "foobar",
 			expectedValue: "foobar",
-			expectedError: "",
+			expectedError: nil,
 		},
 		{
 			name:          "no value, default",
 			envKey:        "PASSWORD:-pa55w0rd",
 			envValue:      "",
 			expectedValue: "pa55w0rd",
-			expectedError: "",
+			expectedError: nil,
 		},
 		{
 			name:          "no value, default with special chars",
 			envKey:        "PASSWORD:-pa55w:-0rd",
 			envValue:      "",
 			expectedValue: "pa55w:-0rd",
-			expectedError: "",
+			expectedError: nil,
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			actualValue, err := envDefaultExpansion(test.envKey, func(s string) string { return test.envValue })
-			if test.expectedError != "" {
-				require.EqualError(t, err, test.expectedError)
-			}
+			require.Equal(t, err, test.expectedError)
 			assert.Equal(t, test.expectedValue, actualValue)
 		})
 	}
@@ -1068,7 +1066,7 @@ func TestEnvDefaultExpansion(t *testing.T) {
 func TestExpandEnv(t *testing.T) {
 	makeEnvVarError := func(keys ...string) (errs *multierror.Error) {
 		for _, key := range keys {
-			errs = multierror.Append(errs, fmt.Errorf(ErrEnvVarUndefined, key))
+			errs = multierror.Append(errs, ErrEnvVarUndefined{key: key})
 		}
 		return errs
 	}
@@ -1267,9 +1265,11 @@ func TestExpandEnv(t *testing.T) {
 				errs, ok := err.(*multierror.Error)
 				require.True(t, ok)
 				require.Equal(t, test.expectedError.Len(), errs.Len())
-				assert.Equal(t, test.expectedError, errs)
+				require.Equal(t, test.expectedError, errs)
+			} else {
+				require.NoError(t, err)
 			}
-			assert.Equal(t, test.expectedConfig, actualConfig)
+			require.Equal(t, test.expectedConfig, actualConfig)
 
 			// Unset environment variables.
 			for k, _ := range test.varsEnv {
