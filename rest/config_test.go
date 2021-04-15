@@ -1015,53 +1015,70 @@ func TestEnvDefaultExpansion(t *testing.T) {
 		envKey        string
 		envValue      string
 		expectedValue string
+		expectedError string
 	}{
 		{
 			name:          "no value, no default",
 			envKey:        "PASSWORD",
 			envValue:      "",
 			expectedValue: "",
+			expectedError: fmt.Sprintf(ErrEnvVarUndefined, "PASSWORD"),
 		},
 		{
 			name:          "value, no default",
 			envKey:        "PASSWORD",
 			envValue:      "pa55w0rd",
 			expectedValue: "pa55w0rd",
+			expectedError: "",
 		},
 		{
 			name:          "value, default",
 			envKey:        "PASSWORD:-pa55w0rd",
 			envValue:      "foobar",
 			expectedValue: "foobar",
+			expectedError: "",
 		},
 		{
 			name:          "no value, default",
 			envKey:        "PASSWORD:-pa55w0rd",
 			envValue:      "",
 			expectedValue: "pa55w0rd",
+			expectedError: "",
 		},
 		{
 			name:          "no value, default with special chars",
 			envKey:        "PASSWORD:-pa55w:-0rd",
 			envValue:      "",
 			expectedValue: "pa55w:-0rd",
+			expectedError: "",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actualValue := envDefaultExpansion(test.envKey, func(s string) string { return test.envValue })
+			actualValue, err := envDefaultExpansion(test.envKey, func(s string) string { return test.envValue })
+			if test.expectedError != "" {
+				require.EqualError(t, err, test.expectedError)
+			}
 			assert.Equal(t, test.expectedValue, actualValue)
 		})
 	}
 }
 
 func TestExpandEnv(t *testing.T) {
+	makeEnvVarError := func(keys ...string) (errs *multierror.Error) {
+		for _, key := range keys {
+			errs = multierror.Append(errs, fmt.Errorf(ErrEnvVarUndefined, key))
+		}
+		return errs
+	}
+
 	tests := []struct {
 		name           string
 		inputConfig    []byte
 		varsEnv        map[string]string
 		expectedConfig []byte
+		expectedError  *multierror.Error
 	}{
 		{
 			name: "environment variable substitution with $var and ${var} syntax",
@@ -1150,7 +1167,7 @@ func TestExpandEnv(t *testing.T) {
 			`),
 		},
 		{
-			name: "empty value substitution when environment variable is not set",
+			name: "error when environment variable is not set and no default value is specified",
 			inputConfig: []byte(`
 				{
 				  "databases": {
@@ -1175,6 +1192,38 @@ func TestExpandEnv(t *testing.T) {
 				  }
 				}
 			`),
+			expectedError: makeEnvVarError("USERNAME", "PASSWORD"),
+		},
+		{
+			name: "error even when a single environment variable is not set and no default value is specified",
+			inputConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost",
+				      "username": "$USERNAME",
+				      "password": "${PASSWORD}"
+				    }
+				  }
+				}
+			`),
+			varsEnv: map[string]string{
+				"USERNAME": "Administrator",
+			},
+			expectedConfig: []byte(`
+				{
+				  "databases": {
+				    "db": {
+				      "bucket": "leaky_bucket",
+				      "server": "couchbase://localhost",
+				      "username": "Administrator",
+				      "password": ""
+				    }
+				  }
+				}
+			`),
+			expectedError: makeEnvVarError("PASSWORD"),
 		},
 		{
 			name: "concatenated envs",
@@ -1213,7 +1262,13 @@ func TestExpandEnv(t *testing.T) {
 				require.Equal(t, v, value, "Unexpected value set for environment variable %q", k)
 			}
 			// Check environment variable substitutions.
-			actualConfig := expandEnv(test.inputConfig)
+			actualConfig, err := expandEnv(test.inputConfig)
+			if test.expectedError != nil {
+				errs, ok := err.(*multierror.Error)
+				require.True(t, ok)
+				require.Equal(t, test.expectedError.Len(), errs.Len())
+				assert.Equal(t, test.expectedError, errs)
+			}
 			assert.Equal(t, test.expectedConfig, actualConfig)
 
 			// Unset environment variables.
