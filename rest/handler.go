@@ -500,8 +500,10 @@ func (h *handler) readSanitizeConfigJSON() (*DbConfig, error) {
 	}
 
 	// Expand environment variables.
-	content = expandEnv(content)
-
+	content, err = expandEnv(content)
+	if err != nil {
+		return nil, err
+	}
 	// Convert the back quotes into double-quotes, escapes literal
 	// backslashes, newlines or double-quotes with backslashes.
 	content = base.ConvertBackQuotedStrings(content)
