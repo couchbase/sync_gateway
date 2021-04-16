@@ -29,6 +29,7 @@ type roleImpl struct {
 	Sequence_         uint64          `json:"sequence"`
 	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`
 	ChannelInvalSeq   uint64          `json:"channel_inval_seq"`
+	Deleted           bool            `json:"deleted,omitempty"`
 	vbNo              *uint16
 	cas               uint64
 }
@@ -97,6 +98,16 @@ func IsValidPrincipalName(name string) bool {
 // Creates a new Role object.
 func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error) {
 	role := &roleImpl{}
+	existingRole, err := auth.GetRoleIncDeleted(name)
+	if err != nil && !base.IsDocNotFoundError(err) {
+		return nil, err
+	}
+
+	if existingRole != nil && existingRole.IsDeleted() {
+		role.SetCas(existingRole.Cas())
+		role.SetChannelHistory(existingRole.ChannelHistory())
+	}
+
 	if err := role.initRole(name, channels); err != nil {
 		return nil, err
 	}
@@ -137,6 +148,14 @@ func (role *roleImpl) Cas() uint64 {
 }
 func (role *roleImpl) SetCas(cas uint64) {
 	role.cas = cas
+}
+
+func (role *roleImpl) setDeleted(deleted bool) {
+	role.Deleted = deleted
+}
+
+func (role *roleImpl) IsDeleted() bool {
+	return role.Deleted
 }
 
 func (role *roleImpl) Channels() ch.TimedSet {

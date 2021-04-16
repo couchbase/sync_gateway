@@ -704,26 +704,21 @@ func (h *handler) deleteUser() error {
 			"The %s user cannot be deleted. Only disabled via an update.", base.GuestUsername)
 	}
 
-	user, err := h.db.Authenticator().GetUser(username)
-	if user == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
-		return err
+	found, err := h.db.DeletePrincipal(mux.Vars(h.rq)["name"], true, false)
+	if !found {
+		return kNotFoundError
 	}
-	return h.db.Authenticator().Delete(user)
+	return err
 }
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["name"])
-	if role == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
-		return err
+	purge := h.getBoolQuery("purge")
+	found, err := h.db.DeletePrincipal(mux.Vars(h.rq)["name"], false, purge)
+	if !found {
+		return kNotFoundError
 	}
-	return h.db.Authenticator().Delete(role)
+	return err
 }
 
 func (h *handler) getUserInfo() error {

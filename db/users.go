@@ -83,6 +83,28 @@ func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *Princi
 	return
 }
 
+func (db *DatabaseContext) DeletePrincipal(name string, isUser bool, purge bool) (found bool, err error) {
+	authenticator := db.Authenticator()
+
+	princ, err := authenticator.GetPrincipal(name, isUser)
+	if err != nil {
+		return false, err
+	}
+	if princ == nil {
+		return false, fmt.Errorf("not found")
+	}
+
+	seq := uint64(0)
+	if !isUser {
+		seq, err = db.sequences.nextSequence()
+		if err != nil {
+			return true, err
+		}
+	}
+
+	return true, authenticator.Delete(princ, purge, seq)
+}
+
 // Updates or creates a principal from a PrincipalConfig structure.
 func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool, allowReplace bool) (replaced bool, err error) {
 	// Get the existing principal, or if this is a POST make sure there isn't one:

@@ -2220,3 +2220,73 @@ func TestRevocationScenario13(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 }
+
+func TestRoleSoftDelete(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket, nil)
+
+	const roleName = "role"
+
+	// Instantiate role
+	role, err := auth.NewRole(roleName, ch.SetOf(t, "channel"))
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+
+	// Save role to bucket
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get role - ensure accessible
+	role, err = auth.GetRole(roleName)
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+	assert.Equal(t, 2, len(role.Channels().AllChannels()))
+	assert.True(t, role.Channels().Contains("channel"))
+
+	// Delete role
+	err = auth.Delete(role, false, 2)
+	assert.NoError(t, err)
+
+	// Delete again
+	err = auth.Delete(role, false, 2)
+	assert.NoError(t, err)
+
+	expectedChannelHistory := GrantHistorySequencePair{StartSeq: 1, EndSeq: 2}
+
+	role, err = auth.GetRoleIncDeleted(roleName)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(role.ChannelHistory()))
+	assert.Equal(t, 0, len(role.Channels().AllChannels()))
+	require.Equal(t, 1, len(role.ChannelHistory()["channel"].Entries))
+	require.Equal(t, 1, len(role.ChannelHistory()["!"].Entries))
+	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["channel"].Entries[0])
+	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["!"].Entries[0])
+
+	// Get role - ensure its not accessible
+	role, err = auth.GetRole(roleName)
+	assert.NoError(t, err)
+	assert.Nil(t, role)
+
+	// Re-create role
+	role, err = auth.NewRole(roleName, ch.SetOf(t, "channel2"))
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+
+	// Save role to bucket
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get role - ensure its accessible
+	role, err = auth.GetRole(roleName)
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+	assert.Equal(t, 2, len(role.Channels().AllChannels()))
+	assert.False(t, role.Channels().Contains("channel"))
+	assert.True(t, role.Channels().Contains("channel2"))
+	assert.Equal(t, 2, len(role.ChannelHistory()))
+	require.Equal(t, 1, len(role.ChannelHistory()["channel"].Entries))
+	require.Equal(t, 1, len(role.ChannelHistory()["!"].Entries))
+	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["channel"].Entries[0])
+	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["!"].Entries[0])
+}

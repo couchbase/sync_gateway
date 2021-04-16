@@ -2735,3 +2735,42 @@ func TestUserXattrsRawGet(t *testing.T) {
 
 	assert.Equal(t, "val", RawReturn.Meta.Xattrs[xattrKey])
 }
+
+func TestRolePurge(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create role
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Delete role
+	resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Ensure role is gone
+	resp = rt.SendAdminRequest("GET", "/db/_role/role", ``)
+	assertStatus(t, resp, http.StatusNotFound)
+
+	// Ensure role is 'soft-deleted' and we can still get the doc
+	role, err := rt.GetDatabase().Authenticator().GetRoleIncDeleted("role")
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+
+	// Re-create role
+	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Delete role again but with purge flag
+	resp = rt.SendAdminRequest("DELETE", "/db/_role/role?purge=true", ``)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Ensure role is purged, can't access at all
+	role, err = rt.GetDatabase().Authenticator().GetRoleIncDeleted("role")
+	assert.Nil(t, err)
+	assert.Nil(t, role)
+
+	// Ensure role returns 404 via REST call
+	resp = rt.SendAdminRequest("GET", "/db/_role/role", ``)
+	assertStatus(t, resp, http.StatusNotFound)
+}
