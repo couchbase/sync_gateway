@@ -210,8 +210,8 @@ func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.Time
 		// Add grant to history
 		currentHistoryForGrant.UpdatedAt = time.Now().UnixNano()
 		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, GrantHistorySequencePair{
-			Seq:    previousInfo.Sequence,
-			EndSeq: invalSeq,
+			StartSeq: previousInfo.Sequence,
+			EndSeq:   invalSeq,
 		})
 		currentHistory[previousName] = currentHistoryForGrant
 	}
