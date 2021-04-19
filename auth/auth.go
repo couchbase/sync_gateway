@@ -157,37 +157,66 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	channels := princ.ExplicitChannels().Copy()
 
-	// Changes for vbucket sequence management.  We can't determine relative ordering of sequences
-	// across vbuckets. To avoid redundant channel backfills during changes processing, we maintain
-	// the previous vb/seq for a channel in PreviousChannels.  If that channel is still present during
-	// this rebuild, we reuse the vb/seq from PreviousChannels (using UpdateIfPresent).  If PreviousChannels
-	// is nil, reverts to normal sequence handling.
-
-	previousChannels := princ.PreviousChannels().Copy()
-	if previousChannels != nil {
-		channels.UpdateIfPresent(previousChannels)
-	}
-
 	if auth.channelComputer != nil {
 		viewChannels, err := auth.channelComputer.ComputeChannelsForPrincipal(princ)
 		if err != nil {
 			base.Warnf("channelComputer.ComputeChannelsForPrincipal returned error for %v: %v", base.UD(princ), err)
 			return err
 		}
-		if previousChannels != nil {
-			viewChannels.UpdateIfPresent(previousChannels)
-		}
 		channels.Add(viewChannels)
 	}
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
+	channelHistory := auth.calculateHistory(princ.GetChannelInvalSeq(), princ.InvalidatedChannels(), channels, princ.ChannelHistory())
+
+	if len(channelHistory) != 0 {
+		princ.SetChannelHistory(channelHistory)
+	}
+
 	base.Infof(base.KeyAccess, "Recomputed channels for %q: %s", base.UD(princ.Name()), base.UD(channels))
-	princ.SetPreviousChannels(nil)
+	princ.SetChannelInvalSeq(0)
 	princ.setChannels(channels)
 
 	return nil
+}
 
+// Calculates history for either roles or channels
+func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory) TimedSetHistory {
+	// Initialize history if currently empty
+	if currentHistory == nil {
+		currentHistory = map[string]GrantHistory{}
+	}
+
+	// Iterate over invalidated grants
+	for previousName, previousInfo := range invalGrants {
+
+		// Check if the invalidated grant exists in the new set
+		// If principal still has access to this grant then we don't need to build any history for it so skip
+		if _, ok := newGrants[previousName]; ok {
+			continue
+		}
+
+		// If we got here we know the grant has been revoked from the principal
+
+		// Start building history for the principal. If it currently doesn't exist initialize it.
+		currentHistoryForGrant, ok := currentHistory[previousName]
+		if !ok {
+			currentHistoryForGrant = GrantHistory{}
+		}
+
+		// TODO: Will perform pruning here once full
+
+		// Add grant to history
+		currentHistoryForGrant.UpdatedAt = time.Now().UnixNano()
+		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, GrantHistorySequencePair{
+			StartSeq: previousInfo.Sequence,
+			EndSeq:   invalSeq,
+		})
+		currentHistory[previousName] = currentHistoryForGrant
+	}
+
+	return currentHistory
 }
 
 func (auth *Authenticator) rebuildRoles(user User) error {
@@ -208,7 +237,14 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(explicit)
 	}
 
+	roleHistory := auth.calculateHistory(user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
+
+	if len(roleHistory) != 0 {
+		user.SetRoleHistory(roleHistory)
+	}
+
 	base.Infof(base.KeyAccess, "Computed roles for %q: %s", base.UD(user.Name()), base.UD(roles))
+	user.SetRoleInvalSeq(0)
 	user.setRolesSince(roles)
 	return nil
 }
@@ -265,7 +301,7 @@ func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 }
 
 // Invalidates the channel list of a user/role by saving its Channels() property as nil.
-func (auth *Authenticator) InvalidateChannels(p Principal) error {
+func (auth *Authenticator) InvalidateChannels(p Principal, invalSeq uint64) error {
 	invalidateChannelsCallback := func(p Principal) (updatedPrincipal Principal, err error) {
 
 		if p == nil || p.Channels() == nil {
@@ -273,14 +309,15 @@ func (auth *Authenticator) InvalidateChannels(p Principal) error {
 		}
 
 		base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(p.Name()))
-		p.setChannels(nil)
+
+		p.SetChannelInvalSeq(invalSeq)
 		return p, nil
 	}
 	return auth.casUpdatePrincipal(p, invalidateChannelsCallback)
 }
 
 // Invalidates the role list of a user by saving its Roles() property as nil.
-func (auth *Authenticator) InvalidateRoles(user User) error {
+func (auth *Authenticator) InvalidateRoles(user User, invalSeq uint64) error {
 
 	invalidateRolesCallback := func(p Principal) (updatedPrincipal Principal, err error) {
 		user, ok := p.(User)
@@ -291,7 +328,8 @@ func (auth *Authenticator) InvalidateRoles(user User) error {
 			return p, base.ErrUpdateCancel
 		}
 		base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(user.Name()))
-		user.setRolesSince(nil)
+
+		user.SetRoleInvalSeq(invalSeq)
 		return user, nil
 	}
 

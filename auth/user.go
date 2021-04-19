@@ -32,12 +32,14 @@ type userImpl struct {
 // Marshallable data is stored in separate struct from userImpl,
 // to work around limitations of JSON marshaling.
 type userImplBody struct {
-	Email_           string      `json:"email,omitempty"`
-	Disabled_        bool        `json:"disabled,omitempty"`
-	PasswordHash_    []byte      `json:"passwordhash_bcrypt,omitempty"`
-	OldPasswordHash_ interface{} `json:"passwordhash,omitempty"` // For pre-beta compatibility
-	ExplicitRoles_   ch.TimedSet `json:"explicit_roles,omitempty"`
-	RolesSince_      ch.TimedSet `json:"rolesSince"`
+	Email_           string          `json:"email,omitempty"`
+	Disabled_        bool            `json:"disabled,omitempty"`
+	PasswordHash_    []byte          `json:"passwordhash_bcrypt,omitempty"`
+	OldPasswordHash_ interface{}     `json:"passwordhash,omitempty"` // For pre-beta compatibility
+	ExplicitRoles_   ch.TimedSet     `json:"explicit_roles,omitempty"`
+	RolesSince_      ch.TimedSet     `json:"rolesSince"`
+	RoleInvalSeq     uint64          `json:"role_inval_seq"`
+	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
@@ -138,6 +140,9 @@ func (user *userImpl) SetEmail(email string) error {
 }
 
 func (user *userImpl) RoleNames() ch.TimedSet {
+	if user.RoleInvalSeq != 0 {
+		return nil
+	}
 	return user.RolesSince_
 }
 
@@ -153,6 +158,29 @@ func (user *userImpl) ExplicitRoles() ch.TimedSet {
 func (user *userImpl) SetExplicitRoles(roles ch.TimedSet) {
 	user.ExplicitRoles_ = roles
 	user.setRolesSince(nil) // invalidate persistent cache of role names
+}
+
+func (user *userImpl) GetRoleInvalSeq() uint64 {
+	return user.RoleInvalSeq
+}
+
+func (user *userImpl) SetRoleInvalSeq(invalSeq uint64) {
+	user.RoleInvalSeq = invalSeq
+}
+
+func (user *userImpl) InvalidatedRoles() ch.TimedSet {
+	if user.RoleInvalSeq != 0 {
+		return user.RolesSince_
+	}
+	return nil
+}
+
+func (user *userImpl) SetRoleHistory(history TimedSetHistory) {
+	user.RoleHistory_ = history
+}
+
+func (user *userImpl) RoleHistory() TimedSetHistory {
+	return user.RoleHistory_
 }
 
 // Returns true if the given password is correct for this user, and the account isn't disabled.
@@ -212,8 +240,8 @@ func (user *userImpl) SetPassword(password string) {
 
 func (user *userImpl) GetRoles() []Role {
 	if user.roles == nil {
-		roles := make([]Role, 0, len(user.RolesSince_))
-		for name := range user.RolesSince_ {
+		roles := make([]Role, 0, len(user.RoleNames()))
+		for name := range user.RoleNames() {
 			role, err := user.auth.GetRole(name)
 			//base.Infof(base.KeyAccess, "User %s role %q = %v", base.UD(user.Name_), base.UD(name), base.UD(role))
 			if err != nil {
@@ -260,7 +288,7 @@ func (user *userImpl) AuthorizeAnyChannel(channels base.Set) error {
 func (user *userImpl) InheritedChannels() ch.TimedSet {
 	channels := user.Channels().Copy()
 	for _, role := range user.GetRoles() {
-		roleSince := user.RolesSince_[role.Name()]
+		roleSince := user.RoleNames()[role.Name()]
 		channels.AddAtSequence(role.Channels(), roleSince.Sequence)
 	}
 	return channels

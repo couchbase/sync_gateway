@@ -24,6 +24,7 @@ type Principal interface {
 	SetSequence(sequence uint64)
 
 	// The set of channels the Principal belongs to, and what sequence access was granted.
+	// Returns nil if invalidated
 	Channels() ch.TimedSet
 
 	// The channels the Principal was explicitly granted access to thru the admin API.
@@ -32,11 +33,17 @@ type Principal interface {
 	// Sets the explicit channels the Principal has access to.
 	SetExplicitChannels(ch.TimedSet)
 
-	// The previous set of channels the Principal was granted.  Used to maintain sequence history.
-	PreviousChannels() ch.TimedSet
+	GetChannelInvalSeq() uint64
 
-	// Sets the previous set of channels the Principal has access to.
-	SetPreviousChannels(ch.TimedSet)
+	SetChannelInvalSeq(uint64)
+
+	// The set of invalidated channels
+	// Returns nil if not invalidated
+	InvalidatedChannels() ch.TimedSet
+
+	ChannelHistory() TimedSetHistory
+
+	SetChannelHistory(history TimedSetHistory)
 
 	// Returns true if the Principal has access to the given channel.
 	CanSeeChannel(channel string) bool
@@ -93,6 +100,7 @@ type User interface {
 	SetPassword(password string)
 
 	// The set of Roles the user belongs to (including ones given to it by the sync function)
+	// Returns nil if invalidated
 	RoleNames() ch.TimedSet
 
 	// The roles the user was explicitly granted access to thru the admin API.
@@ -100,6 +108,18 @@ type User interface {
 
 	// Sets the explicit roles the user belongs to.
 	SetExplicitRoles(ch.TimedSet)
+
+	GetRoleInvalSeq() uint64
+
+	SetRoleInvalSeq(uint64)
+
+	// The set of invalidated roles
+	// Returns nil if not invalidated
+	InvalidatedRoles() ch.TimedSet
+
+	SetRoleHistory(history TimedSetHistory)
+
+	RoleHistory() TimedSetHistory
 
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet
