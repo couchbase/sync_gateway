@@ -43,12 +43,13 @@ const (
 	GetCheckpointClient      = "client"
 
 	// subChanges message properties
-	SubChangesActiveOnly = "activeOnly"
-	SubChangesFilter     = "filter"
-	SubChangesChannels   = "channels"
-	SubChangesSince      = "since"
-	SubChangesContinuous = "continuous"
-	SubChangesBatch      = "batch"
+	SubChangesActiveOnly  = "activeOnly"
+	SubChangesFilter      = "filter"
+	SubChangesChannels    = "channels"
+	SubChangesSince       = "since"
+	SubChangesContinuous  = "continuous"
+	SubChangesBatch       = "batch"
+	SubChangesRevocations = "revocations"
 
 	// rev message properties
 	RevMessageId          = "id"
@@ -169,6 +170,10 @@ func (s *SubChangesParams) continuous() bool {
 		continuous = true
 	}
 	return continuous
+}
+
+func (s *SubChangesParams) revocations() bool {
+	return s.rq.Properties[SubChangesRevocations] == "true"
 }
 
 func (s *SubChangesParams) activeOnly() bool {

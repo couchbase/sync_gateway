@@ -36,6 +36,7 @@ type ChangesOptions struct {
 	HeartbeatMs uint64          // How often to send a heartbeat to the client
 	TimeoutMs   uint64          // After this amount of time, close the longpoll connection
 	ActiveOnly  bool            // If true, only return information on non-deleted, non-removed revisions
+	Revocations bool            // Specifies whether revocation messages should be sent on the changes feed
 	clientType  clientType      // Can be used to determine if the replication is being started from a CBL 2.x or SGR2 client
 	Ctx         context.Context // Used for adding context to logs
 }
@@ -592,6 +593,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			if db.user != nil {
 				feeds, names = db.appendUserFeed(feeds, names, options)
 			}
+
+			// TODO: Use revocations option here in CBG-1367
+			_ = options.Revocations
 
 			current := make([]*ChangeEntry, len(feeds))
 

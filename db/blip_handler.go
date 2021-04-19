@@ -220,6 +220,7 @@ func (bh *blipHandler) handleSubChanges(rq *blip.Message) error {
 			activeOnly:        subChangesParams.activeOnly(),
 			batchSize:         subChangesParams.batchSize(),
 			channels:          channels,
+			revocations:       subChangesParams.revocations(),
 			clientType:        clientType,
 			ignoreNoConflicts: clientType == clientTypeSGR2, // force this side to accept a "changes" message, even in no conflicts mode for SGR2.
 		})
@@ -244,6 +245,7 @@ type sendChangesOptions struct {
 	batchSize         int
 	channels          base.Set
 	clientType        clientType
+	revocations       bool
 	ignoreNoConflicts bool
 }
 
@@ -258,13 +260,14 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	base.InfofCtx(bh.loggingCtx, base.KeySync, "Sending changes since %v", opts.since)
 
 	options := ChangesOptions{
-		Since:      opts.since,
-		Conflicts:  false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
-		Continuous: opts.continuous,
-		ActiveOnly: opts.activeOnly,
-		Terminator: bh.BlipSyncContext.terminator,
-		Ctx:        bh.loggingCtx,
-		clientType: opts.clientType,
+		Since:       opts.since,
+		Conflicts:   false, // CBL 2.0/BLIP don't support branched rev trees (LiteCore #437)
+		Continuous:  opts.continuous,
+		ActiveOnly:  opts.activeOnly,
+		Revocations: opts.revocations,
+		Terminator:  bh.BlipSyncContext.terminator,
+		Ctx:         bh.loggingCtx,
+		clientType:  opts.clientType,
 	}
 
 	channelSet := opts.channels
