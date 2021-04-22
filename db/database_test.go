@@ -1426,8 +1426,8 @@ func TestDocIDs(t *testing.T) {
 		{name: "symbols", docID: "foo!", valid: true},
 
 		{name: "symbols (ASCII hex)", docID: "foo\x21", valid: true},
-		// {name: "control chars (NUL)", docID: "\x00foo"}, // disallow any ASCII control characters (< 0x20)
-		// {name: "control chars (BEL)", docID: "foo\x07"}, // disallow any ASCII control characters (< 0x20)
+		{name: "control chars (NUL)", docID: "\x00foo", valid: true},
+		{name: "control chars (BEL)", docID: "foo\x07", valid: true},
 
 		{name: "empty", docID: ""}, // disallow empty doc IDs
 
