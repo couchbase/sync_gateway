@@ -449,23 +449,20 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 	return err
 }
 
-// Deletes a user/role.
-func (auth *Authenticator) Delete(p Principal, purge bool, deleteSeq uint64) error {
-	user, ok := p.(User)
-	if ok {
-		if user.Email() != "" {
-			if err := auth.bucket.Delete(docIDForUserEmail(user.Email())); err != nil {
-				base.Debugf(base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
-			}
+func (auth *Authenticator) DeleteUser(user User) error {
+	if user.Email() != "" {
+		if err := auth.bucket.Delete(docIDForUserEmail(user.Email())); err != nil {
+			base.Debugf(base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
 		}
-		return auth.bucket.Delete(p.DocID())
 	}
+	return auth.bucket.Delete(user.DocID())
+}
 
-	// If not a user, ie. a role
+func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) error {
 	if purge {
-		return auth.Purge(p)
+		return auth.bucket.Delete(role.DocID())
 	}
-	return auth.casUpdatePrincipal(p, func(p Principal) (updatedPrincipal Principal, err error) {
+	return auth.casUpdatePrincipal(role, func(p Principal) (updatedPrincipal Principal, err error) {
 		if p == nil || p.IsDeleted() {
 			return p, base.ErrUpdateCancel
 		}
@@ -481,11 +478,6 @@ func (auth *Authenticator) Delete(p Principal, purge bool, deleteSeq uint64) err
 		return p, nil
 
 	})
-}
-
-// Purge a user/role from bucket
-func (auth *Authenticator) Purge(p Principal) error {
-	return auth.bucket.Delete(p.DocID())
 }
 
 // Authenticates a user given the username and password.

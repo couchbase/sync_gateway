@@ -2245,11 +2245,11 @@ func TestRoleSoftDelete(t *testing.T) {
 	assert.True(t, role.Channels().Contains("channel"))
 
 	// Delete role
-	err = auth.Delete(role, false, 2)
+	err = auth.DeleteRole(role, false, 2)
 	assert.NoError(t, err)
 
 	// Delete again
-	err = auth.Delete(role, false, 2)
+	err = auth.DeleteRole(role, false, 2)
 	assert.NoError(t, err)
 
 	expectedChannelHistory := GrantHistorySequencePair{StartSeq: 1, EndSeq: 2}
@@ -2289,4 +2289,47 @@ func TestRoleSoftDelete(t *testing.T) {
 	require.Equal(t, 1, len(role.ChannelHistory()["!"].Entries))
 	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["channel"].Entries[0])
 	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["!"].Entries[0])
+}
+
+func TestRoleSoftDeleteCasMismatch(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket, nil)
+
+	const roleName = "role"
+
+	// Instantiate role
+	role, err := auth.NewRole(roleName, ch.SetOf(t, "channel"))
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+
+	// Save role to bucket
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get role to do update on
+	role, err = auth.GetRole(roleName)
+	assert.NoError(t, err)
+
+	// Get cas for later use
+	oldCas := role.Cas()
+
+	// Delete
+	err = auth.DeleteRole(role, false, 2)
+	assert.NoError(t, err)
+
+	// Save current cas for later validation
+	currentCas := role.Cas()
+
+	// Set cas to old one to cause cas retry
+	role.SetCas(oldCas)
+
+	// Trigger an update with will have a cas retry
+	err = auth.InvalidateChannels(role, 3)
+	assert.NoError(t, err)
+
+	// Check no actual update is performed
+	role, err = auth.GetRoleIncDeleted(roleName)
+	assert.NoError(t, err)
+	assert.Equal(t, currentCas, role.Cas())
 }

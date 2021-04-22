@@ -83,26 +83,23 @@ func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *Princi
 	return
 }
 
-func (db *DatabaseContext) DeletePrincipal(name string, isUser bool, purge bool) (found bool, err error) {
+func (db *DatabaseContext) DeleteRole(name string, purge bool) (found bool, err error) {
 	authenticator := db.Authenticator()
 
-	princ, err := authenticator.GetPrincipal(name, isUser)
+	role, err := authenticator.GetRole(name)
 	if err != nil {
 		return false, err
 	}
-	if princ == nil {
+	if role == nil {
 		return false, fmt.Errorf("not found")
 	}
 
-	seq := uint64(0)
-	if !isUser {
-		seq, err = db.sequences.nextSequence()
-		if err != nil {
-			return true, err
-		}
+	seq, err := db.sequences.nextSequence()
+	if err != nil {
+		return true, err
 	}
 
-	return true, authenticator.Delete(princ, purge, seq)
+	return true, authenticator.DeleteRole(role, purge, seq)
 }
 
 // Updates or creates a principal from a PrincipalConfig structure.
