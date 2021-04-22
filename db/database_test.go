@@ -1414,12 +1414,39 @@ func TestAccessFunctionDb(t *testing.T) {
 }
 
 func TestDocIDs(t *testing.T) {
-	goassert.Equals(t, realDocID(""), "")
-	goassert.Equals(t, realDocID("_"), "")
-	goassert.Equals(t, realDocID("_foo"), "")
-	goassert.Equals(t, realDocID("foo"), "foo")
-	goassert.Equals(t, realDocID("_design/foo"), "")
-	goassert.Equals(t, realDocID(base.RevPrefix+"x"), "")
+	tests := []struct {
+		name  string
+		docID string
+		valid bool
+	}{
+		{name: "normal doc ID", docID: "foo", valid: true},
+		{name: "non-prefix underscore", docID: "foo_", valid: true},
+
+		{name: "spaces", docID: "foo bar", valid: true},
+		{name: "symbols", docID: "foo!", valid: true},
+
+		{name: "symbols (ASCII hex)", docID: "foo\x21", valid: true},
+		// {name: "control chars (NUL)", docID: "\x00foo"}, // disallow any ASCII control characters (< 0x20)
+		// {name: "control chars (BEL)", docID: "foo\x07"}, // disallow any ASCII control characters (< 0x20)
+
+		{name: "empty", docID: ""}, // disallow empty doc IDs
+
+		// disallow underscore prefixes
+		{name: "underscore prefix", docID: "_"},
+		{name: "underscore prefix", docID: "_foo"},
+		{name: "underscore prefix", docID: "_design/foo"},
+		{name: "underscore prefix", docID: base.RevPrefix + "x"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expected := ""
+			if test.valid {
+				expected = test.docID
+			}
+			assert.Equal(t, expected, realDocID(test.docID))
+		})
+	}
 }
 
 func TestUpdateDesignDoc(t *testing.T) {
