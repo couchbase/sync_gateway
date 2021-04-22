@@ -432,6 +432,10 @@ func (b *LeakyBucket) SetPostUpdateCallback(callback func(key string)) {
 	b.config.PostUpdateCallback = callback
 }
 
+func (b *LeakyBucket) SetUpdateCallback(callback func(key string)) {
+	b.config.UpdateCallback = callback
+}
+
 func (b *LeakyBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	return b.bucket.IsSupported(feature)
 }

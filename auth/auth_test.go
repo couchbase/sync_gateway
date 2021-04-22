@@ -2333,3 +2333,80 @@ func TestRoleSoftDeleteCasMismatch(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, currentCas, role.Cas())
 }
+
+func TestObtainChannelsForDeletedRole(t *testing.T) {
+	testcases := []struct {
+		Name     string
+		TestFunc func(auth *Authenticator, role Role, t *testing.T)
+	}{{
+		"GetUserThenDelete",
+		func(auth *Authenticator, role Role, t *testing.T) {
+			// Get user
+			user, err := auth.GetUser("user")
+			assert.NoError(t, err)
+
+			// Role deleted
+			err = auth.DeleteRole(role, true, 2)
+			assert.NoError(t, err)
+
+			// Successfully able to get inherited channels even though role is missing
+			assert.Equal(t, []string{"!"}, user.InheritedChannels().AllChannels())
+		},
+	},
+		{
+			"DeleteThenGetUser",
+			func(auth *Authenticator, role Role, t *testing.T) {
+				// Role deleted
+				err := auth.DeleteRole(role, true, 2)
+				assert.NoError(t, err)
+
+				// Get user
+				user, err := auth.GetUser("user")
+				assert.NoError(t, err)
+
+				// Successfully able to get inherited channels even though role is missing
+				assert.Equal(t, []string{"!"}, user.InheritedChannels().AllChannels())
+			},
+		},
+	}
+
+	for _, testCase := range testcases {
+		t.Run("name", func(t *testing.T) {
+			testMockComputer := mockComputerV2{
+				roles:        map[string]ch.TimedSet{},
+				channels:     map[string]ch.TimedSet{},
+				roleChannels: map[string]ch.TimedSet{},
+			}
+
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+			auth := NewAuthenticator(testBucket, testMockComputer)
+
+			const roleName = "role"
+
+			// Instantiate role
+			role, err := auth.NewRole(roleName, ch.SetOf(t, "channel"))
+			assert.NoError(t, err)
+			assert.NotNil(t, role)
+
+			// Save role to bucket
+			err = auth.Save(role)
+			assert.NoError(t, err)
+
+			// Instantiate user
+			user, err := auth.NewUser("user", "", nil)
+			assert.NoError(t, err)
+
+			// Save user to bucket
+			err = auth.Save(user)
+			assert.NoError(t, err)
+
+			// Add channel to role and role to user
+			testMockComputer.addRoleChannels(t, auth, role, "role", "chan", 1)
+			testMockComputer.addRole(t, auth, user, "user", "role", 1)
+
+			testCase.TestFunc(auth, role, t)
+		})
+	}
+
+}

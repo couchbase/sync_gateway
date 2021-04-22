@@ -2800,3 +2800,84 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["chan"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 }
+
+func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
+
+	testCases := []struct {
+		Name      string
+		RunBefore bool
+	}{
+		{
+			"Delete On GetUser",
+			true,
+		},
+		{
+			"Delete On InheritedChannels",
+			false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			rt := NewRestTester(t, &RestTesterConfig{
+				SyncFn: `
+			function(doc, oldDoc){
+				if (doc._id === 'roleChannels'){
+					access('role:role', doc.channels)
+				}
+				if (doc._id === 'userRoles'){
+					role('user', doc.roles)
+				}
+			}
+		`,
+			})
+			defer rt.Close()
+
+			// Create role
+			resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
+			assertStatus(t, resp, http.StatusCreated)
+
+			// Create user
+			resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"password": "pass"}`)
+			assertStatus(t, resp, http.StatusCreated)
+
+			// Add channel to role
+			resp = rt.SendAdminRequest("PUT", "/db/roleChannels", `{"channels": "inherit"}`)
+			assertStatus(t, resp, http.StatusCreated)
+
+			// Add role to user
+			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
+			assertStatus(t, resp, http.StatusCreated)
+
+			leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+			require.True(t, ok)
+
+			triggerCallback := false
+			leakyBucket.SetUpdateCallback(func(key string) {
+				if triggerCallback {
+					triggerCallback = false
+					resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
+					assertStatus(t, resp, http.StatusOK)
+				}
+			})
+
+			if testCase.RunBefore {
+				triggerCallback = true
+			}
+
+			authenticator := rt.GetDatabase().Authenticator()
+			user, err := authenticator.GetUser("user")
+			assert.NoError(t, err)
+
+			if !testCase.RunBefore {
+				triggerCallback = true
+			}
+
+			assert.Equal(t, []string{"!"}, user.InheritedChannels().AllChannels())
+
+			// Ensure callback ran
+			assert.False(t, triggerCallback)
+		})
+
+	}
+}
