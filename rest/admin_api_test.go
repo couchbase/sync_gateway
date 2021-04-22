@@ -2774,3 +2774,29 @@ func TestRolePurge(t *testing.T) {
 	resp = rt.SendAdminRequest("GET", "/db/_role/role", ``)
 	assertStatus(t, resp, http.StatusNotFound)
 }
+
+func TestSoftDeleteCasMismatch(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create role
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+	require.True(t, ok)
+
+	// Set callback to trigger a DELETE AFTER an update. This will trigger a CAS mismatch.
+	// Update is done on a GetRole operation so this delete is done between a GET and save operation.
+	triggerCallback := true
+	leakyBucket.SetPostUpdateCallback(func(key string) {
+		if triggerCallback {
+			triggerCallback = false
+			resp = rt.SendAdminRequest("DELETE", "/db/_role/role", ``)
+			assertStatus(t, resp, http.StatusOK)
+		}
+	})
+
+	resp = rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["chan"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+}
