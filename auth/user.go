@@ -183,9 +183,17 @@ func (user *userImpl) RoleHistory() TimedSetHistory {
 	return user.RoleHistory_
 }
 
-func (user *userImpl) RevokedChannels(since uint64) map[string]uint64 {
+// Type is used to store a pair of channel names to triggered by sequences
+// If there already exists the channel in the map it'll only update its sequence if the sequence being added is greater
+type RevokedChannels map[string]uint64
 
-	// Grab all channels user has access to
+func (revokedChannels RevokedChannels) add(chanName string, triggeredBy uint64) {
+	if currentVal, ok := revokedChannels[chanName]; !ok || triggeredBy > currentVal {
+		revokedChannels[chanName] = triggeredBy
+	}
+}
+
+func (user *userImpl) RevokedChannels(since uint64) RevokedChannels {
 	accessibleChannels := user.InheritedChannels()
 
 	// Get revoked roles
@@ -194,7 +202,7 @@ func (user *userImpl) RevokedChannels(since uint64) map[string]uint64 {
 	for roleName, history := range roleHistory {
 		if !user.RoleNames().Contains(roleName) {
 			for _, entry := range history.Entries {
-				if entry.StartSeq <= since && entry.EndSeq >= since {
+				if entry.StartSeq <= since && entry.EndSeq > since {
 					mostRecentEndSeq := history.Entries[len(history.Entries)-1]
 					rolesToRevoke[roleName] = mostRecentEndSeq.EndSeq
 				}
@@ -204,21 +212,16 @@ func (user *userImpl) RevokedChannels(since uint64) map[string]uint64 {
 
 	// Store revoked channels to return
 	// addToCombined adds to this return map or updates if required based on requirement to have largest triggeredBy val
-	combinedRevokedChannels := map[string]uint64{}
-	addToCombined := func(chanName string, triggeredBy uint64) {
-		if currentVal, ok := combinedRevokedChannels[chanName]; !ok || triggeredBy > currentVal {
-			combinedRevokedChannels[chanName] = triggeredBy
-		}
-	}
+	combinedRevokedChannels := RevokedChannels{}
 
 	// revokeChannelHistoryProcessing iterates over a principals channel history and if not accessible add to combined
 	revokeChannelHistoryProcessing := func(princ Principal) {
 		for chanName, history := range princ.ChannelHistory() {
 			if !accessibleChannels.Contains(chanName) {
 				for _, entry := range history.Entries {
-					if entry.StartSeq <= since && entry.EndSeq >= since {
+					if entry.StartSeq <= since && entry.EndSeq > since {
 						mostRecentEndSeq := history.Entries[len(history.Entries)-1]
-						addToCombined(chanName, mostRecentEndSeq.EndSeq)
+						combinedRevokedChannels.add(chanName, mostRecentEndSeq.EndSeq)
 					}
 				}
 			}
@@ -239,7 +242,7 @@ func (user *userImpl) RevokedChannels(since uint64) map[string]uint64 {
 		if !role.IsDeleted() {
 			for _, chanName := range role.Channels().AllChannels() {
 				if !accessibleChannels.Contains(chanName) {
-					addToCombined(chanName, triggeredBy)
+					combinedRevokedChannels.add(chanName, triggeredBy)
 				}
 			}
 		}
@@ -247,15 +250,15 @@ func (user *userImpl) RevokedChannels(since uint64) map[string]uint64 {
 		for chanName, history := range role.ChannelHistory() {
 			if !accessibleChannels.Contains(chanName) {
 				for _, entry := range history.Entries {
-					if entry.StartSeq <= since && entry.EndSeq >= since {
+					if entry.StartSeq <= since && entry.EndSeq > since {
 						// If triggeredBy falls in channel history grant period then revocation actually caused by role
 						// revocation. So use triggeredBy.
 						// Otherwise this was a channel revocation whilst role was still assigned. So use end seq.
 						if entry.EndSeq > triggeredBy {
-							addToCombined(chanName, triggeredBy)
+							combinedRevokedChannels.add(chanName, triggeredBy)
 						} else {
 							mostRecentEndSeq := history.Entries[len(history.Entries)-1]
-							addToCombined(chanName, mostRecentEndSeq.EndSeq)
+							combinedRevokedChannels.add(chanName, mostRecentEndSeq.EndSeq)
 						}
 					}
 				}

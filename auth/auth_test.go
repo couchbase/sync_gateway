@@ -2313,6 +2313,54 @@ func TestRevocationScenario13(t *testing.T) {
 	assert.Len(t, revokedChannelsCombined, 0)
 }
 
+// Scenario 14
+// Initiate user and role
+// Grant role channel and role
+//  - Changes Request - Seq 25 - Has channel access no history
+// Revoke role
+//  - Changes Request Seq 45 since 25. Ensure revocation.
+// 	- Changes Request Seq 45 since 45 same seq as revocation. Ensure no revocation message.
+func TestRevocationScenario14(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	testMockComputer := mockComputerV2{
+		roles:        map[string]ch.TimedSet{},
+		channels:     map[string]ch.TimedSet{},
+		roleChannels: map[string]ch.TimedSet{},
+	}
+
+	auth := NewAuthenticator(testBucket, &testMockComputer)
+	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
+
+	testMockComputer.addRoleChannels(t, auth, fooPrincipal, "foo", "ch1", 5)
+	testMockComputer.addRole(t, auth, aliceUserPrincipal, "alice", "foo", 20)
+
+	// Get Principals / Rebuild Seq 25
+	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+
+	testMockComputer.removeRole(t, auth, aliceUserPrincipal, "alice", "foo", 45)
+
+	// Get Principals / Rebuild Seq 45
+	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
+	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
+	require.True(t, ok)
+	assert.Equal(t, GrantHistorySequencePair{StartSeq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
+
+	// Ensure that a since 25 shows the revocation
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(25)
+	require.Contains(t, revokedChannelsCombined, "ch1")
+	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
+
+	// Ensure that the user cannot see the channel at this point (after 45)
+	aliceUserPrincipal.CanSeeChannel("ch1")
+
+	// Ensure a pull from 45 (same seq as revocation) wouldn't send message
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(45)
+	assert.Len(t, revokedChannelsCombined, 0)
+
+}
+
 func TestRoleSoftDelete(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
