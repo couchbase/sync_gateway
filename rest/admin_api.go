@@ -717,11 +717,8 @@ func (h *handler) deleteUser() error {
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
 	purge := h.getBoolQuery("purge")
-	found, err := h.db.DeleteRole(mux.Vars(h.rq)["name"], purge)
-	if !found {
-		return kNotFoundError
-	}
-	return err
+	return h.db.DeleteRole(mux.Vars(h.rq)["name"], purge)
+
 }
 
 func (h *handler) getUserInfo() error {
