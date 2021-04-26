@@ -90,6 +90,14 @@ func (auth *Authenticator) GetUser(name string) (User, error) {
 
 // Looks up the information for a role.
 func (auth *Authenticator) GetRole(name string) (Role, error) {
+	role, err := auth.GetRoleIncDeleted(name)
+	if role != nil && role.IsDeleted() {
+		return nil, err
+	}
+	return role, err
+}
+
+func (auth *Authenticator) GetRoleIncDeleted(name string) (Role, error) {
 	princ, err := auth.getPrincipal(docIDForRole(name), func() Principal { return &roleImpl{} })
 	role, _ := princ.(Role)
 	return role, err
@@ -111,7 +119,7 @@ func (auth *Authenticator) getPrincipal(docID string, factory func() Principal) 
 			return nil, nil, false, pkgerrors.WithStack(base.RedactErrorf("base.JSONUnmarshal() error for doc ID: %s in getPrincipal().  Error: %v", base.UD(docID), err))
 		}
 		changed := false
-		if princ.Channels() == nil {
+		if princ.Channels() == nil && !princ.IsDeleted() {
 			// Channel list has been invalidated by a doc update -- rebuild it:
 			if err := auth.rebuildChannels(princ); err != nil {
 				base.Warnf("RebuildChannels returned error: %v", err)
@@ -441,16 +449,35 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 	return err
 }
 
-// Deletes a user/role.
-func (auth *Authenticator) Delete(p Principal) error {
-	if user, ok := p.(User); ok {
-		if user.Email() != "" {
-			if err := auth.bucket.Delete(docIDForUserEmail(user.Email())); err != nil {
-				base.Debugf(base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
-			}
+func (auth *Authenticator) DeleteUser(user User) error {
+	if user.Email() != "" {
+		if err := auth.bucket.Delete(docIDForUserEmail(user.Email())); err != nil {
+			base.Debugf(base.KeyAuth, "Error deleting document ID for user email %s. Error: %v", base.UD(user.Email()), err)
 		}
 	}
-	return auth.bucket.Delete(p.DocID())
+	return auth.bucket.Delete(user.DocID())
+}
+
+func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) error {
+	if purge {
+		return auth.bucket.Delete(role.DocID())
+	}
+	return auth.casUpdatePrincipal(role, func(p Principal) (updatedPrincipal Principal, err error) {
+		if p == nil || p.IsDeleted() {
+			return p, base.ErrUpdateCancel
+		}
+		p.setDeleted(true)
+		p.SetSequence(deleteSeq)
+
+		channelHistory := auth.calculateHistory(deleteSeq, p.Channels(), nil, p.ChannelHistory())
+		if len(channelHistory) != 0 {
+			p.SetChannelHistory(channelHistory)
+		}
+
+		p.SetChannelInvalSeq(deleteSeq)
+		return p, nil
+
+	})
 }
 
 // Authenticates a user given the username and password.

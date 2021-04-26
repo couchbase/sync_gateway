@@ -711,19 +711,14 @@ func (h *handler) deleteUser() error {
 		}
 		return err
 	}
-	return h.db.Authenticator().Delete(user)
+	return h.db.Authenticator().DeleteUser(user)
 }
 
 func (h *handler) deleteRole() error {
 	h.assertAdminOnly()
-	role, err := h.db.Authenticator().GetRole(mux.Vars(h.rq)["name"])
-	if role == nil {
-		if err == nil {
-			err = kNotFoundError
-		}
-		return err
-	}
-	return h.db.Authenticator().Delete(role)
+	purge := h.getBoolQuery("purge")
+	return h.db.DeleteRole(mux.Vars(h.rq)["name"], purge)
+
 }
 
 func (h *handler) getUserInfo() error {

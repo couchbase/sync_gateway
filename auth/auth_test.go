@@ -2220,3 +2220,193 @@ func TestRevocationScenario13(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
 }
+
+func TestRoleSoftDelete(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket, nil)
+
+	const roleName = "role"
+
+	// Instantiate role
+	role, err := auth.NewRole(roleName, ch.SetOf(t, "channel"))
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+
+	// Save role to bucket
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get role - ensure accessible
+	role, err = auth.GetRole(roleName)
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+	assert.Equal(t, 2, len(role.Channels().AllChannels()))
+	assert.True(t, role.Channels().Contains("channel"))
+
+	// Delete role
+	err = auth.DeleteRole(role, false, 2)
+	assert.NoError(t, err)
+
+	// Delete again
+	err = auth.DeleteRole(role, false, 2)
+	assert.NoError(t, err)
+
+	expectedChannelHistory := GrantHistorySequencePair{StartSeq: 1, EndSeq: 2}
+
+	role, err = auth.GetRoleIncDeleted(roleName)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, len(role.ChannelHistory()))
+	assert.Equal(t, 0, len(role.Channels().AllChannels()))
+	require.Equal(t, 1, len(role.ChannelHistory()["channel"].Entries))
+	require.Equal(t, 1, len(role.ChannelHistory()["!"].Entries))
+	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["channel"].Entries[0])
+	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["!"].Entries[0])
+
+	// Get role - ensure its not accessible
+	role, err = auth.GetRole(roleName)
+	assert.NoError(t, err)
+	assert.Nil(t, role)
+
+	// Re-create role
+	role, err = auth.NewRole(roleName, ch.SetOf(t, "channel2"))
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+
+	// Save role to bucket
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get role - ensure its accessible
+	role, err = auth.GetRole(roleName)
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+	assert.Equal(t, 2, len(role.Channels().AllChannels()))
+	assert.False(t, role.Channels().Contains("channel"))
+	assert.True(t, role.Channels().Contains("channel2"))
+	assert.Equal(t, 2, len(role.ChannelHistory()))
+	require.Equal(t, 1, len(role.ChannelHistory()["channel"].Entries))
+	require.Equal(t, 1, len(role.ChannelHistory()["!"].Entries))
+	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["channel"].Entries[0])
+	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["!"].Entries[0])
+}
+
+func TestRoleSoftDeleteCasMismatch(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+	auth := NewAuthenticator(testBucket, nil)
+
+	const roleName = "role"
+
+	// Instantiate role
+	role, err := auth.NewRole(roleName, ch.SetOf(t, "channel"))
+	assert.NoError(t, err)
+	assert.NotNil(t, role)
+
+	// Save role to bucket
+	err = auth.Save(role)
+	assert.NoError(t, err)
+
+	// Get role to do update on
+	role, err = auth.GetRole(roleName)
+	assert.NoError(t, err)
+
+	// Get cas for later use
+	oldCas := role.Cas()
+
+	// Delete
+	err = auth.DeleteRole(role, false, 2)
+	assert.NoError(t, err)
+
+	// Save current cas for later validation
+	currentCas := role.Cas()
+
+	// Set cas to old one to cause cas retry
+	role.SetCas(oldCas)
+
+	// Trigger an update with will have a cas retry
+	err = auth.InvalidateChannels(role, 3)
+	assert.NoError(t, err)
+
+	// Check no actual update is performed
+	role, err = auth.GetRoleIncDeleted(roleName)
+	assert.NoError(t, err)
+	assert.Equal(t, currentCas, role.Cas())
+}
+
+func TestObtainChannelsForDeletedRole(t *testing.T) {
+	testcases := []struct {
+		Name     string
+		TestFunc func(auth *Authenticator, role Role, t *testing.T)
+	}{{
+		"GetUserThenDelete",
+		func(auth *Authenticator, role Role, t *testing.T) {
+			// Get user
+			user, err := auth.GetUser("user")
+			assert.NoError(t, err)
+
+			// Role deleted
+			err = auth.DeleteRole(role, true, 2)
+			assert.NoError(t, err)
+
+			// Successfully able to get inherited channels even though role is missing
+			assert.Equal(t, []string{"!"}, user.InheritedChannels().AllChannels())
+		},
+	},
+		{
+			"DeleteThenGetUser",
+			func(auth *Authenticator, role Role, t *testing.T) {
+				// Role deleted
+				err := auth.DeleteRole(role, true, 2)
+				assert.NoError(t, err)
+
+				// Get user
+				user, err := auth.GetUser("user")
+				assert.NoError(t, err)
+
+				// Successfully able to get inherited channels even though role is missing
+				assert.Equal(t, []string{"!"}, user.InheritedChannels().AllChannels())
+			},
+		},
+	}
+
+	for _, testCase := range testcases {
+		t.Run("name", func(t *testing.T) {
+			testMockComputer := mockComputerV2{
+				roles:        map[string]ch.TimedSet{},
+				channels:     map[string]ch.TimedSet{},
+				roleChannels: map[string]ch.TimedSet{},
+			}
+
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+			auth := NewAuthenticator(testBucket, testMockComputer)
+
+			const roleName = "role"
+
+			// Instantiate role
+			role, err := auth.NewRole(roleName, ch.SetOf(t, "channel"))
+			assert.NoError(t, err)
+			assert.NotNil(t, role)
+
+			// Save role to bucket
+			err = auth.Save(role)
+			assert.NoError(t, err)
+
+			// Instantiate user
+			user, err := auth.NewUser("user", "", nil)
+			assert.NoError(t, err)
+
+			// Save user to bucket
+			err = auth.Save(user)
+			assert.NoError(t, err)
+
+			// Add channel to role and role to user
+			testMockComputer.addRoleChannels(t, auth, role, "role", "chan", 1)
+			testMockComputer.addRole(t, auth, user, "user", "role", 1)
+
+			testCase.TestFunc(auth, role, t)
+		})
+	}
+
+}

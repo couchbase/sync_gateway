@@ -52,6 +52,8 @@ type LeakyBucketConfig struct {
 	// tests to trigger CAS retry handling by modifying the underlying document in a UpdateCallback implementation.
 	UpdateCallback func(key string)
 
+	PostUpdateCallback func(key string)
+
 	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
 	WriteWithXattrCallback func(key string)
 
@@ -130,7 +132,14 @@ func (b *LeakyBucket) Update(k string, exp uint32, callback sgbucket.UpdateFunc)
 		}
 		return b.bucket.Update(k, exp, wrapperCallback)
 	}
-	return b.bucket.Update(k, exp, callback)
+
+	casOut, err = b.bucket.Update(k, exp, callback)
+
+	if b.config.PostUpdateCallback != nil {
+		b.config.PostUpdateCallback(k)
+	}
+
+	return casOut, err
 }
 
 func (b *LeakyBucket) Incr(k string, amt, def uint64, exp uint32) (uint64, error) {
@@ -417,6 +426,14 @@ func (b *LeakyBucket) SetPostQueryCallback(callback func(ddoc, viewName string, 
 
 func (b *LeakyBucket) SetPostN1QLQueryCallback(callback func()) {
 	b.config.PostN1QLQueryCallback = callback
+}
+
+func (b *LeakyBucket) SetPostUpdateCallback(callback func(key string)) {
+	b.config.PostUpdateCallback = callback
+}
+
+func (b *LeakyBucket) SetUpdateCallback(callback func(key string)) {
+	b.config.UpdateCallback = callback
 }
 
 func (b *LeakyBucket) IsSupported(feature sgbucket.DataStoreFeature) bool {

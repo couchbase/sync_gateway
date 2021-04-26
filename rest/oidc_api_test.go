@@ -1494,7 +1494,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
 		assert.Equal(t, email, user.Email(), "Email is not updated")
-		require.NoError(t, authenticator.Delete(user), "Error deleting user %s", user.Name())
+		require.NoError(t, authenticator.DeleteUser(user), "Error deleting user %s", user.Name())
 	})
 
 	t.Run("successful registered user auth when neither username_claim nor user_prefix are set", func(t *testing.T) {
@@ -1520,7 +1520,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		require.NoError(t, err, "Error getting user from db")
 		assert.Equal(t, usernameExpected, user.Name(), "Username mismatch")
 		assert.Equal(t, email, user.Email(), "Email is not updated")
-		require.NoError(t, authenticator.Delete(user), "Error deleting user %s", user.Name())
+		require.NoError(t, authenticator.DeleteUser(user), "Error deleting user %s", user.Name())
 	})
 
 	// If username_claim is set but the specified claim property does not exist in the token, then reject the token.

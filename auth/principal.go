@@ -70,6 +70,9 @@ type Principal interface {
 	// Cas value for the associated principal document in the bucket
 	Cas() uint64
 	SetCas(cas uint64)
+
+	setDeleted(bool)
+	IsDeleted() bool
 }
 
 // Role is basically the same as Principal, just concrete. Users can inherit channels from Roles.
