@@ -196,14 +196,14 @@ func (c *channelCacheImpl) AddToCache(change *LogEntry) (updatedChannels []strin
 	var explicitStarChannel bool
 	c.validFromLock.Lock()
 	for channelName, removal := range ch {
-		if removal == nil || removal.Seq == change.Sequence {
+		if removal == nil || removal.EndSeq == 0 || removal.EndSeq == change.Sequence {
 			// If the document has been explicitly added to the star channel by the sync function, don't need to recheck below
 			if channelName == channels.UserStarChannel {
 				explicitStarChannel = true
 			}
 			channelCache, ok := c.getActiveChannelCache(channelName)
 			if ok {
-				channelCache.addToCache(change, removal != nil)
+				channelCache.addToCache(change, removal != nil && removal.EndSeq != 0)
 				if change.Skipped {
 					channelCache.AddLateSequence(change)
 				}

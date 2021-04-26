@@ -1030,8 +1030,8 @@ func TestConflicts(t *testing.T) {
 	doc, _ := db.GetDocument("doc", DocUnmarshalAll)
 	chan2a, found := doc.Channels["2a"]
 	goassert.True(t, found)
-	goassert.True(t, chan2a == nil)             // currently in 2a
-	goassert.True(t, doc.Channels["2b"] != nil) // has been removed from 2b
+	goassert.True(t, chan2a.EndSeq == 0)             // currently in 2a
+	goassert.True(t, doc.Channels["2b"].EndSeq != 0) // has been removed from 2b
 
 	// Wait for delete mutation to arrive over feed
 	cacheWaiter.AddAndWait(1)
@@ -1327,7 +1327,7 @@ func TestSyncFnOnPush(t *testing.T) {
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)
 	goassert.DeepEquals(t, doc.Channels, channels.ChannelMap{
 		"clibup": nil, // i.e. it is currently in this channel (no removal)
-		"public": &channels.ChannelRemoval{Seq: 2, RevID: "4-four"},
+		"public": &channels.ChannelRemoval{EndSeq: 2, RevID: "4-four"},
 	})
 	goassert.DeepEquals(t, doc.History["4-four"].Channels, base.SetOf("clibup"))
 }

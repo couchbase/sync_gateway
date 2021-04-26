@@ -841,9 +841,9 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 		// Mark every no-longer-current channel as unsubscribed:
 		curSequence := doc.Sequence
 		for channel, removal := range oldChannels {
-			if removal == nil && !newChannels.Contains(channel) {
+			if (removal == nil || removal.EndSeq == 0) && !newChannels.Contains(channel) {
 				oldChannels[channel] = &channels.ChannelRemoval{
-					Seq:     curSequence,
+					EndSeq:  curSequence,
 					RevID:   doc.CurrentRev,
 					Deleted: doc.hasFlag(channels.Deleted)}
 				changed = append(changed, channel)
@@ -854,7 +854,10 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 	// Mark every current channel as subscribed:
 	for channel := range newChannels {
 		if value, exists := oldChannels[channel]; value != nil || !exists {
-			oldChannels[channel] = nil
+			oldChannels[channel] = &channels.ChannelRemoval{
+				StartSeq: doc.Sequence,
+			}
+			// oldChannels[channel] = nil
 			changed = append(changed, channel)
 		}
 	}
@@ -874,7 +877,7 @@ func (doc *Document) IsChannelRemoval(revID string) (bodyBytes []byte, history R
 
 	// Iterate over the document's channel history, looking for channels that were removed at revID.  If found, also identify whether the removal was a tombstone.
 	for channel, removal := range doc.Channels {
-		if removal != nil && removal.RevID == revID {
+		if removal != nil && removal.EndSeq != 0 && removal.RevID == revID {
 			removedChannels[channel] = struct{}{}
 			if removal.Deleted == true {
 				isDelete = true

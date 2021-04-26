@@ -1016,10 +1016,10 @@ func createChangesEntry(docid string, db *Database, options ChangesOptions) *Cha
 		//   - the active revision is in a channel the user can see (removal==nil)
 		//   - the doc has been removed from a user's channel later the requested since value (removal.Seq > options.Since.Seq).  In this case, we need to send removal:true changes entry
 		for channel, removal := range populatedDoc.Channels {
-			if db.user.CanSeeChannel(channel) && (removal == nil || removal.Seq > options.Since.Seq) {
+			if db.user.CanSeeChannel(channel) && (removal == nil || removal.EndSeq == 0 || removal.EndSeq > options.Since.Seq) {
 				userCanSeeDocChannel = true
 				// If removal, update removed channels and deleted flag.
-				if removal != nil {
+				if removal != nil && removal.EndSeq != 0 {
 					removedChannels = append(removedChannels, channel)
 					if removal.Deleted {
 						row.Deleted = true

@@ -160,8 +160,9 @@ const (
 		var channelMap = sync.channels;
 		if (channelMap) {
 			for (var name in channelMap) {
+				isRemoved = channelMap[name] == null || !channelMap[name].hasOwnProperty('seq');
 				removed = channelMap[name];
-				if (!removed)
+				if (isRemoved)
 					channels.push(name);
 			}
 		}
@@ -362,7 +363,7 @@ func installViews(bucket base.Bucket) error {
                      var channels = sync.channels;
                      var channelNames = [];
                      for (ch in channels) {
-                     	if (channels[ch] == null)
+                     	if (channels[ch] == null || !channels[ch].hasOwnProperty('seq'))
                      		channelNames.push(ch);
                      }
                      emit(meta.id, {r:sync.rev, s:sync.sequence, c:channelNames}); }`
@@ -425,7 +426,8 @@ func installViews(bucket base.Bucket) error {
 						if (channels) {
 							for (var name in channels) {
 								removed = channels[name];
-								if (!removed)
+								isRemoved = channels[name] == null || !channels[name].hasOwnProperty('seq');
+								if (isRemoved)
 									emit([name, sequence], value);
 								else {
 									var flags = removed.del ? %d : %d; // channels.Removed/Deleted

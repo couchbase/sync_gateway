@@ -1906,7 +1906,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 	log.Printf("Response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 3)
+	require.Len(t, allDocsResult.Rows, 3)
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc3")
 	goassert.DeepEquals(t, allDocsResult.Rows[0].Value.Channels, []string{"Cinemax"})
 	goassert.Equals(t, allDocsResult.Rows[1].ID, "doc4")
@@ -2944,7 +2944,7 @@ func TestAllDocsChannelsAfterChannelMove(t *testing.T) {
 	log.Printf("Admin response = %s", response.Body.Bytes())
 	err = base.JSONUnmarshal(response.Body.Bytes(), &allDocsResult)
 	assert.NoError(t, err)
-	goassert.Equals(t, len(allDocsResult.Rows), 1)
+	require.Len(t, allDocsResult.Rows, 1)
 	goassert.Equals(t, allDocsResult.Rows[0].ID, "doc1")
 	goassert.Equals(t, allDocsResult.Rows[0].Value.Channels[0], "ch1")
 
@@ -6017,7 +6017,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
 			assert.NoError(t, err)
 
-			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
+			assert.Equal(t, uint64(3), syncData2.Channels[channelName].EndSeq)
 		})
 	}
 }

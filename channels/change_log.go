@@ -48,9 +48,10 @@ func (l LogEntry) String() string {
 
 type ChannelMap map[string]*ChannelRemoval
 type ChannelRemoval struct {
-	Seq     uint64 `json:"seq,omitempty"`
-	RevID   string `json:"rev"`
-	Deleted bool   `json:"del,omitempty"`
+	StartSeq uint64 `json:"start_seq"`
+	EndSeq   uint64 `json:"seq,omitempty"`
+	RevID    string `json:"rev"`
+	Deleted  bool   `json:"del,omitempty"`
 }
 
 // Bits in LogEntry.Flags
@@ -86,7 +87,7 @@ func (channelMap ChannelMap) ChannelsRemovedAtSequence(seq uint64) (ChannelMap, 
 	var channelsRemoved = make(ChannelMap)
 	var revIdRemoved string
 	for channel, removal := range channelMap {
-		if removal != nil && removal.Seq == seq {
+		if removal != nil && removal.EndSeq != 0 && removal.EndSeq == seq {
 			channelsRemoved[channel] = removal
 			revIdRemoved = removal.RevID //Will be the same RevID for each removal
 		}
