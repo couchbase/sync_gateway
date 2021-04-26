@@ -99,7 +99,7 @@ func IsValidPrincipalName(name string) bool {
 func (auth *Authenticator) NewRole(name string, channels base.Set) (Role, error) {
 	role := &roleImpl{}
 	existingRole, err := auth.GetRoleIncDeleted(name)
-	if err != nil && !base.IsDocNotFoundError(err) {
+	if err != nil {
 		return nil, err
 	}
 
