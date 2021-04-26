@@ -87,11 +87,12 @@ func (db *DatabaseContext) DeleteRole(name string, purge bool) error {
 	authenticator := db.Authenticator()
 
 	role, err := authenticator.GetRole(name)
-	if role == nil {
-		if err == nil {
-			return base.ErrNotFound
-		}
+	if err != nil {
 		return err
+	}
+
+	if role == nil {
+		return base.ErrNotFound
 	}
 
 	seq, err := db.sequences.nextSequence()
