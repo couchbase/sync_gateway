@@ -193,6 +193,15 @@ func (revokedChannels RevokedChannels) add(chanName string, triggeredBy uint64) 
 	}
 }
 
+// RevokedChannels returns a map of revoked channels => most recent sequence at which access to that channel was lost
+// Steps:
+// Get revoked roles and for each:
+// 	- Revoke the current channels if the role is deleted
+//  - Revoke the role revoked channels
+// Get current roles and for each:
+//  - Revoke the role revoked channels
+// Get user:
+//  - Revoke users revoked channels
 func (user *userImpl) RevokedChannels(since uint64) RevokedChannels {
 	accessibleChannels := user.InheritedChannels()
 
@@ -230,32 +239,33 @@ func (user *userImpl) RevokedChannels(since uint64) RevokedChannels {
 
 	// Iterate over revoked roles and revoke ALL channels (current and previous) from revoked roles that we don't have
 	// from another grant
-	for roleName, triggeredBy := range rolesToRevoke {
+	for roleName, roleRevokeSeq := range rolesToRevoke {
 		role, err := user.auth.GetRoleIncDeleted(roleName)
 		if err != nil || role == nil {
 			base.Warnf("unable to obtain role %s to calculate channel revocation: %v. Will continue", base.UD(roleName), err)
 			continue
 		}
 
-		// Only check 'current roles' if role isn't deleted
+		// First check 'current channels' if role isn't deleted
 		// Current roles should be invalidated on deleted anyway but for safety
 		if !role.IsDeleted() {
 			for _, chanName := range role.Channels().AllChannels() {
 				if !accessibleChannels.Contains(chanName) {
-					combinedRevokedChannels.add(chanName, triggeredBy)
+					combinedRevokedChannels.add(chanName, roleRevokeSeq)
 				}
 			}
 		}
 
+		// Second check the channel history and add any revoked channels
 		for chanName, history := range role.ChannelHistory() {
 			if !accessibleChannels.Contains(chanName) {
-				for _, entry := range history.Entries {
-					if entry.StartSeq <= since && entry.EndSeq > since {
+				for _, channelEntry := range history.Entries {
+					if channelEntry.StartSeq <= since && channelEntry.EndSeq > since {
 						// If triggeredBy falls in channel history grant period then revocation actually caused by role
 						// revocation. So use triggeredBy.
 						// Otherwise this was a channel revocation whilst role was still assigned. So use end seq.
-						if entry.EndSeq > triggeredBy {
-							combinedRevokedChannels.add(chanName, triggeredBy)
+						if channelEntry.EndSeq > roleRevokeSeq {
+							combinedRevokedChannels.add(chanName, roleRevokeSeq)
 						} else {
 							mostRecentEndSeq := history.Entries[len(history.Entries)-1]
 							combinedRevokedChannels.add(chanName, mostRecentEndSeq.EndSeq)
@@ -273,6 +283,7 @@ func (user *userImpl) RevokedChannels(since uint64) RevokedChannels {
 		revokeChannelHistoryProcessing(role)
 	}
 
+	// Lastly get the revoked channels based off of channel history on the user itself
 	revokeChannelHistoryProcessing(user)
 
 	return combinedRevokedChannels
