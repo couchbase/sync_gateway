@@ -2776,6 +2776,10 @@ func TestRolePurge(t *testing.T) {
 }
 
 func TestSoftDeleteCasMismatch(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip LeakyBucket test when running in integration")
+	}
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2802,6 +2806,9 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 }
 
 func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip LeakyBucket test when running in integration")
+	}
 
 	testCases := []struct {
 		Name      string
