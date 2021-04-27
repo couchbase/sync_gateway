@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
@@ -52,22 +53,24 @@ type AttachmentsMeta map[string]interface{} // AttachmentsMeta metadata as inclu
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
 type SyncData struct {
-	CurrentRev      string              `json:"rev"`
-	NewestRev       string              `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
-	Flags           uint8               `json:"flags,omitempty"`
-	Sequence        uint64              `json:"sequence,omitempty"`
-	UnusedSequences []uint64            `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
-	RecentSequences []uint64            `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
-	History         RevTree             `json:"history"`
-	Channels        channels.ChannelMap `json:"channels,omitempty"`
-	Access          UserAccessMap       `json:"access,omitempty"`
-	RoleAccess      UserAccessMap       `json:"role_access,omitempty"`
-	Expiry          *time.Time          `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
-	Cas             string              `json:"cas"`                               // String representation of a cas value, populated via macro expansion
-	Crc32c          string              `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
-	Crc32cUserXattr string              `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
-	TombstonedAt    int64               `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
-	Attachments     AttachmentsMeta     `json:"attachments,omitempty"`
+	CurrentRev      string                            `json:"rev"`
+	NewestRev       string                            `json:"new_rev,omitempty"` // Newest rev, if different from CurrentRev
+	Flags           uint8                             `json:"flags,omitempty"`
+	Sequence        uint64                            `json:"sequence,omitempty"`
+	UnusedSequences []uint64                          `json:"unused_sequences,omitempty"` // unused sequences due to update conflicts/CAS retry
+	RecentSequences []uint64                          `json:"recent_sequences,omitempty"` // recent sequences for this doc - used in server dedup handling
+	History         RevTree                           `json:"history"`
+	Channels        channels.ChannelMap               `json:"channels,omitempty"`
+	Access          UserAccessMap                     `json:"access,omitempty"`
+	RoleAccess      UserAccessMap                     `json:"role_access,omitempty"`
+	Expiry          *time.Time                        `json:"exp,omitempty"`                     // Document expiry.  Information only - actual expiry/delete handling is done by bucket storage.  Needs to be pointer for omitempty to work (see https://github.com/golang/go/issues/4357)
+	Cas             string                            `json:"cas"`                               // String representation of a cas value, populated via macro expansion
+	Crc32c          string                            `json:"value_crc32c"`                      // String representation of crc32c hash of doc body, populated via macro expansion
+	Crc32cUserXattr string                            `json:"user_xattr_value_crc32c,omitempty"` // String representation of crc32c hash of user xattr
+	TombstonedAt    int64                             `json:"tombstoned_at,omitempty"`           // Time the document was tombstoned.  Used for view compaction
+	Attachments     AttachmentsMeta                   `json:"attachments,omitempty"`
+	ChanNames       []string                          `json:"chan_names"`
+	ChannelHistory  [][]auth.GrantHistorySequencePair `json:"channel_history"`
 
 	// Only used for performance metrics:
 	TimeSaved time.Time `json:"time_saved,omitempty"` // Timestamp of save.
@@ -829,6 +832,23 @@ func (doc *Document) UpdateExpiry(expiry uint32) {
 
 //////// CHANNELS & ACCESS:
 
+func (doc *Document) updateChannelHistory(channelName string, seq uint64, addition bool) {
+	for idx, chanName := range doc.ChanNames {
+		if chanName == channelName {
+			if !addition {
+				doc.ChannelHistory[idx][len(doc.ChannelHistory[idx])-1].EndSeq = seq
+			} else {
+				doc.ChannelHistory[idx] = append(doc.ChannelHistory[idx], auth.GrantHistorySequencePair{StartSeq: seq})
+			}
+			return
+		}
+	}
+
+	// First time addition
+	doc.ChanNames = append(doc.ChanNames, channelName)
+	doc.ChannelHistory = append(doc.ChannelHistory, []auth.GrantHistorySequencePair{{StartSeq: seq}})
+}
+
 // Updates the Channels property of a document object with current & past channels.
 // Returns the set of channels that have changed (document joined or left in this revision)
 func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.Set, err error) {
@@ -847,6 +867,7 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 					RevID:   doc.CurrentRev,
 					Deleted: doc.hasFlag(channels.Deleted)}
 				changed = append(changed, channel)
+				doc.updateChannelHistory(channel, doc.Sequence, false)
 			}
 		}
 	}
@@ -856,6 +877,7 @@ func (doc *Document) updateChannels(newChannels base.Set) (changedChannels base.
 		if value, exists := oldChannels[channel]; value != nil || !exists {
 			oldChannels[channel] = nil
 			changed = append(changed, channel)
+			doc.updateChannelHistory(channel, doc.Sequence, true)
 		}
 	}
 	if changed != nil {

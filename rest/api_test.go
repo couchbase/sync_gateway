@@ -6114,3 +6114,48 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
 }
+
+func TestDocumentChannelHistory(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	// Create doc in channel test and confirm history is correctly built
+	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["test"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err := json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err := rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	assert.Len(t, syncData.ChanNames, 1)
+	require.Len(t, syncData.ChannelHistory, 1)
+	require.Len(t, syncData.ChannelHistory[0], 1)
+	assert.Equal(t, syncData.ChannelHistory[0][0], auth.GrantHistorySequencePair{StartSeq: 1, EndSeq: 0})
+
+	// Remove doc from channel and confirm history is correctly built
+	resp = rt.SendAdminRequest("PUT", "/db/doc?rev="+body["rev"].(string), `{"channels": []}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	assert.Len(t, syncData.ChanNames, 1)
+	require.Len(t, syncData.ChannelHistory, 1)
+	require.Len(t, syncData.ChannelHistory[0], 1)
+	assert.Equal(t, syncData.ChannelHistory[0][0], auth.GrantHistorySequencePair{StartSeq: 1, EndSeq: 2})
+
+	// Add doc back to channel test and confirm history is correctly built
+	resp = rt.SendAdminRequest("PUT", "/db/doc?rev="+body["rev"].(string), `{"channels": ["test"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	assert.Len(t, syncData.ChanNames, 1)
+	require.Len(t, syncData.ChannelHistory, 1)
+	require.Len(t, syncData.ChannelHistory[0], 2)
+	assert.Equal(t, syncData.ChannelHistory[0][0], auth.GrantHistorySequencePair{StartSeq: 1, EndSeq: 2})
+	assert.Equal(t, syncData.ChannelHistory[0][1], auth.GrantHistorySequencePair{StartSeq: 3, EndSeq: 0})
+}
