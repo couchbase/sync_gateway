@@ -844,9 +844,17 @@ func (doc *Document) updateChannelHistory(channelName string, seq uint64, additi
 		}
 	}
 
-	// First time addition
-	doc.ChanNames = append(doc.ChanNames, channelName)
-	doc.ChannelHistory = append(doc.ChannelHistory, []auth.GrantHistorySequencePair{{StartSeq: seq}})
+	// Haven't seen this channel before in history
+	// If its an addition go ahead and add an entry
+	// If its not an addition but we've not seen it before then its a legacy document. Add entry with start seq of 1.
+	if addition {
+		doc.ChanNames = append(doc.ChanNames, channelName)
+		doc.ChannelHistory = append(doc.ChannelHistory, []auth.GrantHistorySequencePair{{StartSeq: seq}})
+	} else {
+		doc.ChanNames = append(doc.ChanNames, channelName)
+		doc.ChannelHistory = append(doc.ChannelHistory, []auth.GrantHistorySequencePair{{StartSeq: 1, EndSeq: seq}})
+	}
+
 }
 
 // Updates the Channels property of a document object with current & past channels.
