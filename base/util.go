@@ -1384,6 +1384,20 @@ func MinInt(x, y int) int {
 	return y
 }
 
+func MinUint64(x, y uint64) uint64 {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+func MaxUint64(x, y uint64) uint64 {
+	if x < y {
+		return x
+	}
+	return y
+}
+
 // GetRestrictedIntQuery returns the integer value of a URL query, restricted to a min and max value,
 // but returning 0 if missing or unparseable.  If allowZero is true, values coming in
 // as zero will stay zero, instead of being set to the minValue.

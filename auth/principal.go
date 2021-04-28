@@ -126,6 +126,9 @@ type User interface {
 
 	RevokedChannels(since uint64) RevokedChannels
 
+	// Obtains the period over which the user had access to the given channel. Either directly or via a role.
+	ChannelGrantedPeriods(chanName string, latestSequence uint64) ([]GrantHistorySequencePair, error)
+
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet
 

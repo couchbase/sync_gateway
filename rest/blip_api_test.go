@@ -3048,3 +3048,67 @@ func TestUpdateExistingAttachment(t *testing.T) {
 	req = rt.SendAdminRequest("GET", "/db/doc1/attachment", "")
 	assert.Equal(t, "attachmentB", string(req.BodyBytes()))
 }
+
+func TestRevocationMessage(t *testing.T) {
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:        "user",
+		Channels:        []string{"*"},
+		ClientDeltas:    false,
+		SendRevocations: true,
+	})
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	// Add channel to role and role to user
+	revocationTester.addRoleChannel("foo", "A")
+	revocationTester.addRole("user", "foo")
+
+	// Skip to seq 4 and then create doc in channel A
+	revocationTester.fillToSeq(4)
+	_ = rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+
+	// Wait for changes to come over (user doc, and doc)
+	_, err = rt.WaitForChanges(2, "/db/_changes?since=0", "user", true)
+	require.NoError(t, err)
+
+	// Start pull
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	// Wait for doc revision to come over
+	msg, ok := btc.WaitForBlipRevMessage("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	require.True(t, ok)
+
+	// Remove role from user
+	revocationTester.removeRole("user", "foo")
+
+	// Wait for revocation message
+	_, err = rt.WaitForChanges(1, "/db/_changes?since=0", "user", true)
+	require.NoError(t, err)
+
+	// Start a pull since 5 to receive revocation
+	err = btc.StartPullSince("false", "5", "false")
+	assert.NoError(t, err)
+
+	// Validate changes message is correctly formatted
+	// This serial targets the changes messages sent by Sync Gateway
+	msg, ok = btc.pullReplication.WaitForMessage(4)
+	assert.NoError(t, err)
+
+	// Verify the deleted property in the changes message is "2" this indicated a revocation
+	var changesMessage [][]interface{}
+	err = msg.ReadJSONBody(&changesMessage)
+	require.NoError(t, err)
+
+	require.Len(t, changesMessage, 1)
+	require.Len(t, changesMessage[0], 4)
+	castedNum, ok := changesMessage[0][3].(json.Number)
+	assert.True(t, ok)
+	intDeleted, err := castedNum.Int64()
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, int(intDeleted))
+}

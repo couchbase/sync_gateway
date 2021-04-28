@@ -6230,3 +6230,927 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	})
 	assert.Len(t, syncData.ChannelSetHistory, 0)
 }
+
+type UserRolesTemp struct {
+	Roles map[string][]string `json:"roles"`
+}
+
+type ChannelsTemp struct {
+	Channels map[string][]string `json:"channels"`
+}
+
+type ChannelRevocationTester struct {
+	restTester *RestTester
+	test       *testing.T
+
+	fillerDocRev   string
+	roleRev        string
+	roleChannelRev string
+	userChannelRev string
+
+	roles        UserRolesTemp
+	roleChannels ChannelsTemp
+	userChannels ChannelsTemp
+}
+
+func (tester *ChannelRevocationTester) addRole(user, role string) {
+	if tester.roles.Roles == nil {
+		tester.roles.Roles = map[string][]string{}
+	}
+
+	tester.roles.Roles[user] = append(tester.roles.Roles[user], fmt.Sprintf("role:%s", role))
+	revID := tester.restTester.createDocReturnRev(tester.test, "userRoles", tester.roleRev, tester.roles)
+	tester.roleRev = revID
+}
+
+func (tester *ChannelRevocationTester) removeRole(user, role string) {
+	delIdx := -1
+	roles := tester.roles.Roles[user]
+	for idx, val := range roles {
+		if val == fmt.Sprintf("role:%s", role) {
+			delIdx = idx
+			break
+		}
+	}
+	tester.roles.Roles[user] = append(roles[:delIdx], roles[delIdx+1:]...)
+	tester.roleRev = tester.restTester.createDocReturnRev(tester.test, "userRoles", tester.roleRev, tester.roles)
+}
+
+func (tester *ChannelRevocationTester) addRoleChannel(role, channel string) {
+	if tester.roleChannels.Channels == nil {
+		tester.roleChannels.Channels = map[string][]string{}
+	}
+
+	role = fmt.Sprintf("role:%s", role)
+
+	tester.roleChannels.Channels[role] = append(tester.roleChannels.Channels[role], channel)
+	tester.roleChannelRev = tester.restTester.createDocReturnRev(tester.test, "roleChannels", tester.roleChannelRev, tester.roleChannels)
+}
+
+func (tester *ChannelRevocationTester) removeRoleChannel(role, channel string) {
+	delIdx := -1
+	role = fmt.Sprintf("role:%s", role)
+	channelsSlice := tester.roleChannels.Channels[role]
+	for idx, val := range channelsSlice {
+		if val == channel {
+			delIdx = idx
+			break
+		}
+	}
+	tester.roleChannels.Channels[role] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
+	tester.roleChannelRev = tester.restTester.createDocReturnRev(tester.test, "roleChannels", tester.roleChannelRev, tester.roleChannels)
+}
+
+func (tester *ChannelRevocationTester) addUserChannel(user, channel string) {
+	if tester.userChannels.Channels == nil {
+		tester.userChannels.Channels = map[string][]string{}
+	}
+
+	tester.userChannels.Channels[user] = append(tester.userChannels.Channels[user], channel)
+	tester.userChannelRev = tester.restTester.createDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannels)
+}
+
+func (tester *ChannelRevocationTester) removeUserChannel(user, channel string) {
+	delIdx := -1
+	channelsSlice := tester.userChannels.Channels[user]
+	for idx, val := range channelsSlice {
+		if val == channel {
+			delIdx = idx
+			break
+		}
+	}
+	tester.userChannels.Channels[user] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
+	tester.userChannelRev = tester.restTester.createDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannelRev)
+}
+
+func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
+	currentSeq, err := tester.restTester.GetDatabase().LastSequence()
+	require.NoError(tester.test, err)
+
+	loopCount := seq - currentSeq
+	for i := 0; i < int(loopCount); i++ {
+		requestURL := "/db/fillerDoc"
+		if tester.fillerDocRev != "" {
+			requestURL += "?rev=" + tester.fillerDocRev
+		}
+		resp := tester.restTester.SendAdminRequest("PUT", requestURL, "{}")
+		require.Equal(tester.test, http.StatusCreated, resp.Code)
+
+		var body db.Body
+		err = json.Unmarshal(resp.BodyBytes(), &body)
+		require.NoError(tester.test, err)
+
+		tester.fillerDocRev = body["rev"].(string)
+	}
+}
+
+func (tester *ChannelRevocationTester) getChanges(sinceSeq uint64) changesResults {
+	var changes changesResults
+
+	resp := tester.restTester.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%d&revocations=true", sinceSeq), "", nil, "user", "test")
+	require.Equal(tester.test, http.StatusOK, resp.Code)
+	err := json.Unmarshal(resp.BodyBytes(), &changes)
+	require.NoError(tester.test, err)
+
+	return changes
+}
+
+func initScenario(t *testing.T) (ChannelRevocationTester, *RestTester) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		SyncFn: `
+			function (doc, oldDoc){
+				if (doc._id === 'userRoles'){				
+					for (var key in doc.roles){
+						role(key, doc.roles[key]);
+					}
+				}
+				if (doc._id === 'roleChannels'){				
+					for (var key in doc.channels){
+						access(key, doc.channels[key]);
+					}
+				}
+				if (doc._id === 'userChannels'){				
+					for (var key in doc.channels){
+						access(key, doc.channels[key]);
+					}
+				}
+				if (doc._id.indexOf("doc") >= 0){				
+					channel(doc.channels);
+				}
+			}`,
+		DatabaseConfig: &DbConfig{Unsupported: db.UnsupportedOptions{ForceBLIPV3: true}},
+	})
+
+	revocationTester := ChannelRevocationTester{
+		test:       t,
+		restTester: rt,
+	}
+
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "test"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db/_role/foo", `{}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	return revocationTester, rt
+}
+
+func (rt *RestTester) createDocReturnRev(t *testing.T, docID string, revID string, bodyIn interface{}) string {
+	bodyJSON, err := base.JSONMarshal(bodyIn)
+	assert.NoError(t, err)
+
+	url := "/db/" + docID
+	if revID != "" {
+		url += "?rev=" + revID
+	}
+
+	resp := rt.SendAdminRequest("PUT", url, string(bodyJSON))
+	assertStatus(t, resp, http.StatusCreated)
+
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(resp.BodyBytes(), &body))
+	assert.Equal(t, true, body["ok"])
+	revID = body["rev"].(string)
+	if revID == "" {
+		t.Fatalf("No revID in response for PUT doc")
+	}
+	return revID
+}
+
+func TestRevocationScenario1(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(25)
+
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "20:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(40)
+
+	changes = revocationTester.getChanges(25)
+	assert.Equal(t, "25", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(80)
+
+	changes = revocationTester.getChanges(40)
+	assert.Equal(t, "75:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(110)
+
+	changes = revocationTester.getChanges(80)
+	assert.Equal(t, "85:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationScenario2(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(25)
+
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "20:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(50)
+	changes = revocationTester.getChanges(25)
+	assert.Equal(t, "45:3", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(80)
+
+	changes = revocationTester.getChanges(50)
+	assert.Equal(t, "75:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(110)
+
+	changes = revocationTester.getChanges(80)
+	assert.Equal(t, "85:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationScenario3(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(25)
+
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "20:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(60)
+	changes = revocationTester.getChanges(25)
+	assert.Equal(t, "45:3", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(80)
+
+	changes = revocationTester.getChanges(50)
+	assert.Equal(t, "75:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(110)
+
+	changes = revocationTester.getChanges(80)
+	assert.Equal(t, "85:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationScenario4(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(25)
+
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "20:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+
+	revocationTester.fillToSeq(70)
+	changes = revocationTester.getChanges(25)
+	assert.Equal(t, "55:3", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(80)
+
+	changes = revocationTester.getChanges(50)
+	assert.Equal(t, "75:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(110)
+
+	changes = revocationTester.getChanges(80)
+	assert.Equal(t, "85:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationScenario5(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(25)
+
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "20:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(80)
+
+	changes = revocationTester.getChanges(25)
+	assert.Equal(t, "75:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(110)
+
+	changes = revocationTester.getChanges(80)
+	assert.Equal(t, "85:3", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationScenario6(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(25)
+
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "20:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(90)
+
+	changes = revocationTester.getChanges(25)
+	assert.Equal(t, "55:3", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(110)
+
+	changes = revocationTester.getChanges(90)
+	assert.Equal(t, "90", changes.Last_Seq)
+	require.Len(t, changes.Results, 0)
+}
+
+func TestRevocationScenario7(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(25)
+
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "20:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(100)
+
+	changes = revocationTester.getChanges(25)
+	assert.Equal(t, "45:3", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+
+	revocationTester.fillToSeq(110)
+
+	changes = revocationTester.getChanges(100)
+	assert.Equal(t, "100", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+}
+
+func TestRevocationScenario8(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(50)
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(110)
+	changes = revocationTester.getChanges(50)
+	assert.Equal(t, "50", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+}
+
+func TestRevocationScenario9(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(60)
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(110)
+	changes = revocationTester.getChanges(60)
+	assert.Equal(t, "60", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+}
+
+func TestRevocationScenario10(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+
+	revocationTester.fillToSeq(70)
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(110)
+	changes = revocationTester.getChanges(70)
+	assert.Equal(t, "70", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+}
+
+func TestRevocationScenario11(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(80)
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "75:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(110)
+	changes = revocationTester.getChanges(80)
+	assert.Equal(t, "85:3", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationScenario12(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(90)
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(110)
+	changes = revocationTester.getChanges(90)
+	assert.Equal(t, "90", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+}
+
+func TestRevocationScenario13(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+	revocationTester.fillToSeq(54)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(64)
+	revocationTester.addRole("user", "foo")
+	revocationTester.fillToSeq(74)
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(84)
+	revocationTester.removeRoleChannel("foo", "ch1")
+	revocationTester.fillToSeq(94)
+	revocationTester.removeRole("user", "foo")
+
+	revocationTester.fillToSeq(100)
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(110)
+	changes = revocationTester.getChanges(100)
+	assert.Equal(t, "100", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+}
+
+func TestRevocationScenario14(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.fillToSeq(4)
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	changes := revocationTester.getChanges(5)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 0)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.addRole("user", "foo")
+
+	revocationTester.fillToSeq(25)
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "20:3", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.fillToSeq(44)
+	revocationTester.removeRole("user", "foo")
+
+	changes = revocationTester.getChanges(25)
+	assert.Equal(t, "45:3", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestEnsureRevocationAfterDocMutation(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	// Give role access to channel A and give user access to role
+	revocationTester.addRoleChannel("foo", "A")
+	revocationTester.addRole("user", "foo")
+
+	// Skip to seq 4 Create doc channel A
+	revocationTester.fillToSeq(4)
+	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+
+	// Skip to seq 10 then do pull since 4 to get doc
+	revocationTester.fillToSeq(10)
+	changes := revocationTester.getChanges(4)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	// Skip to seq 14 then revoke role from user
+	revocationTester.fillToSeq(14)
+	revocationTester.removeRole("user", "foo")
+
+	// Skip to seq 19 and then update doc foo
+	revocationTester.fillToSeq(19)
+	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
+
+	// Get changes and ensure doc is revoked through ID-only revocation
+	changes = revocationTester.getChanges(10)
+	assert.Equal(t, "15:20", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestEnsureRevocationUsingDocHistory(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	// Give role access to channel A and give user access to role
+	revocationTester.addRoleChannel("foo", "A")
+	revocationTester.addRole("user", "foo")
+
+	// Skip to seq 4 Create doc channel A
+	revocationTester.fillToSeq(4)
+	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+
+	// Do pull to get doc
+	changes := revocationTester.getChanges(4)
+	assert.Equal(t, "5", changes.Last_Seq)
+	assert.Len(t, changes.Results, 1)
+
+	// Revoke channel from role at seq 8
+	revocationTester.fillToSeq(7)
+	revocationTester.removeRoleChannel("foo", "A")
+
+	// Remove doc from A and re-add
+	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{})
+	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
+
+	changes = revocationTester.getChanges(5)
+	assert.Equal(t, "8:10", changes.Last_Seq)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+}

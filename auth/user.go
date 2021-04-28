@@ -289,6 +289,91 @@ func (user *userImpl) RevokedChannels(since uint64) RevokedChannels {
 	return combinedRevokedChannels
 }
 
+// Calculate periods where user somehow had access to the given channel
+func (user *userImpl) ChannelGrantedPeriods(chanName string, latestSequence uint64) ([]GrantHistorySequencePair, error) {
+	var resultPairs []GrantHistorySequencePair
+
+	// Grab user history and use this to begin the resultPairs
+	userChannelHistory, ok := user.ChannelHistory()[chanName]
+	if ok {
+		resultPairs = userChannelHistory.Entries
+	}
+
+	// Iterate over current user channels and add to resultPairs
+	for channelName, chanInfo := range user.Channels() {
+		if channelName != chanName {
+			continue
+		}
+		resultPairs = append(resultPairs, GrantHistorySequencePair{
+			StartSeq: chanInfo.Sequence,
+			EndSeq:   latestSequence,
+		})
+	}
+
+	// Small function which takes the two start seqs and two end seqs and calculates the intersection
+	compareAndAddPair := func(startSeq1, startSeq2, endSeq1, endSeq2 uint64) {
+		start := base.MaxUint64(startSeq1, startSeq2)
+		end := base.MinUint64(endSeq1, endSeq2)
+		if start < end {
+			resultPairs = append(resultPairs, GrantHistorySequencePair{
+				StartSeq: start,
+				EndSeq:   end,
+			})
+		}
+	}
+
+	// Iterate over current roles
+	for _, currentRole := range user.GetRoles() {
+
+		// Grab pairs from channel history on current roles
+		roleChannelHistory, ok := currentRole.ChannelHistory()[chanName]
+		if ok {
+			for _, roleChannelHistoryEntry := range roleChannelHistory.Entries {
+				compareAndAddPair(roleChannelHistoryEntry.StartSeq, currentRole.Sequence(), roleChannelHistoryEntry.EndSeq, latestSequence)
+			}
+		}
+
+		// Grab pairs from current channels on current roles
+		if currentRole.Channels().Contains(chanName) {
+			for _, channelInfo := range currentRole.Channels() {
+				resultPairs = append(resultPairs, GrantHistorySequencePair{
+					StartSeq: channelInfo.Sequence,
+					EndSeq:   latestSequence,
+				})
+			}
+		}
+	}
+
+	// Iterate over roles the user has had
+	for roleName, historyEntry := range user.RoleHistory() {
+		role, err := user.auth.GetRoleIncDeleted(roleName)
+		if err != nil {
+			return nil, err
+		}
+
+		// Iterate over history on old roles
+		roleChannelHistory, ok := role.ChannelHistory()[chanName]
+		if ok {
+			for _, roleChannelHistoryEntry := range roleChannelHistory.Entries {
+				for _, roleHistoryEntry := range historyEntry.Entries {
+					compareAndAddPair(roleChannelHistoryEntry.StartSeq, roleHistoryEntry.StartSeq, roleChannelHistoryEntry.EndSeq, roleHistoryEntry.EndSeq)
+				}
+			}
+		}
+
+		// Iterate over current channels on old roles
+		if role.Channels().Contains(chanName) {
+			for _, activeChannel := range role.Channels() {
+				for _, roleHistoryEntry := range historyEntry.Entries {
+					compareAndAddPair(activeChannel.Sequence, roleHistoryEntry.StartSeq, latestSequence, roleHistoryEntry.EndSeq)
+				}
+			}
+		}
+	}
+
+	return resultPairs, nil
+}
+
 // Returns true if the given password is correct for this user, and the account isn't disabled.
 func (user *userImpl) Authenticate(password string) bool {
 	if user == nil {
