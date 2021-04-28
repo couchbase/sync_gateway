@@ -124,6 +124,8 @@ type User interface {
 
 	RoleHistory() TimedSetHistory
 
+	RevokedChannels(since uint64) RevokedChannels
+
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet
 
