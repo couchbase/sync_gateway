@@ -255,10 +255,27 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
     sg_tasks = []
 
     def lookup_std_log_files(files, dirs):
-        for std_log_file in [os.path.join(d, f) for f in files for d in dirs]:
-            if std_log_file not in sg_log_file_paths:
-                sg_tasks.append(add_file_task(sourcefile_path=std_log_file))
-                sg_log_file_paths[std_log_file] = std_log_file
+        for dir in dirs:
+            for file in files:
+                name, ext = os.path.splitext(file)
+                # Collect rotated log files from the default log locations.
+                pattern_rotated = os.path.join(dir, "{0}*{1}".format(name, ext))
+                for std_log_file in glob.glob(pattern_rotated):
+                    if std_log_file not in sg_log_file_paths:
+                        sg_tasks.append(add_file_task(sourcefile_path=std_log_file))
+                        sg_log_file_paths[std_log_file] = std_log_file
+
+                # Collect archived log files from the default log locations.
+                pattern_archived = os.path.join(dir, "{0}*{1}.gz".format(name, ext))
+                for std_log_file in glob.glob(pattern_archived):
+                    if std_log_file not in sg_log_file_paths:
+                        if should_redact:
+                            task = add_gzip_file_task(sourcefile_path=std_log_file, salt=salt)
+                            sg_tasks.append(task)
+                        else:
+                            task = add_file_task(sourcefile_path=std_log_file)
+                            task.no_header = True
+                            sg_tasks.append(task)
 
     # Lookup each standard SG log files in each standard SG log directories.
     lookup_std_log_files(sg_log_files, os_home_dirs)
