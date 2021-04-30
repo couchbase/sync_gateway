@@ -352,6 +352,34 @@ func (h *handler) handleActiveTasks() error {
 	return nil
 }
 
+type Integrity struct {
+	Databases map[string]db.DatabaseIntegrity `json:"databases"`
+	Ok        bool                            `json:"ok"`
+}
+
+func (h *handler) handleIntegrityCheck() error {
+
+	var integrity = Integrity{Databases: make(map[string]db.DatabaseIntegrity)}
+
+	for _, database := range h.server.databases_ {
+
+		dbIntegrity, err := database.IntegrityCheck()
+		if err != nil {
+			return err
+		}
+		integrity.Databases[database.Name] = dbIntegrity
+	}
+	for _, di := range integrity.Databases {
+		if !di.Ok {
+			integrity.Ok = false
+			break
+		}
+	}
+
+	h.writeJSON(integrity)
+	return nil
+}
+
 // raw document access for admin api
 
 func (h *handler) handleGetRawDoc() error {

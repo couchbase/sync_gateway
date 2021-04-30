@@ -1019,6 +1019,78 @@ func (db *Database) Compact() (int, error) {
 	return purgedDocCount, nil
 }
 
+type AllocatorIntegrity struct {
+	MaxAllocated     uint64 `json:"max_allocated"`
+	AllocatorCounter uint64 `json:"allocator_counter"`
+	Ok               bool   `json:"ok"`
+}
+
+type DuplicateSeq struct {
+	SequenceNumber uint64   `json:"sequence"`
+	AffectedKeys   []string `json:"affected_keys"`
+}
+
+type SequenceIntegrity struct {
+	DuplicateSeqs []DuplicateSeq `json:"duplicate_seqs"`
+	Ok            bool           `json:"ok"`
+}
+
+type DatabaseIntegrity struct {
+	Allocator AllocatorIntegrity `json:"allocator"`
+	Sequence  SequenceIntegrity  `json:"sequence"`
+	Ok        bool               `json:"ok"`
+}
+
+func (dbc *DatabaseContext) IntegrityCheck() (DatabaseIntegrity, error) {
+	dbIntegrity := DatabaseIntegrity{}
+
+	result, err := dbc.QueryMaxSeq()
+	if err != nil {
+		return DatabaseIntegrity{}, err
+	}
+
+	var maxSeqRow MaxSeqQueryRow
+	err = result.One(&maxSeqRow)
+	if err != nil {
+		return DatabaseIntegrity{}, err
+	}
+	maxSeq := maxSeqRow.MaxSeq
+	seqCounter, err := dbc.sequences.getSequence()
+	if err != nil {
+		return DatabaseIntegrity{}, err
+	}
+	dbIntegrity.Allocator = AllocatorIntegrity{
+		MaxAllocated:     maxSeq,
+		AllocatorCounter: seqCounter,
+		Ok:               maxSeq <= seqCounter,
+	}
+
+	result, err = dbc.QueryDuplicateSeqs()
+	if err != nil {
+		return DatabaseIntegrity{}, err
+	}
+
+	var duplicates []DuplicateSeq
+	var duplicateSeq DuplicateSeq
+	for result.Next(&duplicateSeq) {
+		var ds DuplicateSeq
+		err := base.DeepCopyInefficient(&ds, duplicateSeq)
+		if err != nil {
+			return DatabaseIntegrity{}, err
+		}
+		duplicates = append(duplicates, ds)
+	}
+	dbIntegrity.Sequence = SequenceIntegrity{
+		DuplicateSeqs: duplicates,
+		Ok:            len(duplicates) == 0,
+	}
+
+	dbIntegrity.Ok = dbIntegrity.Allocator.Ok && dbIntegrity.Sequence.Ok
+
+	return dbIntegrity, nil
+
+}
+
 // Deletes all orphaned CouchDB attachments not used by any revisions.
 func VacuumAttachments(bucket base.Bucket) (int, error) {
 	return 0, base.HTTPErrorf(http.StatusNotImplemented, "Vacuum is temporarily out of order")
@@ -1444,6 +1516,8 @@ func initDatabaseStats(dbName string, autoImport bool, options DatabaseContextOp
 			QueryTypeTombstones,
 			QueryTypeResync,
 			QueryTypeAllDocs,
+			QueryTypeDuplicateSeqs,
+			QueryTypeMaxSeq,
 		}
 	}
 

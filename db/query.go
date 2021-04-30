@@ -18,16 +18,18 @@ type QueryIdRow struct {
 }
 
 const (
-	QueryTypeAccess       = "access"
-	QueryTypeRoleAccess   = "roleAccess"
-	QueryTypeChannels     = "channels"
-	QueryTypeChannelsStar = "channelsStar"
-	QueryTypeSequences    = "sequences"
-	QueryTypePrincipals   = "principals"
-	QueryTypeSessions     = "sessions"
-	QueryTypeTombstones   = "tombstones"
-	QueryTypeResync       = "resync"
-	QueryTypeAllDocs      = "allDocs"
+	QueryTypeAccess        = "access"
+	QueryTypeRoleAccess    = "roleAccess"
+	QueryTypeChannels      = "channels"
+	QueryTypeChannelsStar  = "channelsStar"
+	QueryTypeSequences     = "sequences"
+	QueryTypePrincipals    = "principals"
+	QueryTypeSessions      = "sessions"
+	QueryTypeTombstones    = "tombstones"
+	QueryTypeResync        = "resync"
+	QueryTypeAllDocs       = "allDocs"
+	QueryTypeDuplicateSeqs = "duplicateSeqs"
+	QueryTypeMaxSeq        = "maxSeq"
 )
 
 type SGQuery struct {
@@ -204,6 +206,36 @@ var QueryAllDocs = SGQuery{
 			"AND $sync IS NOT MISSING "+
 			"AND ($sync.flags IS MISSING OR BITTEST($sync.flags,1) = false)",
 		base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
+	adhoc: false,
+}
+
+var QueryDuplicateSeqs = SGQuery{
+	name: QueryTypeDuplicateSeqs,
+	statement: fmt.Sprintf(
+		"SELECT a.affected_keys, "+
+			"a.sequence "+
+			"FROM ("+
+			"SELECT affected_keys, "+
+			"$sync.sequence "+
+			"FROM `%s` "+
+			"USE INDEX ($idx) "+
+			"WHERE $sync.sequence IS NOT MISSING "+
+			"AND META(`%s`).id NOT LIKE '%s' "+
+			"GROUP BY $sync.sequence "+
+			"LETTING affected_keys = ARRAY_AGG(META(`%s`).id) "+
+			"HAVING COUNT($sync.sequence) != 1) AS a",
+		base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard, base.KeyspaceQueryToken),
+	adhoc: false,
+}
+
+var QueryMaxSeq = SGQuery{
+	name: QueryTypeMaxSeq,
+	statement: fmt.Sprintf(
+		"SELECT MAX($sync.sequence) as max_seq "+
+			"FROM `%s` "+
+			"USE INDEX ($idx) "+
+			"WHERE META(`%s`).xattrs._sync.sequence IS NOT MISSING "+
+			"AND META(`%s`).id NOT LIKE '%s'", base.KeyspaceQueryToken, base.KeyspaceQueryToken, base.KeyspaceQueryToken, SyncDocWildcard),
 	adhoc: false,
 }
 
@@ -518,6 +550,40 @@ func (context *DatabaseContext) QueryAllDocs(startKey string, endKey string) (sg
 		allDocsQueryStatement, bucketName)
 
 	return context.N1QLQueryWithStats(QueryTypeAllDocs, allDocsQueryStatement, params, base.RequestPlus, QueryAllDocs.adhoc)
+}
+
+func (context *DatabaseContext) QueryDuplicateSeqs() (sgbucket.QueryResultIterator, error) {
+
+	// View Query
+	if context.Options.UseViews {
+		return nil, errors.New("NOPE")
+	}
+
+	// N1QL Query
+	duplicateSeqsQueryStatement := replaceSyncTokensQuery(QueryDuplicateSeqs.statement, context.UseXattrs())
+	duplicateSeqsQueryStatement = replaceIndexTokensQuery(duplicateSeqsQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
+	params := make(map[string]interface{}, 0)
+
+	return context.N1QLQueryWithStats(QueryTypeDuplicateSeqs, duplicateSeqsQueryStatement, params, base.RequestPlus, QueryDuplicateSeqs.adhoc)
+}
+
+type MaxSeqQueryRow struct {
+	MaxSeq uint64 `json:"max_seq"`
+}
+
+func (context *DatabaseContext) QueryMaxSeq() (sgbucket.QueryResultIterator, error) {
+
+	// View Query
+	if context.Options.UseViews {
+		return nil, errors.New("NOPE")
+	}
+
+	// N1QL Query
+	maxSeqQueryStatement := replaceSyncTokensQuery(QueryMaxSeq.statement, context.UseXattrs())
+	maxSeqQueryStatement = replaceIndexTokensQuery(maxSeqQueryStatement, sgIndexes[IndexAllDocs], context.UseXattrs())
+	params := make(map[string]interface{}, 0)
+
+	return context.N1QLQueryWithStats(QueryTypeMaxSeq, maxSeqQueryStatement, params, base.RequestPlus, QueryMaxSeq.adhoc)
 }
 
 func (context *DatabaseContext) QueryTombstones(olderThan time.Time, limit int) (sgbucket.QueryResultIterator, error) {

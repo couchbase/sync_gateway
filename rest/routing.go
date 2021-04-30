@@ -233,7 +233,8 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleReplicate)).Methods("POST")
 	r.Handle("/_active_tasks",
 		makeOfflineHandler(sc, adminPrivs, (*handler).handleActiveTasks)).Methods("GET")
-
+	r.Handle("/_integrity_check",
+		makeOfflineHandler(sc, adminPrivs, (*handler).handleIntegrityCheck)).Methods("GET")
 	r.Handle("/_status",
 		makeHandler(sc, adminPrivs, (*handler).handleGetStatus)).Methods("GET")
 
