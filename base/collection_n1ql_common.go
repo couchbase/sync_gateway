@@ -100,21 +100,27 @@ func createIndex(store N1QLStore, indexName string, createStatement string, opti
 	Debugf(KeyQuery, "Attempting to create index using statement: [%s]", UD(createStatement))
 
 	err := store.executeStatement(createStatement)
-	if err != nil && !IsIndexerRetryIndexError(err) {
-		return pkgerrors.WithStack(RedactErrorf("Error creating index with statement: %s.  Error: %v", UD(createStatement), err))
+	if err == nil {
+		return nil
 	}
 
 	if IsIndexerRetryIndexError(err) {
 		Infof(KeyQuery, "Indexer error creating index - waiting for server background retry.  Error:%v", err)
 		// Wait for bucket to be created in background before returning
-		return waitForBucketExistence(store, indexName, true)
+		return waitForIndexExistence(store, indexName, true)
 	}
 
-	return nil
+	if IsCreateDuplicateIndexError(err) {
+		Infof(KeyQuery, "Duplicate index creation in progress - waiting for index readiness.  Error:%v", err)
+		// Wait for bucket to be created in background before returning
+		return waitForIndexExistence(store, indexName, true)
+	}
+
+	return pkgerrors.WithStack(RedactErrorf("Error creating index with statement: %s.  Error: %v", UD(createStatement), err))
 }
 
-// Waits for bucket to exist/not exist.  Used in response to background create/drop processing by server.
-func waitForBucketExistence(store N1QLStore, indexName string, shouldExist bool) error {
+// Waits for index to exist/not exist.  Used in response to background create/drop processing by server.
+func waitForIndexExistence(store N1QLStore, indexName string, shouldExist bool) error {
 
 	worker := func() (shouldRetry bool, err error, value interface{}) {
 		// GetIndexMeta has its own error retry handling,
@@ -132,9 +138,9 @@ func waitForBucketExistence(store N1QLStore, indexName string, shouldExist bool)
 	}
 
 	// Kick off retry loop
-	err, _ := RetryLoop("waitForBucketExistence", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
+	err, _ := RetryLoop("waitForIndexExistence", worker, CreateMaxDoublingSleeperFunc(25, 100, 15000))
 	if err != nil {
-		return pkgerrors.Wrapf(err, "Error during waitForBucketExistence for index %s", indexName)
+		return pkgerrors.Wrapf(err, "Error during waitForIndexExistence for index %s", indexName)
 	}
 
 	return nil
@@ -306,7 +312,7 @@ func DropIndex(store N1QLStore, indexName string) error {
 	if IsIndexerRetryIndexError(err) {
 		Infof(KeyQuery, "Indexer error dropping index - waiting for server background retry.  Error:%v", err)
 		// Wait for bucket to be dropped in background before returning
-		return waitForBucketExistence(store, indexName, false)
+		return waitForIndexExistence(store, indexName, false)
 	}
 
 	return err
@@ -355,6 +361,13 @@ func IsIndexerRetryIndexError(err error) bool {
 		return true
 	}
 	return false
+}
+
+func IsCreateDuplicateIndexError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "duplicate index name")
 }
 
 func IsIndexerRetryBuildError(err error) bool {

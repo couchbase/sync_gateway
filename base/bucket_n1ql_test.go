@@ -626,7 +626,7 @@ func TestWaitForBucketExistence(t *testing.T) {
 			assert.NoError(t, err, "Index should be created in the bucket")
 		}()
 
-		assert.NoError(t, waitForBucketExistence(n1qlStore, indexName, true))
+		assert.NoError(t, waitForIndexExistence(n1qlStore, indexName, true))
 
 		// Drop the index;
 		err := n1qlStore.DropIndex(indexName)
