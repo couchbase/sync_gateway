@@ -258,7 +258,7 @@ def make_collect_logs_tasks(zip_dir, sg_url, salt, should_redact):
         for dir in dirs:
             for file in files:
                 name, ext = os.path.splitext(file)
-                # Collect rotated log files from the default log locations.
+                # Collect active and rotated log files from the default log locations.
                 pattern_rotated = os.path.join(dir, "{0}*{1}".format(name, ext))
                 for std_log_file in glob.glob(pattern_rotated):
                     if std_log_file not in sg_log_file_paths:
