@@ -349,8 +349,12 @@ func (c *CbgtContext) StartManager(dbName string, bucket Bucket, spec BucketSpec
 	// Add the index definition for this feed to the cbgt cfg, in case it's not already present.
 	err = createCBGTIndex(c, dbName, bucket, spec, numPartitions)
 	if err != nil {
-		Errorf("cbgt index creation failed: %v", err)
-		return err
+		if strings.Contains(err.Error(), "an index with the same name already exists") {
+			Infof(KeyCluster, "Duplicate cbgt index detected during index creation (concurrent creation), using existing")
+		} else {
+			Errorf("cbgt index creation failed: %v", err)
+			return err
+		}
 	}
 
 	return nil
