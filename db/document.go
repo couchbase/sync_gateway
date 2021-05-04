@@ -53,7 +53,7 @@ type AttachmentsMeta map[string]interface{} // AttachmentsMeta metadata as inclu
 type DocumentChannelHistoryEntry struct {
 	Name  string `json:"name"`
 	Start uint64 `json:"start"`
-	End   uint64 `json:"end"`
+	End   uint64 `json:"end,omitempty"`
 }
 
 // The sync-gateway metadata stored in the "_sync" property of a Couchbase document.
