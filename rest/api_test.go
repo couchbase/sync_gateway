@@ -6114,3 +6114,48 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
 }
+
+func TestDocumentChannelHistory(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["test"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err := json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err := rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelHistory, 1)
+	assert.Equal(t, syncData.ChannelHistory[0], db.DocumentChannelHistoryEntry{Name: "test", Start: 1, End: 0})
+	assert.Len(t, syncData.OldChannelHistory, 0)
+
+	resp = rt.SendAdminRequest("PUT", "/db/doc?rev="+body["rev"].(string), `{"channels": []}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelHistory, 1)
+	assert.Equal(t, syncData.ChannelHistory[0], db.DocumentChannelHistoryEntry{Name: "test", Start: 1, End: 2})
+	assert.Len(t, syncData.OldChannelHistory, 0)
+
+	resp = rt.SendAdminRequest("PUT", "/db/doc?rev="+body["rev"].(string), `{"channels": ["test", "test2"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelHistory, 2)
+	assert.Contains(t, syncData.ChannelHistory, db.DocumentChannelHistoryEntry{Name: "test", Start: 3, End: 0})
+	assert.Contains(t, syncData.ChannelHistory, db.DocumentChannelHistoryEntry{Name: "test2", Start: 3, End: 0})
+	require.Len(t, syncData.OldChannelHistory, 1)
+	assert.Equal(t, syncData.OldChannelHistory[0], db.DocumentChannelHistoryEntry{Name: "test", Start: 1, End: 2})
+
+}
