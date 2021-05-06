@@ -6132,9 +6132,9 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err := rt.GetDatabase().GetDocSyncData("doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelHistory, 1)
-	assert.Equal(t, syncData.ChannelHistory[0], db.DocumentChannelHistoryEntry{Name: "test", Start: 1, End: 0})
-	assert.Len(t, syncData.OldChannelHistory, 0)
+	require.Len(t, syncData.ChannelSet, 1)
+	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 0})
+	assert.Len(t, syncData.ChannelSetHistory, 0)
 
 	// Update doc to remove from channel and ensure a single channel history entry with both start and end sequences
 	// and no old channel history entries
@@ -6145,9 +6145,9 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelHistory, 1)
-	assert.Equal(t, syncData.ChannelHistory[0], db.DocumentChannelHistoryEntry{Name: "test", Start: 1, End: 2})
-	assert.Len(t, syncData.OldChannelHistory, 0)
+	require.Len(t, syncData.ChannelSet, 1)
+	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
+	assert.Len(t, syncData.ChannelSetHistory, 0)
 
 	// Update doc to add to channels test and test2 and ensure a single channel history entry for both test and test2
 	// both with start sequences only and ensure old test entry was moved to old
@@ -6158,11 +6158,11 @@ func TestDocumentChannelHistory(t *testing.T) {
 	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
 	assert.NoError(t, err)
 
-	require.Len(t, syncData.ChannelHistory, 2)
-	assert.Contains(t, syncData.ChannelHistory, db.DocumentChannelHistoryEntry{Name: "test", Start: 3, End: 0})
-	assert.Contains(t, syncData.ChannelHistory, db.DocumentChannelHistoryEntry{Name: "test2", Start: 3, End: 0})
-	require.Len(t, syncData.OldChannelHistory, 1)
-	assert.Equal(t, syncData.OldChannelHistory[0], db.DocumentChannelHistoryEntry{Name: "test", Start: 1, End: 2})
+	require.Len(t, syncData.ChannelSet, 2)
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test", Start: 3, End: 0})
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test2", Start: 3, End: 0})
+	require.Len(t, syncData.ChannelSetHistory, 1)
+	assert.Equal(t, syncData.ChannelSetHistory[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
 }
 
 func TestChannelHistoryLegacyDoc(t *testing.T) {
@@ -6222,11 +6222,11 @@ func TestChannelHistoryLegacyDoc(t *testing.T) {
 	assert.NoError(t, err)
 	syncData, err := rt.GetDatabase().GetDocSyncData("doc1")
 	assert.NoError(t, err)
-	require.Len(t, syncData.ChannelHistory, 1)
-	assert.Contains(t, syncData.ChannelHistory, db.DocumentChannelHistoryEntry{
+	require.Len(t, syncData.ChannelSet, 1)
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
 		Name:  "test",
 		Start: 1,
 		End:   2,
 	})
-	assert.Len(t, syncData.OldChannelHistory, 0)
+	assert.Len(t, syncData.ChannelSetHistory, 0)
 }
