@@ -3,6 +3,7 @@ package clistruct
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"reflect"
@@ -28,11 +29,11 @@ func MustRegisterFlags(fs *flag.FlagSet, cliStruct interface{}) {
 // registerFlags is the non-panicking version of MustRegisterFlags, for testing.
 func registerFlags(fs *flag.FlagSet, cliStruct interface{}) error {
 	if fs == nil {
-		panic("expected flag.FlagSet in RegisterFlags but got nil")
+		return errors.New("expected flag.FlagSet in RegisterFlags but got nil")
 	}
 
 	if err := register(fs, reflectStructValue(cliStruct), ""); err != nil {
-		panic(err.Error())
+		return err
 	}
 
 	return nil
