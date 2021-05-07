@@ -6114,3 +6114,119 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)
 }
+
+func TestDocumentChannelHistory(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	var body db.Body
+
+	// Create doc in channel test and ensure a single channel history entry with only a start sequence
+	// and no old channel history entries
+	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["test"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err := json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err := rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelSet, 1)
+	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 0})
+	assert.Len(t, syncData.ChannelSetHistory, 0)
+
+	// Update doc to remove from channel and ensure a single channel history entry with both start and end sequences
+	// and no old channel history entries
+	resp = rt.SendAdminRequest("PUT", "/db/doc?rev="+body["rev"].(string), `{"channels": []}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelSet, 1)
+	assert.Equal(t, syncData.ChannelSet[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
+	assert.Len(t, syncData.ChannelSetHistory, 0)
+
+	// Update doc to add to channels test and test2 and ensure a single channel history entry for both test and test2
+	// both with start sequences only and ensure old test entry was moved to old
+	resp = rt.SendAdminRequest("PUT", "/db/doc?rev="+body["rev"].(string), `{"channels": ["test", "test2"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err = rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelSet, 2)
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test", Start: 3, End: 0})
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{Name: "test2", Start: 3, End: 0})
+	require.Len(t, syncData.ChannelSetHistory, 1)
+	assert.Equal(t, syncData.ChannelSetHistory[0], db.ChannelSetEntry{Name: "test", Start: 1, End: 2})
+}
+
+func TestChannelHistoryLegacyDoc(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	docData := `
+	{
+	  "channels": [
+		"test"
+	  ],
+	  "_sync": {
+		"rev": "1-08267a64bf0e3963bab7dece1ea0887a",
+		"sequence": 1,
+		"recent_sequences": [
+		  1
+		],
+		"history": {
+		  "revs": [
+			"1-08267a64bf0e3963bab7dece1ea0887a"
+		  ],
+		  "parents": [
+			-1
+		  ],
+		  "channels": [
+			[
+			  "test"
+			]
+		  ]
+		},
+		"channels": {
+		  "test": null
+		},
+		"cas": "",
+		"value_crc32c": "",
+		"time_saved": "2021-05-04T18:37:07.559778+01:00"
+	  }
+	}`
+
+	// Insert raw 'legacy' doc with no channel history info
+	err := rt.GetDatabase().Bucket.SetRaw("doc1", 0, []byte(docData))
+	assert.NoError(t, err)
+
+	var body db.Body
+
+	// Get doc and ensure its available
+	resp := rt.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	// Remove doc from channel and ensure that channel history is built correctly with current end sequence and
+	// setting start sequence
+	resp = rt.SendAdminRequest("PUT", "/db/doc1?rev=1-08267a64bf0e3963bab7dece1ea0887a", `{"channels": []}`)
+	assertStatus(t, resp, http.StatusCreated)
+	err = json.Unmarshal(resp.BodyBytes(), &body)
+	assert.NoError(t, err)
+	syncData, err := rt.GetDatabase().GetDocSyncData("doc1")
+	assert.NoError(t, err)
+	require.Len(t, syncData.ChannelSet, 1)
+	assert.Contains(t, syncData.ChannelSet, db.ChannelSetEntry{
+		Name:  "test",
+		Start: 1,
+		End:   2,
+	})
+	assert.Len(t, syncData.ChannelSetHistory, 0)
+}
