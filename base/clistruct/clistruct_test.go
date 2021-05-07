@@ -134,6 +134,29 @@ func TestCLIStructTypes(t *testing.T) {
 	}
 }
 
+func TestSkippedFields(t *testing.T) {
+	var val struct {
+		A bool `cli:"a" help:"foo"`
+		B bool `help:"bar"`
+	}
+
+	err := parseTagsForArgs(&val, []string{"-a"})
+	require.NoError(t, err)
+
+	assert.True(t, val.A)
+	assert.False(t, val.B)
+}
+
+func TestUndefinedFlag(t *testing.T) {
+	var val struct {
+		A bool `cli:"a" help:"foo"`
+		B bool `help:"bar"`
+	}
+
+	err := parseTagsForArgs(&val, []string{"-b"})
+	assert.EqualError(t, err, "flag provided but not defined: -b")
+}
+
 func TestEmbeddedStructs(t *testing.T) {
 	var val struct {
 		A struct {
@@ -153,6 +176,35 @@ func TestEmbeddedStructs(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.True(t, val.A.B.C.D.E.F)
+}
+
+func TestEmbeddedInvalidType(t *testing.T) {
+	var val struct {
+		A struct {
+			B string `cli:""`
+		} `cli:"a"`
+	}
+
+	err := parseTagsForArgs(&val, []string{"-a.b=foo"})
+	assert.EqualError(t, err, `field "B" can't embed for a non-struct type: string`)
+}
+
+func TestInvalidTypeErrors(t *testing.T) {
+	var val struct {
+		A []string `cli:"a"`
+	}
+
+	err := parseTagsForArgs(&val, []string{"-a=b"})
+	assert.EqualError(t, err, `unsupported type []string to assign flag to struct field "a"`)
+
+	err = parseTagsForArgs(1234, []string{""})
+	assert.EqualError(t, err, "expected val to be a struct, but was int")
+}
+
+func TestNilFlagSet(t *testing.T) {
+	var val struct{}
+	err := registerFlags(nil, &val)
+	assert.EqualError(t, err, "expected flag.FlagSet in RegisterFlags but got nil")
 }
 
 // parseTagsForArgs is a convenience function for testing without callers having to deal with their own FlagSets.

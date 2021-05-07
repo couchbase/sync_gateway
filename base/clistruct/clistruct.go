@@ -32,7 +32,12 @@ func registerFlags(fs *flag.FlagSet, cliStruct interface{}) error {
 		return errors.New("expected flag.FlagSet in RegisterFlags but got nil")
 	}
 
-	if err := register(fs, reflectStructValue(cliStruct), ""); err != nil {
+	refVal, err := reflectStructValue(cliStruct)
+	if err != nil {
+		return err
+	}
+
+	if err := register(fs, refVal, ""); err != nil {
 		return err
 	}
 
