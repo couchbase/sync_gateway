@@ -158,24 +158,26 @@ func TestUndefinedFlag(t *testing.T) {
 }
 
 func TestEmbeddedStructs(t *testing.T) {
+	type innerStruct struct {
+		C struct {
+			D struct {
+				E struct {
+					F bool `cli:"f" help:"foo"`
+				} `cli:""`
+			} `cli:""`
+		} `cli:"c"`
+	}
+
 	var val struct {
 		A struct {
-			B struct {
-				C struct {
-					D struct {
-						E struct {
-							F bool `cli:"f" help:"foo"`
-						} `cli:""`
-					} `cli:""`
-				} `cli:"c"`
-			} `cli:""`
+			innerStruct `cli:""`
 		} `cli:"a"`
 	}
 
 	err := parseTagsForArgs(&val, []string{"-a.c.f"})
 	require.NoError(t, err)
 
-	assert.True(t, val.A.B.C.D.E.F)
+	assert.True(t, val.A.C.D.E.F)
 }
 
 func TestEmbeddedInvalidType(t *testing.T) {
