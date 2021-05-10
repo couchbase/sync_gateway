@@ -855,7 +855,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		return err
 
 	}
-	base.DebugfCtx(bh.loggingCtx, base.KeySync, "Sending attachment with digest=%q (%dkb)", digest, len(attachment)/1024)
+	base.DebugfCtx(bh.loggingCtx, base.KeySync, "Sending attachment with digest=%q (%.2f KB)", digest, float64(len(attachment))/float64(1024))
 	response := rq.Response()
 	response.SetBody(attachment)
 	response.SetCompressed(rq.Properties[BlipCompress] == "true")
