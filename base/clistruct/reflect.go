@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-// reflectStructValue returns the reflect.Value of the given val struct, also following pointers.
+// reflectStructValue returns the reflect.Value of the given val struct, also dereferencing pointers.
 // Panics if the given val was nil or not a struct.
 func reflectStructValue(val interface{}) (refVal reflect.Value, err error) {
 	refVal = reflect.ValueOf(val)
@@ -20,14 +20,4 @@ func reflectStructValue(val interface{}) (refVal reflect.Value, err error) {
 	}
 
 	return derefVal, nil
-}
-
-// reflectInterfaceValue returns the underlying value as an untyped interface{},
-// always returning a pointer value.
-func reflectInterfaceValue(v reflect.Value) interface{} {
-	if v.Type().Kind() == reflect.Interface {
-		return v.Interface()
-	} else {
-		return v.Addr().Interface()
-	}
 }

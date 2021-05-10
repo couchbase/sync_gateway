@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	"time"
-	"unsafe"
 )
 
 const (
@@ -76,16 +75,12 @@ func register(fs *flag.FlagSet, val reflect.Value, namePrefix string) error {
 		fieldType := field.Type
 		fieldValue := val.Field(i)
 
-		switch fieldType.Kind() {
-		case reflect.Struct:
+		if fieldType.Kind() == reflect.Struct {
 			// recurse for nested structs
 			if err := register(fs, fieldValue, flagName); err != nil {
 				return err
 			}
 			continue
-		case reflect.Ptr, reflect.Interface:
-			// dereference and see if we can set it below, but it's unlikely if the given struct has not had values assigned to it.
-			fieldValue = fieldValue.Elem()
 		}
 
 		if !fieldValue.CanSet() {
@@ -103,37 +98,34 @@ func register(fs *flag.FlagSet, val reflect.Value, namePrefix string) error {
 // assignFlagToStructFieldVar creates a flag associated with the given struct field, if the type can be set from a flag.
 func assignFlagToStructFieldVar(fs *flag.FlagSet, fieldValue reflect.Value, flagName, flagHelp string) error {
 
-	switch v := reflectInterfaceValue(fieldValue).(type) {
+	// get the pointer for non-pointer fields
+	if fieldValue.Kind() != reflect.Ptr {
+		fieldValue = fieldValue.Addr()
+	}
+
+	switch v := fieldValue.Interface().(type) {
 	case flag.Value:
 		fs.Var(v, flagName, flagHelp)
 	case *time.Duration:
-		fs.DurationVar(v, flagName, 0, flagHelp)
+		fs.DurationVar(v, flagName, *v, flagHelp)
 	case *json.Number:
 		fs.Var((*jsonNumberFlagValue)(v), flagName, flagHelp)
+	case *bool:
+		fs.BoolVar(v, flagName, *v, flagHelp)
+	case *int:
+		fs.IntVar(v, flagName, *v, flagHelp)
+	case *int64:
+		fs.Int64Var(v, flagName, *v, flagHelp)
+	case *uint:
+		fs.UintVar(v, flagName, *v, flagHelp)
+	case *uint64:
+		fs.Uint64Var(v, flagName, *v, flagHelp)
+	case *float64:
+		fs.Float64Var(v, flagName, *v, flagHelp)
+	case *string:
+		fs.StringVar(v, flagName, *v, flagHelp)
 	default:
-		// See docs: unsafe.Pointer (5) Conversion of the result of ... reflect.Value.UnsafeAddr
-		// uintptr -> unsafe.Pointer conversion MUST be done without an intermediate variable
-		p := unsafe.Pointer(fieldValue.UnsafeAddr())
-
-		// we can only map struct field types which have a matching flag var type
-		switch fieldValue.Type().Kind() {
-		case reflect.Bool:
-			fs.BoolVar((*bool)(p), flagName, false, flagHelp)
-		case reflect.Int:
-			fs.IntVar((*int)(p), flagName, 0, flagHelp)
-		case reflect.Int64:
-			fs.Int64Var((*int64)(p), flagName, 0, flagHelp)
-		case reflect.Uint:
-			fs.UintVar((*uint)(p), flagName, 0, flagHelp)
-		case reflect.Uint64:
-			fs.Uint64Var((*uint64)(p), flagName, 0, flagHelp)
-		case reflect.Float64:
-			fs.Float64Var((*float64)(p), flagName, 0, flagHelp)
-		case reflect.String:
-			fs.StringVar((*string)(p), flagName, "", flagHelp)
-		default:
-			return fmt.Errorf("unsupported type %s to assign flag to struct field %q", fieldValue.Type().String(), flagName)
-		}
+		return fmt.Errorf("unsupported type %T to assign flag to struct field %q", v, flagName)
 	}
 
 	return nil

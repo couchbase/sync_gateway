@@ -197,7 +197,7 @@ func TestInvalidTypeErrors(t *testing.T) {
 	}
 
 	err := parseTagsForArgs(&val, []string{"-a=b"})
-	assert.EqualError(t, err, `unsupported type []string to assign flag to struct field "a"`)
+	assert.EqualError(t, err, `unsupported type *[]string to assign flag to struct field "a"`)
 
 	err = parseTagsForArgs(1234, []string{""})
 	assert.EqualError(t, err, "expected val to be a struct, but was int")
