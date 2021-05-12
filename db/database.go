@@ -183,9 +183,10 @@ type UnsupportedOptions struct {
 }
 
 type WarningThresholds struct {
-	XattrSize      *uint32 `json:"xattr_size_bytes,omitempty"`               // Number of bytes to be used as a threshold for xattr size limit warnings
-	ChannelsPerDoc *uint32 `json:"channels_per_doc,omitempty"`               // Number of channels per document to be used as a threshold for channel count warnings
-	GrantsPerDoc   *uint32 `json:"access_and_role_grants_per_doc,omitempty"` // Number of access and role grants per document to be used as a threshold for grant count warnings
+	XattrSize       *uint32 `json:"xattr_size_bytes,omitempty"`               // Number of bytes to be used as a threshold for xattr size limit warnings
+	ChannelsPerDoc  *uint32 `json:"channels_per_doc,omitempty"`               // Number of channels per document to be used as a threshold for channel count warnings
+	GrantsPerDoc    *uint32 `json:"access_and_role_grants_per_doc,omitempty"` // Number of access and role grants per document to be used as a threshold for grant count warnings
+	ChannelsPerUser *uint32 `json:"channels_per_user,omitempty"`              // Number of channels per user to be used as a threshold for channel count warnings
 }
 
 // Options associated with the import of documents not written by Sync Gateway
@@ -706,6 +707,7 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	if context.Options.SessionCookieName != "" {
 		authenticator.SetSessionCookieName(context.Options.SessionCookieName)
 	}
+	authenticator.SetChannelsWarningThreshold(context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser)
 	return authenticator
 }
 

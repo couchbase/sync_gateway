@@ -24,9 +24,10 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket            base.Bucket
-	channelComputer   ChannelComputer
-	sessionCookieName string // Custom per-database session cookie name
+	bucket                   base.Bucket
+	channelComputer          ChannelComputer
+	sessionCookieName        string // Custom per-database session cookie name
+	channelsWarningThreshold *uint32
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
@@ -57,6 +58,14 @@ func (auth *Authenticator) SessionCookieName() string {
 
 func (auth *Authenticator) SetSessionCookieName(cookieName string) {
 	auth.sessionCookieName = cookieName
+}
+
+func (auth *Authenticator) ChannelsWarningThreshold() *uint32 {
+	return auth.channelsWarningThreshold
+}
+
+func (auth *Authenticator) SetChannelsWarningThreshold(channelsWarningThreshold *uint32) {
+	auth.channelsWarningThreshold = channelsWarningThreshold
 }
 
 func docIDForUserEmail(email string) string {
@@ -394,7 +403,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 
 		user.SetRoleInvalSeq(invalSeq)
 
-		updated, err = base.JSONMarshal(user)
+		updated, err = base.JSONMarshal(&user)
 		return updated, nil, false, err
 	})
 
