@@ -309,39 +309,62 @@ func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 }
 
 // Invalidates the channel list of a user/role by saving its Channels() property as nil.
-func (auth *Authenticator) InvalidateChannels(p Principal, invalSeq uint64) error {
-	invalidateChannelsCallback := func(p Principal) (updatedPrincipal Principal, err error) {
+func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq uint64) error {
+	for i := 1; i < PrincipalUpdateMaxCasRetries; i++ {
+		var princ Principal
+		var docID string
 
-		if p == nil || p.Channels() == nil {
-			return p, base.ErrUpdateCancel
+		if isUser {
+			princ = &userImpl{}
+			docID = docIDForUser(name)
+		} else {
+			princ = &roleImpl{}
+			docID = docIDForRole(name)
 		}
 
-		base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(p.Name()))
+		cas, err := auth.bucket.Get(docID, &princ)
+		if err != nil {
+			return err
+		}
 
-		p.SetChannelInvalSeq(invalSeq)
-		return p, nil
+		princ.SetChannelInvalSeq(invalSeq)
+
+		cas, err = auth.bucket.WriteCas(docID, 0, 0, cas, princ, 0)
+		if err == nil {
+			return nil
+		}
+
+		if !base.IsCasMismatch(err) {
+			return err
+		}
 	}
-	return auth.casUpdatePrincipal(p, invalidateChannelsCallback)
+	return nil
+
 }
 
 // Invalidates the role list of a user by saving its Roles() property as nil.
-func (auth *Authenticator) InvalidateRoles(user User, invalSeq uint64) error {
+func (auth *Authenticator) InvalidateRoles(user string, invalSeq uint64) error {
+	for i := 1; i < PrincipalUpdateMaxCasRetries; i++ {
+		var userIn userImpl
 
-	invalidateRolesCallback := func(p Principal) (updatedPrincipal Principal, err error) {
-		user, ok := p.(User)
-		if !ok {
-			return p, base.ErrUpdateCancel
+		docID := docIDForUser(user)
+		cas, err := auth.bucket.Get(docID, &userIn)
+		if err != nil {
+			return err
 		}
-		if user == nil || user.RoleNames() == nil {
-			return p, base.ErrUpdateCancel
-		}
-		base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(user.Name()))
 
-		user.SetRoleInvalSeq(invalSeq)
-		return user, nil
+		userIn.SetRoleInvalSeq(invalSeq)
+
+		cas, err = auth.bucket.WriteCas(docID, 0, 0, cas, userIn, 0)
+		if err == nil {
+			return nil
+		}
+
+		if !base.IsCasMismatch(err) {
+			return err
+		}
 	}
-
-	return auth.casUpdatePrincipal(user, invalidateRolesCallback)
+	return nil
 }
 
 // Updates user email and writes user doc
