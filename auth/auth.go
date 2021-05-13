@@ -19,7 +19,6 @@ import (
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -325,7 +324,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 
 	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
 		err := auth.bucket.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
-		if err == gocb.ErrKeyNotFound {
+		if base.IsDocNotFoundError(err) {
 			return nil
 		}
 	}
@@ -365,7 +364,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 
 	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
 		err := auth.bucket.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
-		if err == gocb.ErrKeyNotFound {
+		if base.IsDocNotFoundError(err) {
 			return nil
 		}
 	}
