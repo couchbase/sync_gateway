@@ -1915,7 +1915,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 	}
 
 	// Warn when grants are larger than a configured threshold
-	if grantThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelsPerDoc; grantThreshold != nil {
+	if grantThreshold := db.Options.UnsupportedOptions.WarningThresholds.GrantsPerDoc; grantThreshold != nil {
 		grantCount := len(accessGrants) + len(roleGrants)
 		if uint32(grantCount) >= *grantThreshold {
 			db.DbStats.Database().WarnGrantsPerDocCount.Add(1)
