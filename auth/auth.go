@@ -308,63 +308,79 @@ func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 	return nil
 }
 
-// Invalidates the channel list of a user/role by saving its Channels() property as nil.
+// Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value
 func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq uint64) error {
-	for i := 1; i < PrincipalUpdateMaxCasRetries; i++ {
-		var princ Principal
-		var docID string
+	var princ Principal
+	var docID string
 
-		if isUser {
-			princ = &userImpl{}
-			docID = docIDForUser(name)
-		} else {
-			princ = &roleImpl{}
-			docID = docIDForRole(name)
+	if isUser {
+		princ = &userImpl{}
+		docID = docIDForUser(name)
+	} else {
+		princ = &roleImpl{}
+		docID = docIDForRole(name)
+	}
+
+	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		// If user/role doesn't exist cancel update
+		if current == nil {
+			return nil, nil, false, base.ErrUpdateCancel
 		}
 
-		cas, err := auth.bucket.Get(docID, &princ)
+		err = base.JSONUnmarshal(current, &princ)
 		if err != nil {
-			return err
+			return nil, nil, false, err
+		}
+
+		if princ.Channels() == nil {
+			return nil, nil, false, base.ErrUpdateCancel
 		}
 
 		princ.SetChannelInvalSeq(invalSeq)
 
-		cas, err = auth.bucket.WriteCas(docID, 0, 0, cas, princ, 0)
-		if err == nil {
-			return nil
-		}
+		updated, err = base.JSONMarshal(princ)
 
-		if !base.IsCasMismatch(err) {
-			return err
-		}
+		return updated, nil, false, err
+	})
+
+	if err == base.ErrUpdateCancel {
+		return nil
 	}
-	return nil
 
+	return err
 }
 
-// Invalidates the role list of a user by saving its Roles() property as nil.
-func (auth *Authenticator) InvalidateRoles(user string, invalSeq uint64) error {
-	for i := 1; i < PrincipalUpdateMaxCasRetries; i++ {
-		var userIn userImpl
+// Invalidates the role list of a user by setting the RoleInvalSeq property to a non-zero value
+func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) error {
+	docID := docIDForUser(username)
+	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		// If user doesn't exist cancel update
+		if current == nil {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
 
-		docID := docIDForUser(user)
-		cas, err := auth.bucket.Get(docID, &userIn)
+		var user userImpl
+		err = base.JSONUnmarshal(current, &user)
 		if err != nil {
-			return err
+			return nil, nil, false, base.ErrUpdateCancel
 		}
 
-		userIn.SetRoleInvalSeq(invalSeq)
-
-		cas, err = auth.bucket.WriteCas(docID, 0, 0, cas, userIn, 0)
-		if err == nil {
-			return nil
+		// If user's roles are invalidated already we can cancel update
+		if user.RoleNames() == nil {
+			return nil, nil, false, base.ErrUpdateCancel
 		}
 
-		if !base.IsCasMismatch(err) {
-			return err
-		}
+		user.SetRoleInvalSeq(invalSeq)
+
+		updated, err = base.JSONMarshal(user)
+		return updated, nil, false, err
+	})
+
+	if err == base.ErrUpdateCancel {
+		return nil
 	}
-	return nil
+
+	return err
 }
 
 // Updates user email and writes user doc

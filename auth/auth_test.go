@@ -1851,12 +1851,12 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25)
 	require.Contains(t, revokedChannelsCombined, "ch1")
-	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
+	assert.Equal(t, uint64(55), revokedChannelsCombined["ch1"])
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 95)
 
@@ -1872,7 +1872,7 @@ func TestRevocationScenario6(t *testing.T) {
 
 	channelHistory, ok = fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25)
 	assert.Len(t, revokedChannelsCombined, 0)
@@ -1932,17 +1932,17 @@ func TestRevocationScenario7(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	userRoleHistory, ok := aliceUserPrincipal.RoleHistory()["foo"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistorySequencePair{StartSeq: 20, EndSeq: 95}, userRoleHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{StartSeq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
 	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25)
 	require.Contains(t, revokedChannelsCombined, "ch1")
-	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
+	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
 	// Get Principals / Rebuild Seq 110
 	aliceUserPrincipal, fooPrincipal = getPrincipals(t, auth)
@@ -2010,7 +2010,7 @@ func TestRevocationScenario8(t *testing.T) {
 	assert.False(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
-	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 85}, channelHistory.Entries[0])
+	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(50)
@@ -2504,5 +2504,114 @@ func TestObtainChannelsForDeletedRole(t *testing.T) {
 			testCase.TestFunc(auth, role, t)
 		})
 	}
+}
 
+func TestInvalidateRoles(t *testing.T) {
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{})
+
+	auth := NewAuthenticator(leakyBucket, nil)
+
+	// Invalidate role on non-existent user and ensure no error
+	err := auth.InvalidateRoles("user", 0)
+	assert.NoError(t, err)
+
+	// Create user
+	user, err := auth.NewUser("user", "pass", nil)
+	assert.NoError(t, err)
+	err = auth.Save(user)
+	assert.NoError(t, err)
+
+	enableRetry := false
+	leakyBucket.SetUpdateCallback(func(key string) {
+		if enableRetry {
+			enableRetry = false
+			err = auth.InvalidateRoles("user", 5)
+			assert.NoError(t, err)
+		}
+	})
+
+	// Invalidate roles at invalSeq but cause cas retry by setting to 5
+	enableRetry = true
+	err = auth.InvalidateRoles("user", 10)
+	assert.NoError(t, err)
+
+	// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
+	var userOut userImpl
+	_, err = leakyBucket.Get(docIDForUser("user"), &userOut)
+	assert.NoError(t, err)
+
+	assert.Equal(t, uint64(5), userOut.GetRoleInvalSeq())
+}
+
+func TestInvalidateChannels(t *testing.T) {
+	testCases := []struct {
+		name   string
+		isUser bool
+	}{
+		{
+			name:   "User",
+			isUser: true,
+		},
+		{
+			name:   "Role",
+			isUser: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			testBucket := base.GetTestBucket(t)
+			defer testBucket.Close()
+
+			leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{})
+
+			auth := NewAuthenticator(leakyBucket, nil)
+
+			// Invalidate channels on non-existent user / role and ensure no error
+			err := auth.InvalidateChannels(testCase.name, testCase.isUser, 0)
+			assert.NoError(t, err)
+
+			// Create user / role
+			var princ Principal
+			if testCase.isUser {
+				princ, err = auth.NewUser(testCase.name, "pass", nil)
+			} else {
+				princ, err = auth.NewRole(testCase.name, nil)
+			}
+			assert.NoError(t, err)
+
+			err = auth.Save(princ)
+			assert.NoError(t, err)
+
+			enableRetry := false
+			leakyBucket.SetUpdateCallback(func(key string) {
+				if enableRetry {
+					enableRetry = false
+					err = auth.InvalidateChannels(testCase.name, testCase.isUser, 5)
+					assert.NoError(t, err)
+				}
+			})
+
+			// Invalidate channels at invalSeq but cause cas retry by setting to 5
+			enableRetry = true
+			err = auth.InvalidateChannels(testCase.name, testCase.isUser, 10)
+			assert.NoError(t, err)
+
+			// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
+			var princCheck Principal
+			if testCase.isUser {
+				princCheck = &userImpl{}
+				_, err = leakyBucket.Get(docIDForUser(testCase.name), &princCheck)
+			} else {
+				princCheck = &roleImpl{}
+				_, err = leakyBucket.Get(docIDForRole(testCase.name), &princCheck)
+			}
+			assert.NoError(t, err)
+
+			assert.Equal(t, uint64(5), princCheck.GetChannelInvalSeq())
+		})
+	}
 }
