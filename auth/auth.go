@@ -322,11 +322,14 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 		docID = docIDForRole(name)
 	}
 
+	base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(name))
+
 	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
 		err := auth.bucket.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
-		if base.IsDocNotFoundError(err) {
-			return nil
+		if err != nil && !base.IsDocNotFoundError(err) && !base.IsSubDocPathExistsError(err) {
+			return err
 		}
+		return nil
 	}
 
 	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
@@ -362,11 +365,14 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) error {
 	docID := docIDForUser(username)
 
+	base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(username))
+
 	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
 		err := auth.bucket.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
-		if base.IsDocNotFoundError(err) {
-			return nil
+		if err != nil && !base.IsDocNotFoundError(err) && !base.IsSubDocPathExistsError(err) {
+			return err
 		}
+		return nil
 	}
 
 	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
