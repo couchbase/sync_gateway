@@ -406,6 +406,10 @@ func (c *Collection) WriteUpdateWithXattr(k string, xattrKey string, userXattrKe
 	return 0, errors.New("WriteUpdateWithXattr not implemented")
 }
 
+func (b *Collection) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
+	return errors.New("SubdocInsert not implemented")
+}
+
 // CouchbaseStore
 
 func (c *Collection) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {

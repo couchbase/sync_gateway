@@ -14,10 +14,12 @@ import (
 	"fmt"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/square/go-jose.v2/jwt"
 )
 
@@ -321,6 +323,13 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 		docID = docIDForRole(name)
 	}
 
+	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
+		err := auth.bucket.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
+		if err == gocb.ErrKeyNotFound {
+			return nil
+		}
+	}
+
 	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		// If user/role doesn't exist cancel update
 		if current == nil {
@@ -353,6 +362,14 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 // Invalidates the role list of a user by setting the RoleInvalSeq property to a non-zero value
 func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) error {
 	docID := docIDForUser(username)
+
+	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
+		err := auth.bucket.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
+		if err == gocb.ErrKeyNotFound {
+			return nil
+		}
+	}
+
 	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
 		// If user doesn't exist cancel update
 		if current == nil {

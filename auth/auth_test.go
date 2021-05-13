@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	goassert "github.com/couchbaselabs/go.assert"
@@ -2543,7 +2544,22 @@ func TestInvalidateRoles(t *testing.T) {
 	_, err = leakyBucket.Get(docIDForUser("user"), &userOut)
 	assert.NoError(t, err)
 
-	assert.Equal(t, uint64(5), userOut.GetRoleInvalSeq())
+	var expectedValue uint64
+	if leakyBucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
+		expectedValue = 10
+	} else {
+		expectedValue = 5
+	}
+
+	assert.Equal(t, expectedValue, userOut.GetRoleInvalSeq())
+
+	// Invalidate again and ensure existing value remains
+	err = auth.InvalidateRoles("user", 20)
+	assert.NoError(t, err)
+
+	_, err = leakyBucket.Get(docIDForUser("user"), &userOut)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedValue, userOut.GetRoleInvalSeq())
 }
 
 func TestInvalidateChannels(t *testing.T) {
@@ -2602,16 +2618,34 @@ func TestInvalidateChannels(t *testing.T) {
 
 			// Ensure the inval seq was set to 5 (raw get to avoid rebuild)
 			var princCheck Principal
+			var docID string
 			if testCase.isUser {
 				princCheck = &userImpl{}
-				_, err = leakyBucket.Get(docIDForUser(testCase.name), &princCheck)
+				docID = docIDForUser(testCase.name)
 			} else {
 				princCheck = &roleImpl{}
-				_, err = leakyBucket.Get(docIDForRole(testCase.name), &princCheck)
+				docID = docIDForRole(testCase.name)
 			}
+			_, err = leakyBucket.Get(docID, &princCheck)
 			assert.NoError(t, err)
 
-			assert.Equal(t, uint64(5), princCheck.GetChannelInvalSeq())
+			var expectedValue uint64
+
+			if leakyBucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
+				expectedValue = 10
+			} else {
+				expectedValue = 5
+			}
+
+			assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
+
+			// Invalidate again and ensure existing value remains
+			err = auth.InvalidateChannels(testCase.name, testCase.isUser, 20)
+			assert.NoError(t, err)
+
+			_, err = leakyBucket.Get(docID, &princCheck)
+			assert.NoError(t, err)
+			assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
 		})
 	}
 }

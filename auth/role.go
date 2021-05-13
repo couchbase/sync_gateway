@@ -28,7 +28,7 @@ type roleImpl struct {
 	Channels_         ch.TimedSet     `json:"all_channels"`
 	Sequence_         uint64          `json:"sequence"`
 	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`
-	ChannelInvalSeq   uint64          `json:"channel_inval_seq"`
+	ChannelInvalSeq   uint64          `json:"channel_inval_seq,omitempty"`
 	Deleted           bool            `json:"deleted,omitempty"`
 	vbNo              *uint16
 	cas               uint64

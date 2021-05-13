@@ -2394,6 +2394,8 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	major, minor, _ := bucket.CouchbaseServerVersion()
 	switch feature {
+	case sgbucket.DataStoreFeatureSubdocOperations:
+		return isMinimumVersion(major, minor, 4, 5)
 	case sgbucket.DataStoreFeatureXattrs:
 		return isMinimumVersion(major, minor, 5, 0)
 	case sgbucket.DataStoreFeatureN1ql:
@@ -2408,7 +2410,14 @@ func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature
 	default:
 		return false
 	}
+}
 
+func (bucket *CouchbaseBucketGoCB) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
+	_, err := bucket.MutateIn(docID, gocb.Cas(cas), 0).
+		Insert(fieldPath, value, false).
+		Execute()
+
+	return err
 }
 
 func isMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {
