@@ -100,6 +100,12 @@ func (b *LoggingBucket) WriteUpdateWithXattr(k string, xattr string, userXattrKe
 	defer b.log(time.Now(), k, xattr, exp)
 	return b.bucket.WriteUpdateWithXattr(k, xattr, userXattrKey, exp, previous, callback)
 }
+
+func (b *LoggingBucket) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
+	defer b.log(time.Now(), docID, fieldPath)
+	return b.bucket.SubdocInsert(docID, fieldPath, cas, value)
+}
+
 func (b *LoggingBucket) GetWithXattr(k string, xattr string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
 	defer b.log(time.Now(), k, xattr, userXattrKey)
 	return b.bucket.GetWithXattr(k, xattr, userXattrKey, rv, xv, uxv)

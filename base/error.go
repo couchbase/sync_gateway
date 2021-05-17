@@ -19,6 +19,7 @@ import (
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocb.v1"
+	"gopkg.in/couchbase/gocbcore.v7"
 )
 
 type sgError struct {
@@ -181,4 +182,23 @@ func IsDocNotFoundError(err error) bool {
 	default:
 		return false
 	}
+}
+
+// Check if this is a SubDocPathNotFound error
+func IsSubDocPathNotFound(err error) bool {
+
+	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
+	if ok {
+		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
+	}
+	return false
+}
+
+func IsSubDocPathExistsError(err error) bool {
+
+	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
+	if ok {
+		return subdocMutateErr.Err == gocb.ErrSubDocPathExists
+	}
+	return false
 }

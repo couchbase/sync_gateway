@@ -1492,7 +1492,7 @@ func (bucket *CouchbaseBucketGoCB) deleteWithXattrInternal(k string, xattrKey st
 		// KeyNotFound indicates there is no doc body.  Try to delete only the xattr.
 		return bucket.deleteDocXattrOnly(k, xattrKey, callback)
 
-	case bucket.IsSubDocPathNotFound(mutateErr):
+	case IsSubDocPathNotFound(mutateErr):
 
 		// Invoke the testing related callback.  This is a no-op in non-test contexts.
 		if callback != nil {
@@ -1960,17 +1960,6 @@ func (bucket *CouchbaseBucketGoCB) IsError(err error, errorType sgbucket.DataSto
 	}
 }
 
-// Check if this is a SubDocPathNotFound error
-// Pending question to see if there is an easier way: https://forums.couchbase.com/t/checking-for-errsubdocpathnotfound-errors/13492
-func (bucket *CouchbaseBucketGoCB) IsSubDocPathNotFound(err error) bool {
-
-	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
-	if ok {
-		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
-	}
-	return false
-}
-
 func (bucket *CouchbaseBucketGoCB) DeleteDDoc(docname string) error {
 
 	manager, err := bucket.getBucketManager()
@@ -2394,6 +2383,8 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature) bool {
 	major, minor, _ := bucket.CouchbaseServerVersion()
 	switch feature {
+	case sgbucket.DataStoreFeatureSubdocOperations:
+		return isMinimumVersion(major, minor, 4, 5)
 	case sgbucket.DataStoreFeatureXattrs:
 		return isMinimumVersion(major, minor, 5, 0)
 	case sgbucket.DataStoreFeatureN1ql:
@@ -2408,7 +2399,14 @@ func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature
 	default:
 		return false
 	}
+}
 
+func (bucket *CouchbaseBucketGoCB) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
+	_, err := bucket.MutateIn(docID, gocb.Cas(cas), 0).
+		Insert(fieldPath, value, false).
+		Execute()
+
+	return err
 }
 
 func isMinimumVersion(major, minor, requiredMajor, requiredMinor uint64) bool {

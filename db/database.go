@@ -1333,28 +1333,22 @@ func (db *Database) UpdateAllDocChannels(regenerateSequences bool) (int, error) 
 
 func (db *Database) invalUserRoles(username string, invalSeq uint64) {
 	authr := db.Authenticator()
-	if user, _ := authr.GetUser(username); user != nil {
-		if err := authr.InvalidateRoles(user, invalSeq); err != nil {
-			base.Warnf("Error invalidating roles for user %s: %v", base.UD(username), err)
-		}
+	if err := authr.InvalidateRoles(username, invalSeq); err != nil {
+		base.Warnf("Error invalidating roles for user %s: %v", base.UD(username), err)
 	}
 }
 
 func (db *Database) invalUserChannels(username string, invalSeq uint64) {
 	authr := db.Authenticator()
-	if user, _ := authr.GetUser(username); user != nil {
-		if err := authr.InvalidateChannels(user, invalSeq); err != nil {
-			base.Warnf("Error invalidating channels for user %s: %v", base.UD(username), err)
-		}
+	if err := authr.InvalidateChannels(username, true, invalSeq); err != nil {
+		base.Warnf("Error invalidating channels for user %s: %v", base.UD(username), err)
 	}
 }
 
 func (db *Database) invalRoleChannels(rolename string, invalSeq uint64) {
 	authr := db.Authenticator()
-	if role, _ := authr.GetRole(rolename); role != nil {
-		if err := authr.InvalidateChannels(role, invalSeq); err != nil {
-			base.Warnf("Error invalidating channels for role %s: %v", base.UD(rolename), err)
-		}
+	if err := authr.InvalidateChannels(rolename, false, invalSeq); err != nil {
+		base.Warnf("Error invalidating channels for role %s: %v", base.UD(rolename), err)
 	}
 }
 

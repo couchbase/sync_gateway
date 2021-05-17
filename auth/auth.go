@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"time"
 
+	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
 	pkgerrors "github.com/pkg/errors"
@@ -308,40 +309,100 @@ func (auth *Authenticator) UpdateSequenceNumber(p Principal, seq uint64) error {
 	return nil
 }
 
-// Invalidates the channel list of a user/role by saving its Channels() property as nil.
-func (auth *Authenticator) InvalidateChannels(p Principal, invalSeq uint64) error {
-	invalidateChannelsCallback := func(p Principal) (updatedPrincipal Principal, err error) {
+// Invalidates the channel list of a user/role by setting the ChannelInvalSeq to a non-zero value
+func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq uint64) error {
+	var princ Principal
+	var docID string
 
-		if p == nil || p.Channels() == nil {
-			return p, base.ErrUpdateCancel
+	if isUser {
+		princ = &userImpl{}
+		docID = docIDForUser(name)
+	} else {
+		princ = &roleImpl{}
+		docID = docIDForRole(name)
+	}
+
+	base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(name))
+
+	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
+		err := auth.bucket.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
+		if err != nil && !base.IsDocNotFoundError(err) && !base.IsSubDocPathExistsError(err) {
+			return err
+		}
+		return nil
+	}
+
+	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		// If user/role doesn't exist cancel update
+		if current == nil {
+			return nil, nil, false, base.ErrUpdateCancel
 		}
 
-		base.Infof(base.KeyAccess, "Invalidate access of %q", base.UD(p.Name()))
+		err = base.JSONUnmarshal(current, &princ)
+		if err != nil {
+			return nil, nil, false, err
+		}
 
-		p.SetChannelInvalSeq(invalSeq)
-		return p, nil
+		if princ.Channels() == nil {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		princ.SetChannelInvalSeq(invalSeq)
+
+		updated, err = base.JSONMarshal(princ)
+
+		return updated, nil, false, err
+	})
+
+	if err == base.ErrUpdateCancel {
+		return nil
 	}
-	return auth.casUpdatePrincipal(p, invalidateChannelsCallback)
+
+	return err
 }
 
-// Invalidates the role list of a user by saving its Roles() property as nil.
-func (auth *Authenticator) InvalidateRoles(user User, invalSeq uint64) error {
+// Invalidates the role list of a user by setting the RoleInvalSeq property to a non-zero value
+func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) error {
+	docID := docIDForUser(username)
 
-	invalidateRolesCallback := func(p Principal) (updatedPrincipal Principal, err error) {
-		user, ok := p.(User)
-		if !ok {
-			return p, base.ErrUpdateCancel
-		}
-		if user == nil || user.RoleNames() == nil {
-			return p, base.ErrUpdateCancel
-		}
-		base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(user.Name()))
+	base.Infof(base.KeyAccess, "Invalidate roles of %q", base.UD(username))
 
-		user.SetRoleInvalSeq(invalSeq)
-		return user, nil
+	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
+		err := auth.bucket.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
+		if err != nil && !base.IsDocNotFoundError(err) && !base.IsSubDocPathExistsError(err) {
+			return err
+		}
+		return nil
 	}
 
-	return auth.casUpdatePrincipal(user, invalidateRolesCallback)
+	_, err := auth.bucket.Update(docID, 0, func(current []byte) (updated []byte, expiry *uint32, delete bool, err error) {
+		// If user doesn't exist cancel update
+		if current == nil {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		var user userImpl
+		err = base.JSONUnmarshal(current, &user)
+		if err != nil {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		// If user's roles are invalidated already we can cancel update
+		if user.RoleNames() == nil {
+			return nil, nil, false, base.ErrUpdateCancel
+		}
+
+		user.SetRoleInvalSeq(invalSeq)
+
+		updated, err = base.JSONMarshal(user)
+		return updated, nil, false, err
+	})
+
+	if err == base.ErrUpdateCancel {
+		return nil
+	}
+
+	return err
 }
 
 // Updates user email and writes user doc
