@@ -284,7 +284,7 @@ func networkInterfaceStatsForHostnamePort(hostPort string) (iocountersStats gops
 	}
 
 	if len(iocountersStatsSet) == 0 {
-		return iocountersStats, fmt.Errorf("Unable to find any network interface stats: %v", err)
+		return iocountersStats, fmt.Errorf("unable to find any network interface stats: %v", err)
 	}
 
 	// At this point we should only have one set of stats, either the stats for the NIC we care
@@ -308,7 +308,23 @@ func filterIOCountersByNic(iocountersStatsSet []gopsutilnet.IOCountersStat, inte
 	return filtered
 }
 
-func discoverInterfaceName(host string) (interfaceName string, err error) {
+// discoverInterfaceName returns the network interface's name (e.g. en0, lo0, bridge0) associated with the given hostname/IP address.
+func discoverInterfaceName(hostnameOrIP string) (interfaceName string, err error) {
+
+	hosts := make(map[string]struct{})
+	if net.ParseIP(hostnameOrIP) != nil {
+		// Was an IP, don't need to resolve
+		hosts[hostnameOrIP] = struct{}{}
+	} else {
+		// Was a hostname, resolve it to find address(es)
+		ips, err := net.LookupHost(hostnameOrIP)
+		if err != nil {
+			return "", err
+		}
+		for _, ip := range ips {
+			hosts[ip] = struct{}{}
+		}
+	}
 
 	interfaces, err := net.Interfaces()
 	if err != nil {
@@ -320,6 +336,7 @@ func discoverInterfaceName(host string) (interfaceName string, err error) {
 		if err != nil {
 			return "", err
 		}
+
 		for _, ifaceCIDRAddr := range ifaceAddresses {
 
 			ipAddr, _, err := net.ParseCIDR(ifaceCIDRAddr.String())
@@ -327,12 +344,12 @@ func discoverInterfaceName(host string) (interfaceName string, err error) {
 				return "", err
 			}
 
-			if ipAddr.String() == host {
+			if _, ok := hosts[ipAddr.String()]; ok {
 				return iface.Name, nil
 			}
 		}
 	}
 
-	return "", fmt.Errorf("Unable to find interface for host: %v", host)
+	return "", fmt.Errorf("unable to find matching interface for %s", hostnameOrIP)
 
 }
