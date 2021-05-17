@@ -245,54 +245,41 @@ func goroutineHighwaterMark(numGoroutines uint64) (maxGoroutinesSeen uint64) {
 
 }
 
-func networkInterfaceStatsForHostnamePort(hostPort string) (iocountersStats gopsutilnet.IOCountersStat, err error) {
+func networkInterfaceStatsForHostnamePort(hostPort string) (*gopsutilnet.IOCountersStat, error) {
 
 	host, _, err := net.SplitHostPort(hostPort)
 	if err != nil {
-		return iocountersStats, err
-	}
-
-	allInterfaces := false
-	if host == "" || host == "0.0.0.0" {
-		allInterfaces = true
-	}
-
-	// "localhost" -> "127.0.0.1", since this code only works with IP addresses
-	if host == "localhost" {
-		host = "127.0.0.1"
-	}
-
-	interfaceName := ""
-	if !allInterfaces {
-		interfaceName, err = discoverInterfaceName(host)
-		if err != nil {
-			return iocountersStats, err
-		}
+		return nil, err
 	}
 
 	// Only get interface stats on a "Per Nic (network interface card)" basis if we aren't
 	// listening on all interfaces, in which case we want the combined stats across all NICs.
-	perNic := !allInterfaces
+	perNic := true
+	if host == "" || host == "0.0.0.0" {
+		perNic = false
+	}
 
 	iocountersStatsSet, err := gopsutilnet.IOCounters(perNic)
 	if err != nil {
-		return iocountersStats, err
+		return nil, err
 	}
 
-	if !allInterfaces {
+	// filter to the interface we care about
+	if perNic {
+		interfaceName, err := discoverInterfaceName(host)
+		if err != nil {
+			return nil, err
+		}
 		iocountersStatsSet = filterIOCountersByNic(iocountersStatsSet, interfaceName)
 	}
 
 	if len(iocountersStatsSet) == 0 {
-		return iocountersStats, fmt.Errorf("unable to find any network interface stats: %v", err)
+		return nil, fmt.Errorf("unable to find any network interface stats: %v", err)
 	}
 
 	// At this point we should only have one set of stats, either the stats for the NIC we care
 	// about or the special "all" NIC which combines the stats
-	iocountersStats = iocountersStatsSet[0]
-
-	return iocountersStats, nil
-
+	return &iocountersStatsSet[0], nil
 }
 
 func filterIOCountersByNic(iocountersStatsSet []gopsutilnet.IOCountersStat, interfaceName string) (filtered []gopsutilnet.IOCountersStat) {
