@@ -184,16 +184,21 @@ func IsDocNotFoundError(err error) bool {
 	}
 }
 
+// Check if this is a SubDocPathNotFound error
+func IsSubDocPathNotFound(err error) bool {
+
+	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
+	if ok {
+		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
+	}
+	return false
+}
+
 func IsSubDocPathExistsError(err error) bool {
-	subdocMutateErr, ok := err.(gocbcore.SubDocMutateError)
-	if !ok {
-		return false
-	}
 
-	kvErr, ok := subdocMutateErr.Err.(*gocbcore.KvError)
-	if !ok {
-		return false
+	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
+	if ok {
+		return subdocMutateErr.Err == gocb.ErrSubDocPathExists
 	}
-
-	return kvErr.Code == gocbcore.StatusSubDocPathExists
+	return false
 }
