@@ -3050,6 +3050,8 @@ func TestUpdateExistingAttachment(t *testing.T) {
 }
 
 func TestRevocationMessage(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
 	revocationTester, rt := initScenario(t)
 	defer rt.Close()
 
@@ -3089,10 +3091,17 @@ func TestRevocationMessage(t *testing.T) {
 	_, err = rt.WaitForChanges(1, "/db/_changes?since=0", "user", true)
 	require.NoError(t, err)
 
+	revID := rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "!"})
+
 	// Start a pull since 5 to receive revocation
 	err = btc.StartPullSince("false", "5", "false")
 	assert.NoError(t, err)
 
+	// Wait for doc1 rev - Used as a "changes complete" message
+	_, found := btc.WaitForRev("doc1", revID)
+	require.True(t, found)
+
+	// Wait for deleted message
 	err = rt.WaitForCondition(func() bool {
 		messages := btc.pullReplication.GetMessages()
 
@@ -3109,22 +3118,33 @@ func TestRevocationMessage(t *testing.T) {
 
 		// Verify the deleted property in the changes message is "2" this indicated a revocation
 		for _, msg := range messages {
-			var changesMessage [][]interface{}
-			err = msg.ReadJSONBody(&changesMessage)
-			if err != nil {
-				continue
+			if msg.Properties["Profile"] == "changes" {
+				var changesMessage [][]interface{}
+				err = msg.ReadJSONBody(&changesMessage)
+				if err != nil {
+					continue
+				}
+
+				if len(changesMessage) != 2 || len(changesMessage[0]) != 4 {
+					continue
+				}
+
+				for _, changesMessages := range changesMessage {
+					if docName, ok := changesMessages[1].(string); !ok || docName != "doc" {
+						continue
+					}
+
+					castedNum, ok := changesMessages[3].(json.Number)
+					if !ok {
+						continue
+					}
+					intDeleted, err := castedNum.Int64()
+					if err != nil {
+						continue
+					}
+					return int(intDeleted) == 2
+				}
 			}
-
-			if len(changesMessage) != 1 || len(changesMessage[0]) != 4 {
-				continue
-			}
-
-			castedNum, ok := changesMessage[0][3].(json.Number)
-			assert.True(t, ok)
-			intDeleted, err := castedNum.Int64()
-			require.NoError(t, err)
-
-			return int(intDeleted) == 2
 		}
 
 		return false
