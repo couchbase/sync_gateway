@@ -6344,13 +6344,22 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 	}
 }
 
-func (tester *ChannelRevocationTester) getChanges(sinceSeq uint64) changesResults {
+func (tester *ChannelRevocationTester) getChanges(sinceSeq uint64, expectedLength int) changesResults {
 	var changes changesResults
 
-	resp := tester.restTester.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%d&revocations=true", sinceSeq), "", nil, "user", "test")
-	require.Equal(tester.test, http.StatusOK, resp.Code)
-	err := json.Unmarshal(resp.BodyBytes(), &changes)
-	require.NoError(tester.test, err)
+	err := tester.restTester.WaitForCondition(func() bool {
+		resp := tester.restTester.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%d&revocations=true", sinceSeq), "", nil, "user", "test")
+		require.Equal(tester.test, http.StatusOK, resp.Code)
+		err := json.Unmarshal(resp.BodyBytes(), &changes)
+		require.NoError(tester.test, err)
+
+		return len(changes.Results) == expectedLength
+	})
+	assert.NoError(tester.test, err, fmt.Sprintf("Unexpected: %d. Expected %d", len(changes.Results), expectedLength))
+	fmt.Println(changes.Results)
+
+	err = tester.restTester.WaitForPendingChanges()
+	assert.NoError(tester.test, err)
 
 	return changes
 }
@@ -6429,23 +6438,20 @@ func TestRevocationScenario1(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
 	revocationTester.fillToSeq(25)
 
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "20:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(40)
 
-	changes = revocationTester.getChanges(25)
+	changes = revocationTester.getChanges(25, 0)
 	assert.Equal(t, "25", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(44)
 	revocationTester.removeRole("user", "foo")
@@ -6457,9 +6463,8 @@ func TestRevocationScenario1(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "ch1")
 	revocationTester.fillToSeq(80)
 
-	changes = revocationTester.getChanges(40)
+	changes = revocationTester.getChanges(40, 1)
 	assert.Equal(t, "75:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(84)
 	revocationTester.removeRoleChannel("foo", "ch1")
@@ -6467,9 +6472,8 @@ func TestRevocationScenario1(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 	revocationTester.fillToSeq(110)
 
-	changes = revocationTester.getChanges(80)
+	changes = revocationTester.getChanges(80, 1)
 	assert.Equal(t, "85:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -6485,25 +6489,22 @@ func TestRevocationScenario2(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
 	revocationTester.fillToSeq(25)
 
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "20:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(44)
 	revocationTester.removeRole("user", "foo")
 
 	revocationTester.fillToSeq(50)
-	changes = revocationTester.getChanges(25)
+	changes = revocationTester.getChanges(25, 1)
 	assert.Equal(t, "45:3", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 
 	revocationTester.fillToSeq(54)
@@ -6514,9 +6515,8 @@ func TestRevocationScenario2(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "ch1")
 	revocationTester.fillToSeq(80)
 
-	changes = revocationTester.getChanges(50)
+	changes = revocationTester.getChanges(50, 1)
 	assert.Equal(t, "75:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(84)
 	revocationTester.removeRoleChannel("foo", "ch1")
@@ -6524,9 +6524,8 @@ func TestRevocationScenario2(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 	revocationTester.fillToSeq(110)
 
-	changes = revocationTester.getChanges(80)
+	changes = revocationTester.getChanges(80, 1)
 	assert.Equal(t, "85:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -6542,17 +6541,15 @@ func TestRevocationScenario3(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
 	revocationTester.fillToSeq(25)
 
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "20:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(44)
 	revocationTester.removeRole("user", "foo")
@@ -6560,9 +6557,8 @@ func TestRevocationScenario3(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "ch1")
 
 	revocationTester.fillToSeq(60)
-	changes = revocationTester.getChanges(25)
+	changes = revocationTester.getChanges(25, 1)
 	assert.Equal(t, "45:3", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 
 	revocationTester.fillToSeq(64)
@@ -6571,9 +6567,8 @@ func TestRevocationScenario3(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "ch1")
 	revocationTester.fillToSeq(80)
 
-	changes = revocationTester.getChanges(50)
+	changes = revocationTester.getChanges(50, 1)
 	assert.Equal(t, "75:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(84)
 	revocationTester.removeRoleChannel("foo", "ch1")
@@ -6581,9 +6576,8 @@ func TestRevocationScenario3(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 	revocationTester.fillToSeq(110)
 
-	changes = revocationTester.getChanges(80)
+	changes = revocationTester.getChanges(80, 1)
 	assert.Equal(t, "85:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -6599,17 +6593,15 @@ func TestRevocationScenario4(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
 	revocationTester.fillToSeq(25)
 
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "20:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(44)
 	revocationTester.removeRole("user", "foo")
@@ -6619,18 +6611,16 @@ func TestRevocationScenario4(t *testing.T) {
 	revocationTester.addRole("user", "foo")
 
 	revocationTester.fillToSeq(70)
-	changes = revocationTester.getChanges(25)
+	changes = revocationTester.getChanges(25, 1)
 	assert.Equal(t, "55:3", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 
 	revocationTester.fillToSeq(74)
 	revocationTester.addRoleChannel("foo", "ch1")
 	revocationTester.fillToSeq(80)
 
-	changes = revocationTester.getChanges(50)
+	changes = revocationTester.getChanges(50, 1)
 	assert.Equal(t, "75:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(84)
 	revocationTester.removeRoleChannel("foo", "ch1")
@@ -6638,9 +6628,8 @@ func TestRevocationScenario4(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 	revocationTester.fillToSeq(110)
 
-	changes = revocationTester.getChanges(80)
+	changes = revocationTester.getChanges(80, 1)
 	assert.Equal(t, "85:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -6656,17 +6645,15 @@ func TestRevocationScenario5(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
 	revocationTester.fillToSeq(25)
 
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "20:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(44)
 	revocationTester.removeRole("user", "foo")
@@ -6678,9 +6665,8 @@ func TestRevocationScenario5(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "ch1")
 	revocationTester.fillToSeq(80)
 
-	changes = revocationTester.getChanges(25)
+	changes = revocationTester.getChanges(25, 1)
 	assert.Equal(t, "75:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(84)
 	revocationTester.removeRoleChannel("foo", "ch1")
@@ -6688,9 +6674,8 @@ func TestRevocationScenario5(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 	revocationTester.fillToSeq(110)
 
-	changes = revocationTester.getChanges(80)
+	changes = revocationTester.getChanges(80, 1)
 	assert.Equal(t, "85:3", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -6706,17 +6691,15 @@ func TestRevocationScenario6(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
 	revocationTester.fillToSeq(25)
 
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "20:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(44)
 	revocationTester.removeRole("user", "foo")
@@ -6731,18 +6714,16 @@ func TestRevocationScenario6(t *testing.T) {
 
 	revocationTester.fillToSeq(90)
 
-	changes = revocationTester.getChanges(25)
+	changes = revocationTester.getChanges(25, 1)
 	assert.Equal(t, "55:3", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 
 	revocationTester.fillToSeq(94)
 	revocationTester.removeRole("user", "foo")
 	revocationTester.fillToSeq(110)
 
-	changes = revocationTester.getChanges(90)
+	changes = revocationTester.getChanges(90, 0)
 	assert.Equal(t, "90", changes.Last_Seq)
-	require.Len(t, changes.Results, 0)
 }
 
 func TestRevocationScenario7(t *testing.T) {
@@ -6757,17 +6738,15 @@ func TestRevocationScenario7(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
 	revocationTester.fillToSeq(25)
 
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "20:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(44)
 	revocationTester.removeRole("user", "foo")
@@ -6784,16 +6763,14 @@ func TestRevocationScenario7(t *testing.T) {
 
 	revocationTester.fillToSeq(100)
 
-	changes = revocationTester.getChanges(25)
+	changes = revocationTester.getChanges(25, 1)
 	assert.Equal(t, "45:3", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 
 	revocationTester.fillToSeq(110)
 
-	changes = revocationTester.getChanges(100)
+	changes = revocationTester.getChanges(100, 0)
 	assert.Equal(t, "100", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 }
 
 func TestRevocationScenario8(t *testing.T) {
@@ -6808,9 +6785,8 @@ func TestRevocationScenario8(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
@@ -6818,9 +6794,8 @@ func TestRevocationScenario8(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	revocationTester.fillToSeq(50)
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(54)
 	revocationTester.removeRoleChannel("foo", "ch1")
@@ -6834,9 +6809,8 @@ func TestRevocationScenario8(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	revocationTester.fillToSeq(110)
-	changes = revocationTester.getChanges(50)
+	changes = revocationTester.getChanges(50, 0)
 	assert.Equal(t, "50", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 }
 
 func TestRevocationScenario9(t *testing.T) {
@@ -6851,9 +6825,8 @@ func TestRevocationScenario9(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
@@ -6863,9 +6836,8 @@ func TestRevocationScenario9(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "ch1")
 
 	revocationTester.fillToSeq(60)
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(64)
 	revocationTester.addRole("user", "foo")
@@ -6877,9 +6849,8 @@ func TestRevocationScenario9(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	revocationTester.fillToSeq(110)
-	changes = revocationTester.getChanges(60)
+	changes = revocationTester.getChanges(60, 0)
 	assert.Equal(t, "60", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 }
 
 func TestRevocationScenario10(t *testing.T) {
@@ -6894,9 +6865,8 @@ func TestRevocationScenario10(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
@@ -6908,9 +6878,8 @@ func TestRevocationScenario10(t *testing.T) {
 	revocationTester.addRole("user", "foo")
 
 	revocationTester.fillToSeq(70)
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(74)
 	revocationTester.addRoleChannel("foo", "ch1")
@@ -6920,9 +6889,8 @@ func TestRevocationScenario10(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	revocationTester.fillToSeq(110)
-	changes = revocationTester.getChanges(70)
+	changes = revocationTester.getChanges(70, 0)
 	assert.Equal(t, "70", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 }
 
 func TestRevocationScenario11(t *testing.T) {
@@ -6937,9 +6905,8 @@ func TestRevocationScenario11(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
@@ -6953,9 +6920,8 @@ func TestRevocationScenario11(t *testing.T) {
 	revocationTester.addRoleChannel("foo", "ch1")
 
 	revocationTester.fillToSeq(80)
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "75:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(84)
 	revocationTester.removeRoleChannel("foo", "ch1")
@@ -6963,9 +6929,8 @@ func TestRevocationScenario11(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	revocationTester.fillToSeq(110)
-	changes = revocationTester.getChanges(80)
+	changes = revocationTester.getChanges(80, 1)
 	assert.Equal(t, "85:3", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -6981,9 +6946,8 @@ func TestRevocationScenario12(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
@@ -6999,17 +6963,15 @@ func TestRevocationScenario12(t *testing.T) {
 	revocationTester.removeRoleChannel("foo", "ch1")
 
 	revocationTester.fillToSeq(90)
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(94)
 	revocationTester.removeRole("user", "foo")
 
 	revocationTester.fillToSeq(110)
-	changes = revocationTester.getChanges(90)
+	changes = revocationTester.getChanges(90, 0)
 	assert.Equal(t, "90", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 }
 
 func TestRevocationScenario13(t *testing.T) {
@@ -7024,9 +6986,8 @@ func TestRevocationScenario13(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
@@ -7044,14 +7005,12 @@ func TestRevocationScenario13(t *testing.T) {
 	revocationTester.removeRole("user", "foo")
 
 	revocationTester.fillToSeq(100)
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(110)
-	changes = revocationTester.getChanges(100)
+	changes = revocationTester.getChanges(100, 0)
 	assert.Equal(t, "100", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 }
 
 func TestRevocationScenario14(t *testing.T) {
@@ -7066,24 +7025,21 @@ func TestRevocationScenario14(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revocationTester.addRoleChannel("foo", "ch1")
 
-	changes := revocationTester.getChanges(5)
+	changes := revocationTester.getChanges(5, 0)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 0)
 
 	revocationTester.fillToSeq(19)
 	revocationTester.addRole("user", "foo")
 
 	revocationTester.fillToSeq(25)
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "20:3", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	revocationTester.fillToSeq(44)
 	revocationTester.removeRole("user", "foo")
 
-	changes = revocationTester.getChanges(25)
+	changes = revocationTester.getChanges(25, 1)
 	assert.Equal(t, "45:3", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -7103,9 +7059,8 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 
 	// Skip to seq 10 then do pull since 4 to get doc
 	revocationTester.fillToSeq(10)
-	changes := revocationTester.getChanges(4)
+	changes := revocationTester.getChanges(4, 1)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	// Skip to seq 14 then revoke role from user
 	revocationTester.fillToSeq(14)
@@ -7116,9 +7071,8 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
 
 	// Get changes and ensure doc is revoked through ID-only revocation
-	changes = revocationTester.getChanges(10)
+	changes = revocationTester.getChanges(10, 1)
 	assert.Equal(t, "15:20", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }
 
@@ -7137,9 +7091,8 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
 	// Do pull to get doc
-	changes := revocationTester.getChanges(4)
+	changes := revocationTester.getChanges(4, 1)
 	assert.Equal(t, "5", changes.Last_Seq)
-	assert.Len(t, changes.Results, 1)
 
 	// Revoke channel from role at seq 8
 	revocationTester.fillToSeq(7)
@@ -7149,8 +7102,7 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{})
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
 
-	changes = revocationTester.getChanges(5)
+	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "8:10", changes.Last_Seq)
-	require.Len(t, changes.Results, 1)
 	assert.True(t, changes.Results[0].Revoked)
 }

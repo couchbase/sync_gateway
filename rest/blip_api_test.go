@@ -3079,7 +3079,7 @@ func TestRevocationMessage(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Wait for doc revision to come over
-	msg, ok := btc.WaitForBlipRevMessage("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	_, ok := btc.WaitForBlipRevMessage("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
 	require.True(t, ok)
 
 	// Remove role from user
@@ -3093,22 +3093,31 @@ func TestRevocationMessage(t *testing.T) {
 	err = btc.StartPullSince("false", "5", "false")
 	assert.NoError(t, err)
 
-	// Validate changes message is correctly formatted
-	// This serial targets the changes messages sent by Sync Gateway
-	msg, ok = btc.pullReplication.WaitForMessage(4)
+	err = rt.WaitForCondition(func() bool {
+		messages := btc.pullReplication.messages
+		count := 0
+		for _, msg := range messages {
+			if msg.Properties["Profile"] == "changes" {
+				count++
+			}
+			if count == 3 {
+				// Verify the deleted property in the changes message is "2" this indicated a revocation
+				var changesMessage [][]interface{}
+				err = msg.ReadJSONBody(&changesMessage)
+				require.NoError(t, err)
+
+				require.Len(t, changesMessage, 1)
+				require.Len(t, changesMessage[0], 4)
+				castedNum, ok := changesMessage[0][3].(json.Number)
+				assert.True(t, ok)
+				intDeleted, err := castedNum.Int64()
+				require.NoError(t, err)
+
+				return int(intDeleted) == 2
+			}
+		}
+		return false
+	})
+
 	assert.NoError(t, err)
-
-	// Verify the deleted property in the changes message is "2" this indicated a revocation
-	var changesMessage [][]interface{}
-	err = msg.ReadJSONBody(&changesMessage)
-	require.NoError(t, err)
-
-	require.Len(t, changesMessage, 1)
-	require.Len(t, changesMessage[0], 4)
-	castedNum, ok := changesMessage[0][3].(json.Number)
-	assert.True(t, ok)
-	intDeleted, err := castedNum.Int64()
-	require.NoError(t, err)
-
-	assert.Equal(t, 2, int(intDeleted))
 }
