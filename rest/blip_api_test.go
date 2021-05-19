@@ -3094,28 +3094,39 @@ func TestRevocationMessage(t *testing.T) {
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
-		messages := btc.pullReplication.messages
-		count := 0
+		messages := btc.pullReplication.GetMessages()
+
+		changesCount := 0
 		for _, msg := range messages {
 			if msg.Properties["Profile"] == "changes" {
-				count++
-			}
-			if count == 3 {
-				// Verify the deleted property in the changes message is "2" this indicated a revocation
-				var changesMessage [][]interface{}
-				err = msg.ReadJSONBody(&changesMessage)
-				require.NoError(t, err)
-
-				require.Len(t, changesMessage, 1)
-				require.Len(t, changesMessage[0], 4)
-				castedNum, ok := changesMessage[0][3].(json.Number)
-				assert.True(t, ok)
-				intDeleted, err := castedNum.Int64()
-				require.NoError(t, err)
-
-				return int(intDeleted) == 2
+				changesCount++
 			}
 		}
+
+		if changesCount != 4 {
+			return false
+		}
+
+		// Verify the deleted property in the changes message is "2" this indicated a revocation
+		for _, msg := range messages {
+			var changesMessage [][]interface{}
+			err = msg.ReadJSONBody(&changesMessage)
+			if err != nil {
+				continue
+			}
+
+			if len(changesMessage) != 1 || len(changesMessage[0]) != 4 {
+				continue
+			}
+
+			castedNum, ok := changesMessage[0][3].(json.Number)
+			assert.True(t, ok)
+			intDeleted, err := castedNum.Int64()
+			require.NoError(t, err)
+
+			return int(intDeleted) == 2
+		}
+
 		return false
 	})
 
