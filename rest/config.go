@@ -45,8 +45,10 @@ var (
 	DefaultServer                 = "walrus:"
 	DefaultMinimumTLSVersionConst = tls.VersionTLS12
 
-	// The value of defaultLogFilePath is populated by --defaultLogFilePath in ParseCommandLine()
+	// The value of defaultLogFilePath is populated by -defaultLogFilePath in ParseCommandLine()
 	defaultLogFilePath string
+	// The value of disablePersistentConfig is populated by -disable_persistent_config in ParseCommandLine()
+	disablePersistentConfig bool
 )
 
 const (
@@ -1015,6 +1017,11 @@ func (sc *ServerConfig) Redacted() (*ServerConfig, error) {
 // Reads the command line flags and the optional config file.
 func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig, error) {
 	flagSet := flag.NewFlagSet(args[0], handling)
+
+	// TODO: Change default to false when we're ready to enable 3.0/bootstrap/persistent config by default (once QE's existing tests are ready to handle it)
+	// TODO: Move to scoped variable when we have 2 code paths from ServerMain for 3.0 and legacy handling.
+	disablePersistentConfigFlag := flagSet.Bool("disable_persistent_config", true, "If set, disables persistent config and reads all configuration from a legacy config file.")
+
 	addr := flagSet.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flagSet.String("profileInterface", "", "Address to bind profile interface to")
@@ -1038,6 +1045,15 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 
 	if defaultLogFilePathFlag != nil {
 		defaultLogFilePath = *defaultLogFilePathFlag
+	}
+
+	if disablePersistentConfigFlag != nil {
+		disablePersistentConfig = *disablePersistentConfigFlag
+		if disablePersistentConfig {
+			base.Warnf("Running in legacy config mode (disable_persistent_config=true)")
+		} else {
+			base.Infof(base.KeyAll, "Running in persistent config mode")
+		}
 	}
 
 	if flagSet.NArg() > 0 {
