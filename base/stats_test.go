@@ -3,6 +3,8 @@ package base
 import (
 	"expvar"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func BenchmarkExpvarString(b *testing.B) {
@@ -99,6 +101,24 @@ func BenchmarkNewStatAddParallel(b *testing.B) {
 			test.ErrorCount.Add(1)
 		}
 	})
+}
+
+func TestSetIfMax(t *testing.T) {
+	sgwStats := NewSyncGatewayStats()
+
+	// Test an integer
+	sgwStats.GlobalStats.ResourceUtilization.ErrorCount.Set(10)
+	sgwStats.GlobalStats.ResourceUtilization.ErrorCount.SetIfMax(100)
+	assert.Equal(t, int64(100), sgwStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value())
+	sgwStats.GlobalStats.ResourceUtilization.ErrorCount.SetIfMax(50)
+	assert.Equal(t, int64(100), sgwStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value())
+
+	// Test a float
+	sgwStats.GlobalStats.ResourceUtilization.CpuPercentUtil.Set(10)
+	sgwStats.GlobalStats.ResourceUtilization.CpuPercentUtil.SetIfMax(100)
+	assert.Equal(t, float64(100), sgwStats.GlobalStats.ResourceUtilizationStats().CpuPercentUtil.Value())
+	sgwStats.GlobalStats.ResourceUtilization.CpuPercentUtil.SetIfMax(50)
+	assert.Equal(t, float64(100), sgwStats.GlobalStats.ResourceUtilizationStats().CpuPercentUtil.Value())
 }
 
 func initExpvarBaseEquivalent() *expvar.Map {
