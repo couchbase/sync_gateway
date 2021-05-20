@@ -183,6 +183,15 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 	paginationOptions.Since.Seq = 0
 	paginationOptions.Since.LowSeq = 0
 
+	if options.Since.TriggeredBy > 0 {
+		// Need to check if there has been a change since the triggeredByVal. If there has we need to start again from
+		// 0. Otherwise we can continue where we left off
+		highSeq, err := db.user.FindMostRecentRevocationSeq(singleChannelCache.ChannelName())
+		if highSeq > triggeredBy && err == nil {
+			paginationOptions.Since.Seq = options.Since.TriggeredBy
+		}
+	}
+
 	go func() {
 		defer base.FatalPanicHandler()
 		defer close(feed)

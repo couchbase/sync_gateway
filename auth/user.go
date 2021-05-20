@@ -12,6 +12,7 @@ package auth
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 
@@ -372,6 +373,24 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string, latestSequence uint
 	}
 
 	return resultPairs, nil
+}
+
+// Find latest revocation status. Used to determine whether we can resume a interrupted revocation feed or if we need
+// to start again from 0
+func (user *userImpl) FindMostRecentRevocationSeq(chanName string) (uint64, error) {
+	grantPeriods, err := user.ChannelGrantedPeriods(chanName, math.MaxUint64)
+	if err != nil {
+		return 0, err
+	}
+
+	highRevocationSeq := uint64(0)
+	for _, pair := range grantPeriods {
+		if pair.EndSeq > highRevocationSeq && pair.EndSeq != math.MaxUint64 {
+			highRevocationSeq = pair.EndSeq
+		}
+	}
+
+	return highRevocationSeq, nil
 }
 
 // Returns true if the given password is correct for this user, and the account isn't disabled.

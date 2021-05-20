@@ -129,6 +129,10 @@ type User interface {
 	// Obtains the period over which the user had access to the given channel. Either directly or via a role.
 	ChannelGrantedPeriods(chanName string, latestSequence uint64) ([]GrantHistorySequencePair, error)
 
+	// Find latest revocation status. Used to determine whether we can resume a interrupted revocation feed or if we need
+	// to start again from 0
+	FindMostRecentRevocationSeq(chanName string) (uint64, error)
+
 	// Every channel the user has access to, including those inherited from Roles.
 	InheritedChannels() ch.TimedSet
 
