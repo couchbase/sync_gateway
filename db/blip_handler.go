@@ -306,6 +306,9 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						if change.Revoked {
 							deleted += 2
 						}
+						if len(change.Removed) > 0 {
+							deleted += 4
+						}
 
 						changeRow = []interface{}{change.Seq, change.ID, item["rev"], deleted}
 						if deleted == 0 {

@@ -3093,62 +3093,72 @@ func TestRevocationMessage(t *testing.T) {
 
 	revID := rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "!"})
 
-	// Start a pull since 5 to receive revocation
+	revocationTester.fillToSeq(10)
+	revID = rt.createDocReturnRev(t, "doc1", revID, map[string]interface{}{})
+
+	// Start a pull since 5 to receive revocation and removal
 	err = btc.StartPullSince("false", "5", "false")
 	assert.NoError(t, err)
 
-	// Wait for doc1 rev - Used as a "changes complete" message
+	// Wait for doc1 rev2 - This is the last rev we expect so we can be sure replication is complete here
 	_, found := btc.WaitForRev("doc1", revID)
 	require.True(t, found)
 
-	// Wait for deleted message
-	err = rt.WaitForCondition(func() bool {
-		messages := btc.pullReplication.GetMessages()
+	messages := btc.pullReplication.GetMessages()
 
-		changesCount := 0
-		for _, msg := range messages {
-			if msg.Properties["Profile"] == "changes" {
-				changesCount++
-			}
-		}
+	testCases := []struct {
+		Name            string
+		DocID           string
+		ExpectedDeleted int64
+	}{
+		{
+			Name:            "Revocation",
+			DocID:           "doc",
+			ExpectedDeleted: int64(2),
+		},
+		{
+			Name:            "Removed",
+			DocID:           "doc1",
+			ExpectedDeleted: int64(4),
+		},
+	}
 
-		if changesCount != 4 {
-			return false
-		}
-
-		// Verify the deleted property in the changes message is "2" this indicated a revocation
-		for _, msg := range messages {
-			if msg.Properties["Profile"] == "changes" {
-				var changesMessage [][]interface{}
-				err = msg.ReadJSONBody(&changesMessage)
-				if err != nil {
-					continue
-				}
-
-				if len(changesMessage) != 2 || len(changesMessage[0]) != 4 {
-					continue
-				}
-
-				for _, changesMessages := range changesMessage {
-					if docName, ok := changesMessages[1].(string); !ok || docName != "doc" {
-						continue
-					}
-
-					castedNum, ok := changesMessages[3].(json.Number)
-					if !ok {
-						continue
-					}
-					intDeleted, err := castedNum.Int64()
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			// Verify the deleted property in the changes message is "2" this indicated a revocation
+			for _, msg := range messages {
+				if msg.Properties["Profile"] == "changes" {
+					var changesMessages [][]interface{}
+					err = msg.ReadJSONBody(&changesMessages)
 					if err != nil {
 						continue
 					}
-					return int(intDeleted) == 2
+
+					if len(changesMessages) != 2 || len(changesMessages[0]) != 4 {
+						continue
+					}
+
+					criteriaMet := false
+					for _, changesMessage := range changesMessages {
+						castedNum, ok := changesMessage[3].(json.Number)
+						if !ok {
+							continue
+						}
+						intDeleted, err := castedNum.Int64()
+						if err != nil {
+							continue
+						}
+						if docName, ok := changesMessage[1].(string); ok && docName == testCase.DocID && intDeleted == testCase.ExpectedDeleted {
+							criteriaMet = true
+							break
+						}
+					}
+
+					assert.True(t, criteriaMet)
 				}
 			}
-		}
-
-		return false
-	})
+		})
+	}
 
 	assert.NoError(t, err)
 }
