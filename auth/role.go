@@ -27,8 +27,8 @@ type roleImpl struct {
 	ExplicitChannels_ ch.TimedSet     `json:"admin_channels,omitempty"`
 	Channels_         ch.TimedSet     `json:"all_channels"`
 	Sequence_         uint64          `json:"sequence"`
-	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`
-	ChannelInvalSeq   uint64          `json:"channel_inval_seq,omitempty"`
+	ChannelHistory_   TimedSetHistory `json:"channel_history,omitempty"`   // Added to when a previously granted channel is revoked. Calculated inside of rebuildChannels.
+	ChannelInvalSeq   uint64          `json:"channel_inval_seq,omitempty"` // Sequence at which the channels were invalidated. Data remains in Channels_ for history calculation.
 	Deleted           bool            `json:"deleted,omitempty"`
 	vbNo              *uint16
 	cas               uint64

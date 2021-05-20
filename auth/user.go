@@ -39,8 +39,8 @@ type userImplBody struct {
 	OldPasswordHash_ interface{}     `json:"passwordhash,omitempty"` // For pre-beta compatibility
 	ExplicitRoles_   ch.TimedSet     `json:"explicit_roles,omitempty"`
 	RolesSince_      ch.TimedSet     `json:"rolesSince"`
-	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"`
-	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`
+	RoleInvalSeq     uint64          `json:"role_inval_seq,omitempty"` // Sequence at which the roles were invalidated. Data remains in RolesSince_ for history calculation.
+	RoleHistory_     TimedSetHistory `json:"role_history,omitempty"`   // Added to when a previously granted role is revoked. Calculated inside of rebuildRoles.
 
 	OldExplicitRoles_ []string `json:"admin_roles,omitempty"` // obsolete; declared for migration
 }
