@@ -1,4 +1,4 @@
-// Package clistruct provides the ability to assign command line flags to fields in structs that declare `cli` and `help` struct tags.
+// Package clistruct provides the ability to automatically assign command line flags to fields in structs that declare `json` and optionally `help` struct tags.
 package clistruct
 
 import (
