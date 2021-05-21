@@ -290,8 +290,8 @@ func (user *userImpl) RevokedChannels(since uint64) RevokedChannels {
 	return combinedRevokedChannels
 }
 
-// Calculate periods where user somehow had access to the given channel
-func (user *userImpl) ChannelGrantedPeriods(chanName string, latestSequence uint64) ([]GrantHistorySequencePair, error) {
+// Calculate periods where user had access to the given channel either directly or via a role
+func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequencePair, error) {
 	var resultPairs []GrantHistorySequencePair
 
 	// Grab user history and use this to begin the resultPairs
@@ -307,7 +307,7 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string, latestSequence uint
 		}
 		resultPairs = append(resultPairs, GrantHistorySequencePair{
 			StartSeq: chanInfo.Sequence,
-			EndSeq:   latestSequence,
+			EndSeq:   math.MaxUint64,
 		})
 	}
 
@@ -330,7 +330,7 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string, latestSequence uint
 		roleChannelHistory, ok := currentRole.ChannelHistory()[chanName]
 		if ok {
 			for _, roleChannelHistoryEntry := range roleChannelHistory.Entries {
-				compareAndAddPair(roleChannelHistoryEntry.StartSeq, currentRole.Sequence(), roleChannelHistoryEntry.EndSeq, latestSequence)
+				compareAndAddPair(roleChannelHistoryEntry.StartSeq, currentRole.Sequence(), roleChannelHistoryEntry.EndSeq, math.MaxUint64)
 			}
 		}
 
@@ -339,20 +339,20 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string, latestSequence uint
 			for _, channelInfo := range currentRole.Channels() {
 				resultPairs = append(resultPairs, GrantHistorySequencePair{
 					StartSeq: channelInfo.Sequence,
-					EndSeq:   latestSequence,
+					EndSeq:   math.MaxUint64,
 				})
 			}
 		}
 	}
 
-	// Iterate over roles the user has had
+	// Iterate over previous roles the user has had
 	for roleName, historyEntry := range user.RoleHistory() {
 		role, err := user.auth.GetRoleIncDeleted(roleName)
 		if err != nil {
 			return nil, err
 		}
 
-		// Iterate over history on old roles
+		// Iterate over channel history on old roles
 		roleChannelHistory, ok := role.ChannelHistory()[chanName]
 		if ok {
 			for _, roleChannelHistoryEntry := range roleChannelHistory.Entries {
@@ -366,31 +366,13 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string, latestSequence uint
 		if role.Channels().Contains(chanName) {
 			for _, activeChannel := range role.Channels() {
 				for _, roleHistoryEntry := range historyEntry.Entries {
-					compareAndAddPair(activeChannel.Sequence, roleHistoryEntry.StartSeq, latestSequence, roleHistoryEntry.EndSeq)
+					compareAndAddPair(activeChannel.Sequence, roleHistoryEntry.StartSeq, math.MaxUint64, roleHistoryEntry.EndSeq)
 				}
 			}
 		}
 	}
 
 	return resultPairs, nil
-}
-
-// Find latest revocation status. Used to determine whether we can resume a interrupted revocation feed or if we need
-// to start again from 0
-func (user *userImpl) FindMostRecentRevocationSeq(chanName string) (uint64, error) {
-	grantPeriods, err := user.ChannelGrantedPeriods(chanName, math.MaxUint64)
-	if err != nil {
-		return 0, err
-	}
-
-	highRevocationSeq := uint64(0)
-	for _, pair := range grantPeriods {
-		if pair.EndSeq > highRevocationSeq && pair.EndSeq != math.MaxUint64 {
-			highRevocationSeq = pair.EndSeq
-		}
-	}
-
-	return highRevocationSeq, nil
 }
 
 // Returns true if the given password is correct for this user, and the account isn't disabled.

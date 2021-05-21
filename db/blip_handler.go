@@ -308,6 +308,9 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						}
 
 						changeRow = []interface{}{change.Seq, change.ID, item["rev"], deleted}
+						if deleted == 0 {
+							changeRow = changeRow[0:3]
+						}
 
 					} else {
 						changeRow = []interface{}{change.Seq, change.ID, item["rev"], change.Deleted}

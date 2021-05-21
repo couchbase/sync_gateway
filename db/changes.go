@@ -172,7 +172,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 	}
 }
 
-func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, triggeredBy uint64) <-chan *ChangeEntry {
+func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, triggeredBy uint64, to string) <-chan *ChangeEntry {
 	feed := make(chan *ChangeEntry, 1)
 	sinceVal := options.Since.Seq
 
@@ -183,13 +183,10 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 	paginationOptions.Since.Seq = 0
 	paginationOptions.Since.LowSeq = 0
 
+	// If this replication has since been interrupted we'll be given a triggered by seq in the since request and can use
+	// this to resume.
 	if options.Since.TriggeredBy > 0 {
-		// Need to check if there has been a change since the triggeredByVal. If there has we need to start again from
-		// 0. Otherwise we can continue where we left off
-		highSeq, err := db.user.FindMostRecentRevocationSeq(singleChannelCache.ChannelName())
-		if highSeq > triggeredBy && err == nil {
-			paginationOptions.Since.Seq = options.Since.TriggeredBy
-		}
+		paginationOptions.Since.Seq = options.Since.Seq
 	}
 
 	go func() {
@@ -198,6 +195,11 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 		var itemsSent int
 		var lastSeq uint64
 
+		// Pagination based on ChannelQueryLimit.  This loop may terminated in three ways (see return statements):
+		//   1. Query returns fewer rows than ChannelQueryLimit
+		//   2. A limit is specified on the incoming ChangesOptions, and that limit is reached
+		//   3. An error is returned when calling singleChannelCache.GetChanges
+		//   4. An error is returned when calling wasDocInChannelAtSeq
 		for {
 			if requestLimit == 0 {
 				paginationOptions.Limit = queryLimit
@@ -207,7 +209,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 			}
 
 			// Get changes from 0 to latest seq
-			base.TracefCtx(db.Ctx, base.KeyChanges, "Querying channel %q for revocations with options: %+v", base.UD(singleChannelCache.ChannelName()), paginationOptions)
+			base.TracefCtx(db.Ctx, base.KeyChanges, "Querying channel %q for revocation with options: %+v", base.UD(singleChannelCache.ChannelName()), paginationOptions)
 			changes, err := singleChannelCache.GetChanges(paginationOptions)
 			if err != nil {
 				base.WarnfCtx(db.Ctx, "Error retrieving changes for channel %q: %v", base.UD(singleChannelCache.ChannelName()), err)
@@ -217,7 +219,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 				feed <- &change
 				return
 			}
-			base.DebugfCtx(db.Ctx, base.KeyChanges, "[changesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelName()))
+			base.DebugfCtx(db.Ctx, base.KeyChanges, "[revocationChangesFeed] Found %d changes for channel %q", len(changes), base.UD(singleChannelCache.ChannelName()))
 
 			sentChanges := 0
 			for _, logEntry := range changes {
@@ -229,12 +231,11 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 				idOnlyRevocation := false
 
 				// We need to check whether a change / document sequence is greater than since.
-				// If its less than we can continue. Otherwise:
-				// Because we only see the active revision of the document through the GetChanges query, we need to check
-				// whether the user had access to this document at the last since to know whether we need to  end a
-				// revocation message. We don't want to send a revocation message if the document has not seen before.
+				// If its less than we can send a standard revocation with Sequence ID as above.
+				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
+				// to the since value, and only send a revocation if that was the case
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.docRequiresRevocation(logEntry.DocID, singleChannelCache.ChannelName(), sinceVal)
+					requiresRevocation, err := db.wasDocInChannelAtSeq(logEntry.DocID, singleChannelCache.ChannelName(), sinceVal)
 					if err != nil {
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
@@ -253,11 +254,11 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelName(), idOnlyRevocation)
 				lastSeq = logEntry.Sequence
 
-				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq:%v in channel %s", seqID, base.UD(singleChannelCache.ChannelName()))
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq: %v in channel %s with omit revID %t", seqID, base.UD(singleChannelCache.ChannelName()), idOnlyRevocation)
 
 				select {
 				case <-options.Terminator:
-					base.DebugfCtx(db.Ctx, base.KeyChanges, "Revoked thing stopped")
+					base.DebugfCtx(db.Ctx, base.KeyChanges, "Terminating revocation channel feed %s", base.UD(to))
 					return
 
 				case feed <- &change:
@@ -282,7 +283,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
-func (db *Database) docRequiresRevocation(docID, chanName string, since uint64) (bool, error) {
+func (db *Database) wasDocInChannelAtSeq(docID, chanName string, since uint64) (bool, error) {
 
 	// Get doc sync data so we can verify the docs grant history
 	syncData, err := db.GetDocSyncData(docID)
@@ -290,14 +291,8 @@ func (db *Database) docRequiresRevocation(docID, chanName string, since uint64) 
 		return false, err
 	}
 
-	// Grab the latest sequence, this is used by the ChannelGrantedPeriods function for an 'endSeq' for current grants
-	latestSequence, err := db.sequences.lastSequence()
-	if err != nil {
-		return false, err
-	}
-
 	// Obtain periods where the channel we're interested in was accessible by the user
-	channelAccessPeriods, err := db.user.ChannelGrantedPeriods(chanName, latestSequence)
+	channelAccessPeriods, err := db.user.ChannelGrantedPeriods(chanName)
 	if err != nil {
 		return false, err
 	}
@@ -314,7 +309,7 @@ func (db *Database) docRequiresRevocation(docID, chanName string, since uint64) 
 				continue
 			}
 
-			// If there is some overlap we can quit out as we know user has had the doc and we need to revoke
+			// If there is some overlap we can quit out as we know user has had access to the doc at the since seq
 			start := base.MaxUint64(docHistoryEntry.Start, accessPeriod.StartSeq)
 			end := base.MinUint64(docHistoryEntry.End, accessPeriod.EndSeq)
 			if start < end || end == 0 {
@@ -436,11 +431,11 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 	return change
 }
 
-func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string, idOnly bool) ChangeEntry {
+func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string, omitRevID bool) ChangeEntry {
 	entry := makeChangeEntry(logEntry, seqID, channelName)
 	entry.Revoked = true
 
-	if idOnly {
+	if omitRevID {
 		entry.Changes = nil
 	}
 
@@ -504,7 +499,7 @@ func (db *Database) startChangeWaiter(chans base.Set) *ChangeWaiter {
 	return db.mutationListener.NewWaiterWithChannels(waitChans, db.user)
 }
 
-func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, options ChangesOptions) ([]<-chan *ChangeEntry, []string) {
+func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, options ChangesOptions) []<-chan *ChangeEntry {
 	userSeq := SequenceID{Seq: db.user.Sequence()}
 	if options.Since.Before(userSeq) {
 		name := db.user.Name()
@@ -521,9 +516,8 @@ func (db *Database) appendUserFeed(feeds []<-chan *ChangeEntry, names []string, 
 		userFeed <- &entry
 		close(userFeed)
 		feeds = append(feeds, userFeed)
-		names = append(names, entry.ID)
 	}
-	return feeds, names
+	return feeds
 }
 
 func (db *Database) checkForUserUpdates(userChangeCount uint64, changeWaiter *ChangeWaiter, isContinuous bool) (isChanged bool, newCount uint64, changedChannels channels.ChangedKeys, err error) {
@@ -666,7 +660,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 			// Populate the parallel arrays of channels and names:
 			feeds := make([]<-chan *ChangeEntry, 0, len(channelsSince))
-			names := make([]string, 0, len(channelsSince))
 
 			// Get read lock for late-arriving sequences, to avoid sending the same late arrival in
 			// two different changes iterations.  e.g. without the RLock, a late-arriving sequence
@@ -700,7 +693,6 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 							// when the user loses channel access
 							lateSequenceFeedHandler.active = true
 							feeds = append(feeds, latefeed)
-							names = append(names, fmt.Sprintf("late_%s", name))
 						}
 					} else {
 						// Initialize lateSequenceFeeds[name] for next iteration
@@ -752,20 +744,18 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 
 				feed := db.changesFeed(singleChannelCache, chanOpts, to)
 				feeds = append(feeds, feed)
-				names = append(names, name)
 
 			}
 			// If the user object has changed, create a special pseudo-feed for it:
 			if db.user != nil {
-				feeds, names = db.appendUserFeed(feeds, names, options)
+				feeds = db.appendUserFeed(feeds, options)
 			}
 
 			if options.Revocations {
 				channelsToRevoke := db.user.RevokedChannels(options.Since.SafeSequence())
 				for channel, triggeredBy := range channelsToRevoke {
-					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, triggeredBy)
+					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, triggeredBy, to)
 					feeds = append(feeds, feed)
-					names = append(names, channel)
 				}
 			}
 
