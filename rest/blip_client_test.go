@@ -20,6 +20,7 @@ type BlipTesterClientOpts struct {
 	ClientDeltas          bool // Support deltas on the client side
 	Username              string
 	Channels              []string
+	SendRevocations       bool
 	rejectDeltasForSrcRev string // a deltaSrc rev ID for which to reject a delta
 }
 
@@ -121,6 +122,14 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 				docID := changesReq[1].(string)
 				revID := changesReq[2].(string)
 
+				deletedInt := 0
+				if len(changesReq) > 3 {
+					castedDeleted, ok := changesReq[3].(float64)
+					if ok {
+						deletedInt = int(castedDeleted)
+					}
+				}
+
 				// Build up a list of revisions known to the client for each change
 				// The first element of each revision list must be the parent revision of the change
 				if revs, haveDoc := btc.docs[docID]; haveDoc {
@@ -133,6 +142,10 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					}
 
 					for knownRevID := range revs {
+						if deletedInt&2 == 2 {
+							continue
+						}
+
 						if revID == knownRevID {
 							knownRevs[i] = nil // Send back null to signal we don't need this change
 							continue outer
@@ -500,6 +513,11 @@ func (btc *BlipTesterClient) StartPullSince(continuous, since, activeOnly string
 	subChangesRequest.Properties[db.SubChangesSince] = since
 	subChangesRequest.Properties[db.SubChangesActiveOnly] = activeOnly
 	subChangesRequest.SetNoReply(true)
+
+	if btc.BlipTesterClientOpts.SendRevocations {
+		subChangesRequest.Properties[db.SubChangesRevocations] = "true"
+	}
+
 	if err := btc.pullReplication.sendMsg(subChangesRequest); err != nil {
 		return err
 	}

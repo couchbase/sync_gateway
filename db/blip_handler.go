@@ -296,9 +296,27 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 
 			if !strings.HasPrefix(change.ID, "_") {
 				for _, item := range change.Changes {
-					changeRow := []interface{}{change.Seq, change.ID, item["rev"], change.Deleted}
-					if !change.Deleted {
-						changeRow = changeRow[0:3]
+
+					var changeRow []interface{}
+					if bh.db.DatabaseContext.Options.UnsupportedOptions.ForceBLIPV3 {
+						deleted := 0
+						if change.Deleted {
+							deleted += 1
+						}
+						if change.Revoked {
+							deleted += 2
+						}
+
+						changeRow = []interface{}{change.Seq, change.ID, item["rev"], deleted}
+						if deleted == 0 {
+							changeRow = changeRow[0:3]
+						}
+
+					} else {
+						changeRow = []interface{}{change.Seq, change.ID, item["rev"], change.Deleted}
+						if !change.Deleted {
+							changeRow = changeRow[0:3]
+						}
 					}
 					pendingChanges = append(pendingChanges, changeRow)
 					if err := sendPendingChangesAt(opts.batchSize); err != nil {
