@@ -127,30 +127,25 @@ func assignFlagToStructFieldVar(fs *flag.FlagSet, fieldValue reflect.Value, flag
 	// If v is nil, create a flag var and assign it to the struct
 	// If v is not nil, bind the flag to the variable in the struct
 
-	i := fieldValue.Interface()
-
-	// wrappers for flag.Value/fs.Var handling
-	switch v := i.(type) {
-	// Implement wrapper types in flag_value_wrappers.go for common types and wrap them here.
+	switch v := fieldValue.Interface().(type) {
+	// These common types have flag wrappers from flag_value_wrappers.go
 	case *[]string:
 		if v == nil {
 			tmp := make(stringSliceValue, 0)
-			i = &tmp
 			fieldValue.Set(reflect.ValueOf((*[]string)(&tmp)))
+			fs.Var(&tmp, flagName, flagHelp)
 		} else {
-			i = (*stringSliceValue)(v)
+			fs.Var((*stringSliceValue)(v), flagName, flagHelp)
 		}
 	case *json.Number:
 		if v == nil {
 			tmp := jsonNumberFlagValue("0")
-			i = &tmp
 			fieldValue.Set(reflect.ValueOf((*json.Number)(&tmp)))
+			fs.Var(&tmp, flagName, flagHelp)
 		} else {
-			i = (*jsonNumberFlagValue)(v)
+			fs.Var((*jsonNumberFlagValue)(v), flagName, flagHelp)
 		}
-	}
-
-	switch v := i.(type) {
+	// All below types are natively handled by the flag package.
 	case flag.Value:
 		fs.Var(v, flagName, flagHelp)
 	case *time.Duration:
