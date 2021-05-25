@@ -153,9 +153,10 @@ var (
 	}
 
 	// Default warning thresholds
-	DefaultWarnThresholdXattrSize      = 0.9 * float64(couchbaseMaxSystemXattrSize)
-	DefaultWarnThresholdChannelsPerDoc = uint32(50)
-	DefaultWarnThresholdGrantsPerDoc   = uint32(50)
+	DefaultWarnThresholdXattrSize       = 0.9 * float64(couchbaseMaxSystemXattrSize)
+	DefaultWarnThresholdChannelsPerDoc  = uint32(50)
+	DefaultWarnThresholdChannelsPerUser = uint32(50000)
+	DefaultWarnThresholdGrantsPerDoc    = uint32(50)
 
 	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
 	ErrUnknownField = errors.New("unrecognized JSON field")
