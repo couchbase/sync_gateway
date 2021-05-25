@@ -310,13 +310,13 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					if bh.db.DatabaseContext.Options.UnsupportedOptions.ForceBLIPV3 {
 						deletedFlags := changesDeletedFlag(0)
 						if change.Deleted {
-							deletedFlags += changesDeletedFlagDeleted
+							deletedFlags |= changesDeletedFlagDeleted
 						}
 						if change.Revoked {
-							deletedFlags += changesDeletedFlagRevoked
+							deletedFlags |= changesDeletedFlagRevoked
 						}
 						if len(change.Removed) > 0 {
-							deletedFlags += changesDeletedFlagRemoved
+							deletedFlags |= changesDeletedFlagRemoved
 						}
 
 						changeRow = []interface{}{change.Seq, change.ID, item["rev"], deletedFlags}
