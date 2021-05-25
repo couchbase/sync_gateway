@@ -8,18 +8,12 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
-const (
-	// blipCBMobileReplication is the AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
-	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
-	blipCBMobileReplication = "CBMobile_2"
-)
-
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
 func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context) {
 	if id == "" {
-		bc = blip.NewContext(blipCBMobileReplication)
+		bc = blip.NewContext(base.BlipCBMobileReplicationV2, base.BlipCBMobileReplicationV3)
 	} else {
-		bc = blip.NewContextCustomID(id, blipCBMobileReplication)
+		bc = blip.NewContextCustomID(id, base.BlipCBMobileReplicationV2, base.BlipCBMobileReplicationV3)
 	}
 
 	bc.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)

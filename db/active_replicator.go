@@ -4,11 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/pkg/errors"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -267,7 +266,14 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		config.Header.Add("Authorization", "Basic "+base64UserInfo(basicAuthCreds))
 	}
 
-	return blipContext.DialConfig(config)
+	// Ideally we want to talk using V3 so we should try this first. If the host only supports V2 we will receive a
+	// websocket.ErrorBadStatus
+	sender, err := blipContext.DialConfig(config, base.BlipCBMobileReplicationV3)
+	if !errors.Is(err, websocket.ErrBadStatus) {
+		return sender, err
+	}
+
+	return blipContext.DialConfig(config, base.BlipCBMobileReplicationV2)
 }
 
 // base64UserInfo returns the base64 encoded version of the given UserInfo.

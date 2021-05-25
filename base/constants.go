@@ -130,6 +130,13 @@ const (
 
 	// Replication filter constants
 	ByChannelFilter = "sync_gateway/bychannel"
+
+	// Blip Context SubProtocols
+
+	// blipCBMobileReplication is the AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
+	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
+	BlipCBMobileReplicationV2 = "CBMobile_2"
+	BlipCBMobileReplicationV3 = "CBMobile_3"
 )
 
 const (
