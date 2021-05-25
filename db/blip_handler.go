@@ -249,6 +249,15 @@ type sendChangesOptions struct {
 	ignoreNoConflicts bool
 }
 
+type changesDeletedFlag uint
+
+const (
+	// Bitfield flags used to build changes deleted property below
+	changesDeletedFlagDeleted changesDeletedFlag = 0b001
+	changesDeletedFlagRevoked changesDeletedFlag = 0b010
+	changesDeletedFlagRemoved changesDeletedFlag = 0b100
+)
+
 // Sends all changes since the given sequence
 func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (isComplete bool) {
 	defer func() {
@@ -299,19 +308,19 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 
 					var changeRow []interface{}
 					if bh.db.DatabaseContext.Options.UnsupportedOptions.ForceBLIPV3 {
-						deleted := 0
+						deletedFlags := changesDeletedFlag(0)
 						if change.Deleted {
-							deleted += 1
+							deletedFlags += changesDeletedFlagDeleted
 						}
 						if change.Revoked {
-							deleted += 2
+							deletedFlags += changesDeletedFlagRevoked
 						}
 						if len(change.Removed) > 0 {
-							deleted += 4
+							deletedFlags += changesDeletedFlagRemoved
 						}
 
-						changeRow = []interface{}{change.Seq, change.ID, item["rev"], deleted}
-						if deleted == 0 {
+						changeRow = []interface{}{change.Seq, change.ID, item["rev"], deletedFlags}
+						if deletedFlags == 0 {
 							changeRow = changeRow[0:3]
 						}
 
