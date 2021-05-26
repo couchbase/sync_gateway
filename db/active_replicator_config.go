@@ -75,9 +75,6 @@ type ActiveReplicatorConfig struct {
 	// Delta sync enabled
 	DeltasEnabled bool
 
-	// Enables the auto purge behaviour which defines whether revoked documents should be purged
-	EnableAutoPurge bool
-
 	// InsecureSkipVerify determines whether the TLS certificate verification should be
 	// disabled during replication. TLS certificate verification is enabled by default.
 	InsecureSkipVerify bool
@@ -170,10 +167,6 @@ func (arc *ActiveReplicatorConfig) Equals(other *ActiveReplicatorConfig) bool {
 	}
 
 	if arc.Continuous != other.Continuous {
-		return false
-	}
-
-	if arc.EnableAutoPurge != other.EnableAutoPurge {
 		return false
 	}
 

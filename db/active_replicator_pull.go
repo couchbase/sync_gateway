@@ -79,7 +79,7 @@ func (apr *ActivePullReplicator) _connect() error {
 		DocIDs:         apr.config.DocIDs,
 		ActiveOnly:     apr.config.ActiveOnly,
 		clientType:     clientTypeSGR2,
-		Revocations:    apr.config.EnableAutoPurge,
+		Revocations:    apr.config.PurgeOnRemoval,
 	}
 
 	if err := subChangesRequest.Send(apr.blipSender); err != nil {
