@@ -205,12 +205,12 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 
 		// Now update the Principal object from the properties in the request, first the channels:
 		if updatedChannels.UpdateAtSequence(newInfo.ExplicitChannels, nextSeq) {
-			princ.SetExplicitChannels(updatedChannels)
+			princ.SetExplicitChannels(updatedChannels, nextSeq)
 		}
 
 		if isUser {
 			if updatedRoles.UpdateAtSequence(base.SetFromArray(newInfo.ExplicitRoleNames), nextSeq) {
-				user.SetExplicitRoles(updatedRoles)
+				user.SetExplicitRoles(updatedRoles, nextSeq)
 			}
 		}
 		err = authenticator.Save(princ)

@@ -751,7 +751,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				feeds = db.appendUserFeed(feeds, options)
 			}
 
-			if options.Revocations {
+			if options.Revocations && db.user != nil {
 				channelsToRevoke := db.user.RevokedChannels(options.Since.SafeSequence())
 				for channel, triggeredBy := range channelsToRevoke {
 					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, triggeredBy, to)

@@ -1317,7 +1317,7 @@ func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
 	// Create a user with an explicit role grant for role1
 	user, err := authenticator.NewUser("user1", "letmein", nil)
-	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)})
+	user.SetExplicitRoles(channels.TimedSet{"role1": channels.NewVbSimpleSequence(1)}, 1)
 	err = authenticator.Save(user)
 	assert.NoError(t, err)
 
@@ -7104,5 +7104,68 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 
 	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "8:10", changes.Last_Seq)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationWithAdminChannels(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A"], "password": "letmein"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	changes, err := rt.WaitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(changes.Results))
+
+	assert.Equal(t, "doc", changes.Results[1].ID)
+	assert.False(t, changes.Results[0].Revoked)
+
+	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": [], "password": "letmein"}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 2), "user", false)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(changes.Results))
+
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationWithAdminRoles(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels": ["A"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": ["role"], "password": "letmein"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	changes, err := rt.WaitForChanges(2, "/db/_changes?since=0&revocations=true", "user", false)
+	require.NoError(t, err)
+	assert.Equal(t, 2, len(changes.Results))
+
+	assert.Equal(t, "doc", changes.Results[1].ID)
+	assert.False(t, changes.Results[0].Revoked)
+
+	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": []}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 2), "user", false)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(changes.Results))
+
+	assert.Equal(t, "doc", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 }

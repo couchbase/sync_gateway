@@ -235,7 +235,7 @@ func (rt *RestTester) SetAdminParty(partyTime bool) {
 	if partyTime {
 		chans = channels.AtSequence(base.SetOf(channels.UserStarChannel), 1)
 	}
-	guest.SetExplicitChannels(chans)
+	guest.SetExplicitChannels(chans, 1)
 	_ = a.Save(guest)
 }
 

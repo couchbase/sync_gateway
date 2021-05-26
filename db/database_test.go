@@ -279,7 +279,7 @@ func TestGetDeleted(t *testing.T) {
 	authenticator := auth.NewAuthenticator(db.Bucket, db)
 	db.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
-	db.user.SetExplicitChannels(nil)
+	db.user.SetExplicitChannels(nil, 1)
 
 	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
 	assert.NoError(t, err, "Get1xRevBody")
@@ -347,7 +347,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 
 	var chans channels.TimedSet
 	chans = channels.AtSequence(base.SetOf("ABC"), 1)
-	db.user.SetExplicitChannels(chans)
+	db.user.SetExplicitChannels(chans, 1)
 
 	// Get the removal revision with its history; equivalent to GET with ?revs=true
 	body, err = db.Get1xRevBody("doc1", rev2id, true, nil)
@@ -1388,7 +1388,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
 
 	user, _ := authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
-	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)})
+	user.SetExplicitRoles(channels.TimedSet{"animefan": channels.NewVbSimpleSequence(1), "tumblr": channels.NewVbSimpleSequence(1)}, 1)
 	assert.NoError(t, authenticator.Save(user), "Save")
 
 	body := Body{"users": []string{"naomi"}, "userChannels": []string{"Hulu"}}

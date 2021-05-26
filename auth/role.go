@@ -173,9 +173,9 @@ func (role *roleImpl) ExplicitChannels() ch.TimedSet {
 	return role.ExplicitChannels_
 }
 
-func (role *roleImpl) SetExplicitChannels(channels ch.TimedSet) {
+func (role *roleImpl) SetExplicitChannels(channels ch.TimedSet, invalSeq uint64) {
 	role.ExplicitChannels_ = channels
-	role.setChannels(nil)
+	role.SetChannelInvalSeq(invalSeq)
 }
 
 func (role *roleImpl) GetChannelInvalSeq() uint64 {

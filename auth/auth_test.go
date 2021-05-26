@@ -379,7 +379,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
 	auth := NewAuthenticator(bucket, &computer)
 	user, _ := auth.NewUser("testUser", "letmein", nil)
-	user.SetExplicitRoles(ch.TimedSet{"role3": ch.NewVbSimpleSequence(1), "role1": ch.NewVbSimpleSequence(1)})
+	user.SetExplicitRoles(ch.TimedSet{"role3": ch.NewVbSimpleSequence(1), "role1": ch.NewVbSimpleSequence(1)}, 1)
 	err := auth.Save(user)
 	assert.Equal(t, nil, err)
 
@@ -500,7 +500,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 	// Create user
 	auth := NewAuthenticator(bucket, nil)
 	user, _ := auth.NewUser(username, password, ch.SetOf(t, "123", "456"))
-	user.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)})
+	user.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)}, 1)
 	createErr := auth.Save(user)
 	if createErr != nil {
 		t.Errorf("Error creating user: %v", createErr)
