@@ -385,27 +385,6 @@ func (c *Collection) Dump() {
 	return
 }
 
-// xattrStore
-
-func (c *Collection) WriteCasWithXattr(k string, xattrKey string, exp uint32, cas uint64, v interface{}, xv interface{}) (casOut uint64, err error) {
-	return 0, errors.New("WriteCasWithXattr not implemented")
-}
-func (c *Collection) WriteWithXattr(k string, xattrKey string, exp uint32, cas uint64, value []byte, xattrValue []byte, isDelete bool, deleteBody bool) (casOut uint64, err error) {
-	return 0, errors.New("WriteWithXattr not implemented")
-}
-func (c *Collection) GetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
-	return 0, errors.New("GetXattr not implemented")
-}
-func (c *Collection) GetWithXattr(k string, xattrKey string, userXattrKey string, rv interface{}, xv interface{}, uxv interface{}) (cas uint64, err error) {
-	return 0, errors.New("GetWithXattr not implemented")
-}
-func (c *Collection) DeleteWithXattr(k string, xattrKey string) error {
-	return errors.New("DeleteWithXattr not implemented")
-}
-func (c *Collection) WriteUpdateWithXattr(k string, xattrKey string, userXattrKey string, exp uint32, previous *sgbucket.BucketDocument, callback sgbucket.WriteUpdateWithXattrFunc) (casOut uint64, err error) {
-	return 0, errors.New("WriteUpdateWithXattr not implemented")
-}
-
 func (b *Collection) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
 	return errors.New("SubdocInsert not implemented")
 }
@@ -436,4 +415,34 @@ func (c *Collection) IsError(err error, errorType sgbucket.DataStoreErrorType) b
 	default:
 		return false
 	}
+}
+
+// Recoverable errors or timeouts trigger retry for gocb v2 read operations
+func (c *Collection) isRecoverableReadError(err error) bool {
+
+	if err == nil {
+		return false
+	}
+
+	if isGoCBTimeoutError(err) {
+		return true
+	}
+
+	if errors.Is(err, gocb.ErrTemporaryFailure) || errors.Is(err, gocb.ErrOverload) {
+		return true
+	}
+	return false
+}
+
+// Recoverable errors trigger retry for gocb v2 write operations
+func (c *Collection) isRecoverableWriteError(err error) bool {
+
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, gocb.ErrTemporaryFailure) || errors.Is(err, gocb.ErrOverload) {
+		return true
+	}
+	return false
 }

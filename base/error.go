@@ -43,6 +43,7 @@ var (
 	ErrUpdateCancel          = &sgError{"Cancel update"}
 	ErrImportCancelledPurged = &sgError{"Import Cancelled Due to Purge"}
 	ErrChannelFeed           = &sgError{"Error while building channel feed"}
+	ErrXattrNotFound         = &sgError{"Xattr Not Found"}
 
 	// ErrPartialViewErrors is returned if the view call contains any partial errors.
 	// This is more of a warning, and inspecting ViewResult.Errors is required for detail.
@@ -182,16 +183,6 @@ func IsDocNotFoundError(err error) bool {
 	default:
 		return false
 	}
-}
-
-// Check if this is a SubDocPathNotFound error
-func IsSubDocPathNotFound(err error) bool {
-
-	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
-	if ok {
-		return subdocMutateErr.Err == gocb.ErrSubDocPathNotFound
-	}
-	return false
 }
 
 func IsSubDocPathExistsError(err error) bool {

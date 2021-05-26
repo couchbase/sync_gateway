@@ -290,9 +290,9 @@ func IsPowerOfTwo(n uint16) bool {
 //of seconds in 30 days); if the number sent by a client is larger than
 //that, the server will consider it to be real Unix time value rather
 //than an offset from current time.
-//
-//This function takes a ttl as a Duration and returns an int
-//formatted as required by CBS expiry processing
+
+// DurationToCbsExpiry takes a ttl as a Duration and returns an int
+// formatted as required by CBS expiry processing
 func DurationToCbsExpiry(ttl time.Duration) uint32 {
 	if ttl <= kMaxDeltaTtlDuration {
 		return uint32(ttl.Seconds())
@@ -301,18 +301,28 @@ func DurationToCbsExpiry(ttl time.Duration) uint32 {
 	}
 }
 
-//This function takes a ttl in seconds and returns an int
-//formatted as required by CBS expiry processing
+// SecondsToCbsExpiry takes a ttl in seconds and returns an int
+// formatted as required by CBS expiry processing
 func SecondsToCbsExpiry(ttl int) uint32 {
 	return DurationToCbsExpiry(time.Duration(ttl) * time.Second)
 }
 
-//This function takes a CBS expiry and returns as a time
+// CbsExpiryToTime takes a CBS expiry and returns as a time
 func CbsExpiryToTime(expiry uint32) time.Time {
 	if expiry <= kMaxDeltaTtl {
 		return time.Now().Add(time.Duration(expiry) * time.Second)
 	} else {
 		return time.Unix(int64(expiry), 0)
+	}
+}
+
+// CbsExpiryToDuration takes a CBS expiry and returns as a duration
+func CbsExpiryToDuration(expiry uint32) time.Duration {
+	if expiry <= kMaxDeltaTtl {
+		return time.Duration(expiry) * time.Second
+	} else {
+		expiryTime := time.Unix(int64(expiry), 0)
+		return time.Until(expiryTime)
 	}
 }
 
