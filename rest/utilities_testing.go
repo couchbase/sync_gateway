@@ -843,7 +843,7 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 		}
 	}
 
-	bt.sender, err = bt.blipContext.DialConfig(config, base.BlipCBMobileReplicationV3)
+	bt.sender, err = bt.blipContext.DialConfig(config)
 	if err != nil {
 		return nil, err
 	}

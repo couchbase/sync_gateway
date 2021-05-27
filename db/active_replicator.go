@@ -266,8 +266,7 @@ func blipSync(target url.URL, blipContext *blip.Context, insecureSkipVerify bool
 		config.Header.Add("Authorization", "Basic "+base64UserInfo(basicAuthCreds))
 	}
 
-	// Ideally we want to talk using V3 so this is supplied first and then V2.
-	return blipContext.DialConfig(config, base.BlipCBMobileReplicationV3, base.BlipCBMobileReplicationV2)
+	return blipContext.DialConfig(config)
 }
 
 // base64UserInfo returns the base64 encoded version of the given UserInfo.

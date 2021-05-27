@@ -10,10 +10,13 @@ import (
 
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
 func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context) {
+	// V3 is first here as it is the preferred communication method
+	// In the host case this means SGW can accept both V3 and V2 clients
+	// In the client case this means we prefer V3 but can fallback to V2
 	if id == "" {
-		bc = blip.NewContext(base.BlipCBMobileReplicationV2, base.BlipCBMobileReplicationV3)
+		bc = blip.NewContext(base.BlipCBMobileReplicationV3, base.BlipCBMobileReplicationV2)
 	} else {
-		bc = blip.NewContextCustomID(id, base.BlipCBMobileReplicationV2, base.BlipCBMobileReplicationV3)
+		bc = blip.NewContextCustomID(id, base.BlipCBMobileReplicationV3, base.BlipCBMobileReplicationV2)
 	}
 
 	bc.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
