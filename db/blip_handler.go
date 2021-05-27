@@ -354,7 +354,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []interface{} {
 	var changeRow []interface{}
 
-	if bh.db.DatabaseContext.Options.UnsupportedOptions.ForceBLIPV3 {
+	if bh.blipContext.ActiveProtocol() == base.BlipCBMobileReplicationV3 {
 		deletedFlags := changesDeletedFlag(0)
 		if change.Deleted {
 			deletedFlags |= changesDeletedFlagDeleted
