@@ -828,7 +828,10 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	u.Scheme = "ws"
 
 	// Make BLIP/Websocket connection
-	bt.blipContext = db.NewSGBlipContext(context.Background(), "")
+	bt.blipContext, err = db.NewSGBlipContext(context.Background(), "")
+	if err != nil {
+		return nil, err
+	}
 
 	origin := "http://localhost" // TODO: what should be used here?
 
