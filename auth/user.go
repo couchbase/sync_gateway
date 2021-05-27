@@ -161,9 +161,9 @@ func (user *userImpl) ExplicitRoles() ch.TimedSet {
 	return user.ExplicitRoles_
 }
 
-func (user *userImpl) SetExplicitRoles(roles ch.TimedSet) {
+func (user *userImpl) SetExplicitRoles(roles ch.TimedSet, invalSeq uint64) {
 	user.ExplicitRoles_ = roles
-	user.setRolesSince(nil) // invalidate persistent cache of role names
+	user.SetRoleInvalSeq(invalSeq)
 }
 
 func (user *userImpl) GetRoleInvalSeq() uint64 {

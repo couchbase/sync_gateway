@@ -31,7 +31,7 @@ type Principal interface {
 	ExplicitChannels() ch.TimedSet
 
 	// Sets the explicit channels the Principal has access to.
-	SetExplicitChannels(ch.TimedSet)
+	SetExplicitChannels(ch.TimedSet, uint64)
 
 	GetChannelInvalSeq() uint64
 
@@ -110,7 +110,7 @@ type User interface {
 	ExplicitRoles() ch.TimedSet
 
 	// Sets the explicit roles the user belongs to.
-	SetExplicitRoles(ch.TimedSet)
+	SetExplicitRoles(ch.TimedSet, uint64)
 
 	GetRoleInvalSeq() uint64
 
