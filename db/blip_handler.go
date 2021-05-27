@@ -495,20 +495,19 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 			output.Write([]byte(","))
 		}
 
-		// TODO: Change type when CBG-1426 is in
-		deletedFlags := int64(0)
+		deletedFlags := changesDeletedFlag(0)
 		// TODO: Add check for Blip Protocol Version when CBG-1435 is in
 		if len(change) > 3 {
 			var err error
-			deletedFlags, err = change[3].(json.Number).Int64()
+			deletedIntFlag, err := change[3].(json.Number).Int64()
 			if err != nil {
 				base.InfofCtx(bh.loggingCtx, base.KeyAll, "Failed to parse deletedFlags: %v", err)
 				continue
 			}
+			deletedFlags = changesDeletedFlag(deletedIntFlag)
 		}
 
-		// TODO: Change numbers when CBG-1426 is in
-		if missing == nil && deletedFlags&2 != 0 && deletedFlags&4 != 0 {
+		if missing == nil && deletedFlags&changesDeletedFlagRevoked != 0 && deletedFlags&deletedFlags&changesDeletedFlagRemoved != 0 {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
 			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
