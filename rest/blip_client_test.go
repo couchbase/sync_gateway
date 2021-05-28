@@ -362,6 +362,11 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 		response.SetBody(attachment)
 	}
 
+	btr.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
+		// TODO: Support norev messages
+		btr.storeMessage(msg)
+	}
+
 	btr.bt.blipContext.DefaultHandler = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 		base.Panicf("Unknown profile: %s caught by client DefaultHandler - msg: %#v", msg.Profile(), msg)

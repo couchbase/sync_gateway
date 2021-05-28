@@ -3162,3 +3162,78 @@ func TestRevocationMessage(t *testing.T) {
 
 	assert.NoError(t, err)
 }
+
+func TestRevocationNoRev(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:        "user",
+		Channels:        []string{"*"},
+		ClientDeltas:    false,
+		SendRevocations: true,
+	})
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	// Add channel to role and role to user
+	revocationTester.addRoleChannel("foo", "A")
+	revocationTester.addRole("user", "foo")
+
+	// Skip to seq 4 and then create doc in channel A
+	revocationTester.fillToSeq(4)
+	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
+
+	// OneShot pull to grab doc
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok := btc.WaitForBlipRevMessage("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	require.True(t, ok)
+
+	// Remove role from user
+	revocationTester.removeRole("user", "foo")
+
+	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A", "val": "mutate"})
+
+	waitRevID := rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
+
+	changes, err := rt.WaitForChanges(3, "/db/_changes?since=5", "user", true)
+	require.NoError(t, err)
+	fmt.Println(changes)
+
+	err = btc.StartPullSince("false", "5", "false")
+	assert.NoError(t, err)
+
+	_, ok = btc.WaitForRev("docmarker", waitRevID)
+	require.True(t, ok)
+
+	messages := btc.pullReplication.GetMessages()
+
+	var highestMsgSeq uint32
+	var highestSeqMsg blip.Message
+	// Grab most recent changes message
+	for _, message := range messages {
+		messageBody, err := message.Body()
+		require.NoError(t, err)
+		if message.Properties["Profile"] == db.MessageChanges && string(messageBody) != "null" {
+			if highestMsgSeq < uint32(message.SerialNumber()) {
+				highestMsgSeq = uint32(message.SerialNumber())
+				highestSeqMsg = message
+			}
+		}
+	}
+
+	var messageBody []interface{}
+	err = highestSeqMsg.ReadJSONBody(&messageBody)
+	require.NoError(t, err)
+	require.Len(t, messageBody, 2)
+	require.Len(t, messageBody[0], 4)
+
+	deletedFlag, err := messageBody[0].([]interface{})[3].(json.Number).Int64()
+	require.NoError(t, err)
+
+	assert.Equal(t, deletedFlag, int64(2))
+}
