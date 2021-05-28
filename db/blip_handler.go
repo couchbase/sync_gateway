@@ -315,7 +315,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				// In the event we were unable to determine what the rev ID was at the time of revocation we have to
 				// send a revocation changes message but without a revID present. This will result in change.Changes
 				// being empty so we need to have this special case.
-				if len(change.Changes) == 0 && change.Revoked == true{
+				if len(change.Changes) == 0 && change.Revoked == true {
 					changeRow := bh.buildChangesRow(change, "")
 					pendingChanges = append(pendingChanges, changeRow)
 					if err := sendPendingChangesAt(opts.batchSize); err != nil {
@@ -351,7 +351,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	return !forceClose
 }
 
-func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string)[]interface{}{
+func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []interface{} {
 	var changeRow []interface{}
 
 	if bh.db.DatabaseContext.Options.UnsupportedOptions.ForceBLIPV3 {
