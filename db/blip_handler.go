@@ -496,18 +496,25 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		}
 
 		deletedFlags := changesDeletedFlag(0)
-		// TODO: Add check for Blip Protocol Version when CBG-1435 is in
 		if len(change) > 3 {
-			var err error
-			deletedIntFlag, err := change[3].(json.Number).Int64()
-			if err != nil {
-				base.InfofCtx(bh.loggingCtx, base.KeyAll, "Failed to parse deletedFlags: %v", err)
+			switch v := change[3].(type){
+			case json.Number:
+				deletedIntFlag, err := change[3].(json.Number).Int64()
+				if err != nil {
+					base.ErrorfCtx(bh.loggingCtx,  "Failed to parse deletedFlags: %v", err)
+					continue
+				}
+				deletedFlags = changesDeletedFlag(deletedIntFlag)
+			case bool:
+				deletedFlags = changesDeletedFlagDeleted
+			default:
+				base.ErrorfCtx(bh.loggingCtx, "Unknown type for deleted field in changes message: %T", v)
 				continue
 			}
-			deletedFlags = changesDeletedFlag(deletedIntFlag)
+
 		}
 
-		if missing == nil && deletedFlags&changesDeletedFlagRevoked != 0 && deletedFlags&deletedFlags&changesDeletedFlagRemoved != 0 {
+		if missing == nil && deletedFlags&changesDeletedFlagRevoked == 0 && deletedFlags&deletedFlags&changesDeletedFlagRemoved == 0 {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
 			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
