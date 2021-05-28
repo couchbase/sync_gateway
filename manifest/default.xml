@@ -98,7 +98,7 @@
 
   <project name="goutils" path="godeps/src/github.com/couchbase/goutils" remote="couchbase" revision="f98adca8eb365032cab838ef4d99453931afa112"/>
 
-  <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="5ca0fd356a2a5965f831173141928fcfd8cd2499"/>
+  <project name="go-blip" path="godeps/src/github.com/couchbase/go-blip" remote="couchbase" revision="b921783f4b3ef90bcc37d1ba8967d522156fdbe4"/>
 
   <project name="errors" path="godeps/src/github.com/pkg/errors" remote="couchbasedeps" revision="f15c970de5b76fac0b59abb32d62c17cc7bed265"/>
 

@@ -9,24 +9,28 @@ import (
 )
 
 const (
-	// blipCBMobileReplication is the AppProtocolId part of the BLIP websocket subprotocol.  Must match identically with the peer (typically CBLite / LiteCore).
-	// At some point this will need to be able to support an array of protocols.  See go-blip/issues/27.
-	blipCBMobileReplication = "CBMobile_2"
+	// BlipCBMobileReplicationV2 / BlipCBMobileReplicationV3 is the AppProtocolId part of the BLIP websocket
+	// sub protocol.  One must match identically with one provided by the peer (CBLite / ISGR)
+	BlipCBMobileReplicationV2 = "CBMobile_2"
+	BlipCBMobileReplicationV3 = "CBMobile_3"
 )
 
 // NewSGBlipContext returns a go-blip context with the given ID, initialized for use in Sync Gateway.
-func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context) {
+func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context, err error) {
+	// V3 is first here as it is the preferred communication method
+	// In the host case this means SGW can accept both V3 and V2 clients
+	// In the client case this means we prefer V3 but can fallback to V2
 	if id == "" {
-		bc = blip.NewContext(blipCBMobileReplication)
+		bc, err = blip.NewContext(BlipCBMobileReplicationV3, BlipCBMobileReplicationV2)
 	} else {
-		bc = blip.NewContextCustomID(id, blipCBMobileReplication)
+		bc, err = blip.NewContextCustomID(id, BlipCBMobileReplicationV3, BlipCBMobileReplicationV2)
 	}
 
 	bc.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
 	bc.LogFrames = base.LogDebugEnabled(base.KeyWebSocketFrame)
 	bc.Logger = defaultBlipLogger(ctx)
 
-	return bc
+	return bc, err
 }
 
 // defaultBlipLogger returns a function that can be set as the blip.Context.Logger for Sync Gateway integrated go-blip logging.

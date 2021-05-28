@@ -29,7 +29,10 @@ func (h *handler) handleBLIPSync() error {
 	}
 
 	// Create a BLIP context:
-	blipContext := db.NewSGBlipContext(h.db.Ctx, "")
+	blipContext, err := db.NewSGBlipContext(h.db.Ctx, "")
+	if err != nil {
+		return err
+	}
 
 	// Overwrite the existing logging context with the blip context ID
 	h.db.Ctx = context.WithValue(h.db.Ctx, base.LogContextKey{},

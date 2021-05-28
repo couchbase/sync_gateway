@@ -4,11 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
-
-	"github.com/pkg/errors"
 
 	"github.com/couchbase/go-blip"
 	"github.com/couchbase/sync_gateway/base"
@@ -186,7 +185,10 @@ func (ar *ActiveReplicator) GetStatus() *ReplicationStatus {
 func connect(arc *activeReplicatorCommon, idSuffix string) (blipSender *blip.Sender, bsc *BlipSyncContext, err error) {
 	arc.replicationStats.NumConnectAttempts.Add(1)
 
-	blipContext := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
+	blipContext, err := NewSGBlipContext(arc.ctx, arc.config.ID+idSuffix)
+	if err != nil {
+		return nil, nil, err
+	}
 	blipContext.WebsocketPingInterval = arc.config.WebsocketPingInterval
 	blipContext.OnExitCallback = func() {
 		// fall into a reconnect loop only if the connection is unexpectedly closed.

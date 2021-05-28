@@ -6387,7 +6387,6 @@ func initScenario(t *testing.T) (ChannelRevocationTester, *RestTester) {
 					channel(doc.channels);
 				}
 			}`,
-		DatabaseConfig: &DbConfig{Unsupported: db.UnsupportedOptions{ForceBLIPV3: true}},
 	})
 
 	revocationTester := ChannelRevocationTester{
