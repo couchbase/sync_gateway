@@ -497,11 +497,11 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		deletedFlags := changesDeletedFlag(0)
 		if len(change) > 3 {
-			switch v := change[3].(type){
+			switch v := change[3].(type) {
 			case json.Number:
 				deletedIntFlag, err := change[3].(json.Number).Int64()
 				if err != nil {
-					base.ErrorfCtx(bh.loggingCtx,  "Failed to parse deletedFlags: %v", err)
+					base.ErrorfCtx(bh.loggingCtx, "Failed to parse deletedFlags: %v", err)
 					continue
 				}
 				deletedFlags = changesDeletedFlag(deletedIntFlag)
