@@ -305,31 +305,18 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 
 			if !strings.HasPrefix(change.ID, "_") {
 				for _, item := range change.Changes {
-
-					var changeRow []interface{}
-					if bh.db.DatabaseContext.Options.UnsupportedOptions.ForceBLIPV3 {
-						deletedFlags := changesDeletedFlag(0)
-						if change.Deleted {
-							deletedFlags |= changesDeletedFlagDeleted
-						}
-						if change.Revoked {
-							deletedFlags |= changesDeletedFlagRevoked
-						}
-						if len(change.Removed) > 0 {
-							deletedFlags |= changesDeletedFlagRemoved
-						}
-
-						changeRow = []interface{}{change.Seq, change.ID, item["rev"], deletedFlags}
-						if deletedFlags == 0 {
-							changeRow = changeRow[0:3]
-						}
-
-					} else {
-						changeRow = []interface{}{change.Seq, change.ID, item["rev"], change.Deleted}
-						if !change.Deleted {
-							changeRow = changeRow[0:3]
-						}
+					changeRow := bh.buildChangesRow(change, item["rev"])
+					pendingChanges = append(pendingChanges, changeRow)
+					if err := sendPendingChangesAt(opts.batchSize); err != nil {
+						return err
 					}
+				}
+
+				// In the event we were unable to determine what the rev ID was at the time of revocation we have to
+				// send a revocation changes message but without a revID present. This will result in change.Changes
+				// being empty so we need to have this special case.
+				if len(change.Changes) == 0 && change.Revoked == true{
+					changeRow := bh.buildChangesRow(change, "")
 					pendingChanges = append(pendingChanges, changeRow)
 					if err := sendPendingChangesAt(opts.batchSize); err != nil {
 						return err
@@ -362,6 +349,36 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	}
 
 	return !forceClose
+}
+
+func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string)[]interface{}{
+	var changeRow []interface{}
+
+	if bh.db.DatabaseContext.Options.UnsupportedOptions.ForceBLIPV3 {
+		deletedFlags := changesDeletedFlag(0)
+		if change.Deleted {
+			deletedFlags |= changesDeletedFlagDeleted
+		}
+		if change.Revoked {
+			deletedFlags |= changesDeletedFlagRevoked
+		}
+		if len(change.Removed) > 0 {
+			deletedFlags |= changesDeletedFlagRemoved
+		}
+
+		changeRow = []interface{}{change.Seq, change.ID, revID, deletedFlags}
+		if deletedFlags == 0 {
+			changeRow = changeRow[0:3]
+		}
+
+	} else {
+		changeRow = []interface{}{change.Seq, change.ID, revID, change.Deleted}
+		if !change.Deleted {
+			changeRow = changeRow[0:3]
+		}
+	}
+
+	return changeRow
 }
 
 func (bh *blipHandler) sendBatchOfChanges(sender *blip.Sender, changeArray [][]interface{}, ignoreNoConflicts bool) error {
