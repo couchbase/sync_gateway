@@ -11,6 +11,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -23,10 +24,15 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket                   base.Bucket
-	channelComputer          ChannelComputer
-	sessionCookieName        string // Custom per-database session cookie name
-	channelsWarningThreshold *uint32
+	bucket            base.Bucket
+	channelComputer   ChannelComputer
+	sessionCookieName string // Custom per-database session cookie name
+	AuthenticatorOptions
+}
+
+type AuthenticatorOptions struct {
+	ClientPartitionWindow    time.Duration
+	ChannelsWarningThreshold *uint32
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
@@ -43,11 +49,18 @@ type userByEmailInfo struct {
 const PrincipalUpdateMaxCasRetries = 20 // Maximum number of attempted retries on cas failure updating principal
 
 // Creates a new Authenticator that stores user info in the given Bucket.
-func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer) *Authenticator {
+func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer, options AuthenticatorOptions) *Authenticator {
 	return &Authenticator{
-		bucket:            bucket,
-		channelComputer:   channelComputer,
-		sessionCookieName: DefaultCookieName,
+		bucket:               bucket,
+		channelComputer:      channelComputer,
+		sessionCookieName:    DefaultCookieName,
+		AuthenticatorOptions: options,
+	}
+}
+
+func DefaultAuthenticatorOptions() AuthenticatorOptions {
+	return AuthenticatorOptions{
+		ClientPartitionWindow: base.DefaultClientPartitionWindow,
 	}
 }
 
@@ -57,14 +70,6 @@ func (auth *Authenticator) SessionCookieName() string {
 
 func (auth *Authenticator) SetSessionCookieName(cookieName string) {
 	auth.sessionCookieName = cookieName
-}
-
-func (auth *Authenticator) ChannelsWarningThreshold() *uint32 {
-	return auth.channelsWarningThreshold
-}
-
-func (auth *Authenticator) SetChannelsWarningThreshold(channelsWarningThreshold *uint32) {
-	auth.channelsWarningThreshold = channelsWarningThreshold
 }
 
 func docIDForUserEmail(email string) string {
@@ -185,7 +190,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 	// always grant access to the public document channel
 	channels.AddChannel(ch.DocumentStarChannel, 1)
 
-	channelHistory := auth.calculateHistory(princ.GetChannelInvalSeq(), princ.InvalidatedChannels(), channels, princ.ChannelHistory())
+	channelHistory := auth.calculateHistory(princ.Name(), princ.GetChannelInvalSeq(), princ.InvalidatedChannels(), channels, princ.ChannelHistory())
 
 	if len(channelHistory) != 0 {
 		princ.SetChannelHistory(channelHistory)
@@ -199,7 +204,7 @@ func (auth *Authenticator) rebuildChannels(princ Principal) error {
 }
 
 // Calculates history for either roles or channels
-func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory) TimedSetHistory {
+func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, invalGrants ch.TimedSet, newGrants ch.TimedSet, currentHistory TimedSetHistory) TimedSetHistory {
 	// Initialize history if currently empty
 	if currentHistory == nil {
 		currentHistory = map[string]GrantHistory{}
@@ -222,7 +227,11 @@ func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.Time
 			currentHistoryForGrant = GrantHistory{}
 		}
 
-		// TODO: Will perform pruning here once full
+		// If len of entries is greater than threshold
+		if len(currentHistoryForGrant.Entries) > CalculateMaxHistoryEntriesPerGrant(len(currentHistory)) {
+			currentHistoryForGrant.Entries[1].StartSeq = currentHistoryForGrant.Entries[0].StartSeq
+			currentHistoryForGrant.Entries = currentHistoryForGrant.Entries[1:]
+		}
 
 		// Add grant to history
 		currentHistoryForGrant.UpdatedAt = time.Now().UnixNano()
@@ -233,7 +242,31 @@ func (auth *Authenticator) calculateHistory(invalSeq uint64, invalGrants ch.Time
 		currentHistory[previousName] = currentHistoryForGrant
 	}
 
+	if prunedHistory := currentHistory.PruneHistory(auth.ClientPartitionWindow); len(prunedHistory) > 0 {
+		base.Debugf(base.KeyCRUD, "rebuildChannels: Pruned principal history on %s for %s", princName, strings.Join(prunedHistory, ","))
+	}
+
 	return currentHistory
+}
+
+func CalculateMaxHistoryEntriesPerGrant(historyLength int) int {
+	const maximumHistoryBytes = 1000000   // 1MB
+	const estimatedKeySize = 250          // This is an estimate of key size in bytes, this includes channel name, the unix timestamp, "entries" key
+	const estimatedSizeOfEntriesPair = 14 // Assume each sequence is 7 digits
+
+	maxEntries := 0
+
+	if historyLength != 0 {
+		maxEntries = (maximumHistoryBytes/historyLength - estimatedKeySize) / estimatedSizeOfEntriesPair
+	}
+
+	// Even if we can fit it limit entries to 10
+	maxEntries = base.MinInt(maxEntries, 10)
+
+	// In the event maxEntries is negative we should set a floor of 1 entry
+	maxEntries = base.MaxInt(maxEntries, 1)
+
+	return maxEntries
 }
 
 func (auth *Authenticator) rebuildRoles(user User) error {
@@ -254,7 +287,7 @@ func (auth *Authenticator) rebuildRoles(user User) error {
 		roles.Add(explicit)
 	}
 
-	roleHistory := auth.calculateHistory(user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
+	roleHistory := auth.calculateHistory(user.Name(), user.GetRoleInvalSeq(), user.InvalidatedRoles(), roles, user.RoleHistory())
 
 	if len(roleHistory) != 0 {
 		user.SetRoleHistory(roleHistory)
@@ -538,7 +571,7 @@ func (auth *Authenticator) DeleteRole(role Role, purge bool, deleteSeq uint64) e
 		p.setDeleted(true)
 		p.SetSequence(deleteSeq)
 
-		channelHistory := auth.calculateHistory(deleteSeq, p.Channels(), nil, p.ChannelHistory())
+		channelHistory := auth.calculateHistory(p.Name(), deleteSeq, p.Channels(), nil, p.ChannelHistory())
 		if len(channelHistory) != 0 {
 			p.SetChannelHistory(channelHistory)
 		}

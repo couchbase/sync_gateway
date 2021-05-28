@@ -142,6 +142,7 @@ type DatabaseContextOptions struct {
 	SlowQueryWarningThreshold time.Duration
 	QueryPaginationLimit      int    // Limit used for pagination of queries. If not set defaults to DefaultQueryPaginationLimit
 	UserXattrKey              string // Key of user xattr that will be accessible from the Sync Function. If empty the feature will be disabled.
+	ClientPartitionWindow     time.Duration
 }
 
 type SGReplicateOptions struct {
@@ -701,11 +702,13 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	defer context.BucketLock.RUnlock()
 
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
-	authenticator := auth.NewAuthenticator(context.Bucket, context)
+	authenticator := auth.NewAuthenticator(context.Bucket, context, auth.AuthenticatorOptions{
+		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
+		ChannelsWarningThreshold: context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser,
+	})
 	if context.Options.SessionCookieName != "" {
 		authenticator.SetSessionCookieName(context.Options.SessionCookieName)
 	}
-	authenticator.SetChannelsWarningThreshold(context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser)
 	return authenticator
 }
 

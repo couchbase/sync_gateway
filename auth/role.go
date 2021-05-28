@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	ch "github.com/couchbase/sync_gateway/channels"
@@ -34,6 +35,19 @@ type roleImpl struct {
 }
 
 type TimedSetHistory map[string]GrantHistory
+
+func (timedSet TimedSetHistory) PruneHistory(partitionWindow time.Duration) []string {
+	prunedChannelHistory := make([]string, 0)
+	for chanName, grantHistory := range timedSet {
+		grantTime := time.Unix(0, grantHistory.UpdatedAt)
+		if grantTime.Add(partitionWindow).Before(time.Now()) {
+			fmt.Println("x")
+			delete(timedSet, chanName)
+			prunedChannelHistory = append(prunedChannelHistory, chanName)
+		}
+	}
+	return prunedChannelHistory
+}
 
 type GrantHistory struct {
 	UpdatedAt int64                      `json:"updated_at"` // Timestamp at which history was last updated, allows for pruning

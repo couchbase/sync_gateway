@@ -838,7 +838,7 @@ func TestSessionTtlGreaterThan30Days(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	a := auth.NewAuthenticator(rt.Bucket(), nil)
+	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := a.GetUser("")
 	assert.NoError(t, err)
 	user.SetDisabled(true)
@@ -2535,7 +2535,7 @@ func TestSessionExpirationDateTimeFormat(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	authenticator := auth.NewAuthenticator(rt.Bucket(), nil)
+	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "letMe!n", channels.SetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")
@@ -2631,7 +2631,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 	assert.Equal(t, "application/json", response.Header().Get("Content-Type"))
 
 	// Create a new user and save to database to create user session.
-	authenticator := auth.NewAuthenticator(rt.Bucket(), nil)
+	authenticator := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("eve", "cGFzc3dvcmQ=", channels.SetOf(t, "*"))
 	assert.NoError(t, err, "Couldn't create new user")
 	assert.NoError(t, authenticator.Save(user), "Couldn't save new user")

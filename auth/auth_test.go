@@ -40,7 +40,7 @@ func TestValidateGuestUser(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, err := auth.NewUser("", "", nil)
 	assert.True(t, user != nil)
 	assert.True(t, err == nil)
@@ -50,7 +50,7 @@ func TestValidateUser(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, err := auth.NewUser("invalid:name", "", nil)
 	assert.Equal(t, user, (User)(nil))
 	assert.True(t, err != nil)
@@ -66,7 +66,7 @@ func TestValidateRole(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	role, err := auth.NewRole("invalid:name", nil)
 	assert.Equal(t, (User)(nil), role)
 	assert.True(t, err != nil)
@@ -82,7 +82,7 @@ func TestValidateUserEmail(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	badEmails := []string{"", "foo", "foo@", "@bar", "foo@bar@buzz"}
 	for _, e := range badEmails {
 		assert.False(t, IsValidEmail(e))
@@ -100,7 +100,7 @@ func TestUserPasswords(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("me", "letmein", nil)
 	assert.True(t, user.Authenticate("letmein"))
 	assert.False(t, user.Authenticate("password"))
@@ -122,7 +122,7 @@ func TestSerializeUser(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("me", "letmein", ch.SetOf(t, "me", "public"))
 	require.NoError(t, user.SetEmail("foo@example.com"))
 	encoded, _ := base.JSONMarshal(user)
@@ -143,7 +143,7 @@ func TestSerializeRole(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	role, _ := auth.NewRole("froods", ch.SetOf(t, "hoopy", "public"))
 	encoded, _ := base.JSONMarshal(role)
 	assert.True(t, encoded != nil)
@@ -161,7 +161,7 @@ func TestUserAccess(t *testing.T) {
 	// User with no access:
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("foo", "password", nil)
 	goassert.DeepEquals(t, user.ExpandWildCardChannel(ch.SetOf(t, "*")), ch.SetOf(t, "!"))
 	assert.False(t, user.CanSeeChannel("x"))
@@ -232,7 +232,7 @@ func TestGetMissingUser(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, err := auth.GetUser("noSuchUser")
 	assert.Equal(t, nil, err)
 	assert.True(t, user == nil)
@@ -245,7 +245,7 @@ func TestGetMissingRole(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	role, err := auth.GetRole("noSuchRole")
 	assert.Equal(t, nil, err)
 	assert.True(t, role == nil)
@@ -255,7 +255,7 @@ func TestGetGuestUser(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, err := auth.GetUser("")
 	assert.Equal(t, nil, err)
 	goassert.DeepEquals(t, user, auth.defaultGuestUser())
@@ -265,7 +265,7 @@ func TestSaveUsers(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("testUser", "password", ch.SetOf(t, "test"))
 	err := auth.Save(user)
 	assert.Equal(t, nil, err)
@@ -279,7 +279,7 @@ func TestSaveRoles(t *testing.T) {
 
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	role, _ := auth.NewRole("testRole", ch.SetOf(t, "test"))
 	err := auth.Save(role)
 	assert.Equal(t, nil, err)
@@ -319,7 +319,7 @@ func TestRebuildUserChannels(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 	computer := mockComputer{channels: ch.AtSequence(ch.SetOf(t, "derived1", "derived2"), 1)}
-	auth := NewAuthenticator(bucket, &computer)
+	auth := NewAuthenticator(bucket, &computer, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("testUser", "password", ch.SetOf(t, "explicit1"))
 	err := auth.Save(user)
 	assert.NoError(t, err)
@@ -337,7 +337,7 @@ func TestRebuildRoleChannels(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 	computer := mockComputer{roleChannels: ch.AtSequence(ch.SetOf(t, "derived1", "derived2"), 1)}
-	auth := NewAuthenticator(bucket, &computer)
+	auth := NewAuthenticator(bucket, &computer, DefaultAuthenticatorOptions())
 	role, err := auth.NewRole("testRole", ch.SetOf(t, "explicit1"))
 	assert.NoError(t, err)
 	err = auth.Save(role)
@@ -356,7 +356,7 @@ func TestRebuildChannelsError(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 	computer := mockComputer{}
-	auth := NewAuthenticator(bucket, &computer)
+	auth := NewAuthenticator(bucket, &computer, DefaultAuthenticatorOptions())
 	role, err := auth.NewRole("testRole2", ch.SetOf(t, "explicit1"))
 	assert.NoError(t, err)
 	err = auth.Save(role)
@@ -376,7 +376,7 @@ func TestRebuildUserRoles(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 	computer := mockComputer{roles: ch.AtSequence(base.SetOf("role1", "role2"), 3)}
-	auth := NewAuthenticator(bucket, &computer)
+	auth := NewAuthenticator(bucket, &computer, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser("testUser", "letmein", nil)
 	user.SetExplicitRoles(ch.TimedSet{"role3": ch.NewVbSimpleSequence(1), "role1": ch.NewVbSimpleSequence(1)}, 1)
 	err := auth.Save(user)
@@ -404,7 +404,7 @@ func TestRoleInheritance(t *testing.T) {
 	// Create some roles:
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	role, _ := auth.NewRole("square", ch.SetOf(t, "dull", "duller", "dullest"))
 	assert.Equal(t, nil, auth.Save(role))
 	role, _ = auth.NewRole("frood", ch.SetOf(t, "hoopy", "hoopier", "hoopiest"))
@@ -432,7 +432,7 @@ func TestRegisterUser(t *testing.T) {
 	defer bucket.Close()
 
 	// Register user based on name, email
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, err := auth.RegisterNewUser("ValidName", "foo@example.com")
 	require.NoError(t, err)
 	assert.Equal(t, "ValidName", user.Name())
@@ -497,7 +497,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 	require.Error(t, SetBcryptCost(5))
 
 	// Create user
-	auth := NewAuthenticator(bucket, nil)
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	user, _ := auth.NewUser(username, password, ch.SetOf(t, "123", "456"))
 	user.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)}, 1)
 	createErr := auth.Save(user)
@@ -603,7 +603,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 func TestAuthenticateTrustedJWT(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	var callbackURLFunc OIDCCallbackURLFunc
 	callbackURL := base.StringPtr("http://comcast:4984/_callback")
@@ -1031,7 +1031,7 @@ func TestAuthenticateTrustedJWT(t *testing.T) {
 func TestGetPrincipal(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	const (
 		channelRead       = "read"
@@ -1101,7 +1101,7 @@ func ToBase64String(key string) string {
 func TestAuthenticateUntrustedJWT(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	issuerFacebookAccounts := "https://accounts.facebook.com"
 	issuerAmazonAccounts := "https://accounts.amazon.com"
@@ -1352,7 +1352,7 @@ func TestRevocationScenario1(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -1443,7 +1443,7 @@ func TestRevocationScenario2(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -1540,7 +1540,7 @@ func TestRevocationScenario3(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -1646,7 +1646,7 @@ func TestRevocationScenario4(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -1739,7 +1739,7 @@ func TestRevocationScenario5(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -1816,7 +1816,7 @@ func TestRevocationScenario6(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -1896,7 +1896,7 @@ func TestRevocationScenario7(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -1974,7 +1974,7 @@ func TestRevocationScenario8(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -2033,7 +2033,7 @@ func TestRevocationScenario9(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -2089,7 +2089,7 @@ func TestRevocationScenario10(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -2148,7 +2148,7 @@ func TestRevocationScenario11(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -2213,7 +2213,7 @@ func TestRevocationScenario12(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -2272,7 +2272,7 @@ func TestRevocationScenario13(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, fooPrincipal := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -2329,7 +2329,7 @@ func TestRevocationScenario14(t *testing.T) {
 		roleChannels: map[string]ch.TimedSet{},
 	}
 
-	auth := NewAuthenticator(testBucket, &testMockComputer)
+	auth := NewAuthenticator(testBucket, &testMockComputer, DefaultAuthenticatorOptions())
 	aliceUserPrincipal, _ := initializeScenario(t, auth)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 5)
@@ -2363,7 +2363,7 @@ func TestRevocationScenario14(t *testing.T) {
 func TestRoleSoftDelete(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	const roleName = "role"
 
@@ -2476,7 +2476,7 @@ func TestObtainChannelsForDeletedRole(t *testing.T) {
 
 			testBucket := base.GetTestBucket(t)
 			defer testBucket.Close()
-			auth := NewAuthenticator(testBucket, testMockComputer)
+			auth := NewAuthenticator(testBucket, testMockComputer, DefaultAuthenticatorOptions())
 
 			const roleName = "role"
 
@@ -2512,7 +2512,7 @@ func TestInvalidateRoles(t *testing.T) {
 
 	leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{})
 
-	auth := NewAuthenticator(leakyBucket, nil)
+	auth := NewAuthenticator(leakyBucket, nil, DefaultAuthenticatorOptions())
 
 	// Invalidate role on non-existent user and ensure no error
 	err := auth.InvalidateRoles("user", 0)
@@ -2583,7 +2583,7 @@ func TestInvalidateChannels(t *testing.T) {
 
 			leakyBucket := base.NewLeakyBucket(testBucket, base.LeakyBucketConfig{})
 
-			auth := NewAuthenticator(leakyBucket, nil)
+			auth := NewAuthenticator(leakyBucket, nil, DefaultAuthenticatorOptions())
 
 			// Invalidate channels on non-existent user / role and ensure no error
 			err := auth.InvalidateChannels(testCase.name, testCase.isUser, 0)
@@ -2645,6 +2645,36 @@ func TestInvalidateChannels(t *testing.T) {
 			_, err = leakyBucket.Get(docID, &princCheck)
 			assert.NoError(t, err)
 			assert.Equal(t, expectedValue, princCheck.GetChannelInvalSeq())
+		})
+	}
+}
+
+func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {
+	testCases := []struct {
+		Name                     string
+		HistoryLengthInput       int
+		MaxEntriesExpectedOutput int
+	}{
+		{
+			Name:                     "Extreme history length",
+			HistoryLengthInput:       1000000,
+			MaxEntriesExpectedOutput: 1,
+		},
+		{
+			Name:                     "Large history length",
+			HistoryLengthInput:       1000,
+			MaxEntriesExpectedOutput: 10,
+		},
+		{
+			Name:                     "Tiny history length",
+			HistoryLengthInput:       1,
+			MaxEntriesExpectedOutput: 10,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			assert.Equal(t, CalculateMaxHistoryEntriesPerGrant(testCase.HistoryLengthInput), testCase.MaxEntriesExpectedOutput)
 		})
 	}
 }
