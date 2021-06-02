@@ -28,11 +28,12 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/hashicorp/go-multierror"
+	pkgerrors "github.com/pkg/errors"
+
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	"github.com/hashicorp/go-multierror"
-	pkgerrors "github.com/pkg/errors"
 
 	// Register profiling handlers (see Go docs)
 	_ "net/http/pprof"
@@ -1343,9 +1344,13 @@ func HandleSighup() {
 	}
 }
 
+// RegisterSignalHandler invokes functions based on the given signals:
+// - SIGHUP causes Sync Gateway to rotate log files.
+// - SIGINT or SIGTERM causes Sync Gateway to exit cleanly.
+// - SIGKILL cannot be handled by the application.
 func RegisterSignalHandler() {
 	signalChannel := make(chan os.Signal, 1)
-	signal.Notify(signalChannel, syscall.SIGHUP, os.Interrupt, os.Kill)
+	signal.Notify(signalChannel, syscall.SIGHUP, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
 		for sig := range signalChannel {
@@ -1353,7 +1358,7 @@ func RegisterSignalHandler() {
 			switch sig {
 			case syscall.SIGHUP:
 				HandleSighup()
-			case os.Interrupt, os.Kill:
+			default:
 				// Ensure log buffers are flushed before exiting.
 				base.FlushLogBuffers()
 				os.Exit(130) // 130 == exit code 128 + 2 (interrupt)
