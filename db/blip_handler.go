@@ -514,7 +514,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		}
 
-		if missing == nil && deletedFlags&changesDeletedFlagRevoked|changesDeletedFlagRemoved == 0 {
+		if missing == nil && deletedFlags&(changesDeletedFlagRevoked|changesDeletedFlagRemoved) == 0 {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
 			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
