@@ -4883,6 +4883,63 @@ func TestReplicatorConflictAttachment(t *testing.T) {
 	}
 }
 
+func TestReplicatorRevocations(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Passive
+	revocationTester, rt2 := initScenario(t)
+	defer rt2.Close()
+
+	// Active
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+	})
+	defer rt1.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "chanA")
+
+	resp := rt2.SendAdminRequest("PUT", "/db/doc1", `{"channels": "chanA"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	passiveDBURL.User = url.UserPassword("user", "test")
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          false,
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+	})
+
+	require.NoError(t, ar.Start())
+	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+
+	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	revocationTester.removeRole("user", "foo")
+
+	require.NoError(t, ar.Start())
+	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+
+	resp = rt1.SendAdminRequest("GET", "/db/doc1", "")
+	assertStatus(t, resp, http.StatusNotFound)
+
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {
