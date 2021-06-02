@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
 )
 
@@ -144,14 +143,6 @@ func CreateAdminHandlerForRouter(sc *ServerContext, r *mux.Router) http.Handler 
 // Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r, dbr := createHandler(sc, adminPrivs)
-
-	r.PathPrefix("/_admin/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if sc.config.AdminUI != nil {
-			http.ServeFile(w, r, *sc.config.AdminUI)
-		} else {
-			_, _ = w.Write(sync_gateway_admin_ui.MustAsset("assets/index.html"))
-		}
-	})
 
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")

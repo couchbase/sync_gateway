@@ -77,7 +77,6 @@ type ServerConfig struct {
 	ReadHeaderTimeout          *int                     `json:",omitempty"`                       // The amount of time allowed to read request headers.
 	IdleTimeout                *int                     `json:",omitempty"`                       // The maximum amount of time to wait for the next request when keep-alives are enabled.
 	AdminInterface             *string                  `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
-	AdminUI                    *string                  `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface           *string                  `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
 	ConfigServer               *string                  `json:",omitempty"`                       // URL of config server (for dynamic db discovery)
 	Facebook                   *FacebookConfig          `json:",omitempty"`                       // Configuration for Facebook validation
