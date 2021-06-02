@@ -622,9 +622,11 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 				bodyMessagePair := &BodyMessagePair{body: body}
 				btc.docs[docID][newRevID] = bodyMessagePair
 			} else {
+				btc.docsLock.Unlock()
 				return "", fmt.Errorf("docID: %v with parent rev: %v was not found on the client", docID, parentRev)
 			}
 		} else {
+			btc.docsLock.Unlock()
 			return "", fmt.Errorf("docID: %v was not found on the client", docID)
 		}
 	} else {
