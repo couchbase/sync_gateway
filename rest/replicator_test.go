@@ -4904,7 +4904,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	resp := rt2.SendAdminRequest("PUT", "/db/doc1", `{"channels": "chanA"}`)
 	assertStatus(t, resp, http.StatusCreated)
 
-	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
+	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
 
 	passiveDBURL, err := url.Parse(srv.URL + "/db")
@@ -4920,7 +4920,6 @@ func TestReplicatorRevocations(t *testing.T) {
 			DatabaseContext: rt1.GetDatabase(),
 		},
 		Continuous:          false,
-		InsecureSkipVerify:  true,
 		PurgeOnRemoval:      true,
 		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
 	})

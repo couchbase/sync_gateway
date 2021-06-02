@@ -499,7 +499,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 		if len(change) > 3 {
 			switch v := change[3].(type) {
 			case json.Number:
-				deletedIntFlag, err := change[3].(json.Number).Int64()
+				deletedIntFlag, err := v.Int64()
 				if err != nil {
 					base.ErrorfCtx(bh.loggingCtx, "Failed to parse deletedFlags: %v", err)
 					continue
@@ -514,7 +514,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		}
 
-		if missing == nil && deletedFlags&changesDeletedFlagRevoked == 0 && deletedFlags&deletedFlags&changesDeletedFlagRemoved == 0 {
+		if missing == nil && deletedFlags&changesDeletedFlagRevoked|changesDeletedFlagRemoved == 0 {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
 			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
