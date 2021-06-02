@@ -23,7 +23,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -83,8 +82,6 @@ type ServerConfig struct {
 	Facebook                   *FacebookConfig          `json:",omitempty"`                       // Configuration for Facebook validation
 	Google                     *GoogleConfig            `json:",omitempty"`                       // Configuration for Google validation
 	CORS                       *CORSConfig              `json:",omitempty"`                       // Configuration for allowing CORS
-	DeprecatedLog              []string                 `json:"log,omitempty"`                    // Log keywords to enable
-	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"`            // Path to log file, if missing write to stderr
 	Logging                    *base.LoggingConfig      `json:",omitempty"`                       // Configuration for logging with optional log file rotation
 	Pretty                     bool                     `json:",omitempty"`                       // Pretty-print JSON responses?
 	DeploymentID               *string                  `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
@@ -886,9 +883,6 @@ func (config *ServerConfig) SetupAndValidateLogging() (err error) {
 		config.Logging = &base.LoggingConfig{}
 	}
 
-	// populate values from deprecated logging config options if not set
-	config.deprecatedConfigLoggingFallback()
-
 	base.SetRedaction(config.Logging.RedactionLevel)
 
 	err = config.Logging.Init(defaultLogFilePath)
@@ -896,61 +890,7 @@ func (config *ServerConfig) SetupAndValidateLogging() (err error) {
 		return err
 	}
 
-	if config.Logging.DeprecatedDefaultLog == nil {
-		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
-	}
-
 	return nil
-}
-
-// deprecatedConfigLoggingFallback will parse the ServerConfig and try to
-// use older logging config options for backwards compatibility.
-// It will return a slice of deferred warnings to log at a later time.
-func (config *ServerConfig) deprecatedConfigLoggingFallback() {
-
-	warningMsgFmt := "Using deprecated config option: %q. Use %q instead."
-
-	if config.Logging.DeprecatedDefaultLog != nil {
-		// Fall back to the old logging.["default"].LogFilePath option
-		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
-
-			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
-			// SGCollect relies on this path to pick up the standard and rotated log files.
-			info, err := os.Stat(*config.Logging.DeprecatedDefaultLog.LogFilePath)
-			if err == nil && info.IsDir() {
-				config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
-			} else {
-				config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
-				base.Infof(base.KeyAll, "Using %v as log file path (parent directory of deprecated logging."+
-					"[\"default\"].LogFilePath)", config.Logging.LogFilePath)
-			}
-		}
-
-		// Fall back to the old logging.["default"].LogKeys option
-		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogKeys`, "logging.console.log_keys")
-			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
-		}
-
-		// Fall back to the old logging.["default"].LogLevel option
-		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogLevel`, "logging.console.log_level")
-			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
-		}
-	}
-
-	// Fall back to the old LogFilePath option
-	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
-		base.Warnf(warningMsgFmt, "logFilePath", "logging.log_file_path")
-		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
-	}
-
-	// Fall back to the old Log option
-	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
-		base.Warnf(warningMsgFmt, "log", "logging.console.log_keys")
-		config.Logging.Console.LogKeys = config.DeprecatedLog
-	}
 }
 
 func (self *ServerConfig) MergeWith(other *ServerConfig) error {
@@ -974,9 +914,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	}
 	if self.CORS == nil {
 		self.CORS = other.CORS
-	}
-	for _, flag := range other.DeprecatedLog {
-		self.DeprecatedLog = append(self.DeprecatedLog, flag)
 	}
 	if self.Logging == nil {
 		self.Logging = other.Logging

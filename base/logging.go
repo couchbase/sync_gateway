@@ -24,6 +24,15 @@ import (
 	"github.com/couchbase/goutils/logging"
 )
 
+var (
+	consoleLogger                                                              *ConsoleLogger
+	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
+
+	// envColorCapable evaluated only once to prevent unnecessary
+	// overhead of checking os.Getenv on each colorEnabled() invocation
+	envColorCapable = runtime.GOOS != "windows" && os.Getenv("TERM") != "dumb"
+)
+
 var errMarshalNilLevel = errors.New("can't marshal a nil *Level to text")
 
 const (
@@ -308,19 +317,6 @@ func PrependContextID(contextID, format string, params ...interface{}) (newForma
 	return formatWithContextID, params
 
 }
-
-// *************************************************************************
-//   2018-04-10: New logging below. Above code is to be removed/cleaned up
-// *************************************************************************
-
-var (
-	consoleLogger                                                              *ConsoleLogger
-	traceLogger, debugLogger, infoLogger, warnLogger, errorLogger, statsLogger *FileLogger
-
-	// envColorCapable evaluated only once to prevent unnecessary
-	// overhead of checking os.Getenv on each colorEnabled() invocation
-	envColorCapable = runtime.GOOS != "windows" && os.Getenv("TERM") != "dumb"
-)
 
 // RotateLogfiles rotates all active log files.
 func RotateLogfiles() map[*FileLogger]error {
