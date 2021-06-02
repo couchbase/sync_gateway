@@ -168,8 +168,15 @@ func CouchHTTPErrorName(status int) string {
 func IsDocNotFoundError(err error) bool {
 
 	unwrappedErr := pkgerrors.Cause(err)
+	if unwrappedErr == nil {
+		return false
+	}
 
-	if unwrappedErr != nil && unwrappedErr == gocb.ErrKeyNotFound {
+	if unwrappedErr == ErrNotFound {
+		return true
+	}
+
+	if unwrappedErr == gocb.ErrKeyNotFound {
 		return true
 	}
 

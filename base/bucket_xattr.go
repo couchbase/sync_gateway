@@ -147,10 +147,10 @@ func (bucket *CouchbaseBucketGoCB) SubdocGetBodyAndXattr(k string, xattrKey stri
 			case gocb.ErrKeyNotFound:
 				// If key not found it has been deleted in between the first op and this op.
 				return false, ErrNotFound, userXattrCas
-
 			case gocb.ErrSubDocBadMulti:
 				// Xattr doesn't exist, can skip
-
+			case ErrXattrNotFound:
+				// Xattr doesn't exist, can skip
 			case nil:
 				if cas != userXattrCas {
 					return true, errors.New("cas mismatch between user xattr and document body"), uint64(0)
