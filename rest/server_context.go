@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -30,11 +29,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-// The URL that stats will be reported to if deployment_id is set in the config
-const kStatsReportURL = "http://localhost:9999/stats"
-const kStatsReportInterval = time.Hour
 const kDefaultSlowQueryWarningThreshold = 500 // ms
-const KDefaultNumShards = 16
 const DefaultStatsLogFrequencySecs = 60
 
 // Shared context of HTTP handlers: primarily a registry of databases by name. It also stores
@@ -177,21 +172,9 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		return dbc, nil
 	} else if db.ValidateDatabaseName(name) != nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
-	} else if sc.config.ConfigServer == nil {
-		return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
-	} else {
-		// Let's ask the config server if it knows this database:
-		base.Infof(base.KeyAll, "Asking config server %q about db %q...", base.UD(*sc.config.ConfigServer), base.UD(name))
-		config, err := sc.getDbConfigFromServer(name)
-		if err != nil {
-			return nil, err
-		}
-		if dbc, err = sc.getOrAddDatabaseFromConfig(config, true); err != nil {
-			return nil, err
-		}
 	}
-	return dbc, nil
 
+	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 }
 
 func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
@@ -978,39 +961,6 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 
 	}
 	return nil
-}
-
-// Fetch a configuration for a database from the ConfigServer
-func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error) {
-	if sc.config.ConfigServer == nil {
-		return nil, base.HTTPErrorf(http.StatusNotFound, "not_found")
-	}
-
-	urlStr := *sc.config.ConfigServer
-	if !strings.HasSuffix(urlStr, "/") {
-		urlStr += "/"
-	}
-	urlStr += url.QueryEscape(dbName)
-	resp, err := sc.HTTPClient.Get(urlStr)
-	if err != nil {
-		return nil, base.HTTPErrorf(http.StatusBadGateway,
-			"Error contacting config server: %v", err)
-	} else if resp.StatusCode >= 300 {
-		return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
-	}
-
-	var config DbConfig
-	defer func() { _ = resp.Body.Close() }()
-
-	if err := decodeAndSanitiseConfig(resp.Body, &config); err != nil {
-		return nil, base.HTTPErrorf(http.StatusBadGateway,
-			"Bad response from config server: %v", err)
-	}
-
-	if err = config.setup(dbName); err != nil {
-		return nil, err
-	}
-	return &config, nil
 }
 
 //////// STATS LOGGING

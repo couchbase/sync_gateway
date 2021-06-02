@@ -467,8 +467,6 @@ func TestMergeWith(t *testing.T) {
 	defaultInterface := "4984"
 	adminInterface := "127.0.0.1:4985"
 	profileInterface := "127.0.0.1:4985"
-	configServer := "remote.config.server:4985/db"
-	deploymentID := "DeploymentID1008"
 	facebookConfig := FacebookConfig{Register: true}
 
 	corsConfig := &CORSConfig{
@@ -488,8 +486,6 @@ func TestMergeWith(t *testing.T) {
 		Interface:        &defaultInterface,
 		AdminInterface:   &adminInterface,
 		ProfileInterface: &profileInterface,
-		ConfigServer:     &configServer,
-		DeploymentID:     &deploymentID,
 		Facebook:         &facebookConfig,
 		CORS:             corsConfig,
 		DeprecatedLog:    deprecatedLog,
@@ -506,8 +502,6 @@ func TestMergeWith(t *testing.T) {
 	assert.Equal(t, defaultInterface, *self.Interface)
 	assert.Equal(t, adminInterface, *self.AdminInterface)
 	assert.Equal(t, profileInterface, *self.ProfileInterface)
-	assert.Equal(t, configServer, *self.ConfigServer)
-	assert.Equal(t, deploymentID, *self.DeploymentID)
 	assert.Equal(t, facebookConfig.Register, self.Facebook.Register)
 
 	assert.Equal(t, corsConfig.Headers, self.CORS.Headers)
@@ -682,10 +676,8 @@ func TestParseCommandLine(t *testing.T) {
 		bucket             = "sync_gateway"
 		cacertpath         = "/etc/ssl/certs/ca.cert"
 		certpath           = "/etc/ssl/certs/client.pem"
-		configServer       = "http://127.0.0.1:4981/conf"
 		dbname             = "beer_sample"
 		defaultLogFilePath = "/var/log/sync_gateway"
-		deploymentID       = "DEPID100"
 		interfaceAddress   = "4984"
 		keypath            = "/etc/ssl/certs/key.pem"
 		logKeys            = "Admin,Access,Auth,Bucket"
@@ -696,10 +688,8 @@ func TestParseCommandLine(t *testing.T) {
 		"--adminInterface", adminInterface,
 		"--cacertpath", cacertpath,
 		"--certpath", certpath,
-		"--configServer", configServer,
 		"--dbname", dbname,
 		"--defaultLogFilePath", defaultLogFilePath,
-		"--deploymentID", deploymentID,
 		"--interface", interfaceAddress,
 		"--keypath", keypath,
 		"--log", logKeys,
@@ -710,7 +700,6 @@ func TestParseCommandLine(t *testing.T) {
 	require.NoError(t, err, "Parsing commandline arguments without any config file")
 	assert.Equal(t, interfaceAddress, *config.Interface)
 	assert.Equal(t, adminInterface, *config.AdminInterface)
-	assert.Equal(t, configServer, *config.ConfigServer)
 	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
 	assert.Equal(t, strings.Split(logKeys, ","), config.Logging.Console.LogKeys)
 	assert.Empty(t, *config.ProfileInterface)
@@ -816,9 +805,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		profileInterface   = "127.10.0.1:8088"
 		cacertpath         = "/etc/ssl/certs/ca.cert"
 		certpath           = "/etc/ssl/certs/client.pem"
-		configServer       = "http://127.0.0.1:4981/conf"
 		defaultLogFilePath = "/var/log/sync_gateway"
-		deploymentID       = "DEPID100"
 		interfaceAddress   = "4443"
 		keypath            = "/etc/ssl/certs/key.pem"
 		logKeys            = "Admin,Access,Auth,Bucket"
@@ -829,9 +816,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		"--adminInterface", adminInterface,
 		"--cacertpath", cacertpath,
 		"--certpath", certpath,
-		"--configServer", configServer,
 		"--defaultLogFilePath", defaultLogFilePath,
-		"--deploymentID", deploymentID,
 		"--interface", interfaceAddress,
 		"--keypath", keypath,
 		"--log", logKeys,
@@ -846,8 +831,6 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, interfaceAddress, *config.Interface)
 	assert.Equal(t, adminInterface, *config.AdminInterface)
 	assert.Equal(t, profileInterface, *config.ProfileInterface)
-	assert.Equal(t, configServer, *config.ConfigServer)
-	assert.Equal(t, deploymentID, *config.DeploymentID)
 	assert.Equal(t, logFilePath, config.Logging.LogFilePath)
 	assert.Equal(t, []string{"Admin", "Access", "Auth", "Bucket", "HTTP+"}, config.Logging.Console.LogKeys)
 	assert.True(t, config.Pretty)

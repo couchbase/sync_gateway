@@ -79,7 +79,6 @@ type ServerConfig struct {
 	AdminInterface             *string                  `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
 	AdminUI                    *string                  `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
 	ProfileInterface           *string                  `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
-	ConfigServer               *string                  `json:",omitempty"`                       // URL of config server (for dynamic db discovery)
 	Facebook                   *FacebookConfig          `json:",omitempty"`                       // Configuration for Facebook validation
 	Google                     *GoogleConfig            `json:",omitempty"`                       // Configuration for Google validation
 	CORS                       *CORSConfig              `json:",omitempty"`                       // Configuration for allowing CORS
@@ -87,7 +86,6 @@ type ServerConfig struct {
 	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"`            // Path to log file, if missing write to stderr
 	Logging                    *base.LoggingConfig      `json:",omitempty"`                       // Configuration for logging with optional log file rotation
 	Pretty                     bool                     `json:",omitempty"`                       // Pretty-print JSON responses?
-	DeploymentID               *string                  `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
 	StatsReportInterval        *float64                 `json:",omitempty"`                       // Optional stats report interval (0 to disable)
 	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`                       // TCP keep-alive interval between SG and Couchbase server
 	SlowQueryWarningThreshold  *int                     `json:",omitempty"`                       // Log warnings if N1QL queries take this many ms
@@ -963,12 +961,6 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	if self.ProfileInterface == nil {
 		self.ProfileInterface = other.ProfileInterface
 	}
-	if self.ConfigServer == nil {
-		self.ConfigServer = other.ConfigServer
-	}
-	if self.DeploymentID == nil {
-		self.DeploymentID = other.DeploymentID
-	}
 	if self.Facebook == nil {
 		self.Facebook = other.Facebook
 	}
@@ -1025,8 +1017,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 	addr := flagSet.String("interface", DefaultInterface, "Address to bind to")
 	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flagSet.String("profileInterface", "", "Address to bind profile interface to")
-	configServer := flagSet.String("configServer", "", "URL of server that can return database configs")
-	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
 	couchbaseURL := flagSet.String("url", DefaultServer, "Address of Couchbase server")
 	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
@@ -1087,12 +1077,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		if *profAddr != "" {
 			config.ProfileInterface = profAddr
 		}
-		if *configServer != "" {
-			config.ConfigServer = configServer
-		}
-		if *deploymentID != "" {
-			config.DeploymentID = deploymentID
-		}
 		if *pretty {
 			config.Pretty = *pretty
 		}
@@ -1140,7 +1124,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
 			Pretty:           *pretty,
-			ConfigServer:     configServer,
 			Logging: &base.LoggingConfig{
 				Console: base.ConsoleLoggerConfig{
 					// Enable the logger only when log keys have explicitly been set on the command line
