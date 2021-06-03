@@ -3087,14 +3087,14 @@ func TestRevocationMessage(t *testing.T) {
 	// Remove role from user
 	revocationTester.removeRole("user", "foo")
 
-	// Wait for revocation message
-	_, err = rt.WaitForChanges(1, "/db/_changes?since=0", "user", true)
-	require.NoError(t, err)
-
 	revID := rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": "!"})
 
 	revocationTester.fillToSeq(10)
 	revID = rt.createDocReturnRev(t, "doc1", revID, map[string]interface{}{})
+
+	// Wait for revocation message
+	_, err = rt.WaitForChanges(3, "/db/_changes?since=5", "", true)
+	require.NoError(t, err)
 
 	// Start a pull since 5 to receive revocation and removal
 	err = btc.StartPullSince("false", "5", "false")
@@ -3186,6 +3186,9 @@ func TestRevocationNoRev(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
+	_, err = rt.WaitForChanges(3, "/db/_changes?since=0", "user", true)
+	require.NoError(t, err)
+
 	// OneShot pull to grab doc
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
@@ -3200,9 +3203,8 @@ func TestRevocationNoRev(t *testing.T) {
 
 	waitRevID := rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
 
-	changes, err := rt.WaitForChanges(3, "/db/_changes?since=5", "user", true)
+	_, err = rt.WaitForChanges(3, "/db/_changes?since=5", "user", true)
 	require.NoError(t, err)
-	fmt.Println(changes)
 
 	err = btc.StartPullSince("false", "5", "false")
 	assert.NoError(t, err)
