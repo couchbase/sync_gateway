@@ -41,6 +41,11 @@ const (
 const (
 	// RemovedRedactedDocument is returned by SG when a given document has been dropped out of a channel
 	RemovedRedactedDocument = `{"` + BodyRemoved + `":true}`
+
+	// RemovedRedactedDocumentFalse is returned by SG when a given document has been dropped out of a channel but the
+	// user still has access to it through another channel.
+	RemovedRedactedDocumentFalse = `{"` + BodyRemoved + `":false}`
+
 	// DeletedDocument is returned by SG when a given document has been deleted
 	DeletedDocument = `{"` + BodyDeleted + `":true}`
 )

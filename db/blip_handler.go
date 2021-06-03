@@ -684,7 +684,7 @@ func (bh *blipHandler) handleNoRev(rq *blip.Message) error {
 }
 
 type removalDocument struct {
-	Removed bool `json:"_removed"`
+	Removed *bool `json:"_removed,omitempty"`
 }
 
 // Received a "rev" request, i.e. client is pushing a revision body
@@ -725,16 +725,23 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		if err := json.Unmarshal(bodyBytes, &r); err != nil {
 			return err
 		}
-		if r.Removed {
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", docID, revID)
-			if err := bh.db.Purge(docID); err != nil {
-				return err
+		if r.Removed != nil {
+			if *r.Removed {
+				base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", docID, revID)
+				if err := bh.db.Purge(docID); err != nil {
+					return err
+				}
+				bh.replicationStats.HandleRevDocsPurgedCount.Add(1)
+				if bh.sgr2PullProcessedSeqCallback != nil {
+					bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
+				}
+				return nil
+			} else {
+				if bh.sgr2PullProcessedSeqCallback != nil {
+					bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
+				}
+				return nil
 			}
-			bh.replicationStats.HandleRevDocsPurgedCount.Add(1)
-			if bh.sgr2PullProcessedSeqCallback != nil {
-				bh.sgr2PullProcessedSeqCallback(rq.Properties[RevMessageSequence], IDAndRev{DocID: docID, RevID: revID})
-			}
-			return nil
 		}
 	}
 

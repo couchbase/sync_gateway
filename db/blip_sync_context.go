@@ -271,7 +271,6 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 
 		if knownRevsArray, ok := knownRevsArrayInterface.([]interface{}); ok {
 			deltaSrcRevID := ""
-			//deleted := changeArray[i][3].(bool)
 			knownRevs := knownRevsByDoc[docID]
 			if knownRevs == nil {
 				knownRevs = make(map[string]bool, len(knownRevsArray))
@@ -294,12 +293,27 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 				}
 			}
 
-			var err error
-			if deltaSrcRevID != "" {
-				err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDb)
-			} else {
-				err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+			deletedFlags := changesDeletedFlag(0)
+			if bsc.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 && len(changeArray[i]) > 3 {
+				deletedFlags, ok = changeArray[i][3].(changesDeletedFlag)
+				if !ok {
+					base.ErrorfCtx(bsc.loggingCtx, "Unable to parse deleted flags")
+					return nil
+				}
 			}
+
+			var err error
+
+			if deletedFlags&changesDeletedFlagRevoked != 0 {
+				err = bsc.sendRemovedBodyRevision(sender, docID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+			} else {
+				if deltaSrcRevID != "" {
+					err = bsc.sendRevAsDelta(sender, docID, revID, deltaSrcRevID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+				} else {
+					err = bsc.sendRevision(sender, docID, revID, seq, knownRevs, maxHistory, handleChangesResponseDb)
+				}
+			}
+
 			if err != nil {
 				return err
 			}
@@ -563,6 +577,28 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	attDigests := AttachmentDigests(rev.Attachments)
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), attDigests)
 	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties, seq, nil)
+}
+
+func (bsc *BlipSyncContext) sendRemovedBodyRevision(sender *blip.Sender, docID string, seq SequenceID, knownRevs map[string]bool, maxHistory int, handleChangesResponseDb *Database) error {
+	rev, err := handleChangesResponseDb.revisionCache.GetActive(docID, false)
+	if err != nil {
+		return err
+	}
+
+	var body string
+
+	isAuthorized, _ := handleChangesResponseDb.authorizeUserForChannels(docID, rev.RevID, rev.Channels, rev.Deleted, nil)
+	if !isAuthorized {
+		body = RemovedRedactedDocument
+	} else {
+		body = RemovedRedactedDocumentFalse
+	}
+
+	history := toHistory(rev.History, knownRevs, maxHistory)
+	properties := blipRevMessageProperties(history, rev.Deleted, seq)
+
+	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending removed body rev %q %s based on %d known", base.UD(docID), rev.RevID, len(knownRevs), nil)
+	return bsc.sendRevisionWithProperties(sender, docID, rev.RevID, []byte(body), nil, properties, seq, nil)
 }
 
 func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) []string {
