@@ -258,6 +258,10 @@ const (
 	changesDeletedFlagRemoved changesDeletedFlag = 0b100
 )
 
+func (flag changesDeletedFlag) HasFlag(deletedFlag changesDeletedFlag) bool {
+	return flag&deletedFlag != 0
+}
+
 // Sends all changes since the given sequence
 func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (isComplete bool) {
 	defer func() {
@@ -306,10 +310,11 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item["rev"])
 
-					if len(change.Removed) > 0 && !change.Deleted && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
-						userMaintainsAccessToDoc, err := UserStillMaintainsAccessToDoc(bh.db, change.ID, item["rev"])
+					if bh.purgeOnRemoval && len(change.Removed) > 0 && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+						userMaintainsAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
 						if err != nil {
-							return err
+							base.InfofCtx(bh.loggingCtx, base.KeySync, "Unable to obtain the doc: %s %s to verify user access: %v", base.UD(change.ID), item["rev"], err)
+							continue
 						}
 
 						if userMaintainsAccessToDoc {
@@ -514,7 +519,8 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		}
 
-		if bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 && deletedFlags&(changesDeletedFlagRevoked|changesDeletedFlagRemoved) != 0 && deletedFlags&changesDeletedFlagDeleted == 0 {
+		if bh.purgeOnRemoval && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 &&
+			(deletedFlags.HasFlag(changesDeletedFlagRevoked) || deletedFlags.HasFlag(changesDeletedFlagRemoved)) {
 			err := bh.db.Purge(docID)
 			if err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)

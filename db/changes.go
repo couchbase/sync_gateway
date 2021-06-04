@@ -247,7 +247,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 					}
 				}
 
-				userMaintainsAccessToDoc, err := UserStillMaintainsAccessToDoc(db, logEntry.DocID, logEntry.RevID)
+				userMaintainsAccessToDoc, err := UserHasDocAccess(db, logEntry.DocID, logEntry.RevID)
 				if err != nil {
 					change := ChangeEntry{
 						Err: base.ErrChannelFeed,
@@ -292,9 +292,12 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 	return feed
 }
 
-func UserStillMaintainsAccessToDoc(db *Database, docID, revID string) (bool, error) {
+func UserHasDocAccess(db *Database, docID, revID string) (bool, error) {
 	rev, err := db.revisionCache.Get(docID, revID, false, false)
 	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			return false, nil
+		}
 		return false, err
 	}
 
