@@ -393,7 +393,9 @@ func (rt *RestTester) WaitForCondition(successFunc func() bool) error {
 
 func (rt *RestTester) SendAdminRequest(method, resource string, body string) *TestResponse {
 	input := bytes.NewBufferString(body)
-	request, _ := http.NewRequest(method, "http://localhost"+resource, input)
+	request, err := http.NewRequest(method, "http://localhost"+resource, input)
+	require.NoError(rt.tb, err)
+
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
 
