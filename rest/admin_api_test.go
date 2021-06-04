@@ -34,6 +34,29 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestPutDocSpecialChar(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	testCases := []struct {
+		name string
+		docID string
+	}{
+		{
+			name: "Double quote",
+			docID: `doc"55"`,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", testCase.docID), "{}")
+			assertStatus(t, tr, http.StatusCreated)
+			var body map[string]interface{}
+			err := json.Unmarshal(tr.BodyBytes(), &body)
+			assert.NoError(t, err)
+		})
+	}
+}
+
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
 func TestNoPanicInvalidUpdate(t *testing.T) {
 
