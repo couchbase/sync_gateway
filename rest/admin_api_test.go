@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
 func TestPutDocSpecialChar(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

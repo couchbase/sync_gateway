@@ -384,7 +384,7 @@ func (h *handler) handlePutDoc() error {
 		}
 	}
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":"`+docid+`","ok":true,"rev":"`+newRev+`"}`))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	return nil
 }
 
