@@ -305,6 +305,18 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 			if !strings.HasPrefix(change.ID, "_") {
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item["rev"])
+
+					if len(change.Removed) > 0 && !change.Deleted && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+						userMaintainsAccessToDoc, err := UserStillMaintainsAccessToDoc(bh.db, change.ID, item["rev"])
+						if err != nil {
+							return err
+						}
+
+						if userMaintainsAccessToDoc {
+							continue
+						}
+					}
+
 					pendingChanges = append(pendingChanges, changeRow)
 					if err := sendPendingChangesAt(opts.batchSize); err != nil {
 						return err
@@ -502,7 +514,7 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		}
 
-		if bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 && deletedFlags&(changesDeletedFlagRevoked) != 0 {
+		if bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 && deletedFlags&(changesDeletedFlagRevoked|changesDeletedFlagRemoved) != 0 && deletedFlags&changesDeletedFlagDeleted == 0 {
 			err := bh.db.Purge(docID)
 			if err != nil {
 				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)

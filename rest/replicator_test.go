@@ -1557,7 +1557,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
