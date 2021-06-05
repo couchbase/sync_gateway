@@ -924,9 +924,12 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	if digest == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'digest'")
 	}
-	if !bh.isAttachmentAllowed(digest) {
+
+	att := bh.AllowedAttachment(digest)
+	if att.counter <= 0 {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
 	}
+
 	attachment, err := bh.db.GetAttachment(AttachmentKey(digest))
 	if err != nil {
 		return err
@@ -1027,7 +1030,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 				return bh.sendGetAttachment(sender, docID, name, digest, meta)
 			}
 
-			// ask client to prove they have the attachemnt without sending it
+			// ask client to prove they have the attachment without sending it
 			proveAttErr := bh.sendProveAttachment(sender, docID, name, digest, knownData)
 			if proveAttErr == nil {
 				return nil, nil
@@ -1044,7 +1047,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 			}
 
 			return nil, proveAttErr
-		})
+		}, docID)
 }
 
 func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
@@ -1060,10 +1063,12 @@ func (bsc *BlipSyncContext) addAllowedAttachments(attDigests []string) {
 	defer bsc.lock.Unlock()
 
 	if bsc.allowedAttachments == nil {
-		bsc.allowedAttachments = make(map[string]int, 100)
+		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
 	for _, digest := range attDigests {
-		bsc.allowedAttachments[digest] = bsc.allowedAttachments[digest] + 1
+		att := bsc.allowedAttachments[digest]
+		att.counter = att.counter + 1
+		bsc.allowedAttachments[digest] = att
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, bsc.allowedAttachments)
@@ -1078,8 +1083,10 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(attDigests []string) {
 	defer bsc.lock.Unlock()
 
 	for _, digest := range attDigests {
-		if n := bsc.allowedAttachments[digest]; n > 1 {
-			bsc.allowedAttachments[digest] = n - 1
+		att := bsc.allowedAttachments[digest]
+		if n := att.counter; n > 1 {
+			att.counter = n - 1
+			bsc.allowedAttachments[digest] = att
 		} else {
 			delete(bsc.allowedAttachments, digest)
 		}

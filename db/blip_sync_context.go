@@ -92,7 +92,7 @@ type BlipSyncContext struct {
 	gotSubChanges                    bool
 	continuous                       bool
 	lock                             sync.Mutex
-	allowedAttachments               map[string]int
+	allowedAttachments               map[string]AllowedAttachment
 	handlerSerialNumber              uint64                                    // Each handler within a context gets a unique serial number for logging
 	terminatorOnce                   sync.Once                                 // Used to ensure the terminator channel below is only ever closed once.
 	terminator                       chan bool                                 // Closed during BlipSyncContext.close(). Ensures termination of async goroutines.
@@ -124,6 +124,13 @@ type BlipSyncContext struct {
 	// fatalErrorCallback is called by the replicator code when the replicator using this blipSyncContext should be
 	// stopped
 	fatalErrorCallback func(err error)
+}
+
+type AllowedAttachment struct {
+	docID   string // Associated document ID
+	name    string // Name of the attachment
+	version int    // Version of the attachment
+	counter int    // Counter to track allowed attachments
 }
 
 func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
@@ -446,7 +453,13 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 func (bsc *BlipSyncContext) isAttachmentAllowed(digest string) bool {
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
-	return bsc.allowedAttachments[digest] > 0
+	return bsc.allowedAttachments[digest].counter > 0
+}
+
+func (bsc *BlipSyncContext) AllowedAttachment(digest string) AllowedAttachment {
+	bsc.lock.Lock()
+	defer bsc.lock.Unlock()
+	return bsc.allowedAttachments[digest]
 }
 
 // setUseDeltas will set useDeltas on the BlipSyncContext as long as both sides of the connection have it enabled.
