@@ -311,13 +311,13 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 					changeRow := bh.buildChangesRow(change, item["rev"])
 
 					if bh.purgeOnRemoval && len(change.Removed) > 0 && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
-						userMaintainsAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
+						userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
 						if err != nil {
 							base.InfofCtx(bh.loggingCtx, base.KeySync, "Unable to obtain the doc: %s %s to verify user access: %v", base.UD(change.ID), item["rev"], err)
 							continue
 						}
 
-						if userMaintainsAccessToDoc {
+						if userHasAccessToDoc {
 							continue
 						}
 					}

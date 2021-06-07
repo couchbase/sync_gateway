@@ -247,7 +247,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 					}
 				}
 
-				userMaintainsAccessToDoc, err := UserHasDocAccess(db, logEntry.DocID, logEntry.RevID)
+				userHasAccessToDoc, err := UserHasDocAccess(db, logEntry.DocID, logEntry.RevID)
 				if err != nil {
 					change := ChangeEntry{
 						Err: base.ErrChannelFeed,
@@ -256,7 +256,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 					return
 				}
 
-				if userMaintainsAccessToDoc {
+				if userHasAccessToDoc {
 					paginationOptions.Since.Seq = lastSeq
 					continue
 				}
