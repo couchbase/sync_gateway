@@ -33,6 +33,81 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
+func TestPutDocSpecialChar(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+	testCases := []struct {
+		name         string
+		pathDocID    string
+		method       string
+		body         string
+		expectedResp int
+		eeOnly       bool
+	}{
+		{
+			name:         "Double quote PUT",
+			pathDocID:    `doc"55"`,
+			method:       "PUT",
+			body:         "{}",
+			expectedResp: http.StatusCreated,
+			eeOnly:       false,
+		},
+		{
+			name:         "Double quote PUT for replicator2",
+			pathDocID:    `doc"77"?replicator2=true`,
+			method:       "PUT",
+			body:         "{}",
+			expectedResp: http.StatusCreated,
+			eeOnly:       true,
+		},
+		{
+			name:         "Local double quote PUT",
+			pathDocID:    `_local/doc"57"`,
+			method:       "PUT",
+			body:         "{}",
+			expectedResp: http.StatusCreated,
+			eeOnly:       false,
+		},
+		{
+			name:         "Double quote PUT with attachment",
+			pathDocID:    `doc"59"/attachMe`,
+			method:       "PUT",
+			body:         "{}",
+			expectedResp: http.StatusCreated, // Admin Docs expected response http.StatusOK
+			eeOnly:       false,
+		},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.eeOnly && !base.IsEnterpriseEdition() {
+				t.Skipf("Skipping enterprise-only test")
+			}
+			tr := rt.SendAdminRequest(testCase.method, fmt.Sprintf("/db/%s", testCase.pathDocID), testCase.body)
+			assertStatus(t, tr, testCase.expectedResp)
+			var body map[string]interface{}
+			err := json.Unmarshal(tr.BodyBytes(), &body)
+			assert.NoError(t, err)
+		})
+	}
+
+	t.Run("Delete Double quote Doc ID", func(t *testing.T) { // Should be done for Local Document deletion when it returns response
+		tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", `del"ete"Me`), "{}") // Create the doc to delete
+		assertStatus(t, tr, http.StatusCreated)
+		var putBody struct {
+			Rev string `json:"rev"`
+		}
+		err := json.Unmarshal(tr.BodyBytes(), &putBody)
+		assert.NoError(t, err)
+
+		tr = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", `del"ete"Me`, putBody.Rev), "{}")
+		assertStatus(t, tr, http.StatusOK)
+		var body map[string]interface{}
+		err = json.Unmarshal(tr.BodyBytes(), &body)
+		assert.NoError(t, err)
+	})
+}
+
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document
 func TestNoPanicInvalidUpdate(t *testing.T) {
 
