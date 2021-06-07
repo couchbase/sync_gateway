@@ -44,6 +44,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 		method string
 		body string
 		expectedResp int
+		eeOnly bool
 	}{
 		{
 			name: "Double quote PUT",
@@ -51,6 +52,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 			method: "PUT",
 			body: "{}",
 			expectedResp: http.StatusCreated,
+			eeOnly: false,
 		},
 		{
 			name: "Double quote PUT for replicator2",
@@ -58,6 +60,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 			method: "PUT",
 			body: "{}",
 			expectedResp: http.StatusCreated,
+			eeOnly: true,
 		},
 		{
 			name: "Local double quote PUT",
@@ -65,6 +68,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 			method: "PUT",
 			body: "{}",
 			expectedResp: http.StatusCreated,
+			eeOnly: false,
 		},
 		{
 			name: "Double quote PUT with attachment",
@@ -72,10 +76,14 @@ func TestPutDocSpecialChar(t *testing.T) {
 			method: "PUT",
 			body: "{}",
 			expectedResp: http.StatusCreated, // Admin Docs expected response http.StatusOK
+			eeOnly: false,
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.eeOnly && !base.IsEnterpriseEdition() {
+				t.Skipf("Skipping enterprise-only test")
+			}
 			tr := rt.SendAdminRequest(testCase.method, fmt.Sprintf("/db/%s", testCase.pathDocID), testCase.body)
 			assertStatus(t, tr, testCase.expectedResp)
 			var body map[string]interface{}
