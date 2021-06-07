@@ -40,17 +40,37 @@ func TestPutDocSpecialChar(t *testing.T) {
 	defer rt.Close()
 	testCases := []struct {
 		name string
-		docID string
+		pathDocID string
+		method string
+		body string
+		expectedResp int
 	}{
 		{
-			name: "Double quote",
-			docID: `doc"55"`,
+			name: "Double quote PUT",
+			pathDocID: `doc"55"`,
+			method: "PUT",
+			body: "{}",
+			expectedResp: http.StatusCreated,
+		},
+		{
+			name: "Local double quote PUT",
+			pathDocID: `_local/doc"57"`,
+			method: "PUT",
+			body: "{}",
+			expectedResp: http.StatusCreated,
+		},
+		{
+			name: "Double quote POST",
+			pathDocID: ``,
+			method: "POST",
+			body: fmt.Sprintf(`{"_id": "doc%s"}`, `"56"`),
+			expectedResp: http.StatusBadRequest, // Not allowed to be created
 		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", testCase.docID), "{}")
-			assertStatus(t, tr, http.StatusCreated)
+			tr := rt.SendAdminRequest(testCase.method, fmt.Sprintf("/db/%s", testCase.pathDocID), testCase.body)
+			assertStatus(t, tr, testCase.expectedResp)
 			var body map[string]interface{}
 			err := json.Unmarshal(tr.BodyBytes(), &body)
 			assert.NoError(t, err)
