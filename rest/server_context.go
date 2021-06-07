@@ -733,6 +733,10 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		localDocExpirySecs = *config.LocalDocExpirySecs
 	}
 
+	if config.UserXattrKey != "" && !config.UseXattrs() {
+		return db.DatabaseContextOptions{}, fmt.Errorf("use of user_xattr_key requires shared_bucket_access to be enabled")
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
