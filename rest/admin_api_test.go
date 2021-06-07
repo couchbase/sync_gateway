@@ -2768,6 +2768,10 @@ func TestAdhocReplicationStatus(t *testing.T) {
 }
 
 func TestUserXattrsRawGet(t *testing.T) {
+	if !base.TestUseXattrs() {
+		t.Skip("Test requires xattrs to be enabled")
+	}
+
 	docKey := t.Name()
 	xattrKey := "xattrKey"
 
