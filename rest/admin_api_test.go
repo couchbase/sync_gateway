@@ -73,13 +73,6 @@ func TestPutDocSpecialChar(t *testing.T) {
 			body: "{}",
 			expectedResp: http.StatusCreated, // Admin Docs expected response http.StatusOK
 		},
-		{
-			name: "Double quote POST",
-			pathDocID: ``,
-			method: "POST",
-			body: fmt.Sprintf(`{"_id": "doc%s"}`, `"56"`),
-			expectedResp: http.StatusBadRequest, // Not allowed to be created
-		},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
