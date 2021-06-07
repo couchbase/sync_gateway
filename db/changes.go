@@ -227,8 +227,6 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 					TriggeredBy: triggeredBy,
 				}
 
-				idOnlyRevocation := false
-
 				// We need to check whether a change / document sequence is greater than since.
 				// If its less than we can send a standard revocation with Sequence ID as above.
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
@@ -246,14 +244,26 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 					if !requiresRevocation {
 						return
 					}
-
-					idOnlyRevocation = true
 				}
 
-				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelName(), idOnlyRevocation)
+				userHasAccessToDoc, err := UserHasDocAccess(db, logEntry.DocID, logEntry.RevID)
+				if err != nil {
+					change := ChangeEntry{
+						Err: base.ErrChannelFeed,
+					}
+					feed <- &change
+					return
+				}
+
+				if userHasAccessToDoc {
+					paginationOptions.Since.Seq = lastSeq
+					continue
+				}
+
+				change := makeRevocationChangeEntry(logEntry, seqID, singleChannelCache.ChannelName())
 				lastSeq = logEntry.Sequence
 
-				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing seq: %v in channel %s with omit revID %t", seqID, base.UD(singleChannelCache.ChannelName()), idOnlyRevocation)
+				base.DebugfCtx(db.Ctx, base.KeyChanges, "Channel feed processing revocation seq: %v in channel %s ", seqID, base.UD(singleChannelCache.ChannelName()))
 
 				select {
 				case <-options.Terminator:
@@ -279,6 +289,23 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 	}()
 
 	return feed
+}
+
+func UserHasDocAccess(db *Database, docID, revID string) (bool, error) {
+	rev, err := db.revisionCache.Get(docID, revID, false, false)
+	if err != nil {
+		if base.IsDocNotFoundError(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	isAuthorized, _ := db.authorizeUserForChannels(rev.DocID, rev.RevID, rev.Channels, rev.Deleted, nil)
+	if isAuthorized {
+		return true, nil
+	}
+
+	return false, nil
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
@@ -430,13 +457,9 @@ func makeChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) C
 	return change
 }
 
-func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string, omitRevID bool) ChangeEntry {
+func makeRevocationChangeEntry(logEntry *LogEntry, seqID SequenceID, channelName string) ChangeEntry {
 	entry := makeChangeEntry(logEntry, seqID, channelName)
 	entry.Revoked = true
-
-	if omitRevID {
-		entry.Changes = nil
-	}
 
 	return entry
 }
