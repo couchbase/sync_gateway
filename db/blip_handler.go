@@ -752,7 +752,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 			return err
 		}
 		if r.Removed {
-			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", docID, revID)
+			base.InfofCtx(bh.loggingCtx, base.KeySync, "Purging doc %v - removed at rev %v", base.UD(docID), revID)
 			if err := bh.db.Purge(docID); err != nil {
 				return err
 			}
@@ -788,17 +788,17 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		//       revisions to malicious actors (in the scenario where that user has write but not read access).
 		deltaSrcRev, err := bh.db.GetRev(docID, deltaSrcRevID, false, nil)
 		if err != nil {
-			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc for deltaSrc=%s %v", deltaSrcRevID, err)
+			return base.HTTPErrorf(http.StatusNotFound, "Can't fetch doc %s for deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
 
 		// Receiving a delta to be applied on top of a tombstone is not valid.
 		if deltaSrcRev.Deleted {
-			return base.HTTPErrorf(http.StatusNotFound, "Can't use delta. Found tombstone for deltaSrc=%s", deltaSrcRevID)
+			return base.HTTPErrorf(http.StatusNotFound, "Can't use delta. Found tombstone for doc %s deltaSrc=%s", base.UD(docID), deltaSrcRevID)
 		}
 
 		deltaSrcBody, err := deltaSrcRev.MutableBody()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to unmarshal mutable body for deltaSrc=%s %v", deltaSrcRevID, err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "Unable to unmarshal mutable body for doc %s deltaSrc=%s %v", base.UD(docID), deltaSrcRevID, err)
 		}
 
 		// Stamp attachments so we can patch them
@@ -812,7 +812,7 @@ func (bh *blipHandler) handleRev(rq *blip.Message) (err error) {
 		// err should only ever be a FleeceDeltaError here - but to be defensive, handle other errors too (e.g. somehow reaching this code in a CE build)
 		if err != nil {
 			// Something went wrong in the diffing library. We want to know about this!
-			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for key %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
+			base.WarnfCtx(bh.loggingCtx, "Error patching deltaSrc %s with %s for doc %s with delta - err: %v", deltaSrcRevID, revID, base.UD(docID), err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "Error patching deltaSrc with delta: %s", err)
 		}
 

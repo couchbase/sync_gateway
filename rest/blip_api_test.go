@@ -2608,7 +2608,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		// Now make the client push up a delta that has the parent of the tombstone.
 		// This is not a valid scenario, and is actively prevented on the CBL side.
 		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "Found tombstone for deltaSrc")
+		assert.Contains(t, err.Error(), "Can't use delta. Found tombstone for doc")
 		assert.Equal(t, "", revID)
 	} else {
 		// Pushing a full body revision on top of a tombstone is valid.
