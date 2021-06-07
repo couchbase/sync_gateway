@@ -71,7 +71,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 			pathDocID: `doc"59"/attachMe`,
 			method: "PUT",
 			body: "{}",
-			expectedResp: http.StatusCreated,
+			expectedResp: http.StatusCreated, // Admin Docs expected response http.StatusOK
 		},
 		{
 			name: "Double quote POST",
@@ -91,7 +91,7 @@ func TestPutDocSpecialChar(t *testing.T) {
 		})
 	}
 
-	t.Run("Delete Double quote Doc ID", func(t *testing.T) {
+	t.Run("Delete Double quote Doc ID", func(t *testing.T) { // Should be done for Local Document deletion when it returns response
 		tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", `del"ete"Me`), "{}") // Create the doc to delete
 		assertStatus(t, tr, http.StatusCreated)
 		var putBody struct {
