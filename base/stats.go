@@ -231,7 +231,6 @@ type CBLReplicationPushStats struct {
 }
 
 type DatabaseStats struct {
-	AbandonedSeqs           *SgwIntStat `json:"abandoned_seqs"`
 	ConflictWriteCount      *SgwIntStat `json:"conflict_write_count"`
 	Crc32MatchCount         *SgwIntStat `json:"crc32c_match_count"`
 	DCPCachingCount         *SgwIntStat `json:"dcp_caching_count"`
@@ -699,7 +698,6 @@ func (d *DbStats) initDatabaseStats() {
 	labelKeys := []string{DatabaseLabelKey}
 	labelVals := []string{d.dbName}
 	d.DatabaseStats = &DatabaseStats{
-		AbandonedSeqs:           NewIntStat(SubsystemDatabaseKey, "abandoned_seqs", labelKeys, labelVals, prometheus.CounterValue, 0),
 		ConflictWriteCount:      NewIntStat(SubsystemDatabaseKey, "conflict_write_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		Crc32MatchCount:         NewIntStat(SubsystemDatabaseKey, "crc32c_match_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		DCPCachingCount:         NewIntStat(SubsystemDatabaseKey, "dcp_caching_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
