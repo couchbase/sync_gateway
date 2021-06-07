@@ -9,6 +9,9 @@
 name: ci
 
 on:
+  push:
+    branches:
+      - 'gh-actions-test'
   pull_request:
     branches:
       - 'master'
