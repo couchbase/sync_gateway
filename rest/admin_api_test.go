@@ -39,44 +39,44 @@ func TestPutDocSpecialChar(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 	testCases := []struct {
-		name string
-		pathDocID string
-		method string
-		body string
+		name         string
+		pathDocID    string
+		method       string
+		body         string
 		expectedResp int
-		eeOnly bool
+		eeOnly       bool
 	}{
 		{
-			name: "Double quote PUT",
-			pathDocID: `doc"55"`,
-			method: "PUT",
-			body: "{}",
+			name:         "Double quote PUT",
+			pathDocID:    `doc"55"`,
+			method:       "PUT",
+			body:         "{}",
 			expectedResp: http.StatusCreated,
-			eeOnly: false,
+			eeOnly:       false,
 		},
 		{
-			name: "Double quote PUT for replicator2",
-			pathDocID: `doc"77"?replicator2=true`,
-			method: "PUT",
-			body: "{}",
+			name:         "Double quote PUT for replicator2",
+			pathDocID:    `doc"77"?replicator2=true`,
+			method:       "PUT",
+			body:         "{}",
 			expectedResp: http.StatusCreated,
-			eeOnly: true,
+			eeOnly:       true,
 		},
 		{
-			name: "Local double quote PUT",
-			pathDocID: `_local/doc"57"`,
-			method: "PUT",
-			body: "{}",
+			name:         "Local double quote PUT",
+			pathDocID:    `_local/doc"57"`,
+			method:       "PUT",
+			body:         "{}",
 			expectedResp: http.StatusCreated,
-			eeOnly: false,
+			eeOnly:       false,
 		},
 		{
-			name: "Double quote PUT with attachment",
-			pathDocID: `doc"59"/attachMe`,
-			method: "PUT",
-			body: "{}",
+			name:         "Double quote PUT with attachment",
+			pathDocID:    `doc"59"/attachMe`,
+			method:       "PUT",
+			body:         "{}",
 			expectedResp: http.StatusCreated, // Admin Docs expected response http.StatusOK
-			eeOnly: false,
+			eeOnly:       false,
 		},
 	}
 	for _, testCase := range testCases {
