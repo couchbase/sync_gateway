@@ -458,7 +458,7 @@ func (h *handler) handlePutDocReplicator2(docid string, roundTrip bool) (err err
 		}
 	}
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":"`+docid+`","ok":true,"rev":"`+rev+`"}`))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+rev+`"}`))
 	return nil
 }
 

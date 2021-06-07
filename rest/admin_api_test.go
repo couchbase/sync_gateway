@@ -53,6 +53,13 @@ func TestPutDocSpecialChar(t *testing.T) {
 			expectedResp: http.StatusCreated,
 		},
 		{
+			name: "Double quote PUT for replicator2",
+			pathDocID: `doc"77"?replicator2=true`,
+			method: "PUT",
+			body: "{}",
+			expectedResp: http.StatusCreated,
+		},
+		{
 			name: "Local double quote PUT",
 			pathDocID: `_local/doc"57"`,
 			method: "PUT",
