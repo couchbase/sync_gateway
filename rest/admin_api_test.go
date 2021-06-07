@@ -60,6 +60,13 @@ func TestPutDocSpecialChar(t *testing.T) {
 			expectedResp: http.StatusCreated,
 		},
 		{
+			name: "Double quote PUT with attachment",
+			pathDocID: `doc"59"/attachMe`,
+			method: "PUT",
+			body: "{}",
+			expectedResp: http.StatusCreated,
+		},
+		{
 			name: "Double quote POST",
 			pathDocID: ``,
 			method: "POST",
@@ -78,7 +85,6 @@ func TestPutDocSpecialChar(t *testing.T) {
 	}
 
 	t.Run("Delete Double quote Doc ID", func(t *testing.T) {
-
 		tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", `del"ete"Me`), "{}") // Create the doc to delete
 		assertStatus(t, tr, http.StatusCreated)
 		var putBody struct {

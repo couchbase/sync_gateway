@@ -323,7 +323,7 @@ func (h *handler) handlePutAttachment() error {
 	}
 	h.setHeader("Etag", strconv.Quote(newRev))
 
-	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":"`+docid+`","ok":true,"rev":"`+newRev+`"}`))
+	h.writeRawJSONStatus(http.StatusCreated, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	return nil
 }
 
