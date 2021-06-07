@@ -268,6 +268,10 @@ const (
 	changesDeletedFlagRemoved changesDeletedFlag = 0b100
 )
 
+func (flag changesDeletedFlag) HasFlag(deletedFlag changesDeletedFlag) bool {
+	return flag&deletedFlag != 0
+}
+
 // Sends all changes since the given sequence
 func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions) (isComplete bool) {
 	defer func() {
@@ -312,21 +316,22 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 	_, forceClose := generateBlipSyncChanges(changesDb, channelSet, options, opts.docIDs, func(changes []*ChangeEntry) error {
 		base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Sending %d changes", len(changes))
 		for _, change := range changes {
-
 			if !strings.HasPrefix(change.ID, "_") {
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item["rev"])
-					pendingChanges = append(pendingChanges, changeRow)
-					if err := sendPendingChangesAt(opts.batchSize); err != nil {
-						return err
-					}
-				}
 
-				// In the event we were unable to determine what the rev ID was at the time of revocation we have to
-				// send a revocation changes message but without a revID present. This will result in change.Changes
-				// being empty so we need to have this special case.
-				if len(change.Changes) == 0 && change.Revoked == true {
-					changeRow := bh.buildChangesRow(change, "")
+					if bh.purgeOnRemoval && len(change.Removed) > 0 && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+						userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
+						if err != nil {
+							base.InfofCtx(bh.loggingCtx, base.KeySync, "Unable to obtain the doc: %s %s to verify user access: %v", base.UD(change.ID), item["rev"], err)
+							continue
+						}
+
+						if userHasAccessToDoc {
+							continue
+						}
+					}
+
 					pendingChanges = append(pendingChanges, changeRow)
 					if err := sendPendingChangesAt(opts.batchSize); err != nil {
 						return err
@@ -524,7 +529,18 @@ func (bh *blipHandler) handleChanges(rq *blip.Message) error {
 
 		}
 
-		if missing == nil && deletedFlags&(changesDeletedFlagRevoked|changesDeletedFlagRemoved) == 0 {
+		if bh.purgeOnRemoval && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 &&
+			(deletedFlags.HasFlag(changesDeletedFlagRevoked) || deletedFlags.HasFlag(changesDeletedFlagRemoved)) {
+			err := bh.db.Purge(docID)
+			if err != nil {
+				base.WarnfCtx(bh.loggingCtx, "Failed to purge document: %v", err)
+			}
+
+			// Fall into skip sending case
+			missing = nil
+		}
+
+		if missing == nil {
 			// already have this rev, tell the peer to skip sending it
 			output.Write([]byte("0"))
 			if bh.sgr2PullAlreadyKnownSeqsCallback != nil {
