@@ -76,6 +76,23 @@ func TestPutDocSpecialChar(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
+
+	t.Run("Delete Double quote Doc ID", func(t *testing.T) {
+
+		tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", `del"ete"Me`), "{}") // Create the doc to delete
+		assertStatus(t, tr, http.StatusCreated)
+		var putBody struct {
+			Rev string `json:"rev"`
+		}
+		err := json.Unmarshal(tr.BodyBytes(), &putBody)
+		assert.NoError(t, err)
+
+		tr = rt.SendAdminRequest("DELETE", fmt.Sprintf("/db/%s?rev=%s", `del"ete"Me`, putBody.Rev), "{}")
+		assertStatus(t, tr, http.StatusOK)
+		var body map[string]interface{}
+		err = json.Unmarshal(tr.BodyBytes(), &body)
+		assert.NoError(t, err)
+	})
 }
 
 // Reproduces #3048 Panic when attempting to make invalid update to a conflicting document

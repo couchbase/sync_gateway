@@ -497,7 +497,7 @@ func (h *handler) handleDeleteDoc() error {
 	}
 	newRev, err := h.db.DeleteDoc(docid, revid)
 	if err == nil {
-		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":"`+docid+`","ok":true,"rev":"`+newRev+`"}`))
+		h.writeRawJSONStatus(http.StatusOK, []byte(`{"id":`+base.ConvertToJSONString(docid)+`,"ok":true,"rev":"`+newRev+`"}`))
 	}
 	return err
 }
