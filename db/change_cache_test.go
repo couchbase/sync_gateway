@@ -999,7 +999,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 
 	// Issue two one-shot since=0 changes request.  Both will attempt a view query.  The first will block based on queryWg,
 	// the second will block waiting for the view lock
-	initialQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	initialQueryCount := db.DbStats.Cache().ViewQueries.Value()
 	changesWg.Add(1)
 	go func() {
 		defer changesWg.Done()
@@ -1058,7 +1058,7 @@ func TestChannelQueryCancellation(t *testing.T) {
 	changesWg.Wait()
 
 	// Validate only a single query was executed
-	finalQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	finalQueryCount := db.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initialQueryCount+1, finalQueryCount)
 }
 

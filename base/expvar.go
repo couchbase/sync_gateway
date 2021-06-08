@@ -277,36 +277,6 @@ func (s *SequenceTimingExpvar) isCurrentOrNext(vbNo uint16, seq uint64) TimingSt
 	return TimingStatusNone
 }
 
-// IntMax is an expvar.Value that tracks the maximum value it's given.
-type IntMax struct {
-	i  int64
-	mu sync.RWMutex
-}
-
-func (v *IntMax) String() string {
-	v.mu.RLock()
-	defer v.mu.RUnlock()
-	return strconv.FormatInt(v.i, 10)
-}
-
-func (v *IntMax) SetIfMax(value int64) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if value > v.i {
-		v.i = value
-	}
-}
-
-func SetIfMax(expvarMap *expvar.Map, key string, val int64) {
-	if expvarMap == nil {
-		return
-	}
-	mapVar := expvarMap.Get(key)
-	if intMaxVar, ok := mapVar.(*IntMax); ok {
-		intMaxVar.SetIfMax(val)
-	}
-}
-
 // IntMean is an expvar.Value that returns the mean of all values that
 // are sent via AddValue or AddSince.
 type IntMeanVar struct {

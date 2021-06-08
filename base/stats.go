@@ -198,6 +198,7 @@ type CacheStats struct {
 	RevisionCacheHits                   *SgwIntStat `json:"rev_cache_hits"`
 	RevisionCacheMisses                 *SgwIntStat `json:"rev_cache_misses"`
 	SkippedSeqLen                       *SgwIntStat `json:"skipped_seq_len"`
+	ViewQueries                         *SgwIntStat `json:"view_queries"`
 }
 
 type CBLReplicationPullStats struct {
@@ -641,6 +642,7 @@ func (d *DbStats) initCacheStats() {
 		RevisionCacheHits:                   NewIntStat(SubsystemCacheKey, "rev_cache_hits", labelKeys, labelVals, prometheus.CounterValue, 0),
 		RevisionCacheMisses:                 NewIntStat(SubsystemCacheKey, "rev_cache_misses", labelKeys, labelVals, prometheus.CounterValue, 0),
 		SkippedSeqLen:                       NewIntStat(SubsystemCacheKey, "skipped_seq_len", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		ViewQueries:                         NewIntStat(SubsystemCacheKey, "view_queries", labelKeys, labelVals, prometheus.CounterValue, 0),
 	}
 }
 
