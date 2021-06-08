@@ -631,6 +631,9 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		var channelsSince channels.TimedSet
 		if db.user != nil {
 			channelsSince = db.user.FilterToAvailableChannels(chans)
+			if !chans.Contains("*") && len(channelsSince.AsSet()) < len(chans) {
+				base.WarnfCtx(db.Ctx, "Channels restricted from %s to %s", chans.String(), channelsSince.AsSet().String())
+			}
 		} else {
 			channelsSince = channels.AtSequence(chans, 0)
 		}

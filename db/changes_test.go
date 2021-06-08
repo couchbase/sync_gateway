@@ -22,6 +22,87 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Unit test for CBG-1326
+func TestLogIfChannelsDroppedFromList(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	defer base.SetUpTestLogging(base.LevelWarn, base.KeyAll)()
+
+	auth := db.Authenticator()
+	user, _ := auth.NewUser("test", "pass", channels.SetOf(t, "ch1", "ch3"))
+	require.NoError(t, auth.Save(user))
+
+	// +1 warning when retrieving changes from channels where the user has no access to some of them channels
+	t.Run("Warn when channels dropped from list", func(t *testing.T) {
+		changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
+		lastSeq := getLastSeq(changes)
+		lastSeq, _ = db.ParseSequenceID(lastSeq.String())
+
+		_, _, err = db.Put("doc1", Body{"channels": []string{"ch1"}})
+		require.NoError(t, err)
+		_, _, err = db.Put("doc2", Body{"channels": []string{"ch2"}})
+		require.NoError(t, err)
+		_, _, err = db.Put("doc3", Body{"channels": []string{"ch3"}})
+		require.NoError(t, err)
+
+		db.WaitForPendingChanges(context.Background())
+
+		db.user, _ = auth.GetUser("test")
+
+		warnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+
+		ch, err := db.GetChanges(base.SetOf("ch1", "ch2", "ch3"), ChangesOptions{Since: lastSeq})
+		require.NoError(t, err)
+		require.Len(t, ch, 2)
+
+		assert.Equal(t, warnCount+1, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+	})
+	t.Run("No warning if no channels dropped from list", func(t *testing.T) {
+		changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
+		lastSeq := getLastSeq(changes)
+		lastSeq, _ = db.ParseSequenceID(lastSeq.String())
+
+		_, _, err = db.Put("doc4", Body{"channels": []string{"ch1"}})
+		require.NoError(t, err)
+		_, _, err = db.Put("doc5", Body{"channels": []string{"ch3"}})
+		require.NoError(t, err)
+
+		db.WaitForPendingChanges(context.Background())
+
+		db.user, _ = auth.GetUser("test")
+
+		warnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+
+		ch, err := db.GetChanges(base.SetOf("ch1", "ch3"), ChangesOptions{Since: lastSeq})
+		require.NoError(t, err)
+		require.Len(t, ch, 2)
+
+		assert.Equal(t, warnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+	})
+	t.Run("No warning when using wildcard", func(t *testing.T) {
+		changes, err := db.GetChanges(base.SetOf("*"), getZeroSequence())
+		lastSeq := getLastSeq(changes)
+		lastSeq, _ = db.ParseSequenceID(lastSeq.String())
+
+		_, _, err = db.Put("doc6", Body{"channels": []string{"ch2"}})
+		require.NoError(t, err)
+
+		db.WaitForPendingChanges(context.Background())
+
+		db.user, _ = auth.GetUser("test")
+
+		warnCount := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+
+		ch, err := db.GetChanges(base.SetOf("*"), ChangesOptions{Since: lastSeq})
+		require.NoError(t, err)
+		require.Len(t, ch, 0)
+
+		assert.Equal(t, warnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
+	})
+
+}
+
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 
