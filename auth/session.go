@@ -29,7 +29,7 @@ const DefaultCookieName = "SyncGatewaySession"
 
 func (auth *Authenticator) AuthenticateCookie(rq *http.Request, response http.ResponseWriter) (User, error) {
 
-	cookie, _ := rq.Cookie(auth.sessionCookieName)
+	cookie, _ := rq.Cookie(auth.SessionCookieName)
 	if cookie == nil {
 		return nil, nil
 	}
@@ -106,7 +106,7 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession, secureCookie
 		return nil
 	}
 	return &http.Cookie{
-		Name:     auth.sessionCookieName,
+		Name:     auth.SessionCookieName,
 		Value:    session.ID,
 		Expires:  session.Expiration,
 		Secure:   secureCookie,
@@ -115,7 +115,7 @@ func (auth *Authenticator) MakeSessionCookie(session *LoginSession, secureCookie
 }
 
 func (auth Authenticator) DeleteSessionForCookie(rq *http.Request) *http.Cookie {
-	cookie, _ := rq.Cookie(auth.sessionCookieName)
+	cookie, _ := rq.Cookie(auth.SessionCookieName)
 	if cookie == nil {
 		return nil
 	}

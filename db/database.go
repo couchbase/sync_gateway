@@ -701,14 +701,18 @@ func (context *DatabaseContext) Authenticator() *auth.Authenticator {
 	context.BucketLock.RLock()
 	defer context.BucketLock.RUnlock()
 
+	sessionCookieName := auth.DefaultCookieName
+	if context.Options.SessionCookieName != "" {
+		sessionCookieName = context.Options.SessionCookieName
+	}
+
 	// Authenticators are lightweight & stateless, so it's OK to return a new one every time
 	authenticator := auth.NewAuthenticator(context.Bucket, context, auth.AuthenticatorOptions{
 		ClientPartitionWindow:    context.Options.ClientPartitionWindow,
 		ChannelsWarningThreshold: context.Options.UnsupportedOptions.WarningThresholds.ChannelsPerUser,
+		SessionCookieName:        sessionCookieName,
 	})
-	if context.Options.SessionCookieName != "" {
-		authenticator.SetSessionCookieName(context.Options.SessionCookieName)
-	}
+
 	return authenticator
 }
 

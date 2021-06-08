@@ -24,15 +24,15 @@ import (
 
 /** Manages user authentication for a database. */
 type Authenticator struct {
-	bucket            base.Bucket
-	channelComputer   ChannelComputer
-	sessionCookieName string // Custom per-database session cookie name
+	bucket          base.Bucket
+	channelComputer ChannelComputer
 	AuthenticatorOptions
 }
 
 type AuthenticatorOptions struct {
 	ClientPartitionWindow    time.Duration
 	ChannelsWarningThreshold *uint32
+	SessionCookieName        string
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
@@ -53,7 +53,6 @@ func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer, optio
 	return &Authenticator{
 		bucket:               bucket,
 		channelComputer:      channelComputer,
-		sessionCookieName:    DefaultCookieName,
 		AuthenticatorOptions: options,
 	}
 }
@@ -61,15 +60,8 @@ func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer, optio
 func DefaultAuthenticatorOptions() AuthenticatorOptions {
 	return AuthenticatorOptions{
 		ClientPartitionWindow: base.DefaultClientPartitionWindow,
+		SessionCookieName:     DefaultCookieName,
 	}
-}
-
-func (auth *Authenticator) SessionCookieName() string {
-	return auth.sessionCookieName
-}
-
-func (auth *Authenticator) SetSessionCookieName(cookieName string) {
-	auth.sessionCookieName = cookieName
 }
 
 func docIDForUserEmail(email string) string {
@@ -227,14 +219,8 @@ func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, i
 			currentHistoryForGrant = GrantHistory{}
 		}
 
-		// If len of entries is greater than threshold
-		if len(currentHistoryForGrant.Entries) > CalculateMaxHistoryEntriesPerGrant(len(currentHistory)) {
-			currentHistoryForGrant.Entries[1].StartSeq = currentHistoryForGrant.Entries[0].StartSeq
-			currentHistoryForGrant.Entries = currentHistoryForGrant.Entries[1:]
-		}
-
 		// Add grant to history
-		currentHistoryForGrant.UpdatedAt = time.Now().UnixNano()
+		currentHistoryForGrant.UpdatedAt = time.Now().Unix()
 		currentHistoryForGrant.Entries = append(currentHistoryForGrant.Entries, GrantHistorySequencePair{
 			StartSeq: previousInfo.Sequence,
 			EndSeq:   invalSeq,
@@ -246,25 +232,34 @@ func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, i
 		base.Debugf(base.KeyCRUD, "rebuildChannels: Pruned principal history on %s for %s", princName, strings.Join(prunedHistory, ","))
 	}
 
+	// Ensure no entries are larger than the allowed threshold
+	maxHistoryEntriesPerGrant := CalculateMaxHistoryEntriesPerGrant(len(currentHistory))
+	for grantName, grantHistory := range currentHistory {
+		if len(grantHistory.Entries) > maxHistoryEntriesPerGrant {
+			grantHistory.Entries[1].StartSeq = grantHistory.Entries[0].StartSeq
+			currentHistory[grantName] = grantHistory
+		}
+	}
+
 	return currentHistory
 }
 
-func CalculateMaxHistoryEntriesPerGrant(historyLength int) int {
-	const maximumHistoryBytes = 1000000   // 1MB
-	const estimatedKeySize = 250          // This is an estimate of key size in bytes, this includes channel name, the unix timestamp, "entries" key
-	const estimatedSizeOfEntriesPair = 14 // Assume each sequence is 7 digits
+func CalculateMaxHistoryEntriesPerGrant(channelCount int) int {
+	const maximumHistoryBytes = 1024 * 1024 // 1MB
+	const estimatedKeySize = 250            // This is an estimate of key size in bytes, this includes channel name, the unix timestamp, "entries" key
+	const estimatedSizeOfEntriesPair = 14   // Assume each sequence is 7 digits
 
 	maxEntries := 0
 
-	if historyLength != 0 {
-		maxEntries = (maximumHistoryBytes/historyLength - estimatedKeySize) / estimatedSizeOfEntriesPair
+	if channelCount != 0 {
+		maxEntries = (maximumHistoryBytes/channelCount - estimatedKeySize) / estimatedSizeOfEntriesPair
 	}
 
 	// Even if we can fit it limit entries to 10
-	maxEntries = base.MinInt(maxEntries, 10)
+	maxEntries = base.MinInt(maxEntries, base.MaxHistoryEntriesPerGrant)
 
-	// In the event maxEntries is negative we should set a floor of 1 entry
-	maxEntries = base.MaxInt(maxEntries, 1)
+	// In the event maxEntries is negative or 0 we should set a floor of 1 entry
+	maxEntries = base.MaxInt(maxEntries, base.MinHistoryEntriesPerGrant)
 
 	return maxEntries
 }

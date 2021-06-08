@@ -39,9 +39,8 @@ type TimedSetHistory map[string]GrantHistory
 func (timedSet TimedSetHistory) PruneHistory(partitionWindow time.Duration) []string {
 	prunedChannelHistory := make([]string, 0)
 	for chanName, grantHistory := range timedSet {
-		grantTime := time.Unix(0, grantHistory.UpdatedAt)
-		if grantTime.Add(partitionWindow).Before(time.Now()) {
-			fmt.Println("x")
+		grantTime := time.Unix(grantHistory.UpdatedAt, 0)
+		if time.Since(grantTime) > partitionWindow {
 			delete(timedSet, chanName)
 			prunedChannelHistory = append(prunedChannelHistory, chanName)
 		}

@@ -2661,8 +2661,28 @@ func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {
 			MaxEntriesExpectedOutput: 1,
 		},
 		{
-			Name:                     "Large history length",
-			HistoryLengthInput:       1000,
+			Name:                     "Upper Bound",
+			HistoryLengthInput:       3972,
+			MaxEntriesExpectedOutput: 1,
+		},
+		{
+			Name:                     "Large History Length",
+			HistoryLengthInput:       3330,
+			MaxEntriesExpectedOutput: 4,
+		},
+		{
+			Name:                     "Median history length",
+			HistoryLengthInput:       3250,
+			MaxEntriesExpectedOutput: 5,
+		},
+		{
+			Name:                     "Small history length",
+			HistoryLengthInput:       3010,
+			MaxEntriesExpectedOutput: 7,
+		},
+		{
+			Name:                     "Lower bound",
+			HistoryLengthInput:       2680,
 			MaxEntriesExpectedOutput: 10,
 		},
 		{
@@ -2674,7 +2694,7 @@ func TestCalculateMaxHistoryEntriesPerGrant(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
-			assert.Equal(t, CalculateMaxHistoryEntriesPerGrant(testCase.HistoryLengthInput), testCase.MaxEntriesExpectedOutput)
+			assert.Equal(t, testCase.MaxEntriesExpectedOutput, CalculateMaxHistoryEntriesPerGrant(testCase.HistoryLengthInput))
 		})
 	}
 }
