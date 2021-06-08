@@ -180,7 +180,7 @@ func (dbc *DatabaseContext) getChangesInChannelFromQuery(
 		base.Infof(base.KeyAll, "Channel query took %v to return %d rows.  Channel: %s StartSeq: %d EndSeq: %d Limit: %d",
 			elapsed, len(entries), base.UD(channelName), startSeq, endSeq, limit)
 	}
-	changeCacheExpvars.Add("view_queries", 1)
+	dbc.DbStats.Cache().ViewQueries.Add(1)
 	return entries, nil
 }
 

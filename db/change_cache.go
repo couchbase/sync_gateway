@@ -15,7 +15,6 @@ import (
 	"container/list"
 	"context"
 	"errors"
-	"expvar"
 	"fmt"
 	"math"
 	"strconv"
@@ -41,13 +40,6 @@ var SkippedSeqCleanViewBatch = 50 // Max number of sequences checked per query d
 // Enable keeping a channel-log for the "*" channel (channel.UserStarChannel). The only time this channel is needed is if
 // someone has access to "*" (e.g. admin-party) and tracks its changes feed.
 var EnableStarChannelLog = true
-
-var changeCacheExpvars *expvar.Map
-
-func init() {
-	changeCacheExpvars = expvar.NewMap("syncGateway_changeCache")
-	changeCacheExpvars.Set("maxPending", new(base.IntMax))
-}
 
 // Manages a cache of the recent change history of all channels.
 //

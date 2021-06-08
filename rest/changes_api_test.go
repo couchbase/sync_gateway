@@ -2206,7 +2206,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	}
 
 	// Initialize query count
-	queryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 
 	// Issue a since=0 changes request.  Validate that there is a view-based backfill
 	changes.Results = nil
@@ -2219,7 +2219,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there has been a view query
-	secondQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	secondQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, queryCount+1, secondQueryCount)
 
 	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
@@ -2231,7 +2231,7 @@ func TestChangesViewBackfillFromQueryOnly(t *testing.T) {
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 	}
-	thirdQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	thirdQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, secondQueryCount, thirdQueryCount)
 
 }
@@ -2290,7 +2290,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 
-	queryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After initial changes request, query count is :%d", queryCount)
 
 	// Issue another since=0, limit 5 changes request.  Validate that there is another a view-based backfill
@@ -2303,7 +2303,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there has been one more view query
-	secondQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	secondQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, queryCount+1, secondQueryCount)
 
 	// Issue a since=20, limit 5 changes request.  Results should be prepended to the cache (seqs 23, 26, 29)
@@ -2317,7 +2317,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there has been one more view query
-	thirdQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	thirdQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, secondQueryCount+1, thirdQueryCount)
 
 	// Issue a since=20, limit 5 changes request again.  Results should be served from the cache (seqs 23, 26, 29)
@@ -2331,7 +2331,7 @@ func TestChangesViewBackfillNonContiguousQueryResults(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there hasn't been another view query
-	fourthQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	fourthQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, thirdQueryCount, fourthQueryCount)
 }
 
@@ -2387,7 +2387,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 
-	queryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After initial changes request, query count is :%d", queryCount)
 
 	// Issue a since=0 changes request.  Expect a second view query to retrieve the additional results
@@ -2401,7 +2401,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there has been one more view query
-	secondQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	secondQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, queryCount+1, secondQueryCount)
 
 	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
@@ -2414,7 +2414,7 @@ func TestChangesViewBackfillFromPartialQueryOnly(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there haven't been any more view queries
-	thirdQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	thirdQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, secondQueryCount, thirdQueryCount)
 
 }
@@ -2486,7 +2486,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 
-	queryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	log.Printf("After initial changes request, query count is :%d", queryCount)
 
 	// Issue the same changes request.  Validate that there is not another a view-based backfill
@@ -2500,7 +2500,7 @@ func TestChangesViewBackfillNoOverlap(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there has been one more view query
-	secondQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	secondQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, queryCount, secondQueryCount)
 
 }
@@ -2559,8 +2559,8 @@ func TestChangesViewBackfill(t *testing.T) {
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 	}
-	queryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
-	log.Printf("After initial changes request, query count is :%s", queryCount)
+	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
+	log.Printf("After initial changes request, query count is: %d", queryCount)
 
 	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
 	changes.Results = nil
@@ -2572,7 +2572,7 @@ func TestChangesViewBackfill(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there haven't been any more view queries
-	assert.Equal(t, base.GetExpvarAsString("syncGateway_changeCache", "view_queries"), queryCount)
+	assert.Equal(t, testDb.DbStats.Cache().ViewQueries.Value(), queryCount)
 
 }
 
@@ -2633,8 +2633,8 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 		assert.Equal(t, uint64(index+1), entry.Seq.Seq)
 		log.Printf("Entry:%+v", entry)
 	}
-	queryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
-	log.Printf("After initial changes request, query count is :%s", queryCount)
+	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
+	log.Printf("After initial changes request, query count is: %d", queryCount)
 
 	// Issue another since=0 changes request.  Validate that there is not another a view-based backfill
 	changes.Results = nil
@@ -2648,7 +2648,7 @@ func TestChangesViewBackfillStarChannel(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there haven't been any more view queries
-	assert.Equal(t, queryCount, base.GetExpvarAsString("syncGateway_changeCache", "view_queries"))
+	assert.Equal(t, queryCount, testDb.DbStats.Cache().ViewQueries.Value())
 
 }
 
@@ -2922,7 +2922,7 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 
 	// Flush the channel cache
 	assert.NoError(t, testDb.FlushChannelCache())
-	startQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	startQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
 
 	// Issue a since=0 changes request.  Validate that there's a view-based backfill
 	var changes struct {
@@ -2935,8 +2935,8 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 	err = base.JSONUnmarshal(changesResponse.Body.Bytes(), &changes)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	require.Equal(t, len(changes.Results), 7)
-	finalQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
-	assert.Equal(t, 2, finalQueryCount-startQueryCount)
+	finalQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
+	assert.Equal(t, int64(2), finalQueryCount-startQueryCount)
 }
 
 // Tests view backfill with slow query, checks duplicate handling for cache entries if a document is updated after query runs, but before document is
@@ -3030,8 +3030,8 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 	for _, entry := range changes.Results {
 		log.Printf("Entry:%+v", entry)
 	}
-	queryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
-	log.Printf("After initial changes request, query count is :%s", queryCount)
+	queryCount := testDb.DbStats.Cache().ViewQueries.Value()
+	log.Printf("After initial changes request, query count is: %d", queryCount)
 
 	leakyBucket.SetPostQueryCallback(nil)
 
@@ -3045,8 +3045,8 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 		log.Printf("Entry:%+v", entry)
 	}
 	// Validate that there haven't been any more view queries
-	updatedQueryCount := base.GetExpvarAsString("syncGateway_changeCache", "view_queries")
-	log.Printf("After second changes request, query count is :%s", updatedQueryCount)
+	updatedQueryCount := testDb.DbStats.Cache().ViewQueries.Value()
+	log.Printf("After second changes request, query count is: %d", updatedQueryCount)
 	assert.Equal(t, queryCount, updatedQueryCount)
 
 }
