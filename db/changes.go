@@ -171,7 +171,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 	}
 }
 
-func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, triggeredBy uint64, to string) <-chan *ChangeEntry {
+func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, revokedSeq, revocationCheckSeq uint64, to string) <-chan *ChangeEntry {
 	feed := make(chan *ChangeEntry, 1)
 	sinceVal := options.Since.Seq
 
@@ -224,7 +224,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 			for _, logEntry := range changes {
 				seqID := SequenceID{
 					Seq:         logEntry.Sequence,
-					TriggeredBy: triggeredBy,
+					TriggeredBy: revokedSeq,
 				}
 
 				// We need to check whether a change / document sequence is greater than since.
@@ -232,7 +232,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.wasDocInChannelAtSeq(logEntry.DocID, singleChannelCache.ChannelName(), sinceVal)
+					requiresRevocation, err := db.wasDocInChannelAtSeq(logEntry.DocID, singleChannelCache.ChannelName(), revocationCheckSeq)
 					if err != nil {
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
@@ -774,9 +774,13 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 
 			if options.Revocations && db.user != nil {
-				channelsToRevoke := db.user.RevokedChannels(options.Since.SafeSequence())
-				for channel, triggeredBy := range channelsToRevoke {
-					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, triggeredBy, to)
+				revocationCheckSeq := options.Since.Seq
+				if options.Since.TriggeredBy > 0 {
+					revocationCheckSeq = options.Since.TriggeredBy - 1
+				}
+				channelsToRevoke := db.user.RevokedChannels(revocationCheckSeq)
+				for channel, revokedSeq := range channelsToRevoke {
+					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, revokedSeq, revocationCheckSeq, to)
 					feeds = append(feeds, feed)
 				}
 			}
