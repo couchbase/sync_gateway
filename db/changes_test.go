@@ -317,7 +317,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 		ActiveOnly: true,
 	}
 
-	initQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	initQueryCount := db.DbStats.Cache().ViewQueries.Value()
 
 	// Get changes with active_only=true
 	activeChanges, err := db.GetChanges(base.SetOf("*"), changesOptions)
@@ -325,7 +325,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	require.Equal(t, 5, len(activeChanges))
 
 	// Ensure the test is triggering a query, and not serving from DCP-generated cache
-	postChangesQueryCount, _ := base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	postChangesQueryCount := db.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+1, postChangesQueryCount)
 
 	// Get changes with active_only=false, validate that triggers a new query
@@ -334,7 +334,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 10, len(allChanges))
 
-	postChangesQueryCount, _ = base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
 
 	// Get changes with active_only=false again, verify results are served from the cache
@@ -343,7 +343,7 @@ func TestActiveOnlyCacheUpdate(t *testing.T) {
 	require.NoError(t, err, "Error getting changes with active_only true")
 	require.Equal(t, 10, len(allChanges))
 
-	postChangesQueryCount, _ = base.GetExpvarAsInt("syncGateway_changeCache", "view_queries")
+	postChangesQueryCount = db.DbStats.Cache().ViewQueries.Value()
 	assert.Equal(t, initQueryCount+2, postChangesQueryCount)
 
 }
