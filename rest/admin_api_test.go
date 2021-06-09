@@ -17,13 +17,12 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
@@ -31,6 +30,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
@@ -2965,4 +2965,171 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 		})
 
 	}
+}
+
+func MakeUser(t *testing.T, serverURL, username, password string, roles []string) {
+	httpClient := http.DefaultClient
+
+	form := url.Values{}
+	form.Add("password", password)
+	form.Add("roles", strings.Join(roles, ","))
+
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), strings.NewReader(form.Encode()))
+	require.NoError(t, err)
+
+	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func DeleteUser(t *testing.T, serverURL, username string) {
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
+	require.NoError(t, err)
+
+	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+
+	httpClient := http.DefaultClient
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestEndpointAuth(t *testing.T) {
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Couchbase Server Required")
+	}
+
+	testCases := []struct {
+		Name                string
+		CreateUser          string
+		CreatePassword      string
+		CreateUserRoles     []string
+		Username            string
+		Password            string
+		BucketName          string
+		requiredPermissions []string
+		expectedStatus      int
+	}{
+		{
+			Name:                "#1",
+			CreateUser:          "FullAdministrator",
+			CreatePassword:      "password",
+			CreateUserRoles:     []string{"admin"},
+			Username:            "FullAdministrator",
+			Password:            "password",
+			BucketName:          "",
+			requiredPermissions: nil,
+			expectedStatus:      http.StatusOK,
+		},
+		{
+			Name:                "#2",
+			CreateUser:          "FullAdministrator",
+			CreatePassword:      "password",
+			CreateUserRoles:     []string{"admin"},
+			Username:            "FullAdministratorx",
+			Password:            "password",
+			BucketName:          "",
+			requiredPermissions: nil,
+			expectedStatus:      http.StatusUnauthorized,
+		},
+		{
+			Name:                "#3",
+			CreateUser:          "bucket",
+			CreatePassword:      "password",
+			Username:            "bucket",
+			Password:            "password",
+			BucketName:          "",
+			requiredPermissions: nil,
+			expectedStatus:      http.StatusForbidden,
+		},
+		{
+			Name:                "#4",
+			CreateUser:          "readonlyadmin",
+			CreatePassword:      "password",
+			CreateUserRoles:     []string{"ro_admin"},
+			Username:            "readonlyadmin",
+			Password:            "password",
+			BucketName:          "",
+			requiredPermissions: nil,
+			expectedStatus:      http.StatusOK,
+		},
+		{
+			Name:                "#5",
+			Username:            "random",
+			Password:            "",
+			BucketName:          "",
+			requiredPermissions: nil,
+			expectedStatus:      http.StatusUnauthorized,
+		},
+		{
+			Name:                "#6",
+			Username:            "random",
+			Password:            "",
+			BucketName:          "db",
+			requiredPermissions: nil,
+			expectedStatus:      http.StatusUnauthorized,
+		},
+	}
+
+	testBucket := base.GetTestBucket(t)
+	defer testBucket.Close()
+
+	clusterAddress := base.UnitTestUrl()
+	clusterUser := base.TestClusterUsername()
+	clusterPass := base.TestClusterPassword()
+
+	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass)
+	require.NoError(t, err)
+
+	serverURLs := agent.MgmtEps()
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.CreateUser != "" {
+				MakeUser(t, serverURLs[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateUserRoles)
+				defer DeleteUser(t, serverURLs[0], testCase.CreateUser)
+			}
+
+			testAgent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass)
+			assert.NoError(t, err)
+
+			statusCode, err := TestAuth(testAgent, testCase.Username, testCase.Password, testCase.BucketName, testCase.requiredPermissions...)
+			assert.NoError(t, err)
+
+			assert.Equal(t, testCase.expectedStatus, statusCode)
+
+		})
+	}
+}
+
+func TestManagementEndpoints(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Couchbase Server Required")
+	}
+
+	agent, err := initClusterAgent("couchbase://work-couchbase.lan", "Administrator", "password")
+	require.NoError(t, err)
+
+	httpClient, err := getHTTPClient(agent)
+	require.NoError(t, err)
+
+	managementURLs := agent.MgmtEps()
+
+	statusCode, body, err := doPermissionsRequest(httpClient, "Administrator", "password", "POST", fmt.Sprintf("%s/pools/default/checkPermissions", managementURLs[0]), []byte("cluster!admin"))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, statusCode)
+
+	fmt.Println(string(body))
+
+	statusCode, body, err = doPermissionsRequest(httpClient, "Administrator", "password", "GET", fmt.Sprintf("%s/whoami", managementURLs[0]), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, statusCode)
+
+	fmt.Println(string(body))
 }

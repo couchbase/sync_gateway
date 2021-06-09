@@ -26,7 +26,9 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/couchbase/gocbcore"
 	"github.com/hashicorp/go-multierror"
 	pkgerrors "github.com/pkg/errors"
 
@@ -1282,6 +1284,170 @@ func startServer(config *ServerConfig, sc *ServerContext) {
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", *config.Interface)
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
+}
+
+func TestAuth(agent *gocbcore.Agent, username, password string, bucket string, requirePermissions ...string) (statusCode int, err error) {
+	httpClient, err := getHTTPClient(agent)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	managementURLs := agent.MgmtEps()
+	managementURL := managementURLs[0]
+
+	body := []byte(strings.Join(requirePermissions, ","))
+	statusCode, bodyResponse, err := doPermissionsRequest(httpClient, username, password, "POST", managementURL+"/pools/default/checkPermissions", body)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	if statusCode != http.StatusOK {
+		if statusCode == http.StatusUnauthorized {
+			return http.StatusUnauthorized, nil
+		}
+
+		// If we don't provide permissions we get a BadRequest but we know we have successfully authenticated
+		if statusCode == http.StatusBadRequest && len(requirePermissions) > 0 {
+			return statusCode, nil
+		}
+	}
+
+	// At this point we know the user exists, now check whether they have required permissions / roles
+
+	if len(requirePermissions) > 0 {
+		// Check whether user has permission. If so: exit with accept else: continue
+		var permissions map[string]bool
+
+		err = base.JSONUnmarshal(bodyResponse, &permissions)
+		if err != nil {
+			return http.StatusInternalServerError, err
+		}
+
+		for _, permResult := range permissions {
+			if permResult {
+				return http.StatusOK, nil
+			}
+		}
+	}
+
+	// WhoAmI
+	// If has role accept, otherwise 403
+
+	// Roles ==> bucketName to role
+	requiredRoles := make([]string, 0)
+	if bucket == "" {
+		// Check cluster read only admin
+		requiredRoles = append(requiredRoles, "ro_admin")
+		requiredRoles = append(requiredRoles, "admin")
+	} else {
+		// Check bucket roles
+		requiredRoles = append(requiredRoles, "mobile_sync_gateway")
+	}
+
+	return whoAmI(httpClient, username, password, managementURL, bucket, requiredRoles)
+}
+
+func whoAmI(httpClient *http.Client, username, password, managementURL, bucket string, requiredRoles []string) (statusCode int, err error) {
+	statusCode, bodyResponse, err := doPermissionsRequest(httpClient, username, password, "GET", managementURL+"/whoami", nil)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	if statusCode != http.StatusOK {
+		return statusCode, nil
+	}
+
+	var whoAmIResults struct {
+		Roles []struct {
+			RoleName   string `json:"role"`
+			BucketName string `json:"bucket_name"`
+		} `json:"roles"`
+	}
+
+	err = base.JSONUnmarshal(bodyResponse, &whoAmIResults)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	for _, role := range whoAmIResults.Roles {
+		for _, requiredRole := range requiredRoles {
+			if role.BucketName == bucket && role.RoleName == requiredRole {
+				return http.StatusOK, nil
+			}
+		}
+	}
+
+	return http.StatusForbidden, nil
+}
+
+func initClusterAgent(clusterAddress, username, password string) (*gocbcore.Agent, error) {
+	config := gocbcore.AgentConfig{
+		UseDurations:      true,
+		UseCollections:    true,
+		UseMutationTokens: true,
+		AuthMechanisms:    []gocbcore.AuthMechanism{gocbcore.ScramSha512AuthMechanism},
+		TLSRootCAProvider: func() *x509.CertPool {
+			return nil
+		},
+	}
+	err := config.FromConnStr(clusterAddress)
+	if err != nil {
+		return nil, err
+	}
+	config.Auth = &gocbcore.PasswordAuthProvider{
+		Username: username,
+		Password: password,
+	}
+
+	agent, err := gocbcore.CreateAgent(&config)
+	if err != nil {
+		return nil, err
+	}
+
+	agentReadyErr := make(chan error)
+	_, err = agent.WaitUntilReady(time.Now().Add(5*time.Second), gocbcore.WaitUntilReadyOptions{}, func(result *gocbcore.WaitUntilReadyResult, err error) {
+		agentReadyErr <- err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := <-agentReadyErr; err != nil {
+		return nil, err
+	}
+
+	return agent, nil
+}
+
+func getHTTPClient(agent *gocbcore.Agent) (*http.Client, error) {
+	httpClient := http.DefaultClient
+	return httpClient, nil
+}
+
+func doPermissionsRequest(httpClient *http.Client, username, password, method, url string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(requestBody))
+	if err != nil {
+		return 0, nil, err
+	}
+
+	req.SetBasicAuth(username, password)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	bodyString, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	err = resp.Body.Close()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return resp.StatusCode, bodyString, nil
 }
 
 func validateServerContext(sc *ServerContext) (errors error) {
