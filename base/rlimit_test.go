@@ -16,7 +16,6 @@ import (
 	"syscall"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +35,7 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 		requestedSoftFDLimit,
 		limit,
 	)
-	goassert.False(t, requiresUpdate)
+	assert.False(t, requiresUpdate)
 
 	limit.Cur = uint64(512)
 
@@ -44,9 +43,8 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 		requestedSoftFDLimit,
 		limit,
 	)
-	goassert.True(t, requiresUpdate)
-	goassert.Equals(t, softFDLimit, requestedSoftFDLimit)
-
+	assert.True(t, requiresUpdate)
+	assert.Equal(t, requestedSoftFDLimit, softFDLimit)
 }
 
 func TestSetMaxFileDescriptors(t *testing.T) {
@@ -59,7 +57,7 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 
 	// Set current soft limit to a low-ish known value for testing
 	newLimits := startLimits
-	newLimits.Cur = 500
+	newLimits.Cur = 512
 	syscall.Setrlimit(syscall.RLIMIT_NOFILE, &newLimits)
 	require.NoError(t, err)
 	defer func() {
