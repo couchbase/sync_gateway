@@ -129,7 +129,7 @@ type BlipSyncContext struct {
 type AllowedAttachment struct {
 	docID   string // Associated document ID
 	name    string // Name of the attachment
-	version int    // Version of the attachment
+	version int64  // Version of the attachment
 	counter int    // Counter to track allowed attachments
 }
 
@@ -353,7 +353,8 @@ func (bsc *BlipSyncContext) handleChangesResponse(sender *blip.Sender, response 
 }
 
 // Pushes a revision body to the client
-func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string, bodyBytes []byte, attDigests []string, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
+func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docID string, revID string,
+	bodyBytes []byte, attMeta []AttachmentStorageMeta, properties blip.Properties, seq SequenceID, resendFullRevisionFunc func() error) error {
 
 	outrq := NewRevMessage()
 	outrq.SetID(docID)
@@ -372,14 +373,14 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 		bsc.replicationStats.SendRevBytes.Add(int64(len(messageBody)))
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attDigests)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "Sending revision %s/%s, body:%s, properties: %v, attDigests: %v", base.UD(docID), revID, base.UD(string(bodyBytes)), base.UD(properties), attMeta)
 
 	// asynchronously wait for a response if we have attachment digests to verify, if we sent a delta and want to error check, or if we have a registered callback.
-	awaitResponse := len(attDigests) > 0 || properties[RevMessageDeltaSrc] != "" || bsc.sgr2PushProcessedSeqCallback != nil
+	awaitResponse := len(attMeta) > 0 || properties[RevMessageDeltaSrc] != "" || bsc.sgr2PushProcessedSeqCallback != nil
 
 	if awaitResponse {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
-		bsc.addAllowedAttachments(attDigests)
+		bsc.addAllowedAttachments(docID, attMeta)
 	} else {
 		bsc.replicationStats.SendRevCount.Add(1)
 		outrq.SetNoReply(true)
@@ -387,7 +388,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 	// send the rev
 	if !bsc.sendBLIPMessage(sender, outrq.Message) {
-		bsc.removeAllowedAttachments(attDigests)
+		bsc.removeAllowedAttachments(docID, attMeta)
 		return ErrClosedBLIPSender
 	}
 
@@ -439,7 +440,7 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 				bsc.replicationStats.SendRevCount.Add(1)
 			}
 
-			bsc.removeAllowedAttachments(attDigests)
+			bsc.removeAllowedAttachments(docID, attMeta)
 
 			if bsc.sgr2PushProcessedSeqCallback != nil {
 				bsc.sgr2PushProcessedSeqCallback(seq.String())
@@ -505,7 +506,8 @@ func (bsc *BlipSyncContext) sendDelta(sender *blip.Sender, docID, deltaSrcRevID 
 	properties[RevMessageDeltaSrc] = deltaSrcRevID
 
 	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s as delta. DeltaSrc:%s", base.UD(docID), revDelta.ToRevID, deltaSrcRevID)
-	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentDigests, properties, seq, resendFullRevisionFunc)
+	return bsc.sendRevisionWithProperties(sender, docID, revDelta.ToRevID, revDelta.DeltaBytes, revDelta.AttachmentStorageMeta,
+		properties, seq, resendFullRevisionFunc)
 }
 
 // sendBLIPMessage is a simple wrapper around all sent BLIP messages
@@ -583,9 +585,10 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
-	attDigests := AttachmentDigests(rev.Attachments)
-	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), attDigests)
-	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attDigests, properties, seq, nil)
+	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
+	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID),
+		revID, len(knownRevs), attachmentStorageMeta)
+	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attachmentStorageMeta, properties, seq, nil)
 }
 
 func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) []string {

@@ -295,6 +295,33 @@ func AttachmentDigests(attachments AttachmentsMeta) []string {
 	return digests
 }
 
+// AttachmentStorageMeta holds the metadata for building
+// the key for attachment storage and retrieval.
+type AttachmentStorageMeta struct {
+	digest  string
+	version int64
+}
+
+// ToAttachmentStorageMeta returns a slice of AttachmentStorageMeta, which is contains the
+// necessary metadata properties to build the key for attachment storage and retrieval.
+func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMeta {
+	attDigestVerPairs := make([]AttachmentStorageMeta, 0, len(attachments))
+	for _, att := range attachments {
+		if attMap, ok := att.(map[string]interface{}); ok {
+			if digest, ok := attMap["digest"]; ok {
+				if digestString, ok := digest.(string); ok {
+					attDigestVerPair := AttachmentStorageMeta{digest: digestString}
+					if version, ok := base.ToInt64(attMap["ver"]); ok {
+						attDigestVerPair.version = version
+					}
+					attDigestVerPairs = append(attDigestVerPairs, attDigestVerPair)
+				}
+			}
+		}
+	}
+	return attDigestVerPairs
+}
+
 func attachmentKeyToString(key AttachmentKey) string {
 	return base.AttPrefix + string(key)
 }

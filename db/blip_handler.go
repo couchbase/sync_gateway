@@ -1054,8 +1054,8 @@ func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
 	return atomic.AddUint64(&bsc.handlerSerialNumber, 1)
 }
 
-func (bsc *BlipSyncContext) addAllowedAttachments(attDigests []string) {
-	if len(attDigests) == 0 {
+func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []AttachmentStorageMeta) {
+	if len(attMeta) == 0 {
 		return
 	}
 
@@ -1065,34 +1065,46 @@ func (bsc *BlipSyncContext) addAllowedAttachments(attDigests []string) {
 	if bsc.allowedAttachments == nil {
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
-	for _, digest := range attDigests {
-		att := bsc.allowedAttachments[digest]
-		att.counter = att.counter + 1
-		bsc.allowedAttachments[digest] = att
+	for _, attachment := range attMeta {
+		if bsc.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+			key := docID + attachment.digest
+			bsc.allowedAttachments[key] = AllowedAttachment{}
+		} else {
+			att := bsc.allowedAttachments[attachment.digest]
+			att.counter = att.counter + 1
+			att.docID = docID
+			att.version = attachment.version
+			bsc.allowedAttachments[attachment.digest] = att
+		}
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, bsc.allowedAttachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attMeta, bsc.allowedAttachments)
 }
 
-func (bsc *BlipSyncContext) removeAllowedAttachments(attDigests []string) {
-	if len(attDigests) == 0 {
+func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []AttachmentStorageMeta) {
+	if len(attMeta) == 0 {
 		return
 	}
 
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
 
-	for _, digest := range attDigests {
-		att := bsc.allowedAttachments[digest]
-		if n := att.counter; n > 1 {
-			att.counter = n - 1
-			bsc.allowedAttachments[digest] = att
+	for _, attachment := range attMeta {
+		if bsc.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+			key := docID + attachment.digest
+			delete(bsc.allowedAttachments, key)
 		} else {
-			delete(bsc.allowedAttachments, digest)
+			att := bsc.allowedAttachments[attachment.digest]
+			if n := att.counter; n > 1 {
+				att.counter = n - 1
+				bsc.allowedAttachments[attachment.digest] = att
+			} else {
+				delete(bsc.allowedAttachments, attachment.digest)
+			}
 		}
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attDigests, bsc.allowedAttachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attMeta, bsc.allowedAttachments)
 }
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {
