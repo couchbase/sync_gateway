@@ -58,10 +58,10 @@ func TestSetMaxFileDescriptors(t *testing.T) {
 	// Set current soft limit to a low-ish known value for testing
 	newLimits := startLimits
 	newLimits.Cur = 512
-	syscall.Setrlimit(syscall.RLIMIT_NOFILE, &newLimits)
+	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &newLimits)
 	require.NoError(t, err)
 	defer func() {
-		syscall.Setrlimit(syscall.RLIMIT_NOFILE, &startLimits)
+		err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &startLimits)
 		require.NoError(t, err)
 	}()
 
