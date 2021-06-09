@@ -27,6 +27,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/couchbase/gocb"
 	"github.com/hashicorp/go-multierror"
 	pkgerrors "github.com/pkg/errors"
 
@@ -1282,6 +1283,123 @@ func startServer(config *ServerConfig, sc *ServerContext) {
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", *config.Interface)
 	config.Serve(*config.Interface, CreatePublicHandler(sc))
+}
+
+func TestAuth(cluster *gocb.Cluster, username, password string, bucket string, requirePermissions ...string) (statusCode int, err error) {
+	_ = cluster
+	// TODO: Replace with cluster get Management endpoints
+	managementEndpoint := "http://work-couchbase.lan:8091"
+
+	// TODO: Get http client from cluster
+	httpClient := http.DefaultClient
+
+	body := strings.Join(requirePermissions, ",")
+	checkPermissionsURL := fmt.Sprintf("%s/pools/default/checkPermissions", managementEndpoint)
+
+	req, err := http.NewRequest("POST", checkPermissionsURL, bytes.NewBufferString(body))
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	req.SetBasicAuth(username, password)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return http.StatusUnauthorized, nil
+		}
+
+		return resp.StatusCode, nil
+	}
+
+	// At this point we know the user exists, now check whether they have required permissions / roles
+
+	// Check whether user has permission. If so: exit with accept else: continue
+	var permissions map[string]bool
+
+	bodyResult, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	err = base.JSONUnmarshal(bodyResult, &permissions)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	for _, permResult := range permissions {
+		if permResult {
+			fmt.Println("YAY PERMS")
+			return http.StatusOK, nil
+		}
+	}
+
+	// Whoami
+	// If has role accept, otherwise 403
+
+	// Roles ==> bucketName to role
+	requiredRoles := make([]string, 0)
+	if bucket == "" {
+		// Check cluster read only admin
+		requiredRoles = append(requiredRoles, "ro_admin")
+		requiredRoles = append(requiredRoles, "admin")
+	} else {
+		// Check bucket roles
+		requiredRoles = append(requiredRoles, "mobile_sync_gateway")
+	}
+
+	whoamiURL := fmt.Sprintf("%s/whoami", managementEndpoint)
+
+	req, err = http.NewRequest("GET", whoamiURL, nil)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	req.SetBasicAuth(username, password)
+
+	resp, err = httpClient.Do(req)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return resp.StatusCode, nil
+	}
+
+	type WhoAmIResults struct {
+		Roles []struct {
+			RoleName   string `json:"role"`
+			BucketName string `json:"bucket_name"`
+		} `json:"roles"`
+	}
+
+	var whoAmIResults WhoAmIResults
+
+	bodyResult, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	err = base.JSONUnmarshal(bodyResult, &whoAmIResults)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	for _, role := range whoAmIResults.Roles {
+		for _, requiredRole := range requiredRoles {
+			if role.BucketName == bucket && role.RoleName == requiredRole {
+				return http.StatusOK, nil
+			}
+		}
+	}
+
+	return http.StatusForbidden, nil
 }
 
 func validateServerContext(sc *ServerContext) (errors error) {
