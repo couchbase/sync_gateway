@@ -59,7 +59,7 @@ licenses/APL2.txt.
 
   <project name="gocbconnstr" path="godeps/src/gopkg.in/couchbaselabs/gocbconnstr.v1" remote="couchbaselabs" revision="8f9a894d174b836c6362de9af75545cf585fc278"/>
 
-  <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="83e1dde05ac9e4861d4d8d4985046e8920c1d760"/>
+  <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="4201f50df22f08f75a0491451fa6507387d41304"/>
 
   <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="7a9f15d95f07f7f30f567cf19919f554d14b12d5"/>
 
