@@ -633,7 +633,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			var channelsRemoved base.Set
 			channelsSince, channelsRemoved = db.user.FilterToAvailableChannels(chans)
 			if len(channelsRemoved) > 0 {
-				base.WarnfCtx(db.Ctx, "Channels %s request without access by user %s", base.UD(channelsRemoved.ToArray()), db.user.Name())
+				base.InfofCtx(db.Ctx, base.KeyChanges, "Channels %s request without access by user %s", base.UD(channelsRemoved.ToArray()), db.user.Name())
 			}
 		} else {
 			channelsSince = channels.AtSequence(chans, 0)

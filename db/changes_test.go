@@ -23,39 +23,37 @@ import (
 )
 
 // Unit test for CBG-1326
+// This will need to be manually verified by checking the logs in console
 func TestLogIfChannelsDroppedFromList(t *testing.T) {
 	testCases := []struct {
-		name                  string
-		genChanAndDocs        int      // Amount of docs and channels to generate (ie. doc1 ch1, doc2 ch2...)
-		userChans             base.Set // Channels user is in
-		accessChans           base.Set // Channels to get changes for
-		expectWarnIncreaseBy1 bool     // Expected result is warning count increases by 1
-		expectedDocsReturned  int      // Expected amount of documents to be returned
+		name                 string
+		genChanAndDocs       int      // Amount of docs and channels to generate (ie. doc1 ch1, doc2 ch2...)
+		userChans            base.Set // Channels user is in
+		accessChans          base.Set // Channels to get changes for
+		expectedDocsReturned int      // Expected amount of documents to be returned
 	}{
 		{
-			name:                  "Warn when channels dropped from list",
-			genChanAndDocs:        3,
-			userChans:             base.SetOf("ch1", "ch3"),
-			accessChans:           base.SetOf("ch1", "ch2", "ch3"),
-			expectWarnIncreaseBy1: true,
-			expectedDocsReturned:  2,
+			// Should log "Channels [ ch2 ] request without access by user test"
+			name:                 "Info logged when channels dropped from list",
+			genChanAndDocs:       3,
+			userChans:            base.SetOf("ch1", "ch3"),
+			accessChans:          base.SetOf("ch1", "ch2", "ch3"),
+			expectedDocsReturned: 2,
 		}, {
-			name:                  "No warning if no channels dropped from list",
-			genChanAndDocs:        3,
-			userChans:             base.SetOf("ch1", "ch3"),
-			accessChans:           base.SetOf("ch1", "ch3"),
-			expectWarnIncreaseBy1: true,
-			expectedDocsReturned:  2,
+			name:                 "No info logged if no channels dropped from list",
+			genChanAndDocs:       3,
+			userChans:            base.SetOf("ch1", "ch3"),
+			accessChans:          base.SetOf("ch1", "ch3"),
+			expectedDocsReturned: 2,
 		}, {
-			name:                  "No warning when using wildcard",
-			genChanAndDocs:        3,
-			userChans:             base.SetOf("ch1", "ch3"),
-			accessChans:           base.SetOf("*"),
-			expectWarnIncreaseBy1: true,
-			expectedDocsReturned:  2,
+			name:                 "No info logged when using wildcard",
+			genChanAndDocs:       3,
+			userChans:            base.SetOf("ch1", "ch3"),
+			accessChans:          base.SetOf("*"),
+			expectedDocsReturned: 2,
 		},
 	}
-	defer base.SetUpTestLogging(base.LevelWarn, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			db := setupTestDB(t)
@@ -73,15 +71,9 @@ func TestLogIfChannelsDroppedFromList(t *testing.T) {
 
 			db.user, _ = auth.GetUser("test")
 
-			warnCount := int64(0)
 			ch, err := db.GetChanges(testCase.accessChans, getZeroSequence())
 			require.NoError(t, err)
-			require.Len(t, ch, testCase.expectedDocsReturned)
-			if testCase.expectWarnIncreaseBy1 {
-				warnCount++
-			}
-			assert.Equal(t, warnCount, base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value())
-
+			assert.Len(t, ch, testCase.expectedDocsReturned)
 			db.Close()
 		})
 	}
