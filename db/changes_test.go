@@ -59,17 +59,19 @@ func TestLogIfChannelsDroppedFromList(t *testing.T) {
 			db := setupTestDB(t)
 
 			auth := db.Authenticator()
-			user, _ := auth.NewUser("test", "pass", testCase.userChans)
+			user, err := auth.NewUser("test", "pass", testCase.userChans)
+			require.NoError(t, err)
 			require.NoError(t, auth.Save(user))
 
 			for i := 0; i < testCase.genChanAndDocs; i++ {
 				id := fmt.Sprintf("%d", i+1)
-				_, _, err := db.Put("doc"+id, Body{"channels": []string{"ch" + id}})
+				_, _, err = db.Put("doc"+id, Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
 			db.WaitForPendingChanges(context.Background())
 
-			db.user, _ = auth.GetUser("test")
+			db.user, err = auth.GetUser("test")
+			require.NoError(t, err)
 
 			ch, err := db.GetChanges(testCase.accessChans, getZeroSequence())
 			require.NoError(t, err)
