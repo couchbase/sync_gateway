@@ -11,7 +11,6 @@ package auth
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
@@ -229,7 +228,7 @@ func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, i
 	}
 
 	if prunedHistory := currentHistory.PruneHistory(auth.ClientPartitionWindow); len(prunedHistory) > 0 {
-		base.Debugf(base.KeyCRUD, "rebuildChannels: Pruned principal history on %s for %s", base.UD(princName), base.UD(strings.Join(prunedHistory, ",")))
+		base.Debugf(base.KeyCRUD, "rebuildChannels: Pruned principal history on %s for %s", base.UD(princName), base.UD(prunedHistory))
 	}
 
 	// Ensure no entries are larger than the allowed threshold
