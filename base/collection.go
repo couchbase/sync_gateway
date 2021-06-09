@@ -11,11 +11,8 @@ licenses/APL2.txt.
 package base
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"expvar"
-	"io/ioutil"
 	"time"
 
 	"github.com/couchbase/gocb"
@@ -31,58 +28,26 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
-	// TLS Config
-	var securityConfig gocb.SecurityConfig
-	if spec.CACertPath != "" {
-		roots := x509.NewCertPool()
-		cacert, err := ioutil.ReadFile(spec.CACertPath)
-		if err != nil {
-			return nil, err
-		}
-		ok := roots.AppendCertsFromPEM(cacert)
-		if !ok {
-			return nil, errors.New("Invalid CA cert")
-		}
-		securityConfig.TLSRootCAs = roots
-
-	} else {
-		securityConfig.TLSSkipVerify = true
+	securityConfig, err := GoCBv2SecurityConfig(spec.CACertPath)
+	if err != nil {
+		return nil, err
 	}
 
-	// Authentication
-	var authenticator gocb.Authenticator
-	if spec.Certpath != "" && spec.Keypath != "" {
+	username, password, _ := spec.Auth.GetCredentials()
+	authenticatorConfig, isX509, err := GoCBv2AuthenticatorConfig(username, password, spec.Certpath, spec.Keypath)
+	if err != nil {
+		return nil, err
+	} else if isX509 {
 		Infof(KeyAuth, "Using cert authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
-		cert, certLoadErr := tls.LoadX509KeyPair(spec.Certpath, spec.Keypath)
-		if certLoadErr != nil {
-			Infof(KeyAuth, "Error Attempting certificate authentication %s", certLoadErr)
-			return nil, err
-		}
-		authenticator = gocb.CertificateAuthenticator{
-			ClientCertificate: &cert,
-		}
 	} else {
 		Infof(KeyAuth, "Using credential authentication for bucket %s on %s", MD(spec.BucketName), MD(spec.Server))
-		username, password, _ := spec.Auth.GetCredentials()
-		authenticator = gocb.PasswordAuthenticator{
-			Username: username,
-			Password: password,
-		}
 	}
 
-	// Timeouts
-	var timeoutsConfig gocb.TimeoutsConfig
-	if spec.BucketOpTimeout != nil {
-		timeoutsConfig.KVTimeout = *spec.BucketOpTimeout
-		timeoutsConfig.ManagementTimeout = *spec.BucketOpTimeout
-		timeoutsConfig.ConnectTimeout = *spec.BucketOpTimeout
-	}
-	timeoutsConfig.QueryTimeout = spec.GetViewQueryTimeout()
-	timeoutsConfig.ViewTimeout = spec.GetViewQueryTimeout()
+	timeoutsConfig := GoCBv2TimeoutsConfig(spec.BucketOpTimeout, DurationPtr(spec.GetViewQueryTimeout()))
 	Infof(KeyAll, "Setting query timeouts for bucket %s to %v", spec.BucketName, timeoutsConfig.QueryTimeout)
 
 	clusterOptions := gocb.ClusterOptions{
-		Authenticator:  authenticator,
+		Authenticator:  authenticatorConfig,
 		SecurityConfig: securityConfig,
 		TimeoutsConfig: timeoutsConfig,
 	}
