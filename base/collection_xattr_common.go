@@ -356,5 +356,5 @@ func xattrCasPath(xattrKey string) string {
 }
 
 func xattrCrc32cPath(xattrKey string) string {
-	return fmt.Sprintf("%s.%s", xattrKey, xattrMacroValueCrc32c)
+	return xattrKey + "." + xattrMacroValueCrc32c
 }
