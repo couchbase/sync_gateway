@@ -5558,7 +5558,7 @@ func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
 	// var UpdateXattrCallback func()
 	// ==========================
 
-	// Insert the below into UpdateTombstoneXattr in bucket_gocb.go before the 'if isDelete && !supportsTombstoneCreation' check
+	// Insert the below into UpdateTombstoneXattr in bucket_gocb.go before the 'if requiresBodyRemoval' check
 	// and after the first 'Kick off retry loop' block
 	// ==========================
 	// if RunXattrCallback {
