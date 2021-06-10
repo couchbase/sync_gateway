@@ -352,7 +352,7 @@ func AsSubdocXattrStore(bucket Bucket) (SubdocXattrStore, bool) {
 }
 
 func xattrCasPath(xattrKey string) string {
-	return fmt.Sprintf("%s.%s", xattrKey, xattrMacroCas)
+	return xattrKey + "." + xattrMacroCas
 }
 
 func xattrCrc32cPath(xattrKey string) string {
