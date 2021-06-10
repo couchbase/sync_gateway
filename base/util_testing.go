@@ -490,10 +490,6 @@ type dataStore struct {
 // ForAllDataStores is used to run a test against multiple data stores (gocb bucket, gocb collection)
 func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataStore)) {
 	dataStores := make([]dataStore, 0)
-	dataStores = append(dataStores, dataStore{
-		name:   "gocb.v1",
-		driver: GoCB,
-	})
 
 	if TestUseCouchbaseServer() {
 		dataStores = append(dataStores, dataStore{
@@ -501,6 +497,10 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataS
 			driver: GoCBv2,
 		})
 	}
+	dataStores = append(dataStores, dataStore{
+		name:   "gocb.v1",
+		driver: GoCB,
+	})
 
 	for _, dataStore := range dataStores {
 		t.Run(dataStore.name, func(t *testing.T) {
