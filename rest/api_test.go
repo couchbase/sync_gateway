@@ -3911,7 +3911,7 @@ func TestWriteTombstonedDocUsingXattrs(t *testing.T) {
 	gocbBucket, _ := base.AsGoCBBucket(baseBucket)
 	var retrievedVal map[string]interface{}
 	var retrievedXattr map[string]interface{}
-	_, err = gocbBucket.GetWithXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
+	_, err = gocbBucket.SubdocGetBodyAndXattr("-21SK00U-ujxUO9fU2HezxL", base.SyncXattrName, "", &retrievedVal, &retrievedXattr, nil)
 	assert.NoError(t, err, "Unexpected Error")
 	assert.Equal(t, "2-466a1fab90a810dc0a63565b70680e4e", retrievedXattr["rev"])
 
@@ -5557,7 +5557,7 @@ func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
 	// var UpdateXattrCallback func()
 	// ==========================
 
-	// Insert the below into UpdateXattr in bucket_gocb.go before the 'if isDelete && !supportsTombstoneCreation' check
+	// Insert the below into UpdateTombstoneXattr in bucket_gocb.go before the 'if requiresBodyRemoval' check
 	// and after the first 'Kick off retry loop' block
 	// ==========================
 	// if RunXattrCallback {
@@ -5674,7 +5674,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	// Get Xattr and ensure channel value set correctly
 	var syncData db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -5689,7 +5689,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData2 db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
@@ -5707,7 +5707,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData3)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData3)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData2.Crc32c, syncData3.Crc32c)
@@ -5728,7 +5728,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 
 	var syncData4 db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData4)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData4)
 	assert.NoError(t, err)
 
 	assert.Equal(t, base.Crc32cHashString(updateVal), syncData4.Crc32c)
@@ -5807,7 +5807,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 	// Get sync data for doc and ensure user xattr has been used correctly to set channel
 	var syncData db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -5821,7 +5821,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 
 	var syncData2 db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.Equal(t, syncData.Crc32c, syncData2.Crc32c)
@@ -5904,7 +5904,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	assert.Equal(t, int64(3), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 
 	var syncData db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -5995,7 +5995,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Get sync data for doc and ensure user xattr has been used correctly to set channel
 			var syncData db.SyncData
-			_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+			_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 			assert.NoError(t, err)
 
 			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
@@ -6013,7 +6013,7 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Ensure old channel set with user xattr has been removed
 			var syncData2 db.SyncData
-			_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+			_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 			assert.NoError(t, err)
 
 			assert.Equal(t, uint64(3), syncData2.Channels[channelName].Seq)
@@ -6067,7 +6067,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Get current sync data
 	var syncData db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	docRev, err := rt.GetDatabase().GetRevisionCacheForTest().Get(docKey, syncData.CurrentRev, true, false)
@@ -6087,7 +6087,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Ensure import worked and sequence incremented but that sequence did not
 	var syncData2 db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	docRev2, err := rt.GetDatabase().GetRevisionCacheForTest().Get(docKey, syncData.CurrentRev, true, false)
@@ -6108,7 +6108,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.NoError(t, err)
 
 	var syncData3 db.SyncData
-	_, err = gocbBucket.GetXattr(docKey, base.SyncXattrName, &syncData2)
+	_, err = gocbBucket.SubdocGetXattr(docKey, base.SyncXattrName, &syncData2)
 	assert.NoError(t, err)
 
 	assert.NotEqual(t, syncData2.CurrentRev, syncData3.CurrentRev)

@@ -20,11 +20,12 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocbcore/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
-	"gopkg.in/couchbase/gocb.v1"
+	gocbV1 "gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 )
 
@@ -340,7 +341,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		}
 
 		if err != nil {
-			if pkgerrors.Cause(err) == gocb.ErrAuthError {
+			if pkgerrors.Cause(err) == gocbV1.ErrAuthError {
 				Warnf("Unable to authenticate as user %q: %v", UD(username), err)
 				return nil, ErrFatalBucketConnection
 			}
@@ -392,7 +393,12 @@ func IsCasMismatch(err error) bool {
 	unwrappedErr := pkgerrors.Cause(err)
 
 	// GoCB handling
-	if unwrappedErr == gocb.ErrKeyExists {
+	if unwrappedErr == gocbV1.ErrKeyExists {
+		return true
+	}
+
+	// GoCB V2 handling
+	if isKVError(unwrappedErr, memd.StatusKeyExists) {
 		return true
 	}
 
