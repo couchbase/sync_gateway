@@ -778,6 +778,11 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	}
 }
 
+// DurationPtr returns a pointer to the given time.Duration literal.
+func DurationPtr(value time.Duration) *time.Duration {
+	return &value
+}
+
 // StringPtr returns a pointer to the given string literal.
 func StringPtr(value string) *string {
 	return &value
