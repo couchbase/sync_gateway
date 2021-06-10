@@ -7194,7 +7194,7 @@ func TestRevocationMutationMovesIntoRevokedChannel(t *testing.T) {
 	assert.True(t, changes.Results[0].Revoked)
 }
 
-func TestRevocationResume(t *testing.T) {
+func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
 	revocationTester, rt := initScenario(t)
@@ -7239,9 +7239,17 @@ func TestRevocationResume(t *testing.T) {
 	assert.Equal(t, "doc2", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 
+	// Check no results with 60
+	changes = revocationTester.getChanges("60", 0)
+
+	// Ensure 11 low sequence means we get revocations from that far back
+	changes = revocationTester.getChanges("20:0:60", 1)
+	assert.Equal(t, "doc2", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+
 }
 
-func TestRevocationResumeSameRole(t *testing.T) {
+func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
 	revocationTester, rt := initScenario(t)
@@ -7270,15 +7278,23 @@ func TestRevocationResumeSameRole(t *testing.T) {
 	revIDDoc2 = rt.createDocReturnRev(t, "doc2", revIDDoc2, map[string]interface{}{"channels": []string{"ch2"}, "val": "mutate"})
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 2)
-
 	assert.Equal(t, "doc1", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 	assert.Equal(t, "doc2", changes.Results[1].ID)
 	assert.True(t, changes.Results[1].Revoked)
 
 	changes = revocationTester.getChanges("20:40", 1)
-
 	assert.Equal(t, "doc2", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
+
+	// Check no results with 60
+	changes = revocationTester.getChanges("60", 0)
+
+	// Ensure 11 low sequence means we get revocations from that far back
+	changes = revocationTester.getChanges("11:0:60", 2)
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+	assert.Equal(t, "doc2", changes.Results[1].ID)
+	assert.True(t, changes.Results[1].Revoked)
 
 }

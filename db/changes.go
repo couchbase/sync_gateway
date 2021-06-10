@@ -774,7 +774,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 
 			if options.Revocations && db.user != nil {
-				revocationCheckSeq := options.Since.Seq
+				revocationCheckSeq := options.Since.SafeSequence()
 				if options.Since.TriggeredBy > 0 {
 					revocationCheckSeq = options.Since.TriggeredBy - 1
 				}
