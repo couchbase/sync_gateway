@@ -16,7 +16,8 @@ import (
 	"syscall"
 	"testing"
 
-	goassert "github.com/couchbaselabs/go.assert"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetSoftFDLimitWithCurrent(t *testing.T) {
@@ -34,7 +35,7 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 		requestedSoftFDLimit,
 		limit,
 	)
-	goassert.False(t, requiresUpdate)
+	assert.False(t, requiresUpdate)
 
 	limit.Cur = uint64(512)
 
@@ -42,7 +43,50 @@ func TestGetSoftFDLimitWithCurrent(t *testing.T) {
 		requestedSoftFDLimit,
 		limit,
 	)
-	goassert.True(t, requiresUpdate)
-	goassert.Equals(t, softFDLimit, requestedSoftFDLimit)
+	assert.True(t, requiresUpdate)
+	assert.Equal(t, requestedSoftFDLimit, softFDLimit)
+}
 
+func TestSetMaxFileDescriptors(t *testing.T) {
+	defer SetUpTestLogging(LevelDebug, KeyAll)()
+
+	// grab current limits
+	var startLimits syscall.Rlimit
+	err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &startLimits)
+	require.NoError(t, err)
+
+	// Set current soft limit to a low-ish known value for testing
+	newLimits := startLimits
+	newLimits.Cur = 512
+	err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &newLimits)
+	require.NoError(t, err)
+	defer func() {
+		err = syscall.Setrlimit(syscall.RLIMIT_NOFILE, &startLimits)
+		require.NoError(t, err)
+	}()
+
+	// noop
+	n, err := SetMaxFileDescriptors(0)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, int(n))
+
+	// noop (current limit < new limit)
+	n, err = SetMaxFileDescriptors(newLimits.Cur - 1)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, int(n))
+
+	// noop (current limit == new limit)
+	n, err = SetMaxFileDescriptors(newLimits.Cur)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, int(n))
+
+	// increase
+	n, err = SetMaxFileDescriptors(newLimits.Cur + 2)
+	assert.NoError(t, err)
+	assert.Equal(t, int(newLimits.Cur+2), int(n))
+
+	// noop (we don't decrease limits)
+	n, err = SetMaxFileDescriptors(newLimits.Cur + 1)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, int(n))
 }
