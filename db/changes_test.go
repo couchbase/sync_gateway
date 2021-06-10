@@ -22,35 +22,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Unit test for CBG-1326
-// This will need to be manually verified by checking the logs in console
-func TestLogIfChannelsDroppedFromList(t *testing.T) {
+func TestFilterToAvailableChannels(t *testing.T) {
 	testCases := []struct {
 		name                 string
 		genChanAndDocs       int      // Amount of docs and channels to generate (ie. doc1 ch1, doc2 ch2...)
 		userChans            base.Set // Channels user is in
 		accessChans          base.Set // Channels to get changes for
-		expectedDocsReturned int      // Expected amount of documents to be returned
+		expectedDocsReturned []string // Expected Doc IDs returned
 	}{
 		{
-			// Should log "Channels [ ch2 ] request without access by user test"
+			// Should log "Channels [ ch2 ] request without access by user test" - CBG-1326
 			name:                 "Info logged when channels dropped from list",
 			genChanAndDocs:       3,
 			userChans:            base.SetOf("ch1", "ch3"),
 			accessChans:          base.SetOf("ch1", "ch2", "ch3"),
-			expectedDocsReturned: 2,
+			expectedDocsReturned: []string{"doc1", "doc3"},
 		}, {
 			name:                 "No info logged if no channels dropped from list",
 			genChanAndDocs:       3,
 			userChans:            base.SetOf("ch1", "ch3"),
 			accessChans:          base.SetOf("ch1", "ch3"),
-			expectedDocsReturned: 2,
+			expectedDocsReturned: []string{"doc1", "doc3"},
 		}, {
 			name:                 "No info logged when using wildcard",
 			genChanAndDocs:       3,
 			userChans:            base.SetOf("ch1", "ch3"),
 			accessChans:          base.SetOf("*"),
-			expectedDocsReturned: 2,
+			expectedDocsReturned: []string{"doc1", "doc3"},
 		},
 	}
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
@@ -75,7 +73,16 @@ func TestLogIfChannelsDroppedFromList(t *testing.T) {
 
 			ch, err := db.GetChanges(testCase.accessChans, getZeroSequence())
 			require.NoError(t, err)
-			assert.Len(t, ch, testCase.expectedDocsReturned)
+			require.Len(t, ch, len(testCase.expectedDocsReturned))
+
+			match := true // Check if expected matches with actual in-order
+			for i, change := range ch {
+				if change.ID != testCase.expectedDocsReturned[i] {
+					match = false
+				}
+			}
+			assert.True(t, match)
+
 			db.Close()
 		})
 	}
