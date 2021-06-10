@@ -209,7 +209,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // its data. The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback AttachmentCallback) error {
+func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback AttachmentCallback, docID string) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(400, "Invalid _attachments")
@@ -293,6 +293,33 @@ func AttachmentDigests(attachments AttachmentsMeta) []string {
 		}
 	}
 	return digests
+}
+
+// AttachmentStorageMeta holds the metadata for building
+// the key for attachment storage and retrieval.
+type AttachmentStorageMeta struct {
+	digest  string
+	version int64
+}
+
+// ToAttachmentStorageMeta returns a slice of AttachmentStorageMeta, which is contains the
+// necessary metadata properties to build the key for attachment storage and retrieval.
+func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMeta {
+	meta := make([]AttachmentStorageMeta, 0, len(attachments))
+	for _, att := range attachments {
+		if attMap, ok := att.(map[string]interface{}); ok {
+			if digest, ok := attMap["digest"]; ok {
+				if digestString, ok := digest.(string); ok {
+					m := AttachmentStorageMeta{digest: digestString}
+					if version, ok := base.ToInt64(attMap["ver"]); ok {
+						m.version = version
+					}
+					meta = append(meta, m)
+				}
+			}
+		}
+	}
+	return meta
 }
 
 func attachmentKeyToString(key AttachmentKey) string {

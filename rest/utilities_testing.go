@@ -1310,8 +1310,11 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 			// Get attachments and append to RestDocument
 			getAttachmentRequest := blip.NewRequest()
-			getAttachmentRequest.SetProfile("getAttachment")
-			getAttachmentRequest.Properties["digest"] = attachment.Digest
+			getAttachmentRequest.SetProfile(db.MessageGetAttachment)
+			getAttachmentRequest.Properties[db.GetAttachmentDigest] = attachment.Digest
+			if bt.blipContext.ActiveProtocol() == db.BlipCBMobileReplicationV3 {
+				getAttachmentRequest.Properties[db.GetAttachmentID] = docId
+			}
 			sent := bt.sender.Send(getAttachmentRequest)
 			if !sent {
 				panic(fmt.Sprintf("Unable to get attachment."))

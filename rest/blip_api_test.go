@@ -1431,8 +1431,9 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	// Try to fetch the attachment directly via getAttachment, expected to fail w/ 403 error for security reasons
 	// since it's not in the context of responding to a "rev" request from the peer.
 	getAttachmentRequest := blip.NewRequest()
-	getAttachmentRequest.SetProfile("getAttachment")
-	getAttachmentRequest.Properties["digest"] = input.attachmentDigest
+	getAttachmentRequest.SetProfile(db.MessageGetAttachment)
+	getAttachmentRequest.Properties[db.GetAttachmentDigest] = input.attachmentDigest
+	getAttachmentRequest.Properties[db.GetAttachmentID] = input.docId
 	sent := bt.sender.Send(getAttachmentRequest)
 	if !sent {
 		panic(fmt.Sprintf("Failed to send request for doc: %v", input.docId))

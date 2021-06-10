@@ -439,11 +439,15 @@ func (g *getAttachmentParams) digest() string {
 	return g.rq.Properties[GetAttachmentDigest]
 }
 
+func (g *getAttachmentParams) id() string {
+	return g.rq.Properties[GetAttachmentID]
+}
+
 func (g *getAttachmentParams) String() string {
 
 	buffer := bytes.NewBufferString("")
 
-	buffer.WriteString(fmt.Sprintf("Digest:%v ", g.digest()))
+	buffer.WriteString(fmt.Sprintf("Digest:%v, ID: %v ", g.digest(), g.id()))
 
 	return buffer.String()
 
