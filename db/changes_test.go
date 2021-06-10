@@ -66,7 +66,8 @@ func TestFilterToAvailableChannels(t *testing.T) {
 				_, _, err = db.Put("doc"+id, Body{"channels": []string{"ch" + id}})
 				require.NoError(t, err)
 			}
-			db.WaitForPendingChanges(context.Background())
+			err = db.WaitForPendingChanges(context.Background())
+			require.NoError(t, err)
 
 			db.user, err = auth.GetUser("test")
 			require.NoError(t, err)
