@@ -1431,8 +1431,9 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 	// Try to fetch the attachment directly via getAttachment, expected to fail w/ 403 error for security reasons
 	// since it's not in the context of responding to a "rev" request from the peer.
 	getAttachmentRequest := blip.NewRequest()
-	getAttachmentRequest.SetProfile("getAttachment")
-	getAttachmentRequest.Properties["digest"] = input.attachmentDigest
+	getAttachmentRequest.SetProfile(db.MessageGetAttachment)
+	getAttachmentRequest.Properties[db.GetAttachmentDigest] = input.attachmentDigest
+	getAttachmentRequest.Properties[db.GetAttachmentID] = input.docId
 	sent := bt.sender.Send(getAttachmentRequest)
 	if !sent {
 		panic(fmt.Sprintf("Failed to send request for doc: %v", input.docId))
@@ -2748,15 +2749,15 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 		// Check the request body was the actual delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
-		assert.Equal(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
+		assert.Equal(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true,"ver":2}}]}`, string(msgBody))
 	} else {
 		// Check the request was NOT sent with a deltaSrc property
 		assert.Equal(t, "", msg.Properties[db.RevMessageDeltaSrc])
 		// Check the request body was NOT the delta
 		msgBody, err := msg.Body()
 		assert.NoError(t, err)
-		assert.NotEqual(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}]}`, string(msgBody))
-		assert.Contains(t, string(msgBody), `"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true}}`)
+		assert.NotEqual(t, `{"_attachments":[{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true,"ver":2}}]}`, string(msgBody))
+		assert.Contains(t, string(msgBody), `"_attachments":{"hello.txt":{"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","length":11,"revpos":2,"stub":true,"ver":2}}`)
 		assert.Contains(t, string(msgBody), `"greetings":[{"hello":"world!"},{"hi":"alice"}]`)
 	}
 
@@ -2949,11 +2950,11 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	revId := respRevID(t, response)
 	data, ok := btc.WaitForRev(docId, revId)
 	assert.True(t, ok)
-	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","ver":2}}}`
 	require.JSONEq(t, bodyTextExpected, string(data))
 
 	// Update the replicated doc at client by adding another attachment.
-	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
+	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=","ver":2},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
 	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
 	require.NoError(t, err)
 	assert.Equal(t, "2-abcxyz", revId)

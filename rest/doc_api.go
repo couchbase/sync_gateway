@@ -195,7 +195,8 @@ func (h *handler) handleGetAttachment() error {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
 	digest := meta["digest"].(string)
-	data, err := h.db.GetAttachment(db.AttachmentKey(digest))
+	version := db.AttachmentVersion(meta)
+	data, err := h.db.GetAttachmentBy(version, docid, digest)
 	if err != nil {
 		return err
 	}
