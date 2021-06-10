@@ -88,6 +88,7 @@ const (
 	ProposeChangesResponseDeltas = "deltas"
 
 	// getAttachment message properties
+	GetAttachmentID     = "id"
 	GetAttachmentDigest = "digest"
 
 	// proveAttachment
