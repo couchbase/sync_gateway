@@ -242,7 +242,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 					}
 
 					if !requiresRevocation {
-						return
+						continue
 					}
 				}
 
@@ -338,7 +338,7 @@ func (db *Database) wasDocInChannelAtSeq(docID, chanName string, since uint64) (
 			// If there is some overlap we can quit out as we know user has had access to the doc at the since seq
 			start := base.MaxUint64(docHistoryEntry.Start, accessPeriod.StartSeq)
 			end := base.MinUint64(docHistoryEntry.End, accessPeriod.EndSeq)
-			if start < end || end == 0 {
+			if start < end || (start <= since && end == 0) {
 				return true, nil
 			}
 		}

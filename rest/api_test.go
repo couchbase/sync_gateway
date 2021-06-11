@@ -7160,10 +7160,37 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": []}`)
 	assertStatus(t, resp, http.StatusOK)
 
-	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 2), "user", false)
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%d&revocations=true", 3), "user", false)
 	require.NoError(t, err)
 	require.Equal(t, 2, len(changes.Results))
 
 	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationMutationMovesIntoRevokedChannel(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "A")
+
+	revocationTester.fillToSeq(4)
+	docRevID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{}})
+	doc2RevID := rt.createDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"A"}})
+
+	changes := revocationTester.getChanges(0, 2)
+	assert.Len(t, changes.Results, 2)
+	assert.Equal(t, "doc2", changes.Results[1].ID)
+
+	revocationTester.removeRole("user", "foo")
+	docRevID = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"A"}})
+	doc2RevID = rt.createDocReturnRev(t, "doc2", doc2RevID, map[string]interface{}{"channels": []string{"A"}, "val": "mutate"})
+
+	changes = revocationTester.getChanges(6, 1)
+	assert.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc2", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 }
