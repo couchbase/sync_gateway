@@ -13,8 +13,11 @@ package base
 import (
 	"fmt"
 	"reflect"
+)
 
-	"github.com/couchbase/clog"
+const (
+	userDataPrefix = "<ud>"
+	userDataSuffix = "</ud>"
 )
 
 // RedactUserData is a global toggle for user data redaction.
@@ -40,7 +43,7 @@ func (ud UserData) Redact() string {
 	if !RedactUserData {
 		return string(ud)
 	}
-	return clog.Tag(clog.UserData, string(ud)).(string)
+	return userDataPrefix + string(ud) + userDataSuffix
 }
 
 // Compile-time interface check.

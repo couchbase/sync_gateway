@@ -13,8 +13,11 @@ package base
 import (
 	"fmt"
 	"reflect"
+)
 
-	"github.com/couchbase/clog"
+const (
+	metaDataPrefix = "<md>"
+	metaDataSuffix = "</md>"
 )
 
 // RedactMetadata is a global toggle for system data redaction.
@@ -42,7 +45,7 @@ func (md Metadata) Redact() string {
 	if !RedactMetadata {
 		return string(md)
 	}
-	return clog.Tag(clog.MetaData, string(md)).(string)
+	return metaDataPrefix + string(md) + metaDataSuffix
 }
 
 // Compile-time interface check.

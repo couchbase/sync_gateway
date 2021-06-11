@@ -17,13 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	// This is intentionally brittle (hardcoded redaction tags)
-	// We'd probably want to know if this got changed by accident...
-	systemDataPrefix = "<sd>"
-	systemDataSuffix = "</sd>"
-)
-
 func TestSystemDataRedact(t *testing.T) {
 	clusterName := "My Super Secret IP"
 	systemdata := SystemData(clusterName)
