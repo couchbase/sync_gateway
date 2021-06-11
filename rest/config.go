@@ -1295,6 +1295,8 @@ func TestAuth(agent *gocbcore.Agent, username, password string, bucket string, r
 	managementURLs := agent.MgmtEps()
 	managementURL := managementURLs[0]
 
+	// handle perm bucket encoding "cluster.bucket[bucketName]!perm"
+
 	body := []byte(strings.Join(requirePermissions, ","))
 	statusCode, bodyResponse, err := doPermissionsRequest(httpClient, username, password, "POST", managementURL+"/pools/default/checkPermissions", body)
 	if err != nil {
@@ -1432,6 +1434,7 @@ func doPermissionsRequest(httpClient *http.Client, username, password, method, u
 
 	req.SetBasicAuth(username, password)
 
+	// TODO: Add some sort of retry logic
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return 0, nil, err
