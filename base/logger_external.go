@@ -25,11 +25,11 @@ import (
 func init() {
 	// Ensure all gocb and gocbcore log levels match between versions, if they don't,
 	// we'll need to revisit the log wrappers below to not just do direct type conversions to implement 4 loggers.
-	if gocb.LogError != gocb.LogLevel(gocbcore.LogError) || gocb.LogError != gocb.LogLevel(gocbv1.LogError) || gocb.LogError != gocb.LogLevel(gocbcorev7.LogError) ||
-		gocb.LogWarn != gocb.LogLevel(gocbcore.LogWarn) || gocb.LogWarn != gocb.LogLevel(gocbv1.LogWarn) || gocb.LogWarn != gocb.LogLevel(gocbcorev7.LogWarn) ||
-		gocb.LogInfo != gocb.LogLevel(gocbcore.LogInfo) || gocb.LogInfo != gocb.LogLevel(gocbv1.LogInfo) || gocb.LogInfo != gocb.LogLevel(gocbcorev7.LogInfo) ||
-		gocb.LogDebug != gocb.LogLevel(gocbcore.LogDebug) || gocb.LogDebug != gocb.LogLevel(gocbv1.LogDebug) || gocb.LogDebug != gocb.LogLevel(gocbcorev7.LogDebug) ||
-		gocb.LogTrace != gocb.LogLevel(gocbcore.LogTrace) || gocb.LogTrace != gocb.LogLevel(gocbv1.LogTrace) || gocb.LogTrace != gocb.LogLevel(gocbcorev7.LogTrace) {
+	if gocb.LogError != gocb.LogLevel(gocbcore.LogError) || gocb.LogLevel(gocbcore.LogError) != gocb.LogLevel(gocbv1.LogError) || gocb.LogLevel(gocbv1.LogError) != gocb.LogLevel(gocbcorev7.LogError) ||
+		gocb.LogWarn != gocb.LogLevel(gocbcore.LogWarn) || gocb.LogLevel(gocbcore.LogWarn) != gocb.LogLevel(gocbv1.LogWarn) || gocb.LogLevel(gocbv1.LogWarn) != gocb.LogLevel(gocbcorev7.LogWarn) ||
+		gocb.LogInfo != gocb.LogLevel(gocbcore.LogInfo) || gocb.LogLevel(gocbcore.LogInfo) != gocb.LogLevel(gocbv1.LogInfo) || gocb.LogLevel(gocbv1.LogInfo) != gocb.LogLevel(gocbcorev7.LogInfo) ||
+		gocb.LogDebug != gocb.LogLevel(gocbcore.LogDebug) || gocb.LogLevel(gocbcore.LogDebug) != gocb.LogLevel(gocbv1.LogDebug) || gocb.LogLevel(gocbv1.LogDebug) != gocb.LogLevel(gocbcorev7.LogDebug) ||
+		gocb.LogTrace != gocb.LogLevel(gocbcore.LogTrace) || gocb.LogLevel(gocbcore.LogTrace) != gocb.LogLevel(gocbv1.LogTrace) || gocb.LogLevel(gocbv1.LogTrace) != gocb.LogLevel(gocbcorev7.LogTrace) {
 		panic("mismatched gocb/gocbcore/gocbv1/gocbcorev7 log level values")
 	}
 }
