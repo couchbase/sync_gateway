@@ -47,6 +47,15 @@ type userByEmailInfo struct {
 
 const PrincipalUpdateMaxCasRetries = 20 // Maximum number of attempted retries on cas failure updating principal
 
+// Constants used in CalculateMaxHistoryEntriesPerGrant
+const (
+	maximumHistoryBytes          = 1024 * 1024 // 1MB
+	averageHistoryKeyBytes       = 250         // This is an estimate of key size in bytes, this includes channel name, the unix timestamp, "entries" key
+	averageHistoryEntryPairBytes = 14          // Assume each sequence is 7 digits
+	minHistoryEntriesPerGrant    = 1           // Floor of history entries count to ensure there is at least 1 entry
+	maxHistoryEntriesPerGrant    = 10          // Ceiling of history entries count to ensure there is no more than 10 entries
+)
+
 // Creates a new Authenticator that stores user info in the given Bucket.
 func NewAuthenticator(bucket base.Bucket, channelComputer ChannelComputer, options AuthenticatorOptions) *Authenticator {
 	return &Authenticator{
@@ -244,21 +253,17 @@ func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, i
 }
 
 func CalculateMaxHistoryEntriesPerGrant(channelCount int) int {
-	const maximumHistoryBytes = 1024 * 1024 // 1MB
-	const estimatedKeySize = 250            // This is an estimate of key size in bytes, this includes channel name, the unix timestamp, "entries" key
-	const estimatedSizeOfEntriesPair = 14   // Assume each sequence is 7 digits
-
 	maxEntries := 0
 
 	if channelCount != 0 {
-		maxEntries = (maximumHistoryBytes/channelCount - estimatedKeySize) / estimatedSizeOfEntriesPair
+		maxEntries = (maximumHistoryBytes/channelCount - averageHistoryKeyBytes) / averageHistoryEntryPairBytes
 	}
 
 	// Even if we can fit it limit entries to 10
-	maxEntries = base.MinInt(maxEntries, base.MaxHistoryEntriesPerGrant)
+	maxEntries = base.MinInt(maxEntries, maxHistoryEntriesPerGrant)
 
 	// In the event maxEntries is negative or 0 we should set a floor of 1 entry
-	maxEntries = base.MaxInt(maxEntries, base.MinHistoryEntriesPerGrant)
+	maxEntries = base.MaxInt(maxEntries, minHistoryEntriesPerGrant)
 
 	return maxEntries
 }

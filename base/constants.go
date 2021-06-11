@@ -169,9 +169,6 @@ var (
 	DefaultWarnThresholdGrantsPerDoc    = uint32(50)
 	DefaultClientPartitionWindow        = time.Hour * 24 * 30
 
-	MinHistoryEntriesPerGrant = 1
-	MaxHistoryEntriesPerGrant = 10
-
 	// ErrUnknownField is marked as the cause of the error when trying to decode a JSON snippet with unknown fields
 	ErrUnknownField = errors.New("unrecognized JSON field")
 )
