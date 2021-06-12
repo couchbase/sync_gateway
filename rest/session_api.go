@@ -218,7 +218,7 @@ func (h *handler) createUserSession() error {
 	}
 	response.SessionID = session.ID
 	response.Expires = session.Expiration.UTC().Format(time.RFC3339)
-	response.CookieName = authenticator.SessionCookieName()
+	response.CookieName = authenticator.SessionCookieName
 	h.writeJSON(response)
 	return nil
 }

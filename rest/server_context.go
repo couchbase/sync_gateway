@@ -737,6 +737,11 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		return db.DatabaseContextOptions{}, fmt.Errorf("use of user_xattr_key requires shared_bucket_access to be enabled")
 	}
 
+	clientPartitionWindow := base.DefaultClientPartitionWindow
+	if config.ClientPartitionWindowSecs != nil {
+		clientPartitionWindow = time.Duration(*config.ClientPartitionWindowSecs) * time.Second
+	}
+
 	contextOptions := db.DatabaseContextOptions{
 		CacheOptions:              &cacheOptions,
 		RevisionCacheOptions:      revCacheOptions,
@@ -762,6 +767,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
 		},
 		SlowQueryWarningThreshold: time.Duration(*sc.config.SlowQueryWarningThreshold) * time.Millisecond,
+		ClientPartitionWindow:     clientPartitionWindow,
 	}
 
 	return contextOptions, nil

@@ -27,7 +27,7 @@ func TestCreateSession(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	// Create session with a username and valid TTL of 2 hours.
 	session, err := auth.CreateSession(username, 2*time.Hour)
@@ -67,7 +67,7 @@ func TestDeleteSession(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	mockSession := &LoginSession{
 		ID:         base.GenerateRandomSecret(),
@@ -93,7 +93,7 @@ func TestMakeSessionCookie(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	sessionID := base.GenerateRandomSecret()
 	mockSession := &LoginSession{
@@ -118,7 +118,7 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	sessionID := base.GenerateRandomSecret()
 	mockSession := &LoginSession{
@@ -152,7 +152,7 @@ func TestDeleteSessionForCookie(t *testing.T) {
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
-	auth := NewAuthenticator(testBucket, nil)
+	auth := NewAuthenticator(testBucket, nil, DefaultAuthenticatorOptions())
 
 	sessionID := base.GenerateRandomSecret()
 	body := strings.NewReader("?")

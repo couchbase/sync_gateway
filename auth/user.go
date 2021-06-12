@@ -489,7 +489,7 @@ func (user *userImpl) InheritedChannels() ch.TimedSet {
 	}
 
 	user.warnChanThresholdOnce.Do(func() {
-		if channelsPerUserThreshold := user.auth.ChannelsWarningThreshold(); channelsPerUserThreshold != nil {
+		if channelsPerUserThreshold := user.auth.ChannelsWarningThreshold; channelsPerUserThreshold != nil {
 			channelCount := len(channels)
 			if uint32(channelCount) >= *channelsPerUserThreshold {
 				base.Warnf("User ID: %v channel count: %d exceeds %d for channels per user warning threshold",

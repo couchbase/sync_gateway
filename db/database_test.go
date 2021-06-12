@@ -275,7 +275,7 @@ func TestGetDeleted(t *testing.T) {
 	goassert.Equals(t, doc.SyncData.CurrentRev, rev2id)
 
 	// Try again but with a user who doesn't have access to this revision (see #179)
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	db.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 	db.user.SetExplicitChannels(nil, 1)
@@ -340,7 +340,7 @@ func TestGetRemovedAsUser(t *testing.T) {
 	assert.NoError(t, err, "Purge old revision JSON")
 
 	// Try again with a user who doesn't have access to this revision
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	db.user, err = authenticator.GetUser("")
 	assert.NoError(t, err, "GetUser")
 
@@ -374,7 +374,7 @@ func TestGetRemovalMultiChannel(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	auth := auth.NewAuthenticator(db.Bucket, db)
+	auth := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 
 	// Create a user who have access to both channel ABC and NBC.
 	userAlice, err := auth.NewUser("alice", "pass", base.SetOf("ABC", "NBC"))
@@ -511,7 +511,7 @@ func TestDeltaSyncWhenFromRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev2ID and rev3ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -576,7 +576,7 @@ func TestDeltaSyncWhenToRevIsChannelRemoval(t *testing.T) {
 
 	// Request delta between rev1ID and rev2ID (toRevision "rev2ID" is channel removal)
 	// as a user who doesn't have access to the removed revision via any other channel.
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	user, err := authenticator.NewUser("alice", "pass", base.SetOf("NBC"))
 	require.NoError(t, err, "Error creating user")
 
@@ -1381,7 +1381,7 @@ func TestAccessFunctionDb(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 
 	var err error
 	db.ChannelMapper = channels.NewChannelMapper(`function(doc){access(doc.users,doc.userChannels);}`)
@@ -1472,7 +1472,7 @@ func TestUpdateDesignDoc(t *testing.T) {
 	goassert.True(t, strings.Contains(retrievedView.Map, "emit()"))
 	goassert.NotEquals(t, retrievedView.Map, mapFunction) // SG should wrap the map function, so they shouldn't be equal
 
-	authenticator := auth.NewAuthenticator(db.Bucket, db)
+	authenticator := auth.NewAuthenticator(db.Bucket, db, auth.DefaultAuthenticatorOptions())
 	db.user, _ = authenticator.NewUser("naomi", "letmein", channels.SetOf(t, "Netflix"))
 	err = db.PutDesignDoc("_design/pwn3d", sgbucket.DesignDoc{})
 	assertHTTPError(t, err, 403)
