@@ -17,13 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const (
-	// This is intentionally brittle (hardcoded redaction tags)
-	// We'd probably want to know if this got changed by accident...
-	metaDataPrefix = "<md>"
-	metaDataSuffix = "</md>"
-)
-
 func TestMetadataRedact(t *testing.T) {
 	clusterName := "My Super Secret Cluster"
 	metadata := Metadata(clusterName)

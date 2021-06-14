@@ -18,13 +18,6 @@ import (
 	goassert "github.com/couchbaselabs/go.assert"
 )
 
-const (
-	// This is intentionally brittle (hardcoded redaction tags)
-	// We'd probably want to know if this got changed by accident...
-	userDataPrefix = "<ud>"
-	userDataSuffix = "</ud>"
-)
-
 func TestUserDataRedact(t *testing.T) {
 	username := "alice"
 	userdata := UserData(username)

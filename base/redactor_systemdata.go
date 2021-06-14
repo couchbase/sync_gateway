@@ -13,8 +13,11 @@ package base
 import (
 	"fmt"
 	"reflect"
+)
 
-	"github.com/couchbase/clog"
+const (
+	systemDataPrefix = "<sd>"
+	systemDataSuffix = "</sd>"
 )
 
 // RedactSystemData is a global toggle for system data redaction.
@@ -39,7 +42,7 @@ func (sd SystemData) Redact() string {
 	if !RedactSystemData {
 		return string(sd)
 	}
-	return clog.Tag(clog.SystemData, string(sd)).(string)
+	return systemDataPrefix + string(sd) + systemDataSuffix
 }
 
 // Compile-time interface check.
