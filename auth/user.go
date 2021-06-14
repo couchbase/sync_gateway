@@ -520,7 +520,7 @@ func (user *userImpl) FilterToAvailableChannels(channels base.Set) (filtered ch.
 			removed = append(removed, channel)
 		}
 	}
-	return
+	return filtered, removed
 }
 
 func (user *userImpl) GetAddedChannels(channels ch.TimedSet) base.Set {
