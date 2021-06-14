@@ -7155,7 +7155,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 	assert.Equal(t, 2, len(changes.Results))
 
 	assert.Equal(t, "doc", changes.Results[1].ID)
-	assert.False(t, changes.Results[0].Revoked)
+	assert.False(t, changes.Results[1].Revoked)
 
 	resp = rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_roles": []}`)
 	assertStatus(t, resp, http.StatusOK)
