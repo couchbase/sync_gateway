@@ -5,11 +5,11 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/imdario/mergo"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/imdario/mergo"
 )
 
 const (

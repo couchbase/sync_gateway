@@ -18,6 +18,9 @@ licenses/APL2.txt.
 
   <remote fetch="https://github.com/tleyden/" name="tleyden"/>
 
+  <!-- TODO: couchbasedeps mirror -->
+  <remote fetch="https://github.com/imdario/" name="imdario"/>
+
   <remote fetch="ssh://git@github.com/couchbaselabs/" name="couchbaselabs_private" />
 
   <default remote="couchbase" revision="master"/>
@@ -158,5 +161,7 @@ licenses/APL2.txt.
   <project name="xxhash" path="godeps/src/github.com/cespare/xxhash" remote="couchbasedeps" revision="d7df74196a9e781ede915320c11c378c1b2f3a1f"/>
   <project name="protobuf" path="godeps/src/github.com/golang/protobuf" remote="couchbasedeps" revision="b5d812f8a3706043e23a9cd5babf2e5423744d30"/>
   <project name="protobuf-go" path="godeps/src/google.golang.org/protobuf" remote="couchbasedeps" revision="1ecb1f411c1f2ce65a2db6ea4a8ae927182d342e"/>
+
+  <project name="mergo" path="godeps/src/github.com/imdario/mergo" remote="imdario" revision="b968a17bce53738e37f30fd352eb2f7f69ed58a7"/>
 
 </manifest>
