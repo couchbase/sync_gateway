@@ -127,13 +127,18 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterConfig.adminInterface != "" {
 		adminInterface = &rt.RestTesterConfig.adminInterface
 	}
-	rt.RestTesterServerContext = NewServerContext(&ServerConfig{
-		CORS:               corsConfig,
-		Facebook:           &FacebookConfig{},
-		AdminInterface:     adminInterface,
-		Replications:       rt.RestTesterConfig.sgr1Replications,
-		HideProductVersion: rt.RestTesterConfig.hideProductInfo,
-	})
+	rt.RestTesterServerContext = NewServerContext(&StartupConfig{
+		API: APIConfig{
+			AdminInterface:     *adminInterface,
+			CORS:               corsConfig,
+			HideProductVersion: rt.RestTesterConfig.hideProductInfo,
+		},
+		Auth: AuthConfig{
+			Facebook: &FacebookConfig2{},
+		},
+		// FIXME
+		// Replications: rt.RestTesterConfig.sgr1Replications,
+	}, true)
 
 	useXattrs := base.TestUseXattrs()
 
@@ -169,7 +174,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(rt.DatabaseConfig)
+	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(DatabaseConfig{Config: *rt.DatabaseConfig})
 	if err != nil {
 		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}

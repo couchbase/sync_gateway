@@ -32,11 +32,11 @@ const (
 
 // This is like a combination of http.ListenAndServe and http.ListenAndServeTLS, which also
 // uses ThrottledListen to limit the number of open HTTP connections.
-func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *string, handler http.Handler,
-	readTimeout *int, writeTimeout *int, readHeaderTimeout *int, idleTimeout *int, http2Enabled bool,
+func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, handler http.Handler,
+	readTimeout, writeTimeout, readHeaderTimeout, idleTimeout time.Duration, http2Enabled bool,
 	tlsMinVersion uint16) error {
 	var config *tls.Config
-	if certFile != nil {
+	if certFile != "" {
 		config = &tls.Config{}
 		config.MinVersion = tlsMinVersion
 		protocolsEnabled := []string{"http/1.1"}
@@ -47,7 +47,7 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 		Infof(KeyHTTP, "Protocols enabled: %v on %v", config.NextProtos, SD(addr))
 		config.Certificates = make([]tls.Certificate, 1)
 		var err error
-		config.Certificates[0], err = tls.LoadX509KeyPair(*certFile, *keyFile)
+		config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
 			return err
 		}
@@ -60,30 +60,22 @@ func ListenAndServeHTTP(addr string, connLimit int, certFile *string, keyFile *s
 		listener = tls.NewListener(listener, config)
 	}
 	defer func() { _ = listener.Close() }()
-	server := &http.Server{Addr: addr, Handler: handler}
-	if readTimeout != nil {
-		server.ReadTimeout = time.Duration(*readTimeout) * time.Second
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		ReadHeaderTimeout: readHeaderTimeout,
+		IdleTimeout:       idleTimeout,
 	}
-	if writeTimeout != nil {
-		server.WriteTimeout = time.Duration(*writeTimeout) * time.Second
-	}
-	if readHeaderTimeout != nil {
-		server.ReadHeaderTimeout = time.Duration(*readHeaderTimeout) * time.Second
-	} else {
-		server.ReadHeaderTimeout = DefaultReadHeaderTimeout
-	}
-	if idleTimeout != nil {
-		server.IdleTimeout = time.Duration(*idleTimeout) * time.Second
-	} else {
-		server.IdleTimeout = DefaultIdleTimeout
-	}
+
 	return server.Serve(listener)
 }
 
 type throttledListener struct {
 	net.Listener
-	active int
-	limit  int
+	active uint
+	limit  uint
 	lock   *sync.Cond
 }
 
@@ -91,7 +83,7 @@ type throttledListener struct {
 // connections at a time. When the limit is reached it will block until some are closed before
 // accepting any more.
 // If the 'limit' parameter is 0, there is no limit and the behavior is identical to net.Listen.
-func ThrottledListen(protocol string, addr string, limit int) (net.Listener, error) {
+func ThrottledListen(protocol string, addr string, limit uint) (net.Listener, error) {
 	listener, err := net.Listen(protocol, addr)
 	if err != nil || limit <= 0 {
 		return listener, err

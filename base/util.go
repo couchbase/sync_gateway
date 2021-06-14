@@ -783,6 +783,11 @@ func DurationPtr(value time.Duration) *time.Duration {
 	return &value
 }
 
+// LogLevelPtr returns a pointer to the given LogLevel literal.
+func LogLevelPtr(value LogLevel) *LogLevel {
+	return &value
+}
+
 // StringPtr returns a pointer to the given string literal.
 func StringPtr(value string) *string {
 	return &value

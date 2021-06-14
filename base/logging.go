@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -402,6 +403,9 @@ func Panicf(format string, args ...interface{}) {
 
 // Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
 func Fatalf(format string, args ...interface{}) {
+	if errorLogger == nil {
+		log.Fatalf(format, args...)
+	}
 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
@@ -511,7 +515,7 @@ func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface
 	}
 }
 
-// LogSyncGatewayVersion will print the startup indicator and version number to ALL log outputs.
+// LogSyncGatewayVersion will print the '==== name/version ====' startup indicator to ALL log outputs.
 func LogSyncGatewayVersion() {
 	msg := fmt.Sprintf("==== %s ====", LongVersionString)
 

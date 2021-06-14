@@ -16,7 +16,6 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -24,12 +23,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/gocbcore"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	sgreplicate "github.com/couchbaselabs/sg-replicate"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -45,14 +43,37 @@ const DefaultStatsLogFrequencySecs = 60
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config            *ServerConfig
-	databases_        map[string]*db.DatabaseContext
-	lock              sync.RWMutex
-	statsContext      *statsContext
-	HTTPClient        *http.Client
-	replicator        *base.Replicator
-	cpuPprofFileMutex sync.Mutex // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile      *os.File   // An open file descriptor holds the reference during CPU profiling
+	config           *StartupConfig
+	persistentConfig bool
+	// bucketDbConfigs is a map of bucket name to DatabaseConfig
+	bucketDbConfigs map[string]*DatabaseConfig
+	// dbConfigs is a map of db name to DatabaseConfig
+	dbConfigs map[string]*DatabaseConfig
+	// databases_ is a map of dbname to db.DatabaseContext
+	databases_          map[string]*db.DatabaseContext
+	lock                sync.RWMutex
+	statsContext        *statsContext
+	bootstrapConnection *gocb.Cluster
+	HTTPClient          *http.Client
+	replicator          *base.Replicator
+	cpuPprofFileMutex   sync.Mutex // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile        *os.File   // An open file descriptor holds the reference during CPU profiling
+}
+
+type DatabaseConfig struct {
+	CAS    gocb.Cas
+	Config DbConfig
+}
+
+func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
+	for _, dbConfig := range dbs {
+		dbc := DatabaseConfig{CAS: 0, Config: *dbConfig}
+		_, err := sc._getOrAddDatabaseFromConfig(dbc, false)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (sc *ServerContext) SetCpuPprofFile(file *os.File) {
@@ -70,25 +91,27 @@ func (sc *ServerContext) CloseCpuPprofFile() {
 	sc.cpuPprofFileMutex.Unlock()
 }
 
-func NewServerContext(config *ServerConfig) *ServerContext {
+func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerContext {
 	sc := &ServerContext{
-		config:       config,
-		databases_:   map[string]*db.DatabaseContext{},
-		HTTPClient:   http.DefaultClient,
-		replicator:   base.NewReplicator(),
-		statsContext: &statsContext{},
-	}
-	if config.Databases == nil {
-		config.Databases = DbConfigMap{}
-	}
-
-	if config.CouchbaseKeepaliveInterval != nil {
-		couchbase.SetTcpKeepalive(true, *config.CouchbaseKeepaliveInterval)
+		config:           config,
+		persistentConfig: persistentConfig,
+		dbConfigs:        map[string]*DatabaseConfig{},
+		bucketDbConfigs:  map[string]*DatabaseConfig{},
+		databases_:       map[string]*db.DatabaseContext{},
+		HTTPClient:       http.DefaultClient,
+		replicator:       base.NewReplicator(),
+		statsContext:     &statsContext{},
 	}
 
-	if config.SlowQueryWarningThreshold == nil {
-		config.SlowQueryWarningThreshold = base.IntPtr(kDefaultSlowQueryWarningThreshold)
-	}
+	// TODO: Remove with GoCB DCP switch
+	// if config.CouchbaseKeepaliveInterval != nil {
+	// 	couchbase.SetTcpKeepalive(true, *config.CouchbaseKeepaliveInterval)
+	// }
+
+	// TODO: Moved to dbConfig?
+	// if config.SlowQueryWarningThreshold == nil {
+	// 	config.SlowQueryWarningThreshold = base.IntPtr(kDefaultSlowQueryWarningThreshold)
+	// }
 
 	sc.startStatsLogger()
 
@@ -97,15 +120,6 @@ func NewServerContext(config *ServerConfig) *ServerContext {
 
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
-
-	// Start sg-replicate 1.x replications.
-	// Introduce a minor delay if there are any replications
-	// (sc.startReplicators() might rely on SG being fully started)
-	if len(sc.config.Replications) > 0 {
-		base.Warnf("Using deprecated top-level 'replications' property in config. Use database-level 'replications' instead.")
-		time.Sleep(time.Second)
-	}
-	sc.startReplicators()
 
 	// Start sg-replicate2 replications per-database.  sg-replicate2 replications aren't
 	// started until at least 5 seconds after SG node start, to avoid replication reassignment churn
@@ -124,34 +138,6 @@ func (sc *ServerContext) PostStartup() {
 
 }
 
-// startReplicators will start up any replicators for the ServerContext
-func (sc *ServerContext) startReplicators() {
-
-	for _, replicationConfig := range sc.config.Replications {
-		if replicationConfig.upgradedToSGR2 {
-			base.Infof(base.KeyReplicate, "Replication %q was upgraded, preventing startup of v1 replication.", replicationConfig.ReplicationId)
-			continue
-		}
-
-		params, _, _, err := validateReplicateV1Parameters(*replicationConfig, true, *sc.config.AdminInterface)
-		if err != nil {
-			base.Errorf("Error validating replication parameters: %v", err)
-			continue
-		}
-
-		// Force one-shot replications to run Async
-		// to avoid blocking server startup
-		params.Async = true
-
-		// Run single replication, cancel parameter will always be false
-		if _, err := sc.replicator.Replicate(params, false); err != nil {
-			base.Warnf("Error starting replication %v: %v", base.UD(params.ReplicationId), err)
-		}
-
-	}
-
-}
-
 func (sc *ServerContext) Close() {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
@@ -164,7 +150,7 @@ func (sc *ServerContext) Close() {
 
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
-		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", sc.config.AdminInterface)
+		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", &sc.config.API.AdminInterface)
 	}
 
 	sc.databases_ = nil
@@ -180,32 +166,19 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		return dbc, nil
 	} else if db.ValidateDatabaseName(name) != nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
-	} else if sc.config.ConfigServer == nil {
-		return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
-	} else {
-		// Let's ask the config server if it knows this database:
-		base.Infof(base.KeyAll, "Asking config server %q about db %q...", base.UD(*sc.config.ConfigServer), base.UD(name))
-		config, err := sc.getDbConfigFromServer(name)
-		if err != nil {
-			return nil, err
-		}
-		if dbc, err = sc.getOrAddDatabaseFromConfig(config, true); err != nil {
-			return nil, err
-		}
 	}
-	return dbc, nil
-
+	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 }
 
-func (sc *ServerContext) GetDatabaseConfig(name string) *DbConfig {
+func (sc *ServerContext) GetDatabaseConfig(name string) *DatabaseConfig {
+	// FIXME
 	sc.lock.RLock()
-	config := sc.config.Databases[name]
+	config, ok := sc.dbConfigs[name]
 	sc.lock.RUnlock()
+	if !ok {
+		return nil
+	}
 	return config
-}
-
-func (sc *ServerContext) GetConfig() *ServerConfig {
-	return sc.config
 }
 
 func (sc *ServerContext) AllDatabaseNames() []string {
@@ -265,15 +238,17 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 }
 
 // Removes and re-adds a database to the ServerContext.
+func (sc *ServerContext) _reloadDatabaseFromConfig(reloadDbName string) (*db.DatabaseContext, error) {
+	sc._removeDatabase(reloadDbName)
+	config := sc.dbConfigs[reloadDbName]
+	return sc._getOrAddDatabaseFromConfig(*config, true)
+}
+
+// Removes and re-adds a database to the ServerContext.
 func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
-
-	sc._removeDatabase(reloadDbName)
-
-	config := sc.config.Databases[reloadDbName]
-
-	dbContext, err := sc._getOrAddDatabaseFromConfig(config, true)
+	dbContext, err := sc._reloadDatabaseFromConfig(reloadDbName)
 	sc.lock.Unlock()
 
 	return dbContext, err
@@ -282,7 +257,7 @@ func (sc *ServerContext) ReloadDatabaseFromConfig(reloadDbName string) (*db.Data
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (*db.DatabaseContext, error) {
+func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool) (*db.DatabaseContext, error) {
 	// Obtain write lock during add database, to avoid race condition when creating based on ConfigServer
 	sc.lock.Lock()
 	dbContext, err := sc._getOrAddDatabaseFromConfig(config, useExisting)
@@ -319,15 +294,15 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
-func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisting bool) (context *db.DatabaseContext, err error) {
+func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool) (context *db.DatabaseContext, err error) {
 
 	// Generate bucket spec and validate whether db already exists
-	spec, err := GetBucketSpec(config)
+	spec, err := GetBucketSpec(&config.Config)
 	if err != nil {
 		return nil, err
 	}
 
-	dbName := config.Name
+	dbName := config.Config.Name
 	if dbName == "" {
 		dbName = spec.BucketName
 	}
@@ -354,7 +329,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	// If using a walrus bucket, force use of views
-	useViews := config.UseViews
+	useViews := config.Config.UseViews
 	if !useViews && spec.IsWalrusBucket() {
 		base.Warnf("Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
@@ -368,11 +343,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 
 		numReplicas := DefaultNumIndexReplicas
-		if config.NumIndexReplicas != nil {
-			numReplicas = *config.NumIndexReplicas
+		if config.Config.NumIndexReplicas != nil {
+			numReplicas = *config.Config.NumIndexReplicas
 		}
 
-		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas)
+		indexErr := db.InitializeIndexes(bucket, config.Config.UseXattrs(), numReplicas)
 		if indexErr != nil {
 			return nil, indexErr
 		}
@@ -384,51 +359,51 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	// Process unsupported config options
-	if config.Unsupported.WarningThresholds.XattrSize == nil {
-		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
+	if config.Config.Unsupported.WarningThresholds.XattrSize == nil {
+		config.Config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
 	} else {
 		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
 		upperLimit := 1 * 1024 * 1024   // 1 MB
-		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
+		if *config.Config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
 			return nil, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
-		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
+		} else if *config.Config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
 			return nil, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
 		}
 	}
 
-	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
-		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
+	if config.Config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
+		config.Config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
 	} else {
 		lowerLimit := 5
-		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
+		if *config.Config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
 			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
 		}
 	}
 
-	if config.Unsupported.WarningThresholds.ChannelsPerUser == nil {
-		config.Unsupported.WarningThresholds.ChannelsPerUser = &base.DefaultWarnThresholdChannelsPerUser
+	if config.Config.Unsupported.WarningThresholds.ChannelsPerUser == nil {
+		config.Config.Unsupported.WarningThresholds.ChannelsPerUser = &base.DefaultWarnThresholdChannelsPerUser
 	}
 
-	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
-		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
+	if config.Config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
+		config.Config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
 	} else {
 		lowerLimit := 5
-		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
+		if *config.Config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
 			return nil, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
 		}
 	}
 
-	if config.Unsupported.WarningThresholds.ChannelNameSize == nil {
-		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
+	if config.Config.Unsupported.WarningThresholds.ChannelNameSize == nil {
+		config.Config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
 	}
 
-	autoImport, err := config.AutoImportEnabled()
+	autoImport, err := config.Config.AutoImportEnabled()
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate database context options from config and server context
-	contextOptions, err := dbcOptionsFromConfig(sc, config, dbName)
+	contextOptions, err := dbcOptionsFromConfig(sc, &config.Config, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -442,15 +417,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	dbcontext.BucketSpec = spec
 
 	syncFn := ""
-	if config.Sync != nil {
-		syncFn = *config.Sync
+	if config.Config.Sync != nil {
+		syncFn = *config.Config.Sync
 	}
 	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
 		return nil, err
 	}
 
-	if config.RevsLimit != nil {
-		dbcontext.RevsLimit = *config.RevsLimit
+	if config.Config.RevsLimit != nil {
+		dbcontext.RevsLimit = *config.Config.RevsLimit
 		if dbcontext.AllowConflicts() {
 			if dbcontext.RevsLimit < 20 {
 				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", dbcontext.RevsLimit)
@@ -466,123 +441,126 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
-	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
-	dbcontext.ServeInsecureAttachmentTypes = config.ServeInsecureAttachmentTypes
+	dbcontext.AllowEmptyPassword = config.Config.AllowEmptyPassword
+	dbcontext.ServeInsecureAttachmentTypes = config.Config.ServeInsecureAttachmentTypes
 
 	if dbcontext.ChannelMapper == nil {
 		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
 	}
 
 	// Create default users & roles:
-	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
+	if err := sc.installPrincipals(dbcontext, config.Config.Roles, "role"); err != nil {
 		return nil, err
-	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
+	} else if err := sc.installPrincipals(dbcontext, config.Config.Users, "user"); err != nil {
 		return nil, err
 	}
 
 	// Initialize event handlers
-	if err := sc.initEventHandlers(dbcontext, config); err != nil {
+	if err := sc.initEventHandlers(dbcontext, &config.Config); err != nil {
 		return nil, err
 	}
 
-	sgr1CheckpointIDs := make(map[string]string, len(config.Replications))
+	/*
+			sgr1CheckpointIDs := make(map[string]string, len(config.Replications))
 
-	// Validate replications and fetch SGR1 checkpoint IDs, if any match.
-	for replicationID, replicationConfig := range config.Replications {
-		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
-			return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
-		}
-		replicationConfig.ID = replicationID
-		if validateErr := replicationConfig.ValidateReplication(true); validateErr != nil {
-			return nil, validateErr
-		}
-
-		// Only support SGR1 checkpoint upgrade if the replication is unidirectional.
-		if replicationConfig.Direction == db.ActiveReplicatorTypePush || replicationConfig.Direction == db.ActiveReplicatorTypePull {
-			// SGR1 checkpoint fallback:
-			// If we match based on replication ID, we'll generate the SGR1 checkpoint ID and use it as a fallback in the event that no
-			// SGR2 checkpoints can be found. This needs to be persisted cluster-wide so that an assigned node that is not running SGR1 replications can still utilise the existing checkpoint.
-			// SGR1 replications were unidirectional only, and so we can't match replication IDs for SGR1 checkpoints in the event of a pushAndPull SGR2 replication.
-			for _, sgr1ReplicationConfig := range sc.config.Replications {
-				if sgr1ReplicationConfig.ReplicationId != replicationID {
-					continue
+			// Validate replications and fetch SGR1 checkpoint IDs, if any match.
+			for replicationID, replicationConfig := range config.Replications {
+				if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
+					return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
 				}
-				base.Debugf(base.KeyReplicate, "Matched replication IDs for SGR1 checkpoint fallback: %v %v", replicationConfig, sgr1ReplicationConfig)
-
-				// don't have running replications available before startup, so regenerate the params in this case for us to generate a checkpoint ID.
-				params, _, localdb, err := validateReplicateV1Parameters(*sgr1ReplicationConfig, true, *sc.config.AdminInterface)
-				if err != nil {
-					base.Warnf("Couldn't build SGR1 replication parameters for replication config: %v", err)
-					break
+				replicationConfig.ID = replicationID
+				if validateErr := replicationConfig.ValidateReplication(true); validateErr != nil {
+					return nil, validateErr
 				}
 
-				if !localdb {
-					base.Warnf("SGR1 replication was not a local replication, no equivalent SGR2 replication.")
-					break
-				}
+				// Only support SGR1 checkpoint upgrade if the replication is unidirectional.
+				if replicationConfig.Direction == db.ActiveReplicatorTypePush || replicationConfig.Direction == db.ActiveReplicatorTypePull {
+					// SGR1 checkpoint fallback:
+					// If we match based on replication ID, we'll generate the SGR1 checkpoint ID and use it as a fallback in the event that no
+					// SGR2 checkpoints can be found. This needs to be persisted cluster-wide so that an assigned node that is not running SGR1 replications can still utilise the existing checkpoint.
+					// SGR1 replications were unidirectional only, and so we can't match replication IDs for SGR1 checkpoints in the event of a pushAndPull SGR2 replication.
+					for _, sgr1ReplicationConfig := range sc.config.Replications {
+						if sgr1ReplicationConfig.ReplicationId != replicationID {
+							continue
+						}
+						base.Debugf(base.KeyReplicate, "Matched replication IDs for SGR1 checkpoint fallback: %v %v", replicationConfig, sgr1ReplicationConfig)
 
-				// Verify source/target of SGR1 matches SGR2.
-				if replicationConfig.Direction == db.ActiveReplicatorTypePush {
-					if params.SourceDb != dbName {
-						base.Warnf("SGR1 replication SourceDB did not match SGR2 database... Can't use SGR1 checkpoints")
-						break
+						// don't have running replications available before startup, so regenerate the params in this case for us to generate a checkpoint ID.
+						params, _, localdb, err := validateReplicateV1Parameters(*sgr1ReplicationConfig, true, *sc.config.AdminInterface)
+						if err != nil {
+							base.Warnf("Couldn't build SGR1 replication parameters for replication config: %v", err)
+							break
+						}
+
+						if !localdb {
+							base.Warnf("SGR1 replication was not a local replication, no equivalent SGR2 replication.")
+							break
+						}
+
+						// Verify source/target of SGR1 matches SGR2.
+						if replicationConfig.Direction == db.ActiveReplicatorTypePush {
+							if params.SourceDb != dbName {
+								base.Warnf("SGR1 replication SourceDB did not match SGR2 database... Can't use SGR1 checkpoints")
+								break
+							}
+							if params.GetTargetDbUrl() != replicationConfig.Remote {
+								base.Warnf("SGR1 replication TargetDB did not match SGR2 remote... Can't use SGR1 checkpoints")
+								break
+							}
+						} else if replicationConfig.Direction == db.ActiveReplicatorTypePull {
+							if params.TargetDb != dbName {
+								base.Warnf("SGR1 replication TargetDB did not match SGR2 database... Can't use SGR1 checkpoints")
+								break
+							}
+							if params.GetSourceDbUrl() != replicationConfig.Remote {
+								base.Warnf("SGR1 replication SourceDB did not match SGR2 remote... Can't use SGR1 checkpoints")
+								break
+							}
+						}
+
+						// TODO: We don't ensure further SGR1 and SGR2 params match (Filter, Channels, etc.)
+						// It's possible for users to change replication filters when moving to SGR2 and have an invalid SGR1 checkpoint used.
+
+						// replications derived from the SG config have Async forced to true, so we'll do that here to generate the same checkpoint ID.
+						params.Async = true
+						// sg-replicate itself forces a one-shot lifecycle due to the implementation of continuous,
+						// but not something we're concerned about for checkpoint ID purposes.
+						params.Lifecycle = sgreplicate.ONE_SHOT
+
+						sgr1CheckpointID, err := params.TargetCheckpointAddress()
+						if err != nil {
+							base.Warnf("Couldn't generate SGR1 checkpoint ID from replication parameters: %v", err)
+							break
+						}
+
+						base.Infof(base.KeyReplicate, "Got SGR1 checkpoint ID for fallback in replication %q: %v", replicationID, sgr1CheckpointID)
+						sgr1CheckpointIDs[replicationID] = sgr1CheckpointID
+						sgr1ReplicationConfig.upgradedToSGR2 = true
 					}
-					if params.GetTargetDbUrl() != replicationConfig.Remote {
-						base.Warnf("SGR1 replication TargetDB did not match SGR2 remote... Can't use SGR1 checkpoints")
-						break
-					}
-				} else if replicationConfig.Direction == db.ActiveReplicatorTypePull {
-					if params.TargetDb != dbName {
-						base.Warnf("SGR1 replication TargetDB did not match SGR2 database... Can't use SGR1 checkpoints")
-						break
-					}
-					if params.GetSourceDbUrl() != replicationConfig.Remote {
-						base.Warnf("SGR1 replication SourceDB did not match SGR2 remote... Can't use SGR1 checkpoints")
-						break
-					}
 				}
-
-				// TODO: We don't ensure further SGR1 and SGR2 params match (Filter, Channels, etc.)
-				// It's possible for users to change replication filters when moving to SGR2 and have an invalid SGR1 checkpoint used.
-
-				// replications derived from the SG config have Async forced to true, so we'll do that here to generate the same checkpoint ID.
-				params.Async = true
-				// sg-replicate itself forces a one-shot lifecycle due to the implementation of continuous,
-				// but not something we're concerned about for checkpoint ID purposes.
-				params.Lifecycle = sgreplicate.ONE_SHOT
-
-				sgr1CheckpointID, err := params.TargetCheckpointAddress()
-				if err != nil {
-					base.Warnf("Couldn't generate SGR1 checkpoint ID from replication parameters: %v", err)
-					break
-				}
-
-				base.Infof(base.KeyReplicate, "Got SGR1 checkpoint ID for fallback in replication %q: %v", replicationID, sgr1CheckpointID)
-				sgr1CheckpointIDs[replicationID] = sgr1CheckpointID
-				sgr1ReplicationConfig.upgradedToSGR2 = true
 			}
-		}
-	}
 
-	// Upsert replications
-	// TODO: Include sgr1CheckpointID from above
-	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications, sgr1CheckpointIDs)
-	if replicationErr != nil {
-		return nil, replicationErr
-	}
+		// Upsert replications
+		// TODO: Include sgr1CheckpointID from above
+		replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications, sgr1CheckpointIDs)
+		if replicationErr != nil {
+			return nil, replicationErr
+		}
+	*/
 
 	// Register it so HTTP handlers can find it:
 	sc.databases_[dbcontext.Name] = dbcontext
 
 	// Save the config
-	sc.config.Databases[dbName] = config
+	sc.bucketDbConfigs[bucket.GetName()] = &config
+	sc.dbConfigs[dbcontext.Name] = &config
 
-	if config.StartOffline {
+	if config.Config.StartOffline {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", sc.config.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.config.API.AdminInterface)
 	} else {
 		atomic.StoreUint32(&dbcontext.State, db.DBOnline)
-		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", sc.config.AdminInterface)
+		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "online", "DB loaded from config", &sc.config.API.AdminInterface)
 	}
 
 	return dbcontext, nil
@@ -721,7 +699,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	}
 	cacheOptions.ChannelQueryLimit = queryPaginationLimit
 
-	secureCookieOverride := sc.config.SSLCert != nil
+	secureCookieOverride := sc.config.API.TLS.CertPath != ""
 	if config.SecureCookieOverride != nil {
 		secureCookieOverride = *config.SecureCookieOverride
 	}
@@ -755,7 +733,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		RevisionCacheOptions:      revCacheOptions,
 		OldRevExpirySeconds:       oldRevExpirySeconds,
 		LocalDocExpirySecs:        localDocExpirySecs,
-		AdminInterface:            sc.config.AdminInterface,
+		AdminInterface:            &sc.config.API.AdminInterface,
 		UnsupportedOptions:        config.Unsupported,
 		OIDCOptions:               config.OIDCConfig,
 		DBOnlineCallback:          dbOnlineCallback,
@@ -774,8 +752,9 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 			Enabled:               sgReplicateEnabled,
 			WebsocketPingInterval: sgReplicateWebsocketPingInterval,
 		},
-		SlowQueryWarningThreshold: time.Duration(*sc.config.SlowQueryWarningThreshold) * time.Millisecond,
-		ClientPartitionWindow:     clientPartitionWindow,
+		// FIXME?
+		// SlowQueryWarningThreshold: time.Duration(*sc.config.SlowQueryWarningThreshold) * time.Millisecond,
+		ClientPartitionWindow: clientPartitionWindow,
 	}
 
 	return contextOptions, nil
@@ -893,7 +872,7 @@ func (sc *ServerContext) initEventHandlers(dbcontext *db.DatabaseContext, config
 
 // Adds a database to the ServerContext given its configuration.  If an existing config is found
 // for the name, returns an error.
-func (sc *ServerContext) AddDatabaseFromConfig(config *DbConfig) (*db.DatabaseContext, error) {
+func (sc *ServerContext) AddDatabaseFromConfig(config DatabaseConfig) (*db.DatabaseContext, error) {
 	return sc.getOrAddDatabaseFromConfig(config, false)
 }
 
@@ -997,39 +976,6 @@ func (sc *ServerContext) installPrincipals(context *db.DatabaseContext, spec map
 	return nil
 }
 
-// Fetch a configuration for a database from the ConfigServer
-func (sc *ServerContext) getDbConfigFromServer(dbName string) (*DbConfig, error) {
-	if sc.config.ConfigServer == nil {
-		return nil, base.HTTPErrorf(http.StatusNotFound, "not_found")
-	}
-
-	urlStr := *sc.config.ConfigServer
-	if !strings.HasSuffix(urlStr, "/") {
-		urlStr += "/"
-	}
-	urlStr += url.QueryEscape(dbName)
-	resp, err := sc.HTTPClient.Get(urlStr)
-	if err != nil {
-		return nil, base.HTTPErrorf(http.StatusBadGateway,
-			"Error contacting config server: %v", err)
-	} else if resp.StatusCode >= 300 {
-		return nil, base.HTTPErrorf(resp.StatusCode, http.StatusText(resp.StatusCode))
-	}
-
-	var config DbConfig
-	defer func() { _ = resp.Body.Close() }()
-
-	if err := decodeAndSanitiseConfig(resp.Body, &config); err != nil {
-		return nil, base.HTTPErrorf(http.StatusBadGateway,
-			"Bad response from config server: %v", err)
-	}
-
-	if err = config.setup(dbName); err != nil {
-		return nil, err
-	}
-	return &config, nil
-}
-
 //////// STATS LOGGING
 
 type statsWrapper struct {
@@ -1040,17 +986,12 @@ type statsWrapper struct {
 
 func (sc *ServerContext) startStatsLogger() {
 
-	statsLogFrequencySecs := uint(DefaultStatsLogFrequencySecs)
-	if sc.config.Unsupported != nil && sc.config.Unsupported.StatsLogFrequencySecs != nil {
-		if *sc.config.Unsupported.StatsLogFrequencySecs == 0 {
-			// don't start the stats logger when explicitly zero
-			return
-		} else if *sc.config.Unsupported.StatsLogFrequencySecs > 0 {
-			statsLogFrequencySecs = *sc.config.Unsupported.StatsLogFrequencySecs
-		}
+	if sc.config.Unsupported.StatsLogFrequency == nil || *sc.config.Unsupported.StatsLogFrequency == 0 {
+		// don't start the stats logger when explicitly zero
+		return
 	}
 
-	interval := time.Second * time.Duration(statsLogFrequencySecs)
+	interval := *sc.config.Unsupported.StatsLogFrequency
 
 	sc.statsContext.statsLoggingTicker = time.NewTicker(interval)
 	sc.statsContext.terminator = make(chan struct{})
@@ -1127,19 +1068,11 @@ func (sc *ServerContext) logStats() error {
 
 func (sc *ServerContext) logNetworkInterfaceStats() {
 
-	publicListenInterface := DefaultInterface
-	if sc.config.Interface != nil {
-		publicListenInterface = *sc.config.Interface
-	}
-	if err := sc.statsContext.addPublicNetworkInterfaceStatsForHostnamePort(publicListenInterface); err != nil {
+	if err := sc.statsContext.addPublicNetworkInterfaceStatsForHostnamePort(sc.config.API.PublicInterface); err != nil {
 		base.Warnf("Error getting public network interface resource stats: %v", err)
 	}
 
-	adminListenInterface := DefaultAdminInterface
-	if sc.config.AdminInterface != nil {
-		adminListenInterface = *sc.config.AdminInterface
-	}
-	if err := sc.statsContext.addAdminNetworkInterfaceStatsForHostnamePort(adminListenInterface); err != nil {
+	if err := sc.statsContext.addAdminNetworkInterfaceStatsForHostnamePort(sc.config.API.AdminInterface); err != nil {
 		base.Warnf("Error getting admin network interface resource stats: %v", err)
 	}
 

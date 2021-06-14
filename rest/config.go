@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -19,36 +20,32 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/couchbase/gocb"
 	"github.com/hashicorp/go-multierror"
 	pkgerrors "github.com/pkg/errors"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-
-	// Register profiling handlers (see Go docs)
-	_ "net/http/pprof"
 )
 
 var (
-	DefaultInterface              = ":4984"
+	DefaultPublicInterface        = ":4984"
 	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
 	DefaultMetricsInterface       = "127.0.0.1:4986" // Only accessible on localhost!
-	DefaultServer                 = "walrus:"
 	DefaultMinimumTLSVersionConst = tls.VersionTLS12
 
-	// The value of defaultLogFilePath is populated by -defaultLogFilePath in ParseCommandLine()
+	// The value of defaultLogFilePath is populated by -defaultLogFilePath by command line flag from service scripts.
 	defaultLogFilePath string
-	// The value of disablePersistentConfig is populated by -disable_persistent_config in ParseCommandLine()
-	disablePersistentConfig bool
 )
 
 const (
@@ -56,10 +53,10 @@ const (
 	minValueErrorMsg   = "minimum value for %s is: %v"
 	rangeValueErrorMsg = "valid range for %s is: %s"
 
-	// Default value of ServerConfig.MaxIncomingConnections
+	// Default value of LegacyServerConfig.MaxIncomingConnections
 	DefaultMaxIncomingConnections = 0
 
-	// Default value of ServerConfig.MaxFileDescriptors
+	// Default value of LegacyServerConfig.MaxFileDescriptors
 	DefaultMaxFileDescriptors uint64 = 5000
 
 	// Default number of index replicas
@@ -67,7 +64,7 @@ const (
 )
 
 // JSON object that defines the server configuration.
-type ServerConfig struct {
+type LegacyServerConfig struct {
 	TLSMinVersion                  *string                  `json:"tls_minimum_version,omitempty"`              // Set TLS Version
 	Interface                      *string                  `json:",omitempty"`                                 // Interface to bind REST API to, default ":4984"
 	SSLCert                        *string                  `json:",omitempty"`                                 // Path to SSL cert file, or nil
@@ -164,7 +161,7 @@ func (c ClusterConfig) CBGTEnabled() bool {
 	return c.Server != nil && *c.Server != ""
 }
 
-// JSON object that defines a database configuration within the ServerConfig.
+// JSON object that defines a database configuration within the LegacyServerConfig.
 type DbConfig struct {
 	BucketConfig
 	Name                             string                           `json:"name,omitempty"`                                 // Database name in REST API (stored as key in JSON)
@@ -227,13 +224,6 @@ type FacebookConfig struct {
 type GoogleConfig struct {
 	Register    bool     // If true, server will register new user accounts
 	AppClientID []string `json:"app_client_id"` // list of enabled client ids
-}
-
-type CORSConfig struct {
-	Origin      []string // List of allowed origins, use ["*"] to allow access from everywhere
-	LoginOrigin []string // List of allowed login origins
-	Headers     []string // List of allowed headers
-	MaxAge      int      // Maximum age of the CORS Options request
 }
 
 type EventHandlerConfig struct {
@@ -317,12 +307,13 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 
 func (dbConfig *DbConfig) setup(name string) error {
 
+	if dbConfig.Server == nil {
+		return base.HTTPErrorf(http.StatusBadRequest, "Empty 'server' property in dbConfig")
+	}
+
 	dbConfig.Name = name
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
-	}
-	if dbConfig.Server == nil {
-		dbConfig.Server = &DefaultServer
 	}
 
 	url, err := url.Parse(*dbConfig.Server)
@@ -765,8 +756,8 @@ func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
 	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
 }
 
-// LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
-func LoadServerConfig(path string) (config *ServerConfig, err error) {
+// LoadServerConfig loads a LegacyServerConfig from either a JSON file or from a URL
+func LoadServerConfig(path string) (config *LegacyServerConfig, err error) {
 	rc, err := readFromPath(path, false)
 	if err != nil {
 		return nil, err
@@ -776,13 +767,13 @@ func LoadServerConfig(path string) (config *ServerConfig, err error) {
 	return readServerConfig(rc)
 }
 
-// readServerConfig returns a validated ServerConfig from an io.Reader
-func readServerConfig(r io.Reader) (config *ServerConfig, err error) {
+// readServerConfig returns a validated LegacyServerConfig from an io.Reader
+func readServerConfig(r io.Reader) (config *LegacyServerConfig, err error) {
 	err = decodeAndSanitiseConfig(r, &config)
 	return config, err
 }
 
-// decodeAndSanitiseConfig will sanitise a ServerConfig or dbConfig from an io.Reader and unmarshal it into the given config parameter.
+// decodeAndSanitiseConfig will sanitise a LegacyServerConfig or dbConfig from an io.Reader and unmarshal it into the given config parameter.
 func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -802,7 +793,7 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	return base.WrapJSONUnknownFieldErr(err)
 }
 
-func (config *ServerConfig) setupAndValidateDatabases() (errs error) {
+func (config *LegacyServerConfig) setupAndValidateDatabases() (errs error) {
 	if config == nil {
 		return nil
 	}
@@ -868,7 +859,7 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors
-func (config *ServerConfig) validate() (errorMessages error) {
+func (config *LegacyServerConfig) validate() (errorMessages error) {
 	if config.Unsupported != nil && config.Unsupported.StatsLogFrequencySecs != nil {
 		if *config.Unsupported.StatsLogFrequencySecs == 0 {
 			// explicitly disabled
@@ -883,37 +874,27 @@ func (config *ServerConfig) validate() (errorMessages error) {
 
 // setupAndValidateLogging sets up and validates logging,
 // and returns a slice of deferred logs to execute later.
-func (config *ServerConfig) SetupAndValidateLogging() (err error) {
+func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
 
-	if config.Logging == nil {
-		config.Logging = &base.LoggingConfig{}
-	}
+	base.SetRedaction(sc.Logging.RedactionLevel)
 
-	// populate values from deprecated logging config options if not set
-	config.deprecatedConfigLoggingFallback()
-
-	if config.Logging.RedactionLevel == base.RedactUnset {
-		config.Logging.RedactionLevel = base.RedactionLevelDefault
-	}
-
-	base.SetRedaction(config.Logging.RedactionLevel)
-
-	err = config.Logging.Init(defaultLogFilePath)
-	if err != nil {
-		return err
-	}
-
-	if config.Logging.DeprecatedDefaultLog == nil {
-		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
-	}
-
-	return nil
+	return base.InitLogging(
+		defaultLogFilePath,
+		sc.Logging.LogFilePath,
+		*sc.Logging.Console,
+		*sc.Logging.Error,
+		*sc.Logging.Warn,
+		*sc.Logging.Info,
+		*sc.Logging.Debug,
+		*sc.Logging.Trace,
+		*sc.Logging.Stats,
+	)
 }
 
-// deprecatedConfigLoggingFallback will parse the ServerConfig and try to
+// deprecatedConfigLoggingFallback will parse the LegacyServerConfig and try to
 // use older logging config options for backwards compatibility.
 // It will return a slice of deferred warnings to log at a later time.
-func (config *ServerConfig) deprecatedConfigLoggingFallback() {
+func (config *LegacyServerConfig) deprecatedConfigLoggingFallback() {
 
 	warningMsgFmt := "Using deprecated config option: %q. Use %q instead."
 
@@ -960,7 +941,7 @@ func (config *ServerConfig) deprecatedConfigLoggingFallback() {
 	}
 }
 
-func (self *ServerConfig) MergeWith(other *ServerConfig) error {
+func (self *LegacyServerConfig) MergeWith(other *LegacyServerConfig) error {
 	if self.Interface == nil {
 		self.Interface = other.Interface
 	}
@@ -1003,8 +984,8 @@ func (self *ServerConfig) MergeWith(other *ServerConfig) error {
 	return nil
 }
 
-func (sc *ServerConfig) Redacted() (*ServerConfig, error) {
-	var config ServerConfig
+func (sc *LegacyServerConfig) Redacted() (*LegacyServerConfig, error) {
+	var config LegacyServerConfig
 
 	err := base.DeepCopyInefficient(&config, sc)
 	if err != nil {
@@ -1022,19 +1003,15 @@ func (sc *ServerConfig) Redacted() (*ServerConfig, error) {
 }
 
 // Reads the command line flags and the optional config file.
-func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig, error) {
+func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServerConfig, error) {
 	flagSet := flag.NewFlagSet(args[0], handling)
 
-	// TODO: Change default to false when we're ready to enable 3.0/bootstrap/persistent config by default (once QE's existing tests are ready to handle it)
-	// TODO: Move to scoped variable when we have 2 code paths from ServerMain for 3.0 and legacy handling.
-	disablePersistentConfigFlag := flagSet.Bool("disable_persistent_config", true, "If set, disables persistent config and reads all configuration from a legacy config file.")
-
-	addr := flagSet.String("interface", DefaultInterface, "Address to bind to")
+	addr := flagSet.String("interface", DefaultPublicInterface, "Address to bind to")
 	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
 	profAddr := flagSet.String("profileInterface", "", "Address to bind profile interface to")
 	configServer := flagSet.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	couchbaseURL := flagSet.String("url", DefaultServer, "Address of Couchbase server")
+	couchbaseURL := flagSet.String("url", "", "Address of Couchbase server")
 	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flagSet.Bool("verbose", false, "Log more info about requests")
@@ -1043,24 +1020,16 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 	certpath := flagSet.String("certpath", "", "Client certificate path")
 	cacertpath := flagSet.String("cacertpath", "", "Root CA certificate path")
 	keypath := flagSet.String("keypath", "", "Client certificate key path")
+
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
 	defaultLogFilePathFlag := flagSet.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
 	_ = flagSet.Parse(args[1:])
-	var config *ServerConfig
+	var config *LegacyServerConfig
 	var err error
 
 	if defaultLogFilePathFlag != nil {
 		defaultLogFilePath = *defaultLogFilePathFlag
-	}
-
-	if disablePersistentConfigFlag != nil {
-		disablePersistentConfig = *disablePersistentConfigFlag
-		if disablePersistentConfig {
-			base.Warnf("Running in legacy config mode (disable_persistent_config=true)")
-		} else {
-			base.Infof(base.KeyAll, "Running in persistent config mode")
-		}
 	}
 
 	if flagSet.NArg() > 0 {
@@ -1085,7 +1054,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		}
 
 		// Override the config file with global settings from command line flags:
-		if *addr != DefaultInterface {
+		if *addr != DefaultPublicInterface {
 			config.Interface = addr
 		}
 		if *authAddr != DefaultAdminInterface {
@@ -1107,7 +1076,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		// If the interfaces were not specified in either the config file or
 		// on the command line, set them to the default values
 		if config.Interface == nil {
-			config.Interface = &DefaultInterface
+			config.Interface = &DefaultPublicInterface
 		}
 		if config.AdminInterface == nil {
 			config.AdminInterface = &DefaultAdminInterface
@@ -1138,11 +1107,11 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig
 		//   - The default value (":4984"), which is actually _not_ the default value we
 		//     want for this case, since we are enabling insecure mode.  We want "localhost:4984" instead.
 		// See #708 for more details
-		if *addr == DefaultInterface {
+		if *addr == DefaultPublicInterface {
 			*addr = "localhost:4984"
 		}
 
-		config = &ServerConfig{
+		config = &LegacyServerConfig{
 			Interface:        addr,
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
@@ -1205,101 +1174,209 @@ func SetMaxFileDescriptors(maxP *uint64) error {
 	return nil
 }
 
-func (config *ServerConfig) Serve(addr string, handler http.Handler) {
-	maxConns := DefaultMaxIncomingConnections
-	if config.MaxIncomingConnections != nil {
-		maxConns = *config.MaxIncomingConnections
-	}
-
+func (config *StartupConfig) Serve(addr string, handler http.Handler) error {
 	http2Enabled := false
-	if config.Unsupported != nil && config.Unsupported.Http2Config != nil {
-		http2Enabled = *config.Unsupported.Http2Config.Enabled
+	if config.Unsupported.HTTP2 != nil {
+		http2Enabled = *config.Unsupported.HTTP2.Enabled
 	}
 
-	tlsMinVersion := GetTLSVersionFromString(config.TLSMinVersion)
+	tlsMinVersion := GetTLSVersionFromString(&config.API.TLS.MinimumVersion)
 
-	err := base.ListenAndServeHTTP(
+	return base.ListenAndServeHTTP(
 		addr,
-		maxConns,
-		config.SSLCert,
-		config.SSLKey,
+		config.API.MaximumConnections,
+		config.API.TLS.CertPath,
+		config.API.TLS.KeyPath,
 		handler,
-		config.ServerReadTimeout,
-		config.ServerWriteTimeout,
-		config.ReadHeaderTimeout,
-		config.IdleTimeout,
+		config.API.ServerReadTimeout,
+		config.API.ServerWriteTimeout,
+		config.API.ReadHeaderTimeout,
+		config.API.IdleTimeout,
 		http2Enabled,
 		tlsMinVersion,
 	)
-	if err != nil {
-		base.Fatalf("Failed to start HTTP server on %s: %v", base.UD(addr), err)
-	}
 }
 
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
-func setupServerContext(config *ServerConfig) (*ServerContext, error) {
-	PrettyPrint = config.Pretty
+func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
+	// Logging config will now have been loaded from command line
+	// or from a sync_gateway config file so we can validate the
+	// configuration and setup logging now
+	if err := config.SetupAndValidateLogging(); err != nil {
+		// If we didn't set up logging correctly, we *probably* can't log via normal means...
+		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
+		log.Printf("[ERR] Error setting up logging: %v", err)
+		return nil, fmt.Errorf("error setting up logging: %v", err)
+	}
+
+	base.FlushLoggerBuffers()
 
 	base.Infof(base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
 	base.Infof(base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
 	base.Infof(base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
-	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
-		cpus := runtime.NumCPU()
-		if cpus > 1 {
-			runtime.GOMAXPROCS(cpus)
-			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+	if err := setGlobalConfig(config); err != nil {
+		return nil, err
+	}
+
+	sc := NewServerContext(config, persistentConfig)
+
+	// Fetch database configs from bucket and start polling for new buckets and config updates.
+	if persistentConfig && !base.ServerIsWalrus(sc.config.Bootstrap.Server) {
+		securityConfig, err := base.GoCBv2SecurityConfig(sc.config.Bootstrap.CACertPath)
+		if err != nil {
+			return nil, err
 		}
-	}
 
-	_ = SetMaxFileDescriptors(config.MaxFileDescriptors)
-
-	// Use the stdlib JSON package, if configured to do so
-	if config.Unsupported != nil && config.Unsupported.UseStdlibJSON != nil && *config.Unsupported.UseStdlibJSON {
-		base.Infof(base.KeyAll, "Using the stdlib JSON package")
-		base.UseStdlibJSON = true
-	}
-
-	// Set global bcrypt cost if configured
-	if config.BcryptCost > 0 {
-		if err := auth.SetBcryptCost(config.BcryptCost); err != nil {
-			return nil, fmt.Errorf("configuration error: %v", err)
+		authenticatorConfig, _, err := base.GoCBv2AuthenticatorConfig(
+			sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
+			sc.config.Bootstrap.CertPath, sc.config.Bootstrap.KeyPath,
+		)
+		if err != nil {
+			return nil, err
 		}
+
+		clusterOptions := gocb.ClusterOptions{
+			Authenticator:  authenticatorConfig,
+			SecurityConfig: securityConfig,
+			RetryStrategy:  &base.GoCBv2FailFastRetryStrategy{},
+		}
+
+		err, c := base.RetryLoop("Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
+			cluster, err := gocb.Connect(sc.config.Bootstrap.Server, clusterOptions)
+			if err != nil {
+				base.Debugf(base.KeyAll, "Got error connecting to bootstrap cluster: %v", err)
+				return true, err, nil
+			}
+
+			if err := cluster.WaitUntilReady(time.Second, &gocb.WaitUntilReadyOptions{
+				DesiredState: gocb.ClusterStateOnline,
+				ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
+			}); err != nil {
+				base.Debugf(base.KeyAll, "Got error waiting for bootstrap cluster readiness: %v", err)
+				return true, err, nil
+			}
+
+			base.Infof(base.KeyAll, "successfully connected to cluster")
+			return false, nil, cluster
+		}, base.CreateMaxDoublingSleeperFunc(30, 100, 5000))
+		// TODO: Check retry timeouts/attempts ^ with PRD
+		if err != nil {
+			return nil, err
+		}
+
+		sc.bootstrapConnection = c.(*gocb.Cluster)
+		sc.fetchConfigs()
+
+		go func() {
+			t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency)
+			defer t.Stop()
+			for {
+				select {
+				case <-t.C:
+					base.Tracef(base.KeyAll, "Looking for new buckets and new configs")
+					sc.fetchConfigs()
+				case <-context.TODO().Done():
+					base.Debugf(base.KeyAll, "Stopping config update worker")
+					return
+				}
+			}
+		}()
 	}
 
-	sc := NewServerContext(config)
-	for _, dbConfig := range config.Databases {
-		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			return nil, fmt.Errorf("error opening database %s: %v", base.MD(dbConfig.Name), err)
-		}
-	}
-	_ = validateServerContext(sc)
 	return sc, nil
 }
 
+func (sc *ServerContext) fetchConfigs() {
+	buckets, err := sc.bootstrapConnection.Buckets().GetAllBuckets(nil)
+	if err != nil {
+		base.Warnf("Couldn't get buckets from cluster: %v", err)
+		return
+	}
+
+	configDocID := persistentConfigDocIDPrefix + sc.config.Bootstrap.ConfigGroupID
+
+	for bucketName := range buckets {
+		base.Tracef(base.KeyAll, "Checking bucket %q for Sync Gateway config in group %q", bucketName, sc.config.Bootstrap.ConfigGroupID)
+		configDoc, err := sc.bootstrapConnection.Bucket(bucketName).DefaultCollection().Get(configDocID, nil)
+		if errors.As(err, &gocb.ErrDocumentNotFound) {
+			base.Tracef(base.KeyAll, "Bucket %q did not contain config %q", bucketName, configDocID)
+			continue
+		}
+		if err != nil {
+			base.Warnf("Error fetching config %q from bucket %q: %v", configDocID, bucketName, err)
+			continue
+		}
+
+		// populate values from bootstrap, before we overwrite them with any values fetched from the bucket.
+		cnf := DbConfig{
+			BucketConfig: BucketConfig{
+				Server:     &sc.config.Bootstrap.Server,
+				Bucket:     &bucketName,
+				Username:   sc.config.Bootstrap.Username,
+				Password:   sc.config.Bootstrap.Password,
+				CertPath:   sc.config.Bootstrap.CertPath,
+				KeyPath:    sc.config.Bootstrap.KeyPath,
+				CACertPath: sc.config.Bootstrap.CACertPath,
+			},
+		}
+		if err := configDoc.Content(&cnf); err != nil {
+			base.Warnf("Error unmarshalling DbConfig %q from bucket %q: %v", configDocID, bucketName, err)
+			continue
+		}
+
+		configCas := configDoc.Cas()
+		base.Tracef(base.KeyAll, "Got config for bucket %q with cas %d", bucketName, configCas)
+
+		sc.lock.Lock()
+		if bucketDbConf, ok := sc.bucketDbConfigs[bucketName]; !ok || bucketDbConf.CAS < configCas {
+			if dbc := sc.databases_[cnf.Name]; dbc != nil {
+				runningBucket := dbc.Bucket.GetName()
+				if runningBucket != bucketName {
+					// trying to add a database of the same name against a different bucket... don't allow this.
+					base.Warnf("Database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, bucketName, cnf.Name, runningBucket)
+					sc.lock.Unlock()
+					continue
+				}
+			}
+
+			base.Infof(base.KeyAll, "Updated database %q for bucket %q with new config from bucket", cnf.Name, bucketName)
+			dbConfig := DatabaseConfig{CAS: configCas, Config: cnf}
+			sc.bucketDbConfigs[bucketName] = &dbConfig
+			sc.dbConfigs[cnf.Name] = &dbConfig
+			// TODO: Dynamic update instead of reload
+			if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
+				base.Warnf("Error reloading database: %v", err)
+			}
+		}
+		sc.lock.Unlock()
+	}
+
+}
+
 // startServer starts and runs the server with the given configuration. (This function never returns.)
-func startServer(config *ServerConfig, sc *ServerContext) {
-	if config.ProfileInterface != nil {
+func startServer(config *StartupConfig, sc *ServerContext) error {
+	if config.API.ProfileInterface != "" {
 		//runtime.MemProfileRate = 10 * 1024
-		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
+		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
 		go func() {
-			_ = http.ListenAndServe(*config.ProfileInterface, nil)
+			_ = http.ListenAndServe(config.API.ProfileInterface, nil)
 		}()
 	}
 
 	go sc.PostStartup()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", *config.MetricsInterface)
-	go config.Serve(*config.MetricsInterface, CreateMetricHandler(sc))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
+	go config.Serve(config.API.MetricsInterface, CreateMetricHandler(sc))
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", *config.AdminInterface)
-	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
+	go config.Serve(config.API.AdminInterface, CreateAdminHandler(sc))
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", *config.Interface)
-	config.Serve(*config.Interface, CreatePublicHandler(sc))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
+	return config.Serve(config.API.PublicInterface, CreatePublicHandler(sc))
 }
 
-func validateServerContext(sc *ServerContext) (errors error) {
+func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {
 	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc.databases_))
 	for _, dbContext := range sc.databases_ {
 		if uuid, err := dbContext.Bucket.UUID(); err == nil {
@@ -1383,14 +1460,8 @@ func RegisterSignalHandler() {
 
 // setupServerConfig parses command-line flags, reads the optional configuration file,
 // performs the config validation and database setup.
-func setupServerConfig(args []string) (config *ServerConfig, err error) {
+func setupServerConfig(args []string) (config *LegacyServerConfig, err error) {
 	var unknownFieldsErr error
-
-	base.InitializeLoggers()
-
-	// We can log version here because for console we have initialized an early logger in init() and for file loggers we
-	// have the memory buffers.
-	base.LogSyncGatewayVersion()
 
 	config, err = ParseCommandLine(args, flag.ExitOnError)
 	if pkgerrors.Cause(err) == base.ErrUnknownField {
@@ -1398,19 +1469,6 @@ func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	} else if err != nil {
 		return nil, fmt.Errorf(err.Error())
 	}
-
-	// Logging config will now have been loaded from command line
-	// or from a sync_gateway config file so we can validate the
-	// configuration and setup logging now
-	err = config.SetupAndValidateLogging()
-	if err != nil {
-		// If we didn't set up logging correctly, we *probably* can't log via normal means...
-		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
-		log.Printf("[ERR] Error setting up logging: %v", err)
-		return nil, fmt.Errorf("error setting up logging: %v", err)
-	}
-
-	base.FlushLoggerBuffers()
 
 	// If we got an unknownFields error when reading the config
 	// log and exit now we've tried setting up the logging.
@@ -1428,24 +1486,4 @@ func setupServerConfig(args []string) (config *ServerConfig, err error) {
 	}
 
 	return config, nil
-}
-
-// ServerMain is the main entry point of launching the Sync Gateway server; the main
-// function directly calls this. It registers both signal and fatal panic handlers,
-// does the initial setup and finally starts the server.
-func ServerMain() {
-	RegisterSignalHandler()
-	defer base.FatalPanicHandler()
-
-	config, err := setupServerConfig(os.Args)
-	if err != nil {
-		base.Fatalf(err.Error())
-	}
-
-	ctx, err := setupServerContext(config)
-	if err != nil {
-		base.Fatalf(err.Error())
-	}
-
-	startServer(config, ctx)
 }

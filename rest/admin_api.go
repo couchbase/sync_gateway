@@ -40,7 +40,7 @@ func (h *handler) handleCreateDB() error {
 	if err := config.setup(dbName); err != nil {
 		return err
 	}
-	if _, err := h.server.AddDatabaseFromConfig(config); err != nil {
+	if _, err := h.server.AddDatabaseFromConfig(DatabaseConfig{Config: *config}); err != nil {
 		return err
 	}
 	return base.HTTPErrorf(http.StatusCreated, "created")
@@ -100,7 +100,7 @@ func (h *handler) handleDbOffline() error {
 func (h *handler) handleGetDbConfig() error {
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
-		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Redacted()
+		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Config.Redacted()
 		if err != nil {
 			return err
 		}
@@ -115,13 +115,13 @@ func (h *handler) handleGetDbConfig() error {
 func (h *handler) handleGetConfig() error {
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
-		cfg, err := h.server.GetConfig().Redacted()
+		cfg, err := h.server.config.Redacted()
 		if err != nil {
 			return err
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.GetConfig())
+		h.writeJSON(h.server.config)
 	}
 	return nil
 }
@@ -139,7 +139,9 @@ func (h *handler) handlePutDbConfig() error {
 	}
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	h.server.config.Databases[dbName] = config
+	dbc := DatabaseConfig{CAS: 0, Config: *config}
+	h.server.bucketDbConfigs[h.db.Bucket.GetName()] = &dbc
+	h.server.dbConfigs[dbName] = &dbc
 
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
@@ -244,7 +246,7 @@ func (h *handler) readReplicateV1ParametersFromJSON(jsonData []byte) (params sgr
 		return params, false, localdb, err
 	}
 
-	return validateReplicateV1Parameters(in, false, *h.server.config.AdminInterface)
+	return validateReplicateV1Parameters(in, false, h.server.config.API.AdminInterface)
 }
 
 func validateReplicateV1Parameters(requestParams ReplicateV1Config, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
@@ -588,11 +590,8 @@ func (h *handler) handleSGCollect() error {
 
 	zipFilename := sgcollectFilename()
 
-	logFilePath := ""
-	sc := h.server.config
-	if sc != nil && sc.Logging != nil && sc.Logging.LogFilePath != "" {
-		logFilePath = sc.Logging.LogFilePath
-	}
+	logFilePath := h.server.config.Logging.LogFilePath
+
 	if err := sgcollectInstance.Start(logFilePath, h.serialNumber, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}

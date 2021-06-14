@@ -138,7 +138,7 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 			"heartbeat",
 			kDefaultHeartbeatMS,
 			kMinHeartbeatMS,
-			h.server.config.MaxHeartbeat*1000,
+			uint64(h.server.config.Replicator.MaxHeartbeat.Milliseconds()),
 			true,
 		)
 	}
@@ -205,7 +205,7 @@ func (h *handler) handleChanges() error {
 			"heartbeat",
 			kDefaultHeartbeatMS,
 			kMinHeartbeatMS,
-			h.server.config.MaxHeartbeat*1000,
+			uint64(h.server.config.Replicator.MaxHeartbeat.Milliseconds()),
 			true,
 		)
 		options.TimeoutMs = base.GetRestrictedIntQuery(
@@ -601,7 +601,7 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 		input.HeartbeatMs,
 		kDefaultHeartbeatMS,
 		kMinHeartbeatMS,
-		h.server.config.MaxHeartbeat*1000,
+		uint64(h.server.config.Replicator.MaxHeartbeat.Milliseconds()),
 		true,
 	)
 

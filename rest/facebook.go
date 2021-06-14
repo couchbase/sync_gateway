@@ -28,7 +28,7 @@ func (h *handler) handleFacebookPOST() error {
 	// CORS not allowed for login #115 #762
 	originHeader := h.rq.Header["Origin"]
 	if len(originHeader) > 0 {
-		matched := matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		matched := matchedOrigin(h.server.config.API.CORS.LoginOrigin, originHeader)
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
 		}
@@ -46,7 +46,7 @@ func (h *handler) handleFacebookPOST() error {
 		return err
 	}
 
-	createUserIfNeeded := h.server.config.Facebook.Register
+	createUserIfNeeded := h.server.config.Auth.Facebook.Register
 	return h.makeSessionFromNameAndEmail(facebookResponse.Id, facebookResponse.Email, createUserIfNeeded)
 
 }

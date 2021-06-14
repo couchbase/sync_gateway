@@ -24,7 +24,7 @@ const (
 	ISO8601Format = "2006-01-02T15:04:05.000Z07:00"
 
 	kTestCouchbaseServerURL = "http://localhost:8091"
-	kTestWalrusURL          = "walrus:"
+	WalrusURLPrefix         = "walrus:"
 
 	// These settings are used when running unit tests against a live Couchbase Server to create/flush buckets
 	DefaultCouchbaseAdministrator = "Administrator"
@@ -185,7 +185,7 @@ func UnitTestUrl() string {
 		// Otherwise fallback to hardcoded default
 		return kTestCouchbaseServerURL
 	} else {
-		return kTestWalrusURL
+		return WalrusURLPrefix
 	}
 }
 

@@ -75,6 +75,11 @@ func SetBcryptCost(cost int) error {
 		return nil
 	}
 
+	if bcryptCost == cost {
+		base.Debugf(base.KeyAuth, "bcrypt cost was already: %d", cost)
+		return nil
+	}
+
 	if cost < bcryptDefaultCost || cost > bcrypt.MaxCost {
 		return errors.Wrapf(ErrInvalidBcryptCost,
 			"%d outside allowed range: %d-%d",

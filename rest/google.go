@@ -30,7 +30,7 @@ func (h *handler) handleGooglePOST() error {
 	// CORS not allowed for login #115 #762
 	originHeader := h.rq.Header["Origin"]
 	if len(originHeader) > 0 {
-		matched := matchedOrigin(h.server.config.CORS.LoginOrigin, originHeader)
+		matched := matchedOrigin(h.server.config.API.CORS.LoginOrigin, originHeader)
 		if matched == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "No CORS")
 		}
@@ -46,12 +46,12 @@ func (h *handler) handleGooglePOST() error {
 	}
 
 	//validate the google id token
-	googleResponse, err := verifyGoogle(params.IDToken, h.server.config.Google.AppClientID)
+	googleResponse, err := verifyGoogle(params.IDToken, h.server.config.Auth.Google.AppClientID)
 	if err != nil {
 		return err
 	}
 
-	createUserIfNeeded := h.server.config.Google.Register
+	createUserIfNeeded := h.server.config.Auth.Google.Register
 	return h.makeSessionFromNameAndEmail(googleResponse.UserID, googleResponse.Email, createUserIfNeeded)
 }
 

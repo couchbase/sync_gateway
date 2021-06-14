@@ -2387,6 +2387,10 @@ func TestHandleDBConfig(t *testing.T) {
 
 	// Create a database with no config
 	resp := rt.SendAdminRequest(http.MethodPut, resource, "{}")
+	assertStatus(t, resp, http.StatusBadRequest)
+	assert.Contains(t, resp.Body.String(), "Empty 'server' property in dbConfig")
+
+	resp = rt.SendAdminRequest(http.MethodPut, resource, `{"server":"`+server+`"}`)
 	assertStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
@@ -2448,7 +2452,7 @@ func TestHandleDeleteDB(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", string(resp.BodyBytes()))
 
 	// Create the database
-	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", "{}")
+	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", `{"server":"walrus:"}`)
 	assertStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
@@ -2464,15 +2468,18 @@ func TestHandleGetConfig(t *testing.T) {
 	rt := NewRestTester(t, &conf)
 	defer rt.Close()
 
-	var respBody db.Body
 	resp := rt.SendAdminRequest(http.MethodGet, "/_config", "{}")
 	assertStatus(t, resp, http.StatusOK)
-	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 
-	assert.Equal(t, "127.0.0.1:4985", respBody["AdminInterface"].(string))
-	databases := respBody["Databases"].(map[string]interface{})
-	db := databases["db"].(map[string]interface{})
-	assert.Equal(t, syncFunc, db["sync"].(string))
+	var respBody StartupConfig
+	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
+
+	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
+
+	// FIXME: No dbConfig here in 3.0
+	// databases := respBody["Databases"].(map[string]interface{})
+	// db := databases["db"].(map[string]interface{})
+	// assert.Equal(t, syncFunc, db["sync"].(string))
 }
 
 func TestHandleGetRevTree(t *testing.T) {
@@ -2718,21 +2725,23 @@ func TestConfigRedaction(t *testing.T) {
 	assert.Equal(t, "password", *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default server config redaction
-	var unmarshaledServerConfig ServerConfig
+	var unmarshaledServerConfig LegacyServerConfig
 	response = rt.SendAdminRequest("GET", "/_config", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", unmarshaledServerConfig.Databases["db"].Password)
-	assert.Equal(t, "xxxxx", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+	// FIXME: No dbconfig in response in 3.0
+	// assert.Equal(t, "xxxxx", unmarshaledServerConfig.Databases["db"].Password)
+	// assert.Equal(t, "xxxxx", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
 
 	// Test default server config redaction when redaction disabled
 	response = rt.SendAdminRequest("GET", "/_config?redact=false", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Databases["db"].Password)
-	assert.Equal(t, "password", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+	// FIXME: No dbconfig in response in 3.0
+	// assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Databases["db"].Password)
+	// assert.Equal(t, "password", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
 }
 
 // Reproduces panic seen in CBG-1053

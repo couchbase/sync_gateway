@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1543,6 +1542,8 @@ func TestGetStatusWithReplication(t *testing.T) {
 	require.Equal(t, 0, len(status.Databases["db"].ReplicationStatus))
 }
 
+/* FIXME SGR1
+
 // TestSGR1CheckpointMigrationPull defines an SGR1 replication, which replicates and checkpoints a single doc,
 // and then restarts with a matching SGR2 replication, which should migrate the SGR1 checkpoint,
 // and also prevent the SGR1 replication from starting up.
@@ -1926,6 +1927,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 
 	assert.NoError(t, r.Stop())
 }
+*/
 
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)()
