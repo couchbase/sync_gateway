@@ -320,7 +320,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item["rev"])
 
-					if opts.revocations && len(change.Removed) > 0 && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+					if opts.revocations && change.allRemoved && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
 						userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
 						if err != nil {
 							base.InfofCtx(bh.loggingCtx, base.KeySync, "Unable to obtain the doc: %s %s to verify user access: %v", base.UD(change.ID), item["rev"], err)
@@ -328,7 +328,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 						}
 
 						if userHasAccessToDoc {
-							change.Removed = nil
+							continue
 						}
 					}
 
@@ -377,7 +377,7 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []inte
 		if change.Revoked {
 			deletedFlags |= changesDeletedFlagRevoked
 		}
-		if len(change.Removed) > 0 {
+		if change.allRemoved {
 			deletedFlags |= changesDeletedFlagRemoved
 		}
 

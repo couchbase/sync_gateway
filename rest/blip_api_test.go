@@ -3328,19 +3328,12 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	var messageBody []interface{}
 	err = highestSeqMsg.ReadJSONBody(&messageBody)
 	assert.NoError(t, err)
-	require.Len(t, messageBody, 3)
+	require.Len(t, messageBody, 2)
 	require.Len(t, messageBody[0], 4)
-	require.Len(t, messageBody[1], 4)
-	require.Len(t, messageBody[2], 3)
+	require.Len(t, messageBody[1], 3)
 
 	deletedFlags, err := messageBody[0].([]interface{})[3].(json.Number).Int64()
 	docID := messageBody[0].([]interface{})[1]
-	require.NoError(t, err)
-	assert.Equal(t, "doc", docID)
-	assert.Equal(t, int64(4), deletedFlags)
-
-	deletedFlags, err = messageBody[1].([]interface{})[3].(json.Number).Int64()
-	docID = messageBody[1].([]interface{})[1]
 	require.NoError(t, err)
 	assert.Equal(t, "doc", docID)
 	assert.Equal(t, int64(4), deletedFlags)
