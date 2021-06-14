@@ -22,6 +22,73 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFilterToAvailableChannels(t *testing.T) {
+	testCases := []struct {
+		name                 string
+		genChanAndDocs       int      // Amount of docs and channels to generate (ie. doc1 ch1, doc2 ch2...)
+		userChans            base.Set // Channels user is in
+		accessChans          base.Set // Channels to get changes for
+		expectedDocsReturned []string // Expected Doc IDs returned
+	}{
+		{
+			// Should log "Channels [ ch2 ] request without access by user test" - CBG-1326
+			name:                 "Info logged when channels dropped from list",
+			genChanAndDocs:       3,
+			userChans:            base.SetOf("ch1", "ch3"),
+			accessChans:          base.SetOf("ch1", "ch2", "ch3"),
+			expectedDocsReturned: []string{"doc1", "doc3"},
+		}, {
+			name:                 "No info logged if no channels dropped from list",
+			genChanAndDocs:       3,
+			userChans:            base.SetOf("ch1", "ch3"),
+			accessChans:          base.SetOf("ch1", "ch3"),
+			expectedDocsReturned: []string{"doc1", "doc3"},
+		}, {
+			name:                 "No info logged when using wildcard",
+			genChanAndDocs:       3,
+			userChans:            base.SetOf("ch1", "ch3"),
+			accessChans:          base.SetOf("*"),
+			expectedDocsReturned: []string{"doc1", "doc3"},
+		},
+	}
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			db := setupTestDB(t)
+
+			auth := db.Authenticator()
+			user, err := auth.NewUser("test", "pass", testCase.userChans)
+			require.NoError(t, err)
+			require.NoError(t, auth.Save(user))
+
+			for i := 0; i < testCase.genChanAndDocs; i++ {
+				id := fmt.Sprintf("%d", i+1)
+				_, _, err = db.Put("doc"+id, Body{"channels": []string{"ch" + id}})
+				require.NoError(t, err)
+			}
+			err = db.WaitForPendingChanges(context.Background())
+			require.NoError(t, err)
+
+			db.user, err = auth.GetUser("test")
+			require.NoError(t, err)
+
+			ch, err := db.GetChanges(testCase.accessChans, getZeroSequence())
+			require.NoError(t, err)
+			require.Len(t, ch, len(testCase.expectedDocsReturned))
+
+			match := true // Check if expected matches with actual in-order
+			for i, change := range ch {
+				if change.ID != testCase.expectedDocsReturned[i] {
+					match = false
+				}
+			}
+			assert.True(t, match)
+
+			db.Close()
+		})
+	}
+}
+
 // Unit test for bug #314
 func TestChangesAfterChannelAdded(t *testing.T) {
 

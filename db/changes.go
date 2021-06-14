@@ -630,7 +630,11 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 		// have been available to the user:
 		var channelsSince channels.TimedSet
 		if db.user != nil {
-			channelsSince = db.user.FilterToAvailableChannels(chans)
+			var channelsRemoved []string
+			channelsSince, channelsRemoved = db.user.FilterToAvailableChannels(chans)
+			if len(channelsRemoved) > 0 {
+				base.InfofCtx(db.Ctx, base.KeyChanges, "Channels %s request without access by user %s", base.UD(channelsRemoved), base.UD(db.user.Name()))
+			}
 		} else {
 			channelsSince = channels.AtSequence(chans, 0)
 		}
@@ -967,7 +971,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				return
 			}
 			if userChanged && db.user != nil {
-				newChannelsSince := db.user.FilterToAvailableChannels(chans)
+				newChannelsSince, _ := db.user.FilterToAvailableChannels(chans)
 				changedChannels = newChannelsSince.CompareKeys(channelsSince)
 				if len(changedChannels) > 0 {
 					db.activeChannels.UpdateChanged(changedChannels)
