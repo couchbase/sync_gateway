@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
+	"github.com/couchbase/gocbcore"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -1145,6 +1147,68 @@ func (sc *ServerContext) updateCalculatedStats() {
 		dbContext.UpdateCalculatedStats()
 	}
 
+}
+
+func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath string) (*gocbcore.Agent, error) {
+	authenticator, err := base.GoCBCoreAuthConfig(clusterUser, clusterPass, certPath, keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	config := gocbcore.AgentConfig{
+		Auth:           authenticator,
+		AuthMechanisms: []gocbcore.AuthMechanism{gocbcore.ScramSha512AuthMechanism},
+		TLSRootCAProvider: func() *x509.CertPool {
+			return nil
+		},
+	}
+
+	err = config.FromConnStr(clusterAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	agent, err := gocbcore.CreateAgent(&config)
+	if err != nil {
+		return nil, err
+	}
+
+	agentReadyErr := make(chan error)
+	_, err = agent.WaitUntilReady(time.Now().Add(5*time.Second), gocbcore.WaitUntilReadyOptions{}, func(result *gocbcore.WaitUntilReadyResult, err error) {
+		agentReadyErr <- err
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if err := <-agentReadyErr; err != nil {
+		return nil, err
+	}
+
+	return agent, nil
+}
+
+// FIXME: Temporary connection settings. Awaiting bootstrap PR so we can use those details directly from server context
+func (sc *ServerContext) tempConnectionDetails() (serverAddress string, username string, password string, certPath string, keyPath string) {
+	return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), "", ""
+}
+
+func (sc *ServerContext) ObtainManagementEndpoints() ([]string, error) {
+	clusterAddress, clusterUser, clusterPass, certPath, keyPath := sc.tempConnectionDetails()
+	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	managementEndpoints := agent.MgmtEps()
+
+	err = agent.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	return managementEndpoints, nil
 }
 
 // For test use

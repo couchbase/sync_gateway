@@ -18,8 +18,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/gocbcore/connstr"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Tests the ConfigServer feature.
@@ -288,4 +290,28 @@ func TestStatsLoggerStopped(t *testing.T) {
 
 	// sleep a bit to allow the "Stopping stats logging goroutine" debug logging to be printed
 	time.Sleep(time.Millisecond * 10)
+}
+
+func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	ctx := NewServerContext(&ServerConfig{})
+	defer ctx.Close()
+
+	eps, err := ctx.ObtainManagementEndpoints()
+	assert.NoError(t, err)
+
+	clusterAddress, _, _, _, _ := ctx.tempConnectionDetails()
+	baseSpec, err := connstr.Parse(clusterAddress)
+	require.NoError(t, err)
+
+	spec, err := connstr.Resolve(baseSpec)
+	require.NoError(t, err)
+
+	for _, httpHost := range spec.HttpHosts {
+		formatted := fmt.Sprintf("http://%s:%d", httpHost.Host, httpHost.Port)
+		assert.Contains(t, eps, formatted)
+	}
 }
