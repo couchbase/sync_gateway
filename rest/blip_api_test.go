@@ -1743,6 +1743,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
+		blipProtocols:      []string{db.BlipCBMobileReplicationV2},
 	}
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
@@ -1756,6 +1757,7 @@ func TestGetRemovedDoc(t *testing.T) {
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"user1"}, // so it can see user1's docs
+		blipProtocols:               []string{db.BlipCBMobileReplicationV2},
 	}
 	bt2, err := NewBlipTesterFromSpecWithRT(t, &btSpec2, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
@@ -2099,9 +2101,10 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
-		Username:     "alice",
-		Channels:     []string{"public"},
-		ClientDeltas: true,
+		Username:               "alice",
+		Channels:               []string{"public"},
+		ClientDeltas:           true,
+		SupportedBLIPProtocols: []string{db.BlipCBMobileReplicationV2},
 	})
 	require.NoError(t, err)
 	defer client.Close()

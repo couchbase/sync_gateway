@@ -320,14 +320,20 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item["rev"])
 
-					if opts.revocations && change.allRemoved && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
-						userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
-						if err != nil {
-							base.InfofCtx(bh.loggingCtx, base.KeySync, "Unable to obtain the doc: %s %s to verify user access: %v", base.UD(change.ID), item["rev"], err)
-							continue
-						}
+					if change.allRemoved && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+						// If client requests revocations / removals via subChanges, continue work to possibly send
+						// removal. Otherwise skip sending removals, unless its also a deletion.
+						if opts.revocations {
+							userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
+							if err != nil {
+								base.InfofCtx(bh.loggingCtx, base.KeySync, "Unable to obtain the doc: %s %s to verify user access: %v", base.UD(change.ID), item["rev"], err)
+								continue
+							}
 
-						if userHasAccessToDoc {
+							if userHasAccessToDoc {
+								continue
+							}
+						} else if !change.Deleted {
 							continue
 						}
 					}
