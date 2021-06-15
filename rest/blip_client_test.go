@@ -27,10 +27,12 @@ import (
 )
 
 type BlipTesterClientOpts struct {
-	ClientDeltas          bool // Support deltas on the client side
-	Username              string
-	Channels              []string
-	SendRevocations       bool
+	ClientDeltas           bool // Support deltas on the client side
+	Username               string
+	Channels               []string
+	SendRevocations        bool
+	SupportedBLIPProtocols []string
+
 	rejectDeltasForSrcRev string // a deltaSrc rev ID for which to reject a delta
 	protocol              string // BlipCBMobileReplication version
 }
@@ -448,6 +450,7 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (
 		connectingPassword:          "test",
 		connectingUsername:          btc.Username,
 		connectingUserChannelGrants: btc.Channels,
+		blipProtocols:               btc.SupportedBLIPProtocols,
 	}, btc.rt)
 	if err != nil {
 		return nil, err

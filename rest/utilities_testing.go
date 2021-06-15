@@ -710,6 +710,9 @@ type BlipTesterSpec struct {
 	// those properties only affect the creation of the RestTester.
 	// If nil, a default restTester will be created based on the properties in this spec
 	// restTester *RestTester
+
+	// Supported blipProtocols for the client to use in order of preference
+	blipProtocols []string
 }
 
 // State associated with a BlipTester
@@ -839,8 +842,14 @@ func createBlipTesterWithSpec(tb testing.TB, spec BlipTesterSpec, rt *RestTester
 	}
 	u.Scheme = "ws"
 
+	// If protocols are not set use V3 as a V3 client would
+	protocols := spec.blipProtocols
+	if len(protocols) == 0 {
+		protocols = []string{db.BlipCBMobileReplicationV3}
+	}
+
 	// Make BLIP/Websocket connection
-	bt.blipContext, err = db.NewSGBlipContext(context.Background(), "")
+	bt.blipContext, err = db.NewSGBlipContextWithProtocols(context.Background(), "", protocols...)
 	if err != nil {
 		return nil, err
 	}
