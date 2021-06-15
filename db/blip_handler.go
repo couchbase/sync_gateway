@@ -957,16 +957,16 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'digest'")
 	}
 
-	key := digest
+	attachmentAllowedKey := digest
 	if bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
 		id := getAttachmentParams.id()
 		if id == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'id'")
 		}
-		key = id + digest
+		attachmentAllowedKey = id + digest
 	}
 
-	if !bh.isAttachmentAllowed(key) {
+	if !bh.isAttachmentAllowed(attachmentAllowedKey) {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
 	}
 
@@ -1068,7 +1068,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string) error {
-	return bh.db.ForEachStubAttachment(body, minRevpos,
+	return bh.db.ForEachStubAttachment(body, minRevpos, docID,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			// request attachment if we don't have it
 			if knownData == nil {
@@ -1092,7 +1092,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 			}
 
 			return nil, proveAttErr
-		}, docID)
+		})
 }
 
 func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
@@ -1111,16 +1111,20 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
 	for _, attachment := range attMeta {
+		key := attachment.digest
 		if bsc.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
-			key := docID + attachment.digest
-			if _, found := bsc.allowedAttachments[key]; !found {
-				bsc.allowedAttachments[key] = AllowedAttachment{counter: 1}
+			key = docID + attachment.digest
+		}
+		att, found := bsc.allowedAttachments[key]
+		if !found {
+			bsc.allowedAttachments[key] = AllowedAttachment{
+				docID:   docID,
+				version: attachment.version,
+				counter: 1,
 			}
-		} else {
-			att := bsc.allowedAttachments[attachment.digest]
+		}
+		if att.version == int64(AttachmentStorageModelVersion1) {
 			att.counter = att.counter + 1
-			att.docID = docID
-			att.version = attachment.version
 			bsc.allowedAttachments[attachment.digest] = att
 		}
 	}

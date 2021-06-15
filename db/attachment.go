@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
+	"fmt"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -209,7 +210,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // its data. The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback AttachmentCallback, docID string) error {
+func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(400, "Invalid _attachments")
@@ -313,6 +314,8 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 					m := AttachmentStorageMeta{digest: digestString}
 					if version, ok := base.ToInt64(attMap["ver"]); ok {
 						m.version = version
+					} else {
+						m.version = int64(AttachmentStorageModelVersion1)
 					}
 					meta = append(meta, m)
 				}
@@ -341,4 +344,21 @@ func Sha1DigestKey(data []byte) string {
 	digester := sha1.New()
 	digester.Write(data)
 	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+}
+
+// AttachmentStorageModelVersion is used to distinguish
+// between legacy and non-legacy attachments.
+type AttachmentStorageModelVersion int64
+
+const (
+	// AttachmentStorageModelVersion1 on the attachment metadata indicates that the
+	// attachment is shared across documents — multiple documents can reference a
+	// given attachment, and multiple revisions of the same document can reference
+	// a given attachment.
+	AttachmentStorageModelVersion1 AttachmentStorageModelVersion = iota + 1
+)
+
+// String returns string representation of the attachment version.
+func (v AttachmentStorageModelVersion) String() string {
+	return fmt.Sprintf("%d", int(v))
 }

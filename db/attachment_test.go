@@ -440,14 +440,14 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	doc := `{"_attachments": "No Attachment"}`
 	docID := "foo"
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback, docID)
+	err = db.ForEachStubAttachment(body, 1, docID, callback)
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	// Call ForEachStubAttachment with invalid attachment; simulates the error scenario.
 	doc = `{"_attachments": {"image1.jpeg": "", "image2.jpeg": ""}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback, docID)
+	err = db.ForEachStubAttachment(body, 1, docID, callback)
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
@@ -455,20 +455,20 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// Check whether the attachment iteration is getting skipped if revpos < minRevpos
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x2, callback, docID)
+	err = db.ForEachStubAttachment(body, 2, docID, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	// Call ForEachStubAttachment with no data in attachment and revpos; simulates the error scenario.
 	// Check whether the attachment iteration is getting skipped if there is no revpos.
 	doc = `{"_attachments": {"image.jpg": {"stub":true}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x2, callback, docID)
+	err = db.ForEachStubAttachment(body, 2, docID, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	// Should throw invalid attachment error is the digest is not valid string or empty.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":true}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback, docID)
+	err = db.ForEachStubAttachment(body, 1, docID, callback)
 	assert.Error(t, err, "It should throw 400 Invalid attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
@@ -476,7 +476,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// document error and invoke the callback function.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":"9304cdd066efa64f78387e9cc9240a70527271bc"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback, docID)
+	err = db.ForEachStubAttachment(body, 1, docID, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	// Simulate an error from the callback function; it should return the same error from ForEachStubAttachment.
@@ -485,7 +485,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	callback = func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 		return nil, errors.New("Can't work with this digest value!")
 	}
-	err = db.ForEachStubAttachment(body, 0x1, callback, docID)
+	err = db.ForEachStubAttachment(body, 1, docID, callback)
 	assert.Error(t, err, "It should throw the actual error")
 	assert.Contains(t, err.Error(), "Can't work with this digest value!")
 }
