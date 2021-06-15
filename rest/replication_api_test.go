@@ -1542,7 +1542,7 @@ func TestGetStatusWithReplication(t *testing.T) {
 	require.Equal(t, 0, len(status.Databases["db"].ReplicationStatus))
 }
 
-/* FIXME SGR1
+/* FIXME SGR1 - depends on old config
 
 // TestSGR1CheckpointMigrationPull defines an SGR1 replication, which replicates and checkpoints a single doc,
 // and then restarts with a matching SGR2 replication, which should migrate the SGR1 checkpoint,

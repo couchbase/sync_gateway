@@ -136,7 +136,7 @@ func TestConfigValidation(t *testing.T) {
 			if test.err != "" {
 				require.NotNil(t, errorMessages)
 				multiError, ok := errorMessages.(*multierror.Error)
-				require.True(t, ok)
+				require.Truef(t, ok, "expected multierror but got: %v", errorMessages)
 				require.Equal(t, multiError.Len(), 1)
 				assert.EqualError(t, multiError.Errors[0], test.err)
 			} else {
@@ -154,7 +154,7 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
-	assert.Nil(t, errorMessages)
+	require.NoError(t, errorMessages)
 
 	require.NotNil(t, config.Databases["db"])
 	require.NotNil(t, config.Databases["db"].DeltaSync)
@@ -175,7 +175,7 @@ func TestConfigValidationCache(t *testing.T) {
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
-	assert.Nil(t, errorMessages)
+	require.NoError(t, errorMessages)
 
 	require.NotNil(t, config.Databases["db"])
 	require.NotNil(t, config.Databases["db"].CacheConfig)
@@ -223,7 +223,7 @@ func TestConfigValidationImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
-	assert.Nil(t, errorMessages)
+	require.NoError(t, errorMessages)
 	require.NotNil(t, config.Databases["db"])
 
 	if base.IsEnterpriseEdition() {
@@ -278,20 +278,19 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(tt *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			buf := bytes.NewBufferString(test.config)
 			config, err := readServerConfig(buf)
-			assert.NoError(tt, err)
+			assert.NoError(t, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
 				require.NotNil(t, errorMessages)
 				multiError, ok := errorMessages.(*multierror.Error)
 				require.True(t, ok)
 				require.Equal(t, multiError.Len(), 1)
-				assert.EqualError(tt, multiError.Errors[0], test.err)
-
+				assert.EqualError(t, multiError.Errors[0], test.err)
 			} else {
-				assert.Nil(tt, errorMessages)
+				assert.NoError(t, errorMessages)
 			}
 		})
 	}
@@ -479,7 +478,7 @@ func TestMergeWith(t *testing.T) {
 	deploymentID := "DeploymentID1008"
 	facebookConfig := FacebookConfig{Register: true}
 
-	corsConfig := &CORSConfig{
+	corsConfig := &CORSConfigOld{
 		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
 		LoginOrigin: []string{"http://example.com"},
 		Headers:     []string{},
@@ -1277,12 +1276,8 @@ func TestRedactPartialDefault(t *testing.T) {
 func TestSetupServerContext(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
-		config := &StartupConfig{
-			Logging: LoggingConfig2{
-				RedactionLevel: base.RedactNone,
-			},
-		}
-		sc, err := setupServerContext(config, false)
+		config := DefaultStartupConfig("")
+		sc, err := setupServerContext(&config, false)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 		sc.Close()
@@ -1312,7 +1307,7 @@ func TestSetupServerContext(t *testing.T) {
 		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
 		sc, err := setupServerContext(config, false)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "configuration error: 32 outside allowed range: 10-31: invalid bcrypt cost")
+		assert.Contains(t, err.Error(), "32 outside allowed range: 10-31: invalid bcrypt cost")
 		assert.Nil(t, sc)
 	})
 }

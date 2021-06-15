@@ -57,10 +57,10 @@ type LoggingConfig struct {
 }
 
 func InitLogging(defaultLogFilePath, logFilePath string,
-	console ConsoleLoggerConfig,
-	error, warn, info, debug, trace, stats FileLoggerConfig) (err error) {
+	console *ConsoleLoggerConfig,
+	error, warn, info, debug, trace, stats *FileLoggerConfig) (err error) {
 
-	consoleLogger, err = NewConsoleLogger(true, &console)
+	consoleLogger, err = NewConsoleLogger(true, console)
 	if err != nil {
 		return err
 	}

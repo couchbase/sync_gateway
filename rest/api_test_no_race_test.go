@@ -236,7 +236,7 @@ func TestSetupAndValidate(t *testing.T) {
 
 		require.NotNil(t, config.Logging.Console.LogLevel)
 		assert.Equal(t, "debug", config.Logging.Console.LogLevel.String())
-		assert.Equal(t, []string{"*", "HTTP"}, config.Logging.Console.LogKeys)
+		assert.Equal(t, []string{"*"}, config.Logging.Console.LogKeys)
 	})
 
 	t.Run("Run setupAndValidate with unknown field in config file", func(t *testing.T) {

@@ -86,7 +86,12 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 	}
 
 	if lc.CORS != nil {
-		sc.API.CORS = lc.CORS
+		sc.API.CORS = &CORSConfig{
+			Origin:      lc.CORS.Origin,
+			LoginOrigin: lc.CORS.LoginOrigin,
+			Headers:     lc.CORS.Headers,
+			MaxAge:      lc.CORS.MaxAge,
+		}
 	}
 
 	if lc.Interface != nil {

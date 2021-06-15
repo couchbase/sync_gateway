@@ -181,7 +181,7 @@ func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var sc StartupConfig
 	err = decodeAndSanitiseConfig(f, &sc)

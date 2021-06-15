@@ -200,8 +200,10 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 func TestStatsLoggerStopped(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
+	sc := DefaultStartupConfig("")
+
 	// Start up stats logger by creating server context
-	ctx := NewServerContext(&StartupConfig{}, false)
+	ctx := NewServerContext(&sc, false)
 
 	// Close server context which will send signal to close stats logger
 	ctx.Close()

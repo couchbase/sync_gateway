@@ -72,7 +72,11 @@ type logRotationConfig struct {
 }
 
 // NewFileLogger returns a new FileLogger from a config.
-func NewFileLogger(config FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
+func NewFileLogger(config *FileLoggerConfig, level LogLevel, name string, logFilePath string, minAge int, buffer *strings.Builder) (*FileLogger, error) {
+
+	if config == nil {
+		config = &FileLoggerConfig{}
+	}
 
 	// validate and set defaults
 	if err := config.init(level, name, logFilePath, minAge); err != nil {

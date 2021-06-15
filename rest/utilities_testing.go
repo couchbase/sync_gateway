@@ -127,18 +127,19 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if rt.RestTesterConfig.adminInterface != "" {
 		adminInterface = &rt.RestTesterConfig.adminInterface
 	}
-	rt.RestTesterServerContext = NewServerContext(&StartupConfig{
-		API: APIConfig{
-			AdminInterface:     *adminInterface,
-			CORS:               corsConfig,
-			HideProductVersion: rt.RestTesterConfig.hideProductInfo,
-		},
-		Auth: AuthConfig{
-			Facebook: &FacebookConfig2{},
-		},
-		// FIXME
-		// Replications: rt.RestTesterConfig.sgr1Replications,
-	}, true)
+
+	sc := DefaultStartupConfig("")
+
+	sc.Bootstrap.Server = base.UnitTestUrl()
+	sc.API.AdminInterface = *adminInterface
+	sc.API.CORS = corsConfig
+	sc.API.HideProductVersion = rt.RestTesterConfig.hideProductInfo
+	sc.Auth.Facebook = &FacebookConfig2{}
+
+	rt.RestTesterServerContext = NewServerContext(&sc, false)
+
+	// FIXME
+	// Replications: rt.RestTesterConfig.sgr1Replications,
 
 	useXattrs := base.TestUseXattrs()
 
