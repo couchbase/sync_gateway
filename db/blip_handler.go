@@ -320,9 +320,11 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item["rev"])
 
-					if change.allRemoved && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+					// If change is a removal and we're operating with protocol V3 and the change is not a tombstone fall
+					// into 3.0 removal handling
+					if change.allRemoved && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 && !change.Deleted {
 						// If client requests revocations / removals via subChanges, continue work to possibly send
-						// removal. Otherwise skip sending removals, unless its also a deletion.
+						// removal. Otherwise skip sending removals.
 						if opts.revocations {
 							userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
 							if err != nil {
@@ -333,7 +335,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 							if userHasAccessToDoc {
 								continue
 							}
-						} else if !change.Deleted {
+						} else {
 							continue
 						}
 					}
