@@ -106,7 +106,7 @@ func (h *handler) handleGetDbConfig() error {
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
+		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name).Config)
 	}
 	return nil
 }

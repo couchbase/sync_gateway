@@ -936,7 +936,7 @@ func TestValidateServerContext(t *testing.T) {
 	sc := NewServerContext(config, false)
 	defer sc.Close()
 	for _, dbConfig := range databases {
-		_, err := sc.AddDatabaseFromConfig(dbConfig)
+		_, err := sc.AddDatabaseFromConfig(DatabaseConfig{Config: *dbConfig})
 		require.NoError(t, err, "Couldn't add database from config")
 	}
 
