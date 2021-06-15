@@ -27,12 +27,13 @@ import (
 )
 
 type BlipTesterClientOpts struct {
-	ClientDeltas          bool // Support deltas on the client side
-	Username              string
-	Channels              []string
-	SendRevocations       bool
+	ClientDeltas           bool // Support deltas on the client side
+	Username               string
+	Channels               []string
+	SendRevocations        bool
+	SupportedBLIPProtocols []string
+
 	rejectDeltasForSrcRev string // a deltaSrc rev ID for which to reject a delta
-	protocol              string // BlipCBMobileReplication version
 }
 
 // BlipTesterClient is a fully fledged client to emulate CBL behaviour on both push and pull replications through methods on this type.
@@ -300,7 +301,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					outrq := blip.NewRequest()
 					outrq.SetProfile(db.MessageGetAttachment)
 					outrq.Properties[db.GetAttachmentDigest] = digest
-					if btc.GetProtocol() == db.BlipCBMobileReplicationV3 {
+					if btr.bt.blipContext.ActiveProtocol() == db.BlipCBMobileReplicationV3 {
 						outrq.Properties[db.GetAttachmentID] = docID
 					}
 
@@ -448,6 +449,7 @@ func newBlipTesterReplication(tb testing.TB, id string, btc *BlipTesterClient) (
 		connectingPassword:          "test",
 		connectingUsername:          btc.Username,
 		connectingUserChannelGrants: btc.Channels,
+		blipProtocols:               btc.SupportedBLIPProtocols,
 	}, btc.rt)
 	if err != nil {
 		return nil, err
@@ -820,11 +822,4 @@ func (btc *BlipTesterClient) GetBlipRevMessage(docId, revId string) (msg *blip.M
 	}
 
 	return nil, false
-}
-
-func (btc *BlipTesterClient) GetProtocol() string {
-	if btc.protocol != "" {
-		return btc.protocol
-	}
-	return db.BlipCBMobileReplicationV3
 }

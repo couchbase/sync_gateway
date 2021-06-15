@@ -30,10 +30,14 @@ func NewSGBlipContext(ctx context.Context, id string) (bc *blip.Context, err err
 	// V3 is first here as it is the preferred communication method
 	// In the host case this means SGW can accept both V3 and V2 clients
 	// In the client case this means we prefer V3 but can fallback to V2
+	return NewSGBlipContextWithProtocols(ctx, id, BlipCBMobileReplicationV3, BlipCBMobileReplicationV2)
+}
+
+func NewSGBlipContextWithProtocols(ctx context.Context, id string, protocol ...string) (bc *blip.Context, err error) {
 	if id == "" {
-		bc, err = blip.NewContext(BlipCBMobileReplicationV3, BlipCBMobileReplicationV2)
+		bc, err = blip.NewContext(protocol...)
 	} else {
-		bc, err = blip.NewContextCustomID(id, BlipCBMobileReplicationV3, BlipCBMobileReplicationV2)
+		bc, err = blip.NewContextCustomID(id, protocol...)
 	}
 
 	bc.LogMessages = base.LogDebugEnabled(base.KeyWebSocket)
