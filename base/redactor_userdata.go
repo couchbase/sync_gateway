@@ -21,7 +21,7 @@ const (
 )
 
 // RedactUserData is a global toggle for user data redaction.
-var RedactUserData = false
+var RedactUserData = true
 
 // UserData is a type which implements the Redactor interface for logging purposes of user data.
 //
