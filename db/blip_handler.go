@@ -320,16 +320,32 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 				for _, item := range change.Changes {
 					changeRow := bh.buildChangesRow(change, item["rev"])
 
-					if bh.purgeOnRemoval && len(change.Removed) > 0 && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
-						userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
-						if err != nil {
-							base.InfofCtx(bh.loggingCtx, base.KeySync, "Unable to obtain the doc: %s %s to verify user access: %v", base.UD(change.ID), item["rev"], err)
+					// If change is a removal and we're running with protocol V3 and change change is not a tombstone
+					// fall into 3.0 removal handling
+					if change.allRemoved && bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 && !change.Deleted {
+
+						// If client doesn't want removals / revocations, don't send change
+						if !opts.revocations {
 							continue
 						}
 
-						if userHasAccessToDoc {
+						// If the user has access to the doc through another channel don't send change
+						userHasAccessToDoc, err := UserHasDocAccess(bh.db, change.ID, item["rev"])
+						if err == nil && userHasAccessToDoc {
 							continue
 						}
+
+						// If we can't determine user access due to an error, log error and fall through to send change anyway.
+						// In the event of an error we should be cautious and send a revocation anyway, even if the user
+						// may actually have an alternate access method. This is the safer approach security-wise and
+						// also allows for a recovery if the user notices they are missing a doc they should have access
+						// to. A recovery option would be to trigger a mutation of the document for it to be sent in a
+						// subsequent changes request. If we were to avoid sending a removal there is no recovery
+						// option to then trigger that removal later on.
+						if err != nil {
+							base.WarnfCtx(bh.loggingCtx, "Unable to determine whether user has access to %s/%s, will send removal: %v", base.UD(change.ID), base.UD(item["rev"]), err)
+						}
+
 					}
 
 					pendingChanges = append(pendingChanges, changeRow)
@@ -377,7 +393,7 @@ func (bh *blipHandler) buildChangesRow(change *ChangeEntry, revID string) []inte
 		if change.Revoked {
 			deletedFlags |= changesDeletedFlagRevoked
 		}
-		if len(change.Removed) > 0 {
+		if change.allRemoved {
 			deletedFlags |= changesDeletedFlagRemoved
 		}
 

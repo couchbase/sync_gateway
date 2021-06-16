@@ -1743,6 +1743,7 @@ func TestGetRemovedDoc(t *testing.T) {
 	btSpec := BlipTesterSpec{
 		connectingUsername: "user1",
 		connectingPassword: "1234",
+		blipProtocols:      []string{db.BlipCBMobileReplicationV2},
 	}
 	bt, err := NewBlipTesterFromSpecWithRT(t, &btSpec, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
@@ -1756,6 +1757,7 @@ func TestGetRemovedDoc(t *testing.T) {
 		connectingUsername:          "user2",
 		connectingPassword:          "1234",
 		connectingUserChannelGrants: []string{"user1"}, // so it can see user1's docs
+		blipProtocols:               []string{db.BlipCBMobileReplicationV2},
 	}
 	bt2, err := NewBlipTesterFromSpecWithRT(t, &btSpec2, rt)
 	require.NoError(t, err, "Unexpected error creating BlipTester")
@@ -2099,9 +2101,10 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	defer rt.Close()
 
 	client, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
-		Username:     "alice",
-		Channels:     []string{"public"},
-		ClientDeltas: true,
+		Username:               "alice",
+		Channels:               []string{"public"},
+		ClientDeltas:           true,
+		SupportedBLIPProtocols: []string{db.BlipCBMobileReplicationV2},
 	})
 	require.NoError(t, err)
 	defer client.Close()
@@ -3248,4 +3251,93 @@ func TestRevocationNoRev(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, deletedFlag, int64(2))
+}
+
+func TestRemovedMessageWithAlternateAccess(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/_user/user", `{"admin_channels": ["A", "B"], "password": "test"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
+		Username:        "user",
+		Channels:        []string{"*"},
+		ClientDeltas:    false,
+		SendRevocations: true,
+	})
+	assert.NoError(t, err)
+	defer btc.Close()
+
+	docRevID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"A", "B"}})
+
+	changes, err := rt.WaitForChanges(1, "/db/_changes?since=0&revocations=true", "user", true)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(changes.Results))
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.Equal(t, "1-9b49fa26d87ad363b2b08de73ff029a9", changes.Results[0].Changes[0]["rev"])
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok := btc.WaitForRev("doc", "1-9b49fa26d87ad363b2b08de73ff029a9")
+	assert.True(t, ok)
+
+	docRevID = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{"B"}})
+
+	changes, err = rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(changes.Results))
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.Equal(t, "2-f0d4cbcdd4a9ec835799055fdba45263", changes.Results[0].Changes[0]["rev"])
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok = btc.WaitForRev("doc", "2-f0d4cbcdd4a9ec835799055fdba45263")
+	assert.True(t, ok)
+
+	docRevID = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{}})
+	_ = rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"!"}})
+
+	changes, err = rt.WaitForChanges(0, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	require.NoError(t, err)
+
+	err = btc.StartOneshotPull()
+	assert.NoError(t, err)
+
+	_, ok = btc.WaitForRev("docmarker", "1-999bcad4aab47f0a8a24bd9d3598060c")
+	assert.True(t, ok)
+
+	messages := btc.pullReplication.GetMessages()
+
+	var highestMsgSeq uint32
+	var highestSeqMsg blip.Message
+	// Grab most recent changes message
+	for _, message := range messages {
+		messageBody, err := message.Body()
+		require.NoError(t, err)
+		if message.Properties["Profile"] == db.MessageChanges && string(messageBody) != "null" {
+			if highestMsgSeq < uint32(message.SerialNumber()) {
+				highestMsgSeq = uint32(message.SerialNumber())
+				highestSeqMsg = message
+			}
+		}
+	}
+
+	var messageBody []interface{}
+	err = highestSeqMsg.ReadJSONBody(&messageBody)
+	assert.NoError(t, err)
+	require.Len(t, messageBody, 2)
+	require.Len(t, messageBody[0], 4)
+	require.Len(t, messageBody[1], 3)
+
+	deletedFlags, err := messageBody[0].([]interface{})[3].(json.Number).Int64()
+	docID := messageBody[0].([]interface{})[1]
+	require.NoError(t, err)
+	assert.Equal(t, "doc", docID)
+	assert.Equal(t, int64(4), deletedFlags)
 }
