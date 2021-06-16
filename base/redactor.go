@@ -90,8 +90,8 @@ func buildRedactorFuncSlice(valueOf reflect.Value, function func(interface{}) Re
 type RedactionLevel int
 
 const (
-	RedactNone RedactionLevel = iota
-	RedactPartial
+	RedactPartial RedactionLevel = iota
+	RedactNone
 	RedactFull
 )
 
