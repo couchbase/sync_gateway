@@ -2037,12 +2037,17 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 	return AsGoCBBucket(underlyingBucket)
 }
 
-// Get one of the management endpoints.  It will be a string such as http://couchbase
-func GoCBBucketMgmtEndpoint(bucket *gocb.Bucket) (url string, err error) {
+func GoCBBucketMgmtEndpoints(bucket *gocb.Bucket) (url []string, err error) {
 	mgmtEps := bucket.IoRouter().MgmtEps()
 	if len(mgmtEps) == 0 {
-		return "", fmt.Errorf("No available Couchbase Server nodes")
+		return nil, fmt.Errorf("No available Couchbase Server nodes")
 	}
+	return mgmtEps, nil
+}
+
+// Get one of the management endpoints.  It will be a string such as http://couchbase
+func GoCBBucketMgmtEndpoint(bucket *gocb.Bucket) (url string, err error) {
+	mgmtEps, err := GoCBBucketMgmtEndpoints(bucket)
 	bucketEp := mgmtEps[rand.Intn(len(mgmtEps))]
 	return bucketEp, nil
 }
