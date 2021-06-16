@@ -171,7 +171,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 	}
 }
 
-func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, triggeredBy uint64, to string) <-chan *ChangeEntry {
+func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, revokedSeq, revocationSinceSeq uint64, to string) <-chan *ChangeEntry {
 	feed := make(chan *ChangeEntry, 1)
 	sinceVal := options.Since.Seq
 
@@ -224,7 +224,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 			for _, logEntry := range changes {
 				seqID := SequenceID{
 					Seq:         logEntry.Sequence,
-					TriggeredBy: triggeredBy,
+					TriggeredBy: revokedSeq,
 				}
 
 				// We need to check whether a change / document sequence is greater than since.
@@ -232,7 +232,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.wasDocInChannelAtSeq(logEntry.DocID, singleChannelCache.ChannelName(), sinceVal)
+					requiresRevocation, err := db.wasDocInChannelAtSeq(logEntry.DocID, singleChannelCache.ChannelName(), revocationSinceSeq)
 					if err != nil {
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
@@ -778,9 +778,27 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 
 			if options.Revocations && db.user != nil {
-				channelsToRevoke := db.user.RevokedChannels(options.Since.SafeSequence())
-				for channel, triggeredBy := range channelsToRevoke {
-					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, triggeredBy, to)
+
+				// revocationSinceSeq is the earliest (lowest) value inside of the passed in since sequence i.e. lowest
+				// of lowSeq, triggeredBy and Seq. The value is used to denote the point in time we need to diff against
+				// ie. What has changed in the the time since that sequence and now. This will be used to calculate the
+				// channels to revoke and then passed  into "buildRevokedFeed" to validate whether a document was in the
+				// given channel at the sequence.
+				revocationSinceSeq := options.Since.SafeSequence()
+
+				// We need to do this with triggeredBy - 1 because multiple mutations can have the same 'triggeredBy'
+				// and if we're resuming with a triggeredBy we can't be sure that all of the changes with that
+				// 'triggeredBy' have been processed so need to step back and re-process all changes with that
+				// triggeredBy.
+				// The 'if' check here is checking whether we have a triggeredBy and if we do we should use the lowest
+				// value out of triggeredBy - 1 and the above used SafeSeq (lowSeq if there or regular Seq).
+				if options.Since.TriggeredBy > 0 && revocationSinceSeq > options.Since.TriggeredBy-1 {
+					revocationSinceSeq = options.Since.TriggeredBy - 1
+				}
+
+				channelsToRevoke := db.user.RevokedChannels(revocationSinceSeq)
+				for channel, revokedSeq := range channelsToRevoke {
+					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, revokedSeq, revocationSinceSeq, to)
 					feeds = append(feeds, feed)
 				}
 			}

@@ -6343,11 +6343,11 @@ func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
 	}
 }
 
-func (tester *ChannelRevocationTester) getChanges(sinceSeq uint64, expectedLength int) changesResults {
+func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expectedLength int) changesResults {
 	var changes changesResults
 
 	err := tester.restTester.WaitForCondition(func() bool {
-		resp := tester.restTester.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%d&revocations=true", sinceSeq), "", nil, "user", "test")
+		resp := tester.restTester.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%v&revocations=true", sinceSeq), "", nil, "user", "test")
 		require.Equal(tester.test, http.StatusOK, resp.Code)
 		err := json.Unmarshal(resp.BodyBytes(), &changes)
 		require.NoError(tester.test, err)
@@ -6355,7 +6355,6 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq uint64, expectedLengt
 		return len(changes.Results) == expectedLength
 	})
 	assert.NoError(tester.test, err, fmt.Sprintf("Unexpected: %d. Expected %d", len(changes.Results), expectedLength))
-	fmt.Println(changes.Results)
 
 	err = tester.restTester.WaitForPendingChanges()
 	assert.NoError(tester.test, err)
@@ -7193,4 +7192,109 @@ func TestRevocationMutationMovesIntoRevokedChannel(t *testing.T) {
 	assert.Len(t, changes.Results, 1)
 	assert.Equal(t, "doc2", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/_role/foo2", `{}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	revocationTester.addRole("user", "foo2")
+	revocationTester.addRoleChannel("foo2", "ch2")
+
+	revocationTester.fillToSeq(9)
+	revIDDoc := rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
+	revIDDoc2 := rt.createDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch2"}})
+
+	changes := revocationTester.getChanges(0, 3)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.removeRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(29)
+	revocationTester.removeRoleChannel("foo2", "ch2")
+
+	revocationTester.fillToSeq(39)
+	revIDDoc = rt.createDocReturnRev(t, "doc1", revIDDoc, map[string]interface{}{"channels": []string{"ch1"}, "val": "mutate"})
+
+	revocationTester.fillToSeq(49)
+	revIDDoc2 = rt.createDocReturnRev(t, "doc2", revIDDoc2, map[string]interface{}{"channels": []string{"ch2"}, "val": "mutate"})
+
+	changes = revocationTester.getChanges(changes.Last_Seq, 2)
+
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+	assert.Equal(t, "doc2", changes.Results[1].ID)
+	assert.True(t, changes.Results[1].Revoked)
+
+	changes = revocationTester.getChanges("20:40", 1)
+
+	assert.Equal(t, "doc2", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+
+	// Check no results with 60
+	changes = revocationTester.getChanges("60", 0)
+
+	// Ensure 11 low sequence means we get revocations from that far back
+	changes = revocationTester.getChanges("20:0:60", 1)
+	assert.Equal(t, "doc2", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+
+}
+
+func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "ch1")
+	revocationTester.addRoleChannel("foo", "ch2")
+
+	revocationTester.fillToSeq(9)
+	revIDDoc := rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
+	revIDDoc2 := rt.createDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch2"}})
+
+	changes := revocationTester.getChanges(0, 3)
+
+	revocationTester.fillToSeq(19)
+	revocationTester.removeRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(29)
+	revocationTester.removeRoleChannel("foo", "ch2")
+
+	revocationTester.fillToSeq(39)
+	revIDDoc = rt.createDocReturnRev(t, "doc1", revIDDoc, map[string]interface{}{"channels": []string{"ch1"}, "val": "mutate"})
+
+	revocationTester.fillToSeq(49)
+	revIDDoc2 = rt.createDocReturnRev(t, "doc2", revIDDoc2, map[string]interface{}{"channels": []string{"ch2"}, "val": "mutate"})
+
+	changes = revocationTester.getChanges(changes.Last_Seq, 2)
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+	assert.Equal(t, "doc2", changes.Results[1].ID)
+	assert.True(t, changes.Results[1].Revoked)
+
+	changes = revocationTester.getChanges("20:40", 1)
+	assert.Equal(t, "doc2", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+
+	// Check no results with 60
+	changes = revocationTester.getChanges("60", 0)
+
+	// Ensure 11 low sequence means we get revocations from that far back
+	changes = revocationTester.getChanges("11:0:60", 2)
+	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+	assert.Equal(t, "doc2", changes.Results[1].ID)
+	assert.True(t, changes.Results[1].Revoked)
+
 }
