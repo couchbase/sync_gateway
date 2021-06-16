@@ -1310,6 +1310,21 @@ func deleteTempFile(t *testing.T, file *os.File) {
 	require.False(t, base.FileExists(path), "Deleted file %s shouldn't exist", path)
 }
 
+func TestRedactPartialDefault(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	config := &ServerConfig{
+		Logging: &base.LoggingConfig{},
+	}
+	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
+	assert.Equal(t, true, base.RedactUserData)
+	sc, err := setupServerContext(config)
+	require.NoError(t, err)
+	require.NotNil(t, sc)
+	assert.Equal(t, base.RedactPartial, sc.config.Logging.RedactionLevel)
+	assert.Equal(t, true, base.RedactUserData)
+	sc.Close()
+}
+
 func TestSetupServerContext(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
