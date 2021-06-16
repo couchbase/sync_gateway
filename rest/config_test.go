@@ -1315,14 +1315,13 @@ func TestRedactPartialDefault(t *testing.T) {
 	config := &ServerConfig{
 		Logging: &base.LoggingConfig{},
 	}
+	assert.Equal(t, base.RedactUnset, config.Logging.RedactionLevel)
+	assert.Equal(t, true, base.RedactUserData)
+
+	err := config.SetupAndValidateLogging()
+	require.NoError(t, err)
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
-	sc, err := setupServerContext(config)
-	require.NoError(t, err)
-	require.NotNil(t, sc)
-	assert.Equal(t, base.RedactPartial, sc.config.Logging.RedactionLevel)
-	assert.Equal(t, true, base.RedactUserData)
-	sc.Close()
 }
 
 func TestSetupServerContext(t *testing.T) {
