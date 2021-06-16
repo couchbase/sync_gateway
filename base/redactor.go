@@ -104,7 +104,7 @@ func SetRedaction(redactionLevel RedactionLevel) {
 	case RedactNone:
 		RedactUserData = false
 	default:
-		RedactUserData = false
+		RedactUserData = true
 	}
 }
 

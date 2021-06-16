@@ -54,7 +54,7 @@ func TestRedactHelper(t *testing.T) {
 func TestSetRedaction(t *testing.T) {
 	// Hits the default case
 	SetRedaction(-1)
-	goassert.Equals(t, RedactUserData, false)
+	goassert.Equals(t, RedactUserData, true)
 
 	SetRedaction(RedactFull)
 	goassert.Equals(t, RedactUserData, true)
