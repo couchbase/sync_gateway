@@ -5112,7 +5112,8 @@ func waitForTombstone(t *testing.T, rt *RestTester, docID string) {
 func requireErrorKeyNotFound(t *testing.T, rt *RestTester, docID string) {
 	var body []byte
 	_, err := rt.Bucket().Get(docID, &body)
-	require.EqualError(t, err, fmt.Sprintf("Error during Get %s: key not found", docID))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "key not found")
 }
 
 // requireRevID asserts that the specified document revision is written to the
