@@ -115,6 +115,8 @@ func GoCBCoreTLSRootCAProvider(caCertPath string) (func() *x509.CertPool, error)
 }
 
 func getRootCAs(caCertPath string) (*x509.CertPool, error) {
+	// We're purposefully ignoring the error here and falling back to an empty CertPool. Partly due to the fact that
+	// the main error case is that this call is not supported in Windows.
 	rootCAs, _ := x509.SystemCertPool()
 	if rootCAs == nil {
 		rootCAs = x509.NewCertPool()
