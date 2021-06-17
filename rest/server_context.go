@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1149,18 +1148,20 @@ func (sc *ServerContext) updateCalculatedStats() {
 
 }
 
-func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath string) (*gocbcore.Agent, error) {
+func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string) (*gocbcore.Agent, error) {
 	authenticator, err := base.GoCBCoreAuthConfig(clusterUser, clusterPass, certPath, keyPath)
 	if err != nil {
 		return nil, err
 	}
 
+	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(caCertPath)
+	if err != nil {
+		return nil, err
+	}
+
 	config := gocbcore.AgentConfig{
-		Auth:           authenticator,
-		AuthMechanisms: []gocbcore.AuthMechanism{gocbcore.ScramSha512AuthMechanism},
-		TLSRootCAProvider: func() *x509.CertPool {
-			return nil
-		},
+		Auth:              authenticator,
+		TLSRootCAProvider: tlsRootCAProvider,
 	}
 
 	err = config.FromConnStr(clusterAddress)
@@ -1174,7 +1175,7 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	}
 
 	agentReadyErr := make(chan error)
-	_, err = agent.WaitUntilReady(time.Now().Add(5*time.Second), gocbcore.WaitUntilReadyOptions{}, func(result *gocbcore.WaitUntilReadyResult, err error) {
+	_, err = agent.WaitUntilReady(time.Now().Add(15*time.Second), gocbcore.WaitUntilReadyOptions{ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService}}, func(result *gocbcore.WaitUntilReadyResult, err error) {
 		agentReadyErr <- err
 	})
 
@@ -1190,13 +1191,13 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 }
 
 // FIXME: Temporary connection settings. Awaiting bootstrap PR so we can use those details directly from server context
-func (sc *ServerContext) tempConnectionDetails() (serverAddress string, username string, password string, certPath string, keyPath string) {
-	return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), "", ""
+func (sc *ServerContext) tempConnectionDetails() (serverAddress string, username string, password string, certPath string, keyPath string, caCertPath string) {
+	return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), "", "", ""
 }
 
 func (sc *ServerContext) ObtainManagementEndpoints() ([]string, error) {
-	clusterAddress, clusterUser, clusterPass, certPath, keyPath := sc.tempConnectionDetails()
-	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath)
+	clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath := sc.tempConnectionDetails()
+	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath)
 	if err != nil {
 		return nil, err
 	}

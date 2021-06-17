@@ -303,15 +303,25 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 	eps, err := ctx.ObtainManagementEndpoints()
 	assert.NoError(t, err)
 
-	clusterAddress, _, _, _, _ := ctx.tempConnectionDetails()
+	clusterAddress, _, _, _, _, _ := ctx.tempConnectionDetails()
 	baseSpec, err := connstr.Parse(clusterAddress)
 	require.NoError(t, err)
 
 	spec, err := connstr.Resolve(baseSpec)
 	require.NoError(t, err)
 
+	existsOneMatchingEndpoint := false
+
+outerLoop:
 	for _, httpHost := range spec.HttpHosts {
-		formatted := fmt.Sprintf("http://%s:%d", httpHost.Host, httpHost.Port)
-		assert.Contains(t, eps, formatted)
+		for _, ep := range eps {
+			formattedHttpHost := fmt.Sprintf("http://%s:%d", httpHost.Host, httpHost.Port)
+			if formattedHttpHost == ep {
+				existsOneMatchingEndpoint = true
+				break outerLoop
+			}
+		}
 	}
+
+	assert.True(t, existsOneMatchingEndpoint)
 }

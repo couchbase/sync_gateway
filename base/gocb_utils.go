@@ -102,3 +102,35 @@ func GoCBCoreAuthConfig(username, password, certPath, keyPath string) (a gocbcor
 		Password: password,
 	}, nil
 }
+
+func GoCBCoreTLSRootCAProvider(caCertPath string) (func() *x509.CertPool, error) {
+	rootCAs, err := getRootCAs(caCertPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return func() *x509.CertPool {
+		return rootCAs
+	}, nil
+}
+
+func getRootCAs(caCertPath string) (*x509.CertPool, error) {
+	rootCAs, _ := x509.SystemCertPool()
+	if rootCAs == nil {
+		rootCAs = x509.NewCertPool()
+	}
+
+	if caCertPath != "" {
+		caCert, err := ioutil.ReadFile(caCertPath)
+		if err != nil {
+			return nil, err
+		}
+
+		ok := rootCAs.AppendCertsFromPEM(caCert)
+		if !ok {
+			return nil, errors.New("Invalid CA cert")
+		}
+	}
+
+	return rootCAs, nil
+}
