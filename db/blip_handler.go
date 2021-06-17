@@ -322,8 +322,7 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 
 					// If change is a removal and we're running with protocol V3 and change change is not a tombstone
 					// fall into 3.0 removal handling
-					if change.allRemoved && bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 && !change.
-						Deleted {
+					if change.allRemoved && bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 && !change.Deleted {
 
 						// If client doesn't want removals / revocations, don't send change
 						if !opts.revocations {
