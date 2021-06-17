@@ -301,7 +301,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 					outrq := blip.NewRequest()
 					outrq.SetProfile(db.MessageGetAttachment)
 					outrq.Properties[db.GetAttachmentDigest] = digest
-					if btr.bt.blipContext.ActiveProtocol() == db.BlipCBMobileReplicationV3 {
+					if btr.bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV3 {
 						outrq.Properties[db.GetAttachmentID] = docID
 					}
 
