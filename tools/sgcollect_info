@@ -88,8 +88,8 @@ def create_option_parser():
                       action="store_true", default=False,
                       help=optparse.SUPPRESS_HELP)
     parser.add_option("--log-redaction-level", dest="redact_level",
-                      default="partial",
-                      help="redaction level for the logs collected, none and partial supported (default is partial)")
+                      default="none",
+                      help="redaction level for the logs collected, none and partial supported (default is none)")
     parser.add_option("--log-redaction-salt", dest="salt_value",
                       default=str(uuid.uuid4()),
                       help="Is used to salt the hashing of tagged data, \
