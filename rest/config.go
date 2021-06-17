@@ -890,6 +890,10 @@ func (config *ServerConfig) SetupAndValidateLogging() (err error) {
 	// populate values from deprecated logging config options if not set
 	config.deprecatedConfigLoggingFallback()
 
+	if config.Logging.RedactionLevel == base.RedactUnset {
+		config.Logging.RedactionLevel = base.RedactionLevelDefault
+	}
+
 	base.SetRedaction(config.Logging.RedactionLevel)
 
 	err = config.Logging.Init(defaultLogFilePath)

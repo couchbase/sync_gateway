@@ -89,8 +89,10 @@ func buildRedactorFuncSlice(valueOf reflect.Value, function func(interface{}) Re
 
 type RedactionLevel int
 
+const RedactionLevelDefault = RedactPartial
 const (
-	RedactNone RedactionLevel = iota
+	RedactUnset RedactionLevel = iota
+	RedactNone
 	RedactPartial
 	RedactFull
 )
@@ -104,7 +106,7 @@ func SetRedaction(redactionLevel RedactionLevel) {
 	case RedactNone:
 		RedactUserData = false
 	default:
-		RedactUserData = false
+		RedactUserData = true
 	}
 }
 
@@ -117,6 +119,8 @@ func (l RedactionLevel) String() string {
 		return "partial"
 	case RedactFull:
 		return "full"
+	case RedactUnset:
+		return "unset"
 	default:
 		return fmt.Sprintf("RedactionLevel(%d)", l)
 	}
