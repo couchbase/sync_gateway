@@ -42,7 +42,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			IdleTimeout:       base.DefaultIdleTimeout,
 		},
 		// TODO: logging defaults
-		Logging: LoggingConfig2{
+		Logging: LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
 			RedactionLevel: base.DefaultRedactionLevel,
 			Console: &base.ConsoleLoggerConfig{
@@ -80,7 +80,7 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 type StartupConfig struct {
 	Bootstrap   BootstrapConfig   `json:"bootstrap,omitempty"`
 	API         APIConfig         `json:"api,omitempty"`
-	Logging     LoggingConfig2    `json:"logging,omitempty"`
+	Logging     LoggingConfig     `json:"logging,omitempty"`
 	Auth        AuthConfig        `json:"auth,omitempty"`
 	Replicator  ReplicatorConfig  `json:"replicator,omitempty"`
 	Unsupported UnsupportedConfig `json:"unsupported,omitempty"`
@@ -134,7 +134,7 @@ type CORSConfig struct {
 	MaxAge      int      `json:"max_age,omitempty"      help:"Maximum age of the CORS Options request"`
 }
 
-type LoggingConfig2 struct {
+type LoggingConfig struct {
 	LogFilePath    string                    `json:"log_file_path,omitempty"   help:"Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file"`
 	RedactionLevel base.RedactionLevel       `json:"redaction_level,omitempty" help:"Redaction level to apply to log output"`
 	Console        *base.ConsoleLoggerConfig `json:"console,omitempty"`
@@ -147,15 +147,15 @@ type LoggingConfig2 struct {
 }
 
 type AuthConfig struct {
-	Facebook *FacebookConfig2 `json:"facebook,omitempty"`
-	Google   *GoogleConfig2   `json:"google,omitempty"`
+	Facebook *FacebookConfig `json:"facebook,omitempty"`
+	Google   *GoogleConfig   `json:"google,omitempty"`
 }
 
-type FacebookConfig2 struct {
+type FacebookConfig struct {
 	Register bool `json:"register,omitempty" help:"If true, server will register new user accounts"`
 }
 
-type GoogleConfig2 struct {
+type GoogleConfig struct {
 	Register    bool     `json:"register,omitempty" help:"If true, server will register new user accounts"`
 	AppClientID []string `json:"app_client_id,omitempty" help:"List of enabled client ids"`
 }

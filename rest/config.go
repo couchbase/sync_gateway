@@ -10,7 +10,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -65,41 +64,41 @@ const (
 
 // JSON object that defines the server configuration.
 type LegacyServerConfig struct {
-	TLSMinVersion              *string                  `json:"tls_minimum_version,omitempty"`    // Set TLS Version
-	Interface                  *string                  `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
-	SSLCert                    *string                  `json:",omitempty"`                       // Path to SSL cert file, or nil
-	SSLKey                     *string                  `json:",omitempty"`                       // Path to SSL private key file, or nil
-	ServerReadTimeout          *int                     `json:",omitempty"`                       // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout         *int                     `json:",omitempty"`                       // maximum duration.Second before timing out write of the HTTP(S) response
-	ReadHeaderTimeout          *int                     `json:",omitempty"`                       // The amount of time allowed to read request headers.
-	IdleTimeout                *int                     `json:",omitempty"`                       // The maximum amount of time to wait for the next request when keep-alives are enabled.
-	AdminInterface             *string                  `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
-	AdminUI                    *string                  `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface           *string                  `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
-	ConfigServer               *string                  `json:",omitempty"`                       // URL of config server (for dynamic db discovery)
-	Facebook                   *FacebookConfig          `json:",omitempty"`                       // Configuration for Facebook validation
-	Google                     *GoogleConfig            `json:",omitempty"`                       // Configuration for Google validation
-	CORS                       *CORSConfigOld           `json:",omitempty"`                       // Configuration for allowing CORS
-	DeprecatedLog              []string                 `json:"log,omitempty"`                    // Log keywords to enable
-	DeprecatedLogFilePath      *string                  `json:"logFilePath,omitempty"`            // Path to log file, if missing write to stderr
-	Logging                    *base.LoggingConfig      `json:",omitempty"`                       // Configuration for logging with optional log file rotation
-	Pretty                     bool                     `json:",omitempty"`                       // Pretty-print JSON responses?
-	DeploymentID               *string                  `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
-	StatsReportInterval        *float64                 `json:",omitempty"`                       // Optional stats report interval (0 to disable)
-	CouchbaseKeepaliveInterval *int                     `json:",omitempty"`                       // TCP keep-alive interval between SG and Couchbase server
-	SlowQueryWarningThreshold  *int                     `json:",omitempty"`                       // Log warnings if N1QL queries take this many ms
-	MaxIncomingConnections     *int                     `json:",omitempty"`                       // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors         *uint64                  `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses          *bool                    `json:",omitempty"`                       // If false, disables compression of HTTP responses
-	Databases                  DbConfigMap              `json:",omitempty"`                       // Pre-configured databases, mapped by name
-	Replications               []*ReplicateV1Config     `json:",omitempty"`                       // sg-replicate replication definitions
-	MaxHeartbeat               uint64                   `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
-	ClusterConfig              *ClusterConfig           `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
-	Unsupported                *UnsupportedServerConfig `json:"unsupported,omitempty"`            // Config for unsupported features
-	ReplicatorCompression      *int                     `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
-	BcryptCost                 int                      `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
-	MetricsInterface           *string                  `json:"metricsInterface,omitempty"`       // Interface to bind metrics to. If not set then metrics isn't accessible
-	HideProductVersion         bool                     `json:"hide_product_version,omitempty"`   // Determines whether product versions removed from Server headers and REST API responses. This setting does not apply to the Admin REST API.
+	TLSMinVersion              *string                   `json:"tls_minimum_version,omitempty"`    // Set TLS Version
+	Interface                  *string                   `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
+	SSLCert                    *string                   `json:",omitempty"`                       // Path to SSL cert file, or nil
+	SSLKey                     *string                   `json:",omitempty"`                       // Path to SSL private key file, or nil
+	ServerReadTimeout          *int                      `json:",omitempty"`                       // maximum duration.Second before timing out read of the HTTP(S) request
+	ServerWriteTimeout         *int                      `json:",omitempty"`                       // maximum duration.Second before timing out write of the HTTP(S) response
+	ReadHeaderTimeout          *int                      `json:",omitempty"`                       // The amount of time allowed to read request headers.
+	IdleTimeout                *int                      `json:",omitempty"`                       // The maximum amount of time to wait for the next request when keep-alives are enabled.
+	AdminInterface             *string                   `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
+	AdminUI                    *string                   `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
+	ProfileInterface           *string                   `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
+	ConfigServer               *string                   `json:",omitempty"`                       // URL of config server (for dynamic db discovery)
+	Facebook                   *FacebookConfigLegacy     `json:",omitempty"`                       // Configuration for Facebook validation
+	Google                     *GoogleConfigLegacy       `json:",omitempty"`                       // Configuration for Google validation
+	CORS                       *CORSConfigLegacy         `json:",omitempty"`                       // Configuration for allowing CORS
+	DeprecatedLog              []string                  `json:"log,omitempty"`                    // Log keywords to enable
+	DeprecatedLogFilePath      *string                   `json:"logFilePath,omitempty"`            // Path to log file, if missing write to stderr
+	Logging                    *base.LegacyLoggingConfig `json:",omitempty"`                       // Configuration for logging with optional log file rotation
+	Pretty                     bool                      `json:",omitempty"`                       // Pretty-print JSON responses?
+	DeploymentID               *string                   `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
+	StatsReportInterval        *float64                  `json:",omitempty"`                       // Optional stats report interval (0 to disable)
+	CouchbaseKeepaliveInterval *int                      `json:",omitempty"`                       // TCP keep-alive interval between SG and Couchbase server
+	SlowQueryWarningThreshold  *int                      `json:",omitempty"`                       // Log warnings if N1QL queries take this many ms
+	MaxIncomingConnections     *int                      `json:",omitempty"`                       // Max # of incoming HTTP connections to accept
+	MaxFileDescriptors         *uint64                   `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
+	CompressResponses          *bool                     `json:",omitempty"`                       // If false, disables compression of HTTP responses
+	Databases                  DbConfigMap               `json:",omitempty"`                       // Pre-configured databases, mapped by name
+	Replications               []*ReplicateV1Config      `json:",omitempty"`                       // sg-replicate replication definitions
+	MaxHeartbeat               uint64                    `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
+	ClusterConfig              *ClusterConfig            `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
+	Unsupported                *UnsupportedServerConfig  `json:"unsupported,omitempty"`            // Config for unsupported features
+	ReplicatorCompression      *int                      `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
+	BcryptCost                 int                       `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
+	MetricsInterface           *string                   `json:"metricsInterface,omitempty"`       // Interface to bind metrics to. If not set then metrics isn't accessible
+	HideProductVersion         bool                      `json:"hide_product_version,omitempty"`   // Determines whether product versions removed from Server headers and REST API responses. This setting does not apply to the Admin REST API.
 
 	// TODO: Move to new config
 	AdminInterfaceAuthentication   *bool `json:"admin_interface_authentication,omitempty"`   // Defines whether the Admin API will support authentication. Defaults to true.
@@ -219,16 +218,16 @@ type DbConfigMap map[string]*DbConfig
 
 type ReplConfigMap map[string]*ReplicateV1Config
 
-type FacebookConfig struct {
+type FacebookConfigLegacy struct {
 	Register bool // If true, server will register new user accounts
 }
 
-type GoogleConfig struct {
+type GoogleConfigLegacy struct {
 	Register    bool     // If true, server will register new user accounts
 	AppClientID []string `json:"app_client_id"` // list of enabled client ids
 }
 
-type CORSConfigOld struct {
+type CORSConfigLegacy struct {
 	Origin      []string // List of allowed origins, use ["*"] to allow access from everywhere
 	LoginOrigin []string // List of allowed login origins
 	Headers     []string // List of allowed headers
@@ -1129,7 +1128,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 			ProfileInterface: profAddr,
 			Pretty:           *pretty,
 			ConfigServer:     configServer,
-			Logging: &base.LoggingConfig{
+			Logging: &base.LegacyLoggingConfig{
 				Console: base.ConsoleLoggerConfig{
 					// Enable the logger only when log keys have explicitly been set on the command line
 					FileLoggerConfig: base.FileLoggerConfig{Enabled: base.BoolPtr(*logKeys != "")},
@@ -1254,6 +1253,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 			RetryStrategy:  &base.GoCBv2FailFastRetryStrategy{},
 		}
 
+		// TODO: Retry loop in CBG-1458
 		err, c := base.RetryLoop("Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
 			cluster, err := gocb.Connect(sc.config.Bootstrap.Server, clusterOptions)
 			if err != nil {
@@ -1278,92 +1278,12 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		}
 
 		sc.bootstrapConnection = c.(*gocb.Cluster)
-		sc.fetchConfigs()
 
-		go func() {
-			t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency)
-			defer t.Stop()
-			for {
-				select {
-				case <-t.C:
-					base.Tracef(base.KeyAll, "Looking for new buckets and new configs")
-					sc.fetchConfigs()
-				case <-context.TODO().Done():
-					base.Debugf(base.KeyAll, "Stopping config update worker")
-					return
-				}
-			}
-		}()
+		// TODO: CBG-1457 Synchronously find configs in buckets
+		// sc.fetchConfigs()
 	}
 
 	return sc, nil
-}
-
-func (sc *ServerContext) fetchConfigs() {
-	buckets, err := sc.bootstrapConnection.Buckets().GetAllBuckets(nil)
-	if err != nil {
-		base.Warnf("Couldn't get buckets from cluster: %v", err)
-		return
-	}
-
-	configDocID := persistentConfigDocIDPrefix + sc.config.Bootstrap.ConfigGroupID
-
-	for bucketName := range buckets {
-		base.Tracef(base.KeyAll, "Checking bucket %q for Sync Gateway config in group %q", bucketName, sc.config.Bootstrap.ConfigGroupID)
-		configDoc, err := sc.bootstrapConnection.Bucket(bucketName).DefaultCollection().Get(configDocID, nil)
-		if errors.As(err, &gocb.ErrDocumentNotFound) {
-			base.Tracef(base.KeyAll, "Bucket %q did not contain config %q", bucketName, configDocID)
-			continue
-		}
-		if err != nil {
-			base.Warnf("Error fetching config %q from bucket %q: %v", configDocID, bucketName, err)
-			continue
-		}
-
-		// populate values from bootstrap, before we overwrite them with any values fetched from the bucket.
-		cnf := DbConfig{
-			BucketConfig: BucketConfig{
-				Server:     &sc.config.Bootstrap.Server,
-				Bucket:     &bucketName,
-				Username:   sc.config.Bootstrap.Username,
-				Password:   sc.config.Bootstrap.Password,
-				CertPath:   sc.config.Bootstrap.CertPath,
-				KeyPath:    sc.config.Bootstrap.KeyPath,
-				CACertPath: sc.config.Bootstrap.CACertPath,
-			},
-		}
-		if err := configDoc.Content(&cnf); err != nil {
-			base.Warnf("Error unmarshalling DbConfig %q from bucket %q: %v", configDocID, bucketName, err)
-			continue
-		}
-
-		configCas := configDoc.Cas()
-		base.Tracef(base.KeyAll, "Got config for bucket %q with cas %d", bucketName, configCas)
-
-		sc.lock.Lock()
-		if bucketDbConf, ok := sc.bucketDbConfigs[bucketName]; !ok || bucketDbConf.CAS < configCas {
-			if dbc := sc.databases_[cnf.Name]; dbc != nil {
-				runningBucket := dbc.Bucket.GetName()
-				if runningBucket != bucketName {
-					// trying to add a database of the same name against a different bucket... don't allow this.
-					base.Warnf("Database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, bucketName, cnf.Name, runningBucket)
-					sc.lock.Unlock()
-					continue
-				}
-			}
-
-			base.Infof(base.KeyAll, "Updated database %q for bucket %q with new config from bucket", cnf.Name, bucketName)
-			dbConfig := DatabaseConfig{CAS: configCas, Config: cnf}
-			sc.bucketDbConfigs[bucketName] = &dbConfig
-			sc.dbConfigs[cnf.Name] = &dbConfig
-			// TODO: Dynamic update instead of reload
-			if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
-				base.Warnf("Error reloading database: %v", err)
-			}
-		}
-		sc.lock.Unlock()
-	}
-
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)

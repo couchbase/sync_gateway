@@ -905,7 +905,7 @@ func TestBulkDocsUnusedSequencesMultipleSG(t *testing.T) {
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&LegacyServerConfig{
-		Facebook:       &FacebookConfig{},
+		Facebook:       &FacebookConfigLegacy{},
 		AdminInterface: &DefaultAdminInterface,
 	})
 
@@ -996,7 +996,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc(t *testing.T) {
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&LegacyServerConfig{
-		Facebook:       &FacebookConfig{},
+		Facebook:       &FacebookConfigLegacy{},
 		AdminInterface: &DefaultAdminInterface,
 	})
 
@@ -1094,7 +1094,7 @@ func TestBulkDocsUnusedSequencesMultiRevDoc2SG(t *testing.T) {
 	defer rt2.Close()
 
 	rt2.RestTesterServerContext = NewServerContext(&LegacyServerConfig{
-		Facebook:       &FacebookConfig{},
+		Facebook:       &FacebookConfigLegacy{},
 		AdminInterface: &DefaultAdminInterface,
 	})
 

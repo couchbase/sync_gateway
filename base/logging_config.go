@@ -43,7 +43,7 @@ const (
 // ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.
 var ErrUnsetLogFilePath = errors.New("No log_file_path property specified in config, and --defaultLogFilePath command line flag was not set. Log files required for product support are not being generated.")
 
-type LoggingConfig struct {
+type LegacyLoggingConfig struct {
 	LogFilePath          string              `json:"log_file_path,omitempty"`   // Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
 	RedactionLevel       RedactionLevel      `json:"redaction_level,omitempty"` // Redaction level to apply to log output.
 	Console              ConsoleLoggerConfig `json:"console,omitempty"`         // Console output

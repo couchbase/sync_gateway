@@ -66,7 +66,7 @@ func TestReadServerConfig(t *testing.T) {
 		{
 			name:        "incorrect type",
 			config:      `{"logging": true}`,
-			errStdlib:   `json: cannot unmarshal bool into Go struct field LegacyServerConfig.Logging of type base.LoggingConfig`,
+			errStdlib:   `json: cannot unmarshal bool into Go struct field LegacyServerConfig.Logging of type base.LegacyLoggingConfig`,
 			errJSONIter: `expect { or n, but found t`,
 		},
 		{
@@ -476,9 +476,9 @@ func TestMergeWith(t *testing.T) {
 	profileInterface := "127.0.0.1:4985"
 	configServer := "remote.config.server:4985/db"
 	deploymentID := "DeploymentID1008"
-	facebookConfig := FacebookConfig{Register: true}
+	facebookConfig := FacebookConfigLegacy{Register: true}
 
-	corsConfig := &CORSConfigOld{
+	corsConfig := &CORSConfigLegacy{
 		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
 		LoginOrigin: []string{"http://example.com"},
 		Headers:     []string{},
@@ -559,7 +559,7 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 
 	serverConfig := func() *LegacyServerConfig {
 		return &LegacyServerConfig{
-			Logging: &base.LoggingConfig{
+			Logging: &base.LegacyLoggingConfig{
 				DeprecatedDefaultLog: &base.LogAppenderConfig{
 					LogKeys:  logKeys,
 					LogLevel: base.PanicLevel,
@@ -606,7 +606,7 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 
 	// Call deprecatedConfigLoggingFallback with DeprecatedLogFilePath and without DeprecatedDefaultLog
 	config := &LegacyServerConfig{
-		Logging:               &base.LoggingConfig{},
+		Logging:               &base.LegacyLoggingConfig{},
 		DeprecatedLogFilePath: base.StringPtr(deprecatedDefaultLogFilePathAsFile.Name()),
 		DeprecatedLog:         deprecatedLog,
 	}
@@ -628,7 +628,7 @@ func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLoggingWithLoggingConfig")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	logFilePath := "/var/log/sync_gateway"
-	sc := &StartupConfig{Logging: LoggingConfig2{LogFilePath: logFilePath, RedactionLevel: base.RedactFull}}
+	sc := &StartupConfig{Logging: LoggingConfig{LogFilePath: logFilePath, RedactionLevel: base.RedactFull}}
 	err := sc.SetupAndValidateLogging()
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
@@ -1260,15 +1260,7 @@ func deleteTempFile(t *testing.T, file *os.File) {
 }
 
 func TestRedactPartialDefault(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	config := &ServerConfig{
-		Logging: &base.LoggingConfig{},
-	}
-	assert.Equal(t, base.RedactUnset, config.Logging.RedactionLevel)
-	assert.Equal(t, true, base.RedactUserData)
-
-	err := config.SetupAndValidateLogging()
-	require.NoError(t, err)
+	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
 }
@@ -1285,7 +1277,7 @@ func TestSetupServerContext(t *testing.T) {
 
 	t.Run("Create server context with BcryptCost inside allowed range", func(t *testing.T) {
 		config := &StartupConfig{
-			Logging: LoggingConfig2{
+			Logging: LoggingConfig{
 				RedactionLevel: base.RedactFull,
 			},
 			BcryptCost: bcrypt.MaxCost,
@@ -1299,7 +1291,7 @@ func TestSetupServerContext(t *testing.T) {
 
 	t.Run("Create server context with BcryptCost outside allowed range", func(t *testing.T) {
 		config := &StartupConfig{
-			Logging: LoggingConfig2{
+			Logging: LoggingConfig{
 				RedactionLevel: base.RedactPartial,
 			},
 			BcryptCost: bcrypt.MaxCost + 1,

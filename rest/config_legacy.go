@@ -44,7 +44,7 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 			CompressResponses:  lc.CompressResponses,
 			HideProductVersion: lc.HideProductVersion,
 		},
-		Logging: LoggingConfig2{},
+		Logging: LoggingConfig{},
 		Replicator: ReplicatorConfig{
 			MaxHeartbeat:    time.Second * time.Duration(lc.MaxHeartbeat),
 			BLIPCompression: lc.ReplicatorCompression,
@@ -73,13 +73,13 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 	}
 
 	if lc.Facebook != nil {
-		sc.Auth.Facebook = &FacebookConfig2{
+		sc.Auth.Facebook = &FacebookConfig{
 			Register: lc.Facebook.Register,
 		}
 	}
 
 	if lc.Google != nil {
-		sc.Auth.Google = &GoogleConfig2{
+		sc.Auth.Google = &GoogleConfig{
 			Register:    lc.Google.Register,
 			AppClientID: lc.Google.AppClientID,
 		}
