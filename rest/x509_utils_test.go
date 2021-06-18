@@ -301,7 +301,7 @@ func loadCertsIntoCouchbaseServer(couchbaseServerURL url.URL, ca *caPair, node *
 
 // couchbaseNodeConfiguredHostname returns the Couchbase node name for the given URL.
 func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
-	resp, err := http.Get(restAPIURL.String() + "/pools/default/nodeServices")
+	resp, err := http.Get(restAPIURL.String() + "/pools/default")
 	if err != nil {
 		return "", err
 	}
@@ -314,7 +314,7 @@ func couchbaseNodeConfiguredHostname(restAPIURL url.URL) (string, error) {
 		NodesExt []struct {
 			ThisNode bool   `json:"thisNode"`
 			Hostname string `json:"hostname"`
-		} `json:"nodesExt"`
+		} `json:"nodes"`
 	}
 	var respJSON respStruct
 	e := json.NewDecoder(resp.Body)
@@ -338,7 +338,7 @@ func assertHostnameMatch(t *testing.T, couchbaseServerURL *url.URL) {
 
 	nodeHostname, err := couchbaseNodeConfiguredHostname(restAPIURL)
 	require.NoError(t, err)
-	if nodeHostname != restAPIURL.Hostname() {
+	if nodeHostname != restAPIURL.Host {
 		t.Fatal("Test requires " + base.TestEnvCouchbaseServerUrl + " to be the same as the Couchbase Server node hostname...\n\n" +
 			"Use `curl -X POST " + restAPIURL.String() + "/node/controller/rename -d hostname=" + restAPIURL.Hostname() + "` before running test")
 	}
