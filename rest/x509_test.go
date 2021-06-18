@@ -26,7 +26,7 @@ import (
 func TestX509RoundtripUsingIP(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	tb, teardownFn := setupX509Tests(t, true)
+	tb, teardownFn, _, _, _ := setupX509Tests(t, true)
 	defer tb.Close()
 	defer teardownFn()
 
@@ -47,7 +47,7 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 func TestX509RoundtripUsingDomain(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
-	tb, teardownFn := setupX509Tests(t, false)
+	tb, teardownFn, _, _, _ := setupX509Tests(t, false)
 	defer tb.Close()
 	defer teardownFn()
 
@@ -63,7 +63,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 	require.NoError(t, err, "error waiting for doc over DCP")
 }
 
-func setupX509Tests(t *testing.T, useIPAddress bool) (*base.TestBucket, func()) {
+func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucket, teardownFunc func(), caCertPath string, certPath string, keyPath string) {
 	if !x509TestsEnabled() {
 		t.Skipf("x509 tests not enabled via %s flag", x509TestFlag)
 	}
@@ -120,5 +120,5 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (*base.TestBucket, func()) 
 	tb.BucketSpec.Certpath = sgPair.PEMFilepath
 	tb.BucketSpec.Keypath = sgPair.KeyFilePath
 
-	return tb, teardownFn
+	return tb, teardownFn, caCertPath, certPath, keyPath
 }
