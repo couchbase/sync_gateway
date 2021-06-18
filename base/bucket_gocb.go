@@ -2048,6 +2048,9 @@ func GoCBBucketMgmtEndpoints(bucket *gocb.Bucket) (url []string, err error) {
 // Get one of the management endpoints.  It will be a string such as http://couchbase
 func GoCBBucketMgmtEndpoint(bucket *gocb.Bucket) (url string, err error) {
 	mgmtEps, err := GoCBBucketMgmtEndpoints(bucket)
+	if err != nil {
+		return "", err
+	}
 	bucketEp := mgmtEps[rand.Intn(len(mgmtEps))]
 	return bucketEp, nil
 }
