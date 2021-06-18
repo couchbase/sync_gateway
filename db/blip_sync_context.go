@@ -580,9 +580,17 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
 	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
-	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID),
-		revID, len(knownRevs), attachmentStorageMeta)
+	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
 	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attachmentStorageMeta, properties, seq, nil)
+}
+
+// digests returns a slice of digest extracted from the given attachment meta.
+func digests(meta []AttachmentStorageMeta) []string {
+	digests := make([]string, len(meta))
+	for _, m := range meta {
+		digests = append(digests, m.digest)
+	}
+	return digests
 }
 
 func toHistory(revisions Revisions, knownRevs map[string]bool, maxHistory int) []string {

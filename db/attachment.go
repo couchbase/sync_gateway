@@ -12,8 +12,6 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
-	"fmt"
-
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -315,7 +313,7 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 					if version, ok := base.ToInt64(attMap["ver"]); ok {
 						m.version = version
 					} else {
-						m.version = int64(AttachmentStorageModelVersion1)
+						m.version = legacyAttachmentVersion
 					}
 					meta = append(meta, m)
 				}
@@ -346,19 +344,8 @@ func Sha1DigestKey(data []byte) string {
 	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
 
-// AttachmentStorageModelVersion is used to distinguish
-// between legacy and non-legacy attachments.
-type AttachmentStorageModelVersion int64
-
-const (
-	// AttachmentStorageModelVersion1 on the attachment metadata indicates that the
-	// attachment is shared across documents — multiple documents can reference a
-	// given attachment, and multiple revisions of the same document can reference
-	// a given attachment.
-	AttachmentStorageModelVersion1 AttachmentStorageModelVersion = iota + 1
-)
-
-// String returns string representation of the attachment version.
-func (v AttachmentStorageModelVersion) String() string {
-	return fmt.Sprintf("%d", int(v))
-}
+// legacyAttachmentVersion on the attachment metadata indicates that the
+// attachment is shared across documents — multiple documents can reference a
+// given attachment, and multiple revisions of the same document can reference
+// a given attachment.
+const legacyAttachmentVersion int64 = 1

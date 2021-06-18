@@ -958,12 +958,12 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	}
 
 	attachmentAllowedKey := digest
-	if bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
-		id := getAttachmentParams.id()
-		if id == "" {
+	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
+		docID := getAttachmentParams.docID()
+		if docID == "" {
 			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'id'")
 		}
-		attachmentAllowedKey = id + digest
+		attachmentAllowedKey = docID + digest
 	}
 
 	if !bh.isAttachmentAllowed(attachmentAllowedKey) {
@@ -996,7 +996,7 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 		outrq.Properties[BlipCompress] = "true"
 	}
 
-	if bh.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
 		outrq.Properties[GetAttachmentID] = docID
 	}
 
@@ -1111,10 +1111,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
 	for _, attachment := range attMeta {
-		key := attachment.digest
-		if bsc.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
-			key = docID + attachment.digest
-		}
+		key := docID + attachment.digest
 		att, found := bsc.allowedAttachments[key]
 		if !found {
 			bsc.allowedAttachments[key] = AllowedAttachment{
@@ -1123,7 +1120,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 				counter: 1,
 			}
 		}
-		if att.version == int64(AttachmentStorageModelVersion1) {
+		if att.version == legacyAttachmentVersion {
 			att.counter = att.counter + 1
 			bsc.allowedAttachments[attachment.digest] = att
 		}
@@ -1141,7 +1138,7 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 	defer bsc.lock.Unlock()
 
 	for _, attachment := range attMeta {
-		if bsc.blipContext.ActiveProtocol() == BlipCBMobileReplicationV3 {
+		if attachment.version == legacyAttachmentVersion {
 			key := docID + attachment.digest
 			delete(bsc.allowedAttachments, key)
 		} else {

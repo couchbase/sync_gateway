@@ -88,7 +88,7 @@ const (
 	ProposeChangesResponseDeltas = "deltas"
 
 	// getAttachment message properties
-	GetAttachmentID     = "id"
+	GetAttachmentID     = "docID"
 	GetAttachmentDigest = "digest"
 
 	// proveAttachment
@@ -439,16 +439,10 @@ func (g *getAttachmentParams) digest() string {
 	return g.rq.Properties[GetAttachmentDigest]
 }
 
-func (g *getAttachmentParams) id() string {
+func (g *getAttachmentParams) docID() string {
 	return g.rq.Properties[GetAttachmentID]
 }
 
 func (g *getAttachmentParams) String() string {
-
-	buffer := bytes.NewBufferString("")
-
-	buffer.WriteString(fmt.Sprintf("Digest:%v, ID: %v ", g.digest(), g.id()))
-
-	return buffer.String()
-
+	return fmt.Sprintf("Digest:%v, DocID: %v ", g.digest(), g.docID())
 }

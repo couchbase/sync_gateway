@@ -1312,7 +1312,7 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 			getAttachmentRequest := blip.NewRequest()
 			getAttachmentRequest.SetProfile(db.MessageGetAttachment)
 			getAttachmentRequest.Properties[db.GetAttachmentDigest] = attachment.Digest
-			if bt.blipContext.ActiveProtocol() == db.BlipCBMobileReplicationV3 {
+			if bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV3 {
 				getAttachmentRequest.Properties[db.GetAttachmentID] = docId
 			}
 			sent := bt.sender.Send(getAttachmentRequest)
