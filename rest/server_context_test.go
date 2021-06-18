@@ -303,7 +303,7 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 	eps, err := ctx.ObtainManagementEndpoints()
 	assert.NoError(t, err)
 
-	clusterAddress, _, _, _, _, _ := ctx.tempConnectionDetails()
+	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
 	baseSpec, err := connstr.Parse(clusterAddress)
 	require.NoError(t, err)
 
@@ -316,6 +316,48 @@ outerLoop:
 	for _, httpHost := range spec.HttpHosts {
 		for _, ep := range eps {
 			formattedHttpHost := fmt.Sprintf("http://%s:%d", httpHost.Host, httpHost.Port)
+			if formattedHttpHost == ep {
+				existsOneMatchingEndpoint = true
+				break outerLoop
+			}
+		}
+	}
+
+	assert.True(t, existsOneMatchingEndpoint)
+}
+
+func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
+	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	defer tb.Close()
+	defer teardownFn()
+
+	original := tempConnectionDetailsForManagementEndpoints
+	defer func() {
+		tempConnectionDetailsForManagementEndpoints = original
+	}()
+
+	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
+		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
+	}
+
+	ctx := NewServerContext(&ServerConfig{})
+	defer ctx.Close()
+
+	eps, err := ctx.ObtainManagementEndpoints()
+	assert.NoError(t, err)
+
+	baseSpec, err := connstr.Parse(base.UnitTestUrl())
+	require.NoError(t, err)
+
+	spec, err := connstr.Resolve(baseSpec)
+	require.NoError(t, err)
+
+	existsOneMatchingEndpoint := false
+
+outerLoop:
+	for _, httpHost := range spec.HttpHosts {
+		for _, ep := range eps {
+			formattedHttpHost := fmt.Sprintf("https://%s:%d", httpHost.Host, httpHost.Port)
 			if formattedHttpHost == ep {
 				existsOneMatchingEndpoint = true
 				break outerLoop

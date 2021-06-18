@@ -1191,12 +1191,12 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 }
 
 // FIXME: Temporary connection settings. Awaiting bootstrap PR so we can use those details directly from server context
-func (sc *ServerContext) tempConnectionDetails() (serverAddress string, username string, password string, certPath string, keyPath string, caCertPath string) {
+var tempConnectionDetailsForManagementEndpoints = func() (serverAddress string, username string, password string, certPath string, keyPath string, caCertPath string) {
 	return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), "", "", ""
 }
 
 func (sc *ServerContext) ObtainManagementEndpoints() ([]string, error) {
-	clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath := sc.tempConnectionDetails()
+	clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath := tempConnectionDetailsForManagementEndpoints()
 	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath)
 	if err != nil {
 		return nil, err
