@@ -2,6 +2,7 @@ package rest
 
 import (
 	"flag"
+	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -39,22 +40,60 @@ func legacyServerMain(osArgs []string) error {
 }
 
 func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
-	sc := StartupConfig{}
+	publicInterface := fs.String("interface", DefaultPublicInterface, "Address to bind to")
+	adminInterface := fs.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
+	profileInterface := fs.String("profileInterface", "", "Address to bind profile interface to")
+	pretty := fs.Bool("pretty", false, "Pretty-print JSON responses")
+	verbose := fs.Bool("verbose", false, "Log more info about requests")
 
-	fs.String("interface", DefaultPublicInterface, "Address to bind to")
-	fs.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
-	fs.String("profileInterface", "", "Address to bind profile interface to")
-	fs.String("configServer", "", "URL of server that can return database configs")
-	fs.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	fs.String("url", "", "Address of Couchbase server")
-	fs.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
-	fs.Bool("pretty", false, "Pretty-print JSON responses")
-	fs.Bool("verbose", false, "Log more info about requests")
-	fs.String("log", "", "Log keys, comma separated")
-	fs.String("logFilePath", "", "Path to log files")
-	fs.String("certpath", "", "Client certificate path")
-	fs.String("cacertpath", "", "Root CA certificate path")
-	fs.String("keypath", "", "Client certificate key path")
+	url := fs.String("url", "", "Address of Couchbase server")
+	certPath := fs.String("certpath", "", "Client certificate path")
+	keyPath := fs.String("keypath", "", "Client certificate key path")
+	caCertPath := fs.String("cacertpath", "", "Root CA certificate path")
+
+	log := fs.String("log", "", "Log keys, comma separated")
+	logFilePath := fs.String("logFilePath", "", "Path to log files")
+
+	var logLevel *base.LogLevel
+	if *verbose {
+		logLevel = base.LogLevelPtr(base.LevelInfo)
+	}
+
+	sc := StartupConfig{
+		Bootstrap: BootstrapConfig{
+			Server:     *url,
+			CertPath:   *certPath,
+			KeyPath:    *keyPath,
+			CACertPath: *caCertPath,
+		},
+		API: APIConfig{
+			PublicInterface:  *publicInterface,
+			AdminInterface:   *adminInterface,
+			ProfileInterface: *profileInterface,
+			Pretty:           *pretty,
+		},
+		Logging: LoggingConfig{
+			LogFilePath: *logFilePath,
+			Console: &base.ConsoleLoggerConfig{
+				LogLevel: logLevel,
+				LogKeys:  strings.Split(*log, ","),
+			},
+		},
+	}
+
+	// removed options
+	dbname := fs.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
+	if *dbname != "" {
+		//
+	}
+	configServer := fs.String("configServer", "", "URL of server that can return database configs")
+	if *configServer != "" {
+		//
+	}
+	deploymentID := fs.String("deploymentID", "", "Customer/project identifier for stats reporting")
+	if *deploymentID != "" {
+		//
+	}
 
 	return &sc
 }

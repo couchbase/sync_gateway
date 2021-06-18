@@ -126,6 +126,7 @@ func InitLogging(defaultLogFilePath, logFilePath string,
 	return nil
 }
 
+// NewMemoryLogger will log to a buffer, which can then be flushed out elsewhere later.
 func NewMemoryLogger(level LogLevel) *FileLogger {
 	logger := &FileLogger{
 		Enabled: true,
@@ -138,7 +139,8 @@ func NewMemoryLogger(level LogLevel) *FileLogger {
 	return logger
 }
 
-func InitializeLoggers() {
+// InitializeMemoryLoggers will set the global loggers to a in-memory logging buffer, to be flushed to configured outputs at a later time.
+func InitializeMemoryLoggers() {
 	errorLogger = NewMemoryLogger(LevelError)
 	warnLogger = NewMemoryLogger(LevelWarn)
 	infoLogger = NewMemoryLogger(LevelInfo)

@@ -22,10 +22,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	RegisterSignalHandler()
 	defer base.FatalPanicHandler()
 
-	base.InitializeLoggers()
-
-	// We can log version here because for console we have initialized an early logger in init() and for file loggers we
-	// have the memory buffers.
+	base.InitializeMemoryLoggers()
 	base.LogSyncGatewayVersion()
 
 	fs := flag.NewFlagSet(osArgs[0], flag.ContinueOnError)

@@ -20,14 +20,8 @@ func serverMainPersistentConfig(osArgs []string, fs *flag.FlagSet, flagStartupCo
 
 	fileStartupConfig, err := LoadStartupConfigFromPaths(fs.Args()...)
 	if pkgerrors.Cause(err) == base.ErrUnknownField {
-		base.Warnf("Couldn't parse config file as startup config - trying as legacy config: %v", err)
-		if legacyErr := legacyServerMain(osArgs); legacyErr != nil {
-			base.Warnf("Couldn't parse config file as legacy config: %v", legacyErr)
-
-			// return the original 3.0 config load error if we still can't do that
-			return fmt.Errorf("Couldn't load config file: %w", err)
-		}
-		// TODO: CBG-1399 Do automatic config upograde
+		// TODO: CBG-1399 Do automatic legacy config upgrade here
+		return fmt.Errorf("Couldn't parse config file: %w (legacy config upgrade not yet implemented)", err)
 	} else if err != nil {
 		return fmt.Errorf("Couldn't open config file: %w", err)
 	}

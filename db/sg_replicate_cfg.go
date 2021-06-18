@@ -909,7 +909,7 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 }
 
 // PutReplications sets the value of one or more replications in the config
-func (m *sgReplicateManager) PutReplications(replications map[string]*ReplicationConfig, sgr1CheckpointIDs map[string]string) error {
+func (m *sgReplicateManager) PutReplications(replications map[string]*ReplicationConfig) error {
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		if len(replications) == 0 {
 			return true, nil
@@ -927,9 +927,9 @@ func (m *sgReplicateManager) PutReplications(replications map[string]*Replicatio
 					replicationCfg.TargetState = ReplicationStateRunning
 				}
 			}
-			if sgr1CheckpointID, ok := sgr1CheckpointIDs[replicationID]; ok {
-				replicationCfg.SGR1CheckpointID = sgr1CheckpointID
-			}
+			// if sgr1CheckpointID, ok := sgr1CheckpointIDs[replicationID]; ok {
+			// 	replicationCfg.SGR1CheckpointID = sgr1CheckpointID
+			// }
 			replicationCfg.ReplicationConfig = *replication
 			cluster.Replications[replicationID] = replicationCfg
 		}
