@@ -3303,8 +3303,15 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	docRevID = rt.createDocReturnRev(t, "doc", docRevID, map[string]interface{}{"channels": []string{}})
 	_ = rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": []string{"!"}})
 
-	changes, err = rt.WaitForChanges(0, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
+	changes, err = rt.WaitForChanges(2, fmt.Sprintf("/db/_changes?since=%s&revocations=true", changes.Last_Seq), "user", true)
 	require.NoError(t, err)
+	assert.Len(t, changes.Results, 2)
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.Equal(t, "3-1bc9dd04c8a257ba28a41eaad90d32de", changes.Results[0].Changes[0]["rev"])
+	assert.False(t, changes.Results[0].Revoked)
+	assert.Equal(t, "docmarker", changes.Results[1].ID)
+	assert.Equal(t, "1-999bcad4aab47f0a8a24bd9d3598060c", changes.Results[1].Changes[0]["rev"])
+	assert.False(t, changes.Results[1].Revoked)
 
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
