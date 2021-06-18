@@ -137,9 +137,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Auth.Facebook = &FacebookConfig{}
 
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
-
-	// FIXME
-	// Replications: rt.RestTesterConfig.sgr1Replications,
+	rt.RestTesterServerContext.legacyReplications = rt.RestTesterConfig.sgr1Replications
 
 	useXattrs := base.TestUseXattrs()
 

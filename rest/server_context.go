@@ -28,6 +28,7 @@ import (
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
+	sgreplicate "github.com/couchbaselabs/sg-replicate"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -52,6 +53,7 @@ type ServerContext struct {
 	// databases_ is a map of dbname to db.DatabaseContext
 	databases_          map[string]*db.DatabaseContext
 	lock                sync.RWMutex
+	legacyReplications  []*ReplicateV1Config
 	statsContext        *statsContext
 	bootstrapConnection *gocb.Cluster
 	HTTPClient          *http.Client
@@ -121,6 +123,15 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
 
+	// Start sg-replicate 1.x replications.
+	// Introduce a minor delay if there are any replications
+	// (sc.startLegacyReplicators() might rely on SG being fully started)
+	if len(sc.legacyReplications) > 0 {
+		base.Warnf("Using deprecated top-level 'replications' property in config. Use database-level 'replications' instead.")
+		time.Sleep(time.Second)
+	}
+	sc.startLegacyReplicators()
+
 	// Start sg-replicate2 replications per-database.  sg-replicate2 replications aren't
 	// started until at least 5 seconds after SG node start, to avoid replication reassignment churn
 	// when a Sync Gateway Cluster is being initialized
@@ -135,6 +146,34 @@ func (sc *ServerContext) PostStartup() {
 		}
 	}
 	sc.lock.RUnlock()
+
+}
+
+// startLegacyReplicators will start up any replicators for the ServerContext
+func (sc *ServerContext) startLegacyReplicators() {
+
+	for _, replicationConfig := range sc.legacyReplications {
+		if replicationConfig.upgradedToSGR2 {
+			base.Infof(base.KeyReplicate, "Replication %q was upgraded, preventing startup of v1 replication.", replicationConfig.ReplicationId)
+			continue
+		}
+
+		params, _, _, err := validateReplicateV1Parameters(*replicationConfig, true, sc.config.API.AdminInterface)
+		if err != nil {
+			base.Errorf("Error validating replication parameters: %v", err)
+			continue
+		}
+
+		// Force one-shot replications to run Async
+		// to avoid blocking server startup
+		params.Async = true
+
+		// Run single replication, cancel parameter will always be false
+		if _, err := sc.replicator.Replicate(params, false); err != nil {
+			base.Warnf("Error starting replication %v: %v", base.UD(params.ReplicationId), err)
+		}
+
+	}
 
 }
 
@@ -460,90 +499,87 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		return nil, err
 	}
 
-	/*
-		sgr1CheckpointIDs := make(map[string]string, len(config.Replications))
+	sgr1CheckpointIDs := make(map[string]string, len(config.Config.Replications))
 
-		// Validate replications and fetch SGR1 checkpoint IDs, if any match.
-		for replicationID, replicationConfig := range config.Replications {
-			if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
-				return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
-			}
-			replicationConfig.ID = replicationID
-			if validateErr := replicationConfig.ValidateReplication(true); validateErr != nil {
-				return nil, validateErr
-			}
+	// Validate replications and fetch SGR1 checkpoint IDs, if any match.
+	for replicationID, replicationConfig := range config.Config.Replications {
+		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
+			return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
+		}
+		replicationConfig.ID = replicationID
+		if validateErr := replicationConfig.ValidateReplication(true); validateErr != nil {
+			return nil, validateErr
+		}
 
-			// Only support SGR1 checkpoint upgrade if the replication is unidirectional.
-			if replicationConfig.Direction == db.ActiveReplicatorTypePush || replicationConfig.Direction == db.ActiveReplicatorTypePull {
-				// SGR1 checkpoint fallback:
-				// If we match based on replication ID, we'll generate the SGR1 checkpoint ID and use it as a fallback in the event that no
-				// SGR2 checkpoints can be found. This needs to be persisted cluster-wide so that an assigned node that is not running SGR1 replications can still utilise the existing checkpoint.
-				// SGR1 replications were unidirectional only, and so we can't match replication IDs for SGR1 checkpoints in the event of a pushAndPull SGR2 replication.
-				for _, sgr1ReplicationConfig := range sc.config.Replications {
-					if sgr1ReplicationConfig.ReplicationId != replicationID {
-						continue
-					}
-					base.Debugf(base.KeyReplicate, "Matched replication IDs for SGR1 checkpoint fallback: %v %v", replicationConfig, sgr1ReplicationConfig)
-
-					// don't have running replications available before startup, so regenerate the params in this case for us to generate a checkpoint ID.
-					params, _, localdb, err := validateReplicateV1Parameters(*sgr1ReplicationConfig, true, *sc.config.AdminInterface)
-					if err != nil {
-						base.Warnf("Couldn't build SGR1 replication parameters for replication config: %v", err)
-						break
-					}
-
-					if !localdb {
-						base.Warnf("SGR1 replication was not a local replication, no equivalent SGR2 replication.")
-						break
-					}
-
-					// Verify source/target of SGR1 matches SGR2.
-					if replicationConfig.Direction == db.ActiveReplicatorTypePush {
-						if params.SourceDb != dbName {
-							base.Warnf("SGR1 replication SourceDB did not match SGR2 database... Can't use SGR1 checkpoints")
-							break
-						}
-						if params.GetTargetDbUrl() != replicationConfig.Remote {
-							base.Warnf("SGR1 replication TargetDB did not match SGR2 remote... Can't use SGR1 checkpoints")
-							break
-						}
-					} else if replicationConfig.Direction == db.ActiveReplicatorTypePull {
-						if params.TargetDb != dbName {
-							base.Warnf("SGR1 replication TargetDB did not match SGR2 database... Can't use SGR1 checkpoints")
-							break
-						}
-						if params.GetSourceDbUrl() != replicationConfig.Remote {
-							base.Warnf("SGR1 replication SourceDB did not match SGR2 remote... Can't use SGR1 checkpoints")
-							break
-						}
-					}
-
-					// TODO: We don't ensure further SGR1 and SGR2 params match (Filter, Channels, etc.)
-					// It's possible for users to change replication filters when moving to SGR2 and have an invalid SGR1 checkpoint used.
-
-					// replications derived from the SG config have Async forced to true, so we'll do that here to generate the same checkpoint ID.
-					params.Async = true
-					// sg-replicate itself forces a one-shot lifecycle due to the implementation of continuous,
-					// but not something we're concerned about for checkpoint ID purposes.
-					params.Lifecycle = sgreplicate.ONE_SHOT
-
-					sgr1CheckpointID, err := params.TargetCheckpointAddress()
-					if err != nil {
-						base.Warnf("Couldn't generate SGR1 checkpoint ID from replication parameters: %v", err)
-						break
-					}
-
-					base.Infof(base.KeyReplicate, "Got SGR1 checkpoint ID for fallback in replication %q: %v", replicationID, sgr1CheckpointID)
-					sgr1CheckpointIDs[replicationID] = sgr1CheckpointID
-					sgr1ReplicationConfig.upgradedToSGR2 = true
+		// Only support SGR1 checkpoint upgrade if the replication is unidirectional.
+		if replicationConfig.Direction == db.ActiveReplicatorTypePush || replicationConfig.Direction == db.ActiveReplicatorTypePull {
+			// SGR1 checkpoint fallback:
+			// If we match based on replication ID, we'll generate the SGR1 checkpoint ID and use it as a fallback in the event that no
+			// SGR2 checkpoints can be found. This needs to be persisted cluster-wide so that an assigned node that is not running SGR1 replications can still utilise the existing checkpoint.
+			// SGR1 replications were unidirectional only, and so we can't match replication IDs for SGR1 checkpoints in the event of a pushAndPull SGR2 replication.
+			for _, sgr1ReplicationConfig := range sc.legacyReplications {
+				if sgr1ReplicationConfig.ReplicationId != replicationID {
+					continue
 				}
+				base.Debugf(base.KeyReplicate, "Matched replication IDs for SGR1 checkpoint fallback: %v %v", replicationConfig, sgr1ReplicationConfig)
+
+				// don't have running replications available before startup, so regenerate the params in this case for us to generate a checkpoint ID.
+				params, _, localdb, err := validateReplicateV1Parameters(*sgr1ReplicationConfig, true, sc.config.API.AdminInterface)
+				if err != nil {
+					base.Warnf("Couldn't build SGR1 replication parameters for replication config: %v", err)
+					break
+				}
+
+				if !localdb {
+					base.Warnf("SGR1 replication was not a local replication, no equivalent SGR2 replication.")
+					break
+				}
+
+				// Verify source/target of SGR1 matches SGR2.
+				if replicationConfig.Direction == db.ActiveReplicatorTypePush {
+					if params.SourceDb != dbName {
+						base.Warnf("SGR1 replication SourceDB did not match SGR2 database... Can't use SGR1 checkpoints")
+						break
+					}
+					if params.GetTargetDbUrl() != replicationConfig.Remote {
+						base.Warnf("SGR1 replication TargetDB did not match SGR2 remote... Can't use SGR1 checkpoints")
+						break
+					}
+				} else if replicationConfig.Direction == db.ActiveReplicatorTypePull {
+					if params.TargetDb != dbName {
+						base.Warnf("SGR1 replication TargetDB did not match SGR2 database... Can't use SGR1 checkpoints")
+						break
+					}
+					if params.GetSourceDbUrl() != replicationConfig.Remote {
+						base.Warnf("SGR1 replication SourceDB did not match SGR2 remote... Can't use SGR1 checkpoints")
+						break
+					}
+				}
+
+				// TODO: We don't ensure further SGR1 and SGR2 params match (Filter, Channels, etc.)
+				// It's possible for users to change replication filters when moving to SGR2 and have an invalid SGR1 checkpoint used.
+
+				// replications derived from the SG config have Async forced to true, so we'll do that here to generate the same checkpoint ID.
+				params.Async = true
+				// sg-replicate itself forces a one-shot lifecycle due to the implementation of continuous,
+				// but not something we're concerned about for checkpoint ID purposes.
+				params.Lifecycle = sgreplicate.ONE_SHOT
+
+				sgr1CheckpointID, err := params.TargetCheckpointAddress()
+				if err != nil {
+					base.Warnf("Couldn't generate SGR1 checkpoint ID from replication parameters: %v", err)
+					break
+				}
+
+				base.Infof(base.KeyReplicate, "Got SGR1 checkpoint ID for fallback in replication %q: %v", replicationID, sgr1CheckpointID)
+				sgr1CheckpointIDs[replicationID] = sgr1CheckpointID
+				sgr1ReplicationConfig.upgradedToSGR2 = true
 			}
 		}
-	*/
+	}
 
 	// Upsert replications
-	// TODO: Include sgr1CheckpointID from above
-	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Config.Replications)
+	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Config.Replications, sgr1CheckpointIDs)
 	if replicationErr != nil {
 		return nil, replicationErr
 	}

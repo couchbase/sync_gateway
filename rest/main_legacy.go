@@ -36,6 +36,8 @@ func legacyServerMain(osArgs []string) error {
 		return err
 	}
 
+	ctx.legacyReplications = config.Replications
+
 	return startServer(sc, ctx)
 }
 

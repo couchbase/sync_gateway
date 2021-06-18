@@ -28,10 +28,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/couchbase/gocb"
 	"github.com/hashicorp/go-multierror"
 	pkgerrors "github.com/pkg/errors"
 
+	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"

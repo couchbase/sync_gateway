@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1542,8 +1543,6 @@ func TestGetStatusWithReplication(t *testing.T) {
 	require.Equal(t, 0, len(status.Databases["db"].ReplicationStatus))
 }
 
-/* FIXME SGR1 - depends on old config
-
 // TestSGR1CheckpointMigrationPull defines an SGR1 replication, which replicates and checkpoints a single doc,
 // and then restarts with a matching SGR2 replication, which should migrate the SGR1 checkpoint,
 // and also prevent the SGR1 replication from starting up.
@@ -1649,7 +1648,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 
 			activeRTSGR1HTTPServer := NewHTTPTestServerOnListener(activeRTSGR1.TestAdminHandler(), l)
 
-			activeRTSGR1.ServerContext().startReplicators()
+			activeRTSGR1.ServerContext().startLegacyReplicators()
 
 			// wait for documents originally written to remoteRT to arrive at activeRT
 			changesResults := activeRTSGR1.RequireWaitChanges(2, "0")
@@ -1698,7 +1697,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 			activeRTSGR2HTTPServer := NewHTTPTestServerOnListener(activeRTSGR2.TestAdminHandler(), l)
 			defer activeRTSGR2HTTPServer.Close()
 
-			activeRTSGR2.ServerContext().startReplicators()
+			activeRTSGR2.ServerContext().startLegacyReplicators()
 			require.NoError(t, activeRTSGR2.GetDatabase().SGReplicateMgr.StartReplications())
 
 			// wait for documents originally written to remoteRT to arrive at activeRT
@@ -1838,7 +1837,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	_ = activeRTSGR1.putDoc(docABC1, `{"source":"activeRTSGR1","channels":["ABC"]}`)
 	_ = activeRTSGR1.putDoc(docDEF1, `{"source":"activeRTSGR1","channels":["DEF"]}`)
 
-	activeRTSGR1.ServerContext().startReplicators()
+	activeRTSGR1.ServerContext().startLegacyReplicators()
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
 	changesResults := remoteRT.RequireWaitChanges(2, "0")
@@ -1895,7 +1894,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 
 	require.NoError(t, activeRTSGR2.WaitForPendingChanges())
 
-	activeRTSGR2.ServerContext().startReplicators()
+	activeRTSGR2.ServerContext().startLegacyReplicators()
 	require.NoError(t, activeRTSGR2.GetDatabase().SGReplicateMgr.StartReplications())
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
@@ -1927,7 +1926,6 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 
 	assert.NoError(t, r.Stop())
 }
-*/
 
 func TestRequireReplicatorStoppedBeforeUpsert(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)()
