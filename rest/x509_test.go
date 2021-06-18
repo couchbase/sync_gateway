@@ -114,11 +114,15 @@ func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucke
 		tb.BucketSpec.Server = "couchbases://" + testURL.Hostname()
 	}
 
+	caCertPath = ca.PEMFilepath
+	certPath = sgPair.PEMFilepath
+	keyPath = sgPair.KeyFilePath
+
 	// use x509 for auth
 	tb.BucketSpec.Auth = base.NoPasswordAuthHandler{Handler: tb.BucketSpec.Auth}
-	tb.BucketSpec.CACertPath = ca.PEMFilepath
-	tb.BucketSpec.Certpath = sgPair.PEMFilepath
-	tb.BucketSpec.Keypath = sgPair.KeyFilePath
+	tb.BucketSpec.CACertPath = caCertPath
+	tb.BucketSpec.Certpath = certPath
+	tb.BucketSpec.Keypath = keyPath
 
 	return tb, teardownFn, caCertPath, certPath, keyPath
 }
