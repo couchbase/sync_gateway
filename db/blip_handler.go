@@ -1114,7 +1114,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
 			key := docID + attachment.digest
 			att, found := bsc.allowedAttachments[key]
-			if found && att.version == legacyAttachmentVersion {
+			if found && att.version == LegacyAttachmentVersion {
 				att.counter = att.counter + 1
 				bsc.allowedAttachments[attachment.digest] = att
 			} else {
@@ -1126,9 +1126,15 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 			}
 		} else {
 			att, found := bsc.allowedAttachments[attachment.digest]
-			if found && att.version == legacyAttachmentVersion {
+			if found && att.version == LegacyAttachmentVersion {
 				att.counter = att.counter + 1
 				bsc.allowedAttachments[attachment.digest] = att
+			} else {
+				bsc.allowedAttachments[attachment.digest] = AllowedAttachment{
+					docID:   docID,
+					version: attachment.version,
+					counter: 1,
+				}
 			}
 		}
 	}
@@ -1150,7 +1156,7 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 			delete(bsc.allowedAttachments, key)
 		} else {
 			att := bsc.allowedAttachments[attachment.digest]
-			if n := att.counter; n > 1 && att.version == legacyAttachmentVersion {
+			if n := att.counter; n > 1 && att.version == LegacyAttachmentVersion {
 				att.counter = n - 1
 				bsc.allowedAttachments[attachment.digest] = att
 			} else {

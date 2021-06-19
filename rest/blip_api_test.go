@@ -1450,54 +1450,69 @@ func TestPutAttachmentViaBlipGetViaRest(t *testing.T) {
 }
 
 func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
-
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
 
-	// Create blip tester
-	bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
-		connectingUsername:          "user1",
-		connectingPassword:          "1234",
-		connectingUserChannelGrants: []string{"*"}, // All channels
-	})
-	require.NoError(t, err, "Unexpected error creating BlipTester")
-	defer bt.Close()
-
-	attachmentBody := "attach"
-	digest := db.Sha1DigestKey([]byte(attachmentBody))
-
-	// Send revision with attachment
-	input := SendRevWithAttachmentInput{
-		docId:            "doc",
-		revId:            "1-rev1",
-		attachmentName:   "myAttachment",
-		attachmentLength: len(attachmentBody),
-		attachmentBody:   attachmentBody,
-		attachmentDigest: digest,
+	var tests = []struct {
+		name                   string
+		inputBlipProtocol      string
+		inputAttachmentVersion int64
+	}{
+		{"TestPutAttViaBlipGetViaBlipCBMobile2AttVer1", db.BlipCBMobileReplicationV2, db.LegacyAttachmentVersion},
+		{"TestPutAttViaBlipGetViaBlipCBMobile2AttVer2", db.BlipCBMobileReplicationV2, db.NonLegacyAttachmentVersion},
+		{"TestPutAttViaBlipGetViaBlipCBMobile3AttVer1", db.BlipCBMobileReplicationV3, db.LegacyAttachmentVersion},
+		{"TestPutAttViaBlipGetViaBlipCBMobile3AttVer2", db.BlipCBMobileReplicationV3, db.NonLegacyAttachmentVersion},
 	}
-	sent, _, _ := bt.SendRevWithAttachment(input)
-	goassert.True(t, sent)
 
-	// Get all docs and attachment via subChanges request
-	allDocs, ok := bt.WaitForNumDocsViaChanges(1)
-	require.True(t, ok)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create blip tester
+			bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+				connectingUsername:          "user1",
+				connectingPassword:          "1234",
+				connectingUserChannelGrants: []string{"*"}, // All channels
+				blipProtocols:               []string{tt.inputBlipProtocol},
+			})
+			require.NoError(t, err, "Unexpected error creating BlipTester")
+			defer bt.Close()
 
-	// make assertions on allDocs -- make sure attachment is present w/ expected body
-	require.Len(t, allDocs, 1)
-	retrievedDoc := allDocs[input.docId]
+			attachmentBody := "attach"
+			digest := db.Sha1DigestKey([]byte(attachmentBody))
 
-	// doc assertions
-	goassert.Equals(t, retrievedDoc.ID(), input.docId)
-	goassert.Equals(t, retrievedDoc.RevID(), input.revId)
+			// Send revision with attachment
+			input := SendRevWithAttachmentInput{
+				docId:            "doc",
+				revId:            "1-rev1",
+				attachmentName:   "myAttachment",
+				attachmentLength: len(attachmentBody),
+				attachmentBody:   attachmentBody,
+				attachmentDigest: digest,
+			}
+			sent, _, _ := bt.SendRevWithAttachment(input)
+			require.True(t, sent)
 
-	// attachment assertions
-	attachments, err := retrievedDoc.GetAttachments()
-	goassert.True(t, err == nil)
-	goassert.Equals(t, len(attachments), 1)
-	retrievedAttachment := attachments[input.attachmentName]
-	require.NotNil(t, retrievedAttachment)
-	goassert.Equals(t, string(retrievedAttachment.Data), input.attachmentBody)
-	goassert.Equals(t, retrievedAttachment.Length, len(attachmentBody))
-	goassert.Equals(t, input.attachmentDigest, retrievedAttachment.Digest)
+			// Get all docs and attachment via subChanges request
+			allDocs, ok := bt.WaitForNumDocsViaChanges(1)
+			require.True(t, ok)
+
+			// make assertions on allDocs -- make sure attachment is present w/ expected body
+			require.Len(t, allDocs, 1)
+			retrievedDoc := allDocs[input.docId]
+
+			// doc assertions
+			require.Equal(t, input.docId, retrievedDoc.ID())
+			require.Equal(t, input.revId, retrievedDoc.RevID())
+
+			// attachment assertions
+			attachments, err := retrievedDoc.GetAttachments()
+			require.NoError(t, err)
+			require.Len(t, attachments, 1)
+			retrievedAttachment := attachments[input.attachmentName]
+			require.NotNil(t, retrievedAttachment)
+			assert.Equal(t, input.attachmentBody, string(retrievedAttachment.Data))
+			assert.Equal(t, len(attachmentBody), retrievedAttachment.Length)
+			assert.Equal(t, retrievedAttachment.Digest, input.attachmentDigest)
+		})
+	}
 
 }
 

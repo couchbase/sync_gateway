@@ -30,6 +30,7 @@ type DocAttachment struct {
 	Length      int    `json:"length,omitempty"`
 	Revpos      int    `json:"revpos,omitempty"`
 	Stub        bool   `json:"stub,omitempty"`
+	Version     int64  `json:"ver,omitempty"`
 	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
 }
 
@@ -313,7 +314,7 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 					if version, ok := base.ToInt64(attMap["ver"]); ok {
 						m.version = version
 					} else {
-						m.version = legacyAttachmentVersion
+						m.version = LegacyAttachmentVersion
 					}
 					meta = append(meta, m)
 				}
@@ -344,8 +345,14 @@ func Sha1DigestKey(data []byte) string {
 	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
 
-// legacyAttachmentVersion on the attachment metadata indicates that the
-// attachment is shared across documents — multiple documents can reference a
-// given attachment, and multiple revisions of the same document can reference
-// a given attachment.
-const legacyAttachmentVersion int64 = 1
+const (
+	// LegacyAttachmentVersion on the attachment metadata indicates that the
+	// attachment is shared across documents — multiple documents can reference a
+	// given attachment, and multiple revisions of the same document can reference
+	// a given attachment.
+	LegacyAttachmentVersion int64 = 1
+
+	// NonLegacyAttachmentVersion on the attachment metadata indicates that the
+	// attachment is not shared across documents.
+	NonLegacyAttachmentVersion int64 = 2
+)

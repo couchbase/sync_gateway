@@ -1049,14 +1049,15 @@ func (bt *BlipTester) GetDocAtRev(requestedDocID, requestedDocRev string) (resul
 }
 
 type SendRevWithAttachmentInput struct {
-	docId            string
-	revId            string
-	attachmentName   string
-	attachmentLength int
-	attachmentBody   string
-	attachmentDigest string
-	history          []string
-	body             []byte
+	docId             string
+	revId             string
+	attachmentName    string
+	attachmentLength  int
+	attachmentBody    string
+	attachmentDigest  string
+	attachmentVersion int64
+	history           []string
+	body              []byte
 }
 
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
@@ -1074,6 +1075,7 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 		Length:      input.attachmentLength,
 		Revpos:      1,
 		Stub:        true,
+		Version:     input.attachmentVersion,
 	}
 
 	doc := NewRestDocument()
@@ -1220,7 +1222,7 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 // - Invoking one-shot subChanges request
 // - Responding to all incoming "changes" requests from peer to request the changed rev, and accumulate rev body
 // - Responding to all incoming "rev" requests from peer to get all attachments, and accumulate them
-// - Return accumulated docs + attachements to caller
+// - Return accumulated docs + attachments to caller
 //
 // It is basically a pull replication without the checkpointing
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
