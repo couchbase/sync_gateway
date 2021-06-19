@@ -1480,12 +1480,13 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 
 			// Send revision with attachment
 			input := SendRevWithAttachmentInput{
-				docId:            "doc",
-				revId:            "1-rev1",
-				attachmentName:   "myAttachment",
-				attachmentLength: len(attachmentBody),
-				attachmentBody:   attachmentBody,
-				attachmentDigest: digest,
+				docId:             "doc",
+				revId:             "1-rev1",
+				attachmentName:    "myAttachment",
+				attachmentLength:  len(attachmentBody),
+				attachmentBody:    attachmentBody,
+				attachmentDigest:  digest,
+				attachmentVersion: tt.inputAttachmentVersion,
 			}
 			sent, _, _ := bt.SendRevWithAttachment(input)
 			require.True(t, sent)
@@ -1510,7 +1511,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 			require.NotNil(t, retrievedAttachment)
 			assert.Equal(t, input.attachmentBody, string(retrievedAttachment.Data))
 			assert.Equal(t, len(attachmentBody), retrievedAttachment.Length)
-			assert.Equal(t, retrievedAttachment.Digest, input.attachmentDigest)
+			assert.Equal(t, input.attachmentDigest, retrievedAttachment.Digest)
 		})
 	}
 
