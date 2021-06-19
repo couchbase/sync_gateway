@@ -1111,30 +1111,22 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
 	for _, attachment := range attMeta {
+		var key string
 		if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
-			key := docID + attachment.digest
-			att, found := bsc.allowedAttachments[key]
-			if found && att.version == LegacyAttachmentVersion {
-				att.counter = att.counter + 1
-				bsc.allowedAttachments[attachment.digest] = att
-			} else {
-				bsc.allowedAttachments[key] = AllowedAttachment{
-					docID:   docID,
-					version: attachment.version,
-					counter: 1,
-				}
-			}
+			key = docID + attachment.digest
 		} else {
-			att, found := bsc.allowedAttachments[attachment.digest]
-			if found && att.version == LegacyAttachmentVersion {
-				att.counter = att.counter + 1
-				bsc.allowedAttachments[attachment.digest] = att
-			} else {
-				bsc.allowedAttachments[attachment.digest] = AllowedAttachment{
-					docID:   docID,
-					version: attachment.version,
-					counter: 1,
-				}
+			key = attachment.digest
+		}
+
+		att, found := bsc.allowedAttachments[key]
+		if found && att.version == LegacyAttachmentVersion {
+			att.counter = att.counter + 1
+			bsc.allowedAttachments[attachment.digest] = att
+		} else {
+			bsc.allowedAttachments[key] = AllowedAttachment{
+				docID:   docID,
+				version: attachment.version,
+				counter: 1,
 			}
 		}
 	}
