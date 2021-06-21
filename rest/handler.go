@@ -206,7 +206,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	// If an Admin Request we need to check the user credentials
 	if h.shouldCheckAdminAuth() {
 		username, password := h.getBasicAuth()
-		statusCode, err := h.checkAdminAuth(dbContext, username, password, accessPermissions, responsePermissions)
+		permissions, statusCode, err := checkAdminAuth(h.server, dbContext, username, password, accessPermissions, responsePermissions)
 		if err != nil {
 			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
@@ -216,6 +216,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 			base.Infof(base.KeyAuth, "User %s failed to auth as an admin statusCode: %d", username, statusCode)
 			return base.HTTPErrorf(statusCode, "")
 		}
+
+		h.permissionsResults = permissions
 
 		base.Infof(base.KeyAuth, "User %s was successfully authorized as an admin", username)
 	}
@@ -412,32 +414,58 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func (h *handler) checkAdminAuth(dbContext *db.DatabaseContext, basicAuthUsername, basicAuthPassword string, accessPermissions []string, responsePermissions []string) (statusCode int, err error) {
+func checkAdminAuth(serverContext *ServerContext, dbContext *db.DatabaseContext, basicAuthUsername, basicAuthPassword string, accessPermissions []string, responsePermissions []string) (responsePermissionResults map[string]bool, statusCode int, err error) {
 	var managementEndpoints []string
 	var httpClient *http.Client
 
 	if dbContext != nil {
 		managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
 		if err != nil {
-			return http.StatusInternalServerError, err
+			return nil, http.StatusInternalServerError, err
 		}
 	} else {
-		managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
+		managementEndpoints, httpClient, err = serverContext.ObtainManagementEndpointsAndHTTPClient()
 		if err != nil {
-			return http.StatusInternalServerError, err
+			return nil, http.StatusInternalServerError, err
 		}
 	}
 
-	statusCode, permResults, err := h.server.CheckPermissions(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
+	statusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		return nil, http.StatusInternalServerError, err
 	}
 
 	if len(responsePermissions) > 0 {
-		h.permissionsResults = permResults
+		responsePermissionResults = permResults
 	}
 
-	return statusCode, nil
+	if statusCode == http.StatusOK {
+		return responsePermissionResults, http.StatusOK, nil
+	}
+
+	// If status code was not 'ok' or 'forbidden' return an error
+	// If forbidden user has authenticated correctly but is not authorized via permissions. We'll fall through to try
+	// with roles.
+	if statusCode != http.StatusForbidden {
+		return nil, statusCode, nil
+	}
+
+	var requestRoles []string
+	var bucketName string
+	if dbContext != nil {
+		requestRoles = []string{"mobile_sync_gateway", "bucket_full_access", "admin"}
+		bucketName = dbContext.Bucket.GetName()
+	} else {
+		requestRoles = []string{"ro_admin"}
+		bucketName = ""
+	}
+
+	statusCode, err = CheckRoles(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	return permResults, statusCode, nil
 }
 
 func (h *handler) assertAdminOnly() {

@@ -1233,7 +1233,7 @@ func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *ht
 // For Authorization it checks whether the user has any ONE of the supplied accessPermissions
 // If the user is authorized it will also check the responsePermissions and return the results for these. These can be
 // used by handlers to determine different responses based on the permissions the user has.
-func (sc *ServerContext) CheckPermissions(httpClient *http.Client, managementEndpoints []string, username, password string, accessPermissions []string, responsePermissions []string) (statusCode int, permissionResults map[string]bool, err error) {
+func CheckPermissions(httpClient *http.Client, managementEndpoints []string, username, password string, accessPermissions []string, responsePermissions []string) (statusCode int, permissionResults map[string]bool, err error) {
 	combinedPermissions := append(accessPermissions, responsePermissions...)
 	body := []byte(strings.Join(combinedPermissions, ","))
 	statusCode, bodyResponse, err := doHTTPAuthRequest(httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, body)
@@ -1279,7 +1279,40 @@ func (sc *ServerContext) CheckPermissions(httpClient *http.Client, managementEnd
 		}
 	}
 
-	return http.StatusForbidden, nil, nil
+	return http.StatusForbidden, permissionResults, nil
+}
+
+func CheckRoles(httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []string, bucketName string) (statusCode int, err error) {
+	statusCode, bodyResponse, err := doHTTPAuthRequest(httpClient, username, password, "GET", "/whoami", managementEndpoints, nil)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	if statusCode != http.StatusOK {
+		return statusCode, nil
+	}
+
+	var whoAmIResults struct {
+		Roles []struct {
+			RoleName   string `json:"role"`
+			BucketName string `json:"bucket_name"`
+		} `json:"roles"`
+	}
+
+	err = base.JSONUnmarshal(bodyResponse, &whoAmIResults)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+
+	for _, roleResult := range whoAmIResults.Roles {
+		for _, requireRole := range requestedRoles {
+			if roleResult.BucketName == bucketName && roleResult.RoleName == requireRole {
+				return http.StatusOK, nil
+			}
+		}
+	}
+
+	return http.StatusForbidden, nil
 }
 
 func doHTTPAuthRequest(httpClient *http.Client, username, password, method, path string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
