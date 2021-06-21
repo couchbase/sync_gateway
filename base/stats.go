@@ -254,10 +254,10 @@ type DatabaseStats struct {
 	SequenceIncrCount        *SgwIntStat `json:"sequence_incr_count"`
 	SequenceReleasedCount    *SgwIntStat `json:"sequence_released_count"`
 	SequenceReservedCount    *SgwIntStat `json:"sequence_reserved_count"`
+	WarnChannelNameSizeCount *SgwIntStat `json:"warn_channel_name_size_count"`
 	WarnChannelsPerDocCount  *SgwIntStat `json:"warn_channels_per_doc_count"`
 	WarnGrantsPerDocCount    *SgwIntStat `json:"warn_grants_per_doc_count"`
 	WarnXattrSizeCount       *SgwIntStat `json:"warn_xattr_size_count"`
-	WarnChannelNameSizeCount *SgwIntStat `json:"warn_channel_name_size_count"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -723,10 +723,10 @@ func (d *DbStats) initDatabaseStats() {
 		SequenceIncrCount:        NewIntStat(SubsystemDatabaseKey, "sequence_incr_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		SequenceReleasedCount:    NewIntStat(SubsystemDatabaseKey, "sequence_released_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		SequenceReservedCount:    NewIntStat(SubsystemDatabaseKey, "sequence_reserved_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WarnChannelNameSizeCount: NewIntStat(SubsystemDatabaseKey, "warn_channel_name_size_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		WarnChannelsPerDocCount:  NewIntStat(SubsystemDatabaseKey, "warn_channels_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		WarnGrantsPerDocCount:    NewIntStat(SubsystemDatabaseKey, "warn_grants_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		WarnXattrSizeCount:       NewIntStat(SubsystemDatabaseKey, "warn_xattr_size_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		WarnChannelNameSizeCount: NewIntStat(SubsystemDatabaseKey, "warn_channel_name_size_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 		ImportFeedMapStats:       &ExpVarMapWrapper{new(expvar.Map).Init()},
 		CacheFeedMapStats:        &ExpVarMapWrapper{new(expvar.Map).Init()},
 	}
