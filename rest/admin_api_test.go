@@ -3043,10 +3043,10 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 			})
 			defer rt.Close()
 
-			chanNameWarnCountBefore := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+			chanNameWarnCountBefore := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 			tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc%v", test.channelLength), fmt.Sprintf("{\"chan\":\"%s\"}", strings.Repeat("A", test.channelLength)))
 			assertStatus(t, tr, http.StatusCreated)
-			chanNameWarnCountAfter := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+			chanNameWarnCountAfter := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 			if test.expectWarn {
 				assert.Equal(t, chanNameWarnCountBefore+1, chanNameWarnCountAfter)
 			} else {
@@ -3068,10 +3068,10 @@ func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 		tr := rt.SendAdminRequest("PUT", "/db/replace", fmt.Sprintf("{\"chan\":\"%s\"}", strings.Repeat("B", channelLength))) // init doc
 		assertStatus(t, tr, http.StatusCreated)
 
-		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+getRespRev(t, tr), fmt.Sprintf("{\"chan\":\"%s\", \"data\":\"test\"}", strings.Repeat("B", channelLength)))
 		assertStatus(t, tr, http.StatusCreated)
-		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
 }
@@ -3088,10 +3088,10 @@ func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 		tr := rt.SendAdminRequest("PUT", "/db/replaceNewChannel", fmt.Sprintf("{\"chan\":\"%s\"}", strings.Repeat("C", channelLength))) // init doc
 		assertStatus(t, tr, http.StatusCreated)
 
-		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		tr = rt.SendAdminRequest("PUT", "/db/replaceNewChannel?rev="+getRespRev(t, tr), fmt.Sprintf("{\"chan\":\"%s\", \"data\":\"test\"}", strings.Repeat("D", channelLength+5)))
 		assertStatus(t, tr, http.StatusCreated)
-		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
 	})
 }
@@ -3108,10 +3108,10 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 		tr := rt.SendAdminRequest("PUT", "/db/deleteme", fmt.Sprintf("{\"chan\":\"%s\"}", strings.Repeat("F", channelLength))) // init channel
 		assertStatus(t, tr, http.StatusCreated)
 
-		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		tr = rt.SendAdminRequest("DELETE", "/db/deleteme?rev="+getRespRev(t, tr), "")
 		assertStatus(t, tr, http.StatusOK)
-		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before, after)
 	})
 }
