@@ -186,6 +186,7 @@ type WarningThresholds struct {
 	ChannelsPerDoc  *uint32 `json:"channels_per_doc,omitempty"`               // Number of channels per document to be used as a threshold for channel count warnings
 	GrantsPerDoc    *uint32 `json:"access_and_role_grants_per_doc,omitempty"` // Number of access and role grants per document to be used as a threshold for grant count warnings
 	ChannelsPerUser *uint32 `json:"channels_per_user,omitempty"`              // Number of channels per user to be used as a threshold for channel count warnings
+	ChannelNameSize *uint32 `json:"channel_name_size,omitempty"`              // Number of channel name characters to be used as a threshold for channel name warnings
 }
 
 // Options associated with the import of documents not written by Sync Gateway

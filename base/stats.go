@@ -232,31 +232,32 @@ type CBLReplicationPushStats struct {
 }
 
 type DatabaseStats struct {
-	ConflictWriteCount      *SgwIntStat `json:"conflict_write_count"`
-	Crc32MatchCount         *SgwIntStat `json:"crc32c_match_count"`
-	DCPCachingCount         *SgwIntStat `json:"dcp_caching_count"`
-	DCPCachingTime          *SgwIntStat `json:"dcp_caching_time"`
-	DCPReceivedCount        *SgwIntStat `json:"dcp_received_count"`
-	DCPReceivedTime         *SgwIntStat `json:"dcp_received_time"`
-	DocReadsBytesBlip       *SgwIntStat `json:"doc_reads_bytes_blip"`
-	DocWritesBytes          *SgwIntStat `json:"doc_writes_bytes"`
-	DocWritesBytesBlip      *SgwIntStat `json:"doc_writes_bytes_blip"`
-	DocWritesXattrBytes     *SgwIntStat `json:"doc_writes_xattr_bytes"`
-	HighSeqFeed             *SgwIntStat `json:"high_seq_feed"`
-	NumDocReadsBlip         *SgwIntStat `json:"num_doc_reads_blip"`
-	NumDocReadsRest         *SgwIntStat `json:"num_doc_reads_rest"`
-	NumDocWrites            *SgwIntStat `json:"num_doc_writes"`
-	NumReplicationsActive   *SgwIntStat `json:"num_replications_active"`
-	NumReplicationsTotal    *SgwIntStat `json:"num_replications_total"`
-	NumTombstonesCompacted  *SgwIntStat `json:"num_tombstones_compacted"`
-	SequenceAssignedCount   *SgwIntStat `json:"sequence_assigned_count"`
-	SequenceGetCount        *SgwIntStat `json:"sequence_get_count"`
-	SequenceIncrCount       *SgwIntStat `json:"sequence_incr_count"`
-	SequenceReleasedCount   *SgwIntStat `json:"sequence_released_count"`
-	SequenceReservedCount   *SgwIntStat `json:"sequence_reserved_count"`
-	WarnChannelsPerDocCount *SgwIntStat `json:"warn_channels_per_doc_count"`
-	WarnGrantsPerDocCount   *SgwIntStat `json:"warn_grants_per_doc_count"`
-	WarnXattrSizeCount      *SgwIntStat `json:"warn_xattr_size_count"`
+	ConflictWriteCount       *SgwIntStat `json:"conflict_write_count"`
+	Crc32MatchCount          *SgwIntStat `json:"crc32c_match_count"`
+	DCPCachingCount          *SgwIntStat `json:"dcp_caching_count"`
+	DCPCachingTime           *SgwIntStat `json:"dcp_caching_time"`
+	DCPReceivedCount         *SgwIntStat `json:"dcp_received_count"`
+	DCPReceivedTime          *SgwIntStat `json:"dcp_received_time"`
+	DocReadsBytesBlip        *SgwIntStat `json:"doc_reads_bytes_blip"`
+	DocWritesBytes           *SgwIntStat `json:"doc_writes_bytes"`
+	DocWritesBytesBlip       *SgwIntStat `json:"doc_writes_bytes_blip"`
+	DocWritesXattrBytes      *SgwIntStat `json:"doc_writes_xattr_bytes"`
+	HighSeqFeed              *SgwIntStat `json:"high_seq_feed"`
+	NumDocReadsBlip          *SgwIntStat `json:"num_doc_reads_blip"`
+	NumDocReadsRest          *SgwIntStat `json:"num_doc_reads_rest"`
+	NumDocWrites             *SgwIntStat `json:"num_doc_writes"`
+	NumReplicationsActive    *SgwIntStat `json:"num_replications_active"`
+	NumReplicationsTotal     *SgwIntStat `json:"num_replications_total"`
+	NumTombstonesCompacted   *SgwIntStat `json:"num_tombstones_compacted"`
+	SequenceAssignedCount    *SgwIntStat `json:"sequence_assigned_count"`
+	SequenceGetCount         *SgwIntStat `json:"sequence_get_count"`
+	SequenceIncrCount        *SgwIntStat `json:"sequence_incr_count"`
+	SequenceReleasedCount    *SgwIntStat `json:"sequence_released_count"`
+	SequenceReservedCount    *SgwIntStat `json:"sequence_reserved_count"`
+	WarnChannelsPerDocCount  *SgwIntStat `json:"warn_channels_per_doc_count"`
+	WarnGrantsPerDocCount    *SgwIntStat `json:"warn_grants_per_doc_count"`
+	WarnXattrSizeCount       *SgwIntStat `json:"warn_xattr_size_count"`
+	WarnChannelNameSizeCount *SgwIntStat `json:"warn_channel_name_size_count"`
 
 	// These can be cleaned up in future versions of SGW, implemented as maps to reduce amount of potential risk
 	// prior to Hydrogen release. These are not exported as part of prometheus and only exposed through expvars
@@ -700,33 +701,34 @@ func (d *DbStats) initDatabaseStats() {
 	labelKeys := []string{DatabaseLabelKey}
 	labelVals := []string{d.dbName}
 	d.DatabaseStats = &DatabaseStats{
-		ConflictWriteCount:      NewIntStat(SubsystemDatabaseKey, "conflict_write_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		Crc32MatchCount:         NewIntStat(SubsystemDatabaseKey, "crc32c_match_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
-		DCPCachingCount:         NewIntStat(SubsystemDatabaseKey, "dcp_caching_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
-		DCPCachingTime:          NewIntStat(SubsystemDatabaseKey, "dcp_caching_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
-		DCPReceivedCount:        NewIntStat(SubsystemDatabaseKey, "dcp_received_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
-		DCPReceivedTime:         NewIntStat(SubsystemDatabaseKey, "dcp_received_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
-		DocReadsBytesBlip:       NewIntStat(SubsystemDatabaseKey, "doc_reads_bytes_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
-		DocWritesBytes:          NewIntStat(SubsystemDatabaseKey, "doc_writes_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
-		DocWritesXattrBytes:     NewIntStat(SubsystemDatabaseKey, "doc_writes_xattr_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
-		HighSeqFeed:             NewIntStat(SubsystemDatabaseKey, "high_seq_feed", labelKeys, labelVals, prometheus.CounterValue, 0),
-		DocWritesBytesBlip:      NewIntStat(SubsystemDatabaseKey, "doc_writes_bytes_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
-		NumDocReadsBlip:         NewIntStat(SubsystemDatabaseKey, "num_doc_reads_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
-		NumDocReadsRest:         NewIntStat(SubsystemDatabaseKey, "num_doc_reads_rest", labelKeys, labelVals, prometheus.CounterValue, 0),
-		NumDocWrites:            NewIntStat(SubsystemDatabaseKey, "num_doc_writes", labelKeys, labelVals, prometheus.CounterValue, 0),
-		NumReplicationsActive:   NewIntStat(SubsystemDatabaseKey, "num_replications_active", labelKeys, labelVals, prometheus.GaugeValue, 0),
-		NumReplicationsTotal:    NewIntStat(SubsystemDatabaseKey, "num_replications_total", labelKeys, labelVals, prometheus.CounterValue, 0),
-		NumTombstonesCompacted:  NewIntStat(SubsystemDatabaseKey, "num_tombstones_compacted", labelKeys, labelVals, prometheus.CounterValue, 0),
-		SequenceAssignedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_assigned_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		SequenceGetCount:        NewIntStat(SubsystemDatabaseKey, "sequence_get_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		SequenceIncrCount:       NewIntStat(SubsystemDatabaseKey, "sequence_incr_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		SequenceReleasedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_released_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		SequenceReservedCount:   NewIntStat(SubsystemDatabaseKey, "sequence_reserved_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		WarnChannelsPerDocCount: NewIntStat(SubsystemDatabaseKey, "warn_channels_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		WarnGrantsPerDocCount:   NewIntStat(SubsystemDatabaseKey, "warn_grants_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		WarnXattrSizeCount:      NewIntStat(SubsystemDatabaseKey, "warn_xattr_size_count", labelKeys, labelVals, prometheus.CounterValue, 0),
-		ImportFeedMapStats:      &ExpVarMapWrapper{new(expvar.Map).Init()},
-		CacheFeedMapStats:       &ExpVarMapWrapper{new(expvar.Map).Init()},
+		ConflictWriteCount:       NewIntStat(SubsystemDatabaseKey, "conflict_write_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		Crc32MatchCount:          NewIntStat(SubsystemDatabaseKey, "crc32c_match_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DCPCachingCount:          NewIntStat(SubsystemDatabaseKey, "dcp_caching_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DCPCachingTime:           NewIntStat(SubsystemDatabaseKey, "dcp_caching_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DCPReceivedCount:         NewIntStat(SubsystemDatabaseKey, "dcp_received_count", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DCPReceivedTime:          NewIntStat(SubsystemDatabaseKey, "dcp_received_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		DocReadsBytesBlip:        NewIntStat(SubsystemDatabaseKey, "doc_reads_bytes_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DocWritesBytes:           NewIntStat(SubsystemDatabaseKey, "doc_writes_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DocWritesXattrBytes:      NewIntStat(SubsystemDatabaseKey, "doc_writes_xattr_bytes", labelKeys, labelVals, prometheus.CounterValue, 0),
+		HighSeqFeed:              NewIntStat(SubsystemDatabaseKey, "high_seq_feed", labelKeys, labelVals, prometheus.CounterValue, 0),
+		DocWritesBytesBlip:       NewIntStat(SubsystemDatabaseKey, "doc_writes_bytes_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumDocReadsBlip:          NewIntStat(SubsystemDatabaseKey, "num_doc_reads_blip", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumDocReadsRest:          NewIntStat(SubsystemDatabaseKey, "num_doc_reads_rest", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumDocWrites:             NewIntStat(SubsystemDatabaseKey, "num_doc_writes", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumReplicationsActive:    NewIntStat(SubsystemDatabaseKey, "num_replications_active", labelKeys, labelVals, prometheus.GaugeValue, 0),
+		NumReplicationsTotal:     NewIntStat(SubsystemDatabaseKey, "num_replications_total", labelKeys, labelVals, prometheus.CounterValue, 0),
+		NumTombstonesCompacted:   NewIntStat(SubsystemDatabaseKey, "num_tombstones_compacted", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceAssignedCount:    NewIntStat(SubsystemDatabaseKey, "sequence_assigned_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceGetCount:         NewIntStat(SubsystemDatabaseKey, "sequence_get_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceIncrCount:        NewIntStat(SubsystemDatabaseKey, "sequence_incr_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceReleasedCount:    NewIntStat(SubsystemDatabaseKey, "sequence_released_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		SequenceReservedCount:    NewIntStat(SubsystemDatabaseKey, "sequence_reserved_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WarnChannelsPerDocCount:  NewIntStat(SubsystemDatabaseKey, "warn_channels_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WarnGrantsPerDocCount:    NewIntStat(SubsystemDatabaseKey, "warn_grants_per_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WarnXattrSizeCount:       NewIntStat(SubsystemDatabaseKey, "warn_xattr_size_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		WarnChannelNameSizeCount: NewIntStat(SubsystemDatabaseKey, "warn_channel_name_size_count", labelKeys, labelVals, prometheus.CounterValue, 0),
+		ImportFeedMapStats:       &ExpVarMapWrapper{new(expvar.Map).Init()},
+		CacheFeedMapStats:        &ExpVarMapWrapper{new(expvar.Map).Init()},
 	}
 }
 
