@@ -3063,13 +3063,13 @@ func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 	defer rt.Close()
 
 	// Update doc - should warn
-	channelLength := int(base.DefaultWarnThresholdChannelNameSize) + 5
+	channelName := strings.Repeat("B", int(base.DefaultWarnThresholdChannelNameSize)+5)
 	t.Run("Update doc without changing channel", func(t *testing.T) {
-		tr := rt.SendAdminRequest("PUT", "/db/replace", fmt.Sprintf("{\"chan\":\"%s\"}", strings.Repeat("B", channelLength))) // init doc
+		tr := rt.SendAdminRequest("PUT", "/db/replace", fmt.Sprintf("{\"chan\":\"%s\"}", channelName)) // init doc
 		assertStatus(t, tr, http.StatusCreated)
 
 		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+getRespRev(t, tr), fmt.Sprintf("{\"chan\":\"%s\", \"data\":\"test\"}", strings.Repeat("B", channelLength)))
+		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+getRespRev(t, tr), fmt.Sprintf("{\"chan\":\"%s\", \"data\":\"test\"}", channelName))
 		assertStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
