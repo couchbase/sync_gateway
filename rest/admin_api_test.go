@@ -36,66 +36,80 @@ import (
 // Test warnings being issued when a new channel is created with over 250 characters - CBG-1475
 func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 	syncFn := "function sync(doc, oldDoc) { channel(doc.chan); }"
-	rt := NewRestTester(t, &RestTesterConfig{
-		SyncFn: syncFn,
-	})
-	defer rt.Close()
+	var rt *RestTester
 
-	boundaryTestCases := []struct {
-		name               string
-		channelLengthToAdd int
-		expectWarn         bool
+	testCases := []struct {
+		name                string
+		warnThresholdLength uint32
+		channelLength       int
+		expectWarn          bool
 	}{
 		{
-			name:               "Over max channel length",
-			channelLengthToAdd: 1,
-			expectWarn:         true,
+			name:                "Over max default channel length",
+			warnThresholdLength: base.DefaultWarnThresholdChannelNameSize,
+			channelLength:       int(base.DefaultWarnThresholdChannelNameSize) + 1,
+			expectWarn:          true,
 		},
 		{
-			name:               "Equal to max channel length",
-			channelLengthToAdd: 0,
-			expectWarn:         false,
+			name:                "Equal to max default channel length",
+			warnThresholdLength: base.DefaultWarnThresholdChannelNameSize,
+			channelLength:       int(base.DefaultWarnThresholdChannelNameSize),
+			expectWarn:          false,
 		},
 		{
-			name:               "Under max channel length",
-			channelLengthToAdd: -1,
-			expectWarn:         false,
+			name:                "Under max default channel length",
+			warnThresholdLength: base.DefaultWarnThresholdChannelNameSize,
+			channelLength:       int(base.DefaultWarnThresholdChannelNameSize) - 1,
+			expectWarn:          false,
+		},
+		{
+			name:                "Over max configured channel length",
+			warnThresholdLength: 500,
+			channelLength:       501,
+			expectWarn:          true,
+		},
+		{
+			name:                "Equal to max configured channel length",
+			warnThresholdLength: 500,
+			channelLength:       500,
+			expectWarn:          false,
+		},
+		{
+			name:                "Under max configured channel length",
+			warnThresholdLength: 500,
+			channelLength:       499,
+			expectWarn:          false,
 		},
 	}
 
-	boundaryTest := func(warnThresholdLength int) {
-		for _, test := range boundaryTestCases {
-			channelLength := warnThresholdLength + test.channelLengthToAdd
-			t.Run(fmt.Sprintf("%s: %d", test.name, channelLength), func(t *testing.T) {
-				chanNameWarnCountBefore := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
-				tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc%v", channelLength), fmt.Sprintf("{\"chan\":\"%s\"}", strings.Repeat("A", channelLength)))
-				assertStatus(t, tr, http.StatusCreated)
-				chanNameWarnCountAfter := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
-				if test.expectWarn {
-					assert.Equal(t, chanNameWarnCountBefore+1, chanNameWarnCountAfter)
-				} else {
-					assert.Equal(t, chanNameWarnCountBefore, chanNameWarnCountAfter)
-				}
-			})
-		}
-	}
-
-	boundaryTest(int(base.DefaultWarnThresholdChannelNameSize))
-
-	// change value to 500 in config
-	warnThreshold := uint32(500)
-	rt = NewRestTester(t, &RestTesterConfig{
-		SyncFn: syncFn,
-		DatabaseConfig: &DbConfig{
-			Unsupported: db.UnsupportedOptions{
-				WarningThresholds: db.WarningThresholds{
-					ChannelNameSize: &warnThreshold,
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			var thresholdConfig db.WarningThresholds
+			// If threshold is not default then configure it
+			if test.warnThresholdLength != base.DefaultWarnThresholdChannelNameSize {
+				thresholdConfig = db.WarningThresholds{ChannelNameSize: &test.warnThresholdLength}
+			}
+			rt = NewRestTester(t, &RestTesterConfig{
+				SyncFn: syncFn,
+				DatabaseConfig: &DbConfig{
+					Unsupported: db.UnsupportedOptions{
+						WarningThresholds: thresholdConfig,
+					},
 				},
-			},
-		},
-	})
-	defer rt.Close()
-	boundaryTest(int(warnThreshold))
+			})
+			defer rt.Close()
+
+			chanNameWarnCountBefore := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+			tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/doc%v", test.channelLength), fmt.Sprintf("{\"chan\":\"%s\"}", strings.Repeat("A", test.channelLength)))
+			assertStatus(t, tr, http.StatusCreated)
+			chanNameWarnCountAfter := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Val
+			if test.expectWarn {
+				assert.Equal(t, chanNameWarnCountBefore+1, chanNameWarnCountAfter)
+			} else {
+				assert.Equal(t, chanNameWarnCountBefore, chanNameWarnCountAfter)
+			}
+		})
+	}
 }
 func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 	syncFn := "function sync(doc, oldDoc) { channel(doc.chan); }"
