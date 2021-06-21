@@ -84,7 +84,17 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 
 	// change value to 500 in config
 	warnThreshold := uint32(500)
-	rt.DatabaseConfig.Unsupported.WarningThresholds.ChannelNameSize = &warnThreshold
+	rt = NewRestTester(t, &RestTesterConfig{
+		SyncFn: syncFn,
+		DatabaseConfig: &DbConfig{
+			Unsupported: db.UnsupportedOptions{
+				WarningThresholds: db.WarningThresholds{
+					ChannelNameSize: &warnThreshold,
+				},
+			},
+		},
+	})
+	defer rt.Close()
 	boundaryTest(int(warnThreshold))
 }
 func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
