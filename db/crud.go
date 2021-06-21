@@ -1924,15 +1924,11 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 
 	// Warn when channel names are larger than a configured threshold
 	if channelNameSizeThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelNameSize; channelNameSizeThreshold != nil {
-		var channelsOverCount int
 		for c := range channels {
 			if uint32(len(c)) > *channelNameSizeThreshold {
-				channelsOverCount++
+				db.DbStats.Database().WarnChannelNameSizeCount.Add(1)
+				base.WarnfCtx(db.Ctx, "Doc id: %v channel name size: %s channel exceeds %d characters for channel name size warning threshold", base.UD(docID), base.UD(c), *channelNameSizeThreshold)
 			}
-		}
-		if channelsOverCount > 0 {
-			db.DbStats.Database().WarnChannelNameSizeCount.Add(1)
-			base.WarnfCtx(db.Ctx, "Doc id: %v channel name size: %d channel/s exceeds %d characters for channel name size warning threshold", base.UD(docID), channelsOverCount, *channelNameSizeThreshold)
 		}
 	}
 }
