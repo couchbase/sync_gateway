@@ -1148,7 +1148,7 @@ func (sc *ServerContext) updateCalculatedStats() {
 
 }
 
-func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string) (*gocbcore.Agent, error) {
+func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, timeoutSeconds *int) (*gocbcore.Agent, error) {
 	authenticator, err := base.GoCBCoreAuthConfig(clusterUser, clusterPass, certPath, keyPath)
 	if err != nil {
 		return nil, err
@@ -1174,8 +1174,13 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 		return nil, err
 	}
 
+	agentWaitUntilReadyTimeoutSeconds := 5 * time.Second
+	if timeoutSeconds != nil {
+		agentWaitUntilReadyTimeoutSeconds = time.Duration(*timeoutSeconds) * time.Second
+	}
+
 	agentReadyErr := make(chan error)
-	_, err = agent.WaitUntilReady(time.Now().Add(15*time.Second), gocbcore.WaitUntilReadyOptions{ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService}}, func(result *gocbcore.WaitUntilReadyResult, err error) {
+	_, err = agent.WaitUntilReady(time.Now().Add(agentWaitUntilReadyTimeoutSeconds), gocbcore.WaitUntilReadyOptions{ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService}}, func(result *gocbcore.WaitUntilReadyResult, err error) {
 		agentReadyErr <- err
 	})
 
@@ -1197,7 +1202,7 @@ var tempConnectionDetailsForManagementEndpoints = func() (serverAddress string, 
 
 func (sc *ServerContext) ObtainManagementEndpoints() ([]string, error) {
 	clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath := tempConnectionDetailsForManagementEndpoints()
-	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath)
+	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath, sc.config.ServerReadTimeout)
 	if err != nil {
 		return nil, err
 	}
