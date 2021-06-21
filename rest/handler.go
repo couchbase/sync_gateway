@@ -74,6 +74,7 @@ type handler struct {
 	loggedDuration        bool
 	runOffline            bool
 	queryValues           url.Values // Copy of results of rq.URL.Query()
+	permissionsResults    map[string]bool
 }
 
 type handlerPrivs int
@@ -82,27 +83,28 @@ const (
 	regularPrivs = iota // Handler requires valid authentication
 	publicPrivs         // Handler Handler checks auth and falls back to guest if invalid or missing
 	adminPrivs          // Handler ignores auth, always runs with root/admin privs
+	metricsPrivs
 )
 
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *ServerContext, privs handlerPrivs, method handlerMethod) http.Handler {
+func makeHandler(server *ServerContext, privs handlerPrivs, checkPermissions []string, storePermissionsResults bool, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := false
 		h := newHandler(server, privs, r, rq, runOffline)
-		err := h.invoke(method)
+		err := h.invoke(method, checkPermissions, storePermissionsResults)
 		h.writeError(err)
 		h.logDuration(true)
 	})
 }
 
 // Creates an http.Handler that will run a handler with the given method even if the target DB is offline
-func makeOfflineHandler(server *ServerContext, privs handlerPrivs, method handlerMethod) http.Handler {
+func makeOfflineHandler(server *ServerContext, privs handlerPrivs, checkPermissions []string, storePermissionsResults bool, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := true
 		h := newHandler(server, privs, r, rq, runOffline)
-		err := h.invoke(method)
+		err := h.invoke(method, checkPermissions, storePermissionsResults)
 		h.writeError(err)
 		h.logDuration(true)
 	})
@@ -122,7 +124,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 }
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
-func (h *handler) invoke(method handlerMethod) error {
+func (h *handler) invoke(method handlerMethod, checkPermissions []string, storePermissionsResults bool) error {
 
 	var err error
 	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
@@ -198,6 +200,17 @@ func (h *handler) invoke(method handlerMethod) error {
 	if h.privs != adminPrivs {
 		if err = h.checkAuth(dbContext); err != nil {
 			return err
+		}
+	}
+
+	// If an Admin Request we need to check the user credentials
+	// FIXME: Temporarily disable this
+	if false {
+		clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
+		if !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.MetricsInterfaceAuthentication)) {
+			if err = h.checkAdminAuth(dbContext, checkPermissions, storePermissionsResults); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -384,6 +397,38 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 	}
 
+	return nil
+}
+
+func (h *handler) checkAdminAuth(dbContext *db.DatabaseContext, checkPermissions []string, storePermissionsResults bool) error {
+	var managementEndpoints []string
+	var err error
+	var httpClient *http.Client
+
+	if dbContext != nil {
+		managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "")
+		}
+	} else {
+		managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "")
+		}
+	}
+
+	username, password := h.getBasicAuth()
+	statusCode, permResults, err := h.server.CheckPermissions(httpClient, managementEndpoints, username, password, checkPermissions)
+	if err != nil {
+		return base.HTTPErrorf(http.StatusInternalServerError, "")
+	}
+
+	if storePermissionsResults {
+		h.permissionsResults = permResults
+	}
+
+	fmt.Println(statusCode)
+	fmt.Println(permResults)
 	return nil
 }
 

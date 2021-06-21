@@ -41,74 +41,68 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 	// Global operations:
-	r.Handle("/", makeHandler(sc, privs, (*handler).handleRoot)).Methods("GET", "HEAD")
+	r.Handle("/", makeHandler(sc, privs, nil, false, (*handler).handleRoot)).Methods("GET", "HEAD")
 
 	// Operations on databases:
-	r.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, (*handler).handleGetDB)).Methods("GET", "HEAD")
-	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, (*handler).handlePostDoc)).Methods("POST")
+	r.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, nil, false, (*handler).handleGetDB)).Methods("GET", "HEAD")
+	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, nil, false, (*handler).handlePostDoc)).Methods("POST")
 
 	// Special database URLs:
 	dbr := r.PathPrefix("/{db:" + dbRegex + "}/").Subrouter()
 	dbr.StrictSlash(true)
-	dbr.Handle("/_all_docs", makeHandler(sc, privs, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, (*handler).handleBulkDocs)).Methods("POST")
-	dbr.Handle("/_bulk_get", makeHandler(sc, privs, (*handler).handleBulkGet)).Methods("POST")
-	dbr.Handle("/_changes", makeHandler(sc, privs, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handlePutDesignDoc)).Methods("PUT")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
-	dbr.Handle("/_design/{ddoc}/_view/{view}", makeHandler(sc, privs, (*handler).handleView)).Methods("GET")
-	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, (*handler).handleEFC)).Methods("POST")
-	dbr.Handle("/_revs_diff", makeHandler(sc, privs, (*handler).handleRevsDiff)).Methods("POST")
+	dbr.Handle("/_all_docs", makeHandler(sc, privs, nil, false, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
+	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, nil, false, (*handler).handleBulkDocs)).Methods("POST")
+	dbr.Handle("/_bulk_get", makeHandler(sc, privs, nil, false, (*handler).handleBulkGet)).Methods("POST")
+	dbr.Handle("/_changes", makeHandler(sc, privs, nil, false, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, nil, false, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, nil, false, (*handler).handlePutDesignDoc)).Methods("PUT")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, nil, false, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
+	dbr.Handle("/_design/{ddoc}/_view/{view}", makeHandler(sc, privs, nil, false, (*handler).handleView)).Methods("GET")
+	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, nil, false, (*handler).handleEFC)).Methods("POST")
+	dbr.Handle("/_revs_diff", makeHandler(sc, privs, nil, false, (*handler).handleRevsDiff)).Methods("POST")
 
 	// Document URLs:
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handlePutLocalDoc)).Methods("PUT")
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, (*handler).handleDelLocalDoc)).Methods("DELETE")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, nil, false, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, nil, false, (*handler).handlePutLocalDoc)).Methods("PUT")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, nil, false, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleGetDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handlePutDoc)).Methods("PUT")
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, (*handler).handleDeleteDoc)).Methods("DELETE")
+	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, nil, false, (*handler).handleGetDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, nil, false, (*handler).handlePutDoc)).Methods("PUT")
+	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, nil, false, (*handler).handleDeleteDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, (*handler).handlePutAttachment)).Methods("PUT")
+	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, nil, false, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, nil, false, (*handler).handlePutAttachment)).Methods("PUT")
 
 	// Session/login URLs are per-database (unlike in CouchDB)
 	// These have public privileges so that they can be called without being logged in already
-	dbr.Handle("/_session", makeHandler(sc, publicPrivs, (*handler).handleSessionGET)).Methods("GET", "HEAD")
+	dbr.Handle("/_session", makeHandler(sc, publicPrivs, nil, false, (*handler).handleSessionGET)).Methods("GET", "HEAD")
 	if sc.config.Facebook != nil {
-		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs,
-			(*handler).handleFacebookPOST)).Methods("POST")
+		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs, nil, false, (*handler).handleFacebookPOST)).Methods("POST")
 	}
 	if sc.config.Google != nil {
-		dbr.Handle("/_google", makeHandler(sc, publicPrivs,
-			(*handler).handleGooglePOST)).Methods("POST")
+		dbr.Handle("/_google", makeHandler(sc, publicPrivs, nil, false, (*handler).handleGooglePOST)).Methods("POST")
 	}
 
 	// OpenID Connect endpoints
-	dbr.Handle("/_oidc", makeHandler(sc, publicPrivs, (*handler).handleOIDC)).Methods("GET")
-	dbr.Handle("/_oidc_callback", makeHandler(sc, publicPrivs, (*handler).handleOIDCCallback)).Methods("GET")
-	dbr.Handle("/_oidc_refresh", makeHandler(sc, publicPrivs, (*handler).handleOIDCRefresh)).Methods("GET")
-	dbr.Handle("/_oidc_challenge", makeHandler(sc, publicPrivs, (*handler).handleOIDCChallenge)).Methods("GET")
+	dbr.Handle("/_oidc", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOIDC)).Methods("GET")
+	dbr.Handle("/_oidc_callback", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOIDCCallback)).Methods("GET")
+	dbr.Handle("/_oidc_refresh", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOIDCRefresh)).Methods("GET")
+	dbr.Handle("/_oidc_challenge", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOIDCChallenge)).Methods("GET")
 
 	oidcr := dbr.PathPrefix("/_oidc_testing").Subrouter()
 
 	// Client discovery endpoint
-	oidcr.Handle("/.well-known/openid-configuration", makeHandler(sc, publicPrivs, (*handler).handleOidcProviderConfiguration)).Methods("GET")
+	oidcr.Handle("/.well-known/openid-configuration", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOidcProviderConfiguration)).Methods("GET")
 
-	oidcr.Handle("/authorize", makeHandler(sc, publicPrivs,
-		(*handler).handleOidcTestProviderAuthorize)).Methods("GET", "POST")
+	oidcr.Handle("/authorize", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOidcTestProviderAuthorize)).Methods("GET", "POST")
 
-	oidcr.Handle("/token", makeHandler(sc, publicPrivs,
-		(*handler).handleOidcTestProviderToken)).Methods("POST")
+	oidcr.Handle("/token", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOidcTestProviderToken)).Methods("POST")
 
-	oidcr.Handle("/certs", makeHandler(sc, publicPrivs,
-		(*handler).handleOidcTestProviderCerts)).Methods("GET")
+	oidcr.Handle("/certs", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOidcTestProviderCerts)).Methods("GET")
 
-	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs,
-		(*handler).handleOidcTestProviderAuthenticate)).Methods("GET", "POST")
+	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs, nil, false, (*handler).handleOidcTestProviderAuthenticate)).Methods("GET", "POST")
 
-	dbr.Handle("/_blipsync", makeHandler(sc, privs, (*handler).handleBLIPSync)).Methods("GET")
+	dbr.Handle("/_blipsync", makeHandler(sc, privs, nil, false, (*handler).handleBLIPSync)).Methods("GET")
 
 	return r, dbr
 }
@@ -117,15 +111,13 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 func CreatePublicHandler(sc *ServerContext) http.Handler {
 	r, dbr := createCommonRouter(sc, regularPrivs)
 
-	dbr.Handle("/_session", makeHandler(sc, publicPrivs,
-		(*handler).handleSessionPOST)).Methods("POST")
-	dbr.Handle("/_session", makeHandler(sc, regularPrivs,
-		(*handler).handleSessionDELETE)).Methods("DELETE")
+	dbr.Handle("/_session", makeHandler(sc, publicPrivs, nil, false, (*handler).handleSessionPOST)).Methods("POST")
+	dbr.Handle("/_session", makeHandler(sc, regularPrivs, nil, false, (*handler).handleSessionDELETE)).Methods("DELETE")
 	// The routine below is part of the CouchDB REST API, users can't create DB's via the pblic API
 	// but if the client set the 'createTarget' property of the Replicatior SG should return HTTP status 412
 	// if the db exists, and 403 if it doesn't.
 	r.Handle("/{targetdb:"+dbRegex+"}/",
-		makeHandler(sc, publicPrivs, (*handler).handleCreateTarget)).Methods("PUT")
+		makeHandler(sc, publicPrivs, nil, false, (*handler).handleCreateTarget)).Methods("PUT")
 	return wrapRouter(sc, regularPrivs, r)
 }
 
@@ -150,160 +142,160 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	})
 
 	dbr.Handle("/_session",
-		makeHandler(sc, adminPrivs, (*handler).createUserSession)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).createUserSession)).Methods("POST")
 
 	dbr.Handle("/_session/{sessionid}",
-		makeHandler(sc, adminPrivs, (*handler).getUserSession)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getUserSession)).Methods("GET")
 
 	dbr.Handle("/_session/{sessionid}",
-		makeHandler(sc, adminPrivs, (*handler).deleteUserSession)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).deleteUserSession)).Methods("DELETE")
 
 	dbr.Handle("/_raw/{docid:"+docRegex+"}",
-		makeHandler(sc, adminPrivs, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 
 	dbr.Handle("/_revtree/{docid:"+docRegex+"}",
-		makeHandler(sc, adminPrivs, (*handler).handleGetRevTree)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleGetRevTree)).Methods("GET")
 
 	dbr.Handle("/_user/",
-		makeHandler(sc, adminPrivs, (*handler).getUsers)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getUsers)).Methods("GET", "HEAD")
 	dbr.Handle("/_user/",
-		makeHandler(sc, adminPrivs, (*handler).putUser)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).putUser)).Methods("POST")
 	dbr.Handle("/_user/{name}",
-		makeHandler(sc, adminPrivs, (*handler).getUserInfo)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getUserInfo)).Methods("GET", "HEAD")
 	dbr.Handle("/_user/{name}",
-		makeHandler(sc, adminPrivs, (*handler).putUser)).Methods("PUT")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).putUser)).Methods("PUT")
 	dbr.Handle("/_user/{name}",
-		makeHandler(sc, adminPrivs, (*handler).deleteUser)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).deleteUser)).Methods("DELETE")
 
 	dbr.Handle("/_user/{name}/_session",
-		makeHandler(sc, adminPrivs, (*handler).deleteUserSessions)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).deleteUserSessions)).Methods("DELETE")
 	dbr.Handle("/_user/{name}/_session/{sessionid}",
-		makeHandler(sc, adminPrivs, (*handler).deleteUserSession)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).deleteUserSession)).Methods("DELETE")
 
 	dbr.Handle("/_role/",
-		makeHandler(sc, adminPrivs, (*handler).getRoles)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getRoles)).Methods("GET", "HEAD")
 	dbr.Handle("/_role/",
-		makeHandler(sc, adminPrivs, (*handler).putRole)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).putRole)).Methods("POST")
 	dbr.Handle("/_role/{name}",
-		makeHandler(sc, adminPrivs, (*handler).getRoleInfo)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getRoleInfo)).Methods("GET", "HEAD")
 	dbr.Handle("/_role/{name}",
-		makeHandler(sc, adminPrivs, (*handler).putRole)).Methods("PUT")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).putRole)).Methods("PUT")
 	dbr.Handle("/_role/{name}",
-		makeHandler(sc, adminPrivs, (*handler).deleteRole)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).deleteRole)).Methods("DELETE")
 
 	dbr.Handle("/_replication/",
-		makeHandler(sc, adminPrivs, (*handler).getReplications)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getReplications)).Methods("GET", "HEAD")
 	dbr.Handle("/_replication/",
-		makeHandler(sc, adminPrivs, (*handler).putReplication)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).putReplication)).Methods("POST")
 	dbr.Handle("/_replication/{replicationID}",
-		makeHandler(sc, adminPrivs, (*handler).getReplication)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getReplication)).Methods("GET", "HEAD")
 	dbr.Handle("/_replication/{replicationID}",
-		makeHandler(sc, adminPrivs, (*handler).putReplication)).Methods("PUT")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).putReplication)).Methods("PUT")
 	dbr.Handle("/_replication/{replicationID}",
-		makeHandler(sc, adminPrivs, (*handler).deleteReplication)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).deleteReplication)).Methods("DELETE")
 
 	dbr.Handle("/_replicationStatus/",
-		makeHandler(sc, adminPrivs, (*handler).getReplicationsStatus)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getReplicationsStatus)).Methods("GET", "HEAD")
 	dbr.Handle("/_replicationStatus/{replicationID}",
-		makeHandler(sc, adminPrivs, (*handler).getReplicationStatus)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).getReplicationStatus)).Methods("GET", "HEAD")
 	dbr.Handle("/_replicationStatus/{replicationID}",
-		makeHandler(sc, adminPrivs, (*handler).putReplicationStatus)).Methods("PUT")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).putReplicationStatus)).Methods("PUT")
 
 	r.Handle("/_logging",
-		makeHandler(sc, adminPrivs, (*handler).handleGetLogging)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleGetLogging)).Methods("GET")
 	r.Handle("/_logging",
-		makeHandler(sc, adminPrivs, (*handler).handleSetLogging)).Methods("PUT", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleSetLogging)).Methods("PUT", "POST")
 	r.Handle("/_profile/{profilename}",
-		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleProfiling)).Methods("POST")
 	r.Handle("/_profile",
-		makeHandler(sc, adminPrivs, (*handler).handleProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleProfiling)).Methods("POST")
 	r.Handle("/_heap",
-		makeHandler(sc, adminPrivs, (*handler).handleHeapProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleHeapProfiling)).Methods("POST")
 	r.Handle("/_stats",
-		makeHandler(sc, adminPrivs, (*handler).handleStats)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleStats)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix,
-		makeHandler(sc, adminPrivs, (*handler).handleExpvar)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleExpvar)).Methods("GET")
 	r.Handle("/_config",
-		makeHandler(sc, adminPrivs, (*handler).handleGetConfig)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleGetConfig)).Methods("GET")
 	r.Handle("/_replicate",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handleReplicate)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, nil, false, (*handler).handleReplicate)).Methods("POST")
 	r.Handle("/_active_tasks",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handleActiveTasks)).Methods("GET")
+		makeOfflineHandler(sc, adminPrivs, nil, false, (*handler).handleActiveTasks)).Methods("GET")
 
 	r.Handle("/_status",
-		makeHandler(sc, adminPrivs, (*handler).handleGetStatus)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleGetStatus)).Methods("GET")
 
 	r.Handle("/_sgcollect_info",
-		makeHandler(sc, adminPrivs, (*handler).handleSGCollectStatus)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleSGCollectStatus)).Methods("GET")
 	r.Handle("/_sgcollect_info",
-		makeHandler(sc, adminPrivs, (*handler).handleSGCollectCancel)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleSGCollectCancel)).Methods("DELETE")
 	r.Handle("/_sgcollect_info",
-		makeHandler(sc, adminPrivs, (*handler).handleSGCollect)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleSGCollect)).Methods("POST")
 
 	// Debugging handlers
 	r.Handle("/_debug/pprof/goroutine",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofGoroutine)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofGoroutine)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/cmdline",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofCmdline)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofCmdline)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/symbol",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofSymbol)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofSymbol)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/heap",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofHeap)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofHeap)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/profile",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofProfile)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofProfile)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/block",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofBlock)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofBlock)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/threadcreate",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofThreadcreate)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofThreadcreate)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/mutex",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofMutex)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofMutex)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/trace",
-		makeHandler(sc, adminPrivs, (*handler).handlePprofTrace)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePprofTrace)).Methods("GET", "POST")
 	r.Handle("/_debug/fgprof",
-		makeHandler(sc, adminPrivs, (*handler).handleFgprof)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleFgprof)).Methods("GET", "POST")
 
 	r.Handle("/_post_upgrade",
-		makeHandler(sc, adminPrivs, (*handler).handlePostUpgrade)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePostUpgrade)).Methods("POST")
 
 	// Database-relative handlers:
 	dbr.Handle("/_config",
-		makeHandler(sc, adminPrivs, (*handler).handleGetDbConfig)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleGetDbConfig)).Methods("GET")
 	dbr.Handle("/_config",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handlePutDbConfig)).Methods("PUT")
+		makeOfflineHandler(sc, adminPrivs, nil, false, (*handler).handlePutDbConfig)).Methods("PUT")
 	dbr.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handleGetResync)).Methods("GET")
+		makeOfflineHandler(sc, adminPrivs, nil, false, (*handler).handleGetResync)).Methods("GET")
 	dbr.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handlePostResync)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, nil, false, (*handler).handlePostResync)).Methods("POST")
 	dbr.Handle("/_vacuum",
-		makeHandler(sc, adminPrivs, (*handler).handleVacuum)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleVacuum)).Methods("POST")
 	dbr.Handle("/_purge",
-		makeHandler(sc, adminPrivs, (*handler).handlePurge)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handlePurge)).Methods("POST")
 	dbr.Handle("/_flush",
-		makeHandler(sc, adminPrivs, (*handler).handleFlush)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleFlush)).Methods("POST")
 	dbr.Handle("/_online",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handleDbOnline)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, nil, false, (*handler).handleDbOnline)).Methods("POST")
 	dbr.Handle("/_offline",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handleDbOffline)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, nil, false, (*handler).handleDbOffline)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
-		makeHandler(sc, adminPrivs, (*handler).handleDump)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleDump)).Methods("GET")
 	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
-		makeHandler(sc, adminPrivs, (*handler).handleView)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
-		makeHandler(sc, adminPrivs, (*handler).handleDumpChannel)).Methods("GET")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleDumpChannel)).Methods("GET")
 	dbr.Handle("/_repair",
-		makeHandler(sc, adminPrivs, (*handler).handleRepair)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleRepair)).Methods("POST")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
 	r.Handle("/{newdb:"+dbRegex+"}/",
-		makeHandler(sc, adminPrivs, (*handler).handleCreateDB)).Methods("PUT")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleCreateDB)).Methods("PUT")
 	r.Handle("/{db:"+dbRegex+"}/",
-		makeOfflineHandler(sc, adminPrivs, (*handler).handleDeleteDB)).Methods("DELETE")
+		makeOfflineHandler(sc, adminPrivs, nil, false, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",
-		makeHandler(sc, adminPrivs, (*handler).handleAllDbs)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleAllDbs)).Methods("GET", "HEAD")
 	dbr.Handle("/_compact",
-		makeHandler(sc, adminPrivs, (*handler).handleCompact)).Methods("POST")
+		makeHandler(sc, adminPrivs, nil, false, (*handler).handleCompact)).Methods("POST")
 
 	return r
 }
@@ -313,15 +305,15 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 // CreateMetricHandler Creates the HTTP handler for the prometheus metrics API of a gateway server.
 func CreateMetricHandler(sc *ServerContext) http.Handler {
 	router := CreateMetricRouter(sc)
-	return wrapRouter(sc, publicPrivs, router)
+	return wrapRouter(sc, metricsPrivs, router)
 }
 
 func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 
-	r.Handle("/_metrics", makeHandler(sc, publicPrivs, (*handler).handleMetrics)).Methods("GET")
-	r.Handle(kDebugURLPathPrefix, makeHandler(sc, publicPrivs, (*handler).handleExpvar)).Methods("GET")
+	r.Handle("/_metrics", makeHandler(sc, metricsPrivs, nil, false, (*handler).handleMetrics)).Methods("GET")
+	r.Handle(kDebugURLPathPrefix, makeHandler(sc, metricsPrivs, nil, false, (*handler).handleExpvar)).Methods("GET")
 
 	return r
 }

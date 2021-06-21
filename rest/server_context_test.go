@@ -13,7 +13,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"reflect"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -300,7 +303,7 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 	ctx := NewServerContext(&ServerConfig{})
 	defer ctx.Close()
 
-	eps, err := ctx.ObtainManagementEndpoints()
+	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
@@ -343,7 +346,7 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	ctx := NewServerContext(&ServerConfig{})
 	defer ctx.Close()
 
-	eps, err := ctx.ObtainManagementEndpoints()
+	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	baseSpec, err := connstr.Parse(base.UnitTestUrl())
@@ -366,4 +369,154 @@ outerLoop:
 	}
 
 	assert.True(t, existsOneMatchingEndpoint)
+}
+
+func MakeUser(t *testing.T, serverURL, username, password string, roles []string) {
+	httpClient := http.DefaultClient
+
+	form := url.Values{}
+	form.Add("password", password)
+	form.Add("roles", strings.Join(roles, ","))
+
+	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), strings.NewReader(form.Encode()))
+	require.NoError(t, err)
+
+	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func DeleteUser(t *testing.T, serverURL, username string) {
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/settings/rbac/users/local/%s", serverURL, username), nil)
+	require.NoError(t, err)
+
+	req.SetBasicAuth(base.TestClusterUsername(), base.TestClusterPassword())
+
+	httpClient := http.DefaultClient
+	resp, err := httpClient.Do(req)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestCheckPermissions(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	testCases := []struct {
+		Name                      string
+		Username                  string
+		Password                  string
+		RequestPermissions        []string
+		ExpectedStatusCode        int
+		ExpectedPermissionResults map[string]bool
+		CreateUser                string
+		CreatePassword            string
+		CreateRoles               []string
+	}{
+		{
+			Name:                      "ClusterAdminTest",
+			Username:                  base.TestClusterUsername(),
+			Password:                  base.TestClusterPassword(),
+			RequestPermissions:        []string{"cluster!admin"},
+			ExpectedStatusCode:        http.StatusOK,
+			ExpectedPermissionResults: map[string]bool{"cluster!admin": true},
+		},
+		{
+			Name:                      "CreatedAdmin",
+			Username:                  "CreatedAdmin",
+			Password:                  "password",
+			RequestPermissions:        []string{"cluster!admin"},
+			ExpectedStatusCode:        http.StatusOK,
+			ExpectedPermissionResults: map[string]bool{"cluster!admin": true},
+			CreateUser:                "CreatedAdmin",
+			CreatePassword:            "password",
+			CreateRoles:               []string{"admin"},
+		},
+		{
+			Name:                      "Non-Existent User",
+			Username:                  "NonExistent",
+			Password:                  "",
+			RequestPermissions:        []string{"cluster!admin"},
+			ExpectedStatusCode:        http.StatusUnauthorized,
+			ExpectedPermissionResults: nil,
+		},
+		{
+			Name:                      "Wrong Password",
+			Username:                  "WrongPassUser",
+			Password:                  "incorrectPass",
+			RequestPermissions:        nil,
+			ExpectedStatusCode:        http.StatusUnauthorized,
+			ExpectedPermissionResults: nil,
+			CreateUser:                "WrongPassUser",
+			CreatePassword:            "password",
+			CreateRoles:               nil,
+		},
+		{
+			Name:                      "Missing Permission",
+			Username:                  "NoPermUser",
+			Password:                  "password",
+			RequestPermissions:        []string{"cluster!admin"},
+			ExpectedStatusCode:        http.StatusForbidden,
+			ExpectedPermissionResults: nil,
+			CreateUser:                "NoPermUser",
+			CreatePassword:            "password",
+			CreateRoles:               []string{"ro_admin"},
+		},
+	}
+
+	ctx := NewServerContext(&ServerConfig{})
+	defer ctx.Close()
+
+	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.CreateUser != "" {
+				MakeUser(t, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
+				defer DeleteUser(t, eps[0], testCase.Username)
+			}
+
+			statusCode, permResults, err := ctx.CheckPermissions(httpClient, eps, testCase.Username, testCase.Password, testCase.RequestPermissions)
+			require.NoError(t, err)
+			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
+			assert.True(t, reflect.DeepEqual(testCase.ExpectedPermissionResults, permResults))
+		})
+	}
+}
+
+func TestCheckPermissionsWithX509(t *testing.T) {
+	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	defer tb.Close()
+	defer teardownFn()
+
+	original := tempConnectionDetailsForManagementEndpoints
+	defer func() {
+		tempConnectionDetailsForManagementEndpoints = original
+	}()
+
+	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
+		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
+	}
+
+	ctx := NewServerContext(&ServerConfig{})
+	defer ctx.Close()
+
+	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	assert.NoError(t, err)
+
+	statusCode, perms, err := ctx.CheckPermissions(httpClient, eps, base.TestClusterUsername(), base.TestClusterPassword(), []string{"cluster!admin"})
+	assert.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, statusCode)
+
+	clusterAdminVal, ok := perms["cluster!admin"]
+	require.True(t, ok)
+	assert.True(t, clusterAdminVal)
 }

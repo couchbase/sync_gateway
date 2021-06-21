@@ -9,9 +9,12 @@
 package rest
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1204,21 +1207,112 @@ var tempConnectionDetailsForManagementEndpoints = func() (serverAddress string, 
 	return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), "", "", ""
 }
 
-func (sc *ServerContext) ObtainManagementEndpoints() ([]string, error) {
+func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
 	clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath := tempConnectionDetailsForManagementEndpoints()
 	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath, sc.config.ServerReadTimeout)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	managementEndpoints := agent.MgmtEps()
 
-	err = agent.Close()
-	if err != nil {
-		return nil, err
+	httpClient := &http.Client{
+		Transport: agent.HTTPClient().Transport,
 	}
 
-	return managementEndpoints, nil
+	err = agent.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return managementEndpoints, httpClient, nil
+}
+
+func (sc *ServerContext) CheckPermissions(httpClient *http.Client, managementEndpoints []string, username, password string, requestedPermissions []string) (statusCode int, permissionResults map[string]bool, err error) {
+	body := []byte(strings.Join(requestedPermissions, ","))
+	statusCode, bodyResponse, err := doHTTPAuthRequest(httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, body)
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	if statusCode != http.StatusOK {
+		if statusCode == http.StatusUnauthorized {
+			return http.StatusUnauthorized, nil, nil
+		}
+
+		// If we don't provide permissions we get a BadRequest but know we have successfully authenticated
+		if statusCode == http.StatusBadRequest && len(requestedPermissions) > 0 {
+			return statusCode, nil, nil
+		}
+	}
+
+	// At this point we know the user exists, now check whether they have the required permissions
+	if len(requestedPermissions) > 0 {
+		var permissions map[string]bool
+
+		err = base.JSONUnmarshal(bodyResponse, &permissions)
+		if err != nil {
+			return http.StatusInternalServerError, nil, err
+		}
+
+		for _, permResult := range permissions {
+			if permResult {
+				return http.StatusOK, permissions, nil
+			}
+		}
+	}
+
+	return http.StatusForbidden, permissionResults, nil
+}
+
+func doHTTPAuthRequest(httpClient *http.Client, username, password, method, path string, endpoints []string, requestBody []byte) (statusCode int, responseBody []byte, err error) {
+	var httpResponse *http.Response
+
+	maxRetryCount := 5
+	retryCount := 0
+
+	for {
+		endpointIdx := retryCount % len(endpoints)
+		req, err := http.NewRequest(method, endpoints[endpointIdx]+path, bytes.NewBuffer(requestBody))
+		if err != nil {
+			return 0, nil, err
+		}
+
+		req.SetBasicAuth(username, password)
+
+		httpResponse, err = httpClient.Do(req)
+
+		// If no error on request break out and continue
+		if err == nil {
+			break
+		}
+
+		// If we've reached maximum number of retries fail
+		if retryCount >= maxRetryCount {
+			return 0, nil, err
+		}
+
+		// If error is a timeout we will retry
+		if err, ok := err.(net.Error); ok && err.Timeout() {
+			retryCount++
+			continue
+		}
+
+		// For any other error fail out
+		return 0, nil, err
+	}
+
+	bodyString, err := ioutil.ReadAll(httpResponse.Body)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	err = httpResponse.Body.Close()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return httpResponse.StatusCode, bodyString, nil
 }
 
 // For test use

@@ -191,6 +191,10 @@ func UnitTestUrl() string {
 
 // UnitTestUrlIsWalrus returns true if we're running with a Walrus test URL.
 func UnitTestUrlIsWalrus() bool {
-	unitTestUrl := UnitTestUrl()
-	return strings.Contains(unitTestUrl, kTestWalrusURL)
+	return ServerIsWalrus(UnitTestUrl())
+}
+
+// ServerIsWalrus returns true if the given server is a Walrus URL.
+func ServerIsWalrus(server string) bool {
+	return strings.HasPrefix(server, kTestWalrusURL)
 }
