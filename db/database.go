@@ -1370,6 +1370,16 @@ func (db *Database) invalUserOrRoleChannels(name string, invalSeq uint64) {
 	}
 }
 
+func (context *DatabaseContext) ObtainManagementEndpoints() ([]string, error) {
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
+	if !ok {
+		base.Warnf("Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
+		return nil, nil
+	}
+
+	return base.GoCBBucketMgmtEndpoints(gocbBucket.Bucket)
+}
+
 func (context *DatabaseContext) GetUserViewsEnabled() bool {
 	if context.Options.UnsupportedOptions.UserViews.Enabled != nil {
 		return *context.Options.UnsupportedOptions.UserViews.Enabled
