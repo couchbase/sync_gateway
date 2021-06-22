@@ -814,18 +814,24 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if persistentConfig && !base.ServerIsWalrus(sc.config.Bootstrap.Server) {
-		// TODO: Retry loop in CBG-1458
-		cluster, err := base.NewCouchbaseCluster(sc.config.Bootstrap.Server,
-			sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
-			sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
-			sc.config.Bootstrap.CACertPath)
+		err, c := base.RetryLoop("Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
+			cluster, err := base.NewCouchbaseCluster(sc.config.Bootstrap.Server,
+				sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
+				sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
+				sc.config.Bootstrap.CACertPath)
+			if err != nil {
+				base.Debugf(base.KeyAll, "Got error connecting to bootstrap cluster: %v", err)
+				return true, err, nil
+			}
+
+			base.Infof(base.KeyAll, "successfully connected to cluster")
+			return false, nil, cluster
+		}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitForReady timeout and 1 second interval
 		if err != nil {
-			base.Debugf(base.KeyAll, "Got error connecting to bootstrap cluster: %v", err)
 			return nil, err
 		}
 
-		base.Infof(base.KeyAll, "successfully connected to cluster")
-		sc.bootstrapConnection = cluster
+		sc.bootstrapConnection = c.(base.BootstrapConnection)
 
 		// TODO: CBG-1457 Synchronously find configs in buckets
 		// sc.fetchConfigs()
