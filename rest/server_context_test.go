@@ -221,7 +221,7 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -264,7 +264,7 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
