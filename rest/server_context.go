@@ -45,6 +45,7 @@ const DefaultStatsLogFrequencySecs = 60
 type ServerContext struct {
 	config              *StartupConfig
 	persistentConfig    bool
+	locationDbName      map[string]string              // locationDbName is a map of location (bucket, collection, etc.) to database name
 	dbConfigs           map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
 	databases_          map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
 	lock                sync.RWMutex
@@ -58,7 +59,8 @@ type ServerContext struct {
 }
 
 type DatabaseConfig struct {
-	// TODO: Copy non-legacy properties into this struct
+	// TODO: Copy non-legacy properties into this struct?
+	CAS uint64
 	DbConfig
 }
 
@@ -104,6 +106,7 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 	sc := &ServerContext{
 		config:           config,
 		persistentConfig: persistentConfig,
+		locationDbName:   map[string]string{},
 		dbConfigs:        map[string]*DatabaseConfig{},
 		databases_:       map[string]*db.DatabaseContext{},
 		HTTPClient:       http.DefaultClient,

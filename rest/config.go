@@ -25,6 +25,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/couchbase/gocb"
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -852,11 +853,73 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 		sc.bootstrapConnection = c.(base.BootstrapConnection)
 
-		// TODO: CBG-1457 Synchronously find configs in buckets
-		// sc.fetchConfigs()
+		if err := sc.fetchConfigs(); err != nil {
+			return nil, err
+		}
 	}
 
 	return sc, nil
+}
+
+func (sc *ServerContext) fetchConfigs() error {
+	locations, err := sc.bootstrapConnection.GetConfigLocations()
+	if err != nil {
+		return fmt.Errorf("couldn't get buckets from cluster: %w", err)
+	}
+
+	for _, location := range locations {
+		base.Tracef(base.KeyAll, "Checking %q for Sync Gateway config in group %q", location, sc.config.Bootstrap.ConfigGroupID)
+		// populate values from bootstrap, before we overwrite them with any values fetched from the bucket.
+		cnf := DbConfig{
+			BucketConfig: BucketConfig{
+				Server:     &sc.config.Bootstrap.Server,
+				Bucket:     &location,
+				Username:   sc.config.Bootstrap.Username,
+				Password:   sc.config.Bootstrap.Password,
+				CertPath:   sc.config.Bootstrap.X509CertPath,
+				KeyPath:    sc.config.Bootstrap.X509KeyPath,
+				CACertPath: sc.config.Bootstrap.CACertPath,
+			},
+		}
+
+		cas, err := sc.bootstrapConnection.GetConfig(location, sc.config.Bootstrap.ConfigGroupID, &cnf)
+		if errors.As(err, &gocb.ErrDocumentNotFound) {
+			base.Debugf(base.KeyAll, "%q did not contain config in group %q", location, sc.config.Bootstrap.ConfigGroupID)
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("couldn't fetch config in group %q from location %q: %w", sc.config.Bootstrap.ConfigGroupID, location, err)
+		}
+
+		base.Tracef(base.KeyAll, "Got config for location %q with cas %d", location, cas)
+
+		sc.lock.Lock()
+		// if we don't have the database, or if the CAS we have is older than the one we just fetched out of the bucket, load the config.
+		if foundDbName, ok := sc.locationDbName[location]; !ok || (foundDbName != "" && sc.dbConfigs[foundDbName].CAS < cas) {
+			if dbc := sc.databases_[cnf.Name]; dbc != nil {
+				runningBucket := dbc.Bucket.GetName()
+				if runningBucket != location {
+					// trying to add a database of the same name against a different bucket... don't allow this.
+					sc.lock.Unlock()
+					return fmt.Errorf("database %q location %q cannot be added - already running %q using location %q", cnf.Name, location, cnf.Name, runningBucket)
+				}
+			}
+
+			base.Infof(base.KeyAll, "Updating database %q for location %q with new config from location", cnf.Name, location)
+			dbConfig := DatabaseConfig{CAS: cas, DbConfig: cnf}
+			sc.locationDbName[location] = cnf.Name
+			sc.dbConfigs[cnf.Name] = &dbConfig
+
+			// TODO: Dynamic update instead of reload
+			if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
+				sc.lock.Unlock()
+				return fmt.Errorf("couldn't reload database: %w", err)
+			}
+		}
+		sc.lock.Unlock()
+	}
+
+	return nil
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)
