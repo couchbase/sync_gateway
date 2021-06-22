@@ -194,6 +194,12 @@ func (sc *ServerContext) Close() {
 
 	sc.databases_ = nil
 
+	if sc.bootstrapConnection != nil {
+		if err := sc.bootstrapConnection.Close(&gocb.ClusterCloseOptions{}); err != nil {
+			base.Warnf("Error closing bootstrap cluster connection: %v", err)
+		}
+	}
+
 }
 
 // Returns the DatabaseContext with the given name
