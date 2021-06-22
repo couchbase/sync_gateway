@@ -427,8 +427,10 @@ func (h *handler) checkAdminAuth(dbContext *db.DatabaseContext, checkPermissions
 		h.permissionsResults = permResults
 	}
 
-	fmt.Println(statusCode)
-	fmt.Println(permResults)
+	if statusCode != http.StatusOK {
+		return base.HTTPErrorf(statusCode, "")
+	}
+
 	return nil
 }
 
