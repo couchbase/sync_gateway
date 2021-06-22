@@ -1254,30 +1254,22 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		}
 
 		// TODO: Retry loop in CBG-1458
-		err, c := base.RetryLoop("Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
-			cluster, err := gocb.Connect(sc.config.Bootstrap.Server, clusterOptions)
-			if err != nil {
-				base.Debugf(base.KeyAll, "Got error connecting to bootstrap cluster: %v", err)
-				return true, err, nil
-			}
-
-			if err := cluster.WaitUntilReady(time.Second, &gocb.WaitUntilReadyOptions{
-				DesiredState: gocb.ClusterStateOnline,
-				ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
-			}); err != nil {
-				base.Debugf(base.KeyAll, "Got error waiting for bootstrap cluster readiness: %v", err)
-				return true, err, nil
-			}
-
-			base.Infof(base.KeyAll, "successfully connected to cluster")
-			return false, nil, cluster
-		}, base.CreateMaxDoublingSleeperFunc(30, 100, 5000))
-		// TODO: Check retry timeouts/attempts ^ with PRD
+		cluster, err := gocb.Connect(sc.config.Bootstrap.Server, clusterOptions)
 		if err != nil {
+			base.Debugf(base.KeyAll, "Got error connecting to bootstrap cluster: %v", err)
 			return nil, err
 		}
 
-		sc.bootstrapConnection = c.(*gocb.Cluster)
+		if err := cluster.WaitUntilReady(time.Second, &gocb.WaitUntilReadyOptions{
+			DesiredState: gocb.ClusterStateOnline,
+			ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
+		}); err != nil {
+			base.Debugf(base.KeyAll, "Got error waiting for bootstrap cluster readiness: %v", err)
+			return nil, err
+		}
+
+		base.Infof(base.KeyAll, "successfully connected to cluster")
+		sc.bootstrapConnection = cluster
 
 		// TODO: CBG-1457 Synchronously find configs in buckets
 		// sc.fetchConfigs()
