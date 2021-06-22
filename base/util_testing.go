@@ -24,10 +24,8 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-	"github.com/stretchr/testify/require"
-	"gopkg.in/couchbase/gocb.v1"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Code that is test-related that needs to be accessible from non-base packages, and therefore can't live in
@@ -462,24 +460,6 @@ func WaitForStat(getStatFunc func() int64, expected int64) (int64, bool) {
 	valInt64, ok := val.(int64)
 
 	return valInt64, err == nil && ok
-}
-
-func WriteXattr(gocbBucket *CouchbaseBucketGoCB, docKey string, xattrKey string, xattrVal interface{}) (uint64, error) {
-	docFrag, err := gocbBucket.Bucket.MutateIn(docKey, 0, 0).UpsertEx(xattrKey, xattrVal, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).Execute()
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(docFrag.Cas()), nil
-}
-
-func DeleteXattr(gocbBucket *CouchbaseBucketGoCB, docKey string, xattrKey string) (uint64, error) {
-	docFrag, err := gocbBucket.Bucket.MutateIn(docKey, 0, 0).RemoveEx(xattrKey, gocb.SubdocFlagXattr).Execute()
-	if err != nil {
-		return 0, err
-	}
-
-	return uint64(docFrag.Cas()), nil
 }
 
 type dataStore struct {

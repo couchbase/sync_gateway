@@ -113,7 +113,7 @@ func (c *Collection) Close() {
 }
 
 func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
-	return false
+	return true
 }
 
 // KV store
@@ -358,10 +358,6 @@ func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.M
 }
 func (c *Collection) Dump() {
 	return
-}
-
-func (b *Collection) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
-	return errors.New("SubdocInsert not implemented")
 }
 
 // CouchbaseStore

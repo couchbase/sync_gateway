@@ -1832,10 +1832,23 @@ func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature
 	}
 }
 
+// SubdocInsert inserts a new property into the document body.  Returns error if the property already exists
 func (bucket *CouchbaseBucketGoCB) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
 	_, err := bucket.MutateIn(docID, gocb.Cas(cas), 0).
 		Insert(fieldPath, value, false).
 		Execute()
+	if err == nil {
+		return nil
+	}
+
+	if err == gocb.ErrKeyNotFound {
+		return ErrNotFound
+	}
+
+	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
+	if ok && subdocMutateErr.Err == gocb.ErrSubDocPathExists {
+		return ErrAlreadyExists
+	}
 
 	return err
 }

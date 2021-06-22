@@ -366,7 +366,7 @@ func (auth *Authenticator) InvalidateChannels(name string, isUser bool, invalSeq
 
 	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
 		err := auth.bucket.SubdocInsert(docID, "channel_inval_seq", 0, invalSeq)
-		if err != nil && !base.IsDocNotFoundError(err) && !base.IsSubDocPathExistsError(err) {
+		if err != nil && err != base.ErrNotFound && err != base.ErrAlreadyExists {
 			return err
 		}
 		return nil
@@ -409,7 +409,7 @@ func (auth *Authenticator) InvalidateRoles(username string, invalSeq uint64) err
 
 	if auth.bucket.IsSupported(sgbucket.DataStoreFeatureSubdocOperations) {
 		err := auth.bucket.SubdocInsert(docID, "role_inval_seq", 0, invalSeq)
-		if err != nil && !base.IsDocNotFoundError(err) && !base.IsSubDocPathExistsError(err) {
+		if err != nil && err != base.ErrNotFound && err != base.ErrAlreadyExists {
 			return err
 		}
 		return nil
