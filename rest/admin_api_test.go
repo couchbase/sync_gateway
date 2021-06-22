@@ -33,16 +33,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Get rev from Admin API response
-func getRespRev(t *testing.T, resp *TestResponse) string {
-	var body struct {
-		Rev string `json:"rev"`
-	}
-	err := json.Unmarshal(resp.BodyBytes(), &body)
-	require.NoError(t, err)
-	return body.Rev
-}
-
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
 func TestPutDocSpecialChar(t *testing.T) {
 	rt := NewRestTester(t, nil)
@@ -3069,7 +3059,7 @@ func TestChannelNameSizeWarningUpdateExistingDoc(t *testing.T) {
 		assertStatus(t, tr, http.StatusCreated)
 
 		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+getRespRev(t, tr), fmt.Sprintf("{\"chan\":\"%s\", \"data\":\"test\"}", channelName))
+		tr = rt.SendAdminRequest("PUT", "/db/replace?rev="+respRevID(t, tr), fmt.Sprintf("{\"chan\":\"%s\", \"data\":\"test\"}", channelName))
 		assertStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
@@ -3089,7 +3079,7 @@ func TestChannelNameSizeWarningDocChannelUpdate(t *testing.T) {
 		assertStatus(t, tr, http.StatusCreated)
 
 		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		tr = rt.SendAdminRequest("PUT", "/db/replaceNewChannel?rev="+getRespRev(t, tr), fmt.Sprintf("{\"chan\":\"%s\", \"data\":\"test\"}", strings.Repeat("D", channelLength+5)))
+		tr = rt.SendAdminRequest("PUT", "/db/replaceNewChannel?rev="+respRevID(t, tr), fmt.Sprintf("{\"chan\":\"%s\", \"data\":\"test\"}", strings.Repeat("D", channelLength+5)))
 		assertStatus(t, tr, http.StatusCreated)
 		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before+1, after)
@@ -3109,7 +3099,7 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 		assertStatus(t, tr, http.StatusCreated)
 
 		before := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
-		tr = rt.SendAdminRequest("DELETE", "/db/deleteme?rev="+getRespRev(t, tr), "")
+		tr = rt.SendAdminRequest("DELETE", "/db/deleteme?rev="+respRevID(t, tr), "")
 		assertStatus(t, tr, http.StatusOK)
 		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before, after)
