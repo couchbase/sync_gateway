@@ -1055,7 +1055,7 @@ type SendRevWithAttachmentInput struct {
 	attachmentLength  int
 	attachmentBody    string
 	attachmentDigest  string
-	attachmentVersion int64
+	attachmentVersion int
 	history           []string
 	body              []byte
 }

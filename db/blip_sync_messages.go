@@ -444,5 +444,5 @@ func (g *getAttachmentParams) docID() string {
 }
 
 func (g *getAttachmentParams) String() string {
-	return fmt.Sprintf("Digest:%v, DocID: %v ", g.digest(), g.docID())
+	return fmt.Sprintf("Digest:%v, DocID: %v ", g.digest(), base.UD(g.docID()))
 }

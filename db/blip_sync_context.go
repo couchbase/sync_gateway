@@ -126,10 +126,12 @@ type BlipSyncContext struct {
 	fatalErrorCallback func(err error)
 }
 
+// AllowedAttachment contains the metadata for handling allowed attachments
+// while replicating over BLIP protocol.
 type AllowedAttachment struct {
 	docID   string // Associated document ID
 	name    string // Name of the attachment
-	version int64  // Version of the attachment
+	version int    // Version of the attachment
 	counter int    // Counter to track allowed attachments
 }
 
@@ -580,7 +582,9 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
 	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
-	base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
+	if base.LogDebugEnabled(base.KeySync) {
+		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
+	}
 	return bsc.sendRevisionWithProperties(sender, docID, revID, bodyBytes, attachmentStorageMeta, properties, seq, nil)
 }
 

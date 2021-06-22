@@ -234,11 +234,10 @@ func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRe
 	return RevisionDelta{
 		ToRevID:               toRevision.RevID,
 		DeltaBytes:            deltaBytes,
-		AttachmentStorageMeta: ToAttachmentStorageMeta(toRevision.Attachments),
-		// Flatten the AttachmentsMeta into a list of digest version pairs
-		ToChannels:      toRevision.Channels,
-		RevisionHistory: toRevision.History.parseAncestorRevisions(fromRevID),
-		ToDeleted:       deleted,
+		AttachmentStorageMeta: ToAttachmentStorageMeta(toRevision.Attachments), // Flatten the AttachmentsMeta into a list of digest version pairs
+		ToChannels:            toRevision.Channels,
+		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
+		ToDeleted:             deleted,
 	}
 }
 

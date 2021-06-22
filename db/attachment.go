@@ -15,6 +15,14 @@ import (
 	"github.com/couchbase/sync_gateway/base"
 )
 
+const (
+	// AttVersion1 attachments are persisted to the bucket based on attachment body digest.
+	AttVersion1 int = 1
+
+	// AttVersion2 attachments are persisted to the bucket based on docID and body digest.
+	AttVersion2 int = 2
+)
+
 // Key for retrieving an attachment from Couchbase.
 type AttachmentKey string
 type AttachmentData map[AttachmentKey][]byte
@@ -30,7 +38,7 @@ type DocAttachment struct {
 	Length      int    `json:"length,omitempty"`
 	Revpos      int    `json:"revpos,omitempty"`
 	Stub        bool   `json:"stub,omitempty"`
-	Version     int64  `json:"ver,omitempty"`
+	Version     int    `json:"ver,omitempty"`
 	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
 }
 
@@ -209,7 +217,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // its data. The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string, callback AttachmentCallback) error {
+func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(400, "Invalid _attachments")
@@ -299,7 +307,7 @@ func AttachmentDigests(attachments AttachmentsMeta) []string {
 // the key for attachment storage and retrieval.
 type AttachmentStorageMeta struct {
 	digest  string
-	version int64
+	version int
 }
 
 // ToAttachmentStorageMeta returns a slice of AttachmentStorageMeta, which is contains the
@@ -311,10 +319,10 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 			if digest, ok := attMap["digest"]; ok {
 				if digestString, ok := digest.(string); ok {
 					m := AttachmentStorageMeta{digest: digestString}
-					if version, ok := base.ToInt64(attMap["ver"]); ok {
+					if version, ok := attMap["ver"].(int); ok {
 						m.version = version
 					} else {
-						m.version = LegacyAttachmentVersion
+						m.version = AttVersion1
 					}
 					meta = append(meta, m)
 				}
@@ -344,15 +352,3 @@ func Sha1DigestKey(data []byte) string {
 	digester.Write(data)
 	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
-
-const (
-	// LegacyAttachmentVersion on the attachment metadata indicates that the
-	// attachment is shared across documents — multiple documents can reference a
-	// given attachment, and multiple revisions of the same document can reference
-	// a given attachment.
-	LegacyAttachmentVersion int64 = 1
-
-	// NonLegacyAttachmentVersion on the attachment metadata indicates that the
-	// attachment is not shared across documents.
-	NonLegacyAttachmentVersion int64 = 2
-)

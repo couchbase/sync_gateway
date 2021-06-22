@@ -961,7 +961,7 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
 		docID := getAttachmentParams.docID()
 		if docID == "" {
-			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'id'")
+			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'docID'")
 		}
 		attachmentAllowedKey = docID + digest
 	}
@@ -1068,7 +1068,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 // For each attachment in the revision, makes sure it's in the database, asking the client to
 // upload it if necessary. This method blocks until all the attachments have been processed.
 func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Body, minRevpos int, docID string) error {
-	return bh.db.ForEachStubAttachment(body, minRevpos, docID,
+	return bh.db.ForEachStubAttachment(body, minRevpos,
 		func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 			// request attachment if we don't have it
 			if knownData == nil {
@@ -1111,17 +1111,15 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
 	for _, attachment := range attMeta {
-		var key string
-		if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
-			key = docID + attachment.digest
-		} else {
-			key = attachment.digest
-		}
-
+		key := bsc.allowedAttachmentKey(docID, attachment.digest)
 		att, found := bsc.allowedAttachments[key]
-		if found && att.version == LegacyAttachmentVersion {
-			att.counter = att.counter + 1
-			bsc.allowedAttachments[attachment.digest] = att
+		if found {
+			if att.version == AttVersion1 {
+				att.counter = att.counter + 1
+				bsc.allowedAttachments[key] = att
+			} else if att.version == AttVersion2 {
+				bsc.allowedAttachments[key] = AllowedAttachment{}
+			}
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{
 				docID:   docID,
@@ -1143,21 +1141,28 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 	defer bsc.lock.Unlock()
 
 	for _, attachment := range attMeta {
-		if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
-			key := docID + attachment.digest
-			delete(bsc.allowedAttachments, key)
-		} else {
-			att := bsc.allowedAttachments[attachment.digest]
-			if n := att.counter; n > 1 && att.version == LegacyAttachmentVersion {
+		key := bsc.allowedAttachmentKey(docID, attachment.digest)
+		att, found := bsc.allowedAttachments[key]
+		if found && att.version == AttVersion1 {
+			if n := att.counter; n > 1 {
 				att.counter = n - 1
-				bsc.allowedAttachments[attachment.digest] = att
+				bsc.allowedAttachments[key] = att
 			} else {
-				delete(bsc.allowedAttachments, attachment.digest)
+				delete(bsc.allowedAttachments, key)
 			}
+		} else if found && att.version == AttVersion2 {
+			delete(bsc.allowedAttachments, key)
 		}
 	}
 
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attMeta, bsc.allowedAttachments)
+}
+
+func (bsc *BlipSyncContext) allowedAttachmentKey(docID, digest string) string {
+	if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
+		return docID + digest
+	}
+	return digest
 }
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {

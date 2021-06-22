@@ -1455,12 +1455,12 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	var tests = []struct {
 		name                   string
 		inputBlipProtocol      string
-		inputAttachmentVersion int64
+		inputAttachmentVersion int
 	}{
-		{"TestPutAttViaBlipGetViaBlipCBMobile2AttVer1", db.BlipCBMobileReplicationV2, db.LegacyAttachmentVersion},
-		{"TestPutAttViaBlipGetViaBlipCBMobile2AttVer2", db.BlipCBMobileReplicationV2, db.NonLegacyAttachmentVersion},
-		{"TestPutAttViaBlipGetViaBlipCBMobile3AttVer1", db.BlipCBMobileReplicationV3, db.LegacyAttachmentVersion},
-		{"TestPutAttViaBlipGetViaBlipCBMobile3AttVer2", db.BlipCBMobileReplicationV3, db.NonLegacyAttachmentVersion},
+		{"TestPutAttViaBlipGetViaBlipCBMobile2AttVer1", db.BlipCBMobileReplicationV2, db.AttVersion1},
+		{"TestPutAttViaBlipGetViaBlipCBMobile2AttVer2", db.BlipCBMobileReplicationV2, db.AttVersion2},
+		{"TestPutAttViaBlipGetViaBlipCBMobile3AttVer1", db.BlipCBMobileReplicationV3, db.AttVersion1},
+		{"TestPutAttViaBlipGetViaBlipCBMobile3AttVer2", db.BlipCBMobileReplicationV3, db.AttVersion2},
 	}
 
 	for _, tt := range tests {
@@ -1478,9 +1478,7 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 			attachmentBody := "attach"
 			digest := db.Sha1DigestKey([]byte(attachmentBody))
 
-			// Send revision with attachment
 			input := SendRevWithAttachmentInput{
-				docId:             "doc",
 				revId:             "1-rev1",
 				attachmentName:    "myAttachment",
 				attachmentLength:  len(attachmentBody),
@@ -1488,33 +1486,41 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 				attachmentDigest:  digest,
 				attachmentVersion: tt.inputAttachmentVersion,
 			}
-			sent, _, _ := bt.SendRevWithAttachment(input)
-			require.True(t, sent)
+
+			for i := 0; i < 2; i++ {
+				in := input
+				in.docId = fmt.Sprintf("doc%v", i)
+				sent, _, _ := bt.SendRevWithAttachment(in)
+				require.True(t, sent)
+			}
 
 			// Get all docs and attachment via subChanges request
-			allDocs, ok := bt.WaitForNumDocsViaChanges(1)
+			allDocs, ok := bt.WaitForNumDocsViaChanges(2)
 			require.True(t, ok)
 
 			// make assertions on allDocs -- make sure attachment is present w/ expected body
-			require.Len(t, allDocs, 1)
-			retrievedDoc := allDocs[input.docId]
+			require.Len(t, allDocs, 2)
 
-			// doc assertions
-			require.Equal(t, input.docId, retrievedDoc.ID())
-			require.Equal(t, input.revId, retrievedDoc.RevID())
+			for i := 0; i < len(allDocs); i++ {
+				docID := fmt.Sprintf("doc%v", i)
+				retrievedDoc := allDocs[docID]
 
-			// attachment assertions
-			attachments, err := retrievedDoc.GetAttachments()
-			require.NoError(t, err)
-			require.Len(t, attachments, 1)
-			retrievedAttachment := attachments[input.attachmentName]
-			require.NotNil(t, retrievedAttachment)
-			assert.Equal(t, input.attachmentBody, string(retrievedAttachment.Data))
-			assert.Equal(t, len(attachmentBody), retrievedAttachment.Length)
-			assert.Equal(t, input.attachmentDigest, retrievedAttachment.Digest)
+				// doc assertions
+				require.Equal(t, docID, retrievedDoc.ID())
+				require.Equal(t, input.revId, retrievedDoc.RevID())
+
+				// attachment assertions
+				attachments, err := retrievedDoc.GetAttachments()
+				require.NoError(t, err)
+				require.Len(t, attachments, 1)
+				retrievedAttachment := attachments[input.attachmentName]
+				require.NotNil(t, retrievedAttachment)
+				assert.Equal(t, input.attachmentBody, string(retrievedAttachment.Data))
+				assert.Equal(t, len(attachmentBody), retrievedAttachment.Length)
+				assert.Equal(t, input.attachmentDigest, retrievedAttachment.Digest)
+			}
 		})
 	}
-
 }
 
 // Reproduces the issue seen in https://github.com/couchbase/couchbase-lite-core/issues/790
