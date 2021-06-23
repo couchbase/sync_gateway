@@ -1117,8 +1117,6 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 			if att.version == AttVersion1 {
 				att.counter = att.counter + 1
 				bsc.allowedAttachments[key] = att
-			} else if att.version == AttVersion2 {
-				bsc.allowedAttachments[key] = AllowedAttachment{}
 			}
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{

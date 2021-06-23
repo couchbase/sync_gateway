@@ -12,6 +12,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
+	"encoding/json"
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -72,6 +73,9 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 				"stub":   true,
 				"digest": string(key),
 				"revpos": generation,
+			}
+			if version, ok := meta["ver"].(json.Number); ok {
+				newMeta["ver"] = version
 			}
 			if contentType, ok := meta["content_type"].(string); ok {
 				newMeta["content_type"] = contentType
@@ -319,8 +323,10 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 			if digest, ok := attMap["digest"]; ok {
 				if digestString, ok := digest.(string); ok {
 					m := AttachmentStorageMeta{digest: digestString}
-					if version, ok := attMap["ver"].(int); ok {
-						m.version = version
+					if ver, ok := attMap["ver"].(json.Number); ok {
+						if version, err := ver.Int64(); err == nil {
+							m.version = int(version)
+						}
 					} else {
 						m.version = AttVersion1
 					}
