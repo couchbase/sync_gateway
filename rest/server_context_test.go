@@ -480,7 +480,7 @@ func TestCheckPermissions(t *testing.T) {
 		t.Run(testCase.Name, func(t *testing.T) {
 			if testCase.CreateUser != "" {
 				MakeUser(t, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
-				defer DeleteUser(t, eps[0], testCase.Username)
+				defer DeleteUser(t, eps[0], testCase.CreateUser)
 			}
 
 			statusCode, permResults, err := ctx.CheckPermissions(httpClient, eps, testCase.Username, testCase.Password, testCase.RequestPermissions)
