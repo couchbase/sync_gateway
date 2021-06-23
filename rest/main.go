@@ -31,7 +31,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	defaultLogFilePath = *fs.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
 	// TODO: Change default when we're ready to enable 3.0/bootstrap/persistent config by default (once QE's existing tests are ready to handle it)
-	persistentConfigFlag := fs.Bool("persistent_config", false, "Can be set to false to disable persistent config handling, and read all configuration from a legacy config file.")
+	disablePersistentConfigFlag := fs.Bool("disable_persistent_config", true, "Can be set to false to disable persistent config handling, and read all configuration from a legacy config file.")
 
 	// TODO: Merge legacyFlagStartupConfig onto default config before merging others.
 	legacyFlagStartupConfig := registerLegacyFlags(fs)
@@ -52,9 +52,9 @@ func serverMain(ctx context.Context, osArgs []string) error {
 		return err
 	}
 
-	if !*persistentConfigFlag {
-		return legacyServerMain(osArgs)
+	if *disablePersistentConfigFlag {
+		return serverMainPersistentConfig(osArgs, fs, &flagStartupConfig)
 	}
 
-	return serverMainPersistentConfig(osArgs, fs, &flagStartupConfig)
+	return legacyServerMain(osArgs)
 }

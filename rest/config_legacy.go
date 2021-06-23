@@ -8,7 +8,7 @@ import (
 )
 
 type LegacyConfig struct {
-	PersistentConfig *bool `json:"persistent_config,omitempty" help:"Can be set to false to disable 3.0/persistent config handling."`
+	DisablePersistentConfig *bool `json:"disable_persistent_config,omitempty" help:"Can be set to true to disable 3.0/persistent config handling."`
 	LegacyServerConfig
 }
 
