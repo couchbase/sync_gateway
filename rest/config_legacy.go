@@ -130,11 +130,13 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 	if lc.SSLKey != nil {
 		sc.API.TLS.KeyPath = *lc.SSLKey
 	}
-	if lc.Unsupported.StatsLogFrequencySecs != nil {
-		sc.Unsupported.StatsLogFrequency = base.DurationPtr(time.Second * time.Duration(*lc.Unsupported.StatsLogFrequencySecs))
-	}
-	if lc.Unsupported.UseStdlibJSON != nil {
-		sc.Unsupported.UseStdlibJSON = *lc.Unsupported.UseStdlibJSON
+	if lc.Unsupported != nil {
+		if lc.Unsupported.StatsLogFrequencySecs != nil {
+			sc.Unsupported.StatsLogFrequency = base.DurationPtr(time.Second * time.Duration(*lc.Unsupported.StatsLogFrequencySecs))
+		}
+		if lc.Unsupported.UseStdlibJSON != nil {
+			sc.Unsupported.UseStdlibJSON = *lc.Unsupported.UseStdlibJSON
+		}
 	}
 	if lc.MaxFileDescriptors != nil {
 		sc.MaxFileDescriptors = *lc.MaxFileDescriptors
