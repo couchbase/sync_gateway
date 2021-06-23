@@ -3177,7 +3177,7 @@ func TestRevocationMessage(t *testing.T) {
 }
 
 func TestRevocationNoRev(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer db.SuspendSequenceBatching()()
 
 	revocationTester, rt := initScenario(t)
 	defer rt.Close()
@@ -3199,14 +3199,14 @@ func TestRevocationNoRev(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
-	_, err = rt.WaitForChanges(3, "/db/_changes?since=0", "user", true)
+	changes, err := rt.WaitForChanges(3, "/db/_changes?since=0", "user", true)
 	require.NoError(t, err)
 
 	// OneShot pull to grab doc
 	err = btc.StartOneshotPull()
 	assert.NoError(t, err)
 
-	_, ok := btc.WaitForBlipRevMessage("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
+	_, ok := btc.WaitForRev("doc", "1-ad48b5c9d9c47b98532a3d8164ec0ae7")
 	require.True(t, ok)
 
 	// Remove role from user
@@ -3216,10 +3216,11 @@ func TestRevocationNoRev(t *testing.T) {
 
 	waitRevID := rt.createDocReturnRev(t, "docmarker", "", map[string]interface{}{"channels": "!"})
 
-	_, err = rt.WaitForChanges(3, "/db/_changes?since=5", "user", true)
+	lastSeq := fmt.Sprintf("%v", changes.Last_Seq)
+	_, err = rt.WaitForChanges(3, "/db/_changes?since="+lastSeq, "user", true)
 	require.NoError(t, err)
 
-	err = btc.StartPullSince("false", "5", "false")
+	err = btc.StartPullSince("false", lastSeq, "false")
 	assert.NoError(t, err)
 
 	_, ok = btc.WaitForRev("docmarker", waitRevID)
