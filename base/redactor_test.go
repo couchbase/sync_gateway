@@ -100,7 +100,7 @@ func TestRedactionLevelUnmarshalText(t *testing.T) {
 
 	err = level.UnmarshalText([]byte("unset"))
 	assert.NoError(t, err)
-	goassert.Equals(t, level, RedactionLevelDefault)
+	goassert.Equals(t, level, RedactUnset)
 
 	err = level.UnmarshalText([]byte("asdf"))
 	goassert.Equals(t, err.Error(), "unrecognized redaction level: \"asdf\"")

@@ -137,14 +137,14 @@ func (l *RedactionLevel) MarshalText() ([]byte, error) {
 // UnmarshalText unmarshals text to a RedactionLevel.
 func (l *RedactionLevel) UnmarshalText(text []byte) error {
 	switch strings.ToLower(string(text)) {
-	case "unset":
-		*l = RedactionLevelDefault
 	case "none":
 		*l = RedactNone
 	case "partial":
 		*l = RedactPartial
 	case "full":
 		*l = RedactFull
+	case "unset":
+		*l = RedactUnset
 	default:
 		return fmt.Errorf("unrecognized redaction level: %q", text)
 	}
