@@ -44,7 +44,7 @@ licenses/APL2.txt.
 
   <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="aac9eb5d3047d4a74d3e87db231a36e231446dad"/>
 
-  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="b41ef931ed4678312eb38d465b729a0b1afdebed"/>
+  <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="74908f5398d1b5e28a4c8873a7c8931076ad81e3"/>
 
   <!-- gocb v2 -->
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="9ced163b8225c08922af38c3678dd0980b32f01f" />
