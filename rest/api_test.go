@@ -7066,9 +7066,8 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 	// Skip to seq 19 and then update doc foo
 	revocationTester.fillToSeq(19)
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
-	changes, err := rt.WaitForChanges(1, "/db/_changes?since=19&revocations=true", "user", true)
+	err := rt.WaitForPendingChanges()
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(changes.Results))
 
 	// Get changes and ensure doc is revoked through ID-only revocation
 	changes = revocationTester.getChanges(10, 1)
