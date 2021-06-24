@@ -3992,9 +3992,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			}
 
 			// Passive
-			tb2 := base.GetTestBucket(t)
+			passiveBucket := base.GetTestBucket(t)
 			remotePassiveRT := NewRestTester(t, &RestTesterConfig{
-				TestBucket: tb2,
+				TestBucket: passiveBucket,
 			})
 			defer remotePassiveRT.Close()
 
@@ -4002,9 +4002,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			defer srv.Close()
 
 			// Active
-			tb1 := base.GetTestBucket(t)
+			activeBucket := base.GetTestBucket(t)
 			localActiveRT := NewRestTester(t, &RestTesterConfig{
-				TestBucket: tb1,
+				TestBucket: activeBucket,
 			})
 			defer localActiveRT.Close()
 
@@ -4066,7 +4066,18 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				// Delete doc on remote
 				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
 				assertStatus(t, resp, http.StatusCreated)
-				requireTombstone(t, tb2, "docid2")
+
+				// Validate document revision created to prevent race conditions
+				err = remotePassiveRT.WaitForCondition(func() bool {
+					doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+					assert.NoError(t, err)
+					if doc.SyncData.CurrentRev == "4-cc0337d9d38c8e5fc930ae3deda62bf8" {
+						requireTombstone(t, passiveBucket, "docid2")
+						return true
+					}
+					return false
+				})
+				assert.NoError(t, err)
 
 				// Create another rev and then delete doc on local - ie tree is longer
 				revid := makeDoc(localActiveRT, "docid2", "3-abc", `{"foo":"bar"}`)
@@ -4074,13 +4085,24 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Validate local is CBS tombstone, expect not found error
 				// Expect KeyNotFound error retrieving local tombstone pre-replication
-				requireTombstone(t, tb1, "docid2")
+				requireTombstone(t, activeBucket, "docid2")
 
 			} else {
 				// Delete doc on localActiveRT (active / local)
 				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
 				assertStatus(t, resp, http.StatusCreated)
-				requireTombstone(t, tb1, "docid2")
+
+				// Validate document revision created to prevent race conditions
+				err = localActiveRT.WaitForCondition(func() bool {
+					doc, err := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
+					assert.NoError(t, err)
+					if doc.SyncData.CurrentRev == "4-cc0337d9d38c8e5fc930ae3deda62bf8" {
+						requireTombstone(t, activeBucket, "docid2")
+						return true
+					}
+					return false
+				})
+				assert.NoError(t, err)
 
 				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
 				revid := makeDoc(remotePassiveRT, "docid2", "3-abc", `{"foo":"bar"}`)
@@ -4088,7 +4110,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 
 				// Validate local is CBS tombstone, expect not found error
 				// Expect KeyNotFound error retrieving remote tombstone pre-replication
-				requireTombstone(t, tb2, "docid2")
+				requireTombstone(t, passiveBucket, "docid2")
 			}
 
 			// Start up repl again
@@ -4102,7 +4124,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				if doc.SyncData.CurrentRev == "5-4a5f5a35196c37c117737afd5be1fc9b" {
 					// Validate local is CBS tombstone, expect not found error
 					// Expect KeyNotFound error retrieving local tombstone post-replication
-					requireTombstone(t, tb1, "docid2")
+					requireTombstone(t, activeBucket, "docid2")
 					return true
 				}
 				return false
@@ -4115,7 +4137,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				if doc.SyncData.CurrentRev == "5-4a5f5a35196c37c117737afd5be1fc9b" {
 					// Validate remote is CBS tombstone
 					// Expect KeyNotFound error retrieving remote tombstone post-replication
-					requireTombstone(t, tb2, "docid2")
+					requireTombstone(t, passiveBucket, "docid2")
 					return true
 				}
 				return false
@@ -4128,7 +4150,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			if test.resurrectLocal {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on local
-					err = tb1.Set("docid2", 0, updatedBody)
+					err = activeBucket.Set("docid2", 0, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := localActiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
@@ -4140,7 +4162,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			} else {
 				if test.sdkResurrect {
 					// resurrect doc via SDK on remote
-					err = tb2.Set("docid2", 0, updatedBody)
+					err = passiveBucket.Set("docid2", 0, updatedBody)
 					assert.NoError(t, err, "Unable to resurrect doc docid2")
 					// force on-demand import
 					_, getErr := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
