@@ -7296,5 +7296,4 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 	assert.True(t, changes.Results[0].Revoked)
 	assert.Equal(t, "doc2", changes.Results[1].ID)
 	assert.True(t, changes.Results[1].Revoked)
-
 }

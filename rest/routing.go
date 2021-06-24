@@ -33,10 +33,11 @@ func init() {
 	docWithSlashPathRegex, _ = regexp.Compile("/" + dbRegex + "/([^_]|_user/).*%2[fF]")
 }
 
+// CreateCommonRouter
 // Creates a GorillaMux router containing the basic HTTP handlers for a server.
 // This is the common functionality of the public and admin ports.
 // The 'privs' parameter specifies the authentication the handler will use.
-func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Router) {
+func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Router) {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 	// Global operations:
@@ -92,7 +93,7 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 
 	oidcr := dbr.PathPrefix("/_oidc_testing").Subrouter()
 
-	//Client discovery endpoint
+	// Client discovery endpoint
 	oidcr.Handle("/.well-known/openid-configuration", makeHandler(sc, publicPrivs, (*handler).handleOidcProviderConfiguration)).Methods("GET")
 
 	oidcr.Handle("/authorize", makeHandler(sc, publicPrivs,
@@ -112,9 +113,9 @@ func createHandler(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mux.Rou
 	return r, dbr
 }
 
-// Creates the HTTP handler for the public API of a gateway server.
+// CreatePublicHandler Creates the HTTP handler for the public API of a gateway server.
 func CreatePublicHandler(sc *ServerContext) http.Handler {
-	r, dbr := createHandler(sc, regularPrivs)
+	r, dbr := createCommonRouter(sc, regularPrivs)
 
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs,
 		(*handler).handleSessionPOST)).Methods("POST")
@@ -130,19 +131,15 @@ func CreatePublicHandler(sc *ServerContext) http.Handler {
 
 //////// ADMIN API:
 
-// Creates the HTTP handler for the PRIVATE admin API of a gateway server.
+// CreateAdminHandler Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminHandler(sc *ServerContext) http.Handler {
 	router := CreateAdminRouter(sc)
 	return wrapRouter(sc, adminPrivs, router)
 }
 
-func CreateAdminHandlerForRouter(sc *ServerContext, r *mux.Router) http.Handler {
-	return wrapRouter(sc, adminPrivs, r)
-}
-
-// Creates the HTTP handler for the PRIVATE admin API of a gateway server.
+// CreateAdminRouter Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminRouter(sc *ServerContext) *mux.Router {
-	r, dbr := createHandler(sc, adminPrivs)
+	r, dbr := createCommonRouter(sc, adminPrivs)
 
 	r.PathPrefix("/_admin/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if sc.config.AdminUI != nil {
@@ -313,14 +310,15 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 
 // Prometheus Metrics API
 
-// Creates the HTTP handler for the prometheus metrics API of a gateway server.
+// CreateMetricHandler Creates the HTTP handler for the prometheus metrics API of a gateway server.
 func CreateMetricHandler(sc *ServerContext) http.Handler {
 	router := CreateMetricRouter(sc)
 	return wrapRouter(sc, publicPrivs, router)
 }
 
 func CreateMetricRouter(sc *ServerContext) *mux.Router {
-	r, _ := createHandler(sc, publicPrivs)
+	r := mux.NewRouter()
+	r.StrictSlash(true)
 
 	r.Handle("/_metrics", makeHandler(sc, publicPrivs, (*handler).handleMetrics)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix, makeHandler(sc, publicPrivs, (*handler).handleExpvar)).Methods("GET")
