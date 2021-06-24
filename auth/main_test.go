@@ -20,6 +20,8 @@ import (
 func TestMain(m *testing.M) {
 	defer base.SetUpGlobalTestLogging(m)()
 
+	base.SkipPrometheusStatsRegistration = true
+
 	base.GTestBucketPool = base.NewTestBucketPool(base.FlushBucketEmptierFunc, base.NoopInitFunc)
 
 	status := m.Run()

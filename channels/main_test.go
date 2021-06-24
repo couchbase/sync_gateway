@@ -20,6 +20,8 @@ import (
 func TestMain(m *testing.M) {
 	defer base.SetUpGlobalTestLogging(m)()
 
+	base.SkipPrometheusStatsRegistration = true
+
 	status := m.Run()
 
 	os.Exit(status)

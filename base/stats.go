@@ -56,14 +56,6 @@ const (
 
 const StatsGroupKeySyncGateway = "syncgateway"
 
-var (
-	checkedSentDesc               *prometheus.Desc
-	numAttachmentBytesTransferred *prometheus.Desc
-	numAttachmentsTransferred     *prometheus.Desc
-	numDocsFailedToPush           *prometheus.Desc
-	numDocsPushed                 *prometheus.Desc
-)
-
 type SgwStats struct {
 	GlobalStats     *GlobalStat         `json:"global"`
 	DbStats         map[string]*DbStats `json:"per_db"`
@@ -74,28 +66,17 @@ type SgwStats struct {
 
 var SyncGatewayStats SgwStats
 
-func init() {
-	// Initialize Sync Gateway Stats
-
-	// All stats will be stored as part of this struct. Global variable accessible everywhere. To add stats see stats.go
-	SyncGatewayStats = *NewSyncGatewayStats()
-
-	// Publish our stats to expvars. This will run String method on SyncGatewayStats ( type SgwStats ) which will
-	// marshal the stats to JSON
-	expvar.Publish(StatsGroupKeySyncGateway, &SyncGatewayStats)
-}
+// SkipPrometheusStatsRegistration used to avoid registering a stat with prometheus
+// Defaults to false - Only intended for test use
+// Note that due to NewSyncGatewayStats() being ran as part of init the initial stats will still be registered and so
+// global stats are unaffected
+var SkipPrometheusStatsRegistration bool
 
 func NewSyncGatewayStats() *SgwStats {
 	sgwStats := SgwStats{
 		GlobalStats: &GlobalStat{},
 		DbStats:     map[string]*DbStats{},
 	}
-
-	checkedSentDesc = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_docs_checked_sent"), "sgr_docs_checked_sent", []string{ReplicationLabelKey}, nil)
-	numAttachmentBytesTransferred = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", []string{ReplicationLabelKey}, nil)
-	numAttachmentsTransferred = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", []string{ReplicationLabelKey}, nil)
-	numDocsFailedToPush = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", []string{ReplicationLabelKey}, nil)
-	numDocsPushed = prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_pushed"), "sgr_num_docs_pushed", []string{ReplicationLabelKey}, nil)
 
 	sgwStats.GlobalStats.initResourceUtilizationStats()
 	sgwStats.initReplicationStats()
@@ -105,6 +86,17 @@ func NewSyncGatewayStats() *SgwStats {
 	NewIntStat("", "up", nil, nil, prometheus.GaugeValue, 1)
 
 	return &sgwStats
+}
+
+func init() {
+	// Initialize Sync Gateway Stats
+
+	// All stats will be stored as part of this struct. Global variable accessible everywhere. To add stats see stats.go
+	SyncGatewayStats = *NewSyncGatewayStats()
+
+	// Publish our stats to expvars. This will run String method on SyncGatewayStats ( type SgwStats ) which will
+	// marshal the stats to JSON
+	expvar.Publish(StatsGroupKeySyncGateway, &SyncGatewayStats)
 }
 
 // This String() is to satisfy the expvar.Var interface which is used to produce the expvar endpoint output.
@@ -306,45 +298,61 @@ type ReplicatorStats struct {
 	*expvar.Map
 }
 
+func (rs *ReplicatorStats) GetDesc(value expvar.KeyValue) []*prometheus.Desc {
+	constLabels := make(prometheus.Labels)
+	constLabels[ReplicationLabelKey] = value.Key
+
+	checkedSentDesc := prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_docs_checked_sent"), "sgr_docs_checked_sent", nil, constLabels)
+	numAttachmentBytesTransferred := prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachment_bytes_transferred"), "sgr_num_attachment_bytes_transferred", nil, constLabels)
+	numAttachmentsTransferred := prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_attachments_transferred"), "sgr_num_attachments_transferred", nil, constLabels)
+	numDocsFailedToPush := prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_failed_to_push"), "sgr_num_docs_failed_to_push", nil, constLabels)
+	numDocsPushed := prometheus.NewDesc(prometheus.BuildFQName(NamespaceKey, SubsystemReplication, "sgr_num_docs_pushed"), "sgr_num_docs_pushed", nil, constLabels)
+
+	return []*prometheus.Desc{checkedSentDesc, numAttachmentBytesTransferred, numAttachmentsTransferred, numDocsFailedToPush, numDocsPushed}
+}
+
 func (rs *ReplicatorStats) MarshalJSON() ([]byte, error) {
 	return []byte(rs.String()), nil
 }
 
 func (rs *ReplicatorStats) Describe(ch chan<- *prometheus.Desc) {
-	return
+	rs.Do(func(value expvar.KeyValue) {
+		descriptions := rs.GetDesc(value)
+		ch <- descriptions[0]
+		ch <- descriptions[1]
+		ch <- descriptions[2]
+		ch <- descriptions[3]
+		ch <- descriptions[4]
+	})
 }
 
 func (rs *ReplicatorStats) Collect(ch chan<- prometheus.Metric) {
 	rs.Do(func(value expvar.KeyValue) {
+		descriptions := rs.GetDesc(value)
 		ch <- prometheus.MustNewConstMetric(
-			checkedSentDesc,
+			descriptions[0],
 			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_docs_checked_sent").(*expvar.Int).Value()),
-			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			numAttachmentBytesTransferred,
+			descriptions[1],
 			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_attachment_bytes_transferred").(*expvar.Int).Value()),
-			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			numAttachmentsTransferred,
+			descriptions[2],
 			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_attachments_transferred").(*expvar.Int).Value()),
-			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			numDocsFailedToPush,
+			descriptions[3],
 			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_failed_to_push").(*expvar.Int).Value()),
-			value.Key,
 		)
 		ch <- prometheus.MustNewConstMetric(
-			numDocsPushed,
+			descriptions[4],
 			prometheus.CounterValue,
 			float64(value.Value.(*expvar.Map).Get("sgr_num_docs_pushed").(*expvar.Int).Value()),
-			value.Key,
 		)
 	})
 }
@@ -433,7 +441,13 @@ type SgwBoolStat struct {
 
 func newSGWStat(subsystem string, key string, labelKeys []string, labelVals []string, statValueType prometheus.ValueType) *SgwStat {
 	name := prometheus.BuildFQName(NamespaceKey, subsystem, key)
-	desc := prometheus.NewDesc(name, key, labelKeys, nil)
+
+	constLabels := make(prometheus.Labels)
+	for i, labelKey := range labelKeys {
+		constLabels[labelKey] = labelVals[i]
+	}
+
+	desc := prometheus.NewDesc(name, key, nil, constLabels)
 
 	return &SgwStat{
 		statFQN:       name,
@@ -448,16 +462,20 @@ func NewIntStat(subsystem string, key string, labelKeys []string, labelVals []st
 		SgwStat: *newSGWStat(subsystem, key, labelKeys, labelVals, statValueType),
 		Val:     initialValue,
 	}
-	prometheus.MustRegister(stat)
+
+	if !SkipPrometheusStatsRegistration {
+		prometheus.MustRegister(stat)
+	}
+
 	return stat
 }
 
 func (s *SgwIntStat) Describe(ch chan<- *prometheus.Desc) {
-	return
+	ch <- s.statDesc
 }
 
 func (s *SgwIntStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(atomic.LoadInt64(&s.Val)), s.labelValues...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(atomic.LoadInt64(&s.Val)))
 }
 
 func (s *SgwIntStat) Set(newV int64) {
@@ -498,16 +516,20 @@ func NewFloatStat(subsystem string, key string, labelKeys []string, labelVals []
 		SgwStat: *newSGWStat(subsystem, key, labelKeys, labelVals, statValueType),
 		Val:     math.Float64bits(initialValue),
 	}
-	prometheus.MustRegister(stat)
+
+	if !SkipPrometheusStatsRegistration {
+		prometheus.MustRegister(stat)
+	}
+
 	return stat
 }
 
 func (s *SgwFloatStat) Describe(ch chan<- *prometheus.Desc) {
-	return
+	ch <- s.statDesc
 }
 
 func (s *SgwFloatStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, math.Float64frombits(atomic.LoadUint64(&s.Val)), s.labelValues...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, math.Float64frombits(atomic.LoadUint64(&s.Val)))
 }
 
 func (s *SgwFloatStat) Set(newV float64) {
@@ -569,17 +591,20 @@ func NewDurStat(subsystem string, key string, labelKeys []string, labelVals []st
 		SgwStat:   *newSGWStat(subsystem, key, labelKeys, labelVals, statValueType),
 		StartTime: initialValue,
 	}
-	prometheus.MustRegister(stat)
+
+	if !SkipPrometheusStatsRegistration {
+		prometheus.MustRegister(stat)
+	}
+
 	return stat
 }
 
 func (s *SgwDurStat) Describe(ch chan<- *prometheus.Desc) {
-	return
+	ch <- s.statDesc
 }
 
 func (s *SgwDurStat) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType,
-		float64(time.Since(s.StartTime)), s.labelValues...)
+	ch <- prometheus.MustNewConstMetric(s.statDesc, s.statValueType, float64(time.Since(s.StartTime)))
 }
 
 // MarshalJSON returns the JSON encoding of duration - the time elapsed since s.Val.
@@ -639,6 +664,26 @@ func (s *SgwStats) ClearDBStats(name string) {
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
 
+	if _, ok := s.DbStats[name]; !ok {
+		return
+	}
+
+	s.DbStats[name].unregisterCacheStats()
+	s.DbStats[name].unregisterCBLReplicationPullStats()
+	s.DbStats[name].unregisterCBLReplicationPushStats()
+	s.DbStats[name].unregisterDatabaseStats()
+	s.DbStats[name].unregisterSecurityStats()
+
+	if s.DbStats[name].DeltaSyncStats != nil {
+		s.DbStats[name].unregisterDeltaSyncStats()
+	}
+
+	if s.DbStats[name].SharedBucketImportStats != nil {
+		s.DbStats[name].unregisterSharedBucketImportStats()
+	}
+
+	s.DbStats[name].unregisterQueryStats()
+
 	delete(s.DbStats, name)
 
 }
@@ -684,6 +729,35 @@ func (d *DbStats) initCacheStats() {
 	}
 }
 
+func (d *DbStats) unregisterCacheStats() {
+	prometheus.Unregister(d.CacheStats.AbandonedSeqs)
+	prometheus.Unregister(d.CacheStats.ChannelCacheRevsActive)
+	prometheus.Unregister(d.CacheStats.ChannelCacheBypassCount)
+	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsAdded)
+	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsEvictedInactive)
+	prometheus.Unregister(d.CacheStats.ChannelCacheChannelsEvictedNRU)
+	prometheus.Unregister(d.CacheStats.ChannelCacheCompactCount)
+	prometheus.Unregister(d.CacheStats.ChannelCacheCompactTime)
+	prometheus.Unregister(d.CacheStats.ChannelCacheHits)
+	prometheus.Unregister(d.CacheStats.ChannelCacheMaxEntries)
+	prometheus.Unregister(d.CacheStats.ChannelCacheMisses)
+	prometheus.Unregister(d.CacheStats.ChannelCacheNumChannels)
+	prometheus.Unregister(d.CacheStats.ChannelCachePendingQueries)
+	prometheus.Unregister(d.CacheStats.ChannelCacheRevsRemoval)
+	prometheus.Unregister(d.CacheStats.ChannelCacheRevsTombstone)
+	prometheus.Unregister(d.CacheStats.HighSeqCached)
+	prometheus.Unregister(d.CacheStats.HighSeqStable)
+	prometheus.Unregister(d.CacheStats.NonMobileIgnoredCount)
+	prometheus.Unregister(d.CacheStats.NumActiveChannels)
+	prometheus.Unregister(d.CacheStats.NumSkippedSeqs)
+	prometheus.Unregister(d.CacheStats.PendingSeqLen)
+	prometheus.Unregister(d.CacheStats.RevisionCacheBypass)
+	prometheus.Unregister(d.CacheStats.RevisionCacheHits)
+	prometheus.Unregister(d.CacheStats.RevisionCacheMisses)
+	prometheus.Unregister(d.CacheStats.SkippedSeqLen)
+	prometheus.Unregister(d.CacheStats.ViewQueries)
+}
+
 func (d *DbStats) Cache() *CacheStats {
 	return d.CacheStats
 }
@@ -711,6 +785,25 @@ func (d *DbStats) initCBLReplicationPullStats() {
 	}
 }
 
+func (d *DbStats) unregisterCBLReplicationPullStats() {
+	prometheus.Unregister(d.CBLReplicationPullStats.AttachmentPullBytes)
+	prometheus.Unregister(d.CBLReplicationPullStats.AttachmentPullCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.MaxPending)
+	prometheus.Unregister(d.CBLReplicationPullStats.NumReplicationsActive)
+	prometheus.Unregister(d.CBLReplicationPullStats.NumPullReplActiveContinuous)
+	prometheus.Unregister(d.CBLReplicationPullStats.NumPullReplActiveOneShot)
+	prometheus.Unregister(d.CBLReplicationPullStats.NumPullReplCaughtUp)
+	prometheus.Unregister(d.CBLReplicationPullStats.NumPullReplTotalCaughtUp)
+	prometheus.Unregister(d.CBLReplicationPullStats.NumPullReplSinceZero)
+	prometheus.Unregister(d.CBLReplicationPullStats.NumPullReplTotalContinuous)
+	prometheus.Unregister(d.CBLReplicationPullStats.NumPullReplTotalOneShot)
+	prometheus.Unregister(d.CBLReplicationPullStats.RequestChangesCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.RequestChangesTime)
+	prometheus.Unregister(d.CBLReplicationPullStats.RevProcessingTime)
+	prometheus.Unregister(d.CBLReplicationPullStats.RevSendCount)
+	prometheus.Unregister(d.CBLReplicationPullStats.RevSendLatency)
+}
+
 func (d *DbStats) CBLReplicationPull() *CBLReplicationPullStats {
 	return d.CBLReplicationPullStats
 }
@@ -728,6 +821,17 @@ func (d *DbStats) initCBLReplicationPushStats() {
 		SyncFunctionTime:    NewIntStat(SubsystemReplicationPush, "sync_function_time", labelKeys, labelVals, prometheus.CounterValue, 0),
 		WriteProcessingTime: NewIntStat(SubsystemReplicationPush, "write_processing_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
 	}
+}
+
+func (d *DbStats) unregisterCBLReplicationPushStats() {
+	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushBytes)
+	prometheus.Unregister(d.CBLReplicationPushStats.AttachmentPushCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.DocPushCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.ProposeChangeTime)
+	prometheus.Unregister(d.CBLReplicationPushStats.SyncFunctionCount)
+	prometheus.Unregister(d.CBLReplicationPushStats.SyncFunctionTime)
+	prometheus.Unregister(d.CBLReplicationPushStats.WriteProcessingTime)
 }
 
 func (d *DbStats) CBLReplicationPush() *CBLReplicationPushStats {
@@ -769,6 +873,35 @@ func (d *DbStats) initDatabaseStats() {
 	}
 }
 
+func (d *DbStats) unregisterDatabaseStats() {
+	prometheus.Unregister(d.DatabaseStats.ConflictWriteCount)
+	prometheus.Unregister(d.DatabaseStats.Crc32MatchCount)
+	prometheus.Unregister(d.DatabaseStats.DCPCachingCount)
+	prometheus.Unregister(d.DatabaseStats.DCPCachingTime)
+	prometheus.Unregister(d.DatabaseStats.DCPReceivedCount)
+	prometheus.Unregister(d.DatabaseStats.DCPReceivedTime)
+	prometheus.Unregister(d.DatabaseStats.DocReadsBytesBlip)
+	prometheus.Unregister(d.DatabaseStats.DocWritesBytes)
+	prometheus.Unregister(d.DatabaseStats.DocWritesXattrBytes)
+	prometheus.Unregister(d.DatabaseStats.HighSeqFeed)
+	prometheus.Unregister(d.DatabaseStats.DocWritesBytesBlip)
+	prometheus.Unregister(d.DatabaseStats.NumDocReadsBlip)
+	prometheus.Unregister(d.DatabaseStats.NumDocReadsRest)
+	prometheus.Unregister(d.DatabaseStats.NumDocWrites)
+	prometheus.Unregister(d.DatabaseStats.NumReplicationsActive)
+	prometheus.Unregister(d.DatabaseStats.NumReplicationsTotal)
+	prometheus.Unregister(d.DatabaseStats.NumTombstonesCompacted)
+	prometheus.Unregister(d.DatabaseStats.SequenceAssignedCount)
+	prometheus.Unregister(d.DatabaseStats.SequenceGetCount)
+	prometheus.Unregister(d.DatabaseStats.SequenceIncrCount)
+	prometheus.Unregister(d.DatabaseStats.SequenceReleasedCount)
+	prometheus.Unregister(d.DatabaseStats.SequenceReservedCount)
+	prometheus.Unregister(d.DatabaseStats.WarnChannelNameSizeCount)
+	prometheus.Unregister(d.DatabaseStats.WarnChannelsPerDocCount)
+	prometheus.Unregister(d.DatabaseStats.WarnGrantsPerDocCount)
+	prometheus.Unregister(d.DatabaseStats.WarnXattrSizeCount)
+}
+
 func (d *DbStats) Database() *DatabaseStats {
 	return d.DatabaseStats
 }
@@ -784,6 +917,15 @@ func (d *DbStats) InitDeltaSyncStats() {
 		DeltaCacheMiss:            NewIntStat(SubsystemDeltaSyncKey, "delta_sync_miss", labelKeys, labelVals, prometheus.CounterValue, 0),
 		DeltaPushDocCount:         NewIntStat(SubsystemDeltaSyncKey, "delta_push_doc_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 	}
+}
+
+func (d *DbStats) unregisterDeltaSyncStats() {
+	prometheus.Unregister(d.DeltaSyncStats.DeltasRequested)
+	prometheus.Unregister(d.DeltaSyncStats.DeltasSent)
+	prometheus.Unregister(d.DeltaSyncStats.DeltaPullReplicationCount)
+	prometheus.Unregister(d.DeltaSyncStats.DeltaCacheHit)
+	prometheus.Unregister(d.DeltaSyncStats.DeltaCacheMiss)
+	prometheus.Unregister(d.DeltaSyncStats.DeltaPushDocCount)
 }
 
 func (d *DbStats) DeltaSync() *DeltaSyncStats {
@@ -802,6 +944,14 @@ func (d *DbStats) initSecurityStats() {
 			TotalAuthTime:    NewIntStat(SubsystemSecurity, "total_auth_time", labelKeys, labelVals, prometheus.GaugeValue, 0),
 		}
 	}
+}
+
+func (d *DbStats) unregisterSecurityStats() {
+	prometheus.Unregister(d.SecurityStats.AuthFailedCount)
+	prometheus.Unregister(d.SecurityStats.AuthSuccessCount)
+	prometheus.Unregister(d.SecurityStats.NumAccessErrors)
+	prometheus.Unregister(d.SecurityStats.NumDocsRejected)
+	prometheus.Unregister(d.SecurityStats.TotalAuthTime)
 }
 
 func (d *DbStats) DBReplicatorStats(replicationID string) *DbReplicatorStats {
@@ -884,6 +1034,15 @@ func (d *DbStats) InitSharedBucketImportStats() {
 	}
 }
 
+func (d *DbStats) unregisterSharedBucketImportStats() {
+	prometheus.Unregister(d.SharedBucketImportStats.ImportCount)
+	prometheus.Unregister(d.SharedBucketImportStats.ImportCancelCAS)
+	prometheus.Unregister(d.SharedBucketImportStats.ImportErrorCount)
+	prometheus.Unregister(d.SharedBucketImportStats.ImportProcessingTime)
+	prometheus.Unregister(d.SharedBucketImportStats.ImportHighSeq)
+	prometheus.Unregister(d.SharedBucketImportStats.ImportPartitions)
+}
+
 func (d *DbStats) SharedBucketImport() *SharedBucketImportStats {
 	return d.SharedBucketImportStats
 }
@@ -917,6 +1076,14 @@ func (d *DbStats) _initQueryStat(useViews bool, queryName string) {
 			QueryErrorCount: NewIntStat(SubsystemGSIViews, prometheusKey+"_error_count", labelKeys, labelVals, prometheus.CounterValue, 0),
 			QueryTime:       NewIntStat(SubsystemGSIViews, prometheusKey+"_time", labelKeys, labelVals, prometheus.CounterValue, 0),
 		}
+	}
+}
+
+func (d *DbStats) unregisterQueryStats() {
+	for _, stat := range d.QueryStats.Stats {
+		prometheus.Unregister(stat.QueryCount)
+		prometheus.Unregister(stat.QueryErrorCount)
+		prometheus.Unregister(stat.QueryTime)
 	}
 }
 

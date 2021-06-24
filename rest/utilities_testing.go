@@ -66,6 +66,8 @@ type RestTester struct {
 	adminHandlerOnce        sync.Once
 	PublicHandler           http.Handler
 	publicHandlerOnce       sync.Once
+	MetricsHandler          http.Handler
+	metricsHandlerOnce      sync.Once
 	closed                  bool
 }
 
@@ -307,6 +309,13 @@ func (rt *RestTester) TestPublicHandler() http.Handler {
 		rt.PublicHandler = CreatePublicHandler(rt.ServerContext())
 	})
 	return rt.PublicHandler
+}
+
+func (rt *RestTester) TestMetricsHandler() http.Handler {
+	rt.metricsHandlerOnce.Do(func() {
+		rt.MetricsHandler = CreateMetricHandler(rt.ServerContext())
+	})
+	return rt.MetricsHandler
 }
 
 type changesResults struct {

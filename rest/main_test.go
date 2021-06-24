@@ -21,6 +21,8 @@ import (
 func TestMain(m *testing.M) {
 	defer base.SetUpGlobalTestLogging(m)()
 
+	base.SkipPrometheusStatsRegistration = true
+
 	base.GTestBucketPool = base.NewTestBucketPool(db.ViewsAndGSIBucketReadier, db.ViewsAndGSIBucketInit)
 
 	status := m.Run()
