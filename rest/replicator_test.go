@@ -3893,7 +3893,6 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 }
 
 func TestSGR2TombstoneConflictHandling(t *testing.T) {
-
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
@@ -4067,6 +4066,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				// Delete doc on remote
 				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
 				assertStatus(t, resp, http.StatusCreated)
+				requireTombstone(t, tb2, "docid2")
 
 				// Create another rev and then delete doc on local - ie tree is longer
 				revid := makeDoc(localActiveRT, "docid2", "3-abc", `{"foo":"bar"}`)
@@ -4080,6 +4080,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				// Delete doc on localActiveRT (active / local)
 				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
 				assertStatus(t, resp, http.StatusCreated)
+				requireTombstone(t, tb1, "docid2")
 
 				// Create another rev and then delete doc on remotePassiveRT (passive) - ie, tree is longer
 				revid := makeDoc(remotePassiveRT, "docid2", "3-abc", `{"foo":"bar"}`)
