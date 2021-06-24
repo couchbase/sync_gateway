@@ -38,8 +38,6 @@ licenses/APL2.txt.
 
   <project name="go.assert" path="godeps/src/github.com/couchbaselabs/go.assert" remote="couchbaselabs" revision="cfb33e3a0dac05ae1ecbc0e97188c5cf746a1b78"/>
 
-  <project name="retriever" path="godeps/src/github.com/couchbase/retriever" remote="couchbase" revision="19c5a5d92a2f34fb96ae91d26901e4a7076b8020"/>
-
   <project name="sync_gateway_admin_ui" path="godeps/src/github.com/couchbaselabs/sync_gateway_admin_ui" revision="93c74bac9ddc2979ab895a37087c225c998b03bf" remote="couchbaselabs"/>
 
   <project name="walrus" path="godeps/src/github.com/couchbaselabs/walrus" remote="couchbaselabs" revision="aac9eb5d3047d4a74d3e87db231a36e231446dad"/>
