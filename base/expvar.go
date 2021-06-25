@@ -8,10 +8,6 @@
 
 package base
 
-import (
-	"expvar"
-)
-
 const (
 	// StatsReplication (SGR 1.x)
 	StatKeySgrActive                     = "sgr_active"
@@ -24,20 +20,7 @@ const (
 	StatKeySgrDocsCheckedSent     = "sgr_docs_checked_sent"
 )
 
-const StatsGroupKeySyncGateway = "syncgateway"
-
-var SyncGatewayStats SgwStats
-
-func init() {
-	// Initialize Sync Gateway Stats
-
-	// All stats will be stored as part of this struct. Global variable accessible everywhere. To add stats see stats.go
-	SyncGatewayStats = *NewSyncGatewayStats()
-
-	// Publish our stats to expvars. This will run String method on SyncGatewayStats ( type SgwStats ) which will
-	// marshal the stats to JSON
-	expvar.Publish(StatsGroupKeySyncGateway, &SyncGatewayStats)
-}
+var SyncGatewayStats = *NewSyncGatewayStats()
 
 // Removes the per-database stats for this database by removing the database from the map
 func RemovePerDbStats(dbName string) {
