@@ -223,26 +223,9 @@ func (h *handler) handleReplicate() error {
 	return err
 
 }
-
-type ReplicateV1Config struct {
-	Source           string      `json:"source"`
-	Target           string      `json:"target"`
-	Continuous       bool        `json:"continuous"`
-	CreateTarget     bool        `json:"create_target"`
-	DocIds           []string    `json:"doc_ids"`
-	Filter           string      `json:"filter"`
-	Proxy            string      `json:"proxy"`
-	QueryParams      interface{} `json:"query_params"`
-	Cancel           bool        `json:"cancel"`
-	Async            bool        `json:"async"`
-	ChangesFeedLimit *int        `json:"changes_feed_limit"`
-	ReplicationId    string      `json:"replication_id"`
-	upgradedToSGR2   bool        // upgradedToSGR2 is set to true when an equivalent SGR2 replication is found, which prevents this v1 replication from starting.
-}
-
 func (h *handler) readReplicateV1ParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 
-	var in ReplicateV1Config
+	var in ReplicateV1ConfigLegacy
 	if err = base.JSONUnmarshal(jsonData, &in); err != nil {
 		return params, false, localdb, err
 	}
@@ -250,7 +233,7 @@ func (h *handler) readReplicateV1ParametersFromJSON(jsonData []byte) (params sgr
 	return validateReplicateV1Parameters(in, false, h.server.config.API.AdminInterface)
 }
 
-func validateReplicateV1Parameters(requestParams ReplicateV1Config, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
+func validateReplicateV1Parameters(requestParams ReplicateV1ConfigLegacy, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 	if requestParams.CreateTarget {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate create_target option is not currently supported.")
 		return

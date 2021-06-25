@@ -1621,7 +1621,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 			activeRTSGR1 := NewRestTester(t, &RestTesterConfig{
 				TestBucket:     activeBucket.NoCloseClone(),
 				adminInterface: l.Addr().String(),
-				sgr1Replications: []*ReplicateV1Config{
+				sgr1Replications: []*ReplicateV1ConfigLegacy{
 					{
 						ReplicationId: replicationID,
 						Target:        "db",
@@ -1683,7 +1683,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 						Continuous: true,
 					},
 				}},
-				sgr1Replications: []*ReplicateV1Config{
+				sgr1Replications: []*ReplicateV1ConfigLegacy{
 					{
 						ReplicationId: replicationID,
 						Target:        "db",
@@ -1804,7 +1804,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	activeRTSGR1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket:     activeBucket.NoCloseClone(),
 		adminInterface: l.Addr().String(),
-		sgr1Replications: []*ReplicateV1Config{
+		sgr1Replications: []*ReplicateV1ConfigLegacy{
 			{
 				ReplicationId: replicationID,
 				Source:        "db",
@@ -1864,7 +1864,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 				Continuous: true,
 			},
 		}},
-		sgr1Replications: []*ReplicateV1Config{
+		sgr1Replications: []*ReplicateV1ConfigLegacy{
 			{
 				ReplicationId: replicationID,
 				Source:        "db",

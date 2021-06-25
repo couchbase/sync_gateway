@@ -636,7 +636,7 @@ func TestServerConfigValidate(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	// unsupported.stats_log_freq_secs
 	statsLogFrequencySecs := uint(9)
-	unsupported := &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	unsupported := &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc := &LegacyServerConfig{Unsupported: unsupported}
 	validationErrors := sc.validate()
 	require.NotNil(t, validationErrors)
@@ -647,13 +647,13 @@ func TestServerConfigValidate(t *testing.T) {
 
 	// Valid configuration value for StatsLogFrequencySecs
 	statsLogFrequencySecs = uint(10)
-	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	unsupported = &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc = &LegacyServerConfig{Unsupported: unsupported}
 	assert.Nil(t, sc.validate())
 
 	// Explicitly disabled
 	statsLogFrequencySecs = uint(0)
-	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	unsupported = &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: &statsLogFrequencySecs}
 	sc = &LegacyServerConfig{Unsupported: unsupported}
 	assert.Nil(t, sc.validate())
 }
@@ -738,7 +738,7 @@ func TestGetCredentialsFromClusterConfig(t *testing.T) {
 	bucket := "albums"
 	config := BucketConfig{Bucket: &bucket, Username: "Alice", Password: "QWxpY2U="}
 	heartbeatIntervalSeconds := uint16(10)
-	clusterConfig := &ClusterConfig{
+	clusterConfig := &ClusterConfigLegacy{
 		BucketConfig:             config,
 		DataDir:                  "/var/lib/sync_gateway/data",
 		HeartbeatIntervalSeconds: &heartbeatIntervalSeconds,

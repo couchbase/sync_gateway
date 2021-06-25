@@ -32,8 +32,10 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
-			ReadHeaderTimeout: base.DefaultReadHeaderTimeout,
-			IdleTimeout:       base.DefaultIdleTimeout,
+			ReadHeaderTimeout:              base.DefaultReadHeaderTimeout,
+			IdleTimeout:                    base.DefaultIdleTimeout,
+			AdminInterfaceAuthentication:   base.BoolPtr(true),
+			MetricsInterfaceAuthentication: base.BoolPtr(true),
 		},
 		// TODO: logging defaults
 		Logging: LoggingConfig{
@@ -57,19 +59,6 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
-}
-
-func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
-	var config StartupConfig
-
-	err := base.DeepCopyInefficient(&config, sc)
-	if err != nil {
-		return nil, err
-	}
-
-	config.Bootstrap.Password = "xxxxx"
-
-	return &config, nil
 }
 
 // StartupConfig is the config file used by Sync Gateway in 3.0+ to start up with node-specific settings, and then bootstrap databases via Couchbase Server.
@@ -101,6 +90,9 @@ type APIConfig struct {
 	AdminInterface   string `json:"admin_interface,omitempty"   help:"Network interface to bind admin API to"`
 	MetricsInterface string `json:"metrics_interface,omitempty" help:"Network interface to bind metrics API to"`
 	ProfileInterface string `json:"profile_interface,omitempty" help:"Network interface to bind profiling API to"`
+
+	AdminInterfaceAuthentication   *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
+	MetricsInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 
 	ServerReadTimeout  time.Duration `json:"server_read_timeout,omitempty"  help:"maximum duration.Second before timing out read of the HTTP(S) request"`
 	ServerWriteTimeout time.Duration `json:"server_write_timeout,omitempty" help:"maximum duration.Second before timing out write of the HTTP(S) response"`
@@ -170,6 +162,19 @@ type UnsupportedConfig struct {
 
 type HTTP2Config struct {
 	Enabled *bool `json:"enabled,omitempty" help:"Whether HTTP2 support is enabled"`
+}
+
+func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
+	var config StartupConfig
+
+	err := base.DeepCopyInefficient(&config, sc)
+	if err != nil {
+		return nil, err
+	}
+
+	config.Bootstrap.Password = "xxxxx"
+
+	return &config, nil
 }
 
 func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {

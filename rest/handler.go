@@ -279,7 +279,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 // FIXME: Temporarily disable admin auth check (return false)
 func (h *handler) shouldCheckAdminAuth() bool {
 	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
-	return false && !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.MetricsInterfaceAuthentication))
+	return false && !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication))
 }
 
 func (h *handler) logRequestLine() {

@@ -50,7 +50,7 @@ type ServerContext struct {
 	dbConfigs           map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
 	databases_          map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
 	lock                sync.RWMutex
-	legacyReplications  []*ReplicateV1Config
+	legacyReplications  []*ReplicateV1ConfigLegacy
 	statsContext        *statsContext
 	bootstrapConnection *gocb.Cluster
 	HTTPClient          *http.Client
