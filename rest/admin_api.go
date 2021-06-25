@@ -140,7 +140,7 @@ func (h *handler) handlePutDbConfig() error {
 	}
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	dbc := DatabaseConfig{CAS: 0, DbConfig: *config}
+	dbc := DatabaseConfig{DbConfig: *config}
 	h.server.bucketDbConfigs[h.db.Bucket.GetName()] = &dbc
 	h.server.dbConfigs[dbName] = &dbc
 

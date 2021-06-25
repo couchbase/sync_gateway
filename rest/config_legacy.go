@@ -144,7 +144,12 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 			HideProductVersion: lc.HideProductVersion,
 		},
 		Logging: LoggingConfig{},
-		Auth:    AuthConfig{BcryptCost: lc.BcryptCost},
+		Auth: AuthConfig{
+			BcryptCost: lc.BcryptCost,
+			// TODO: How do we do in-memory config upgrades and retain this feature without supporting it in 3.0's config? Deprecated config options struct that is unsettable from JSON?
+			Facebook: lc.Facebook,
+			Google:   lc.Google,
+		},
 		Replicator: ReplicatorConfig{
 			MaxHeartbeat:    time.Second * time.Duration(lc.MaxHeartbeat),
 			BLIPCompression: lc.ReplicatorCompression,
@@ -169,19 +174,6 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 		sc.Logging.Debug = &lc.Logging.Debug
 		sc.Logging.Trace = &lc.Logging.Trace
 		sc.Logging.Stats = &lc.Logging.Stats
-	}
-
-	// TODO: How do we do in-memory config upgrades and retain this feature without supporting it in 3.0's config? Deprecated config options struct that is unsettable from JSON?
-	if lc.Facebook != nil {
-		// sc.Auth.Facebook = &FacebookConfig{
-		// 	Register: lc.Facebook.Register,
-		// }
-	}
-	if lc.Google != nil {
-		// sc.Auth.Google = &GoogleConfig{
-		// 	Register:    lc.Google.Register,
-		// 	AppClientID: lc.Google.AppClientID,
-		// }
 	}
 
 	if lc.CORS != nil {

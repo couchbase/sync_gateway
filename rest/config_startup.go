@@ -135,6 +135,9 @@ type LoggingConfig struct {
 
 type AuthConfig struct {
 	BcryptCost int `json:"bcrypt_cost,omitempty"          help:"Cost to use for bcrypt password hashes"`
+	// TODO: How do we do in-memory config upgrades and retain this feature without supporting it in 3.0's config? Deprecated config options struct that is unsettable from JSON?
+	Facebook *FacebookConfigLegacy `json:"-" help:""`
+	Google   *GoogleConfigLegacy   `json:"-" help:""`
 }
 
 type ReplicatorConfig struct {

@@ -134,7 +134,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
 	sc.API.HideProductVersion = rt.RestTesterConfig.hideProductInfo
-	sc.Auth.Facebook = &FacebookConfig{}
+	sc.Auth.Facebook = &FacebookConfigLegacy{}
 
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
 	rt.RestTesterServerContext.legacyReplications = rt.RestTesterConfig.sgr1Replications
