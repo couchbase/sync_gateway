@@ -10,7 +10,7 @@ import (
 )
 
 // serverMainPersistentConfig runs the Sync Gateway server with persistent config.
-func serverMainPersistentConfig(osArgs []string, fs *flag.FlagSet, flagStartupConfig *StartupConfig) error {
+func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConfig) error {
 
 	// 3.0 config - bootstrap and pull configs from server buckets.
 	base.Infof(base.KeyAll, "Running in persistent config mode")
@@ -18,22 +18,34 @@ func serverMainPersistentConfig(osArgs []string, fs *flag.FlagSet, flagStartupCo
 	sc := DefaultStartupConfig(defaultLogFilePath)
 	base.Tracef(base.KeyAll, "default config: %#v", sc)
 
-	fileStartupConfig, err := LoadStartupConfigFromPaths(fs.Args()...)
-	if pkgerrors.Cause(err) == base.ErrUnknownField {
-		// TODO: CBG-1399 Do automatic legacy config upgrade here
-		return fmt.Errorf("Couldn't parse config file: %w (legacy config upgrade not yet implemented)", err)
-	} else if err != nil {
-		return fmt.Errorf("Couldn't open config file: %w", err)
+	configPath := fs.Args()
+	if len(configPath) > 1 {
+		return fmt.Errorf("%d startup configs defined. Must be at most one startup config: %v", len(configPath), configPath)
 	}
 
-	if fileStartupConfig != nil {
-		base.Tracef(base.KeyAll, "got config from file: %#v", fileStartupConfig)
-		err := mergo.Merge(&sc, fileStartupConfig, mergo.WithOverride)
+	if len(configPath) == 1 {
+		fileStartupConfig, err := LoadStartupConfigFromPath(configPath[0])
+		if pkgerrors.Cause(err) == base.ErrUnknownField {
+			// TODO: CBG-1399 Do automatic legacy config upgrade here
+			return fmt.Errorf("Couldn't parse config file: %w (legacy config upgrade not yet implemented)", err)
+		}
 		if err != nil {
-			return err
+			return fmt.Errorf("Couldn't open config file: %w", err)
+		}
+		if fileStartupConfig != nil {
+			redactedConfig, err := sc.Redacted()
+			if err != nil {
+				return err
+			}
+			base.Tracef(base.KeyAll, "got config from file: %#v", redactedConfig)
+			err = mergo.Merge(&sc, fileStartupConfig, mergo.WithOverride)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
+	// merge flagStartupConfig on top of fileStartupConfig, because flags take precedence over config files.
 	if flagStartupConfig != nil {
 		base.Tracef(base.KeyAll, "got config from flags: %#v", flagStartupConfig)
 		err := mergo.Merge(&sc, flagStartupConfig, mergo.WithOverride)
@@ -42,7 +54,11 @@ func serverMainPersistentConfig(osArgs []string, fs *flag.FlagSet, flagStartupCo
 		}
 	}
 
-	base.Debugf(base.KeyAll, "final config: %#v", sc)
+	redactedConfig, err := sc.Redacted()
+	if err != nil {
+		return err
+	}
+	base.Tracef(base.KeyAll, "final config: %#v", redactedConfig)
 
 	ctx, err := setupServerContext(&sc, true)
 	if err != nil {

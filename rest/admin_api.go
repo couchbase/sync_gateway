@@ -40,7 +40,7 @@ func (h *handler) handleCreateDB() error {
 	if err := config.setup(dbName); err != nil {
 		return err
 	}
-	if _, err := h.server.AddDatabaseFromConfig(DatabaseConfig{Config: *config}); err != nil {
+	if _, err := h.server.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *config}); err != nil {
 		return err
 	}
 	return base.HTTPErrorf(http.StatusCreated, "created")
@@ -100,13 +100,13 @@ func (h *handler) handleDbOffline() error {
 func (h *handler) handleGetDbConfig() error {
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
-		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Config.Redacted()
+		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Redacted()
 		if err != nil {
 			return err
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name).Config)
+		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name).DbConfig)
 	}
 	return nil
 }
@@ -140,7 +140,7 @@ func (h *handler) handlePutDbConfig() error {
 	}
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	dbc := DatabaseConfig{CAS: 0, Config: *config}
+	dbc := DatabaseConfig{CAS: 0, DbConfig: *config}
 	h.server.bucketDbConfigs[h.db.Bucket.GetName()] = &dbc
 	h.server.dbConfigs[dbName] = &dbc
 

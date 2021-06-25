@@ -3458,7 +3458,7 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 	err := base.JSONUnmarshal([]byte(configJSON), &dbConfig)
 	goassert.True(t, err == nil)
 
-	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{Config: dbConfig})
+	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	goassert.True(t, err == nil)
 
 	sc.Close()
@@ -3992,7 +3992,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	err := base.JSONUnmarshal([]byte(testProviderOnlyJSON), &testProviderOnlyConfig)
 	goassert.True(t, err == nil)
 
-	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{Config: testProviderOnlyConfig})
+	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: testProviderOnlyConfig})
 	assert.NoError(t, err, "Error adding testProviderOnly database.")
 
 	viewsOnlyJSON := `{"name": "views_only",
@@ -4009,7 +4009,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(viewsOnlyJSON), &viewsOnlyConfig)
 	goassert.True(t, err == nil)
 
-	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{Config: viewsOnlyConfig})
+	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: viewsOnlyConfig})
 	assert.NoError(t, err, "Error adding viewsOnlyConfig database.")
 
 	viewsAndTestJSON := `{"name": "views_and_test",
@@ -4030,7 +4030,7 @@ func TestUnsupportedConfig(t *testing.T) {
 	err = base.JSONUnmarshal([]byte(viewsAndTestJSON), &viewsAndTestConfig)
 	goassert.True(t, err == nil)
 
-	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{Config: viewsAndTestConfig})
+	_, err = sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: viewsAndTestConfig})
 	assert.NoError(t, err, "Error adding viewsAndTestConfig database.")
 
 	sc.Close()

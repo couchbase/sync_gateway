@@ -112,7 +112,7 @@ func (h *handler) handleFlush() error {
 		h.server.RemoveDatabase(name)
 
 		// Create a bucket connection spec from the database config
-		spec, err := GetBucketSpec(&config.Config)
+		spec, err := GetBucketSpec(&config.DbConfig)
 		if err != nil {
 			return err
 		}

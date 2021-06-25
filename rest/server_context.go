@@ -44,14 +44,11 @@ const DefaultStatsLogFrequencySecs = 60
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config           *StartupConfig
-	persistentConfig bool
-	// bucketDbConfigs is a map of bucket name to DatabaseConfig
-	bucketDbConfigs map[string]*DatabaseConfig
-	// dbConfigs is a map of db name to DatabaseConfig
-	dbConfigs map[string]*DatabaseConfig
-	// databases_ is a map of dbname to db.DatabaseContext
-	databases_          map[string]*db.DatabaseContext
+	config              *StartupConfig
+	persistentConfig    bool
+	bucketDbConfigs     map[string]*DatabaseConfig     // bucketDbConfigs is a map of bucket name to DatabaseConfig
+	dbConfigs           map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
+	databases_          map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
 	lock                sync.RWMutex
 	legacyReplications  []*ReplicateV1Config
 	statsContext        *statsContext
@@ -63,13 +60,14 @@ type ServerContext struct {
 }
 
 type DatabaseConfig struct {
-	CAS    gocb.Cas
-	Config DbConfig
+	CAS gocb.Cas
+	// TODO: Copy non-legacy properties into this struct
+	DbConfig
 }
 
 func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
-		dbc := DatabaseConfig{CAS: 0, Config: *dbConfig}
+		dbc := DatabaseConfig{CAS: 0, DbConfig: *dbConfig}
 		_, err := sc._getOrAddDatabaseFromConfig(dbc, false)
 		if err != nil {
 			return err
@@ -342,12 +340,12 @@ func GetBucketSpec(config *DbConfig) (spec base.BucketSpec, err error) {
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool) (context *db.DatabaseContext, err error) {
 
 	// Generate bucket spec and validate whether db already exists
-	spec, err := GetBucketSpec(&config.Config)
+	spec, err := GetBucketSpec(&config.DbConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	dbName := config.Config.Name
+	dbName := config.Name
 	if dbName == "" {
 		dbName = spec.BucketName
 	}
@@ -374,7 +372,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	// If using a walrus bucket, force use of views
-	useViews := config.Config.UseViews
+	useViews := config.UseViews
 	if !useViews && spec.IsWalrusBucket() {
 		base.Warnf("Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
@@ -388,11 +386,11 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		}
 
 		numReplicas := DefaultNumIndexReplicas
-		if config.Config.NumIndexReplicas != nil {
-			numReplicas = *config.Config.NumIndexReplicas
+		if config.NumIndexReplicas != nil {
+			numReplicas = *config.NumIndexReplicas
 		}
 
-		indexErr := db.InitializeIndexes(bucket, config.Config.UseXattrs(), numReplicas)
+		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas)
 		if indexErr != nil {
 			return nil, indexErr
 		}
@@ -404,51 +402,51 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	// Process unsupported config options
-	if config.Config.Unsupported.WarningThresholds.XattrSize == nil {
-		config.Config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
+	if config.Unsupported.WarningThresholds.XattrSize == nil {
+		config.Unsupported.WarningThresholds.XattrSize = base.Uint32Ptr(uint32(base.DefaultWarnThresholdXattrSize))
 	} else {
 		lowerLimit := 0.1 * 1024 * 1024 // 0.1 MB
 		upperLimit := 1 * 1024 * 1024   // 1 MB
-		if *config.Config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
+		if *config.Unsupported.WarningThresholds.XattrSize < uint32(lowerLimit) {
 			return nil, fmt.Errorf("xattr_size warning threshold cannot be lower than %d bytes", uint32(lowerLimit))
-		} else if *config.Config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
+		} else if *config.Unsupported.WarningThresholds.XattrSize > uint32(upperLimit) {
 			return nil, fmt.Errorf("xattr_size warning threshold cannot be higher than %d bytes", uint32(upperLimit))
 		}
 	}
 
-	if config.Config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
-		config.Config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
+	if config.Unsupported.WarningThresholds.ChannelsPerDoc == nil {
+		config.Unsupported.WarningThresholds.ChannelsPerDoc = &base.DefaultWarnThresholdChannelsPerDoc
 	} else {
 		lowerLimit := 5
-		if *config.Config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
+		if *config.Unsupported.WarningThresholds.ChannelsPerDoc < uint32(lowerLimit) {
 			return nil, fmt.Errorf("channels_per_doc warning threshold cannot be lower than %d", lowerLimit)
 		}
 	}
 
-	if config.Config.Unsupported.WarningThresholds.ChannelsPerUser == nil {
-		config.Config.Unsupported.WarningThresholds.ChannelsPerUser = &base.DefaultWarnThresholdChannelsPerUser
+	if config.Unsupported.WarningThresholds.ChannelsPerUser == nil {
+		config.Unsupported.WarningThresholds.ChannelsPerUser = &base.DefaultWarnThresholdChannelsPerUser
 	}
 
-	if config.Config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
-		config.Config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
+	if config.Unsupported.WarningThresholds.GrantsPerDoc == nil {
+		config.Unsupported.WarningThresholds.GrantsPerDoc = &base.DefaultWarnThresholdGrantsPerDoc
 	} else {
 		lowerLimit := 5
-		if *config.Config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
+		if *config.Unsupported.WarningThresholds.GrantsPerDoc < uint32(lowerLimit) {
 			return nil, fmt.Errorf("access_and_role_grants_per_doc warning threshold cannot be lower than %d", lowerLimit)
 		}
 	}
 
-	if config.Config.Unsupported.WarningThresholds.ChannelNameSize == nil {
-		config.Config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
+	if config.Unsupported.WarningThresholds.ChannelNameSize == nil {
+		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
 	}
 
-	autoImport, err := config.Config.AutoImportEnabled()
+	autoImport, err := config.AutoImportEnabled()
 	if err != nil {
 		return nil, err
 	}
 
 	// Generate database context options from config and server context
-	contextOptions, err := dbcOptionsFromConfig(sc, &config.Config, dbName)
+	contextOptions, err := dbcOptionsFromConfig(sc, &config.DbConfig, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -462,15 +460,15 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	dbcontext.BucketSpec = spec
 
 	syncFn := ""
-	if config.Config.Sync != nil {
-		syncFn = *config.Config.Sync
+	if config.Sync != nil {
+		syncFn = *config.Sync
 	}
 	if err := sc.applySyncFunction(dbcontext, syncFn); err != nil {
 		return nil, err
 	}
 
-	if config.Config.RevsLimit != nil {
-		dbcontext.RevsLimit = *config.Config.RevsLimit
+	if config.RevsLimit != nil {
+		dbcontext.RevsLimit = *config.RevsLimit
 		if dbcontext.AllowConflicts() {
 			if dbcontext.RevsLimit < 20 {
 				return nil, fmt.Errorf("The revs_limit (%v) value in your Sync Gateway configuration cannot be set lower than 20.", dbcontext.RevsLimit)
@@ -486,29 +484,29 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		}
 	}
 
-	dbcontext.AllowEmptyPassword = config.Config.AllowEmptyPassword
-	dbcontext.ServeInsecureAttachmentTypes = config.Config.ServeInsecureAttachmentTypes
+	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
+	dbcontext.ServeInsecureAttachmentTypes = config.ServeInsecureAttachmentTypes
 
 	if dbcontext.ChannelMapper == nil {
 		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
 	}
 
 	// Create default users & roles:
-	if err := sc.installPrincipals(dbcontext, config.Config.Roles, "role"); err != nil {
+	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
 		return nil, err
-	} else if err := sc.installPrincipals(dbcontext, config.Config.Users, "user"); err != nil {
+	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
 		return nil, err
 	}
 
 	// Initialize event handlers
-	if err := sc.initEventHandlers(dbcontext, &config.Config); err != nil {
+	if err := sc.initEventHandlers(dbcontext, &config.DbConfig); err != nil {
 		return nil, err
 	}
 
-	sgr1CheckpointIDs := make(map[string]string, len(config.Config.Replications))
+	sgr1CheckpointIDs := make(map[string]string, len(config.Replications))
 
 	// Validate replications and fetch SGR1 checkpoint IDs, if any match.
-	for replicationID, replicationConfig := range config.Config.Replications {
+	for replicationID, replicationConfig := range config.Replications {
 		if replicationConfig.ID != "" && replicationConfig.ID != replicationID {
 			return nil, fmt.Errorf("replication_id %q does not match replications key %q in replication config", replicationConfig.ID, replicationID)
 		}
@@ -585,7 +583,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	// Upsert replications
-	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Config.Replications, sgr1CheckpointIDs)
+	replicationErr := dbcontext.SGReplicateMgr.PutReplications(config.Replications, sgr1CheckpointIDs)
 	if replicationErr != nil {
 		return nil, replicationErr
 	}
@@ -597,7 +595,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	sc.bucketDbConfigs[bucket.GetName()] = &config
 	sc.dbConfigs[dbcontext.Name] = &config
 
-	if config.Config.StartOffline {
+	if config.StartOffline {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.config.API.AdminInterface)
 	} else {
@@ -741,7 +739,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	}
 	cacheOptions.ChannelQueryLimit = queryPaginationLimit
 
-	secureCookieOverride := sc.config.API.TLS.CertPath != ""
+	secureCookieOverride := sc.config.API.HTTPS.TLSCertPath != ""
 	if config.SecureCookieOverride != nil {
 		secureCookieOverride = *config.SecureCookieOverride
 	}

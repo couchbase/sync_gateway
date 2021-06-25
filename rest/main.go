@@ -53,8 +53,8 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	}
 
 	if *disablePersistentConfigFlag {
-		return serverMainPersistentConfig(osArgs, fs, &flagStartupConfig)
+		return legacyServerMain(osArgs)
 	}
 
-	return legacyServerMain(osArgs)
+	return serverMainPersistentConfig(fs, &flagStartupConfig)
 }

@@ -288,13 +288,9 @@ type ChannelCacheConfig struct {
 }
 
 type UnsupportedServerConfig struct {
-	Http2Config           *Http2Config `json:"http2,omitempty"`               // Config settings for HTTP2
+	Http2Config           *HTTP2Config `json:"http2,omitempty"`               // Config settings for HTTP2
 	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
 	UseStdlibJSON         *bool        `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
-}
-
-type Http2Config struct {
-	Enabled *bool `json:"enabled,omitempty"` // Whether HTTP2 support is enabled
 }
 
 func GetTLSVersionFromString(stringV *string) uint16 {
@@ -1191,13 +1187,13 @@ func (config *StartupConfig) Serve(addr string, handler http.Handler) error {
 		http2Enabled = *config.Unsupported.HTTP2.Enabled
 	}
 
-	tlsMinVersion := GetTLSVersionFromString(&config.API.TLS.MinimumVersion)
+	tlsMinVersion := GetTLSVersionFromString(&config.API.HTTPS.TLSMinimumVersion)
 
 	return base.ListenAndServeHTTP(
 		addr,
 		config.API.MaximumConnections,
-		config.API.TLS.CertPath,
-		config.API.TLS.KeyPath,
+		config.API.HTTPS.TLSCertPath,
+		config.API.HTTPS.TLSKeyPath,
 		handler,
 		config.API.ServerReadTimeout,
 		config.API.ServerWriteTimeout,
@@ -1234,14 +1230,14 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if persistentConfig && !base.ServerIsWalrus(sc.config.Bootstrap.Server) {
-		securityConfig, err := base.GoCBv2SecurityConfig(sc.config.Bootstrap.CACertPath)
+		securityConfig, err := base.GoCBv2SecurityConfig(sc.config.Bootstrap.X509CACertPath)
 		if err != nil {
 			return nil, err
 		}
 
 		authenticatorConfig, _, err := base.GoCBv2AuthenticatorConfig(
 			sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
-			sc.config.Bootstrap.CertPath, sc.config.Bootstrap.KeyPath,
+			sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
 		)
 		if err != nil {
 			return nil, err

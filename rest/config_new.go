@@ -5,7 +5,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/imdario/mergo"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -17,9 +16,6 @@ const (
 	persistentConfigDefaultGroupID = "default"
 	// persistentConfigDefaultUpdateFrequency is a duration that defines how frequent configs are refreshed from Couchbase Server.
 	persistentConfigDefaultUpdateFrequency = time.Second * 10
-
-	// persistentConfigDocIDPrefix is the prefix used to store a persistent config. The rest of the doc ID is the group name.
-	persistentConfigDocIDPrefix = base.SyncPrefix + "cnf:"
 )
 
 // DefaultStartupConfig returns a StartupConfig with values populated with defaults.
@@ -35,8 +31,8 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			MetricsInterface:   DefaultMetricsInterface,
 			MaximumConnections: DefaultMaxIncomingConnections,
 			CompressResponses:  base.BoolPtr(true),
-			TLS: TLSConfig{
-				MinimumVersion: "tlsv1.2",
+			HTTPS: HTTPSConfig{
+				TLSMinimumVersion: "tlsv1.2",
 			},
 			ReadHeaderTimeout: base.DefaultReadHeaderTimeout,
 			IdleTimeout:       base.DefaultIdleTimeout,
@@ -96,9 +92,9 @@ type BootstrapConfig struct {
 	Server                string        `json:"server,omitempty"                  help:"Couchbase Server connection string/URL"`
 	Username              string        `json:"username,omitempty"                help:"Username for authenticating to server"`
 	Password              string        `json:"password,omitempty"                help:"Password for authenticating to server"`
-	CertPath              string        `json:"cert_path,omitempty"               help:"Cert path (public key) for X.509 bucket auth"`
-	KeyPath               string        `json:"key_path,omitempty"                help:"Key path (private key) for X.509 bucket auth"`
-	CACertPath            string        `json:"ca_cert_path,omitempty"            help:"Root CA cert path for X.509 bucket auth"`
+	X509CertPath          string        `json:"x509_cert_path,omitempty"               help:"Cert path (public key) for X.509 bucket auth"`
+	X509KeyPath           string        `json:"x509_key_path,omitempty"                help:"Key path (private key) for X.509 bucket auth"`
+	X509CACertPath        string        `json:"x509_ca_cert_path,omitempty"            help:"Root CA cert path for X.509 bucket auth"`
 }
 
 type APIConfig struct {
@@ -117,14 +113,14 @@ type APIConfig struct {
 	CompressResponses  *bool `json:"compress_responses,omitempty"   help:"If false, disables compression of HTTP responses"`
 	HideProductVersion bool  `json:"hide_product_version,omitempty" help:"Whether product versions removed from Server headers and REST API responses"`
 
-	TLS  TLSConfig   `json:"tls,omitempty"`
-	CORS *CORSConfig `json:"cors,omitempty"`
+	HTTPS HTTPSConfig `json:"https,omitempty"`
+	CORS  *CORSConfig `json:"cors,omitempty"`
 }
 
-type TLSConfig struct {
-	MinimumVersion string `json:"minimum_version,omitempty"     help:"The minimum allowable TLS version for the REST APIs"`
-	CertPath       string `json:"cert_path,omitempty" help:"The TLS cert file to use for the REST APIs"`
-	KeyPath        string `json:"key_path,omitempty"  help:"The TLS key file to use for the REST APIs"`
+type HTTPSConfig struct {
+	TLSMinimumVersion string `json:"tls_minimum_version,omitempty"     help:"The minimum allowable TLS version for the REST APIs"`
+	TLSCertPath       string `json:"tls_cert_path,omitempty" help:"The TLS cert file to use for the REST APIs"`
+	TLSKeyPath        string `json:"tls_key_path,omitempty"  help:"The TLS key file to use for the REST APIs"`
 }
 
 type CORSConfig struct {
@@ -186,26 +182,6 @@ func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
 	var sc StartupConfig
 	err = decodeAndSanitiseConfig(f, &sc)
 	return &sc, err
-}
-
-func LoadStartupConfigFromPaths(paths ...string) (*StartupConfig, error) {
-	if len(paths) == 0 {
-		return nil, nil
-	}
-
-	sc := StartupConfig{}
-	for _, path := range paths {
-		pathSc, err := LoadStartupConfigFromPath(path)
-		if err != nil {
-			return nil, err
-		}
-		err = mergo.Merge(&sc, pathSc, mergo.WithOverride)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return &sc, nil
 }
 
 // setGlobalConfig will set global variables and other settings based on the given StartupConfig.

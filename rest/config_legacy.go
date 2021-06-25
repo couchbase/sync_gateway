@@ -23,12 +23,12 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 			continue
 		}
 		bsc = &BootstrapConfig{
-			Server:     *dbConfig.Server,
-			Username:   dbConfig.Username,
-			Password:   dbConfig.Password,
-			CertPath:   dbConfig.CertPath,
-			KeyPath:    dbConfig.KeyPath,
-			CACertPath: dbConfig.CACertPath,
+			Server:         *dbConfig.Server,
+			Username:       dbConfig.Username,
+			Password:       dbConfig.Password,
+			X509CertPath:   dbConfig.CertPath,
+			X509KeyPath:    dbConfig.KeyPath,
+			X509CACertPath: dbConfig.CACertPath,
 		}
 		break
 	}
@@ -122,13 +122,13 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 		sc.API.MaximumConnections = uint(*lc.MaxIncomingConnections)
 	}
 	if lc.TLSMinVersion != nil {
-		sc.API.TLS.MinimumVersion = *lc.TLSMinVersion
+		sc.API.HTTPS.TLSMinimumVersion = *lc.TLSMinVersion
 	}
 	if lc.SSLCert != nil {
-		sc.API.TLS.CertPath = *lc.SSLCert
+		sc.API.HTTPS.TLSCertPath = *lc.SSLCert
 	}
 	if lc.SSLKey != nil {
-		sc.API.TLS.KeyPath = *lc.SSLKey
+		sc.API.HTTPS.TLSKeyPath = *lc.SSLKey
 	}
 	if lc.Unsupported != nil {
 		if lc.Unsupported.StatsLogFrequencySecs != nil {

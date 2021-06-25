@@ -2037,7 +2037,7 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 		}
 	}
 
-	// Set CertPath/KeyPath for X509 auth
+	// Set X509CertPath/X509KeyPath for X509 auth
 	certPath, keyPath, x509CleanupFn := tempX509Certs(t)
 	testBucket.BucketSpec.Certpath = certPath
 	testBucket.BucketSpec.Keypath = keyPath
