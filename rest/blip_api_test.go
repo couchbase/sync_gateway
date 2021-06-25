@@ -1523,6 +1523,92 @@ func TestPutAttachmentViaBlipGetViaBlip(t *testing.T) {
 	}
 }
 
+func TestPutAttachmentViaBlipGetViaBlipSingleDocTwoAttWithSameDigest(t *testing.T) {
+	var tests = []struct {
+		name                   string
+		inputBlipProtocol      string
+		inputAttachmentVersion int
+	}{
+		{"TestPutAttViaBlipGetViaBlipCBMobile2AttVer1", db.BlipCBMobileReplicationV2, db.AttVersion1},
+		{"TestPutAttViaBlipGetViaBlipCBMobile2AttVer2", db.BlipCBMobileReplicationV2, db.AttVersion2},
+		{"TestPutAttViaBlipGetViaBlipCBMobile3AttVer1", db.BlipCBMobileReplicationV3, db.AttVersion1},
+		{"TestPutAttViaBlipGetViaBlipCBMobile3AttVer2", db.BlipCBMobileReplicationV3, db.AttVersion2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create blip tester
+			bt, err := NewBlipTesterFromSpec(t, BlipTesterSpec{
+				connectingUsername:          "user1",
+				connectingPassword:          "1234",
+				connectingUserChannelGrants: []string{"*"}, // All channels
+				blipProtocols:               []string{tt.inputBlipProtocol},
+			})
+			require.NoError(t, err, "Unexpected error creating BlipTester")
+			defer bt.Close()
+
+			attachmentBody := "attach"
+			digest := db.Sha1DigestKey([]byte(attachmentBody))
+
+			input := RevWithAttachments{
+				docId: "doc",
+				revId: "1-rev1",
+				attachments: db.AttachmentMap{
+					"attachment1": &db.DocAttachment{
+						ContentType: "application/json",
+						Revpos:      1,
+						Stub:        true,
+						Digest:      digest,
+						Version:     tt.inputAttachmentVersion,
+						Length:      len(attachmentBody),
+						Data:        []byte(attachmentBody),
+					},
+					"attachment2": &db.DocAttachment{
+						ContentType: "application/json",
+						Revpos:      1,
+						Stub:        true,
+						Digest:      digest,
+						Version:     tt.inputAttachmentVersion,
+						Length:      len(attachmentBody),
+						Data:        []byte(attachmentBody),
+					},
+				},
+			}
+			sent, _, _ := bt.SendRevWithAttachments(input)
+			require.True(t, sent)
+
+			// Get all docs and attachment via subChanges request
+			allDocs, ok := bt.WaitForNumDocsViaChanges(1)
+			require.True(t, ok)
+
+			// make assertions on allDocs -- make sure attachment is present w/ expected body
+			require.Len(t, allDocs, 1)
+
+			// doc assertions
+			retrievedDoc := allDocs["doc"]
+			require.Equal(t, "doc", retrievedDoc.ID())
+			require.Equal(t, "1-rev1", retrievedDoc.RevID())
+
+			// attachment assertions
+			attachments, err := retrievedDoc.GetAttachments()
+			require.NoError(t, err)
+			require.Len(t, attachments, 2)
+
+			attachment1 := attachments["attachment1"]
+			require.NotNil(t, attachment1)
+			assert.Equal(t, attachmentBody, string(attachment1.Data))
+			assert.Equal(t, len(attachmentBody), attachment1.Length)
+			assert.Equal(t, digest, attachment1.Digest)
+
+			attachment2 := attachments["attachment2"]
+			require.NotNil(t, attachment2)
+			assert.Equal(t, attachmentBody, string(attachment2.Data))
+			assert.Equal(t, len(attachmentBody), attachment2.Length)
+			assert.Equal(t, digest, attachment2.Digest)
+		})
+	}
+}
+
 // Reproduces the issue seen in https://github.com/couchbase/couchbase-lite-core/issues/790
 // Makes sure that Sync Gateway rejects attachments sent to it that does not match the given digest and/or length
 func TestPutInvalidAttachment(t *testing.T) {

@@ -1125,6 +1125,70 @@ func (bt *BlipTester) SendRevWithAttachment(input SendRevWithAttachmentInput) (s
 
 }
 
+type RevWithAttachments struct {
+	docId       string
+	revId       string
+	attachments db.AttachmentMap
+	history     []string
+	body        []byte
+}
+
+// Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
+func (bt *BlipTester) SendRevWithAttachments(input RevWithAttachments) (sent bool, req, res *blip.Message) {
+
+	defer func() {
+		// Clean up all profile handlers that are registered as part of this test
+		delete(bt.blipContext.HandlerForProfile, "getAttachment")
+	}()
+
+	doc := NewRestDocument()
+	if len(input.body) > 0 {
+		unmarshalErr := json.Unmarshal(input.body, &doc)
+		if unmarshalErr != nil {
+			panic(fmt.Sprintf("Error unmarshalling body into restDocument.  Error: %v", unmarshalErr))
+		}
+	}
+
+	doc.SetID(input.docId)
+	doc.SetRevID(input.revId)
+	doc.SetAttachments(input.attachments)
+
+	docBody, err := base.JSONMarshal(doc)
+	if err != nil {
+		panic(fmt.Sprintf("Error marshalling doc.  Error: %v", err))
+	}
+
+	getAttachmentWg := sync.WaitGroup{}
+
+	bt.blipContext.HandlerForProfile["getAttachment"] = func(request *blip.Message) {
+		defer getAttachmentWg.Done()
+		for _, att := range input.attachments {
+			if request.Properties["digest"] != att.Digest {
+				panic(fmt.Sprintf("Unexpected digest.  Got: %v, expected: %v", request.Properties["digest"], att.Digest))
+			}
+			response := request.Response()
+			response.SetBody(att.Data)
+			break
+		}
+	}
+
+	// Push a rev with an attachment.
+	getAttachmentWg.Add(2)
+	sent, req, res, _ = bt.SendRevWithHistory(
+		input.docId,
+		input.revId,
+		input.history,
+		docBody,
+		blip.Properties{},
+	)
+
+	// Expect a callback to the getAttachment endpoint
+	getAttachmentWg.Wait()
+
+	return sent, req, res
+
+}
+
 func (bt *BlipTester) WaitForNumChanges(numChangesExpected int) (changes [][]interface{}) {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
