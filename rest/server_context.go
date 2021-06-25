@@ -60,14 +60,13 @@ type ServerContext struct {
 }
 
 type DatabaseConfig struct {
-	CAS gocb.Cas
 	// TODO: Copy non-legacy properties into this struct
 	DbConfig
 }
 
 func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
-		dbc := DatabaseConfig{CAS: 0, DbConfig: *dbConfig}
+		dbc := DatabaseConfig{DbConfig: *dbConfig}
 		_, err := sc._getOrAddDatabaseFromConfig(dbc, false)
 		if err != nil {
 			return err

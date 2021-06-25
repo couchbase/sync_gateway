@@ -134,18 +134,7 @@ type LoggingConfig struct {
 }
 
 type AuthConfig struct {
-	BcryptCost int             `json:"bcrypt_cost,omitempty"          help:"Cost to use for bcrypt password hashes"`
-	Facebook   *FacebookConfig `json:"facebook,omitempty"`
-	Google     *GoogleConfig   `json:"google,omitempty"`
-}
-
-type FacebookConfig struct {
-	Register bool `json:"register,omitempty" help:"If true, server will register new user accounts"`
-}
-
-type GoogleConfig struct {
-	Register    bool     `json:"register,omitempty" help:"If true, server will register new user accounts"`
-	AppClientID []string `json:"app_client_id,omitempty" help:"List of enabled client ids"`
+	BcryptCost int `json:"bcrypt_cost,omitempty"          help:"Cost to use for bcrypt password hashes"`
 }
 
 type ReplicatorConfig struct {

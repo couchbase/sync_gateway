@@ -171,17 +171,17 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 		sc.Logging.Stats = &lc.Logging.Stats
 	}
 
+	// TODO: How do we do in-memory config upgrades and retain this feature without supporting it in 3.0's config? Deprecated config options struct that is unsettable from JSON?
 	if lc.Facebook != nil {
-		sc.Auth.Facebook = &FacebookConfig{
-			Register: lc.Facebook.Register,
-		}
+		// sc.Auth.Facebook = &FacebookConfig{
+		// 	Register: lc.Facebook.Register,
+		// }
 	}
-
 	if lc.Google != nil {
-		sc.Auth.Google = &GoogleConfig{
-			Register:    lc.Google.Register,
-			AppClientID: lc.Google.AppClientID,
-		}
+		// sc.Auth.Google = &GoogleConfig{
+		// 	Register:    lc.Google.Register,
+		// 	AppClientID: lc.Google.AppClientID,
+		// }
 	}
 
 	if lc.CORS != nil {
