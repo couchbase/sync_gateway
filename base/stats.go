@@ -54,6 +54,8 @@ const (
 	StatKeySgrDocsCheckedSent     = "sgr_docs_checked_sent"
 )
 
+const StatsGroupKeySyncGateway = "syncgateway"
+
 var (
 	checkedSentDesc               *prometheus.Desc
 	numAttachmentBytesTransferred *prometheus.Desc
@@ -70,7 +72,18 @@ type SgwStats struct {
 	dbStatsMapMutex sync.Mutex
 }
 
-var SyncGatewayStats = *NewSyncGatewayStats()
+var SyncGatewayStats SgwStats
+
+func init() {
+	// Initialize Sync Gateway Stats
+
+	// All stats will be stored as part of this struct. Global variable accessible everywhere. To add stats see stats.go
+	SyncGatewayStats = *NewSyncGatewayStats()
+
+	// Publish our stats to expvars. This will run String method on SyncGatewayStats ( type SgwStats ) which will
+	// marshal the stats to JSON
+	expvar.Publish(StatsGroupKeySyncGateway, &SyncGatewayStats)
+}
 
 func NewSyncGatewayStats() *SgwStats {
 	sgwStats := SgwStats{
