@@ -5,8 +5,6 @@ import (
 	"runtime"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -51,10 +49,12 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			Trace: &base.FileLoggerConfig{},
 			Stats: &base.FileLoggerConfig{},
 		},
+		Auth: AuthConfig{
+			BcryptCost: auth.DefaultBcryptCost,
+		},
 		Unsupported: UnsupportedConfig{
 			StatsLogFrequency: base.DurationPtr(time.Minute),
 		},
-		BcryptCost:         bcrypt.DefaultCost,
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
 }
@@ -81,7 +81,6 @@ type StartupConfig struct {
 	Replicator  ReplicatorConfig  `json:"replicator,omitempty"`
 	Unsupported UnsupportedConfig `json:"unsupported,omitempty"`
 
-	BcryptCost         int    `json:"bcrypt_cost,omitempty"          help:"Cost to use for bcrypt password hashes"`
 	MaxFileDescriptors uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 }
 
@@ -143,8 +142,9 @@ type LoggingConfig struct {
 }
 
 type AuthConfig struct {
-	Facebook *FacebookConfig `json:"facebook,omitempty"`
-	Google   *GoogleConfig   `json:"google,omitempty"`
+	BcryptCost int             `json:"bcrypt_cost,omitempty"          help:"Cost to use for bcrypt password hashes"`
+	Facebook   *FacebookConfig `json:"facebook,omitempty"`
+	Google     *GoogleConfig   `json:"google,omitempty"`
 }
 
 type FacebookConfig struct {
@@ -205,11 +205,6 @@ func setGlobalConfig(sc *StartupConfig) error {
 	if sc.Unsupported.UseStdlibJSON {
 		base.Infof(base.KeyAll, "Using the stdlib JSON package")
 		base.UseStdlibJSON = true
-	}
-
-	// TODO: Move to be scoped under auth.Authenticator ?
-	if err := auth.SetBcryptCost(sc.BcryptCost); err != nil {
-		return err
 	}
 
 	return nil

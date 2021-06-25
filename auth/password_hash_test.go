@@ -50,34 +50,39 @@ func TestBcryptDefaultCostTime(t *testing.T) {
 	minimumDuration := 40 * time.Millisecond
 
 	startTime := time.Now()
-	_, err := bcrypt.GenerateFromPassword([]byte("hunter2"), bcryptDefaultCost)
+	_, err := bcrypt.GenerateFromPassword([]byte("hunter2"), DefaultBcryptCost)
 	duration := time.Since(startTime)
 
-	t.Logf("bcrypt.GenerateFromPassword with cost %d took: %v", bcryptDefaultCost, duration)
+	t.Logf("bcrypt.GenerateFromPassword with cost %d took: %v", DefaultBcryptCost, duration)
 	assert.NoError(t, err)
 	assert.True(t, minimumDuration < duration)
 }
 
 func TestSetBcryptCost(t *testing.T) {
-	err := SetBcryptCost(bcryptDefaultCost - 1) // below minimum allowed value
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
+
+	err := auth.SetBcryptCost(DefaultBcryptCost - 1) // below minimum allowed value
 	assert.Equal(t, ErrInvalidBcryptCost, errors.Cause(err))
-	assert.Equal(t, bcryptDefaultCost, bcryptCost)
-	assert.False(t, bcryptCostChanged)
+	assert.Equal(t, DefaultBcryptCost, auth.BcryptCost)
+	assert.False(t, auth.bcryptCostChanged)
 
-	err = SetBcryptCost(0) // use default value
+	err = auth.SetBcryptCost(0) // use default value
 	assert.NoError(t, err)
-	assert.Equal(t, bcryptDefaultCost, bcryptCost)
-	assert.False(t, bcryptCostChanged) // Not explicitly changed
+	assert.Equal(t, DefaultBcryptCost, auth.BcryptCost)
+	assert.False(t, auth.bcryptCostChanged) // Not explicitly changed
 
-	err = SetBcryptCost(bcryptDefaultCost + 1) // use increased value
+	err = auth.SetBcryptCost(DefaultBcryptCost + 1) // use increased value
 	assert.NoError(t, err)
-	assert.Equal(t, bcryptDefaultCost+1, bcryptCost)
-	assert.True(t, bcryptCostChanged)
+	assert.Equal(t, DefaultBcryptCost+1, auth.BcryptCost)
+	assert.True(t, auth.bcryptCostChanged)
 
-	err = SetBcryptCost(bcryptDefaultCost) // back to explicit default value, check changed is still true
+	err = auth.SetBcryptCost(DefaultBcryptCost) // back to explicit default value, check changed is still true
 	assert.NoError(t, err)
-	assert.Equal(t, bcryptDefaultCost, bcryptCost)
-	assert.True(t, bcryptCostChanged)
+	assert.Equal(t, DefaultBcryptCost, auth.BcryptCost)
+	assert.True(t, auth.bcryptCostChanged)
 }
 
 // NoReplKeyCache represents a key-only cache that doesn't support eviction.
@@ -359,7 +364,7 @@ func randKey(limit int) string {
 
 // bcryptHash returns the bcrypt hash of the given password.
 func bcryptHash(b *testing.B, password []byte) []byte {
-	hash, err := bcrypt.GenerateFromPassword(password, bcryptDefaultCost)
+	hash, err := bcrypt.GenerateFromPassword(password, DefaultBcryptCost)
 	require.NoError(b, err)
 	return hash
 }

@@ -67,22 +67,19 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()
 
-	// Reset bcrypt cost after test
-	defer func() { require.NoError(t, SetBcryptCost(bcryptDefaultCost)) }()
-
 	// Create user
 	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
 	u, err := auth.NewUser(username, oldPassword, base.Set{})
-	assert.NoError(t, err)
-	assert.NotNil(t, u)
+	require.NoError(t, err)
+	require.NotNil(t, u)
 
 	user := u.(*userImpl)
 	oldHash := user.PasswordHash_
 
 	// Make sure their password was hashed with the desired cost
 	cost, err := bcrypt.Cost(user.PasswordHash_)
-	assert.NoError(t, err)
-	assert.Equal(t, bcryptDefaultCost, cost)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultBcryptCost, cost)
 
 	// Try to auth with an incorrect password
 	assert.False(t, u.Authenticate("test"))
@@ -100,12 +97,15 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	// Check the cost is still the old value
 	cost, err = bcrypt.Cost(user.PasswordHash_)
-	assert.NoError(t, err)
-	assert.Equal(t, bcryptDefaultCost, cost)
+	require.NoError(t, err)
+	assert.Equal(t, DefaultBcryptCost, cost)
 
 	// Now bump the global bcrypt cost
-	err = SetBcryptCost(newBcryptCost)
-	assert.NoError(t, err)
+	err = auth.SetBcryptCost(newBcryptCost)
+	require.NoError(t, err)
+
+	// Reset bcrypt cost after test
+	defer func() { require.NoError(t, auth.SetBcryptCost(DefaultBcryptCost)) }()
 
 	// Authenticate incorrectly again
 	assert.False(t, u.Authenticate("test"))
@@ -123,7 +123,7 @@ func TestUserAuthenticatePasswordHashUpgrade(t *testing.T) {
 
 	// Cost should now match newBcryptCost
 	cost, err = bcrypt.Cost(user.PasswordHash_)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, newBcryptCost, cost)
 
 }

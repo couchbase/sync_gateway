@@ -26,12 +26,14 @@ type Authenticator struct {
 	bucket          base.Bucket
 	channelComputer ChannelComputer
 	AuthenticatorOptions
+	bcryptCostChanged bool
 }
 
 type AuthenticatorOptions struct {
 	ClientPartitionWindow    time.Duration
 	ChannelsWarningThreshold *uint32
 	SessionCookieName        string
+	BcryptCost               int
 }
 
 // Interface for deriving the set of channels and roles a User/Role has access to.
@@ -45,7 +47,10 @@ type userByEmailInfo struct {
 	Username string
 }
 
-const PrincipalUpdateMaxCasRetries = 20 // Maximum number of attempted retries on cas failure updating principal
+const (
+	PrincipalUpdateMaxCasRetries = 20                 // Maximum number of attempted retries on cas failure updating principal
+	DefaultBcryptCost            = bcrypt.DefaultCost // The default bcrypt cost to use for hashing passwords
+)
 
 // Constants used in CalculateMaxHistoryEntriesPerGrant
 const (
@@ -69,6 +74,7 @@ func DefaultAuthenticatorOptions() AuthenticatorOptions {
 	return AuthenticatorOptions{
 		ClientPartitionWindow: base.DefaultClientPartitionWindow,
 		SessionCookieName:     DefaultCookieName,
+		BcryptCost:            DefaultBcryptCost,
 	}
 }
 
@@ -475,7 +481,7 @@ func (auth *Authenticator) UpdateUserEmail(u User, email string) error {
 func (auth *Authenticator) rehashPassword(user User, password string) error {
 
 	// Exit early if bcryptCost has not been set
-	if !bcryptCostChanged {
+	if !auth.bcryptCostChanged {
 		return nil
 	}
 	var hashCost int
@@ -487,7 +493,7 @@ func (auth *Authenticator) rehashPassword(user User, password string) error {
 		}
 
 		hashCost, costErr := bcrypt.Cost(currentUserImpl.PasswordHash_)
-		if costErr == nil && hashCost != bcryptCost {
+		if costErr == nil && hashCost != auth.BcryptCost {
 			// the cost of the existing hash is different than the configured bcrypt cost.
 			// We'll re-hash the password to adopt the new cost:
 			currentUserImpl.SetPassword(password)
@@ -502,7 +508,7 @@ func (auth *Authenticator) rehashPassword(user User, password string) error {
 	}
 
 	base.Debugf(base.KeyAuth, "User account %q changed password hash cost from %d to %d",
-		base.UD(user.Name()), hashCost, bcryptCost)
+		base.UD(user.Name()), hashCost, auth.BcryptCost)
 	return nil
 }
 

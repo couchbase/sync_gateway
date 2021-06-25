@@ -26,13 +26,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestReadServerConfig(t *testing.T) {
@@ -1273,34 +1271,6 @@ func TestSetupServerContext(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 		sc.Close()
-	})
-
-	t.Run("Create server context with BcryptCost inside allowed range", func(t *testing.T) {
-		config := &StartupConfig{
-			Logging: LoggingConfig{
-				RedactionLevel: base.RedactFull,
-			},
-			BcryptCost: bcrypt.MaxCost,
-		}
-		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
-		sc, err := setupServerContext(config, false)
-		require.NoError(t, err)
-		require.NotNil(t, sc)
-		sc.Close()
-	})
-
-	t.Run("Create server context with BcryptCost outside allowed range", func(t *testing.T) {
-		config := &StartupConfig{
-			Logging: LoggingConfig{
-				RedactionLevel: base.RedactPartial,
-			},
-			BcryptCost: bcrypt.MaxCost + 1,
-		}
-		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
-		sc, err := setupServerContext(config, false)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "32 outside allowed range: 10-31: invalid bcrypt cost")
-		assert.Nil(t, sc)
 	})
 }
 

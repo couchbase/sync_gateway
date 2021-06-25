@@ -424,7 +424,7 @@ func (user *userImpl) SetPassword(password string) {
 	if password == "" {
 		user.PasswordHash_ = nil
 	} else {
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), user.auth.BcryptCost)
 		if err != nil {
 			panic(fmt.Sprintf("Error hashing password: %v", err))
 		}

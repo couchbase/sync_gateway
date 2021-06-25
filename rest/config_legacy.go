@@ -45,11 +45,11 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 			HideProductVersion: lc.HideProductVersion,
 		},
 		Logging: LoggingConfig{},
+		Auth:    AuthConfig{BcryptCost: lc.BcryptCost},
 		Replicator: ReplicatorConfig{
 			MaxHeartbeat:    time.Second * time.Duration(lc.MaxHeartbeat),
 			BLIPCompression: lc.ReplicatorCompression,
 		},
-		BcryptCost: lc.BcryptCost,
 	}
 
 	if lc.Unsupported != nil {
