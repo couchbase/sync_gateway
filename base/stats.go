@@ -42,6 +42,18 @@ const (
 	ReplicationLabelKey = "replication"
 )
 
+const (
+	// StatsReplication (SGR 1.x)
+	StatKeySgrActive                     = "sgr_active"
+	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
+	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
+
+	// StatsReplication (SGR 1.x and 2.x)
+	StatKeySgrNumDocsPushed       = "sgr_num_docs_pushed"
+	StatKeySgrNumDocsFailedToPush = "sgr_num_docs_failed_to_push"
+	StatKeySgrDocsCheckedSent     = "sgr_docs_checked_sent"
+)
+
 var (
 	checkedSentDesc               *prometheus.Desc
 	numAttachmentBytesTransferred *prometheus.Desc
@@ -57,6 +69,8 @@ type SgwStats struct {
 
 	dbStatsMapMutex sync.Mutex
 }
+
+var SyncGatewayStats = *NewSyncGatewayStats()
 
 func NewSyncGatewayStats() *SgwStats {
 	sgwStats := SgwStats{
@@ -611,6 +625,14 @@ func (s *SgwStats) ClearDBStats(name string) {
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
 	delete(s.DbStats, name)
+}
+
+// Removes the per-database stats for this database by removing the database from the map
+func RemovePerDbStats(dbName string) {
+
+	// Clear out the stats for this db since they will no longer be updated.
+	SyncGatewayStats.ClearDBStats(dbName)
+
 }
 
 func (d *DbStats) initCacheStats() {
