@@ -1927,7 +1927,7 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 		for c := range channels {
 			if uint32(len(c)) > *channelNameSizeThreshold {
 				db.DbStats.Database().WarnChannelNameSizeCount.Add(1)
-				base.WarnfCtx(db.Ctx, "Doc id: %v channel name size: %s channel exceeds %d characters for channel name size warning threshold", base.UD(docID), base.UD(c), *channelNameSizeThreshold)
+				base.WarnfCtx(db.Ctx, "Doc: %q channel %q exceeds %d characters for channel name size warning threshold", base.UD(docID), base.UD(c), *channelNameSizeThreshold)
 			}
 		}
 	}
