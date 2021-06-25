@@ -415,6 +415,10 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		}
 	}
 
+	if config.Unsupported.WarningThresholds.ChannelNameSize == nil {
+		config.Unsupported.WarningThresholds.ChannelNameSize = &base.DefaultWarnThresholdChannelNameSize
+	}
+
 	autoImport, err := config.AutoImportEnabled()
 	if err != nil {
 		return nil, err

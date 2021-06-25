@@ -1921,6 +1921,16 @@ func (db *Database) checkDocChannelsAndGrantsLimits(docID string, channels base.
 			base.WarnfCtx(db.Ctx, "Doc id: %v access and role grants count: %d exceeds %d for grants per doc warning threshold", base.UD(docID), grantCount, *grantThreshold)
 		}
 	}
+
+	// Warn when channel names are larger than a configured threshold
+	if channelNameSizeThreshold := db.Options.UnsupportedOptions.WarningThresholds.ChannelNameSize; channelNameSizeThreshold != nil {
+		for c := range channels {
+			if uint32(len(c)) > *channelNameSizeThreshold {
+				db.DbStats.Database().WarnChannelNameSizeCount.Add(1)
+				base.WarnfCtx(db.Ctx, "Doc: %q channel %q exceeds %d characters for channel name size warning threshold", base.UD(docID), base.UD(c), *channelNameSizeThreshold)
+			}
+		}
+	}
 }
 
 func (db *Database) MarkPrincipalsChanged(docid string, newRevID string, changedPrincipals, changedRoleUsers []string, invalSeq uint64) {
