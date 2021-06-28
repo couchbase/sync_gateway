@@ -1120,7 +1120,6 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 			}
 		} else {
 			bsc.allowedAttachments[key] = AllowedAttachment{
-				docID:   docID,
 				version: attachment.version,
 				counter: 1,
 			}

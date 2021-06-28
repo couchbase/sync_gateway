@@ -9,6 +9,7 @@
 package db
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -1358,4 +1359,132 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	require.NoError(t, err)
 	bodyAtts, foundBodyAtts := body1[BodyAttachments]
 	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+}
+
+func TestAllowedAttachments(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeySync)()
+
+	var tests = []struct {
+		name              string
+		inputBlipProtocol string
+		inputAttVersion   int
+	}{
+		{"TestAllowedAttachmentsCBMobile2AttVer1", BlipCBMobileReplicationV2, AttVersion1},
+		{"TestAllowedAttachmentsCBMobile2AttVer2", BlipCBMobileReplicationV2, AttVersion2},
+		{"TestAllowedAttachmentsCBMobile3AttVer1", BlipCBMobileReplicationV3, AttVersion1},
+		{"TestAllowedAttachmentsCBMobile3AttVer2", BlipCBMobileReplicationV3, AttVersion2},
+	}
+
+	// Single document associated with multiple attachments of different digests.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blipContext, err := NewSGBlipContext(context.TODO(), "")
+			blipContext.SupportedSubProtocols = []string{tt.inputBlipProtocol}
+			require.NoError(t, err, "Error creating SGBlipContext")
+			ctx := &BlipSyncContext{
+				blipContextDb: &Database{Ctx: context.TODO()},
+				blipContext:   blipContext,
+			}
+			meta := []AttachmentStorageMeta{
+				{digest: "digest1", version: tt.inputAttVersion},
+				{digest: "digest2", version: tt.inputAttVersion},
+			}
+			ctx.addAllowedAttachments("doc1", meta)
+			require.True(t, ctx.isAttachmentAllowed("digest1"))
+			require.True(t, ctx.isAttachmentAllowed("digest2"))
+
+			ctx.removeAllowedAttachments("doc1", meta)
+			require.False(t, ctx.isAttachmentAllowed("digest1"))
+			require.False(t, ctx.isAttachmentAllowed("digest2"))
+		})
+	}
+
+	// Single document associated with multiple attachments of similar digests.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blipContext, err := NewSGBlipContext(context.TODO(), "")
+			blipContext.SupportedSubProtocols = []string{tt.inputBlipProtocol}
+			require.NoError(t, err, "Error creating SGBlipContext")
+			ctx := &BlipSyncContext{
+				blipContextDb: &Database{Ctx: context.TODO()},
+				blipContext:   blipContext,
+			}
+			meta := []AttachmentStorageMeta{
+				{digest: "digest1", version: tt.inputAttVersion},
+				{digest: "digest1", version: tt.inputAttVersion},
+			}
+			ctx.addAllowedAttachments("doc1", meta)
+			require.True(t, ctx.isAttachmentAllowed("digest1"))
+
+			ctx.removeAllowedAttachments("doc1", meta)
+			require.False(t, ctx.isAttachmentAllowed("digest1"))
+		})
+	}
+
+	// Multiple documents associated with multiple attachments of different digests.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blipContext, err := NewSGBlipContext(context.TODO(), "")
+			blipContext.SupportedSubProtocols = []string{tt.inputBlipProtocol}
+			require.NoError(t, err, "Error creating SGBlipContext")
+			ctx := &BlipSyncContext{
+				blipContextDb: &Database{Ctx: context.TODO()},
+				blipContext:   blipContext,
+			}
+			meta := []AttachmentStorageMeta{
+				{digest: "digest1", version: tt.inputAttVersion},
+				{digest: "digest2", version: tt.inputAttVersion},
+			}
+			ctx.addAllowedAttachments("doc1", meta)
+			ctx.addAllowedAttachments("doc2", meta)
+			require.True(t, ctx.isAttachmentAllowed("digest1"))
+			require.True(t, ctx.isAttachmentAllowed("digest2"))
+
+			ctx.removeAllowedAttachments("doc1", meta)
+			if tt.inputAttVersion == AttVersion1 {
+				require.True(t, ctx.isAttachmentAllowed("digest1"))
+				require.True(t, ctx.isAttachmentAllowed("digest2"))
+
+				ctx.removeAllowedAttachments("doc2", meta)
+				require.False(t, ctx.isAttachmentAllowed("digest1"))
+				require.False(t, ctx.isAttachmentAllowed("digest2"))
+
+			} else if tt.inputAttVersion == AttVersion2 {
+				require.False(t, ctx.isAttachmentAllowed("digest1"))
+				require.False(t, ctx.isAttachmentAllowed("digest2"))
+			}
+		})
+	}
+
+	// Multiple documents associated with multiple attachments of same digests.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blipContext, err := NewSGBlipContext(context.TODO(), "")
+			blipContext.SupportedSubProtocols = []string{tt.inputBlipProtocol}
+			require.NoError(t, err, "Error creating SGBlipContext")
+			ctx := &BlipSyncContext{
+				blipContextDb: &Database{Ctx: context.TODO()},
+				blipContext:   blipContext,
+			}
+			meta := []AttachmentStorageMeta{
+				{digest: "digest1", version: tt.inputAttVersion},
+				{digest: "digest1", version: tt.inputAttVersion},
+			}
+			ctx.addAllowedAttachments("doc1", meta)
+			ctx.addAllowedAttachments("doc2", meta)
+			require.True(t, ctx.isAttachmentAllowed("digest1"))
+			require.True(t, ctx.isAttachmentAllowed("digest1"))
+
+			ctx.removeAllowedAttachments("doc1", meta)
+			if tt.inputAttVersion == AttVersion1 {
+				require.True(t, ctx.isAttachmentAllowed("digest1"))
+
+				ctx.removeAllowedAttachments("doc2", meta)
+				require.False(t, ctx.isAttachmentAllowed("digest1"))
+
+			} else if tt.inputAttVersion == AttVersion2 {
+				require.False(t, ctx.isAttachmentAllowed("digest1"))
+			}
+		})
+	}
 }

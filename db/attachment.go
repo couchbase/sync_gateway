@@ -74,9 +74,6 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 				"digest": string(key),
 				"revpos": generation,
 			}
-			if version, ok := meta["ver"].(json.Number); ok {
-				newMeta["ver"] = version
-			}
 			if contentType, ok := meta["content_type"].(string); ok {
 				newMeta["content_type"] = contentType
 			}

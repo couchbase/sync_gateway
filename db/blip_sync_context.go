@@ -129,10 +129,8 @@ type BlipSyncContext struct {
 // AllowedAttachment contains the metadata for handling allowed attachments
 // while replicating over BLIP protocol.
 type AllowedAttachment struct {
-	docID   string // Associated document ID
-	name    string // Name of the attachment
-	version int    // Version of the attachment
-	counter int    // Counter to track allowed attachments
+	version int // Version of the attachment
+	counter int // Counter to track allowed attachments
 }
 
 func (bsc *BlipSyncContext) SetClientType(clientType BLIPSyncContextClientType) {
