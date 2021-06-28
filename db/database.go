@@ -1393,8 +1393,11 @@ func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]stri
 		return nil, nil, err
 	}
 
+	// Clone HTTP transport for use in our httpClient
+	transport := gocbBucket.Bucket.IoRouter().HttpClient().Transport.(*http.Transport).Clone()
+
 	httpClient := &http.Client{
-		Transport: gocbBucket.Bucket.IoRouter().HttpClient().Transport,
+		Transport: transport,
 	}
 
 	return endpoints, httpClient, nil

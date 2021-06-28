@@ -89,22 +89,22 @@ const (
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *ServerContext, privs handlerPrivs, checkPermissions []string, storePermissionsResults bool, method handlerMethod) http.Handler {
+func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []string, responsePermissions []string, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := false
 		h := newHandler(server, privs, r, rq, runOffline)
-		err := h.invoke(method, checkPermissions, storePermissionsResults)
+		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
 	})
 }
 
 // Creates an http.Handler that will run a handler with the given method even if the target DB is offline
-func makeOfflineHandler(server *ServerContext, privs handlerPrivs, checkPermissions []string, storePermissionsResults bool, method handlerMethod) http.Handler {
+func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []string, responsePermissions []string, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := true
 		h := newHandler(server, privs, r, rq, runOffline)
-		err := h.invoke(method, checkPermissions, storePermissionsResults)
+		err := h.invoke(method, accessPermissions, responsePermissions)
 		h.writeError(err)
 		h.logDuration(true)
 	})
@@ -124,7 +124,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 }
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
-func (h *handler) invoke(method handlerMethod, checkPermissions []string, storePermissionsResults bool) error {
+func (h *handler) invoke(method handlerMethod, accessPermissions []string, responsePermissions []string) error {
 
 	var err error
 	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
@@ -204,14 +204,20 @@ func (h *handler) invoke(method handlerMethod, checkPermissions []string, storeP
 	}
 
 	// If an Admin Request we need to check the user credentials
-	// FIXME: Temporarily disable this
-	if false {
-		clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
-		if !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.MetricsInterfaceAuthentication)) {
-			if err = h.checkAdminAuth(dbContext, checkPermissions, storePermissionsResults); err != nil {
-				return err
-			}
+	if h.shouldCheckAdminAuth() {
+		username, password := h.getBasicAuth()
+		statusCode, err := h.checkAdminAuth(dbContext, username, password, accessPermissions, responsePermissions)
+		if err != nil {
+			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
+
+		if statusCode != http.StatusOK {
+			base.Infof(base.KeyAuth, "User %s failed to auth as an admin statusCode: %d", username, statusCode)
+			return base.HTTPErrorf(statusCode, "")
+		}
+
+		base.Infof(base.KeyAuth, "User %s was successfully authorized as an admin", username)
 	}
 
 	h.logRequestLine()
@@ -241,6 +247,12 @@ func (h *handler) invoke(method handlerMethod, checkPermissions []string, storeP
 	}
 
 	return method(h) // Call the actual handler code
+}
+
+// FIXME: Temporarily disable admin auth check (return false)
+func (h *handler) shouldCheckAdminAuth() bool {
+	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
+	return false && !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.MetricsInterfaceAuthentication))
 }
 
 func (h *handler) logRequestLine() {
@@ -400,38 +412,32 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func (h *handler) checkAdminAuth(dbContext *db.DatabaseContext, checkPermissions []string, storePermissionsResults bool) error {
+func (h *handler) checkAdminAuth(dbContext *db.DatabaseContext, basicAuthUsername, basicAuthPassword string, accessPermissions []string, responsePermissions []string) (statusCode int, err error) {
 	var managementEndpoints []string
-	var err error
 	var httpClient *http.Client
 
 	if dbContext != nil {
 		managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "")
+			return http.StatusInternalServerError, err
 		}
 	} else {
 		managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
 		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "")
+			return http.StatusInternalServerError, err
 		}
 	}
 
-	username, password := h.getBasicAuth()
-	statusCode, permResults, err := h.server.CheckPermissions(httpClient, managementEndpoints, username, password, checkPermissions)
+	statusCode, permResults, err := h.server.CheckPermissions(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
 	if err != nil {
-		return base.HTTPErrorf(http.StatusInternalServerError, "")
+		return http.StatusInternalServerError, err
 	}
 
-	if storePermissionsResults {
+	if len(responsePermissions) > 0 {
 		h.permissionsResults = permResults
 	}
 
-	if statusCode != http.StatusOK {
-		return base.HTTPErrorf(statusCode, "")
-	}
-
-	return nil
+	return statusCode, nil
 }
 
 func (h *handler) assertAdminOnly() {
