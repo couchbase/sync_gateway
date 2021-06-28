@@ -611,7 +611,9 @@ func (s *SgwStats) NewDBStats(name string, deltaSyncEnabled bool, importEnabled 
 func (s *SgwStats) ClearDBStats(name string) {
 	s.dbStatsMapMutex.Lock()
 	defer s.dbStatsMapMutex.Unlock()
+
 	delete(s.DbStats, name)
+
 }
 
 func (d *DbStats) initCacheStats() {
