@@ -42,6 +42,20 @@ const (
 	ReplicationLabelKey = "replication"
 )
 
+const (
+	// StatsReplication (SGR 1.x)
+	StatKeySgrActive                     = "sgr_active"
+	StatKeySgrNumAttachmentsTransferred  = "sgr_num_attachments_transferred"
+	StatKeySgrAttachmentBytesTransferred = "sgr_num_attachment_bytes_transferred"
+
+	// StatsReplication (SGR 1.x and 2.x)
+	StatKeySgrNumDocsPushed       = "sgr_num_docs_pushed"
+	StatKeySgrNumDocsFailedToPush = "sgr_num_docs_failed_to_push"
+	StatKeySgrDocsCheckedSent     = "sgr_docs_checked_sent"
+)
+
+const StatsGroupKeySyncGateway = "syncgateway"
+
 var (
 	checkedSentDesc               *prometheus.Desc
 	numAttachmentBytesTransferred *prometheus.Desc
@@ -56,6 +70,19 @@ type SgwStats struct {
 	ReplicatorStats *ReplicatorStats    `json:"per_replication,omitempty"`
 
 	dbStatsMapMutex sync.Mutex
+}
+
+var SyncGatewayStats SgwStats
+
+func init() {
+	// Initialize Sync Gateway Stats
+
+	// All stats will be stored as part of this struct. Global variable accessible everywhere. To add stats see stats.go
+	SyncGatewayStats = *NewSyncGatewayStats()
+
+	// Publish our stats to expvars. This will run String method on SyncGatewayStats ( type SgwStats ) which will
+	// marshal the stats to JSON
+	expvar.Publish(StatsGroupKeySyncGateway, &SyncGatewayStats)
 }
 
 func NewSyncGatewayStats() *SgwStats {
@@ -613,6 +640,14 @@ func (s *SgwStats) ClearDBStats(name string) {
 	defer s.dbStatsMapMutex.Unlock()
 
 	delete(s.DbStats, name)
+
+}
+
+// Removes the per-database stats for this database by removing the database from the map
+func RemovePerDbStats(dbName string) {
+
+	// Clear out the stats for this db since they will no longer be updated.
+	SyncGatewayStats.ClearDBStats(dbName)
 
 }
 
