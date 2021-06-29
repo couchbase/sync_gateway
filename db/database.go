@@ -1381,6 +1381,28 @@ func (context *DatabaseContext) ObtainManagementEndpoints() ([]string, error) {
 	return base.GoCBBucketMgmtEndpoints(gocbBucket.Bucket)
 }
 
+func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
+	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
+	if !ok {
+		base.Warnf("Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
+		return nil, nil, nil
+	}
+
+	endpoints, err := base.GoCBBucketMgmtEndpoints(gocbBucket.Bucket)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Clone HTTP transport for use in our httpClient
+	transport := gocbBucket.Bucket.IoRouter().HttpClient().Transport.(*http.Transport).Clone()
+
+	httpClient := &http.Client{
+		Transport: transport,
+	}
+
+	return endpoints, httpClient, nil
+}
+
 func (context *DatabaseContext) GetUserViewsEnabled() bool {
 	if context.Options.UnsupportedOptions.UserViews.Enabled != nil {
 		return *context.Options.UnsupportedOptions.UserViews.Enabled
