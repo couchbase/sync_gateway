@@ -660,7 +660,7 @@ func TestAdminAuth(t *testing.T) {
 		CreateUser         string
 		CreatePassword     string
 		CreateRoles        []string
-		DatabaseScoped     bool
+		BucketName         string
 	}{
 		{
 			Name:               "ClusterAdmin",
@@ -668,7 +668,7 @@ func TestAdminAuth(t *testing.T) {
 			Password:           base.TestClusterPassword(),
 			CheckPermissions:   []string{"cluster!admin"},
 			ExpectedStatusCode: http.StatusOK,
-			DatabaseScoped:     false,
+			BucketName:         "",
 		},
 		{
 			Name:               "ClusterAdminWrongPassword",
@@ -679,7 +679,7 @@ func TestAdminAuth(t *testing.T) {
 			CreateUser:         "ClusterAdminWrongPassword",
 			CreatePassword:     "password",
 			CreateRoles:        []string{"admin"},
-			DatabaseScoped:     false,
+			BucketName:         "",
 		},
 		{
 			Name:               "NoUser",
@@ -687,7 +687,7 @@ func TestAdminAuth(t *testing.T) {
 			Password:           "password",
 			CheckPermissions:   []string{"cluster!admin"},
 			ExpectedStatusCode: http.StatusUnauthorized,
-			DatabaseScoped:     false,
+			BucketName:         "",
 		},
 		{
 			Name:               "MissingPermissionAndRole",
@@ -698,7 +698,7 @@ func TestAdminAuth(t *testing.T) {
 			CreateUser:         "MissingPermissionAndRole",
 			CreatePassword:     "password",
 			CreateRoles:        []string{""},
-			DatabaseScoped:     false,
+			BucketName:         "",
 		},
 		{
 			Name:               "MissingPermissionAndRoleDBScoped",
@@ -709,7 +709,7 @@ func TestAdminAuth(t *testing.T) {
 			CreateUser:         "MissingPermissionAndRoleDBScoped",
 			CreatePassword:     "password",
 			CreateRoles:        []string{""},
-			DatabaseScoped:     true,
+			BucketName:         rt.Bucket().GetName(),
 		},
 		{
 			Name:               "MissingPermissionHasRole",
@@ -720,7 +720,7 @@ func TestAdminAuth(t *testing.T) {
 			CreateUser:         "MissingPermissionHasRole",
 			CreatePassword:     "password",
 			CreateRoles:        []string{"ro_admin"},
-			DatabaseScoped:     false,
+			BucketName:         "",
 		},
 		{
 			Name:               "MissingPermissionHasDBScoped",
@@ -731,28 +731,29 @@ func TestAdminAuth(t *testing.T) {
 			CreateUser:         "MissingPermissionHasDBScoped",
 			CreatePassword:     "password",
 			CreateRoles:        []string{fmt.Sprintf("bucket_full_access[%s]", rt.Bucket().GetName())},
-			DatabaseScoped:     true,
+			BucketName:         rt.Bucket().GetName(),
 		},
 	}
 
-	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
-	require.NoError(t, err)
-
 	for _, testCase := range testCases {
+		var managementEndpoints []string
+		var httpClient *http.Client
+		var err error
+
+		if testCase.BucketName != "" {
+			managementEndpoints, httpClient, err = rt.GetDatabase().ObtainManagementEndpointsAndHTTPClient()
+		} else {
+			managementEndpoints, httpClient, err = rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+		}
+		require.NoError(t, err)
+
 		t.Run(testCase.Name, func(t *testing.T) {
 			if testCase.CreateUser != "" {
-				MakeUser(t, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
-				defer DeleteUser(t, eps[0], testCase.CreateUser)
+				MakeUser(t, managementEndpoints[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
+				defer DeleteUser(t, managementEndpoints[0], testCase.CreateUser)
 			}
 
-			var err error
-			var statusCode int
-
-			if testCase.DatabaseScoped {
-				_, statusCode, err = checkAdminAuth(rt.ServerContext(), rt.GetDatabase(), testCase.Username, testCase.Password, testCase.CheckPermissions, nil)
-			} else {
-				_, statusCode, err = checkAdminAuth(rt.ServerContext(), nil, testCase.Username, testCase.Password, testCase.CheckPermissions, nil)
-			}
+			_, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, httpClient, managementEndpoints, testCase.CheckPermissions, nil)
 
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
@@ -778,6 +779,9 @@ func TestAdminAuthWithX509(t *testing.T) {
 	ctx := NewServerContext(&ServerConfig{})
 	defer ctx.Close()
 
-	_, _, err := checkAdminAuth(ctx, nil, base.TestClusterUsername(), base.TestClusterPassword(), []string{"cluster!admin"}, nil)
+	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), httpClient, managementEndpoints, []string{"cluster!admin"}, nil)
 	assert.NoError(t, err)
 }

@@ -41,6 +41,17 @@ const (
 	minCompressibleJSONSize = 1000
 )
 
+// Admin API Auth Roles
+const (
+	MobileSyncGatewayRole = "mobile_sync_gateway"
+	BucketFullAccessRole  = "bucket_full_access"
+	FullAdminRole         = "admin"
+	ReadOnlyAdminRole     = "ro_admin"
+)
+
+var BucketScopedEndpointRoles = [...]string{MobileSyncGatewayRole, BucketFullAccessRole, FullAdminRole}
+var ClusterScopedEndpointRoles = [...]string{ReadOnlyAdminRole}
+
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
@@ -206,7 +217,21 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	// If an Admin Request we need to check the user credentials
 	if h.shouldCheckAdminAuth() {
 		username, password := h.getBasicAuth()
-		permissions, statusCode, err := checkAdminAuth(h.server, dbContext, username, password, accessPermissions, responsePermissions)
+
+		var managementEndpoints []string
+		var httpClient *http.Client
+
+		if dbContext != nil {
+			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
+		} else {
+			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
+		}
+		if err != nil {
+			base.Warnf("An error occurred whilst obtaining management endpoints: %v", err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "")
+		}
+
+		permissions, statusCode, err := checkAdminAuth(dbContext.Bucket.GetName(), username, password, httpClient, managementEndpoints, accessPermissions, responsePermissions)
 		if err != nil {
 			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
@@ -414,22 +439,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func checkAdminAuth(serverContext *ServerContext, dbContext *db.DatabaseContext, basicAuthUsername, basicAuthPassword string, accessPermissions []string, responsePermissions []string) (responsePermissionResults map[string]bool, statusCode int, err error) {
-	var managementEndpoints []string
-	var httpClient *http.Client
-
-	if dbContext != nil {
-		managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
-		if err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-	} else {
-		managementEndpoints, httpClient, err = serverContext.ObtainManagementEndpointsAndHTTPClient()
-		if err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-	}
-
+func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, httpClient *http.Client, managementEndpoints []string, accessPermissions []string, responsePermissions []string) (responsePermissionResults map[string]bool, statusCode int, err error) {
 	statusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
@@ -451,13 +461,10 @@ func checkAdminAuth(serverContext *ServerContext, dbContext *db.DatabaseContext,
 	}
 
 	var requestRoles []string
-	var bucketName string
-	if dbContext != nil {
-		requestRoles = []string{"mobile_sync_gateway", "bucket_full_access", "admin"}
-		bucketName = dbContext.Bucket.GetName()
+	if bucketName != "" {
+		requestRoles = BucketScopedEndpointRoles[:]
 	} else {
-		requestRoles = []string{"ro_admin"}
-		bucketName = ""
+		requestRoles = ClusterScopedEndpointRoles[:]
 	}
 
 	statusCode, err = CheckRoles(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)

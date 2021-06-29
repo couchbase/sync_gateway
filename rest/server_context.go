@@ -1279,7 +1279,7 @@ func CheckPermissions(httpClient *http.Client, managementEndpoints []string, use
 		}
 	}
 
-	return http.StatusForbidden, permissionResults, nil
+	return http.StatusForbidden, nil, nil
 }
 
 func CheckRoles(httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []string, bucketName string) (statusCode int, err error) {
