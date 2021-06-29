@@ -242,7 +242,7 @@ func (c *Collection) Delete(k string) error {
 
 func (c *Collection) Remove(k string, cas uint64) (casOut uint64, err error) {
 	result, errRemove := c.Collection.Remove(k, &gocb.RemoveOptions{Cas: gocb.Cas(cas)})
-	if errRemove != nil && result != nil {
+	if errRemove == nil && result != nil {
 		casOut = uint64(result.Cas())
 	}
 	return casOut, errRemove

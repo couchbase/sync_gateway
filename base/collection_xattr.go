@@ -107,7 +107,7 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 			xattrContentErr := res.ContentAt(0, xv)
 
 			if isKVError(docContentErr, memd.StatusSubDocMultiPathFailureDeleted) && isKVError(xattrContentErr, memd.StatusSubDocMultiPathFailureDeleted) {
-				// No doc, no xattr means the doc isn't found
+				// No doc, no xattr can be treated as NotFound from Sync Gateway's perspective, even if it is a server tombstone
 				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 				return false, ErrNotFound, cas
 			}
@@ -191,7 +191,7 @@ func (c *Collection) SubdocInsertXattr(k string, xattrKey string, exp uint32, ca
 		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
 	}
 	options := &gocb.MutateInOptions{
-		StoreSemantic: gocb.StoreSemanticsUpsert,
+		StoreSemantic: gocb.StoreSemanticsReplace, // set replace here, as we're explicitly setting SubdocDocFlagMkDoc above if tombstone creation is not supported
 		Expiry:        CbsExpiryToDuration(exp),
 		Cas:           gocb.Cas(cas),
 	}

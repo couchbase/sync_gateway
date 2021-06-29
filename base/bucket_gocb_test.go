@@ -1682,7 +1682,7 @@ func TestGetXattr(t *testing.T) {
 		require.True(t, ok)
 		_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
 		assert.Error(t, err)
-		assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
+		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
 		////Get Xattr From Tombstoned Doc With Deleted User Xattr
 		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)

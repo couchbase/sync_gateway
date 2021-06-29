@@ -126,7 +126,7 @@ func (bucket *CouchbaseBucketGoCB) SubdocGetBodyAndXattr(k string, xattrKey stri
 			xattrContentErr := res.Content(xattrKey, xv)
 			cas = uint64(res.Cas())
 			if xattrContentErr != nil {
-				// No doc, no xattr means the doc isn't found
+				// No doc, no xattr can be treated as NotFound from Sync Gateway's perspective, even if it is a server tombstone
 				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 				return false, ErrNotFound, cas
 			}
