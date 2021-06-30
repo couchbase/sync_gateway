@@ -989,7 +989,6 @@ func TestConfigToDatabaseOptions(t *testing.T) {
 
 	jsonConfig := []byte(`
 {
-	"allow_unsecure_connections": true,
 	"allow_unsecure_server_connections": true,
 	"databases": {
 		"db": {

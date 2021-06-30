@@ -3435,8 +3435,7 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 		t.Skip("Skip this test under integration testing")
 	}
 
-	allowUnsecureServerConnections := true
-	sc := NewServerContext(&ServerConfig{AllowUnsecureServerConnections: &allowUnsecureServerConnections})
+	sc := NewServerContext(&ServerConfig{})
 
 	// Valid config
 	configJSON := `{"name": "default",

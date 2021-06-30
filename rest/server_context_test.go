@@ -228,14 +228,8 @@ func TestAllowUnsecureServerConnections(t *testing.T) {
 		expectError                    bool
 	}{
 		{
-			name:                           "Walrus not allowed",
+			name:                           "Walrus allowed without flag",
 			allowUnsecureServerConnections: false,
-			server:                         "walrus://",
-			expectError:                    true,
-		},
-		{
-			name:                           "Walrus allowed",
-			allowUnsecureServerConnections: true,
 			server:                         "walrus://",
 			expectError:                    false,
 		},

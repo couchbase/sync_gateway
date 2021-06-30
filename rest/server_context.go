@@ -346,7 +346,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 	}
 
 	if sc.GetConfig().AllowUnsecureServerConnections == nil || !*sc.GetConfig().AllowUnsecureServerConnections {
-		if !spec.IsTLS() {
+		if !spec.IsTLS() && !spec.IsWalrusBucket() {
 			return nil, fmt.Errorf("couchbase server URL must use secure protocol. Current URL: %s", spec.Server)
 		}
 	}
