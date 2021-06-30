@@ -651,16 +651,20 @@ func TestAdminAuth(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
+	BucketFullAccessRoleTest := fmt.Sprintf("bucket_full_access[%s]", rt.Bucket().GetName())
+
 	testCases := []struct {
-		Name               string
-		Username           string
-		Password           string
-		CheckPermissions   []string
-		ExpectedStatusCode int
-		CreateUser         string
-		CreatePassword     string
-		CreateRoles        []string
-		BucketName         string
+		Name                string
+		Username            string
+		Password            string
+		CheckPermissions    []string
+		ResponsePermissions []string
+		ExpectedStatusCode  int
+		ExpectedPermResults map[string]bool
+		CreateUser          string
+		CreatePassword      string
+		CreateRoles         []string
+		BucketName          string
 	}{
 		{
 			Name:               "ClusterAdmin",
@@ -730,8 +734,21 @@ func TestAdminAuth(t *testing.T) {
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "MissingPermissionHasDBScoped",
 			CreatePassword:     "password",
-			CreateRoles:        []string{fmt.Sprintf("bucket_full_access[%s]", rt.Bucket().GetName())},
+			CreateRoles:        []string{BucketFullAccessRoleTest},
 			BucketName:         rt.Bucket().GetName(),
+		},
+		{
+			Name:                "HasOneAccessPermissionButHasRole",
+			Username:            "HasOneAccessPermissionButHasRole",
+			Password:            "password",
+			CheckPermissions:    []string{fmt.Sprintf("cluster.bucket[%s]!write", rt.Bucket().GetName())},
+			ResponsePermissions: []string{"cluster!admin"},
+			ExpectedStatusCode:  http.StatusOK,
+			ExpectedPermResults: map[string]bool{"cluster!admin": true},
+			CreateUser:          "HasOneAccessPermissionButHasRole",
+			CreatePassword:      "password",
+			CreateRoles:         []string{BucketFullAccessRoleTest},
+			BucketName:          rt.Bucket().GetName(),
 		},
 	}
 
@@ -753,10 +770,15 @@ func TestAdminAuth(t *testing.T) {
 				defer DeleteUser(t, managementEndpoints[0], testCase.CreateUser)
 			}
 
-			_, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, httpClient, managementEndpoints, testCase.CheckPermissions, nil)
+			permResults, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, httpClient, managementEndpoints, testCase.CheckPermissions, testCase.ResponsePermissions)
 
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
+
+			if testCase.ExpectedPermResults != nil {
+				assert.True(t, reflect.DeepEqual(testCase.ExpectedPermResults, permResults))
+			}
+
 		})
 
 	}

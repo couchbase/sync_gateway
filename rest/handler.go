@@ -49,8 +49,8 @@ const (
 	ReadOnlyAdminRole     = "ro_admin"
 )
 
-var BucketScopedEndpointRoles = [...]string{MobileSyncGatewayRole, BucketFullAccessRole, FullAdminRole}
-var ClusterScopedEndpointRoles = [...]string{ReadOnlyAdminRole}
+var BucketScopedEndpointRoles = []string{MobileSyncGatewayRole, BucketFullAccessRole, FullAdminRole}
+var ClusterScopedEndpointRoles = []string{ReadOnlyAdminRole}
 
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
@@ -445,11 +445,20 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 		return nil, http.StatusInternalServerError, err
 	}
 
+	anyResponsePermFailed := false
 	if len(responsePermissions) > 0 {
 		responsePermissionResults = permResults
+		for _, permResult := range permResults {
+			if !permResult {
+				anyResponsePermFailed = true
+				break
+			}
+		}
 	}
 
-	if statusCode == http.StatusOK {
+	// If user has required accessPerms and all response perms return with statusOK
+	// Otherwise we need to fall through to continue as the user may have access to responsePermissions through roles.
+	if statusCode == http.StatusOK && !anyResponsePermFailed {
 		return responsePermissionResults, http.StatusOK, nil
 	}
 
@@ -462,9 +471,9 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 
 	var requestRoles []string
 	if bucketName != "" {
-		requestRoles = BucketScopedEndpointRoles[:]
+		requestRoles = BucketScopedEndpointRoles
 	} else {
-		requestRoles = ClusterScopedEndpointRoles[:]
+		requestRoles = ClusterScopedEndpointRoles
 	}
 
 	statusCode, err = CheckRoles(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)
