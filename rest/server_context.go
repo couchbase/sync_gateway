@@ -345,6 +345,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config *DbConfig, useExisti
 		return nil, err
 	}
 
+	if sc.GetConfig().AllowUnsecureServerConnections == nil || !*sc.GetConfig().AllowUnsecureServerConnections {
+		if !spec.IsTLS() {
+			return nil, fmt.Errorf("couchbase server URL must use secure protocol. Current URL: %s", spec.Server)
+		}
+	}
+
 	// Connect to bucket
 	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))

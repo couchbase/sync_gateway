@@ -714,7 +714,9 @@ func TestParseCommandLine(t *testing.T) {
 		"--keypath", keypath,
 		"--log", logKeys,
 		"--logFilePath", logFilePath,
-		"--pretty"}
+		"--pretty",
+		"--allowUnsecureConnections",
+		"--allowUnsecureServerConnections"}
 
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
 	require.NoError(t, err, "Parsing commandline arguments without any config file")
@@ -779,7 +781,7 @@ func TestParseCommandLineWithMissingConfig(t *testing.T) {
 }
 
 func TestParseCommandLineWithBadConfigContent(t *testing.T) {
-	content := `{"adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
+	content := `{"allow_unsecure_connections": true, "adminInterface":"127.0.0.1:4985","interface":"0.0.0.0:4984",
     	"databases":{"db":{"unknown_field":"walrus:data","users":{"GUEST":{"disabled":false,
 		"admin_channels":["*"]}}, "allow_conflicts":false,"revs_limit":20}}}`
 
@@ -802,7 +804,7 @@ func TestParseCommandLineWithBadConfigContent(t *testing.T) {
 }
 
 func TestParseCommandLineWithConfigContent(t *testing.T) {
-	content := `{"logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
+	content := `{"allow_unsecure_connections": true, "logging":{"log_file_path":"/var/tmp/sglogs","console":{"log_level":"debug","log_keys":["*"]},
 		"error":{"enabled":true,"rotation":{"max_size":20,"max_age":180}},"warn":{"enabled":true,"rotation":{
         "max_size":20,"max_age":90}},"info":{"enabled":false},"debug":{"enabled":false}},"databases":{"db1":{
         "server":"couchbase://localhost","username":"username","password":"password","bucket":"default",
@@ -987,6 +989,8 @@ func TestConfigToDatabaseOptions(t *testing.T) {
 
 	jsonConfig := []byte(`
 {
+	"allow_unsecure_connections": true,
+	"allow_unsecure_server_connections": true,
 	"databases": {
 		"db": {
 			"server": "` + spec.Server + `",
@@ -1308,6 +1312,142 @@ func deleteTempFile(t *testing.T, file *os.File) {
 	require.NoError(t, file.Close(), "Error closing file: %s ", path)
 	require.NoError(t, os.Remove(path), "Error removing file: %s ", path)
 	require.False(t, base.FileExists(path), "Deleted file %s shouldn't exist", path)
+}
+
+// CBG-1535
+func TestAllowUnsecureConnections(t *testing.T) {
+	defaultArgs := []string{"sync_gateway"}
+	testCases := []struct {
+		name          string
+		args          []string // Excludes config name
+		configContent string   // Leave blank to not include in args
+		expectError   bool
+	}{
+		{
+			name:        "No config or flags provided",
+			expectError: true,
+		},
+		{
+			name:        "Flag provided only",
+			args:        []string{"-allowUnsecureConnections"},
+			expectError: false,
+		},
+		{
+			name:          "Blank config provided",
+			configContent: `{}`,
+			expectError:   true,
+		},
+		{
+			name:          "AllowUnsecureConnections config provided",
+			configContent: `{"allow_unsecure_connections": true}`,
+			expectError:   false,
+		},
+		{
+			name:          "SSL Key but no cert provided",
+			configContent: `{"SSLKey": "abc"}`,
+			expectError:   true,
+		},
+		{
+			name:          "SSL Cert but no key provided",
+			configContent: `{"SSLCert": "abc"}`,
+			expectError:   true,
+		},
+		{
+			name:          "SSL Cert and key provided",
+			configContent: `{"SSLCert": "abc", "SSLKey": "def"}`,
+			expectError:   false,
+		},
+		{
+			name:          "SSL Cert and key provided, and AllowUnsecureConnections true",
+			configContent: `{"SSLCert": "abc", "SSLKey": "def", "allow_unsecure_connections": true}`, // SSL will still be used in this case
+			expectError:   false,
+		},
+		{
+			name:          "SSL Key but no cert provided, but AllowUnsecureConnections true",
+			configContent: `{"SSLKey": "abc", "allow_unsecure_connections": true}`,
+			expectError:   false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			args := append(defaultArgs, test.args...)
+			if test.configContent != "" {
+				configFile, err := ioutil.TempFile("", "config.json")
+				require.NoError(t, err)
+				configFileName := configFile.Name()
+				_, err = configFile.Write([]byte(test.configContent))
+				require.NoError(t, err)
+				args = append(args, configFileName)
+			}
+			_, err := ParseCommandLine(args, flag.ExitOnError)
+			if test.expectError {
+				assert.Error(t, err, "a SSL key and SSL cert must be provided when Allow Unsecure Connection config or flag options are not true")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestAllowUnsecureServerConnectionsConfig(t *testing.T) {
+	defaultArgs := []string{"sync_gateway", "-allowUnsecureConnections"}
+	testCases := []struct {
+		name          string
+		args          []string // Excludes config name
+		configContent string   // Leave blank to not include in args
+		expectFlag    bool     // Value of AllowUnsecureServerConnections
+	}{
+		{
+			name:       "No config or flags provided",
+			expectFlag: false,
+		},
+		{
+			name:       "Flag provided only",
+			args:       []string{"-allowUnsecureServerConnections"},
+			expectFlag: true,
+		},
+		{
+			name:          "Blank config provided",
+			configContent: `{}`,
+			expectFlag:    false,
+		},
+		{
+			name:          "Config provided",
+			configContent: `{"allow_unsecure_server_connections": true}`,
+			expectFlag:    true,
+		},
+		{
+			name:          "Config and flag provided",
+			args:          []string{"-allowUnsecureServerConnections"},
+			configContent: `{"allow_unsecure_server_connections": true}`,
+			expectFlag:    true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			args := append(defaultArgs, test.args...)
+			if test.configContent != "" {
+				configFile, err := ioutil.TempFile("", "config.json")
+				require.NoError(t, err)
+				configFileName := configFile.Name()
+				_, err = configFile.Write([]byte(test.configContent))
+				require.NoError(t, err)
+				args = append(args, configFileName)
+			}
+			cfg, _ := ParseCommandLine(args, flag.ExitOnError)
+			if test.expectFlag {
+				assert.Equal(t, true, *cfg.AllowUnsecureServerConnections)
+			} else {
+				var result bool
+				if cfg.AllowUnsecureServerConnections == nil {
+					result = false
+				} else {
+					result = *cfg.AllowUnsecureServerConnections
+				}
+				assert.Equal(t, false, result)
+			}
+		})
+	}
 }
 
 func TestRedactPartialDefault(t *testing.T) {

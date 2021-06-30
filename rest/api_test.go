@@ -3435,7 +3435,8 @@ func TestEventConfigValidationSuccess(t *testing.T) {
 		t.Skip("Skip this test under integration testing")
 	}
 
-	sc := NewServerContext(&ServerConfig{})
+	allowUnsecureServerConnections := true
+	sc := NewServerContext(&ServerConfig{AllowUnsecureServerConnections: &allowUnsecureServerConnections})
 
 	// Valid config
 	configJSON := `{"name": "default",
@@ -3975,8 +3976,8 @@ func TestLongpollWithWildcard(t *testing.T) {
 }
 
 func TestUnsupportedConfig(t *testing.T) {
-
-	sc := NewServerContext(&ServerConfig{})
+	allowUnsecureServerConnections := true
+	sc := NewServerContext(&ServerConfig{AllowUnsecureServerConnections: &allowUnsecureServerConnections})
 	testProviderOnlyJSON := `{"name": "test_provider_only",
         			"server": "walrus:",
         			"bucket": "test_provider_only",

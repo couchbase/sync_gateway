@@ -193,7 +193,8 @@ func TestSetupAndValidate(t *testing.T) {
               ],
               "color_enabled": true
             }
-          }
+          },
+		  "allow_unsecure_connections": true
         }`))
 		defer deleteTempFile(t, configFile)
 		args := []string{"sync_gateway", configFile.Name()}
@@ -242,7 +243,7 @@ func TestSetupAndValidate(t *testing.T) {
 	t.Run("Run setupAndValidate with unknown field in config file", func(t *testing.T) {
 		configFile := createTempFile(t, []byte(`{"unknownKey":"unknownValue"}`))
 		defer deleteTempFile(t, configFile)
-		args := []string{"sync_gateway", configFile.Name()}
+		args := []string{"sync_gateway", "-allowUnsecureConnections", configFile.Name()}
 		config, err := setupServerConfig(args)
 		require.Error(t, err, "Should throw error reading file")
 		assert.Contains(t, err.Error(), "unrecognized JSON field")
@@ -272,7 +273,8 @@ func TestSetupAndValidate(t *testing.T) {
 		  },
 		  "unsupported": {
 		    "stats_log_freq_secs": 1
-		  }
+		  },
+		  "allow_unsecure_connections": true
 		}`))
 		defer deleteTempFile(t, configFile)
 		args := []string{"sync_gateway", configFile.Name()}

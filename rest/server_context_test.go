@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -193,7 +194,8 @@ func TestAllDatabaseNames(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close()
 
-	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface}
+	allowUnsecureServerConnections := true
+	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface, AllowUnsecureServerConnections: &allowUnsecureServerConnections}
 	serverContext := NewServerContext(serverConfig)
 	defer serverContext.Close()
 
@@ -218,8 +220,98 @@ func TestAllDatabaseNames(t *testing.T) {
 	assert.NotContains(t, serverContext.AllDatabaseNames(), "imdb2")
 }
 
+func TestAllowUnsecureServerConnections(t *testing.T) {
+	testCases := []struct {
+		name                           string
+		allowUnsecureServerConnections bool
+		server                         string
+		expectError                    bool
+	}{
+		{
+			name:                           "Walrus not allowed",
+			allowUnsecureServerConnections: false,
+			server:                         "walrus://",
+			expectError:                    true,
+		},
+		{
+			name:                           "Walrus allowed",
+			allowUnsecureServerConnections: true,
+			server:                         "walrus://",
+			expectError:                    false,
+		},
+		{
+			name:                           "couchbase: not allowed",
+			allowUnsecureServerConnections: false,
+			server:                         "couchbase://localhost:1212",
+			expectError:                    true,
+		},
+		{
+			name:                           "http not allowed",
+			allowUnsecureServerConnections: false,
+			server:                         "http://localhost:1212",
+			expectError:                    true,
+		},
+		{
+			name:                           "http allowed",
+			allowUnsecureServerConnections: true,
+			server:                         "http://localhost:1212",
+			expectError:                    false,
+		},
+		{
+			name:                           "https mandatory",
+			allowUnsecureServerConnections: false,
+			server:                         "https://localhost:1234",
+			expectError:                    false,
+		},
+		{
+			name:                           "https not mandatory",
+			allowUnsecureServerConnections: true,
+			server:                         "https://localhost:1234",
+			expectError:                    false,
+		},
+		{
+			name:                           "couchbases:",
+			allowUnsecureServerConnections: false,
+			server:                         "couchbases://localhost:1234",
+			expectError:                    false,
+		},
+		{
+			name:                           "ftps:", // Testing if the S at the end is what makes it secure
+			allowUnsecureServerConnections: false,
+			server:                         "ftps://localhost:1234",
+			expectError:                    true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// Setup
+			args := []string{"sync_gateway", "-allowUnsecureConnections"}
+			if test.allowUnsecureServerConnections {
+				args = append(args, "-allowUnsecureServerConnections")
+			}
+			serverConfig, err := ParseCommandLine(args, flag.ExitOnError)
+			require.NoError(t, err)
+			serverContext := NewServerContext(serverConfig)
+			dbConfig := DbConfig{
+				BucketConfig: BucketConfig{
+					Server: &test.server,
+				}}
+			// Run test
+			_, err = serverContext._getOrAddDatabaseFromConfig(&dbConfig, false)
+
+			expectedError := "couchbase server URL must use secure protocol. Current URL: " + test.server
+			if test.expectError {
+				assert.Error(t, err, expectedError)
+			} else {
+				assert.NotEqual(t, expectedError, err.Error()) // Will still error due to no DB name, or not being able to connect to bucket
+			}
+		})
+	}
+}
+
 func TestGetOrAddDatabaseFromConfig(t *testing.T) {
-	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface}
+	allowUnsecureServerConnections := true
+	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface, AllowUnsecureServerConnections: &allowUnsecureServerConnections}
 	serverContext := NewServerContext(serverConfig)
 	defer serverContext.Close()
 
