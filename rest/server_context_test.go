@@ -508,7 +508,7 @@ func TestCheckPermissions(t *testing.T) {
 				defer DeleteUser(t, eps[0], testCase.CreateUser)
 			}
 
-			statusCode, permResults, err := ctx.CheckPermissions(httpClient, eps, testCase.Username, testCase.Password, testCase.RequestPermissions, testCase.ResponsePermissions)
+			statusCode, permResults, err := CheckPermissions(httpClient, eps, testCase.Username, testCase.Password, testCase.RequestPermissions, testCase.ResponsePermissions)
 			require.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
 			assert.True(t, reflect.DeepEqual(testCase.ExpectedPermissionResults, permResults))
@@ -536,8 +536,274 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
-	statusCode, _, err := ctx.CheckPermissions(httpClient, eps, base.TestClusterUsername(), base.TestClusterPassword(), []string{"cluster!admin"}, nil)
+	statusCode, _, err := CheckPermissions(httpClient, eps, base.TestClusterUsername(), base.TestClusterPassword(), []string{"cluster!admin"}, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, statusCode)
+}
+
+func TestCheckRoles(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	testCases := []struct {
+		Name               string
+		Username           string
+		Password           string
+		BucketName         string
+		RequestRoles       []string
+		ExpectedStatusCode int
+		CreateUser         string
+		CreatePassword     string
+		CreateRoles        []string
+	}{
+		{
+			Name:               "ClusterAdmin",
+			Username:           base.TestClusterUsername(),
+			Password:           base.TestClusterPassword(),
+			BucketName:         "",
+			RequestRoles:       []string{"admin"},
+			ExpectedStatusCode: http.StatusOK,
+		},
+		{
+			Name:               "CreatedAdmin",
+			Username:           "CreatedAdmin",
+			Password:           "password",
+			BucketName:         "",
+			RequestRoles:       []string{"admin"},
+			ExpectedStatusCode: http.StatusOK,
+			CreateUser:         "CreatedAdmin",
+			CreatePassword:     "password",
+			CreateRoles:        []string{"admin"},
+		},
+		{
+			Name:               "ReadOnlyAdmin",
+			Username:           "ReadOnlyAdmin",
+			Password:           "password",
+			BucketName:         "",
+			RequestRoles:       []string{"ro_admin"},
+			ExpectedStatusCode: http.StatusOK,
+			CreateUser:         "ReadOnlyAdmin",
+			CreatePassword:     "password",
+			CreateRoles:        []string{"ro_admin"},
+		},
+		{
+			Name:               "CreatedBucketAdmin",
+			Username:           "CreatedBucketAdmin",
+			Password:           "password",
+			BucketName:         rt.Bucket().GetName(),
+			RequestRoles:       []string{"mobile_sync_gateway"},
+			ExpectedStatusCode: http.StatusOK,
+			CreateUser:         "CreatedBucketAdmin",
+			CreatePassword:     "password",
+			CreateRoles:        []string{fmt.Sprintf("mobile_sync_gateway[%s]", rt.Bucket().GetName())},
+		},
+		{
+			Name:               "CreateUserNoRole",
+			Username:           "CreateUserNoRole",
+			Password:           "password",
+			BucketName:         "",
+			RequestRoles:       []string{"ro_admin"},
+			ExpectedStatusCode: http.StatusForbidden,
+			CreateUser:         "CreateUserNoRole",
+			CreatePassword:     "password",
+			CreateRoles:        []string{""},
+		},
+		{
+			Name:               "CreateUserInsufficientRole",
+			Username:           "CreateUserInsufficientRole",
+			Password:           "password",
+			BucketName:         "",
+			RequestRoles:       []string{"mobile_sync_gateway"},
+			ExpectedStatusCode: http.StatusForbidden,
+			CreateUser:         "CreateUserInsufficientRole",
+			CreatePassword:     "password",
+			CreateRoles:        []string{fmt.Sprintf("bucket_full_access[%s]", rt.Bucket().GetName())},
+		},
+	}
+
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.CreateUser != "" {
+				MakeUser(t, eps[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
+				defer DeleteUser(t, eps[0], testCase.CreateUser)
+			}
+
+			statusCode, err := CheckRoles(httpClient, eps, testCase.Username, testCase.Password, testCase.RequestRoles, testCase.BucketName)
+			require.NoError(t, err)
+			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
+		})
+	}
+}
+
+func TestAdminAuth(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	BucketFullAccessRoleTest := fmt.Sprintf("bucket_full_access[%s]", rt.Bucket().GetName())
+
+	testCases := []struct {
+		Name                string
+		Username            string
+		Password            string
+		CheckPermissions    []string
+		ResponsePermissions []string
+		ExpectedStatusCode  int
+		ExpectedPermResults map[string]bool
+		CreateUser          string
+		CreatePassword      string
+		CreateRoles         []string
+		BucketName          string
+	}{
+		{
+			Name:               "ClusterAdmin",
+			Username:           base.TestClusterUsername(),
+			Password:           base.TestClusterPassword(),
+			CheckPermissions:   []string{"cluster!admin"},
+			ExpectedStatusCode: http.StatusOK,
+			BucketName:         "",
+		},
+		{
+			Name:               "ClusterAdminWrongPassword",
+			Username:           "ClusterAdminWrongPassword",
+			Password:           "wrongpassword",
+			CheckPermissions:   []string{"cluster!admin"},
+			ExpectedStatusCode: http.StatusUnauthorized,
+			CreateUser:         "ClusterAdminWrongPassword",
+			CreatePassword:     "password",
+			CreateRoles:        []string{"admin"},
+			BucketName:         "",
+		},
+		{
+			Name:               "NoUser",
+			Username:           "IDontExist",
+			Password:           "password",
+			CheckPermissions:   []string{"cluster!admin"},
+			ExpectedStatusCode: http.StatusUnauthorized,
+			BucketName:         "",
+		},
+		{
+			Name:               "MissingPermissionAndRole",
+			Username:           "MissingPermissionAndRole",
+			Password:           "password",
+			CheckPermissions:   []string{"cluster!admin"},
+			ExpectedStatusCode: http.StatusForbidden,
+			CreateUser:         "MissingPermissionAndRole",
+			CreatePassword:     "password",
+			CreateRoles:        []string{""},
+			BucketName:         "",
+		},
+		{
+			Name:               "MissingPermissionAndRoleDBScoped",
+			Username:           "MissingPermissionAndRoleDBScoped",
+			Password:           "password",
+			CheckPermissions:   []string{"cluster!admin"},
+			ExpectedStatusCode: http.StatusForbidden,
+			CreateUser:         "MissingPermissionAndRoleDBScoped",
+			CreatePassword:     "password",
+			CreateRoles:        []string{""},
+			BucketName:         rt.Bucket().GetName(),
+		},
+		{
+			Name:               "MissingPermissionHasRole",
+			Username:           "MissingPermissionHasRole",
+			Password:           "password",
+			CheckPermissions:   []string{"cluster!admin"},
+			ExpectedStatusCode: http.StatusOK,
+			CreateUser:         "MissingPermissionHasRole",
+			CreatePassword:     "password",
+			CreateRoles:        []string{"ro_admin"},
+			BucketName:         "",
+		},
+		{
+			Name:               "MissingPermissionHasDBScoped",
+			Username:           "MissingPermissionHasDBScoped",
+			Password:           "password",
+			CheckPermissions:   []string{"cluster!admin"},
+			ExpectedStatusCode: http.StatusOK,
+			CreateUser:         "MissingPermissionHasDBScoped",
+			CreatePassword:     "password",
+			CreateRoles:        []string{BucketFullAccessRoleTest},
+			BucketName:         rt.Bucket().GetName(),
+		},
+		{
+			Name:                "HasOneAccessPermissionButHasRole",
+			Username:            "HasOneAccessPermissionButHasRole",
+			Password:            "password",
+			CheckPermissions:    []string{fmt.Sprintf("cluster.bucket[%s]!write", rt.Bucket().GetName())},
+			ResponsePermissions: []string{"cluster!admin"},
+			ExpectedStatusCode:  http.StatusOK,
+			ExpectedPermResults: map[string]bool{"cluster!admin": true},
+			CreateUser:          "HasOneAccessPermissionButHasRole",
+			CreatePassword:      "password",
+			CreateRoles:         []string{BucketFullAccessRoleTest},
+			BucketName:          rt.Bucket().GetName(),
+		},
+	}
+
+	for _, testCase := range testCases {
+		var managementEndpoints []string
+		var httpClient *http.Client
+		var err error
+
+		if testCase.BucketName != "" {
+			managementEndpoints, httpClient, err = rt.GetDatabase().ObtainManagementEndpointsAndHTTPClient()
+		} else {
+			managementEndpoints, httpClient, err = rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+		}
+		require.NoError(t, err)
+
+		t.Run(testCase.Name, func(t *testing.T) {
+			if testCase.CreateUser != "" {
+				MakeUser(t, managementEndpoints[0], testCase.CreateUser, testCase.CreatePassword, testCase.CreateRoles)
+				defer DeleteUser(t, managementEndpoints[0], testCase.CreateUser)
+			}
+
+			permResults, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, httpClient, managementEndpoints, testCase.CheckPermissions, testCase.ResponsePermissions)
+
+			assert.NoError(t, err)
+			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
+
+			if testCase.ExpectedPermResults != nil {
+				assert.True(t, reflect.DeepEqual(testCase.ExpectedPermResults, permResults))
+			}
+
+		})
+
+	}
+}
+
+func TestAdminAuthWithX509(t *testing.T) {
+	tb, teardownFn, caCertPath, certPath, keyPath := setupX509Tests(t, true)
+	defer tb.Close()
+	defer teardownFn()
+
+	original := tempConnectionDetailsForManagementEndpoints
+	defer func() {
+		tempConnectionDetailsForManagementEndpoints = original
+	}()
+
+	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
+		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
+	}
+
+	ctx := NewServerContext(&ServerConfig{})
+	defer ctx.Close()
+
+	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), httpClient, managementEndpoints, []string{"cluster!admin"}, nil)
+	assert.NoError(t, err)
 }

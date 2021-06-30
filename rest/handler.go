@@ -41,6 +41,17 @@ const (
 	minCompressibleJSONSize = 1000
 )
 
+// Admin API Auth Roles
+const (
+	MobileSyncGatewayRole = "mobile_sync_gateway"
+	BucketFullAccessRole  = "bucket_full_access"
+	FullAdminRole         = "admin"
+	ReadOnlyAdminRole     = "ro_admin"
+)
+
+var BucketScopedEndpointRoles = []string{MobileSyncGatewayRole, BucketFullAccessRole, FullAdminRole}
+var ClusterScopedEndpointRoles = []string{ReadOnlyAdminRole}
+
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
@@ -206,7 +217,21 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	// If an Admin Request we need to check the user credentials
 	if h.shouldCheckAdminAuth() {
 		username, password := h.getBasicAuth()
-		statusCode, err := h.checkAdminAuth(dbContext, username, password, accessPermissions, responsePermissions)
+
+		var managementEndpoints []string
+		var httpClient *http.Client
+
+		if dbContext != nil {
+			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
+		} else {
+			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
+		}
+		if err != nil {
+			base.Warnf("An error occurred whilst obtaining management endpoints: %v", err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "")
+		}
+
+		permissions, statusCode, err := checkAdminAuth(dbContext.Bucket.GetName(), username, password, httpClient, managementEndpoints, accessPermissions, responsePermissions)
 		if err != nil {
 			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
@@ -216,6 +241,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 			base.Infof(base.KeyAuth, "User %s failed to auth as an admin statusCode: %d", username, statusCode)
 			return base.HTTPErrorf(statusCode, "")
 		}
+
+		h.permissionsResults = permissions
 
 		base.Infof(base.KeyAuth, "User %s was successfully authorized as an admin", username)
 	}
@@ -412,32 +439,59 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func (h *handler) checkAdminAuth(dbContext *db.DatabaseContext, basicAuthUsername, basicAuthPassword string, accessPermissions []string, responsePermissions []string) (statusCode int, err error) {
-	var managementEndpoints []string
-	var httpClient *http.Client
-
-	if dbContext != nil {
-		managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-	} else {
-		managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
-		if err != nil {
-			return http.StatusInternalServerError, err
-		}
-	}
-
-	statusCode, permResults, err := h.server.CheckPermissions(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
+func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, httpClient *http.Client, managementEndpoints []string, accessPermissions []string, responsePermissions []string) (responsePermissionResults map[string]bool, statusCode int, err error) {
+	statusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
 	if err != nil {
-		return http.StatusInternalServerError, err
+		return nil, http.StatusInternalServerError, err
 	}
 
+	anyResponsePermFailed := false
 	if len(responsePermissions) > 0 {
-		h.permissionsResults = permResults
+		responsePermissionResults = permResults
+		for _, permResult := range permResults {
+			if !permResult {
+				anyResponsePermFailed = true
+				break
+			}
+		}
 	}
 
-	return statusCode, nil
+	// If user has required accessPerms and all response perms return with statusOK
+	// Otherwise we need to fall through to continue as the user may have access to responsePermissions through roles.
+	if statusCode == http.StatusOK && !anyResponsePermFailed {
+		return responsePermissionResults, http.StatusOK, nil
+	}
+
+	// If status code was not 'ok' or 'forbidden' return an error
+	// If forbidden user has authenticated correctly but is not authorized via permissions. We'll fall through to try
+	// with roles.
+	if statusCode != http.StatusForbidden {
+		return nil, statusCode, nil
+	}
+
+	var requestRoles []string
+	if bucketName != "" {
+		requestRoles = BucketScopedEndpointRoles
+	} else {
+		requestRoles = ClusterScopedEndpointRoles
+	}
+
+	statusCode, err = CheckRoles(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+
+	// If a user has access through roles we're going to use this to mean they have access to all of the
+	// responsePermissions too so we'll iterate over these and set them to true.
+	if statusCode == http.StatusOK {
+		responsePermissionResults = make(map[string]bool)
+		for _, responsePerm := range responsePermissions {
+			responsePermissionResults[responsePerm] = true
+		}
+		return responsePermissionResults, statusCode, nil
+	}
+
+	return permResults, statusCode, nil
 }
 
 func (h *handler) assertAdminOnly() {
