@@ -416,7 +416,7 @@ func TestCheckPermissions(t *testing.T) {
 		},
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -451,7 +451,7 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()

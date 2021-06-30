@@ -825,7 +825,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if persistentConfig && !base.ServerIsWalrus(sc.config.Bootstrap.Server) {
-		securityConfig, err := base.GoCBv2SecurityConfig(sc.config.Bootstrap.X509CACertPath)
+		securityConfig, err := base.GoCBv2SecurityConfig(sc.config.Bootstrap.CACertPath)
 		if err != nil {
 			return nil, err
 		}

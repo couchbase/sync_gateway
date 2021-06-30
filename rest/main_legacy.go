@@ -63,10 +63,10 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 
 	sc := StartupConfig{
 		Bootstrap: BootstrapConfig{
-			Server:         *url,
-			X509CertPath:   *certPath,
-			X509KeyPath:    *keyPath,
-			X509CACertPath: *caCertPath,
+			Server:       *url,
+			CACertPath:   *caCertPath,
+			X509CertPath: *certPath,
+			X509KeyPath:  *keyPath,
 		},
 		API: APIConfig{
 			PublicInterface:  *publicInterface,

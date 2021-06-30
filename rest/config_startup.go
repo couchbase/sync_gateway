@@ -80,9 +80,9 @@ type BootstrapConfig struct {
 	Server                string        `json:"server,omitempty"                  help:"Couchbase Server connection string/URL"`
 	Username              string        `json:"username,omitempty"                help:"Username for authenticating to server"`
 	Password              string        `json:"password,omitempty"                help:"Password for authenticating to server"`
-	X509CertPath          string        `json:"x509_cert_path,omitempty"               help:"Cert path (public key) for X.509 bucket auth"`
-	X509KeyPath           string        `json:"x509_key_path,omitempty"                help:"Key path (private key) for X.509 bucket auth"`
-	X509CACertPath        string        `json:"x509_ca_cert_path,omitempty"            help:"Root CA cert path for X.509 bucket auth"`
+	CACertPath            string        `json:"ca_cert_path,omitempty"            help:"Root CA cert path for TLS connection"`
+	X509CertPath          string        `json:"x509_cert_path,omitempty"          help:"Cert path (public key) for X.509 bucket auth"`
+	X509KeyPath           string        `json:"x509_key_path,omitempty"           help:"Key path (private key) for X.509 bucket auth"`
 }
 
 type APIConfig struct {

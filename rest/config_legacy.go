@@ -122,12 +122,12 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 			continue
 		}
 		bsc = &BootstrapConfig{
-			Server:         *dbConfig.Server,
-			Username:       dbConfig.Username,
-			Password:       dbConfig.Password,
-			X509CertPath:   dbConfig.CertPath,
-			X509KeyPath:    dbConfig.KeyPath,
-			X509CACertPath: dbConfig.CACertPath,
+			Server:       *dbConfig.Server,
+			Username:     dbConfig.Username,
+			Password:     dbConfig.Password,
+			CACertPath:   dbConfig.CACertPath,
+			X509CertPath: dbConfig.CertPath,
+			X509KeyPath:  dbConfig.KeyPath,
 		}
 		break
 	}
