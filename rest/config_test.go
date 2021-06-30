@@ -851,6 +851,8 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 		"--pretty",
 		"--verbose",
 		"--profileInterface", profileInterface,
+		"--allowUnsecureServerConnections",
+		"--allowUnsecureConnections",
 		configFile.Name()}
 
 	config, err := ParseCommandLine(args, flag.ContinueOnError)
