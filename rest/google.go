@@ -46,12 +46,12 @@ func (h *handler) handleGooglePOST() error {
 	}
 
 	//validate the google id token
-	googleResponse, err := verifyGoogle(params.IDToken, h.server.config.Auth.Google.AppClientID)
+	googleResponse, err := verifyGoogle(params.IDToken, h.server.config.DeprecatedOptions.Google.AppClientID)
 	if err != nil {
 		return err
 	}
 
-	createUserIfNeeded := h.server.config.Auth.Google.Register
+	createUserIfNeeded := h.server.config.DeprecatedOptions.Google.Register
 	return h.makeSessionFromNameAndEmail(googleResponse.UserID, googleResponse.Email, createUserIfNeeded)
 }
 

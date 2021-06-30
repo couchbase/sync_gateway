@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -116,7 +115,7 @@ type ReplConfigMapLegacy map[string]*ReplicateV1ConfigLegacy
 func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
-	var bsc *BootstrapConfig
+	bsc := &BootstrapConfig{}
 	for _, dbConfig := range lc.Databases {
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			continue
@@ -132,10 +131,6 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 		break
 	}
 
-	if bsc == nil {
-		return nil, nil, errors.New("couldn't upgrade legacy config without at least one server")
-	}
-
 	sc := StartupConfig{
 		Bootstrap: *bsc,
 		API: APIConfig{
@@ -146,13 +141,14 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 		Logging: LoggingConfig{},
 		Auth: AuthConfig{
 			BcryptCost: lc.BcryptCost,
-			// TODO: How do we do in-memory config upgrades and retain this feature without supporting it in 3.0's config? Deprecated config options struct that is unsettable from JSON?
-			Facebook: lc.Facebook,
-			Google:   lc.Google,
 		},
 		Replicator: ReplicatorConfig{
 			MaxHeartbeat:    time.Second * time.Duration(lc.MaxHeartbeat),
 			BLIPCompression: lc.ReplicatorCompression,
+		},
+		DeprecatedOptions: &DeprecatedOptions{
+			Facebook: lc.Facebook,
+			Google:   lc.Google,
 		},
 	}
 
@@ -437,6 +433,8 @@ func (sc *LegacyServerConfig) Redacted() (*LegacyServerConfig, error) {
 // Reads the command line flags and the optional config file.
 func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServerConfig, error) {
 	flagSet := flag.NewFlagSet(args[0], handling)
+
+	_ = flagSet.Bool("disable_persistent_config", false, "")
 
 	addr := flagSet.String("interface", DefaultPublicInterface, "Address to bind to")
 	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")

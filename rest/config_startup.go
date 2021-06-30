@@ -71,6 +71,8 @@ type StartupConfig struct {
 	Unsupported UnsupportedConfig `json:"unsupported,omitempty"`
 
 	MaxFileDescriptors uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
+
+	DeprecatedOptions *DeprecatedOptions `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
 }
 
 // BootstrapConfig describes the set of properties required in order to bootstrap config from Couchbase Server.
@@ -135,9 +137,6 @@ type LoggingConfig struct {
 
 type AuthConfig struct {
 	BcryptCost int `json:"bcrypt_cost,omitempty"          help:"Cost to use for bcrypt password hashes"`
-	// TODO: How do we do in-memory config upgrades and retain this feature without supporting it in 3.0's config? Deprecated config options struct that is unsettable from JSON?
-	Facebook *FacebookConfigLegacy `json:"-" help:""`
-	Google   *GoogleConfigLegacy   `json:"-" help:""`
 }
 
 type ReplicatorConfig struct {
@@ -154,6 +153,11 @@ type UnsupportedConfig struct {
 
 type HTTP2Config struct {
 	Enabled *bool `json:"enabled,omitempty" help:"Whether HTTP2 support is enabled"`
+}
+
+type DeprecatedOptions struct {
+	Facebook *FacebookConfigLegacy `json:"-" help:""`
+	Google   *GoogleConfigLegacy   `json:"-" help:""`
 }
 
 func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
