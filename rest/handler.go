@@ -472,6 +472,16 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 		return nil, http.StatusInternalServerError, err
 	}
 
+	// If a user has access through roles we're going to use this to mean they have access to all of the
+	// responsePermissions too so we'll iterate over these and set them to true.
+	if statusCode == http.StatusOK {
+		responsePermissionResults = make(map[string]bool)
+		for _, responsePerm := range responsePermissions {
+			responsePermissionResults[responsePerm] = true
+		}
+		return responsePermissionResults, statusCode, nil
+	}
+
 	return permResults, statusCode, nil
 }
 
