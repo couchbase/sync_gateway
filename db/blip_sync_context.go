@@ -378,9 +378,10 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	// asynchronously wait for a response if we have attachment digests to verify, if we sent a delta and want to error check, or if we have a registered callback.
 	awaitResponse := len(attMeta) > 0 || properties[RevMessageDeltaSrc] != "" || bsc.sgr2PushProcessedSeqCallback != nil
 
+	activeSubprotocol := bsc.blipContext.ActiveSubprotocol()
 	if awaitResponse {
 		// Allow client to download attachments in 'atts', but only while pulling this rev
-		bsc.addAllowedAttachments(docID, attMeta)
+		bsc.addAllowedAttachments(docID, attMeta, activeSubprotocol)
 	} else {
 		bsc.replicationStats.SendRevCount.Add(1)
 		outrq.SetNoReply(true)
@@ -388,12 +389,12 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 
 	// send the rev
 	if !bsc.sendBLIPMessage(sender, outrq.Message) {
-		bsc.removeAllowedAttachments(docID, attMeta)
+		bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 		return ErrClosedBLIPSender
 	}
 
 	if awaitResponse {
-		go func() {
+		go func(activeSubprotocol string) {
 			defer func() {
 				if panicked := recover(); panicked != nil {
 					base.WarnfCtx(bsc.loggingCtx, "PANIC handling 'sendRevision' response: %v\n%s", panicked, debug.Stack())
@@ -440,12 +441,12 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 				bsc.replicationStats.SendRevCount.Add(1)
 			}
 
-			bsc.removeAllowedAttachments(docID, attMeta)
+			bsc.removeAllowedAttachments(docID, attMeta, activeSubprotocol)
 
 			if bsc.sgr2PushProcessedSeqCallback != nil {
 				bsc.sgr2PushProcessedSeqCallback(seq.String())
 			}
-		}()
+		}(activeSubprotocol)
 	}
 
 	return nil

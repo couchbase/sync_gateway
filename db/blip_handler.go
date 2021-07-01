@@ -1099,7 +1099,7 @@ func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
 	return atomic.AddUint64(&bsc.handlerSerialNumber, 1)
 }
 
-func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []AttachmentStorageMeta) {
+func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol string) {
 	if len(attMeta) == 0 {
 		return
 	}
@@ -1111,7 +1111,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
 	for _, attachment := range attMeta {
-		key := bsc.allowedAttachmentKey(docID, attachment.digest)
+		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
 		att, found := bsc.allowedAttachments[key]
 		if found {
 			if att.version == AttVersion1 {
@@ -1129,7 +1129,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attMeta, bsc.allowedAttachments)
 }
 
-func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []AttachmentStorageMeta) {
+func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol string) {
 	if len(attMeta) == 0 {
 		return
 	}
@@ -1138,7 +1138,7 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 	defer bsc.lock.Unlock()
 
 	for _, attachment := range attMeta {
-		key := bsc.allowedAttachmentKey(docID, attachment.digest)
+		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
 		att, found := bsc.allowedAttachments[key]
 		if found && att.version == AttVersion1 {
 			if n := att.counter; n > 1 {
@@ -1155,8 +1155,8 @@ func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []Att
 	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attMeta, bsc.allowedAttachments)
 }
 
-func (bsc *BlipSyncContext) allowedAttachmentKey(docID, digest string) string {
-	if bsc.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
+func allowedAttachmentKey(docID, digest, activeSubprotocol string) string {
+	if activeSubprotocol == BlipCBMobileReplicationV3 {
 		return docID + digest
 	}
 	return digest
