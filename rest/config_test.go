@@ -903,7 +903,9 @@ func TestValidateServerContext(t *testing.T) {
 	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()
 
 	xattrs := base.TestUseXattrs()
+	allowUnsecureServerConnections := true
 	config := &ServerConfig{
+		AllowUnsecureServerConnections: &allowUnsecureServerConnections,
 		Databases: map[string]*DbConfig{
 			"db1": {
 				BucketConfig: BucketConfig{
