@@ -66,7 +66,7 @@ func TestReproduce2383(t *testing.T) {
 		Last_Seq interface{}
 	}
 
-	leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.testBucket)
 	require.True(t, ok)
 
 	// Force a partial error for the first ViewCustom call we make to initialize an invalid cache.
@@ -3005,7 +3005,7 @@ func TestChangesViewBackfillSlowQuery(t *testing.T) {
 
 	}
 
-	leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.testBucket)
 	require.True(t, ok)
 
 	leakyBucket.SetPostQueryCallback(postQueryCallback)

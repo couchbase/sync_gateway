@@ -1398,7 +1398,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
 	var (
@@ -1507,7 +1507,7 @@ func TestResyncStop(t *testing.T) {
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
 	var (
@@ -2873,7 +2873,7 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 
-	leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.testBucket)
 	require.True(t, ok)
 
 	// Set callback to trigger a DELETE AFTER an update. This will trigger a CAS mismatch.
@@ -2942,7 +2942,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
 			assertStatus(t, resp, http.StatusCreated)
 
-			leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+			leakyBucket, ok := base.AsLeakyBucket(rt.testBucket)
 			require.True(t, ok)
 
 			triggerCallback := false

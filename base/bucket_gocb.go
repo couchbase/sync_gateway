@@ -2050,6 +2050,25 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 	return AsGoCBBucket(underlyingBucket)
 }
 
+// AsLeakyBucket tries to return the given bucket as a LeakyBucket.
+func AsLeakyBucket(bucket Bucket) (*LeakyBucket, bool) {
+
+	var underlyingBucket Bucket
+	switch typedBucket := bucket.(type) {
+	case *LeakyBucket:
+		return typedBucket, true
+	case *LoggingBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *TestBucket:
+		underlyingBucket = typedBucket.Bucket
+	default:
+		// bail out for unrecognised/unsupported buckets
+		return nil, false
+	}
+
+	return AsLeakyBucket(underlyingBucket)
+}
+
 func GoCBBucketMgmtEndpoints(bucket *gocb.Bucket) (url []string, err error) {
 	mgmtEps := bucket.IoRouter().MgmtEps()
 	if len(mgmtEps) == 0 {

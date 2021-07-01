@@ -719,7 +719,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
