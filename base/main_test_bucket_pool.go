@@ -247,7 +247,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
-		return tbp.GetWalrusTestBucket(t, "walrus:")
+		return tbp.GetWalrusTestBucket(t, kTestWalrusURL)
 	}
 
 	if atomic.LoadUint32(&tbp.preservedBucketCount) >= uint32(cap(tbp.readyBucketPool)) {
