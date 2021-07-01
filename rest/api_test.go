@@ -5154,15 +5154,17 @@ func TestHandlePprofs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.inputProfile, func(t *testing.T) {
-			expectedContentDisposition := fmt.Sprintf(`attachment; filename="%v"`, tc.inputProfile)
+			expectedContentDispositionPrefix := fmt.Sprintf(`attachment; filename="%v`, tc.inputProfile)
 			response := rt.SendAdminRequest(http.MethodGet, tc.inputResource, "")
-			assert.Equal(t, expectedContentDisposition, response.Header().Get("Content-Disposition"))
+			cdHeader := response.Header().Get("Content-Disposition")
+			assert.Truef(t, strings.HasPrefix(cdHeader, expectedContentDispositionPrefix), "Expected header prefix: %q but got %q", expectedContentDispositionPrefix, cdHeader)
 			assert.Equal(t, "application/octet-stream", response.Header().Get("Content-Type"))
 			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
 			assertStatus(t, response, http.StatusOK)
 
 			response = rt.SendAdminRequest(http.MethodPost, tc.inputResource, "")
-			assert.Equal(t, expectedContentDisposition, response.Header().Get("Content-Disposition"))
+			cdHeader = response.Header().Get("Content-Disposition")
+			assert.Truef(t, strings.HasPrefix(cdHeader, expectedContentDispositionPrefix), "Expected header prefix: %q but got %q", expectedContentDispositionPrefix, cdHeader)
 			assert.Equal(t, "application/octet-stream", response.Header().Get("Content-Type"))
 			assert.Equal(t, "nosniff", response.Header().Get("X-Content-Type-Options"))
 			assertStatus(t, response, http.StatusOK)
