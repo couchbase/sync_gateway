@@ -3994,7 +3994,6 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(&testProviderOnlyConfig)
 	assert.NoError(t, err, "Error adding testProviderOnly database.")
-	sc._removeDatabase("test_provider_only")
 
 	viewsOnlyJSON := `{"name": "views_only",
         			"server": "walrus:",
@@ -4012,7 +4011,6 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(&viewsOnlyConfig)
 	assert.NoError(t, err, "Error adding viewsOnlyConfig database.")
-	sc._removeDatabase("views_only")
 
 	viewsAndTestJSON := `{"name": "views_and_test",
         			"server": "walrus:",
@@ -4034,7 +4032,6 @@ func TestUnsupportedConfig(t *testing.T) {
 
 	_, err = sc.AddDatabaseFromConfig(&viewsAndTestConfig)
 	assert.NoError(t, err, "Error adding viewsAndTestConfig database.")
-	sc._removeDatabase("views_and_test")
 
 	sc.Close()
 }
