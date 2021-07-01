@@ -1865,6 +1865,12 @@ func mockOIDCOptionsWithBadName() *auth.OIDCOptions {
 }
 
 func TestNewDatabaseContextWithOIDCProviderOptionErrors(t *testing.T) {
+	// Enable prometheus stats. Ensures that we recover / cleanup stats if we fail to initialize a DatabaseContext
+	base.SkipPrometheusStatsRegistration = false
+	defer func() {
+		base.SkipPrometheusStatsRegistration = true
+	}()
+
 	testBucket := base.GetTestBucket(t)
 	tests := []struct {
 		name          string
