@@ -18,6 +18,7 @@ var RemoveSpecXattr = &gocb.RemoveSpecOptions{IsXattr: true}
 var LookupOptsAccessDeleted *gocb.LookupInOptions
 
 var _ SubdocXattrStore = &Collection{}
+var _ UserXattrStore = &Collection{}
 
 func init() {
 	LookupOptsAccessDeleted = &gocb.LookupInOptions{}
@@ -58,39 +59,28 @@ func (c *Collection) UpdateXattr(k string, xattrKey string, exp uint32, cas uint
 }
 
 // SubdocGetXattr retrieves the named xattr
+// Notes on error handling
+//   - gocb v2 returns subdoc errors at the op level, in the ContentAt response
+//   - 'successful' error codes, like SucDocSuccessDeleted, aren't returned, and instead just set the internal.Deleted property on the
+//   response
 func (c *Collection) SubdocGetXattr(k string, xattrKey string, xv interface{}) (casOut uint64, err error) {
 
 	ops := []gocb.LookupInSpec{
 		gocb.GetSpec(xattrKey, GetSpecXattr),
 	}
 	res, lookupErr := c.LookupIn(k, ops, LookupOptsAccessDeleted)
-
 	if lookupErr == nil {
 		xattrContErr := res.ContentAt(0, xv)
+		// On error here, treat as the xattr wasn't found
 		if xattrContErr != nil {
 			Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContErr)
 			return 0, ErrXattrNotFound
 		}
 		cas := uint64(res.Cas())
 		return cas, nil
-	} else if isKVError(lookupErr, memd.StatusSubDocBadMulti) {
-		xattrErr := res.ContentAt(0, xv)
-		if xattrErr != nil {
-			Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrErr)
-			return 0, ErrXattrNotFound
-		}
-		cas := uint64(res.Cas())
-		return cas, nil
-	} else if isKVError(lookupErr, memd.StatusKeyNotFound) {
+	} else if errors.Is(lookupErr, gocbcore.ErrDocumentNotFound) {
 		Debugf(KeyCRUD, "No document found for key=%s", UD(k))
 		return 0, ErrNotFound
-	} else if isKVError(lookupErr, memd.StatusSubDocMultiPathFailureDeleted) || isKVError(lookupErr, memd.StatusSubDocSuccessDeleted) {
-		xattrContentErr := res.ContentAt(0, xv)
-		if xattrContentErr != nil {
-			return 0, ErrNotFound
-		}
-		cas := uint64(res.Cas())
-		return cas, nil
 	} else {
 		return 0, lookupErr
 	}
@@ -115,8 +105,9 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 			// Attempt to retrieve the document body, if present
 			docContentErr := res.ContentAt(1, rv)
 			xattrContentErr := res.ContentAt(0, xv)
+
 			if isKVError(docContentErr, memd.StatusSubDocMultiPathFailureDeleted) && isKVError(xattrContentErr, memd.StatusSubDocMultiPathFailureDeleted) {
-				// No doc, no xattr means the doc isn't found
+				// No doc, no xattr can be treated as NotFound from Sync Gateway's perspective, even if it is a server tombstone
 				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 				return false, ErrNotFound, cas
 			}
@@ -152,12 +143,12 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 		// TODO: We may be able to improve in the future by having this secondary op as part of the first. At present
 		// there is no support to obtain more than one xattr in a single operation however MB-28041 is filed for this.
 		if userXattrKey != "" {
-			userXattrCas, err := c.SubdocGetXattr(k, userXattrKey, uxv)
-			switch pkgerrors.Cause(err) {
+			userXattrCas, userXattrErr := c.SubdocGetXattr(k, userXattrKey, uxv)
+			switch pkgerrors.Cause(userXattrErr) {
 			case gocb.ErrDocumentNotFound:
 				// If key not found it has been deleted in between the first op and this op.
 				return false, err, userXattrCas
-			case gocbcore.ErrMemdSubDocBadMulti:
+			case ErrXattrNotFound:
 				// Xattr doesn't exist, can skip
 			case nil:
 				if cas != userXattrCas {
@@ -166,7 +157,7 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 			default:
 				// Unknown error occurred
 				// Shouldn't retry as any recoverable error will have been retried already in SubdocGetXattr
-				return false, err, uint64(0)
+				return false, userXattrErr, uint64(0)
 			}
 		}
 		return false, nil, cas
@@ -200,7 +191,7 @@ func (c *Collection) SubdocInsertXattr(k string, xattrKey string, exp uint32, ca
 		gocb.UpsertSpec(xattrCrc32cPath(xattrKey), gocb.MutationMacroValueCRC32c, UpsertSpecXattr),
 	}
 	options := &gocb.MutateInOptions{
-		StoreSemantic: gocb.StoreSemanticsUpsert,
+		StoreSemantic: gocb.StoreSemanticsReplace, // set replace here, as we're explicitly setting SubdocDocFlagMkDoc above if tombstone creation is not supported
 		Expiry:        CbsExpiryToDuration(exp),
 		Cas:           gocb.Cas(cas),
 	}
@@ -231,6 +222,29 @@ func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uin
 		return 0, mutateErr
 	}
 	return uint64(result.Cas()), nil
+
+}
+
+// SubdocInsert performs a subdoc insert operation to the specified path in the document body.
+func (c *Collection) SubdocInsert(k string, fieldPath string, cas uint64, value interface{}) error {
+
+	mutateOps := []gocb.MutateInSpec{
+		gocb.InsertSpec(fieldPath, value, nil),
+	}
+	options := &gocb.MutateInOptions{
+		Cas: gocb.Cas(cas),
+	}
+	_, mutateErr := c.MutateIn(k, mutateOps, options)
+
+	if errors.Is(mutateErr, gocbcore.ErrDocumentNotFound) {
+		return ErrNotFound
+	}
+
+	if errors.Is(mutateErr, gocbcore.ErrPathExists) {
+		return ErrAlreadyExists
+	}
+
+	return mutateErr
 
 }
 
@@ -328,7 +342,7 @@ func (c *Collection) SubdocDeleteBodyAndXattr(k string, xattrKey string) (err er
 	}
 
 	// StatusKeyNotFound returned if document doesn't exist
-	if isKVError(mutateErr, memd.StatusKeyNotFound) {
+	if errors.Is(mutateErr, gocbcore.ErrDocumentNotFound) {
 		return ErrNotFound
 	}
 
@@ -358,8 +372,8 @@ func (c *Collection) SubdocDeleteBody(k string, xattrKey string, exp uint32, cas
 	return uint64(result.Cas()), nil
 }
 
-// isKVError compares the status code of a gocb KeyValueError to the provided code.  If the provided error is
-// a gocb.SubDocumentError, checks against that error's InnerError.
+// isKVError compares the status code of a gocb KeyValueError to the provided code.  Used for nested subdoc errors
+// where gocb doesn't return a typed error for the underlying error.
 func isKVError(err error, code memd.StatusCode) bool {
 
 	switch typedErr := err.(type) {
@@ -398,4 +412,36 @@ func bytesToRawMessage(v interface{}) interface{} {
 	default:
 		return v
 	}
+}
+
+func (c *Collection) WriteUserXattr(k string, xattrKey string, xattrVal interface{}) (uint64, error) {
+	mutateOps := []gocb.MutateInSpec{
+		gocb.UpsertSpec(xattrKey, bytesToRawMessage(xattrVal), UpsertSpecXattr),
+	}
+	options := &gocb.MutateInOptions{
+		StoreSemantic: gocb.StoreSemanticsUpsert,
+	}
+
+	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	if mutateErr != nil {
+		return 0, mutateErr
+	}
+	return uint64(result.Cas()), nil
+}
+
+func (c *Collection) DeleteUserXattr(k string, xattrKey string) (uint64, error) {
+
+	mutateOps := []gocb.MutateInSpec{
+		gocb.RemoveSpec(xattrKey, RemoveSpecXattr),
+	}
+	options := &gocb.MutateInOptions{
+		Cas: gocb.Cas(0),
+	}
+	options.Internal.DocFlags = gocb.SubdocDocFlagAccessDeleted
+
+	result, mutateErr := c.MutateIn(k, mutateOps, options)
+	if mutateErr != nil {
+		return 0, mutateErr
+	}
+	return uint64(result.Cas()), nil
 }

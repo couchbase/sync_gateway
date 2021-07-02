@@ -2793,7 +2793,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	_, err := rt.WaitForChanges(1, "/db/_changes", "", true)
 	assert.NoError(t, err)
 
-	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, "val")
+	_, err = gocbBucket.WriteUserXattr(docKey, xattrKey, "val")
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {

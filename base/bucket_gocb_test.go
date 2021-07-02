@@ -947,80 +947,76 @@ func TestXattrWriteUpdateXattr(t *testing.T) {
 func TestWriteUpdateWithXattrUserXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 
-	testBucket := GetTestBucket(t)
-	defer testBucket.Close()
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-	gocbBucket, ok := testBucket.Bucket.(*CouchbaseBucketGoCB)
-	if !ok {
-		t.Skip("Can't cast to bucket")
-		return
-	}
+		key := t.Name()
+		xattrKey := SyncXattrName
+		userXattrKey := "UserXattr"
 
-	key := t.Name()
-	xattrKey := SyncXattrName
-	userXattrKey := "UserXattr"
+		writeUpdateFunc := func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, err error) {
 
-	writeUpdateFunc := func(doc []byte, xattr []byte, userXattr []byte, cas uint64) (updatedDoc []byte, updatedXattr []byte, isDelete bool, updatedExpiry *uint32, err error) {
+			var docMap map[string]interface{}
+			var xattrMap map[string]interface{}
 
-		var docMap map[string]interface{}
-		var xattrMap map[string]interface{}
-
-		if len(doc) > 0 {
-			err = JSONUnmarshal(xattr, &docMap)
-			if err != nil {
-				return nil, nil, false, nil, err
+			if len(doc) > 0 {
+				err = JSONUnmarshal(xattr, &docMap)
+				if err != nil {
+					return nil, nil, false, nil, err
+				}
+			} else {
+				docMap = make(map[string]interface{})
 			}
-		} else {
-			docMap = make(map[string]interface{})
+
+			if len(xattr) > 0 {
+				err = JSONUnmarshal(xattr, &xattrMap)
+				if err != nil {
+					return nil, nil, false, nil, err
+				}
+			} else {
+				xattrMap = make(map[string]interface{})
+			}
+
+			var userXattrMap map[string]interface{}
+			if len(userXattr) > 0 {
+				err = JSONUnmarshal(userXattr, &userXattrMap)
+				if err != nil {
+					return nil, nil, false, nil, err
+				}
+			} else {
+				userXattrMap = nil
+			}
+
+			docMap["userXattrVal"] = userXattrMap
+
+			updatedDoc, _ = JSONMarshal(docMap)
+			updatedXattr, _ = JSONMarshal(xattrMap)
+
+			return updatedDoc, updatedXattr, false, nil, nil
 		}
 
-		if len(xattr) > 0 {
-			err = JSONUnmarshal(xattr, &xattrMap)
-			if err != nil {
-				return nil, nil, false, nil, err
-			}
-		} else {
-			xattrMap = make(map[string]interface{})
-		}
+		_, err := bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
+		assert.NoError(t, err)
 
-		var userXattrMap map[string]interface{}
-		if len(userXattr) > 0 {
-			err = JSONUnmarshal(userXattr, &userXattrMap)
-			if err != nil {
-				return nil, nil, false, nil, err
-			}
-		} else {
-			userXattrMap = nil
-		}
+		var gotBody map[string]interface{}
+		_, err = bucket.Get(key, &gotBody)
+		assert.NoError(t, err)
+		assert.Equal(t, nil, gotBody["userXattrVal"])
 
-		docMap["userXattrVal"] = userXattrMap
+		userXattrVal := map[string]interface{}{"val": "val"}
 
-		updatedDoc, _ = JSONMarshal(docMap)
-		updatedXattr, _ = JSONMarshal(xattrMap)
+		userXattrStore, ok := AsUserXattrStore(bucket)
+		require.True(t, ok)
+		_, err = userXattrStore.WriteUserXattr(key, userXattrKey, userXattrVal)
+		assert.NoError(t, err)
 
-		return updatedDoc, updatedXattr, false, nil, nil
-	}
+		_, err = bucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
+		assert.NoError(t, err)
 
-	_, err := testBucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
-	assert.NoError(t, err)
+		_, err = bucket.Get(key, &gotBody)
+		assert.NoError(t, err)
 
-	var gotBody map[string]interface{}
-	_, err = testBucket.Get(key, &gotBody)
-	assert.NoError(t, err)
-	assert.Equal(t, nil, gotBody["userXattrVal"])
-
-	userXattrVal := map[string]interface{}{"val": "val"}
-
-	_, err = WriteXattr(gocbBucket, key, userXattrKey, userXattrVal)
-	assert.NoError(t, err)
-
-	_, err = testBucket.WriteUpdateWithXattr(key, xattrKey, userXattrKey, 0, nil, writeUpdateFunc)
-	assert.NoError(t, err)
-
-	_, err = testBucket.Get(key, &gotBody)
-	assert.NoError(t, err)
-
-	assert.Equal(t, userXattrVal, gotBody["userXattrVal"])
+		assert.Equal(t, userXattrVal, gotBody["userXattrVal"])
+	})
 
 }
 
@@ -1650,6 +1646,8 @@ func TestGetXattr(t *testing.T) {
 
 		var response map[string]interface{}
 
+		subdocStore, ok := AsSubdocXattrStore(bucket)
+
 		//Get Xattr From Existing Doc with Existing Xattr
 		_, err = bucket.GetXattr(key1, xattrName1, &response)
 		assert.NoError(t, err)
@@ -1667,7 +1665,7 @@ func TestGetXattr(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 
-		//Get Xattr From Tombstoned Doc With Existing System Xattr
+		//Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
 		cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), val2, xattrVal2)
 		_, err = bucket.Remove(key2, cas)
 		require.NoError(t, err)
@@ -1679,6 +1677,13 @@ func TestGetXattr(t *testing.T) {
 		assert.Error(t, err)
 		assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
 
+		//Get Xattr and Body From Tombstoned Doc With Non-Existent System Xattr -> SubDocMultiPathFailureDeleted
+		var v, xv, userXv map[string]interface{}
+		require.True(t, ok)
+		_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
+		assert.Error(t, err)
+		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
+
 		////Get Xattr From Tombstoned Doc With Deleted User Xattr
 		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
 		_, err = bucket.Remove(key3, cas)
@@ -1686,6 +1691,91 @@ func TestGetXattr(t *testing.T) {
 		_, err = bucket.GetXattr(key3, xattrName3, &response)
 		assert.Error(t, err)
 		assert.Equal(t, ErrXattrNotFound, pkgerrors.Cause(err))
+	})
+}
+
+func TestGetXattrAndBody(t *testing.T) {
+	SkipXattrTestsIfNotEnabled(t)
+
+	defer SetUpTestLogging(LevelDebug, KeyAll)()
+
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		//Doc 1
+		key1 := t.Name() + "DocExistsXattrExists"
+		val1 := make(map[string]interface{})
+		val1["type"] = key1
+		xattrName1 := "sync"
+		xattrVal1 := make(map[string]interface{})
+		xattrVal1["seq"] = float64(1)
+		xattrVal1["rev"] = "1-foo"
+
+		//Doc 2 - Tombstone
+		key2 := t.Name() + "TombstonedDocXattrExists"
+		val2 := make(map[string]interface{})
+		val2["type"] = key2
+		xattrVal2 := make(map[string]interface{})
+		xattrVal2["seq"] = float64(1)
+		xattrVal2["rev"] = "1-foo"
+
+		//Doc 3 - To Delete
+		key3 := t.Name() + "DeletedDocXattrExists"
+		val3 := make(map[string]interface{})
+		val3["type"] = key3
+		xattrName3 := "sync"
+		xattrVal3 := make(map[string]interface{})
+		xattrVal3["seq"] = float64(1)
+		xattrVal3["rev"] = "1-foo"
+
+		var err error
+
+		//Create w/ XATTR
+		cas := uint64(0)
+		cas, err = bucket.WriteCasWithXattr(key1, xattrName1, 0, cas, val1, xattrVal1)
+		if err != nil {
+			t.Errorf("Error doing WriteCasWithXattr: %+v", err)
+		}
+
+		subdocStore, ok := AsSubdocXattrStore(bucket)
+		require.True(t, ok)
+
+		//Get Xattr From Existing Doc with Existing Xattr
+		var v, xv, userXv map[string]interface{}
+		_, err = subdocStore.SubdocGetBodyAndXattr(key1, xattrName1, "", &v, &xv, &userXv)
+		assert.NoError(t, err)
+
+		assert.Equal(t, xattrVal1["seq"], xv["seq"])
+		assert.Equal(t, xattrVal1["rev"], xv["rev"])
+
+		//Get body and Xattr From Existing Doc With Non-Existent Xattr -> returns body only
+		_, err = subdocStore.SubdocGetBodyAndXattr(key1, "non-exist", "", &v, &xv, &userXv)
+		assert.NoError(t, err)
+		assert.Equal(t, val1["type"], v["type"])
+
+		//Get Xattr From Non-Existent Doc With Non-Existent Xattr
+		_, err = subdocStore.SubdocGetBodyAndXattr("non-exist", "non-exist", "", &v, &xv, &userXv)
+		assert.Error(t, err)
+		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
+
+		//Get Xattr From Tombstoned Doc With Existing System Xattr (ErrSubDocSuccessDeleted)
+		cas, err = bucket.WriteCasWithXattr(key2, SyncXattrName, 0, uint64(0), val2, xattrVal2)
+		_, err = bucket.Remove(key2, cas)
+		require.NoError(t, err)
+		_, err = subdocStore.SubdocGetBodyAndXattr(key2, SyncXattrName, "", &v, &xv, &userXv)
+		assert.NoError(t, err)
+
+		//Get Xattr From Tombstoned Doc With Non-Existent System Xattr -> returns not found
+		_, err = subdocStore.SubdocGetBodyAndXattr(key2, "_non-exist", "", &v, &xv, &userXv)
+		assert.Error(t, err)
+		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
+
+		////Get Xattr From Tombstoned Doc With Deleted User Xattr -> returns not found
+		cas, err = bucket.WriteCasWithXattr(key3, xattrName3, 0, uint64(0), val3, xattrVal3)
+		_, err = bucket.Remove(key3, cas)
+		require.NoError(t, err)
+		_, err = subdocStore.SubdocGetBodyAndXattr(key3, xattrName3, "", &v, &xv, &userXv)
+		assert.Error(t, err)
+		assert.Equal(t, ErrNotFound, pkgerrors.Cause(err))
 	})
 }
 
@@ -2132,64 +2222,61 @@ func TestUpdateXattrWithDeleteBodyAndIsDelete(t *testing.T) {
 func TestUserXattrGetWithXattr(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
 
-	bucketGoCB, ok := bucket.Bucket.(*CouchbaseBucketGoCB)
-	if !ok {
-		t.Skip("Can't cast to bucket")
-	}
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-	docKey := t.Name()
+		userXattrStore, ok := AsUserXattrStore(bucket)
+		require.True(t, ok)
 
-	docVal := map[string]interface{}{"val": "docVal"}
-	syncXattrVal := map[string]interface{}{"val": "syncVal"}
-	userXattrVal := map[string]interface{}{"val": "userXattrVal"}
+		docKey := t.Name()
 
-	err := bucketGoCB.Set(docKey, 0, docVal)
-	assert.NoError(t, err)
+		docVal := map[string]interface{}{"val": "docVal"}
+		syncXattrVal := map[string]interface{}{"val": "syncVal"}
+		userXattrVal := map[string]interface{}{"val": "userXattrVal"}
 
-	_, err = WriteXattr(bucketGoCB, docKey, "_sync", syncXattrVal)
-	assert.NoError(t, err)
+		err := bucket.Set(docKey, 0, docVal)
+		assert.NoError(t, err)
 
-	_, err = WriteXattr(bucketGoCB, docKey, "test", userXattrVal)
-	assert.NoError(t, err)
+		_, err = userXattrStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
+		assert.NoError(t, err)
 
-	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
-	_, err = bucket.GetWithXattr(docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
-	assert.NoError(t, err)
-	assert.Equal(t, docVal, docValRet)
-	assert.Equal(t, syncXattrVal, syncXattrValRet)
-	assert.Equal(t, userXattrVal, userXattrValRet)
+		_, err = userXattrStore.WriteUserXattr(docKey, "test", userXattrVal)
+		assert.NoError(t, err)
+
+		var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
+		_, err = bucket.GetWithXattr(docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
+		assert.NoError(t, err)
+		assert.Equal(t, docVal, docValRet)
+		assert.Equal(t, syncXattrVal, syncXattrValRet)
+		assert.Equal(t, userXattrVal, userXattrValRet)
+	})
 }
 
 func TestUserXattrGetWithXattrNil(t *testing.T) {
 	SkipXattrTestsIfNotEnabled(t)
 	defer SetUpTestLogging(LevelDebug, KeyCRUD)()
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
 
-	bucketGoCB, ok := bucket.Bucket.(*CouchbaseBucketGoCB)
-	if !ok {
-		t.Skip("Can't cast to bucket")
-	}
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
-	docKey := t.Name()
+		docKey := t.Name()
 
-	docVal := map[string]interface{}{"val": "docVal"}
-	syncXattrVal := map[string]interface{}{"val": "syncVal"}
+		docVal := map[string]interface{}{"val": "docVal"}
+		syncXattrVal := map[string]interface{}{"val": "syncVal"}
 
-	err := bucketGoCB.Set(docKey, 0, docVal)
-	assert.NoError(t, err)
+		err := bucket.Set(docKey, 0, docVal)
+		assert.NoError(t, err)
 
-	_, err = WriteXattr(bucketGoCB, docKey, "_sync", syncXattrVal)
-	assert.NoError(t, err)
+		userXattrStore, ok := AsUserXattrStore(bucket)
+		require.True(t, ok)
+		_, err = userXattrStore.WriteUserXattr(docKey, "_sync", syncXattrVal)
+		assert.NoError(t, err)
 
-	var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
-	_, err = bucket.GetWithXattr(docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
-	assert.NoError(t, err)
-	assert.Equal(t, docVal, docValRet)
-	assert.Equal(t, syncXattrVal, syncXattrValRet)
+		var docValRet, syncXattrValRet, userXattrValRet map[string]interface{}
+		_, err = bucket.GetWithXattr(docKey, SyncXattrName, "test", &docValRet, &syncXattrValRet, &userXattrValRet)
+		assert.NoError(t, err)
+		assert.Equal(t, docVal, docValRet)
+		assert.Equal(t, syncXattrVal, syncXattrValRet)
+	})
 }
 
 func TestInsertTombstoneWithXattr(t *testing.T) {

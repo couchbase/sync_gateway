@@ -113,7 +113,7 @@ func (c *Collection) Close() {
 }
 
 func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
-	return false
+	return true
 }
 
 // KV store
@@ -242,7 +242,7 @@ func (c *Collection) Delete(k string) error {
 
 func (c *Collection) Remove(k string, cas uint64) (casOut uint64, err error) {
 	result, errRemove := c.Collection.Remove(k, &gocb.RemoveOptions{Cas: gocb.Cas(cas)})
-	if errRemove != nil && result != nil {
+	if errRemove == nil && result != nil {
 		casOut = uint64(result.Cas())
 	}
 	return casOut, errRemove
@@ -358,10 +358,6 @@ func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.M
 }
 func (c *Collection) Dump() {
 	return
-}
-
-func (b *Collection) SubdocInsert(docID string, fieldPath string, cas uint64, value interface{}) error {
-	return errors.New("SubdocInsert not implemented")
 }
 
 // CouchbaseStore

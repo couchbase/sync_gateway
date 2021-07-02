@@ -31,6 +31,12 @@ type SubdocXattrStore interface {
 	isRecoverableWriteError(err error) bool
 }
 
+// Utilities for creating/deleting user xattr.  For test use
+type UserXattrStore interface {
+	WriteUserXattr(docKey string, xattrKey string, xattrVal interface{}) (uint64, error)
+	DeleteUserXattr(docKey string, xattrKey string) (uint64, error)
+}
+
 // KvXattrStore is used for xattr_common functions that perform subdoc and standard kv operations
 type KvXattrStore interface {
 	sgbucket.KVStore
@@ -349,6 +355,28 @@ func AsSubdocXattrStore(bucket Bucket) (SubdocXattrStore, bool) {
 	}
 
 	return AsSubdocXattrStore(underlyingBucket)
+}
+
+func AsUserXattrStore(bucket Bucket) (UserXattrStore, bool) {
+
+	var underlyingBucket Bucket
+	switch typedBucket := bucket.(type) {
+	case *CouchbaseBucketGoCB:
+		return typedBucket, true
+	case *Collection:
+		return typedBucket, true
+	case *LoggingBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *LeakyBucket:
+		underlyingBucket = typedBucket.GetUnderlyingBucket()
+	case *TestBucket:
+		underlyingBucket = typedBucket.Bucket
+	default:
+		// bail out for unrecognised/unsupported buckets
+		return nil, false
+	}
+
+	return AsUserXattrStore(underlyingBucket)
 }
 
 func xattrCasPath(xattrKey string) string {

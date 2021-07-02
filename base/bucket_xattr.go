@@ -126,7 +126,7 @@ func (bucket *CouchbaseBucketGoCB) SubdocGetBodyAndXattr(k string, xattrKey stri
 			xattrContentErr := res.Content(xattrKey, xv)
 			cas = uint64(res.Cas())
 			if xattrContentErr != nil {
-				// No doc, no xattr means the doc isn't found
+				// No doc, no xattr can be treated as NotFound from Sync Gateway's perspective, even if it is a server tombstone
 				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 				return false, ErrNotFound, cas
 			}
@@ -356,4 +356,22 @@ func (bucket *CouchbaseBucketGoCB) SubdocUpdateXattr(k string, xattrKey string, 
 
 func (bucket *CouchbaseBucketGoCB) GetSpec() BucketSpec {
 	return bucket.Spec
+}
+
+func (bucket *CouchbaseBucketGoCB) WriteUserXattr(docKey string, xattrKey string, xattrVal interface{}) (uint64, error) {
+	docFrag, err := bucket.Bucket.MutateIn(docKey, 0, 0).UpsertEx(xattrKey, xattrVal, gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).Execute()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(docFrag.Cas()), nil
+}
+
+func (bucket *CouchbaseBucketGoCB) DeleteUserXattr(docKey string, xattrKey string) (uint64, error) {
+	docFrag, err := bucket.Bucket.MutateIn(docKey, 0, 0).RemoveEx(xattrKey, gocb.SubdocFlagXattr).Execute()
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(docFrag.Cas()), nil
 }

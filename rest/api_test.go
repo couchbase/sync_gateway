@@ -5660,7 +5660,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 
 	// Add xattr to doc
-	_, err := base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	_, err := gocbBucket.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// Wait for doc to be imported
@@ -5680,7 +5680,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 	// Update xattr again but same value and ensure it isn't imported again (crc32 hash should match)
-	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	_, err = gocbBucket.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {
@@ -5789,7 +5789,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 
 	// Write user xattr
-	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	_, err = gocbBucket.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// GET to trigger import
@@ -5813,7 +5813,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 	// Write same xattr value
-	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	_, err = gocbBucket.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// Perform GET and ensure import isn't triggered as crc32 hash is the same
@@ -5887,7 +5887,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().SyncFunctionCount.Value())
 
 	// Write user xattr
-	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	_, err = gocbBucket.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// Trigger import
@@ -5983,7 +5983,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			assertStatus(t, resp, http.StatusCreated)
 
 			// Add xattr
-			_, err := base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+			_, err := gocbBucket.WriteUserXattr(docKey, xattrKey, channelName)
 			assert.NoError(t, err)
 
 			// Trigger import
@@ -6001,7 +6001,7 @@ func TestRemovingUserXattr(t *testing.T) {
 			assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
 
 			// Delete user xattr
-			_, err = base.DeleteXattr(gocbBucket, docKey, xattrKey)
+			_, err = gocbBucket.DeleteUserXattr(docKey, xattrKey)
 			assert.NoError(t, err)
 
 			// Trigger import
@@ -6076,7 +6076,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 	assert.Equal(t, syncData.CurrentRev, docRev.RevID)
 
 	// Write xattr to trigger import of user xattr
-	_, err = base.WriteXattr(gocbBucket, docKey, xattrKey, channelName)
+	_, err = gocbBucket.WriteUserXattr(docKey, xattrKey, channelName)
 	assert.NoError(t, err)
 
 	// Wait for import
