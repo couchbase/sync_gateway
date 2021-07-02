@@ -10,9 +10,7 @@ package base
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"net/url"
 	"strconv"
 	"strings"
@@ -111,6 +109,7 @@ type BucketSpec struct {
 	Auth                          AuthHandler
 	CouchbaseDriver               CouchbaseDriver
 	Certpath, Keypath, CACertPath string         // X.509 auth parameters
+	CACertUnsetTlsSkipVerify      bool           // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
 	KvTLSPort                     int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
 	MaxNumRetries                 int            // max number of retries before giving up
 	InitialRetrySleepTimeMS       int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
@@ -205,7 +204,7 @@ func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 }
 
 func (b BucketSpec) TLSConfig() *tls.Config {
-	tlsConfig, err := TLSConfigForX509(b.Certpath, b.Keypath, b.CACertPath)
+	tlsConfig, err := TLSConfigForX509(b.CACertUnsetTlsSkipVerify, b.CACertPath, b.Certpath, b.Keypath)
 	if err != nil {
 		Errorf("Error creating tlsConfig for DCP processing: %v", err)
 		return nil
@@ -213,36 +212,22 @@ func (b BucketSpec) TLSConfig() *tls.Config {
 	return tlsConfig
 }
 
-// Returns a TLSConfig based on the specified certificate paths.  If none are provided, returns tlsConfig with
-// InsecureSkipVerify:true.
-func TLSConfigForX509(certpath, keypath, cacertpath string) (*tls.Config, error) {
-
-	tlsConfig := &tls.Config{}
-	if cacertpath != "" {
-		cacertpaths := []string{cacertpath}
-		rootCerts := x509.NewCertPool()
-		for _, path := range cacertpaths {
-			cacert, err := ioutil.ReadFile(path)
-			if err != nil {
-				return nil, err
-			}
-			ok := rootCerts.AppendCertsFromPEM(cacert)
-			if !ok {
-				return nil, fmt.Errorf("can't append certs from PEM")
-			}
-		}
-		tlsConfig.RootCAs = rootCerts
-	} else {
-		// A root CA cert is required in order to secure TLS communication from a client that doesn't maintain it's own store
-		// of trusted CA certs (i.e. any SDK-based client).  If a root CA cert isn't provided, set InsecureSkipVerify=true to
-		// accept any cert provided by the server. This follows the pattern being used by the SDK for TLS connections:
-		// https://github.com/couchbase/gocbcore/blob/7b68c492c29f3f952a00a4ba97dac14cc4b2b57e/agent.go#L236
-		tlsConfig.InsecureSkipVerify = true
+// TLSConfigForX509 returns a TLSConfig based on the specified certificate paths.  If none are provided then the system
+// root pool is used (except on Windows which will error), unless CACertUnsetTlsSkipVerify is true which will return
+// tlsConfig with InsecureSkipVerify: true.
+func TLSConfigForX509(caCertUnsetTlsSkipVerify bool, caCertPath, certPath, keyPath string) (tlsConfig *tls.Config, err error) {
+	certPool, err := getRootCAs(caCertUnsetTlsSkipVerify, caCertPath)
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig = &tls.Config{
+		RootCAs:            certPool,
+		InsecureSkipVerify: caCertUnsetTlsSkipVerify,
 	}
 
 	// If client cert and key are provided, add to config as x509 key pair
-	if certpath != "" && keypath != "" {
-		cert, err := tls.LoadX509KeyPair(certpath, keypath)
+	if certPath != "" && keyPath != "" {
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 		if err != nil {
 			return nil, err
 		}

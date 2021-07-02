@@ -179,6 +179,7 @@ type UnsupportedOptions struct {
 	OidcTlsSkipVerify         bool                    `json:"oidc_tls_skip_verify"`                  // Config option to enable self-signed certs for OIDC testing.
 	SgrTlsSkipVerify          bool                    `json:"sgr_tls_skip_verify"`                   // Config option to enable self-signed certs for SG-Replicate testing.
 	RemoteConfigTlsSkipVerify bool                    `json:"remote_config_tls_skip_verify"`         // Config option to enable self signed certificates for external JavaScript load.
+	CACertUnsetTlsSkipVerify  bool                    `json:"ca_cert_unset_tls_skip_verify"`         // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
 }
 
 type WarningThresholds struct {

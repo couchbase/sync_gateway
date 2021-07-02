@@ -112,8 +112,8 @@ func GoCBCoreAuthConfig(username, password, certPath, keyPath string) (a gocbcor
 	}, nil
 }
 
-func GoCBCoreTLSRootCAProvider(caCertPath string) (func() *x509.CertPool, error) {
-	rootCAs, err := getRootCAs(caCertPath)
+func GoCBCoreTLSRootCAProvider(CACertUnsetTlsSkipVerify bool, caCertPath string) (func() *x509.CertPool, error) {
+	rootCAs, err := getRootCAs(CACertUnsetTlsSkipVerify, caCertPath)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,11 @@ func GoCBCoreTLSRootCAProvider(caCertPath string) (func() *x509.CertPool, error)
 	}, nil
 }
 
-func getRootCAs(caCertPath string) (*x509.CertPool, error) {
+func getRootCAs(CACertUnsetTlsSkipVerify bool, caCertPath string) (*x509.CertPool, error) {
+	if CACertUnsetTlsSkipVerify {
+		return nil, nil
+	}
+
 	if caCertPath != "" {
 		rootCAs := x509.NewCertPool()
 
@@ -134,14 +138,12 @@ func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 
 		ok := rootCAs.AppendCertsFromPEM(caCert)
 		if !ok {
-			return nil, errors.New("Invalid CA cert")
+			return nil, errors.New("invalid CA cert")
 		}
 
 		return rootCAs, nil
 	}
 
-	// We're purposefully ignoring the error here Due to the fact that the main error case is that this call is not
-	// supported in Windows.
-	rootCAs, _ := x509.SystemCertPool()
-	return rootCAs, nil
+	rootCAs, err := x509.SystemCertPool()
+	return rootCAs, err
 }

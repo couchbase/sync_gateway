@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -420,13 +421,32 @@ func TestTLSConfig(t *testing.T) {
 	require.Len(t, conf.Certificates, 1)
 	assert.False(t, conf.InsecureSkipVerify)
 
-	// Check TLSConfig with no CA certificate; InsecureSkipVerify should be true
-	spec = BucketSpec{Certpath: clientCertPath, Keypath: clientKeyPath}
+	// Check TLSConfig with no CA certificate, and CACertUnsetTlsSkipVerify true; InsecureSkipVerify should be true
+	spec = BucketSpec{CACertUnsetTlsSkipVerify: true, Certpath: clientCertPath, Keypath: clientKeyPath}
 	conf = spec.TLSConfig()
 	assert.NotEmpty(t, conf)
 	assert.True(t, conf.InsecureSkipVerify)
 	require.Len(t, conf.Certificates, 1)
 	assert.Nil(t, conf.RootCAs)
+
+	// Check TLSConfig with no certificates provided, and CACertUnsetTlsSkipVerify true. InsecureSkipVerify should be true and fields should be nil
+	spec = BucketSpec{CACertUnsetTlsSkipVerify: true}
+	conf = spec.TLSConfig()
+	assert.NotEmpty(t, conf)
+	assert.True(t, conf.InsecureSkipVerify)
+	assert.Nil(t, conf.RootCAs)
+	assert.Nil(t, conf.Certificates)
+
+	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should log error on Windows
+	spec = BucketSpec{}
+	conf = spec.TLSConfig()
+	if runtime.GOOS != "windows" {
+		assert.NotEmpty(t, conf)
+		assert.False(t, conf.InsecureSkipVerify)
+		assert.NotNil(t, conf.RootCAs)
+	} else {
+		assert.Empty(t, conf)
+	}
 
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path
 	// instead of root CA certificate. It should throw "can't append certs from PEM" error.

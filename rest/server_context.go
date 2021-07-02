@@ -1030,13 +1030,13 @@ func (sc *ServerContext) updateCalculatedStats() {
 
 }
 
-func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, timeout time.Duration) (*gocbcore.Agent, error) {
+func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, CACertUnsetTlsSkipVerify bool, timeout time.Duration) (*gocbcore.Agent, error) {
 	authenticator, err := base.GoCBCoreAuthConfig(clusterUser, clusterPass, certPath, keyPath)
 	if err != nil {
 		return nil, err
 	}
 
-	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(caCertPath)
+	tlsRootCAProvider, err := base.GoCBCoreTLSRootCAProvider(CACertUnsetTlsSkipVerify, caCertPath)
 	if err != nil {
 		return nil, err
 	}
@@ -1079,10 +1079,10 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	return agent, nil
 }
 
-func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
+func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient(CACertUnsetTlsSkipVerify bool) ([]string, *http.Client, error) {
 	agent, err := initClusterAgent(
 		sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
-		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath,
+		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, CACertUnsetTlsSkipVerify,
 		sc.config.API.ServerReadTimeout.Value())
 	if err != nil {
 		return nil, nil, err

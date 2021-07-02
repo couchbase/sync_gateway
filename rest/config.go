@@ -70,7 +70,8 @@ type BucketConfig struct {
 	KvTLSPort      int     `json:"kv_tls_port,omitempty"` // Memcached TLS port, if not default (11207)
 }
 
-func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
+func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
+	bc := &dc.BucketConfig
 
 	server := ""
 	bucketName := ""
@@ -88,13 +89,14 @@ func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
 	}
 
 	return base.BucketSpec{
-		Server:     server,
-		BucketName: bucketName,
-		Keypath:    bc.KeyPath,
-		Certpath:   bc.CertPath,
-		CACertPath: bc.CACertPath,
-		KvTLSPort:  tlsPort,
-		Auth:       bc,
+		Server:                   server,
+		BucketName:               bucketName,
+		Keypath:                  bc.KeyPath,
+		Certpath:                 bc.CertPath,
+		CACertPath:               bc.CACertPath,
+		CACertUnsetTlsSkipVerify: dc.Unsupported.CACertUnsetTlsSkipVerify,
+		KvTLSPort:                tlsPort,
+		Auth:                     bc,
 	}
 }
 
