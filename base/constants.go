@@ -194,7 +194,11 @@ func UnitTestUrlIsWalrus() bool {
 	return ServerIsWalrus(UnitTestUrl())
 }
 
-// ServerIsWalrus returns true if the given server is a Walrus URL.
+// ServerIsWalrus returns true when the given server looks like a Walrus URI
+// Equivalent to the old regexp: `^(walrus:|file:|/|\.)`
 func ServerIsWalrus(server string) bool {
-	return strings.HasPrefix(server, kTestWalrusURL)
+	return strings.HasPrefix(server, "walrus:") ||
+		strings.HasPrefix(server, "file:") ||
+		strings.HasPrefix(server, "/") ||
+		strings.HasPrefix(server, ".")
 }

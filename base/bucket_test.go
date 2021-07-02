@@ -477,3 +477,46 @@ func TestBaseBucket(t *testing.T) {
 		})
 	}
 }
+
+func TestBucketSpecIsWalrusBucket(t *testing.T) {
+	tests := []struct {
+		spec     BucketSpec
+		expected bool
+	}{
+		{
+			spec:     BucketSpec{Server: ""},
+			expected: false,
+		},
+		{
+			spec:     BucketSpec{Server: "walrus:"},
+			expected: true,
+		},
+		{
+			spec:     BucketSpec{Server: "file:"},
+			expected: true,
+		},
+		{
+			spec:     BucketSpec{Server: "/foo"},
+			expected: true,
+		},
+		{
+			spec:     BucketSpec{Server: "./foo"},
+			expected: true,
+		},
+		{
+			spec:     BucketSpec{Server: "couchbase://walrus"},
+			expected: false,
+		},
+		{
+			spec:     BucketSpec{Server: "http://walrus:8091"},
+			expected: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.spec.Server, func(t *testing.T) {
+			assert.Equal(t, test.expected, test.spec.IsWalrusBucket())
+		})
+	}
+
+}

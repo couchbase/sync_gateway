@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/url"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -131,7 +130,7 @@ func (spec BucketSpec) MaxRetrySleeper(maxSleepMs int) RetrySleeper {
 }
 
 func (spec BucketSpec) IsWalrusBucket() bool {
-	return strings.Contains(spec.Server, "walrus:")
+	return ServerIsWalrus(spec.Server)
 }
 
 func (spec BucketSpec) IsTLS() bool {
@@ -311,12 +310,12 @@ func GetStatsVbSeqno(stats map[string]map[string]string, maxVbno uint16, useAbsH
 }
 
 func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
-	if isWalrus, _ := regexp.MatchString(`^(walrus:|file:|/|\.)`, spec.Server); isWalrus {
+	if spec.IsWalrusBucket() {
 		Infof(KeyAll, "Opening Walrus database %s on <%s>", MD(spec.BucketName), SD(spec.Server))
 		sgbucket.SetLogging(ConsoleLogKey().Enabled(KeyBucket))
 		bucket, err = walrus.GetBucket(spec.Server, DefaultPool, spec.BucketName)
 		// If feed type is not specified (defaults to DCP) or isn't TAP, wrap with pseudo-vbucket handling for walrus
-		if spec.FeedType == "" || spec.FeedType != TapFeedType {
+		if spec.FeedType != TapFeedType {
 			bucket = &LeakyBucket{bucket: bucket, config: LeakyBucketConfig{TapFeedVbuckets: true}}
 		}
 	} else {
