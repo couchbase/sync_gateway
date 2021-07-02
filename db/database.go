@@ -251,8 +251,7 @@ func ConnectToBucket(spec base.BucketSpec) (bucket base.Bucket, err error) {
 type DBOnlineCallback func(dbContext *DatabaseContext)
 
 // Creates a new DatabaseContext on a bucket. The bucket will be closed when this context closes.
-func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (*DatabaseContext, error) {
-	var returnedError error
+func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, options DatabaseContextOptions) (dbc *DatabaseContext, returnedError error) {
 	cleanupFunctions := make([]func(), 0)
 
 	defer func() {
@@ -300,15 +299,17 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	var err error
 	dbContext.sequences, err = newSequenceAllocator(bucket, dbContext.DbStats.Database())
 	if err != nil {
-		returnedError = err
-		return nil, returnedError
+		return nil, err
 	}
+
+	cleanupFunctions = append(cleanupFunctions, func() {
+		dbContext.sequences.Stop()
+	})
 
 	// Get current value of _sync:seq
 	initialSequence, seqErr := dbContext.sequences.lastSequence()
 	if seqErr != nil {
-		returnedError = seqErr
-		return nil, returnedError
+		return nil, seqErr
 	}
 	initialSequenceTime := time.Now()
 
@@ -344,8 +345,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if base.IsEnterpriseEdition() {
 		sgCfg, err := base.NewCfgSG(dbContext.Bucket)
 		if err != nil {
-			returnedError = err
-			return nil, returnedError
+			return nil, err
 		}
 		dbContext.changeCache.cfgEventCallback = sgCfg.FireEvent
 		dbContext.CfgSG = sgCfg
@@ -356,8 +356,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Initialize sg-replicate manager
 	dbContext.SGReplicateMgr, err = NewSGReplicateManager(dbContext, dbContext.CfgSG)
 	if err != nil {
-		returnedError = err
-		return nil, returnedError
+		return nil, err
 	}
 
 	importEnabled := dbContext.UseXattrs() && dbContext.autoImport
@@ -369,24 +368,29 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		// Create heartbeater
 		heartbeater, err := base.NewCouchbaseHeartbeater(bucket, base.SyncPrefix, dbContext.UUID)
 		if err != nil {
-			returnedError = pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
-			return nil, returnedError
+			return nil, pkgerrors.Wrapf(err, "Error starting heartbeater for bucket %s", base.MD(bucket.GetName()).Redact())
 		}
 		err = heartbeater.StartSendingHeartbeats()
 		if err != nil {
-			returnedError = err
-			return nil, returnedError
+			return nil, err
 		}
 		dbContext.Heartbeater = heartbeater
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			dbContext.Heartbeater.Stop()
+		})
 	}
 
 	// If sgreplicate is enabled on this node, register this node to accept notifications
 	if sgReplicateEnabled {
 		registerNodeErr := dbContext.SGReplicateMgr.StartLocalNode(dbContext.UUID, dbContext.Heartbeater)
 		if registerNodeErr != nil {
-			returnedError = registerNodeErr
-			return nil, returnedError
+			return nil, registerNodeErr
 		}
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			dbContext.SGReplicateMgr.Stop()
+		})
 	}
 
 	// Start DCP feed
@@ -397,9 +401,12 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	// Check if there is an error starting the DCP feed
 	if err != nil {
 		dbContext.changeCache = nil
-		returnedError = err
-		return nil, returnedError
+		return nil, err
 	}
+
+	cleanupFunctions = append(cleanupFunctions, func() {
+		dbContext.mutationListener.Stop()
+	})
 
 	// Unlock change cache.  Validate that any allocated sequences on other nodes have either been assigned or released
 	// before starting
@@ -409,18 +416,24 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 
 	err = dbContext.changeCache.Start(initialSequence)
 	if err != nil {
-		returnedError = err
-		return nil, returnedError
+		return nil, err
 	}
+
+	cleanupFunctions = append(cleanupFunctions, func() {
+		dbContext.changeCache.Stop()
+	})
 
 	// If this is an xattr import node, start import feed.  Must be started after the caching DCP feed, as import cfg
 	// subscription relies on the caching feed.
 	if importEnabled {
 		dbContext.ImportListener = NewImportListener()
 		if importFeedErr := dbContext.ImportListener.StartImportFeed(bucket, dbContext.DbStats, dbContext); importFeedErr != nil {
-			returnedError = importFeedErr
-			return nil, returnedError
+			return nil, importFeedErr
 		}
+
+		cleanupFunctions = append(cleanupFunctions, func() {
+			dbContext.ImportListener.Stop()
+		})
 	}
 
 	// Load providers into provider map.  Does basic validation on the provider definition, and identifies the default provider.
@@ -438,13 +451,11 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			}
 
 			if strings.Contains(name, "_") {
-				returnedError = base.RedactErrorf("OpenID Connect provider names cannot contain underscore:%s", base.UD(name))
-				return nil, returnedError
+				return nil, base.RedactErrorf("OpenID Connect provider names cannot contain underscore:%s", base.UD(name))
 			}
 			provider.Name = name
 			if _, ok := dbContext.OIDCProviders[provider.Issuer]; ok {
-				returnedError = base.RedactErrorf("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
-				return nil, returnedError
+				return nil, base.RedactErrorf("Multiple OIDC providers defined for issuer %v", base.UD(provider.Issuer))
 			}
 
 			// If this is the default provider, or there's only one provider defined, set IsDefault
@@ -458,8 +469,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			if !provider.IsDefault && provider.CallbackURL != nil {
 				updatedCallback, err := auth.SetURLQueryParam(*provider.CallbackURL, auth.OIDCAuthProvider, name)
 				if err != nil {
-					returnedError = base.RedactErrorf("Failed to add provider %q to OIDC callback URL: %v", base.UD(name), err)
-					return nil, returnedError
+					return nil, base.RedactErrorf("Failed to add provider %q to OIDC callback URL: %v", base.UD(name), err)
 				}
 				provider.CallbackURL = &updatedCallback
 			}
@@ -467,8 +477,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			dbContext.OIDCProviders[name] = provider
 		}
 		if len(dbContext.OIDCProviders) == 0 {
-			returnedError = errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified")
-			return nil, returnedError
+			return nil, errors.New("OpenID Connect defined in config, but no valid OpenID Connect providers specified")
 
 		}
 
@@ -499,8 +508,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 					return nil
 				}, time.Duration(dbContext.Options.CompactInterval)*time.Second, dbContext.terminator)
 				if err != nil {
-					returnedError = err
-					return nil, returnedError
+					return nil, err
 				}
 				db.backgroundTasks = append(db.backgroundTasks, bgt)
 			} else {
@@ -516,12 +524,10 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		maxTTL, err := gocbBucket.GetMaxTTL()
 
 		if err != nil {
-			returnedError = err
-			return nil, returnedError
+			return nil, err
 		}
 		if maxTTL != 0 {
-			returnedError = fmt.Errorf("Backing Couchbase Server bucket has a non-zero MaxTTL value: %d.  Please set MaxTTL to 0 in Couchbase Server Admin UI and try again.", maxTTL)
-			return nil, returnedError
+			return nil, fmt.Errorf("Backing Couchbase Server bucket has a non-zero MaxTTL value: %d.  Please set MaxTTL to 0 in Couchbase Server Admin UI and try again.", maxTTL)
 		}
 	}
 
@@ -534,6 +540,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 		if err != nil {
 			return nil, err
 		}
+		// No cleanup necessary, stop heartbeater above will take care of it
 	}
 
 	return dbContext, nil
