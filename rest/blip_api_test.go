@@ -3065,7 +3065,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 func TestRevocationMessage(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{
@@ -3179,7 +3179,7 @@ func TestRevocationMessage(t *testing.T) {
 func TestRevocationNoRev(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	btc, err := NewBlipTesterClientOptsWithRT(t, rt, &BlipTesterClientOpts{

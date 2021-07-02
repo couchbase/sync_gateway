@@ -796,9 +796,27 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 					revocationSinceSeq = options.Since.TriggeredBy - 1
 				}
 
-				channelsToRevoke := db.user.RevokedChannels(revocationSinceSeq)
+				channelsToRevoke := db.user.RevokedChannels(revocationSinceSeq, options.Since.TriggeredBy)
+
 				for channel, revokedSeq := range channelsToRevoke {
-					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, revokedSeq, revocationSinceSeq, to)
+					// Default to the actual internal sequence
+					magicSeq := options.Since.Seq
+
+					// If we have a triggeredBy sequence:
+					// If channel access was lost at the triggeredBy sequence then replication was interrupted so we
+					// need to step back.
+					// If channel access was after the triggeredBy then we can just use the triggeredBy.
+					if options.Since.TriggeredBy != 0 {
+						if revokedSeq == options.Since.TriggeredBy {
+							// Use current revocationSinceSeq
+							magicSeq = options.Since.TriggeredBy - 1
+						}
+						if revokedSeq > options.Since.TriggeredBy {
+							magicSeq = options.Since.TriggeredBy
+						}
+					}
+
+					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, revokedSeq, magicSeq, to)
 					feeds = append(feeds, feed)
 				}
 			}

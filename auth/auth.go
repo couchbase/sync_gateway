@@ -251,6 +251,7 @@ func (auth *Authenticator) calculateHistory(princName string, invalSeq uint64, i
 	for grantName, grantHistory := range currentHistory {
 		if len(grantHistory.Entries) > maxHistoryEntriesPerGrant {
 			grantHistory.Entries[1].StartSeq = grantHistory.Entries[0].StartSeq
+			grantHistory.Entries = grantHistory.Entries[1:]
 			currentHistory[grantName] = grantHistory
 		}
 	}

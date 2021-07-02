@@ -4922,7 +4922,7 @@ func TestReplicatorRevocations(t *testing.T) {
 	}
 
 	// Passive
-	revocationTester, rt2 := initScenario(t)
+	revocationTester, rt2 := initScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
@@ -4978,7 +4978,7 @@ func TestReplicatorRevocationsNoRev(t *testing.T) {
 	}
 
 	// Passive
-	revocationTester, rt2 := initScenario(t)
+	revocationTester, rt2 := initScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
@@ -5035,7 +5035,7 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	}
 
 	// Passive
-	revocationTester, rt2 := initScenario(t)
+	revocationTester, rt2 := initScenario(t, nil)
 	defer rt2.Close()
 
 	// Active
