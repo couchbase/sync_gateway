@@ -12,22 +12,11 @@ import (
 )
 
 // GoCBv2SecurityConfig returns a gocb.SecurityConfig to use when connecting given a CA Cert path.
-func GoCBv2SecurityConfig(caCertPath string) (sc gocb.SecurityConfig, err error) {
-	if caCertPath != "" {
-		roots := x509.NewCertPool()
-		cacert, err := ioutil.ReadFile(caCertPath)
-		if err != nil {
-			return sc, err
-		}
-		ok := roots.AppendCertsFromPEM(cacert)
-		if !ok {
-			return sc, errors.New("Invalid CA cert")
-		}
-		sc.TLSRootCAs = roots
-	} else {
-		sc.TLSSkipVerify = true
-	}
-	return sc, nil
+func GoCBv2SecurityConfig(caCertUnsetTlsSkipVerify bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
+	roots, err := getRootCAs(caCertUnsetTlsSkipVerify, caCertPath)
+	sc.TLSRootCAs = roots
+	sc.TLSSkipVerify = caCertUnsetTlsSkipVerify
+	return sc, err
 }
 
 // GoCBv2AuthenticatorConfig returns a gocb.Authenticator to use when connecting given a set of credentials.
