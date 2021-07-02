@@ -7301,3 +7301,59 @@ func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 	assert.Equal(t, "doc2", changes.Results[1].ID)
 	assert.True(t, changes.Results[1].Revoked)
 }
+
+func TestMetricsHandler(t *testing.T) {
+	base.SkipPrometheusStatsRegistration = false
+	defer func() {
+		base.SkipPrometheusStatsRegistration = true
+	}()
+
+	// Create and remove a database
+	// This ensures that creation and removal of a DB is possible without a re-registration issue ( the below rest tester will re-register "db")
+	context, err := db.NewDatabaseContext("db", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	require.NoError(t, err)
+	context.Close()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	rt.SendAdminRequest("PUT", "/db/doc", "{}")
+
+	srv := httptest.NewServer(rt.TestMetricsHandler())
+	defer srv.Close()
+
+	httpClient := http.DefaultClient
+
+	// Ensure metrics endpoint is accessible and that db database has entries
+	resp, err := httpClient.Get(srv.URL + "/_metrics")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	bodyString, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bodyString), `database="db"`)
+	err = resp.Body.Close()
+	assert.NoError(t, err)
+
+	// Initialize another database to ensure both are registered successfully
+	context, err = db.NewDatabaseContext("db2", base.GetTestBucket(t), false, db.DatabaseContextOptions{})
+	require.NoError(t, err)
+	defer context.Close()
+
+	// Validate that metrics still works with both db and db2 databases and that they have entries
+	resp, err = httpClient.Get(srv.URL + "/_metrics")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	bodyString, err = ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.Contains(t, string(bodyString), `database="db"`)
+	assert.Contains(t, string(bodyString), `database="db2"`)
+	err = resp.Body.Close()
+	assert.NoError(t, err)
+
+	// Ensure metrics endpoint is not serving any other routes
+	resp, err = httpClient.Get(srv.URL + "/db/")
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+	err = resp.Body.Close()
+	assert.NoError(t, err)
+}
