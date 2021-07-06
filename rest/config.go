@@ -224,11 +224,6 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 
 func (dbConfig *DbConfig) setup(name string) error {
 
-	// FIXME: Inherit from bootstrap config?
-	// if dbConfig.Server == nil {
-	// 	return base.HTTPErrorf(http.StatusBadRequest, "Empty 'server' property in dbConfig")
-	// }
-
 	dbConfig.Name = name
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name

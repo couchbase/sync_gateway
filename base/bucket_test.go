@@ -43,7 +43,7 @@ func TestBucketSpec(t *testing.T) {
 	assert.NoError(t, err, "Error creating connection string for bucket spec")
 	assert.Equal(t, "http://localhost:8091?cacertpath=.%2FmyCACertPath&certpath=%2FmyCertPath&http_idle_conn_timeout=90000&http_max_idle_conns=64000&http_max_idle_conns_per_host=256&keypath=%2Fmy%2Fkey%2Fpath&kv_pool_size="+DefaultGocbKvPoolSize+"&n1ql_timeout=30000&operation_tracing=false", connStr)
 
-	// X509CACertPath not required
+	// CACertPath not required
 	bucketSpec.CACertPath = ""
 	connStr, err = bucketSpec.GetGoCBConnString()
 	assert.NoError(t, err, "Error creating connection string for bucket spec")

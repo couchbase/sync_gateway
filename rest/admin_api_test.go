@@ -2372,9 +2372,6 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 }
 
 func TestHandleDBConfig(t *testing.T) {
-	// FIXME: Broken test with new config - tries connecting to localhost:8091 for new db?
-	t.Skip("FIXME BROKEN TEST")
-
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
@@ -2474,11 +2471,6 @@ func TestHandleGetConfig(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
 
 	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
-
-	// FIXME: No dbConfig here in 3.0
-	// databases := respBody["Databases"].(map[string]interface{})
-	// db := databases["db"].(map[string]interface{})
-	// assert.Equal(t, syncFunc, db["sync"].(string))
 }
 
 func TestHandleGetRevTree(t *testing.T) {
@@ -2724,23 +2716,20 @@ func TestConfigRedaction(t *testing.T) {
 	assert.Equal(t, "password", *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default server config redaction
-	var unmarshaledServerConfig LegacyServerConfig
+	var unmarshaledServerConfig StartupConfig
 	response = rt.SendAdminRequest("GET", "/_config", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	// FIXME: No dbconfig in response in 3.0
-	// assert.Equal(t, "xxxxx", unmarshaledServerConfig.Databases["db"].Password)
-	// assert.Equal(t, "xxxxx", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+	assert.Equal(t, "xxxxx", unmarshaledServerConfig.Bootstrap.Password)
 
 	// Test default server config redaction when redaction disabled
+	unmarshaledServerConfig = StartupConfig{}
 	response = rt.SendAdminRequest("GET", "/_config?redact=false", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	// FIXME: No dbconfig in response in 3.0
-	// assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Databases["db"].Password)
-	// assert.Equal(t, "password", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+	assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Bootstrap.Password)
 }
 
 // Reproduces panic seen in CBG-1053

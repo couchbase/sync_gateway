@@ -131,6 +131,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc := DefaultStartupConfig("")
 
 	sc.Bootstrap.Server = base.UnitTestUrl()
+	sc.Bootstrap.Username = base.TestClusterUsername()
+	sc.Bootstrap.Password = base.TestClusterPassword()
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
 	sc.API.HideProductVersion = rt.RestTesterConfig.hideProductInfo

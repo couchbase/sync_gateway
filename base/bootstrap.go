@@ -8,6 +8,7 @@ import (
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
 type BootstrapConnection interface {
+	// TODO: CBG-1457 - Method(s) to retrieve configs from server (consider Testing/Walrus implementation too)
 	Close() error
 }
 
@@ -18,6 +19,7 @@ type CouchbaseCluster struct {
 
 var _ BootstrapConnection = &CouchbaseCluster{}
 
+// NewCouchbaseCluster creates and opens a Couchbase Server cluster connection.
 func NewCouchbaseCluster(server, username, password,
 	x509CertPath, x509KeyPath,
 	caCertPath string) (*CouchbaseCluster, error) {
@@ -38,7 +40,7 @@ func NewCouchbaseCluster(server, username, password,
 	clusterOptions := gocb.ClusterOptions{
 		Authenticator:  authenticatorConfig,
 		SecurityConfig: securityConfig,
-		RetryStrategy:  &GoCBv2FailFastRetryStrategy{},
+		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
 	}
 
 	cluster, err := gocb.Connect(server, clusterOptions)
@@ -46,7 +48,7 @@ func NewCouchbaseCluster(server, username, password,
 		return nil, err
 	}
 
-	err = cluster.WaitUntilReady(time.Second, &gocb.WaitUntilReadyOptions{
+	err = cluster.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
 		DesiredState: gocb.ClusterStateOnline,
 		ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
 	})
