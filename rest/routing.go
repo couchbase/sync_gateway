@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/couchbaselabs/sync_gateway_admin_ui"
 	"github.com/gorilla/mux"
 )
 
@@ -76,11 +75,14 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 	// Session/login URLs are per-database (unlike in CouchDB)
 	// These have public privileges so that they can be called without being logged in already
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleSessionGET)).Methods("GET", "HEAD")
-	if sc.config.Facebook != nil {
-		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleFacebookPOST)).Methods("POST")
-	}
-	if sc.config.Google != nil {
-		dbr.Handle("/_google", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleGooglePOST)).Methods("POST")
+
+	if sc.config.DeprecatedConfig != nil {
+		if sc.config.DeprecatedConfig.Facebook != nil {
+			dbr.Handle("/_facebook", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleFacebookPOST)).Methods("POST")
+		}
+		if sc.config.DeprecatedConfig.Google != nil {
+			dbr.Handle("/_google", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleGooglePOST)).Methods("POST")
+		}
 	}
 
 	// OpenID Connect endpoints
@@ -132,14 +134,6 @@ func CreateAdminHandler(sc *ServerContext) http.Handler {
 // CreateAdminRouter Creates the HTTP handler for the PRIVATE admin API of a gateway server.
 func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r, dbr := createCommonRouter(sc, adminPrivs)
-
-	r.PathPrefix("/_admin/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if sc.config.AdminUI != nil {
-			http.ServeFile(w, r, *sc.config.AdminUI)
-		} else {
-			_, _ = w.Write(sync_gateway_admin_ui.MustAsset("assets/index.html"))
-		}
-	})
 
 	dbr.Handle("/_session",
 		makeHandler(sc, adminPrivs, nil, nil, (*handler).createUserSession)).Methods("POST")
@@ -328,11 +322,11 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 
 		// Inject CORS if enabled and requested and not admin port
 		originHeader := rq.Header["Origin"]
-		if privs != adminPrivs && sc.config.CORS != nil && len(originHeader) > 0 {
-			origin := matchedOrigin(sc.config.CORS.Origin, originHeader)
+		if privs != adminPrivs && sc.config.API.CORS != nil && len(originHeader) > 0 {
+			origin := matchedOrigin(sc.config.API.CORS.Origin, originHeader)
 			response.Header().Add("Access-Control-Allow-Origin", origin)
 			response.Header().Add("Access-Control-Allow-Credentials", "true")
-			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.config.CORS.Headers, ", "))
+			response.Header().Add("Access-Control-Allow-Headers", strings.Join(sc.config.API.CORS.Headers, ", "))
 		}
 
 		if router.Match(rq, &match) {
@@ -353,8 +347,8 @@ func wrapRouter(sc *ServerContext, privs handlerPrivs, router *mux.Router) http.
 				h.writeStatus(http.StatusNotFound, "unknown URL")
 			} else {
 				response.Header().Add("Allow", strings.Join(options, ", "))
-				if privs != adminPrivs && sc.config.CORS != nil && len(originHeader) > 0 {
-					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.config.CORS.MaxAge))
+				if privs != adminPrivs && sc.config.API.CORS != nil && len(originHeader) > 0 {
+					response.Header().Add("Access-Control-Max-Age", strconv.Itoa(sc.config.API.CORS.MaxAge))
 					response.Header().Add("Access-Control-Allow-Methods", strings.Join(options, ", "))
 				}
 				if rq.Method != "OPTIONS" {

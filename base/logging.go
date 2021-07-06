@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -395,6 +396,10 @@ func TracefCtx(ctx context.Context, logKey LogKey, format string, args ...interf
 
 // Panicf logs the given formatted string and args to the error log level and given log key and then panics.
 func Panicf(format string, args ...interface{}) {
+	// Fall back to stdlib's log.Panicf if SG loggers aren't set up.
+	if errorLogger == nil {
+		log.Panicf(format, args...)
+	}
 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	panic(fmt.Sprintf(format, args...))
@@ -402,6 +407,10 @@ func Panicf(format string, args ...interface{}) {
 
 // Fatalf logs the given formatted string and args to the error log level and given log key and then exits.
 func Fatalf(format string, args ...interface{}) {
+	// Fall back to stdlib's log.Fatalf if SG loggers aren't set up.
+	if errorLogger == nil {
+		log.Fatalf(format, args...)
+	}
 	logTo(context.TODO(), LevelError, KeyAll, format, args...)
 	FlushLogBuffers()
 	os.Exit(1)
@@ -511,7 +520,7 @@ func Consolef(logLevel LogLevel, logKey LogKey, format string, args ...interface
 	}
 }
 
-// LogSyncGatewayVersion will print the startup indicator and version number to ALL log outputs.
+// LogSyncGatewayVersion will print the '==== name/version ====' startup indicator to ALL log outputs.
 func LogSyncGatewayVersion() {
 	msg := fmt.Sprintf("==== %s ====", LongVersionString)
 

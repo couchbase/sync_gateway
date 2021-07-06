@@ -43,7 +43,7 @@ const (
 // ErrUnsetLogFilePath is returned when no log_file_path, or --defaultLogFilePath fallback can be used.
 var ErrUnsetLogFilePath = errors.New("No log_file_path property specified in config, and --defaultLogFilePath command line flag was not set. Log files required for product support are not being generated.")
 
-type LoggingConfig struct {
+type LegacyLoggingConfig struct {
 	LogFilePath          string              `json:"log_file_path,omitempty"`   // Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file.
 	RedactionLevel       RedactionLevel      `json:"redaction_level,omitempty"` // Redaction level to apply to log output.
 	Console              ConsoleLoggerConfig `json:"console,omitempty"`         // Console output
@@ -56,19 +56,17 @@ type LoggingConfig struct {
 	DeprecatedDefaultLog *LogAppenderConfig  `json:"default,omitempty"`         // Deprecated "default" logging option.
 }
 
-// Init will initialize logging, return any warnings that need to be logged at a later time.
-func (c *LoggingConfig) Init(defaultLogFilePath string) (err error) {
-	if c == nil {
-		return errors.New("nil LoggingConfig")
-	}
+func InitLogging(defaultLogFilePath, logFilePath string,
+	console *ConsoleLoggerConfig,
+	error, warn, info, debug, trace, stats *FileLoggerConfig) (err error) {
 
-	consoleLogger, err = NewConsoleLogger(true, &c.Console)
+	consoleLogger, err = NewConsoleLogger(true, console)
 	if err != nil {
 		return err
 	}
 
 	// If there's nowhere to specified put log files, we'll log an error, but continue anyway.
-	if !hasLogFilePath(&c.LogFilePath, defaultLogFilePath) {
+	if !hasLogFilePath(&logFilePath, defaultLogFilePath) {
 		Consolef(LevelInfo, KeyNone, "Logging: Files disabled")
 		// Explicitly log this error to console
 		Consolef(LevelError, KeyNone, ErrUnsetLogFilePath.Error())
@@ -84,40 +82,40 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (err error) {
 		return nil
 	}
 
-	err = validateLogFilePath(&c.LogFilePath, defaultLogFilePath)
+	err = validateLogFilePath(&logFilePath, defaultLogFilePath)
 	if err != nil {
 		return err
 	} else {
-		Consolef(LevelInfo, KeyNone, "Logging: Files to %v", c.LogFilePath)
+		Consolef(LevelInfo, KeyNone, "Logging: Files to %v", logFilePath)
 	}
 
-	errorLogger, err = NewFileLogger(c.Error, LevelError, LevelError.String(), c.LogFilePath, errorMinAge, &errorLogger.buffer)
+	errorLogger, err = NewFileLogger(error, LevelError, LevelError.String(), logFilePath, errorMinAge, &errorLogger.buffer)
 	if err != nil {
 		return err
 	}
 
-	warnLogger, err = NewFileLogger(c.Warn, LevelWarn, LevelWarn.String(), c.LogFilePath, warnMinAge, &warnLogger.buffer)
+	warnLogger, err = NewFileLogger(warn, LevelWarn, LevelWarn.String(), logFilePath, warnMinAge, &warnLogger.buffer)
 	if err != nil {
 		return err
 	}
 
-	infoLogger, err = NewFileLogger(c.Info, LevelInfo, LevelInfo.String(), c.LogFilePath, infoMinAge, &infoLogger.buffer)
+	infoLogger, err = NewFileLogger(info, LevelInfo, LevelInfo.String(), logFilePath, infoMinAge, &infoLogger.buffer)
 	if err != nil {
 		return err
 	}
 
-	debugLogger, err = NewFileLogger(c.Debug, LevelDebug, LevelDebug.String(), c.LogFilePath, debugMinAge, &debugLogger.buffer)
+	debugLogger, err = NewFileLogger(debug, LevelDebug, LevelDebug.String(), logFilePath, debugMinAge, &debugLogger.buffer)
 	if err != nil {
 		return err
 	}
 
-	traceLogger, err = NewFileLogger(c.Trace, LevelTrace, LevelTrace.String(), c.LogFilePath, traceMinAge, &traceLogger.buffer)
+	traceLogger, err = NewFileLogger(trace, LevelTrace, LevelTrace.String(), logFilePath, traceMinAge, &traceLogger.buffer)
 	if err != nil {
 		return err
 	}
 
 	// Since there is no level checking in the stats logging, use LevelNone for the level.
-	statsLogger, err = NewFileLogger(c.Stats, LevelNone, "stats", c.LogFilePath, statsMinage, &statsLogger.buffer)
+	statsLogger, err = NewFileLogger(stats, LevelNone, "stats", logFilePath, statsMinage, &statsLogger.buffer)
 	if err != nil {
 		return err
 	}
@@ -128,6 +126,7 @@ func (c *LoggingConfig) Init(defaultLogFilePath string) (err error) {
 	return nil
 }
 
+// NewMemoryLogger will log to a buffer, which can then be flushed out elsewhere later.
 func NewMemoryLogger(level LogLevel) *FileLogger {
 	logger := &FileLogger{
 		Enabled: true,
@@ -139,7 +138,9 @@ func NewMemoryLogger(level LogLevel) *FileLogger {
 
 	return logger
 }
-func InitializeLoggers() {
+
+// InitializeMemoryLoggers will set the global loggers to a in-memory logging buffer, to be flushed to configured outputs at a later time.
+func InitializeMemoryLoggers() {
 	errorLogger = NewMemoryLogger(LevelError)
 	warnLogger = NewMemoryLogger(LevelWarn)
 	infoLogger = NewMemoryLogger(LevelInfo)

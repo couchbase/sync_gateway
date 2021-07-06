@@ -138,7 +138,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 func (h *handler) invoke(method handlerMethod, accessPermissions []string, responsePermissions []string) error {
 
 	var err error
-	if h.server.config.CompressResponses == nil || *h.server.config.CompressResponses {
+	if h.server.config.API.CompressResponses == nil || *h.server.config.API.CompressResponses {
 		if encoded := NewEncodedResponseWriter(h.response, h.rq); encoded != nil {
 			h.response = encoded
 			defer encoded.Close()
@@ -279,7 +279,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 // FIXME: Temporarily disable admin auth check (return false)
 func (h *handler) shouldCheckAdminAuth() bool {
 	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
-	return false && !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.MetricsInterfaceAuthentication))
+	return false && !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication))
 }
 
 func (h *handler) logRequestLine() {
@@ -774,7 +774,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
-	if PrettyPrint {
+	if h.server.config.API.Pretty {
 		var buffer bytes.Buffer
 		_ = json.Indent(&buffer, jsonOut, "", "  ")
 		jsonOut = append(buffer.Bytes(), '\n')
@@ -1027,5 +1027,5 @@ func (h *handler) formatSerialNumber() string {
 // shouldShowProductVersion returns whether the handler should show detailed product info (version).
 // Admin requests can always see this, regardless of the HideProductVersion setting.
 func (h *handler) shouldShowProductVersion() bool {
-	return h.privs == adminPrivs || !h.server.config.HideProductVersion
+	return h.privs == adminPrivs || !h.server.config.API.HideProductVersion
 }

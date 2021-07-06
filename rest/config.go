@@ -13,42 +13,33 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"syscall"
 
 	"github.com/hashicorp/go-multierror"
-	pkgerrors "github.com/pkg/errors"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-
-	// Register profiling handlers (see Go docs)
-	_ "net/http/pprof"
 )
 
 var (
-	DefaultInterface              = ":4984"
+	DefaultPublicInterface        = ":4984"
 	DefaultAdminInterface         = "127.0.0.1:4985" // Only accessible on localhost!
 	DefaultMetricsInterface       = "127.0.0.1:4986" // Only accessible on localhost!
-	DefaultServer                 = "walrus:"
 	DefaultMinimumTLSVersionConst = tls.VersionTLS12
 
-	// The value of defaultLogFilePath is populated by -defaultLogFilePath in ParseCommandLine()
+	// The value of defaultLogFilePath is populated by -defaultLogFilePath by command line flag from service scripts.
 	defaultLogFilePath string
-	// The value of disablePersistentConfig is populated by -disable_persistent_config in ParseCommandLine()
-	disablePersistentConfig bool
 )
 
 const (
@@ -56,56 +47,15 @@ const (
 	minValueErrorMsg   = "minimum value for %s is: %v"
 	rangeValueErrorMsg = "valid range for %s is: %s"
 
-	// Default value of ServerConfig.MaxIncomingConnections
+	// Default value of LegacyServerConfig.MaxIncomingConnections
 	DefaultMaxIncomingConnections = 0
 
-	// Default value of ServerConfig.MaxFileDescriptors
+	// Default value of LegacyServerConfig.MaxFileDescriptors
 	DefaultMaxFileDescriptors uint64 = 5000
 
 	// Default number of index replicas
 	DefaultNumIndexReplicas = uint(1)
 )
-
-// JSON object that defines the server configuration.
-type ServerConfig struct {
-	TLSMinVersion                  *string                  `json:"tls_minimum_version,omitempty"`              // Set TLS Version
-	Interface                      *string                  `json:",omitempty"`                                 // Interface to bind REST API to, default ":4984"
-	SSLCert                        *string                  `json:",omitempty"`                                 // Path to SSL cert file, or nil
-	SSLKey                         *string                  `json:",omitempty"`                                 // Path to SSL private key file, or nil
-	ServerReadTimeout              *int                     `json:",omitempty"`                                 // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout             *int                     `json:",omitempty"`                                 // maximum duration.Second before timing out write of the HTTP(S) response
-	ReadHeaderTimeout              *int                     `json:",omitempty"`                                 // The amount of time allowed to read request headers.
-	IdleTimeout                    *int                     `json:",omitempty"`                                 // The maximum amount of time to wait for the next request when keep-alives are enabled.
-	AdminInterface                 *string                  `json:",omitempty"`                                 // Interface to bind admin API to, default "localhost:4985"
-	AdminUI                        *string                  `json:",omitempty"`                                 // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface               *string                  `json:",omitempty"`                                 // Interface to bind Go profile API to (no default)
-	ConfigServer                   *string                  `json:",omitempty"`                                 // URL of config server (for dynamic db discovery)
-	Facebook                       *FacebookConfig          `json:",omitempty"`                                 // Configuration for Facebook validation
-	Google                         *GoogleConfig            `json:",omitempty"`                                 // Configuration for Google validation
-	CORS                           *CORSConfig              `json:",omitempty"`                                 // Configuration for allowing CORS
-	DeprecatedLog                  []string                 `json:"log,omitempty"`                              // Log keywords to enable
-	DeprecatedLogFilePath          *string                  `json:"logFilePath,omitempty"`                      // Path to log file, if missing write to stderr
-	Logging                        *base.LoggingConfig      `json:",omitempty"`                                 // Configuration for logging with optional log file rotation
-	Pretty                         bool                     `json:",omitempty"`                                 // Pretty-print JSON responses?
-	DeploymentID                   *string                  `json:",omitempty"`                                 // Optional customer/deployment ID for stats reporting
-	StatsReportInterval            *float64                 `json:",omitempty"`                                 // Optional stats report interval (0 to disable)
-	CouchbaseKeepaliveInterval     *int                     `json:",omitempty"`                                 // TCP keep-alive interval between SG and Couchbase server
-	SlowQueryWarningThreshold      *int                     `json:",omitempty"`                                 // Log warnings if N1QL queries take this many ms
-	MaxIncomingConnections         *int                     `json:",omitempty"`                                 // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors             *uint64                  `json:",omitempty"`                                 // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses              *bool                    `json:",omitempty"`                                 // If false, disables compression of HTTP responses
-	Databases                      DbConfigMap              `json:",omitempty"`                                 // Pre-configured databases, mapped by name
-	Replications                   []*ReplicateV1Config     `json:",omitempty"`                                 // sg-replicate replication definitions
-	MaxHeartbeat                   uint64                   `json:",omitempty"`                                 // Max heartbeat value for _changes request (seconds)
-	ClusterConfig                  *ClusterConfig           `json:"cluster_config,omitempty"`                   // Bucket and other config related to CBGT
-	Unsupported                    *UnsupportedServerConfig `json:"unsupported,omitempty"`                      // Config for unsupported features
-	ReplicatorCompression          *int                     `json:"replicator_compression,omitempty"`           // BLIP data compression level (0-9)
-	BcryptCost                     int                      `json:"bcrypt_cost,omitempty"`                      // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
-	MetricsInterface               *string                  `json:"metricsInterface,omitempty"`                 // Interface to bind metrics to. If not set then metrics isn't accessible
-	HideProductVersion             bool                     `json:"hide_product_version,omitempty"`             // Determines whether product versions removed from Server headers and REST API responses. This setting does not apply to the Admin REST API.
-	AdminInterfaceAuthentication   *bool                    `json:"admin_interface_authentication,omitempty"`   // Defines whether the Admin API will support authentication. Defaults to true.
-	MetricsInterfaceAuthentication *bool                    `json:"metrics_interface_authentication,omitempty"` // Defines whether the Metrics API will support authentication. Defaults to true.
-}
 
 // Bucket configuration elements - used by db, index
 type BucketConfig struct {
@@ -153,18 +103,7 @@ func (bucketConfig *BucketConfig) GetCredentials() (username string, password st
 	return base.TransformBucketCredentials(bucketConfig.Username, bucketConfig.Password, *bucketConfig.Bucket)
 }
 
-type ClusterConfig struct {
-	BucketConfig
-	DataDir                  string  `json:"data_dir,omitempty"`
-	HeartbeatIntervalSeconds *uint16 `json:"heartbeat_interval_seconds,omitempty"`
-}
-
-func (c ClusterConfig) CBGTEnabled() bool {
-	// if we have a non-empty server field, then assume CBGT is enabled.
-	return c.Server != nil && *c.Server != ""
-}
-
-// JSON object that defines a database configuration within the ServerConfig.
+// JSON object that defines a database configuration within the LegacyServerConfig.
 type DbConfig struct {
 	BucketConfig
 	Name                             string                           `json:"name,omitempty"`                                 // Database name in REST API (stored as key in JSON)
@@ -183,7 +122,6 @@ type DbConfig struct {
 	DeprecatedRevCacheSize           *uint32                          `json:"rev_cache_size,omitempty"`                       // Maximum number of revisions to store in the revision cache (deprecated, CBG-356)
 	StartOffline                     bool                             `json:"offline,omitempty"`                              // start the DB in the offline state, defaults to false
 	Unsupported                      db.UnsupportedOptions            `json:"unsupported,omitempty"`                          // Config for unsupported features
-	Deprecated                       DeprecatedOptions                `json:"deprecated,omitempty"`                           // Config for Deprecated features
 	OIDCConfig                       *auth.OIDCOptions                `json:"oidc,omitempty"`                                 // Config properties for OpenID Connect authentication
 	OldRevExpirySeconds              *uint32                          `json:"old_rev_expiry_seconds,omitempty"`               // The number of seconds before old revs are removed from CBS bucket
 	ViewQueryTimeoutSecs             *uint32                          `json:"view_query_timeout_secs,omitempty"`              // The view query timeout in seconds
@@ -213,28 +151,7 @@ type DeltaSyncConfig struct {
 	RevMaxAgeSeconds *uint32 `json:"rev_max_age_seconds,omitempty"` // The number of seconds deltas for old revs are available for
 }
 
-type DeprecatedOptions struct {
-}
-
 type DbConfigMap map[string]*DbConfig
-
-type ReplConfigMap map[string]*ReplicateV1Config
-
-type FacebookConfig struct {
-	Register bool // If true, server will register new user accounts
-}
-
-type GoogleConfig struct {
-	Register    bool     // If true, server will register new user accounts
-	AppClientID []string `json:"app_client_id"` // list of enabled client ids
-}
-
-type CORSConfig struct {
-	Origin      []string // List of allowed origins, use ["*"] to allow access from everywhere
-	LoginOrigin []string // List of allowed login origins
-	Headers     []string // List of allowed headers
-	MaxAge      int      // Maximum age of the CORS Options request
-}
 
 type EventHandlerConfig struct {
 	MaxEventProc    uint           `json:"max_processes,omitempty"`    // Max concurrent event handling goroutines
@@ -289,16 +206,6 @@ type ChannelCacheConfig struct {
 	DeprecatedQueryLimit *int    `json:"query_limit,omitempty"`                // Limit used for channel queries, if not specified by client DEPRECATED in favour of db.QueryPaginationLimit
 }
 
-type UnsupportedServerConfig struct {
-	Http2Config           *Http2Config `json:"http2,omitempty"`               // Config settings for HTTP2
-	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
-	UseStdlibJSON         *bool        `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
-}
-
-type Http2Config struct {
-	Enabled *bool `json:"enabled,omitempty"` // Whether HTTP2 support is enabled
-}
-
 func GetTLSVersionFromString(stringV *string) uint16 {
 	if stringV != nil {
 		switch *stringV {
@@ -321,27 +228,26 @@ func (dbConfig *DbConfig) setup(name string) error {
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
 	}
-	if dbConfig.Server == nil {
-		dbConfig.Server = &DefaultServer
-	}
 
-	url, err := url.Parse(*dbConfig.Server)
-	if err != nil {
-		return err
-	}
-	if url.User != nil {
-		// Remove credentials from URL and put them into the DbConfig.Username and .Password:
-		if dbConfig.Username == "" {
-			dbConfig.Username = url.User.Username()
+	if dbConfig.Server != nil {
+		url, err := url.Parse(*dbConfig.Server)
+		if err != nil {
+			return err
 		}
-		if dbConfig.Password == "" {
-			if password, exists := url.User.Password(); exists {
-				dbConfig.Password = password
+		if url.User != nil {
+			// Remove credentials from URL and put them into the DbConfig.Username and .Password:
+			if dbConfig.Username == "" {
+				dbConfig.Username = url.User.Username()
 			}
+			if dbConfig.Password == "" {
+				if password, exists := url.User.Password(); exists {
+					dbConfig.Password = password
+				}
+			}
+			url.User = nil
+			urlStr := url.String()
+			dbConfig.Server = &urlStr
 		}
-		url.User = nil
-		urlStr := url.String()
-		dbConfig.Server = &urlStr
 	}
 
 	// Load Sync Function.
@@ -760,29 +666,7 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 	return &config, nil
 }
 
-// Implementation of AuthHandler interface for ClusterConfig
-func (clusterConfig *ClusterConfig) GetCredentials() (string, string, string) {
-	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
-}
-
-// LoadServerConfig loads a ServerConfig from either a JSON file or from a URL
-func LoadServerConfig(path string) (config *ServerConfig, err error) {
-	rc, err := readFromPath(path, false)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() { _ = rc.Close() }()
-	return readServerConfig(rc)
-}
-
-// readServerConfig returns a validated ServerConfig from an io.Reader
-func readServerConfig(r io.Reader) (config *ServerConfig, err error) {
-	err = decodeAndSanitiseConfig(r, &config)
-	return config, err
-}
-
-// decodeAndSanitiseConfig will sanitise a ServerConfig or dbConfig from an io.Reader and unmarshal it into the given config parameter.
+// decodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
 func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -800,24 +684,6 @@ func decodeAndSanitiseConfig(r io.Reader, config interface{}) (err error) {
 	d.DisallowUnknownFields()
 	err = d.Decode(config)
 	return base.WrapJSONUnknownFieldErr(err)
-}
-
-func (config *ServerConfig) setupAndValidateDatabases() (errs error) {
-	if config == nil {
-		return nil
-	}
-
-	for name, dbConfig := range config.Databases {
-
-		if err := dbConfig.setup(name); err != nil {
-			return err
-		}
-
-		if errs = dbConfig.validateSgDbConfig(); errs != nil {
-			return errs
-		}
-	}
-	return nil
 }
 
 // expandEnv replaces $var or ${var} in config according to the values of the
@@ -867,329 +733,23 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 	return value, nil
 }
 
-// validate validates the given server config and returns all invalid options as a slice of errors
-func (config *ServerConfig) validate() (errorMessages error) {
-	if config.Unsupported != nil && config.Unsupported.StatsLogFrequencySecs != nil {
-		if *config.Unsupported.StatsLogFrequencySecs == 0 {
-			// explicitly disabled
-		} else if *config.Unsupported.StatsLogFrequencySecs < 10 {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf(minValueErrorMsg,
-				"unsupported.stats_log_freq_secs", 10))
-		}
-	}
-
-	return errorMessages
-}
-
 // setupAndValidateLogging sets up and validates logging,
 // and returns a slice of deferred logs to execute later.
-func (config *ServerConfig) SetupAndValidateLogging() (err error) {
+func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
 
-	if config.Logging == nil {
-		config.Logging = &base.LoggingConfig{}
-	}
+	base.SetRedaction(sc.Logging.RedactionLevel)
 
-	// populate values from deprecated logging config options if not set
-	config.deprecatedConfigLoggingFallback()
-
-	if config.Logging.RedactionLevel == base.RedactUnset {
-		config.Logging.RedactionLevel = base.RedactionLevelDefault
-	}
-
-	base.SetRedaction(config.Logging.RedactionLevel)
-
-	err = config.Logging.Init(defaultLogFilePath)
-	if err != nil {
-		return err
-	}
-
-	if config.Logging.DeprecatedDefaultLog == nil {
-		config.Logging.DeprecatedDefaultLog = &base.LogAppenderConfig{}
-	}
-
-	return nil
-}
-
-// deprecatedConfigLoggingFallback will parse the ServerConfig and try to
-// use older logging config options for backwards compatibility.
-// It will return a slice of deferred warnings to log at a later time.
-func (config *ServerConfig) deprecatedConfigLoggingFallback() {
-
-	warningMsgFmt := "Using deprecated config option: %q. Use %q instead."
-
-	if config.Logging.DeprecatedDefaultLog != nil {
-		// Fall back to the old logging.["default"].LogFilePath option
-		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
-
-			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
-			// SGCollect relies on this path to pick up the standard and rotated log files.
-			info, err := os.Stat(*config.Logging.DeprecatedDefaultLog.LogFilePath)
-			if err == nil && info.IsDir() {
-				config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
-			} else {
-				config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
-				base.Infof(base.KeyAll, "Using %v as log file path (parent directory of deprecated logging."+
-					"[\"default\"].LogFilePath)", config.Logging.LogFilePath)
-			}
-		}
-
-		// Fall back to the old logging.["default"].LogKeys option
-		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogKeys`, "logging.console.log_keys")
-			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
-		}
-
-		// Fall back to the old logging.["default"].LogLevel option
-		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogLevel`, "logging.console.log_level")
-			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
-		}
-	}
-
-	// Fall back to the old LogFilePath option
-	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
-		base.Warnf(warningMsgFmt, "logFilePath", "logging.log_file_path")
-		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
-	}
-
-	// Fall back to the old Log option
-	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
-		base.Warnf(warningMsgFmt, "log", "logging.console.log_keys")
-		config.Logging.Console.LogKeys = config.DeprecatedLog
-	}
-}
-
-func (self *ServerConfig) MergeWith(other *ServerConfig) error {
-	if self.Interface == nil {
-		self.Interface = other.Interface
-	}
-	if self.AdminInterface == nil {
-		self.AdminInterface = other.AdminInterface
-	}
-	if self.ProfileInterface == nil {
-		self.ProfileInterface = other.ProfileInterface
-	}
-	if self.ConfigServer == nil {
-		self.ConfigServer = other.ConfigServer
-	}
-	if self.DeploymentID == nil {
-		self.DeploymentID = other.DeploymentID
-	}
-	if self.Facebook == nil {
-		self.Facebook = other.Facebook
-	}
-	if self.CORS == nil {
-		self.CORS = other.CORS
-	}
-	for _, flag := range other.DeprecatedLog {
-		self.DeprecatedLog = append(self.DeprecatedLog, flag)
-	}
-	if self.Logging == nil {
-		self.Logging = other.Logging
-	}
-	if other.Pretty {
-		self.Pretty = true
-	}
-	for name, db := range other.Databases {
-		if self.Databases[name] != nil {
-			return base.RedactErrorf("Database %q already specified earlier", base.UD(name))
-		}
-		if self.Databases == nil {
-			self.Databases = make(DbConfigMap)
-		}
-		self.Databases[name] = db
-	}
-	return nil
-}
-
-func (sc *ServerConfig) Redacted() (*ServerConfig, error) {
-	var config ServerConfig
-
-	err := base.DeepCopyInefficient(&config, sc)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range config.Databases {
-		config.Databases[i], err = config.Databases[i].Redacted()
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return &config, nil
-}
-
-// Reads the command line flags and the optional config file.
-func ParseCommandLine(args []string, handling flag.ErrorHandling) (*ServerConfig, error) {
-	flagSet := flag.NewFlagSet(args[0], handling)
-
-	// TODO: Change default to false when we're ready to enable 3.0/bootstrap/persistent config by default (once QE's existing tests are ready to handle it)
-	// TODO: Move to scoped variable when we have 2 code paths from ServerMain for 3.0 and legacy handling.
-	disablePersistentConfigFlag := flagSet.Bool("disable_persistent_config", true, "If set, disables persistent config and reads all configuration from a legacy config file.")
-
-	addr := flagSet.String("interface", DefaultInterface, "Address to bind to")
-	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
-	profAddr := flagSet.String("profileInterface", "", "Address to bind profile interface to")
-	configServer := flagSet.String("configServer", "", "URL of server that can return database configs")
-	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	couchbaseURL := flagSet.String("url", DefaultServer, "Address of Couchbase server")
-	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
-	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
-	verbose := flagSet.Bool("verbose", false, "Log more info about requests")
-	logKeys := flagSet.String("log", "", "Log keys, comma separated")
-	logFilePath := flagSet.String("logFilePath", "", "Path to log files")
-	certpath := flagSet.String("certpath", "", "Client certificate path")
-	cacertpath := flagSet.String("cacertpath", "", "Root CA certificate path")
-	keypath := flagSet.String("keypath", "", "Client certificate key path")
-	// used by service scripts as a way to specify a per-distro defaultLogFilePath
-	defaultLogFilePathFlag := flagSet.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
-
-	_ = flagSet.Parse(args[1:])
-	var config *ServerConfig
-	var err error
-
-	if defaultLogFilePathFlag != nil {
-		defaultLogFilePath = *defaultLogFilePathFlag
-	}
-
-	if disablePersistentConfigFlag != nil {
-		disablePersistentConfig = *disablePersistentConfigFlag
-		if disablePersistentConfig {
-			base.Warnf("Running in legacy config mode (disable_persistent_config=true)")
-		} else {
-			base.Infof(base.KeyAll, "Running in persistent config mode")
-		}
-	}
-
-	if flagSet.NArg() > 0 {
-		// Read the configuration file(s), if any:
-		for _, filename := range flagSet.Args() {
-			newConfig, newConfigErr := LoadServerConfig(filename)
-
-			if pkgerrors.Cause(newConfigErr) == base.ErrUnknownField {
-				// Delay returning this error so we can continue with other setup
-				err = pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
-			} else if newConfigErr != nil {
-				return config, pkgerrors.WithMessage(newConfigErr, fmt.Sprintf("Error reading config file %s", filename))
-			}
-
-			if config == nil {
-				config = newConfig
-			} else {
-				if err := config.MergeWith(newConfig); err != nil {
-					return config, pkgerrors.WithMessage(err, fmt.Sprintf("Error reading config file %s", filename))
-				}
-			}
-		}
-
-		// Override the config file with global settings from command line flags:
-		if *addr != DefaultInterface {
-			config.Interface = addr
-		}
-		if *authAddr != DefaultAdminInterface {
-			config.AdminInterface = authAddr
-		}
-		if *profAddr != "" {
-			config.ProfileInterface = profAddr
-		}
-		if *configServer != "" {
-			config.ConfigServer = configServer
-		}
-		if *deploymentID != "" {
-			config.DeploymentID = deploymentID
-		}
-		if *pretty {
-			config.Pretty = *pretty
-		}
-
-		// If the interfaces were not specified in either the config file or
-		// on the command line, set them to the default values
-		if config.Interface == nil {
-			config.Interface = &DefaultInterface
-		}
-		if config.AdminInterface == nil {
-			config.AdminInterface = &DefaultAdminInterface
-		}
-
-		if *logFilePath != "" {
-			config.Logging.LogFilePath = *logFilePath
-		}
-
-		if *logKeys != "" {
-			config.Logging.Console.LogKeys = strings.Split(*logKeys, ",")
-		}
-
-		// Log HTTP Responses if verbose is enabled.
-		if verbose != nil && *verbose {
-			config.Logging.Console.LogKeys = append(config.Logging.Console.LogKeys, "HTTP+")
-		}
-
-	} else {
-		// If no config file is given, create a default config, filled in from command line flags:
-		var defaultBucketName = "sync_gateway"
-		if *dbName == "" {
-			*dbName = defaultBucketName
-		}
-
-		// At this point the addr is either:
-		//   - A value provided by the user, in which case we want to leave it as is
-		//   - The default value (":4984"), which is actually _not_ the default value we
-		//     want for this case, since we are enabling insecure mode.  We want "localhost:4984" instead.
-		// See #708 for more details
-		if *addr == DefaultInterface {
-			*addr = "localhost:4984"
-		}
-
-		config = &ServerConfig{
-			Interface:        addr,
-			AdminInterface:   authAddr,
-			ProfileInterface: profAddr,
-			Pretty:           *pretty,
-			ConfigServer:     configServer,
-			Logging: &base.LoggingConfig{
-				Console: base.ConsoleLoggerConfig{
-					// Enable the logger only when log keys have explicitly been set on the command line
-					FileLoggerConfig: base.FileLoggerConfig{Enabled: base.BoolPtr(*logKeys != "")},
-					LogKeys:          strings.Split(*logKeys, ","),
-				},
-				LogFilePath: *logFilePath,
-			},
-			Databases: map[string]*DbConfig{
-				*dbName: {
-					Name: *dbName,
-					BucketConfig: BucketConfig{
-						Server:     couchbaseURL,
-						Bucket:     &defaultBucketName,
-						CertPath:   *certpath,
-						CACertPath: *cacertpath,
-						KeyPath:    *keypath,
-					},
-					Users: map[string]*db.PrincipalConfig{
-						base.GuestUsername: {
-							Disabled:         false,
-							ExplicitChannels: base.SetFromArray([]string{"*"}),
-						},
-					},
-				},
-			},
-		}
-	}
-
-	if config.MetricsInterface == nil {
-		config.MetricsInterface = &DefaultMetricsInterface
-	}
-
-	if config.AdminInterfaceAuthentication == nil {
-		config.AdminInterfaceAuthentication = base.BoolPtr(true)
-	}
-
-	if config.MetricsInterfaceAuthentication == nil {
-		config.MetricsInterfaceAuthentication = base.BoolPtr(true)
-	}
-
-	return config, err
+	return base.InitLogging(
+		defaultLogFilePath,
+		sc.Logging.LogFilePath,
+		sc.Logging.Console,
+		sc.Logging.Error,
+		sc.Logging.Warn,
+		sc.Logging.Info,
+		sc.Logging.Debug,
+		sc.Logging.Trace,
+		sc.Logging.Stats,
+	)
 }
 
 func SetMaxFileDescriptors(maxP *uint64) error {
@@ -1205,101 +765,106 @@ func SetMaxFileDescriptors(maxP *uint64) error {
 	return nil
 }
 
-func (config *ServerConfig) Serve(addr string, handler http.Handler) {
-	maxConns := DefaultMaxIncomingConnections
-	if config.MaxIncomingConnections != nil {
-		maxConns = *config.MaxIncomingConnections
-	}
-
+func (config *StartupConfig) Serve(addr string, handler http.Handler) error {
 	http2Enabled := false
-	if config.Unsupported != nil && config.Unsupported.Http2Config != nil {
-		http2Enabled = *config.Unsupported.Http2Config.Enabled
+	if config.Unsupported.HTTP2 != nil {
+		http2Enabled = *config.Unsupported.HTTP2.Enabled
 	}
 
-	tlsMinVersion := GetTLSVersionFromString(config.TLSMinVersion)
+	tlsMinVersion := GetTLSVersionFromString(&config.API.HTTPS.TLSMinimumVersion)
 
-	err := base.ListenAndServeHTTP(
+	return base.ListenAndServeHTTP(
 		addr,
-		maxConns,
-		config.SSLCert,
-		config.SSLKey,
+		config.API.MaximumConnections,
+		config.API.HTTPS.TLSCertPath,
+		config.API.HTTPS.TLSKeyPath,
 		handler,
-		config.ServerReadTimeout,
-		config.ServerWriteTimeout,
-		config.ReadHeaderTimeout,
-		config.IdleTimeout,
+		config.API.ServerReadTimeout,
+		config.API.ServerWriteTimeout,
+		config.API.ReadHeaderTimeout,
+		config.API.IdleTimeout,
 		http2Enabled,
 		tlsMinVersion,
 	)
-	if err != nil {
-		base.Fatalf("Failed to start HTTP server on %s: %v", base.UD(addr), err)
-	}
 }
 
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
-func setupServerContext(config *ServerConfig) (*ServerContext, error) {
-	PrettyPrint = config.Pretty
+func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
+	// Logging config will now have been loaded from command line
+	// or from a sync_gateway config file so we can validate the
+	// configuration and setup logging now
+	if err := config.SetupAndValidateLogging(); err != nil {
+		// If we didn't set up logging correctly, we *probably* can't log via normal means...
+		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
+		log.Printf("[ERR] Error setting up logging: %v", err)
+		return nil, fmt.Errorf("error setting up logging: %v", err)
+	}
+
+	base.FlushLoggerBuffers()
 
 	base.Infof(base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
 	base.Infof(base.KeyAll, "Logging: Console keys: %v", base.ConsoleLogKey().EnabledLogKeys())
 	base.Infof(base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
-	if os.Getenv("GOMAXPROCS") == "" && runtime.GOMAXPROCS(0) == 1 {
-		cpus := runtime.NumCPU()
-		if cpus > 1 {
-			runtime.GOMAXPROCS(cpus)
-			base.Infof(base.KeyAll, "Configured Go to use all %d CPUs; setenv GOMAXPROCS to override this", cpus)
+	if err := setGlobalConfig(config); err != nil {
+		return nil, err
+	}
+
+	sc := NewServerContext(config, persistentConfig)
+
+	// Fetch database configs from bucket and start polling for new buckets and config updates.
+	if persistentConfig && !base.ServerIsWalrus(sc.config.Bootstrap.Server) {
+		// TODO: Retry loop in CBG-1458
+		cluster, err := base.NewCouchbaseCluster(sc.config.Bootstrap.Server,
+			sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
+			sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
+			sc.config.Bootstrap.CACertPath)
+		if err != nil {
+			base.Debugf(base.KeyAll, "Got error connecting to bootstrap cluster: %v", err)
+			return nil, err
 		}
+
+		base.Infof(base.KeyAll, "successfully connected to cluster")
+		sc.bootstrapConnection = cluster
+
+		// TODO: CBG-1457 Synchronously find configs in buckets
+		// sc.fetchConfigs()
 	}
 
-	_ = SetMaxFileDescriptors(config.MaxFileDescriptors)
-
-	// Use the stdlib JSON package, if configured to do so
-	if config.Unsupported != nil && config.Unsupported.UseStdlibJSON != nil && *config.Unsupported.UseStdlibJSON {
-		base.Infof(base.KeyAll, "Using the stdlib JSON package")
-		base.UseStdlibJSON = true
-	}
-
-	// Set global bcrypt cost if configured
-	if config.BcryptCost > 0 {
-		if err := auth.SetBcryptCost(config.BcryptCost); err != nil {
-			return nil, fmt.Errorf("configuration error: %v", err)
-		}
-	}
-
-	sc := NewServerContext(config)
-	for _, dbConfig := range config.Databases {
-		if _, err := sc.AddDatabaseFromConfig(dbConfig); err != nil {
-			return nil, fmt.Errorf("error opening database %s: %v", base.MD(dbConfig.Name), err)
-		}
-	}
-	_ = validateServerContext(sc)
 	return sc, nil
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)
-func startServer(config *ServerConfig, sc *ServerContext) {
-	if config.ProfileInterface != nil {
+func startServer(config *StartupConfig, sc *ServerContext) error {
+	if config.API.ProfileInterface != "" {
 		//runtime.MemProfileRate = 10 * 1024
-		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(*config.ProfileInterface))
+		base.Infof(base.KeyAll, "Starting profile server on %s", base.UD(config.API.ProfileInterface))
 		go func() {
-			_ = http.ListenAndServe(*config.ProfileInterface, nil)
+			_ = http.ListenAndServe(config.API.ProfileInterface, nil)
 		}()
 	}
 
 	go sc.PostStartup()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", *config.MetricsInterface)
-	go config.Serve(*config.MetricsInterface, CreateMetricHandler(sc))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
+	go func() {
+		if err := config.Serve(config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
+			base.Errorf("Error starting the Metrics API: %v", err)
+		}
+	}()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", *config.AdminInterface)
-	go config.Serve(*config.AdminInterface, CreateAdminHandler(sc))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
+	go func() {
+		if err := config.Serve(config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
+			base.Errorf("Error starting the Admin API: %v", err)
+		}
+	}()
 
-	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", *config.Interface)
-	config.Serve(*config.Interface, CreatePublicHandler(sc))
+	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
+	return config.Serve(config.API.PublicInterface, CreatePublicHandler(sc))
 }
 
-func validateServerContext(sc *ServerContext) (errors error) {
+func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {
 	bucketUUIDToDBContext := make(map[string][]*db.DatabaseContext, len(sc.databases_))
 	for _, dbContext := range sc.databases_ {
 		if uuid, err := dbContext.Bucket.UUID(); err == nil {
@@ -1379,73 +944,4 @@ func RegisterSignalHandler() {
 			}
 		}
 	}()
-}
-
-// setupServerConfig parses command-line flags, reads the optional configuration file,
-// performs the config validation and database setup.
-func setupServerConfig(args []string) (config *ServerConfig, err error) {
-	var unknownFieldsErr error
-
-	base.InitializeLoggers()
-
-	// We can log version here because for console we have initialized an early logger in init() and for file loggers we
-	// have the memory buffers.
-	base.LogSyncGatewayVersion()
-
-	config, err = ParseCommandLine(args, flag.ExitOnError)
-	if pkgerrors.Cause(err) == base.ErrUnknownField {
-		unknownFieldsErr = err
-	} else if err != nil {
-		return nil, fmt.Errorf(err.Error())
-	}
-
-	// Logging config will now have been loaded from command line
-	// or from a sync_gateway config file so we can validate the
-	// configuration and setup logging now
-	err = config.SetupAndValidateLogging()
-	if err != nil {
-		// If we didn't set up logging correctly, we *probably* can't log via normal means...
-		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
-		log.Printf("[ERR] Error setting up logging: %v", err)
-		return nil, fmt.Errorf("error setting up logging: %v", err)
-	}
-
-	base.FlushLoggerBuffers()
-
-	// If we got an unknownFields error when reading the config
-	// log and exit now we've tried setting up the logging.
-	if unknownFieldsErr != nil {
-		return nil, fmt.Errorf(unknownFieldsErr.Error())
-	}
-
-	// Validation
-	var multiError *multierror.Error
-	multiError = multierror.Append(multiError, config.validate())
-	multiError = multierror.Append(multiError, config.setupAndValidateDatabases())
-	if multiError.ErrorOrNil() != nil {
-		base.Errorf("Error during config validation: %v", multiError)
-		return nil, fmt.Errorf("error(s) during config validation: %v", multiError)
-	}
-
-	return config, nil
-}
-
-// ServerMain is the main entry point of launching the Sync Gateway server; the main
-// function directly calls this. It registers both signal and fatal panic handlers,
-// does the initial setup and finally starts the server.
-func ServerMain() {
-	RegisterSignalHandler()
-	defer base.FatalPanicHandler()
-
-	config, err := setupServerConfig(os.Args)
-	if err != nil {
-		base.Fatalf(err.Error())
-	}
-
-	ctx, err := setupServerContext(config)
-	if err != nil {
-		base.Fatalf(err.Error())
-	}
-
-	startServer(config, ctx)
 }

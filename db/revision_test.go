@@ -107,6 +107,7 @@ func TestBackupOldRevision(t *testing.T) {
 		Enabled:          deltasEnabled,
 		RevMaxAgeSeconds: DefaultDeltaSyncRevMaxAge,
 	}})
+	defer db.Close()
 
 	docID := t.Name()
 

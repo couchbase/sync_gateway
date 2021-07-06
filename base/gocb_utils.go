@@ -62,6 +62,15 @@ func GoCBv2TimeoutsConfig(bucketOpTimeout, viewQueryTimeout *time.Duration) (tc 
 	return tc
 }
 
+// goCBv2FailFastRetryStrategy represents a strategy that will never retry.
+type goCBv2FailFastRetryStrategy struct{}
+
+var _ gocb.RetryStrategy = &goCBv2FailFastRetryStrategy{}
+
+func (rs *goCBv2FailFastRetryStrategy) RetryAfter(req gocb.RetryRequest, reason gocb.RetryReason) gocb.RetryAction {
+	return &gocb.NoRetryRetryAction{}
+}
+
 // GOCBCORE Utilities
 
 // CertificateAuthenticator allows for certificate auth in gocbcore

@@ -1398,7 +1398,7 @@ func TestResyncErrorScenarios(t *testing.T) {
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
 	var (
@@ -1507,7 +1507,7 @@ func TestResyncStop(t *testing.T) {
 	)
 	defer rt.Close()
 
-	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	require.Truef(t, ok, "Wanted *base.LeakyBucket but got %T", leakyTestBucket.Bucket)
 
 	var (
@@ -2375,7 +2375,7 @@ func TestHandleDBConfig(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	server := "walrus:"
+	server := base.UnitTestUrl()
 	bucket := "albums"
 	kvTLSPort := 443
 	certPath := "/etc/ssl/certs/client.cert"
@@ -2448,7 +2448,7 @@ func TestHandleDeleteDB(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(resp.BodyBytes(), &v), "couldn't unmarshal %s", string(resp.BodyBytes()))
 
 	// Create the database
-	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", "{}")
+	resp = rt.SendAdminRequest(http.MethodPut, "/albums/", `{"server":"walrus:"}`)
 	assertStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
@@ -2464,15 +2464,13 @@ func TestHandleGetConfig(t *testing.T) {
 	rt := NewRestTester(t, &conf)
 	defer rt.Close()
 
-	var respBody db.Body
 	resp := rt.SendAdminRequest(http.MethodGet, "/_config", "{}")
 	assertStatus(t, resp, http.StatusOK)
-	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 
-	assert.Equal(t, "127.0.0.1:4985", respBody["AdminInterface"].(string))
-	databases := respBody["Databases"].(map[string]interface{})
-	db := databases["db"].(map[string]interface{})
-	assert.Equal(t, syncFunc, db["sync"].(string))
+	var respBody StartupConfig
+	assert.NoError(t, base.JSONUnmarshal([]byte(resp.Body.String()), &respBody))
+
+	assert.Equal(t, "127.0.0.1:4985", respBody.API.AdminInterface)
 }
 
 func TestHandleGetRevTree(t *testing.T) {
@@ -2718,21 +2716,20 @@ func TestConfigRedaction(t *testing.T) {
 	assert.Equal(t, "password", *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default server config redaction
-	var unmarshaledServerConfig ServerConfig
+	var unmarshaledServerConfig StartupConfig
 	response = rt.SendAdminRequest("GET", "/_config", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", unmarshaledServerConfig.Databases["db"].Password)
-	assert.Equal(t, "xxxxx", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+	assert.Equal(t, "xxxxx", unmarshaledServerConfig.Bootstrap.Password)
 
 	// Test default server config redaction when redaction disabled
+	unmarshaledServerConfig = StartupConfig{}
 	response = rt.SendAdminRequest("GET", "/_config?redact=false", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Databases["db"].Password)
-	assert.Equal(t, "password", *unmarshaledServerConfig.Databases["db"].Users["alice"].Password)
+	assert.Equal(t, base.TestClusterPassword(), unmarshaledServerConfig.Bootstrap.Password)
 }
 
 // Reproduces panic seen in CBG-1053
@@ -2865,7 +2862,7 @@ func TestSoftDeleteCasMismatch(t *testing.T) {
 	resp := rt.SendAdminRequest("PUT", "/db/_role/role", `{"admin_channels":["channel"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 
-	leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.testBucket)
 	require.True(t, ok)
 
 	// Set callback to trigger a DELETE AFTER an update. This will trigger a CAS mismatch.
@@ -2934,7 +2931,7 @@ func TestObtainUserChannelsForDeletedRoleCasFail(t *testing.T) {
 			resp = rt.SendAdminRequest("PUT", "/db/userRoles", `{"roles": "role:role"}`)
 			assertStatus(t, resp, http.StatusCreated)
 
-			leakyBucket, ok := rt.testBucket.Bucket.(*base.LeakyBucket)
+			leakyBucket, ok := base.AsLeakyBucket(rt.testBucket)
 			require.True(t, ok)
 
 			triggerCallback := false

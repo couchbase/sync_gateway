@@ -14,7 +14,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -24,17 +23,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
-	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/hashicorp/go-multierror"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestReadServerConfig(t *testing.T) {
@@ -68,7 +64,7 @@ func TestReadServerConfig(t *testing.T) {
 		{
 			name:        "incorrect type",
 			config:      `{"logging": true}`,
-			errStdlib:   `json: cannot unmarshal bool into Go struct field ServerConfig.Logging of type base.LoggingConfig`,
+			errStdlib:   `json: cannot unmarshal bool into Go struct field LegacyServerConfig.Logging of type base.LegacyLoggingConfig`,
 			errJSONIter: `expect { or n, but found t`,
 		},
 		{
@@ -130,17 +126,17 @@ func TestConfigValidation(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(tt *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			buf := bytes.NewBufferString(test.config)
 			config, err := readServerConfig(buf)
-			assert.NoError(tt, err)
+			assert.NoError(t, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
 				require.NotNil(t, errorMessages)
 				multiError, ok := errorMessages.(*multierror.Error)
-				require.True(t, ok)
+				require.Truef(t, ok, "expected multierror but got: %v", errorMessages)
 				require.Equal(t, multiError.Len(), 1)
-				assert.EqualError(tt, multiError.Errors[0], test.err)
+				assert.EqualError(t, multiError.Errors[0], test.err)
 			} else {
 				assert.Nil(t, errorMessages)
 			}
@@ -156,7 +152,7 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
-	assert.Nil(t, errorMessages)
+	require.NoError(t, errorMessages)
 
 	require.NotNil(t, config.Databases["db"])
 	require.NotNil(t, config.Databases["db"].DeltaSync)
@@ -177,7 +173,7 @@ func TestConfigValidationCache(t *testing.T) {
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
-	assert.Nil(t, errorMessages)
+	require.NoError(t, errorMessages)
 
 	require.NotNil(t, config.Databases["db"])
 	require.NotNil(t, config.Databases["db"].CacheConfig)
@@ -225,7 +221,7 @@ func TestConfigValidationImport(t *testing.T) {
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
-	assert.Nil(t, errorMessages)
+	require.NoError(t, errorMessages)
 	require.NotNil(t, config.Databases["db"])
 
 	if base.IsEnterpriseEdition() {
@@ -280,20 +276,19 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(tt *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			buf := bytes.NewBufferString(test.config)
 			config, err := readServerConfig(buf)
-			assert.NoError(tt, err)
+			assert.NoError(t, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
 				require.NotNil(t, errorMessages)
 				multiError, ok := errorMessages.(*multierror.Error)
 				require.True(t, ok)
 				require.Equal(t, multiError.Len(), 1)
-				assert.EqualError(tt, multiError.Errors[0], test.err)
-
+				assert.EqualError(t, multiError.Errors[0], test.err)
 			} else {
-				assert.Nil(tt, errorMessages)
+				assert.NoError(t, errorMessages)
 			}
 		})
 	}
@@ -479,9 +474,9 @@ func TestMergeWith(t *testing.T) {
 	profileInterface := "127.0.0.1:4985"
 	configServer := "remote.config.server:4985/db"
 	deploymentID := "DeploymentID1008"
-	facebookConfig := FacebookConfig{Register: true}
+	facebookConfig := FacebookConfigLegacy{Register: true}
 
-	corsConfig := &CORSConfig{
+	corsConfig := &CORSConfigLegacy{
 		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
 		LoginOrigin: []string{"http://example.com"},
 		Headers:     []string{},
@@ -494,7 +489,7 @@ func TestMergeWith(t *testing.T) {
 	databases["db3"] = &DbConfig{Name: "db3"}
 	databases["db4"] = &DbConfig{Name: "db4"}
 
-	other := &ServerConfig{
+	other := &LegacyServerConfig{
 		Interface:        &defaultInterface,
 		AdminInterface:   &adminInterface,
 		ProfileInterface: &profileInterface,
@@ -509,7 +504,7 @@ func TestMergeWith(t *testing.T) {
 	databases = make(DbConfigMap, 2)
 	databases["db1"] = &DbConfig{Name: "db1"}
 	databases["db2"] = &DbConfig{Name: "db2"}
-	self := &ServerConfig{Databases: databases}
+	self := &LegacyServerConfig{Databases: databases}
 
 	err := self.MergeWith(other)
 	assert.NoError(t, err, "No error while merging this server config with other")
@@ -560,9 +555,9 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	require.NoErrorf(t, err, "Error creating temp file %q", deprecatedDefaultLogFilePathAsFile)
 	defer removeAll(deprecatedDefaultLogFilePathAsDir, deprecatedDefaultLogFilePathAsFile)
 
-	serverConfig := func() *ServerConfig {
-		return &ServerConfig{
-			Logging: &base.LoggingConfig{
+	serverConfig := func() *LegacyServerConfig {
+		return &LegacyServerConfig{
+			Logging: &base.LegacyLoggingConfig{
 				DeprecatedDefaultLog: &base.LogAppenderConfig{
 					LogKeys:  logKeys,
 					LogLevel: base.PanicLevel,
@@ -608,8 +603,8 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 	}
 
 	// Call deprecatedConfigLoggingFallback with DeprecatedLogFilePath and without DeprecatedDefaultLog
-	config := &ServerConfig{
-		Logging:               &base.LoggingConfig{},
+	config := &LegacyServerConfig{
+		Logging:               &base.LegacyLoggingConfig{},
 		DeprecatedLogFilePath: base.StringPtr(deprecatedDefaultLogFilePathAsFile.Name()),
 		DeprecatedLog:         deprecatedLog,
 	}
@@ -621,33 +616,28 @@ func TestDeprecatedConfigLoggingFallback(t *testing.T) {
 func TestSetupAndValidateLogging(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLogging")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	sc := &ServerConfig{}
+	sc := &StartupConfig{}
 	err := sc.SetupAndValidateLogging()
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.NotEmpty(t, sc.Logging)
-	assert.Empty(t, sc.Logging.DeprecatedDefaultLog)
 }
 
 func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLoggingWithLoggingConfig")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	logFilePath := "/var/log/sync_gateway"
-	logKeys := []string{"Admin", "Access", "Auth", "Bucket", "Cache"}
-	ddl := &base.LogAppenderConfig{LogFilePath: &logFilePath, LogKeys: logKeys, LogLevel: base.PanicLevel}
-	lc := &base.LoggingConfig{DeprecatedDefaultLog: ddl, RedactionLevel: base.RedactFull}
-	sc := &ServerConfig{Logging: lc}
+	sc := &StartupConfig{Logging: LoggingConfig{LogFilePath: logFilePath, RedactionLevel: base.RedactFull}}
 	err := sc.SetupAndValidateLogging()
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)
-	assert.Equal(t, ddl, sc.Logging.DeprecatedDefaultLog)
 }
 
 func TestServerConfigValidate(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	// unsupported.stats_log_freq_secs
 	statsLogFrequencySecs := uint(9)
-	unsupported := &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
-	sc := &ServerConfig{Unsupported: unsupported}
+	unsupported := &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc := &LegacyServerConfig{Unsupported: unsupported}
 	validationErrors := sc.validate()
 	require.NotNil(t, validationErrors)
 	multiError, ok := validationErrors.(*multierror.Error)
@@ -657,20 +647,20 @@ func TestServerConfigValidate(t *testing.T) {
 
 	// Valid configuration value for StatsLogFrequencySecs
 	statsLogFrequencySecs = uint(10)
-	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
-	sc = &ServerConfig{Unsupported: unsupported}
+	unsupported = &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc = &LegacyServerConfig{Unsupported: unsupported}
 	assert.Nil(t, sc.validate())
 
 	// Explicitly disabled
 	statsLogFrequencySecs = uint(0)
-	unsupported = &UnsupportedServerConfig{StatsLogFrequencySecs: &statsLogFrequencySecs}
-	sc = &ServerConfig{Unsupported: unsupported}
+	unsupported = &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: &statsLogFrequencySecs}
+	sc = &LegacyServerConfig{Unsupported: unsupported}
 	assert.Nil(t, sc.validate())
 }
 
 func TestSetupAndValidateDatabases(t *testing.T) {
 	// No error will be returned if the server config itself is nil
-	var sc *ServerConfig
+	var sc *LegacyServerConfig
 	errs := sc.setupAndValidateDatabases()
 	assert.Nil(t, errs)
 
@@ -680,7 +670,7 @@ func TestSetupAndValidateDatabases(t *testing.T) {
 	databases := make(DbConfigMap, 2)
 	databases["db1"] = &DbConfig{Name: "db1", BucketConfig: *bc}
 
-	sc = &ServerConfig{Databases: databases}
+	sc = &LegacyServerConfig{Databases: databases}
 	validationError := sc.setupAndValidateDatabases()
 	require.NotNil(t, validationError)
 	assert.Contains(t, validationError.Error(), "invalid control character in URL")
@@ -748,7 +738,7 @@ func TestGetCredentialsFromClusterConfig(t *testing.T) {
 	bucket := "albums"
 	config := BucketConfig{Bucket: &bucket, Username: "Alice", Password: "QWxpY2U="}
 	heartbeatIntervalSeconds := uint16(10)
-	clusterConfig := &ClusterConfig{
+	clusterConfig := &ClusterConfigLegacy{
 		BucketConfig:             config,
 		DataDir:                  "/var/lib/sync_gateway/data",
 		HeartbeatIntervalSeconds: &heartbeatIntervalSeconds,
@@ -899,55 +889,55 @@ func TestValidateServerContext(t *testing.T) {
 	tb2User, tb2Password, _ := tb2.BucketSpec.Auth.GetCredentials()
 
 	xattrs := base.TestUseXattrs()
-	config := &ServerConfig{
-		Databases: map[string]*DbConfig{
-			"db1": {
-				BucketConfig: BucketConfig{
-					Server:   &tb1.BucketSpec.Server,
-					Bucket:   &tb1.BucketSpec.BucketName,
-					Username: tb1User,
-					Password: tb1Password,
-				},
-				EnableXattrs:     &xattrs,
-				UseViews:         base.TestsDisableGSI(),
-				NumIndexReplicas: base.UintPtr(0),
+	config := &StartupConfig{}
+	databases := map[string]*DbConfig{
+		"db1": {
+			BucketConfig: BucketConfig{
+				Server:   &tb1.BucketSpec.Server,
+				Bucket:   &tb1.BucketSpec.BucketName,
+				Username: tb1User,
+				Password: tb1Password,
 			},
-			"db2": {
-				BucketConfig: BucketConfig{
-					Server:   &tb1.BucketSpec.Server,
-					Bucket:   &tb1.BucketSpec.BucketName,
-					Username: tb1User,
-					Password: tb1Password,
-				},
-				EnableXattrs:     &xattrs,
-				UseViews:         base.TestsDisableGSI(),
-				NumIndexReplicas: base.UintPtr(0),
+			EnableXattrs:     &xattrs,
+			UseViews:         base.TestsDisableGSI(),
+			NumIndexReplicas: base.UintPtr(0),
+		},
+		"db2": {
+			BucketConfig: BucketConfig{
+				Server:   &tb1.BucketSpec.Server,
+				Bucket:   &tb1.BucketSpec.BucketName,
+				Username: tb1User,
+				Password: tb1Password,
 			},
-			"db3": {
-				BucketConfig: BucketConfig{
-					Server:   &tb2.BucketSpec.Server,
-					Bucket:   &tb2.BucketSpec.BucketName,
-					Username: tb2User,
-					Password: tb2Password,
-				},
-				EnableXattrs:     &xattrs,
-				UseViews:         base.TestsDisableGSI(),
-				NumIndexReplicas: base.UintPtr(0),
+			EnableXattrs:     &xattrs,
+			UseViews:         base.TestsDisableGSI(),
+			NumIndexReplicas: base.UintPtr(0),
+		},
+		"db3": {
+			BucketConfig: BucketConfig{
+				Server:   &tb2.BucketSpec.Server,
+				Bucket:   &tb2.BucketSpec.BucketName,
+				Username: tb2User,
+				Password: tb2Password,
 			},
+			EnableXattrs:     &xattrs,
+			UseViews:         base.TestsDisableGSI(),
+			NumIndexReplicas: base.UintPtr(0),
 		},
 	}
 
-	require.Nil(t, config.validate(), "Unexpected error while validating ServerConfig")
-	require.Nil(t, config.setupAndValidateDatabases(), "Unexpected error while validating databases")
+	// TODO
+	// require.Nil(t, config.validate(), "Unexpected error while validating LegacyServerConfig")
+	// require.Nil(t, config.setupAndValidateDatabases(), "Unexpected error while validating databases")
 
-	sc := NewServerContext(config)
+	sc := NewServerContext(config, false)
 	defer sc.Close()
-	for _, dbConfig := range config.Databases {
-		_, err := sc.AddDatabaseFromConfig(dbConfig)
+	for _, dbConfig := range databases {
+		_, err := sc.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *dbConfig})
 		require.NoError(t, err, "Couldn't add database from config")
 	}
 
-	sharedBucketErrors := validateServerContext(sc)
+	sharedBucketErrors := sharedBucketDatabaseCheck(sc)
 	require.NotNil(t, sharedBucketErrors)
 	multiError, ok := sharedBucketErrors.(*multierror.Error)
 	require.NotNil(t, ok)
@@ -974,49 +964,6 @@ func TestPutInvalidConfig(t *testing.T) {
 
 	response := rt.SendAdminRequest("PUT", "/db/_config", `{"db": {"server": "walrus"}}`)
 	assert.Equal(t, http.StatusBadRequest, response.Code)
-}
-
-// Validate basic mapping from config to database options
-func TestConfigToDatabaseOptions(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
-	bucket := base.GetTestBucket(t)
-	defer bucket.Close()
-
-	bucketUser, bucketPassword, _ := bucket.BucketSpec.Auth.GetCredentials()
-	spec := bucket.BucketSpec
-
-	jsonConfig := []byte(`
-{
-	"databases": {
-		"db": {
-			"server": "` + spec.Server + `",
-			"username": "` + bucketUser + `",
-			"password": "` + bucketPassword + `",
-			"bucket": "` + spec.BucketName + `",
-			"enable_shared_bucket_access": ` + strconv.FormatBool(base.TestUseXattrs()) + `,
-			"use_views": ` + strconv.FormatBool(base.TestsDisableGSI()) + `,
-			"num_index_replicas": 0,
-			"cache":{
-				"channel_cache":{
-					  "query_limit": 200
-				}
-			}
-		}
-	}
-}
-`)
-	var config ServerConfig
-	unmarshalErr := json.Unmarshal(jsonConfig, &config)
-	require.NoError(t, unmarshalErr)
-
-	sc := NewServerContext(&config)
-	defer sc.Close()
-
-	database, addDatabaseError := sc.AddDatabaseFromConfig(config.Databases["db"])
-	require.NoError(t, addDatabaseError)
-
-	assert.Equal(t, *config.Databases["db"].CacheConfig.ChannelCacheConfig.DeprecatedQueryLimit, database.Options.QueryPaginationLimit)
-
 }
 
 func TestEnvDefaultExpansion(t *testing.T) {
@@ -1311,15 +1258,7 @@ func deleteTempFile(t *testing.T, file *os.File) {
 }
 
 func TestRedactPartialDefault(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	config := &ServerConfig{
-		Logging: &base.LoggingConfig{},
-	}
-	assert.Equal(t, base.RedactUnset, config.Logging.RedactionLevel)
-	assert.Equal(t, true, base.RedactUserData)
-
-	err := config.SetupAndValidateLogging()
-	require.NoError(t, err)
+	config := DefaultStartupConfig("")
 	assert.Equal(t, base.RedactPartial, config.Logging.RedactionLevel)
 	assert.Equal(t, true, base.RedactUserData)
 }
@@ -1327,43 +1266,11 @@ func TestRedactPartialDefault(t *testing.T) {
 func TestSetupServerContext(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
-		config := &ServerConfig{
-			Logging: &base.LoggingConfig{
-				RedactionLevel: base.RedactNone,
-			},
-		}
-		sc, err := setupServerContext(config)
+		config := DefaultStartupConfig("")
+		sc, err := setupServerContext(&config, false)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 		sc.Close()
-	})
-
-	t.Run("Create server context with BcryptCost inside allowed range", func(t *testing.T) {
-		config := &ServerConfig{
-			Logging: &base.LoggingConfig{
-				RedactionLevel: base.RedactFull,
-			},
-			BcryptCost: bcrypt.MaxCost,
-		}
-		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
-		sc, err := setupServerContext(config)
-		require.NoError(t, err)
-		require.NotNil(t, sc)
-		sc.Close()
-	})
-
-	t.Run("Create server context with BcryptCost outside allowed range", func(t *testing.T) {
-		config := &ServerConfig{
-			Logging: &base.LoggingConfig{
-				RedactionLevel: base.RedactPartial,
-			},
-			BcryptCost: bcrypt.MaxCost + 1,
-		}
-		defer func() { require.NoError(t, auth.SetBcryptCost(bcrypt.DefaultCost)) }()
-		sc, err := setupServerContext(config)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "configuration error: 32 outside allowed range: 10-31: invalid bcrypt cost")
-		assert.Nil(t, sc)
 	})
 }
 

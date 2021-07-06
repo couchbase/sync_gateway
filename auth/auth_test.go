@@ -129,7 +129,7 @@ func TestSerializeUser(t *testing.T) {
 	assert.True(t, encoded != nil)
 	log.Printf("Marshaled User as: %s", encoded)
 
-	resu := &userImpl{}
+	resu := &userImpl{auth: auth}
 	err := base.JSONUnmarshal(encoded, resu)
 	assert.True(t, err == nil)
 	goassert.DeepEquals(t, resu.Name(), user.Name())
@@ -493,11 +493,12 @@ func TestConcurrentUserWrites(t *testing.T) {
 	password := "password"
 	email := "foo@bar.org"
 
-	// Modify the bcrypt cost to test rehashPassword properly below
-	require.Error(t, SetBcryptCost(5))
-
 	// Create user
 	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
+
+	// Modify the bcrypt cost to test rehashPassword properly below
+	require.Error(t, auth.SetBcryptCost(5))
+
 	user, _ := auth.NewUser(username, password, ch.SetOf(t, "123", "456"))
 	user.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)}, 1)
 	createErr := auth.Save(user)
@@ -511,10 +512,10 @@ func TestConcurrentUserWrites(t *testing.T) {
 		t.Errorf("Error retrieving user: %v", getErr)
 	}
 
-	require.NoError(t, SetBcryptCost(bcryptDefaultCost))
+	require.NoError(t, auth.SetBcryptCost(DefaultBcryptCost))
 	// Reset bcryptCostChanged state after test runs
 	defer func() {
-		bcryptCostChanged = false
+		auth.bcryptCostChanged = false
 	}()
 
 	var wg sync.WaitGroup
@@ -597,7 +598,7 @@ func TestConcurrentUserWrites(t *testing.T) {
 	// Check the password hash bcrypt cost
 	userImpl := user.(*userImpl)
 	cost, _ := bcrypt.Cost(userImpl.PasswordHash_)
-	assert.Equal(t, cost, bcryptDefaultCost)
+	assert.Equal(t, cost, DefaultBcryptCost)
 }
 
 func TestAuthenticateTrustedJWT(t *testing.T) {

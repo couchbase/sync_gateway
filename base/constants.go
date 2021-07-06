@@ -127,6 +127,8 @@ const (
 	SyncDataKey       = SyncPrefix + "syncdata"
 	SyncSeqKey        = SyncPrefix + "seq"
 
+	PersistentConfigPrefix = SyncPrefix + "dbconfig:"
+
 	SyncPropertyName = "_sync"
 	SyncXattrName    = "_sync"
 

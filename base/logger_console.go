@@ -47,6 +47,10 @@ type ConsoleLoggerConfig struct {
 
 // NewConsoleLogger returns a new ConsoleLogger from a config.
 func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*ConsoleLogger, error) {
+	if config == nil {
+		config = &ConsoleLoggerConfig{}
+	}
+
 	// validate and set defaults
 	if err := config.init(); err != nil {
 		return nil, err

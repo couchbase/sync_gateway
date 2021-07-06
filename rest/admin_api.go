@@ -37,10 +37,13 @@ func (h *handler) handleCreateDB() error {
 	if err != nil {
 		return err
 	}
+	if config.Server == nil {
+		config.Server = &h.server.config.Bootstrap.Server
+	}
 	if err := config.setup(dbName); err != nil {
 		return err
 	}
-	if _, err := h.server.AddDatabaseFromConfig(config); err != nil {
+	if _, err := h.server.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *config}); err != nil {
 		return err
 	}
 	return base.HTTPErrorf(http.StatusCreated, "created")
@@ -106,7 +109,7 @@ func (h *handler) handleGetDbConfig() error {
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
+		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name).DbConfig)
 	}
 	return nil
 }
@@ -115,13 +118,13 @@ func (h *handler) handleGetDbConfig() error {
 func (h *handler) handleGetConfig() error {
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
-		cfg, err := h.server.GetConfig().Redacted()
+		cfg, err := h.server.config.Redacted()
 		if err != nil {
 			return err
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.GetConfig())
+		h.writeJSON(h.server.config)
 	}
 	return nil
 }
@@ -134,12 +137,16 @@ func (h *handler) handlePutDbConfig() error {
 	if err != nil {
 		return err
 	}
+	if config.Server == nil {
+		config.Server = &h.server.config.Bootstrap.Server
+	}
 	if err := config.setup(dbName); err != nil {
 		return err
 	}
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	h.server.config.Databases[dbName] = config
+	dbc := DatabaseConfig{DbConfig: *config}
+	h.server.dbConfigs[dbName] = &dbc
 
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
@@ -220,34 +227,17 @@ func (h *handler) handleReplicate() error {
 	return err
 
 }
-
-type ReplicateV1Config struct {
-	Source           string      `json:"source"`
-	Target           string      `json:"target"`
-	Continuous       bool        `json:"continuous"`
-	CreateTarget     bool        `json:"create_target"`
-	DocIds           []string    `json:"doc_ids"`
-	Filter           string      `json:"filter"`
-	Proxy            string      `json:"proxy"`
-	QueryParams      interface{} `json:"query_params"`
-	Cancel           bool        `json:"cancel"`
-	Async            bool        `json:"async"`
-	ChangesFeedLimit *int        `json:"changes_feed_limit"`
-	ReplicationId    string      `json:"replication_id"`
-	upgradedToSGR2   bool        // upgradedToSGR2 is set to true when an equivalent SGR2 replication is found, which prevents this v1 replication from starting.
-}
-
 func (h *handler) readReplicateV1ParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 
-	var in ReplicateV1Config
+	var in ReplicateV1ConfigLegacy
 	if err = base.JSONUnmarshal(jsonData, &in); err != nil {
 		return params, false, localdb, err
 	}
 
-	return validateReplicateV1Parameters(in, false, *h.server.config.AdminInterface)
+	return validateReplicateV1Parameters(in, false, h.server.config.API.AdminInterface)
 }
 
-func validateReplicateV1Parameters(requestParams ReplicateV1Config, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
+func validateReplicateV1Parameters(requestParams ReplicateV1ConfigLegacy, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
 	if requestParams.CreateTarget {
 		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate create_target option is not currently supported.")
 		return
@@ -588,11 +578,8 @@ func (h *handler) handleSGCollect() error {
 
 	zipFilename := sgcollectFilename()
 
-	logFilePath := ""
-	sc := h.server.config
-	if sc != nil && sc.Logging != nil && sc.Logging.LogFilePath != "" {
-		logFilePath = sc.Logging.LogFilePath
-	}
+	logFilePath := h.server.config.Logging.LogFilePath
+
 	if err := sgcollectInstance.Start(logFilePath, h.serialNumber, zipFilename, params); err != nil {
 		return base.HTTPErrorf(http.StatusInternalServerError, "Error running sgcollect_info: %v", err)
 	}

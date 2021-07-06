@@ -27,87 +27,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Tests the ConfigServer feature.
-func TestConfigServer(t *testing.T) {
-	fakeConfigURL := "http://example.com/config"
-	mockClient := NewMockClient()
-	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(http.StatusOK, nil,
-		`{
-			"bucket": "fivez",
-			"server": "walrus:/fake"
-		}`))
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	sc := rt.ServerContext()
-	sc.HTTPClient = mockClient.Client
-	sc.config.ConfigServer = &fakeConfigURL
-
-	dbc, err := sc.GetDatabase("db")
-	assert.NoError(t, err)
-	assert.Equal(t, "db", dbc.Name)
-
-	dbc, err = sc.GetDatabase("db2")
-	assert.NoError(t, err)
-	assert.Equal(t, "db2", dbc.Name)
-	assert.Equal(t, "fivez", dbc.Bucket.GetName())
-
-	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
-}
-
-// Tests the ConfigServer feature.
-func TestConfigServerWithSyncFunction(t *testing.T) {
-	fakeConfigURL := "http://example.com/config"
-	fakeConfig := `{
-			"bucket": "fivez",
-			"server": "walrus:/fake",
-			"sync":%s%s%s
-		}`
-
-	fakeSyncFunction := `
-      function(doc, oldDoc) {
-        if (doc.type == "reject_me") {
-	      throw({forbidden : "Rejected document"})
-        } else if (doc.type == "bar") {
-	  // add "bar" docs to the "important" channel
-            channel("important");
-	} else if (doc.type == "secret") {
-          if (!doc.owner) {
-            throw({forbidden : "Secret documents must have an owner field"})
-          }
-	} else {
-	    // all other documents just go into all channels listed in the doc["channels"] field
-	    channel(doc.channels)
-	}
-      }
-    `
-	//Create config with embedded sync function in back quotes
-	responseBody := fmt.Sprintf(fakeConfig, "`", fakeSyncFunction, "`")
-
-	mockClient := NewMockClient()
-	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, responseBody))
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	sc := rt.ServerContext()
-	sc.HTTPClient = mockClient.Client
-	sc.config.ConfigServer = &fakeConfigURL
-
-	dbc, err := sc.GetDatabase("db")
-	assert.NoError(t, err)
-	assert.Equal(t, "db", dbc.Name)
-
-	dbc, err = sc.GetDatabase("db2")
-	assert.NoError(t, err)
-	assert.Equal(t, "db2", dbc.Name)
-	assert.Equal(t, "fivez", dbc.Bucket.GetName())
-
-	rt.Bucket() // no-op that just keeps rt from being GC'd/finalized (bug CBL-9)
-
-}
-
 func TestRecordGoroutineHighwaterMark(t *testing.T) {
 
 	// Reset this to 0
@@ -193,19 +112,19 @@ func TestAllDatabaseNames(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close()
 
-	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface}
-	serverContext := NewServerContext(serverConfig)
+	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
 
 	xattrs := base.TestUseXattrs()
-	dbConfig := &DbConfig{BucketConfig: bucketConfigFromTestBucket(tb1), Name: "imdb1", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
-	_, err := serverContext.AddDatabaseFromConfig(dbConfig)
+	dbConfig := DbConfig{BucketConfig: bucketConfigFromTestBucket(tb1), Name: "imdb1", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
+	_, err := serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 
-	dbConfig = &DbConfig{BucketConfig: bucketConfigFromTestBucket(tb2), Name: "imdb2", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
-	_, err = serverContext.AddDatabaseFromConfig(dbConfig)
+	dbConfig = DbConfig{BucketConfig: bucketConfigFromTestBucket(tb2), Name: "imdb2", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
+	_, err = serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 2)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
@@ -219,16 +138,16 @@ func TestAllDatabaseNames(t *testing.T) {
 }
 
 func TestGetOrAddDatabaseFromConfig(t *testing.T) {
-	serverConfig := &ServerConfig{CORS: &CORSConfig{}, AdminInterface: &DefaultAdminInterface}
-	serverContext := NewServerContext(serverConfig)
+	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
 
 	oldRevExpirySeconds := uint32(600)
 	localDocExpirySecs := uint32(60 * 60 * 24 * 10) // 10 days in seconds
 
 	// Get or add database name from config without valid database name; throws 400 Illegal database name error
-	dbConfig := &DbConfig{OldRevExpirySeconds: &oldRevExpirySeconds, LocalDocExpirySecs: &localDocExpirySecs}
-	dbContext, err := serverContext._getOrAddDatabaseFromConfig(dbConfig, false)
+	dbConfig := DbConfig{OldRevExpirySeconds: &oldRevExpirySeconds, LocalDocExpirySecs: &localDocExpirySecs}
+	dbContext, err := serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false)
 	assert.Nil(t, dbContext, "Can't create database context without a valid database name")
 	assert.Error(t, err, "It should throw 400 Illegal database name")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
@@ -239,7 +158,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	databaseName := "imdb"
 
 	// Get or add database from config with unrecognized value for import_docs.
-	dbConfig = &DbConfig{
+	dbConfig = DbConfig{
 		Name:                "imdb",
 		OldRevExpirySeconds: &oldRevExpirySeconds,
 		LocalDocExpirySecs:  &localDocExpirySecs,
@@ -247,32 +166,32 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 		BucketConfig:        BucketConfig{Server: &server, Bucket: &bucketName},
 	}
 
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(dbConfig, false)
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false)
 	assert.Nil(t, dbContext, "Can't create database context from config with unrecognized value for import_docs")
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
-	dbConfig = &DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: true}
-	dbContext, err = serverContext.AddDatabaseFromConfig(dbConfig)
+	dbConfig = DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: true}
+	dbContext, err = serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
 
-	dbConfig = &DbConfig{
+	dbConfig = DbConfig{
 		Name:                databaseName,
 		OldRevExpirySeconds: &oldRevExpirySeconds,
 		LocalDocExpirySecs:  &localDocExpirySecs,
 		AutoImport:          false}
 
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(dbConfig, false)
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, false)
 	assert.Nil(t, dbContext, "Can't create database context with duplicate database name")
 	assert.Error(t, err, "It should throw 412 Duplicate database names")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusPreconditionFailed))
 
 	// Get or add database from config with duplicate database name and useExisting as true
 	// Existing database context should be returned
-	dbContext, err = serverContext._getOrAddDatabaseFromConfig(dbConfig, true)
+	dbContext, err = serverContext._getOrAddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig}, true)
 	assert.NoError(t, err, "No error while trying to get the existing database name")
 	assert.Equal(t, server, dbContext.BucketSpec.Server)
 	assert.Equal(t, bucketName, dbContext.BucketSpec.BucketName)
@@ -281,8 +200,10 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 func TestStatsLoggerStopped(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
+	sc := DefaultStartupConfig("")
+
 	// Start up stats logger by creating server context
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&sc, false)
 
 	// Close server context which will send signal to close stats logger
 	ctx.Close()
@@ -300,7 +221,7 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -343,7 +264,7 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -495,7 +416,7 @@ func TestCheckPermissions(t *testing.T) {
 		},
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -530,7 +451,7 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -798,7 +719,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
 	}
 
-	ctx := NewServerContext(&ServerConfig{})
+	ctx := NewServerContext(&StartupConfig{}, false)
 	defer ctx.Close()
 
 	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()

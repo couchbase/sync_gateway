@@ -1621,7 +1621,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 			activeRTSGR1 := NewRestTester(t, &RestTesterConfig{
 				TestBucket:     activeBucket.NoCloseClone(),
 				adminInterface: l.Addr().String(),
-				sgr1Replications: []*ReplicateV1Config{
+				sgr1Replications: []*ReplicateV1ConfigLegacy{
 					{
 						ReplicationId: replicationID,
 						Target:        "db",
@@ -1648,7 +1648,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 
 			activeRTSGR1HTTPServer := NewHTTPTestServerOnListener(activeRTSGR1.TestAdminHandler(), l)
 
-			activeRTSGR1.ServerContext().startReplicators()
+			activeRTSGR1.ServerContext().startLegacyReplicators()
 
 			// wait for documents originally written to remoteRT to arrive at activeRT
 			changesResults := activeRTSGR1.RequireWaitChanges(2, "0")
@@ -1683,7 +1683,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 						Continuous: true,
 					},
 				}},
-				sgr1Replications: []*ReplicateV1Config{
+				sgr1Replications: []*ReplicateV1ConfigLegacy{
 					{
 						ReplicationId: replicationID,
 						Target:        "db",
@@ -1697,7 +1697,7 @@ func TestSGR1CheckpointMigrationPull(t *testing.T) {
 			activeRTSGR2HTTPServer := NewHTTPTestServerOnListener(activeRTSGR2.TestAdminHandler(), l)
 			defer activeRTSGR2HTTPServer.Close()
 
-			activeRTSGR2.ServerContext().startReplicators()
+			activeRTSGR2.ServerContext().startLegacyReplicators()
 			require.NoError(t, activeRTSGR2.GetDatabase().SGReplicateMgr.StartReplications())
 
 			// wait for documents originally written to remoteRT to arrive at activeRT
@@ -1804,7 +1804,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	activeRTSGR1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket:     activeBucket.NoCloseClone(),
 		adminInterface: l.Addr().String(),
-		sgr1Replications: []*ReplicateV1Config{
+		sgr1Replications: []*ReplicateV1ConfigLegacy{
 			{
 				ReplicationId: replicationID,
 				Source:        "db",
@@ -1837,7 +1837,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 	_ = activeRTSGR1.putDoc(docABC1, `{"source":"activeRTSGR1","channels":["ABC"]}`)
 	_ = activeRTSGR1.putDoc(docDEF1, `{"source":"activeRTSGR1","channels":["DEF"]}`)
 
-	activeRTSGR1.ServerContext().startReplicators()
+	activeRTSGR1.ServerContext().startLegacyReplicators()
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
 	changesResults := remoteRT.RequireWaitChanges(2, "0")
@@ -1864,7 +1864,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 				Continuous: true,
 			},
 		}},
-		sgr1Replications: []*ReplicateV1Config{
+		sgr1Replications: []*ReplicateV1ConfigLegacy{
 			{
 				ReplicationId: replicationID,
 				Source:        "db",
@@ -1894,7 +1894,7 @@ func TestSGR1CheckpointMigrationPush(t *testing.T) {
 
 	require.NoError(t, activeRTSGR2.WaitForPendingChanges())
 
-	activeRTSGR2.ServerContext().startReplicators()
+	activeRTSGR2.ServerContext().startLegacyReplicators()
 	require.NoError(t, activeRTSGR2.GetDatabase().SGReplicateMgr.StartReplications())
 
 	// wait for documents originally written to remoteRT to arrive at activeRT
