@@ -968,6 +968,108 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
+func TestISGRFilteredPushReplicationChannelRemoval(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+	defer db.SuspendSequenceBatching()()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+
+	testCases := []struct {
+		name                 string
+		filterByChannel      bool
+		expectRemovalMessage bool
+	}{
+		{
+			name:                 "Filter channel, no removal message",
+			filterByChannel:      true,
+			expectRemovalMessage: false,
+		},
+		{
+			name:                 "No channel filter, expect removal message",
+			filterByChannel:      false,
+			expectRemovalMessage: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// Passive
+			passiveBucket := base.GetTestBucket(t)
+			passiveRT := NewRestTester(t, &RestTesterConfig{
+				TestBucket: passiveBucket,
+			})
+			defer passiveRT.Close()
+
+			// Active
+			activeBucket := base.GetTestBucket(t)
+			activeRT := NewRestTester(t, &RestTesterConfig{
+				TestBucket: activeBucket,
+			})
+			defer activeRT.Close()
+
+			// Create the active doc with chanA
+			resp := activeRT.SendAdminRequest(http.MethodPut, "/db/test", `{"channels":["chanA"]}`)
+			assertStatus(t, resp, http.StatusCreated)
+			revID := respRevID(t, resp)
+
+			// Set-up replicator //
+			// Make passive RT listen on an actual HTTP port, so it can receive the blipsync request from rt1.
+			srv := httptest.NewServer(passiveRT.TestAdminHandler())
+			defer srv.Close()
+
+			passiveDBURL, err := url.Parse(srv.URL + "/db")
+			require.NoError(t, err)
+			var filterChannels []string
+			if test.filterByChannel {
+				filterChannels = []string{"chanA"}
+			}
+
+			ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+				ID:          t.Name(),
+				Direction:   db.ActiveReplicatorTypePush,
+				RemoteDBURL: passiveDBURL,
+				ActiveDB: &db.Database{
+					DatabaseContext: activeRT.GetDatabase(),
+				},
+				ChangesBatchSize:    200,
+				ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name()).DBReplicatorStats(t.Name()),
+				FilterChannels:      filterChannels,
+			})
+			defer func() { assert.NoError(t, ar.Stop()) }()
+			assert.Equal(t, "", ar.GetStatus().LastSeqPush)
+			// Start the replicator (implicit connect)
+			assert.NoError(t, ar.Start())
+			// Wait for active to replicate to passive
+			changesResults, err := passiveRT.WaitForChanges(1, "/db/_changes?since=0", "", true)
+			require.NoError(t, err)
+			require.Len(t, changesResults.Results, 1)
+			lastSeq := changesResults.Last_Seq
+			assert.NoError(t, ar.Stop())
+
+			// Change channel from bucket
+			resp = activeRT.SendAdminRequest(http.MethodPut, "/db/test?rev="+revID, `{"channels":["chanB"]}`)
+			assertStatus(t, resp, http.StatusCreated)
+
+			expectDoc := "test"
+			if !test.expectRemovalMessage {
+				// Create document after to verify removal message was not sent on changes endpoint
+				resp = activeRT.SendAdminRequest(http.MethodPut, "/db/docAfter", `{"channels":["chanA"]}`)
+				assertStatus(t, resp, http.StatusCreated)
+				expectDoc = "docAfter"
+			}
+
+			assert.NoError(t, ar.Start())
+
+			// Wait for channel revocation to be issued to passive
+			changesURL := fmt.Sprintf("/db/_changes?since=%v", lastSeq)
+			changesResults, err = passiveRT.WaitForChanges(1, changesURL, "", true)
+			require.NoError(t, err)
+			assert.Len(t, changesResults.Results, 1)
+			assert.Equal(t, expectDoc, changesResults.Results[0].ID)
+		})
+	}
+}
+
 // TestActiveReplicatorPushBasic:
 //   - Starts 2 RestTesters, one active, and one passive.
 //   - Creates a document on rt1 which can be pushed by the replicator.

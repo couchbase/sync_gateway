@@ -235,14 +235,15 @@ const (
 )
 
 type sendChangesOptions struct {
-	docIDs            []string
-	since             SequenceID
-	continuous        bool
-	activeOnly        bool
-	batchSize         int
-	channels          base.Set
-	clientType        clientType
-	ignoreNoConflicts bool
+	docIDs                 []string
+	since                  SequenceID
+	continuous             bool
+	activeOnly             bool
+	batchSize              int
+	channels               base.Set
+	clientType             clientType
+	ignoreNoConflicts      bool
+	disableRemovalMessages bool // stops returning a document removal message when the channels are not any of the filtered channels
 }
 
 // Sends all changes since the given sequence
@@ -292,6 +293,9 @@ func (bh *blipHandler) sendChanges(sender *blip.Sender, opts *sendChangesOptions
 			if !strings.HasPrefix(change.ID, "_") {
 				for _, item := range change.Changes {
 					changeRow := []interface{}{change.Seq, change.ID, item["rev"], change.Deleted}
+					if opts.disableRemovalMessages && change.allRemoved {
+						continue
+					}
 					if !change.Deleted {
 						changeRow = changeRow[0:3]
 					}
