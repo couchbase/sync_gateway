@@ -75,11 +75,14 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 	// Session/login URLs are per-database (unlike in CouchDB)
 	// These have public privileges so that they can be called without being logged in already
 	dbr.Handle("/_session", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleSessionGET)).Methods("GET", "HEAD")
-	if sc.config.DeprecatedOptions.Facebook != nil {
-		dbr.Handle("/_facebook", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleFacebookPOST)).Methods("POST")
-	}
-	if sc.config.DeprecatedOptions.Google != nil {
-		dbr.Handle("/_google", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleGooglePOST)).Methods("POST")
+
+	if sc.config.DeprecatedConfig != nil {
+		if sc.config.DeprecatedConfig.Facebook != nil {
+			dbr.Handle("/_facebook", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleFacebookPOST)).Methods("POST")
+		}
+		if sc.config.DeprecatedConfig.Google != nil {
+			dbr.Handle("/_google", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleGooglePOST)).Methods("POST")
+		}
 	}
 
 	// OpenID Connect endpoints

@@ -141,7 +141,6 @@ func (h *handler) handlePutDbConfig() error {
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
 	dbc := DatabaseConfig{DbConfig: *config}
-	h.server.bucketDbConfigs[h.db.Bucket.GetName()] = &dbc
 	h.server.dbConfigs[dbName] = &dbc
 
 	return base.HTTPErrorf(http.StatusCreated, "created")

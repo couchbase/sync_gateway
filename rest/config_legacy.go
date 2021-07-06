@@ -115,7 +115,7 @@ type ReplConfigMapLegacy map[string]*ReplicateV1ConfigLegacy
 func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
-	bsc := &BootstrapConfig{}
+	bsc := &BootstrapConfig{Server: "walrus:"}
 	for _, dbConfig := range lc.Databases {
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			continue
@@ -130,6 +130,10 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 		}
 		break
 	}
+
+	// if bsc.Server == "" {
+	// 	return nil, nil, errors.New("missing required 'server' config option")
+	// }
 
 	sc := StartupConfig{
 		Bootstrap: *bsc,
@@ -146,7 +150,7 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 			MaxHeartbeat:    time.Second * time.Duration(lc.MaxHeartbeat),
 			BLIPCompression: lc.ReplicatorCompression,
 		},
-		DeprecatedOptions: &DeprecatedOptions{
+		DeprecatedConfig: &DeprecatedConfig{
 			Facebook: lc.Facebook,
 			Google:   lc.Google,
 		},
@@ -441,7 +445,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 	profAddr := flagSet.String("profileInterface", "", "Address to bind profile interface to")
 	configServer := flagSet.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	couchbaseURL := flagSet.String("url", "", "Address of Couchbase server")
+	couchbaseURL := flagSet.String("url", "walrus:", "Address of Couchbase server")
 	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flagSet.Bool("verbose", false, "Log more info about requests")

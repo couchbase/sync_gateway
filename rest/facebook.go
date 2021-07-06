@@ -46,7 +46,7 @@ func (h *handler) handleFacebookPOST() error {
 		return err
 	}
 
-	createUserIfNeeded := h.server.config.DeprecatedOptions.Facebook.Register
+	createUserIfNeeded := h.server.config.DeprecatedConfig.Facebook.Register
 	return h.makeSessionFromNameAndEmail(facebookResponse.Id, facebookResponse.Email, createUserIfNeeded)
 
 }

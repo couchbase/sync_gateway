@@ -23,7 +23,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/gocb"
 	"github.com/couchbase/gocbcore"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
@@ -46,13 +45,12 @@ const DefaultStatsLogFrequencySecs = 60
 type ServerContext struct {
 	config              *StartupConfig
 	persistentConfig    bool
-	bucketDbConfigs     map[string]*DatabaseConfig     // bucketDbConfigs is a map of bucket name to DatabaseConfig
 	dbConfigs           map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
 	databases_          map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
 	lock                sync.RWMutex
 	legacyReplications  []*ReplicateV1ConfigLegacy
 	statsContext        *statsContext
-	bootstrapConnection *gocb.Cluster
+	bootstrapConnection base.BootstrapConnection
 	HTTPClient          *http.Client
 	replicator          *base.Replicator
 	cpuPprofFileMutex   sync.Mutex // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
@@ -95,7 +93,6 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		config:           config,
 		persistentConfig: persistentConfig,
 		dbConfigs:        map[string]*DatabaseConfig{},
-		bucketDbConfigs:  map[string]*DatabaseConfig{},
 		databases_:       map[string]*db.DatabaseContext{},
 		HTTPClient:       http.DefaultClient,
 		replicator:       base.NewReplicator(),
@@ -192,7 +189,7 @@ func (sc *ServerContext) Close() {
 	sc.databases_ = nil
 
 	if sc.bootstrapConnection != nil {
-		if err := sc.bootstrapConnection.Close(&gocb.ClusterCloseOptions{}); err != nil {
+		if err := sc.bootstrapConnection.Close(); err != nil {
 			base.Warnf("Error closing bootstrap cluster connection: %v", err)
 		}
 	}
@@ -213,7 +210,6 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 }
 
 func (sc *ServerContext) GetDatabaseConfig(name string) *DatabaseConfig {
-	// FIXME
 	sc.lock.RLock()
 	config, ok := sc.dbConfigs[name]
 	sc.lock.RUnlock()
@@ -591,7 +587,6 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	sc.databases_[dbcontext.Name] = dbcontext
 
 	// Save the config
-	sc.bucketDbConfigs[bucket.GetName()] = &config
 	sc.dbConfigs[dbcontext.Name] = &config
 
 	if config.StartOffline {

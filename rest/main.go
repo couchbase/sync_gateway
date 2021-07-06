@@ -16,7 +16,7 @@ import (
 // does the initial setup and finally starts the server.
 func ServerMain() {
 	if err := serverMain(context.Background(), os.Args); err != nil {
-		base.Fatalf(err.Error())
+		base.Fatalf("Couldn't start Sync Gateway: %v", err)
 	}
 }
 
@@ -33,16 +33,16 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
 	defaultLogFilePath = *fs.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
-	// TODO: Change default when we're ready to enable 3.0/bootstrap/persistent config by default (once QE's existing tests are ready to handle it)
+	// TODO: CBG-1461 Change default when we're ready to enable 3.0/bootstrap/persistent config by default (once QE's existing tests are ready to handle it)
 	disablePersistentConfigFlag := fs.Bool("disable_persistent_config", true, "Can be set to false to disable persistent config handling, and read all configuration from a legacy config file.")
 
-	// TODO: Merge legacyFlagStartupConfig onto default config before merging others.
+	// TODO: CBG-1542 Merge legacyFlagStartupConfig onto default config before merging others.
 	legacyFlagStartupConfig := registerLegacyFlags(fs)
 	_ = legacyFlagStartupConfig
 
 	// register config property flags
 	var flagStartupConfig StartupConfig
-	// TODO: Revisit config cli flags after initial persistent config implementation
+	// TODO: CBG-1542 Revisit config cli flags after initial persistent config implementation
 	// if err := clistruct.RegisterJSONFlags(fs, &flagStartupConfig); err != nil {
 	// 	return err
 	// }

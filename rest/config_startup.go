@@ -72,7 +72,7 @@ type StartupConfig struct {
 
 	MaxFileDescriptors uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 
-	DeprecatedOptions *DeprecatedOptions `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
+	DeprecatedConfig *DeprecatedConfig `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
 }
 
 // BootstrapConfig describes the set of properties required in order to bootstrap config from Couchbase Server.
@@ -155,7 +155,7 @@ type HTTP2Config struct {
 	Enabled *bool `json:"enabled,omitempty" help:"Whether HTTP2 support is enabled"`
 }
 
-type DeprecatedOptions struct {
+type DeprecatedConfig struct {
 	Facebook *FacebookConfigLegacy `json:"-" help:""`
 	Google   *GoogleConfigLegacy   `json:"-" help:""`
 }

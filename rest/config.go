@@ -24,11 +24,9 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/hashicorp/go-multierror"
 
-	"github.com/couchbase/gocb"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -821,37 +819,13 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if persistentConfig && !base.ServerIsWalrus(sc.config.Bootstrap.Server) {
-		securityConfig, err := base.GoCBv2SecurityConfig(sc.config.Bootstrap.CACertPath)
-		if err != nil {
-			return nil, err
-		}
-
-		authenticatorConfig, _, err := base.GoCBv2AuthenticatorConfig(
+		// TODO: Retry loop in CBG-1458
+		cluster, err := base.NewCouchbaseCluster(sc.config.Bootstrap.Server,
 			sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
 			sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		clusterOptions := gocb.ClusterOptions{
-			Authenticator:  authenticatorConfig,
-			SecurityConfig: securityConfig,
-			RetryStrategy:  &base.GoCBv2FailFastRetryStrategy{},
-		}
-
-		// TODO: Retry loop in CBG-1458
-		cluster, err := gocb.Connect(sc.config.Bootstrap.Server, clusterOptions)
+			sc.config.Bootstrap.CACertPath)
 		if err != nil {
 			base.Debugf(base.KeyAll, "Got error connecting to bootstrap cluster: %v", err)
-			return nil, err
-		}
-
-		if err := cluster.WaitUntilReady(time.Second, &gocb.WaitUntilReadyOptions{
-			DesiredState: gocb.ClusterStateOnline,
-			ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
-		}); err != nil {
-			base.Debugf(base.KeyAll, "Got error waiting for bootstrap cluster readiness: %v", err)
 			return nil, err
 		}
 
