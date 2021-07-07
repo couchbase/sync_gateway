@@ -7357,3 +7357,71 @@ func TestMetricsHandler(t *testing.T) {
 	err = resp.Body.Close()
 	assert.NoError(t, err)
 }
+
+func TestChannelHistoryPruning(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	revocationTester, rt := initScenario(t)
+	defer rt.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "a")
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": ["a"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	// Enter a load of history by looping over adding and removing a channel. Needs a get changes in there to trigger
+	// the actual rebuild
+	var changes changesResults
+	for i := 0; i < 20; i++ {
+		changes = revocationTester.getChanges(0, 2)
+		assert.Len(t, changes.Results, 2)
+		revocationTester.removeRoleChannel("foo", "a")
+		changes = revocationTester.getChanges(0, 1)
+		assert.Len(t, changes.Results, 1)
+		revocationTester.addRoleChannel("foo", "a")
+	}
+
+	// Validate history is pruned properly with first entry merged to span a wider period
+	authenticator := rt.GetDatabase().Authenticator()
+	role, err := authenticator.GetRole("foo")
+	assert.NoError(t, err)
+	require.Contains(t, role.ChannelHistory(), "a")
+	require.Len(t, role.ChannelHistory()["a"].Entries, 10)
+	assert.Equal(t, role.ChannelHistory()["a"].Entries[0], auth.GrantHistorySequencePair{StartSeq: 4, EndSeq: 26})
+
+	// Add an additional channel to ensure only the latter one is pruned
+	revocationTester.addRoleChannel("foo", "b")
+	resp = rt.SendAdminRequest("PUT", "/db/doc2", `{"channels": ["b"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	changes = revocationTester.getChanges(changes.Last_Seq, 2)
+	assert.Len(t, changes.Results, 2)
+	revocationTester.removeRoleChannel("foo", "b")
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+
+	// Override role history with a unix time older than 30 days. Means next time rebuildRoles is ran we will end up
+	// pruning those entries.
+	role, err = authenticator.GetRole("foo")
+	assert.NoError(t, err)
+	channelHistory := role.ChannelHistory()
+	aHistory := channelHistory["a"]
+	aHistory.UpdatedAt = time.Now().Add(-31 * time.Hour * 24).Unix()
+	channelHistory["a"] = aHistory
+
+	role.SetChannelHistory(channelHistory)
+	err = authenticator.Save(role)
+	assert.NoError(t, err)
+
+	// Add another so we have something to wait on
+	revocationTester.addRoleChannel("foo", "random")
+	resp = rt.SendAdminRequest("PUT", "/db/doc3", `{"channels": ["random"]}`)
+
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+
+	role, err = authenticator.GetRole("foo")
+	assert.NoError(t, err)
+
+	assert.NotContains(t, role.ChannelHistory(), "a")
+	assert.Contains(t, role.ChannelHistory(), "b")
+}
