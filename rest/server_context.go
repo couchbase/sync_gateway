@@ -62,6 +62,18 @@ type DatabaseConfig struct {
 	DbConfig
 }
 
+func (dbs DbConfigMap) SetupAndValidate() error {
+	for name, dbConfig := range dbs {
+		if err := dbConfig.setup(name); err != nil {
+			return err
+		}
+		if err := dbConfig.validateSgDbConfig(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
 		dbc := DatabaseConfig{DbConfig: *dbConfig}

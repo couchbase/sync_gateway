@@ -37,9 +37,7 @@ func (h *handler) handleCreateDB() error {
 	if err != nil {
 		return err
 	}
-	if config.Server == nil {
-		config.Server = &h.server.config.Bootstrap.Server
-	}
+	config.inheritFromBootstrap(h.server.config.Bootstrap)
 	if err := config.setup(dbName); err != nil {
 		return err
 	}
@@ -137,9 +135,7 @@ func (h *handler) handlePutDbConfig() error {
 	if err != nil {
 		return err
 	}
-	if config.Server == nil {
-		config.Server = &h.server.config.Bootstrap.Server
-	}
+	config.inheritFromBootstrap(h.server.config.Bootstrap)
 	if err := config.setup(dbName); err != nil {
 		return err
 	}

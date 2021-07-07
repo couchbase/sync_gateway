@@ -890,7 +890,7 @@ func TestValidateServerContext(t *testing.T) {
 
 	xattrs := base.TestUseXattrs()
 	config := &StartupConfig{}
-	databases := map[string]*DbConfig{
+	databases := DbConfigMap{
 		"db1": {
 			BucketConfig: BucketConfig{
 				Server:   &tb1.BucketSpec.Server,
@@ -926,9 +926,7 @@ func TestValidateServerContext(t *testing.T) {
 		},
 	}
 
-	// TODO
-	// require.Nil(t, config.validate(), "Unexpected error while validating LegacyServerConfig")
-	// require.Nil(t, config.setupAndValidateDatabases(), "Unexpected error while validating databases")
+	require.Nil(t, databases.SetupAndValidate(), "Unexpected error while validating databases")
 
 	sc := NewServerContext(config, false)
 	defer sc.Close()

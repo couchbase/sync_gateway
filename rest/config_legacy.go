@@ -291,22 +291,11 @@ func setupServerConfig(args []string) (config *LegacyServerConfig, err error) {
 	return config, nil
 }
 
-func (config *LegacyServerConfig) setupAndValidateDatabases() (errs error) {
+func (config *LegacyServerConfig) setupAndValidateDatabases() error {
 	if config == nil {
 		return nil
 	}
-
-	for name, dbConfig := range config.Databases {
-
-		if err := dbConfig.setup(name); err != nil {
-			return err
-		}
-
-		if errs = dbConfig.validateSgDbConfig(); errs != nil {
-			return errs
-		}
-	}
-	return nil
+	return config.Databases.SetupAndValidate()
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors
