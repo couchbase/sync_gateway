@@ -1375,15 +1375,23 @@ func TestAllowedAttachments(t *testing.T) {
 	}
 
 	requireIsAttachmentAllowedTrue := func(t *testing.T, ctx *BlipSyncContext, docID string, meta []AttachmentStorageMeta, activeSubprotocol string) {
+		docIDForAllowedAttKey := docID
+		if activeSubprotocol == BlipCBMobileReplicationV2 {
+			docIDForAllowedAttKey = ""
+		}
 		for _, att := range meta {
-			key := allowedAttachmentKey(docID, att.digest, activeSubprotocol)
+			key := allowedAttachmentKey(docIDForAllowedAttKey, att.digest, activeSubprotocol)
 			require.True(t, ctx.isAttachmentAllowed(key))
 		}
 	}
 
 	requireIsAttachmentAllowedFalse := func(t *testing.T, ctx *BlipSyncContext, docID string, meta []AttachmentStorageMeta, activeSubprotocol string) {
+		docIDForAllowedAttKey := docID
+		if activeSubprotocol == BlipCBMobileReplicationV2 {
+			docIDForAllowedAttKey = ""
+		}
 		for _, att := range meta {
-			key := allowedAttachmentKey(docID, att.digest, activeSubprotocol)
+			key := allowedAttachmentKey(docIDForAllowedAttKey, att.digest, activeSubprotocol)
 			require.False(t, ctx.isAttachmentAllowed(key))
 		}
 	}
@@ -1396,7 +1404,7 @@ func TestAllowedAttachments(t *testing.T) {
 				{digest: "digest1", version: tt.inputAttVersion},
 				{digest: "digest2", version: tt.inputAttVersion},
 			}
-			var docID = "doc1"
+			docID := "doc1"
 
 			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID, meta, tt.inputBlipProtocol)
@@ -1406,7 +1414,7 @@ func TestAllowedAttachments(t *testing.T) {
 		})
 	}
 
-	// Single document associated with multiple attachments of similar digests.
+	// Single document associated with multiple attachments with matching digests.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{}
@@ -1414,7 +1422,7 @@ func TestAllowedAttachments(t *testing.T) {
 				{digest: "digest1", version: tt.inputAttVersion},
 				{digest: "digest1", version: tt.inputAttVersion},
 			}
-			var docID = "doc1"
+			docID := "doc1"
 
 			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
 			key := allowedAttachmentKey(docID, meta[0].digest, tt.inputBlipProtocol)
@@ -1425,7 +1433,7 @@ func TestAllowedAttachments(t *testing.T) {
 		})
 	}
 
-	// Multiple documents associated with multiple attachments of different digests.
+	// Multiple documents associated with multiple attachments with different digests.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{}
@@ -1433,20 +1441,28 @@ func TestAllowedAttachments(t *testing.T) {
 				{digest: "digest1", version: tt.inputAttVersion},
 				{digest: "digest2", version: tt.inputAttVersion},
 			}
-			var (
-				docID1 = "doc1"
-				docID2 = "doc2"
-			)
+
+			docID1 := "doc1"
 			ctx.addAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
+
+			docID2 := "doc2"
 			ctx.addAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
-			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 && tt.inputAttVersion == AttVersion1 {
-				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
-			} else {
+
+			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 {
+				if tt.inputAttVersion == AttVersion1 {
+					requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
+					requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
+				} else if tt.inputAttVersion == AttVersion2 {
+					requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
+					requireIsAttachmentAllowedFalse(t, ctx, docID2, meta, tt.inputBlipProtocol)
+				}
+			} else if tt.inputBlipProtocol == BlipCBMobileReplicationV3 {
 				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
+				requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 			}
 
 			ctx.removeAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
@@ -1454,7 +1470,7 @@ func TestAllowedAttachments(t *testing.T) {
 		})
 	}
 
-	// Multiple documents associated with multiple attachments of same digests.
+	// Multiple documents associated with multiple attachments with matching digests.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &BlipSyncContext{}
@@ -1462,21 +1478,28 @@ func TestAllowedAttachments(t *testing.T) {
 				{digest: "digest1", version: tt.inputAttVersion},
 				{digest: "digest1", version: tt.inputAttVersion},
 			}
-			var (
-				docID1 = "doc1"
-				docID2 = "doc2"
-			)
+
+			docID1 := "doc1"
 			ctx.addAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
+
+			docID2 := "doc2"
 			ctx.addAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
 
-			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 && tt.inputAttVersion == AttVersion1 {
-				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
-			} else {
+			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 {
+				if tt.inputAttVersion == AttVersion1 {
+					requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
+					requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
+				} else if tt.inputAttVersion == AttVersion2 {
+					requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
+					requireIsAttachmentAllowedFalse(t, ctx, docID2, meta, tt.inputBlipProtocol)
+				}
+			} else if tt.inputBlipProtocol == BlipCBMobileReplicationV3 {
 				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
+				requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 			}
 
 			ctx.removeAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
@@ -1484,4 +1507,27 @@ func TestAllowedAttachments(t *testing.T) {
 		})
 	}
 
+	// Two document with different attachments.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &BlipSyncContext{}
+
+			docID1 := "doc1"
+			att1Meta := []AttachmentStorageMeta{{digest: "att1", version: tt.inputAttVersion}}
+			ctx.addAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID1, att1Meta, tt.inputBlipProtocol)
+
+			docID2 := "doc2"
+			att2Meta := []AttachmentStorageMeta{{digest: "att2", version: tt.inputAttVersion}}
+			ctx.addAllowedAttachments(docID2, att2Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
+
+			ctx.removeAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedFalse(t, ctx, docID1, att1Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
+
+			ctx.removeAllowedAttachments(docID2, att2Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedFalse(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
+		})
+	}
 }
