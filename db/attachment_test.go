@@ -1451,18 +1451,11 @@ func TestAllowedAttachments(t *testing.T) {
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
-
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 {
-				if tt.inputAttVersion == AttVersion1 {
-					requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
-					requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
-				} else if tt.inputAttVersion == AttVersion2 {
-					requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
-					requireIsAttachmentAllowedFalse(t, ctx, docID2, meta, tt.inputBlipProtocol)
-				}
+				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
 			} else if tt.inputBlipProtocol == BlipCBMobileReplicationV3 {
 				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
-				requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 			}
 
 			ctx.removeAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
@@ -1488,18 +1481,11 @@ func TestAllowedAttachments(t *testing.T) {
 			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 
 			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
-
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 {
-				if tt.inputAttVersion == AttVersion1 {
-					requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
-					requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
-				} else if tt.inputAttVersion == AttVersion2 {
-					requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
-					requireIsAttachmentAllowedFalse(t, ctx, docID2, meta, tt.inputBlipProtocol)
-				}
+				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
 			} else if tt.inputBlipProtocol == BlipCBMobileReplicationV3 {
 				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
-				requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
 			}
 
 			ctx.removeAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
