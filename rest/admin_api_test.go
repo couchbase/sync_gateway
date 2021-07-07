@@ -2380,7 +2380,6 @@ func TestHandleDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	tb := base.GetTestBucket(t)
-	defer tb.Close()
 
 	bucket := tb.GetName()
 	kvTLSPort := 443
