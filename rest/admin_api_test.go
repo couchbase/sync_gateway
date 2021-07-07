@@ -2372,11 +2372,17 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 }
 
 func TestHandleDBConfig(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	server := base.UnitTestUrl()
-	bucket := "albums"
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	bucket := tb.GetName()
 	kvTLSPort := 443
 	certPath := "/etc/ssl/certs/client.cert"
 	keyPath := "/etc/ssl/certs/client.pem"
@@ -2386,7 +2392,7 @@ func TestHandleDBConfig(t *testing.T) {
 	resource := fmt.Sprintf("/%s/", bucket)
 
 	// Create a database with no config
-	resp := rt.SendAdminRequest(http.MethodPut, resource, "{}")
+	resp := rt.SendAdminRequest(http.MethodPut, resource, `{"num_index_replicas":0}`)
 	assertStatus(t, resp, http.StatusCreated)
 	assert.Empty(t, resp.Body.String())
 
@@ -2403,7 +2409,6 @@ func TestHandleDBConfig(t *testing.T) {
 	resource = fmt.Sprintf("/%v/_config?redact=false", bucket)
 
 	bucketConfig := BucketConfig{
-		Server:     &server,
 		Bucket:     &bucket,
 		Username:   username,
 		Password:   password,
@@ -2427,7 +2432,6 @@ func TestHandleDBConfig(t *testing.T) {
 
 	assert.Equal(t, bucket, respBody["bucket"].(string))
 	assert.Equal(t, bucket, respBody["name"].(string))
-	assert.Equal(t, server, respBody["server"].(string))
 	assert.Equal(t, username, respBody["username"].(string))
 	assert.Equal(t, password, respBody["password"].(string))
 	assert.Equal(t, certPath, respBody["certpath"].(string))

@@ -222,6 +222,25 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 	return uint16(DefaultMinimumTLSVersionConst)
 }
 
+// inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
+func (dbConfig *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
+	if dbConfig.Server == nil {
+		dbConfig.Server = &b.Server
+	}
+	if dbConfig.Username == "" {
+		dbConfig.Username = b.Username
+	}
+	if dbConfig.Password == "" {
+		dbConfig.Password = b.Password
+	}
+	if dbConfig.CertPath == "" {
+		dbConfig.CertPath = b.X509CertPath
+	}
+	if dbConfig.KeyPath == "" {
+		dbConfig.KeyPath = b.X509KeyPath
+	}
+}
+
 func (dbConfig *DbConfig) setup(name string) error {
 
 	dbConfig.Name = name
