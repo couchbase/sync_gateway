@@ -35,8 +35,6 @@ import (
 
 // Reproduces CBG-1412 - JSON strings in some responses not being correctly escaped
 func TestPutDocSpecialChar(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
 	testCases := []struct {
 		name         string
 		pathDocID    string
@@ -80,6 +78,8 @@ func TestPutDocSpecialChar(t *testing.T) {
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
 			if testCase.eeOnly && !base.IsEnterpriseEdition() {
 				t.Skipf("Skipping enterprise-only test")
 			}
@@ -92,6 +92,8 @@ func TestPutDocSpecialChar(t *testing.T) {
 	}
 
 	t.Run("Delete Double quote Doc ID", func(t *testing.T) { // Should be done for Local Document deletion when it returns response
+		rt := NewRestTester(t, nil)
+		defer rt.Close()
 		tr := rt.SendAdminRequest("PUT", fmt.Sprintf("/db/%s", `del"ete"Me`), "{}") // Create the doc to delete
 		assertStatus(t, tr, http.StatusCreated)
 		var putBody struct {

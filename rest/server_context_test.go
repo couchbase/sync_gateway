@@ -442,59 +442,67 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 
 func TestAllowInsecureServerConnections(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	errorMustBeSecure := "couchbase server URL must use secure protocol. Current URL: %v"
+	errorAllowInsecureAndBeSecure := "couchbase server URL cannot use secure protocol while allowing insecure server connections. Current URL: %v"
 	testCases := []struct {
 		name                           string
 		allowInsecureServerConnections bool
 		server                         string
-		expectError                    bool
+		expectedError                  *string
 	}{
 		{
 			name:                           "Walrus allowed without flag",
 			allowInsecureServerConnections: false,
 			server:                         "walrus://",
-			expectError:                    false,
+			expectedError:                  nil,
+		},
+		{
+			name:                           "Walrus allowed with flag",
+			allowInsecureServerConnections: true,
+			server:                         "walrus://",
+			expectedError:                  nil,
 		},
 		{
 			name:                           "couchbase: not allowed",
 			allowInsecureServerConnections: false,
 			server:                         "couchbase://localhost:1212",
-			expectError:                    true,
+			expectedError:                  &errorMustBeSecure,
 		},
 		{
 			name:                           "http not allowed",
 			allowInsecureServerConnections: false,
 			server:                         "http://localhost:1212",
-			expectError:                    true,
+			expectedError:                  &errorMustBeSecure,
 		},
 		{
 			name:                           "http allowed",
 			allowInsecureServerConnections: true,
 			server:                         "http://localhost:1212",
-			expectError:                    false,
+			expectedError:                  nil,
 		},
 		{
 			name:                           "https mandatory",
 			allowInsecureServerConnections: false,
 			server:                         "https://localhost:1234",
-			expectError:                    false,
+			expectedError:                  nil,
 		},
 		{
-			name:                           "https not mandatory",
+			name:                           "Secure https not allowed",
 			allowInsecureServerConnections: true,
 			server:                         "https://localhost:1234",
-			expectError:                    false,
+			expectedError:                  &errorAllowInsecureAndBeSecure,
 		},
 		{
 			name:                           "couchbases:",
 			allowInsecureServerConnections: false,
 			server:                         "couchbases://localhost:1234",
-			expectError:                    false,
+			expectedError:                  nil,
 		},
 		{
 			name:                           "ftps:", // Testing if the S at the end is what makes it secure
 			allowInsecureServerConnections: false,
 			server:                         "ftps://localhost:1234",
-			expectError:                    true,
+			expectedError:                  &errorMustBeSecure,
 		},
 	}
 	for _, test := range testCases {
@@ -515,11 +523,13 @@ func TestAllowInsecureServerConnections(t *testing.T) {
 			// Run test
 			_, err := sc._getOrAddDatabaseFromConfig(databaseConfig, false)
 
-			expectedError := "couchbase server URL must use secure protocol. Current URL: " + test.server
-			if test.expectError {
-				assert.Error(t, err, expectedError)
+			if test.expectedError != nil {
+				assert.Error(t, err, fmt.Sprintf(*test.expectedError, test.server))
 			} else {
-				assert.NotEqual(t, expectedError, err) // Will still error due to no DB name, or not being able to connect to bucket
+				// Will still error due to no DB name, or not being able to connect to bucket
+				// So make sure it's not the 2 errors that can happen due to secure protocol
+				assert.NotEqual(t, fmt.Sprintf(errorMustBeSecure, test.server), err)
+				assert.NotEqual(t, fmt.Sprintf(errorAllowInsecureAndBeSecure, test.server), err)
 			}
 			sc.Close()
 		})
