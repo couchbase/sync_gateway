@@ -841,6 +841,11 @@ func (sc *StartupConfig) ValidateInsecureTLSConnection() (err error) {
 			err = fmt.Errorf("a TLS key and cert path must be provided when not allowing insecure TLS connections")
 			return err
 		}
+	} else { // Make sure TLS key and cert is not provided
+		if sc.API.HTTPS.TLSKeyPath != "" || sc.API.HTTPS.TLSCertPath != "" {
+			err = fmt.Errorf("cannot use TLS and also use insecure TLS connections")
+			return err
+		}
 	}
 	return nil
 }
