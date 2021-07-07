@@ -7633,7 +7633,7 @@ func TestChannelGrantedPeriods(t *testing.T) {
 
 func TestChannelHistoryPruning(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	revocationTester.addRole("user", "foo")
