@@ -27,6 +27,9 @@ import (
 // Non-winning bodies smaller than this size are more efficient to store inline.
 const MaximumInlineBodySize = 250
 
+// DocumentHistoryMaxEntriesPerChannel is the maximum allowed entries per channel in the Document ChannelSetHistory
+const DocumentHistoryMaxEntriesPerChannel = 5
+
 type DocumentUnmarshalLevel uint8
 
 const (
@@ -43,10 +46,6 @@ const (
 	RemovedRedactedDocument = `{"` + BodyRemoved + `":true}`
 	// DeletedDocument is returned by SG when a given document has been deleted
 	DeletedDocument = `{"` + BodyDeleted + `":true}`
-)
-
-const (
-	DocumentHistoryMaxEntriesPerChannel = 5
 )
 
 // Maps what users have access to what channels or roles, and when they got that access.
@@ -887,7 +886,7 @@ func (doc *Document) updateChannelHistory(channelName string, seq uint64, additi
 }
 
 func (doc *Document) addToChannelSetHistory(channelName string, historyEntry ChannelSetEntry) {
-	// Before adding the entry we need to verify the number of items in the document channel history so verify
+	// Before adding the entry we need to verify the number of items in the document channel history to check
 	// whether we need to prune them.
 	// As we iterate over the existing channels we will keep track of the oldest and second oldest entries along with
 	// their location in the slice. If we need to then prune we can 'merge' the oldest and second oldest and remove
@@ -921,7 +920,7 @@ func (doc *Document) addToChannelSetHistory(channelName string, historyEntry Cha
 		}
 	}
 
-	if entryCount == DocumentHistoryMaxEntriesPerChannel {
+	if entryCount >= DocumentHistoryMaxEntriesPerChannel {
 		doc.ChannelSetHistory[secondOldestEntryIdx].Start = oldestEntryStartSeq
 		doc.ChannelSetHistory = append(doc.ChannelSetHistory[:oldestEntryIdx], doc.ChannelSetHistory[oldestEntryIdx+1:]...)
 	}
