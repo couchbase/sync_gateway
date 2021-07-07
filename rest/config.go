@@ -820,7 +820,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 				sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
 				sc.config.Bootstrap.CACertPath)
 			if err != nil {
-				base.Debugf(base.KeyAll, "Got error connecting to bootstrap cluster: %v", err)
+				base.Infof(base.KeyAll, "Couldn't connect to bootstrap cluster: %v - will retry...", err)
 				return true, err, nil
 			}
 
