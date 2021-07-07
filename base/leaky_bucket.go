@@ -62,6 +62,10 @@ type LeakyBucketConfig struct {
 	// tests to trigger CAS retry handling by modifying the underlying document in a UpdateCallback implementation.
 	UpdateCallback func(key string)
 
+	// GetRawCallback issues a callback prior to running GetRaw. Allows tests to issue a doc mutation or deletion prior
+	// to GetRaw being ran.
+	GetRawCallback func(key string)
+
 	PostUpdateCallback func(key string)
 
 	// WriteWithXattrCallback is ran before WriteWithXattr is called. This can be used to trigger a CAS retry
@@ -98,7 +102,15 @@ func (b *LeakyBucket) GetName() string {
 func (b *LeakyBucket) Get(k string, rv interface{}) (cas uint64, err error) {
 	return b.bucket.Get(k, rv)
 }
+
+func (b *LeakyBucket) SetGetRawCallback(callback func(string)) {
+	b.config.GetRawCallback = callback
+}
+
 func (b *LeakyBucket) GetRaw(k string) (v []byte, cas uint64, err error) {
+	if b.config.GetRawCallback != nil {
+		b.config.GetRawCallback(k)
+	}
 	return b.bucket.GetRaw(k)
 }
 func (b *LeakyBucket) GetAndTouchRaw(k string, exp uint32) (v []byte, cas uint64, err error) {

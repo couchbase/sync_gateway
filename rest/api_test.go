@@ -6321,7 +6321,7 @@ func (tester *ChannelRevocationTester) removeUserChannel(user, channel string) {
 		}
 	}
 	tester.userChannels.Channels[user] = append(channelsSlice[:delIdx], channelsSlice[delIdx+1:]...)
-	tester.userChannelRev = tester.restTester.createDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannelRev)
+	tester.userChannelRev = tester.restTester.createDocReturnRev(tester.test, "userChannels", tester.userChannelRev, tester.userChannels)
 }
 
 func (tester *ChannelRevocationTester) fillToSeq(seq uint64) {
@@ -6364,9 +6364,8 @@ func (tester *ChannelRevocationTester) getChanges(sinceSeq interface{}, expected
 	return changes
 }
 
-func initScenario(t *testing.T) (ChannelRevocationTester, *RestTester) {
-	rt := NewRestTester(t, &RestTesterConfig{
-		SyncFn: `
+func initScenario(t *testing.T, rtConfig *RestTesterConfig) (ChannelRevocationTester, *RestTester) {
+	defaultSyncFn := `
 			function (doc, oldDoc){
 				if (doc._id === 'userRoles'){				
 					for (var key in doc.roles){
@@ -6386,8 +6385,19 @@ func initScenario(t *testing.T) (ChannelRevocationTester, *RestTester) {
 				if (doc._id.indexOf("doc") >= 0){				
 					channel(doc.channels);
 				}
-			}`,
-	})
+			}`
+
+	if rtConfig == nil {
+		rtConfig = &RestTesterConfig{
+			SyncFn: defaultSyncFn,
+		}
+	} else {
+		if rtConfig.SyncFn == "" {
+			rtConfig.SyncFn = defaultSyncFn
+		}
+	}
+
+	rt := NewRestTester(t, rtConfig)
 
 	revocationTester := ChannelRevocationTester{
 		test:       t,
@@ -6428,7 +6438,7 @@ func (rt *RestTester) createDocReturnRev(t *testing.T, docID string, revID strin
 func TestRevocationScenario1(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6479,7 +6489,7 @@ func TestRevocationScenario1(t *testing.T) {
 func TestRevocationScenario2(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6531,7 +6541,7 @@ func TestRevocationScenario2(t *testing.T) {
 func TestRevocationScenario3(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6583,7 +6593,7 @@ func TestRevocationScenario3(t *testing.T) {
 func TestRevocationScenario4(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6635,7 +6645,7 @@ func TestRevocationScenario4(t *testing.T) {
 func TestRevocationScenario5(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6681,7 +6691,7 @@ func TestRevocationScenario5(t *testing.T) {
 func TestRevocationScenario6(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6728,7 +6738,7 @@ func TestRevocationScenario6(t *testing.T) {
 func TestRevocationScenario7(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6775,7 +6785,7 @@ func TestRevocationScenario7(t *testing.T) {
 func TestRevocationScenario8(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6815,7 +6825,7 @@ func TestRevocationScenario8(t *testing.T) {
 func TestRevocationScenario9(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6855,7 +6865,7 @@ func TestRevocationScenario9(t *testing.T) {
 func TestRevocationScenario10(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6895,7 +6905,7 @@ func TestRevocationScenario10(t *testing.T) {
 func TestRevocationScenario11(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6936,7 +6946,7 @@ func TestRevocationScenario11(t *testing.T) {
 func TestRevocationScenario12(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -6976,7 +6986,7 @@ func TestRevocationScenario12(t *testing.T) {
 func TestRevocationScenario13(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -7015,7 +7025,7 @@ func TestRevocationScenario13(t *testing.T) {
 func TestRevocationScenario14(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/doc1", `{"channels": "ch1"}`)
@@ -7045,7 +7055,7 @@ func TestRevocationScenario14(t *testing.T) {
 func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	// Give role access to channel A and give user access to role
@@ -7080,7 +7090,7 @@ func TestEnsureRevocationAfterDocMutation(t *testing.T) {
 func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	// Give role access to channel A and give user access to role
@@ -7174,7 +7184,7 @@ func TestRevocationWithAdminRoles(t *testing.T) {
 func TestRevocationMutationMovesIntoRevokedChannel(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	revocationTester.addRole("user", "foo")
@@ -7201,7 +7211,7 @@ func TestRevocationMutationMovesIntoRevokedChannel(t *testing.T) {
 func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	resp := rt.SendAdminRequest("PUT", "/db/_role/foo2", `{}`)
@@ -7256,7 +7266,7 @@ func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
 func TestRevocationResumeSameRoleAndLowSeqCheck(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	revocationTester.addRole("user", "foo")
@@ -7358,9 +7368,272 @@ func TestMetricsHandler(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestRevocationsWithQueryLimit(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			QueryPaginationLimit: base.IntPtr(2),
+			CacheConfig: &CacheConfig{
+				RevCacheConfig: &RevCacheConfig{
+					Size: base.Uint32Ptr(0),
+				},
+				ChannelCacheConfig: &ChannelCacheConfig{
+					MaxNumber: base.IntPtr(0),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(9)
+	_ = rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
+	_ = rt.createDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch1"}})
+	_ = rt.createDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"ch1"}})
+
+	changes := revocationTester.getChanges("0", 4)
+
+	revocationTester.removeRole("user", "foo")
+
+	// Run changes once (which has its own wait)
+	sinceVal := changes.Last_Seq
+	changes = revocationTester.getChanges(sinceVal, 3)
+
+	var queryKey string
+	if base.TestsDisableGSI() {
+		queryKey = fmt.Sprintf(base.StatViewFormat, db.DesignDocSyncGateway(), db.ViewChannels)
+	} else {
+		queryKey = db.QueryTypeChannels
+	}
+
+	// Once we know the changes will return to right count run again to validate queries ran
+	channelQueryCountBefore := rt.GetDatabase().DbStats.Query(queryKey).QueryCount.Value()
+	changes = revocationTester.getChanges(sinceVal, 3)
+	channelQueryCountAfter := rt.GetDatabase().DbStats.Query(queryKey).QueryCount.Value()
+
+	assert.Equal(t, int64(3), channelQueryCountAfter-channelQueryCountBefore)
+}
+
+func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	revocationTester, rt := initScenario(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			QueryPaginationLimit: base.IntPtr(2),
+			CacheConfig: &CacheConfig{
+				RevCacheConfig: &RevCacheConfig{
+					Size: base.Uint32Ptr(0),
+				},
+				ChannelCacheConfig: &ChannelCacheConfig{
+					MaxNumber: base.IntPtr(0),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "ch1")
+
+	revocationTester.fillToSeq(9)
+	_ = rt.createDocReturnRev(t, "doc1", "", map[string]interface{}{"channels": []string{"ch1"}})
+	_ = rt.createDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"ch1"}})
+	_ = rt.createDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"ch1"}})
+
+	changes := revocationTester.getChanges("0", 4)
+
+	revocationTester.removeRole("user", "foo")
+
+	waitForUserChangesWithLimit := func(sinceVal interface{}, limit int) changesResults {
+		var changesRes changesResults
+		err := rt.WaitForCondition(func() bool {
+			resp := rt.SendUserRequestWithHeaders("GET", fmt.Sprintf("/db/_changes?since=%v&revocations=true&limit=%d", sinceVal, limit), "", nil, "user", "test")
+			require.Equal(t, http.StatusOK, resp.Code)
+			err := json.Unmarshal(resp.BodyBytes(), &changesRes)
+			require.NoError(t, err)
+
+			return len(changesRes.Results) == limit
+		})
+		assert.NoError(t, err)
+		return changesRes
+	}
+
+	sinceVal := changes.Last_Seq
+	changes = waitForUserChangesWithLimit(sinceVal, 2)
+	assert.Len(t, changes.Results, 2)
+
+	changes = waitForUserChangesWithLimit(sinceVal, 3)
+	assert.Len(t, changes.Results, 3)
+}
+
+func TestUserHasDocAccessDocNotFound(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			QueryPaginationLimit: base.IntPtr(2),
+			CacheConfig: &CacheConfig{
+				RevCacheConfig: &RevCacheConfig{
+					Size: base.Uint32Ptr(0),
+				},
+				ChannelCacheConfig: &ChannelCacheConfig{
+					MaxNumber: base.IntPtr(0),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+	revID := respRevID(t, resp)
+
+	database, err := db.CreateDatabase(rt.GetDatabase())
+	assert.NoError(t, err)
+
+	userHasDocAccess, err := db.UserHasDocAccess(database, "doc", revID)
+	assert.NoError(t, err)
+	assert.True(t, userHasDocAccess)
+
+	err = rt.GetDatabase().Bucket.Delete("doc")
+	assert.NoError(t, err)
+
+	userHasDocAccess, err = db.UserHasDocAccess(database, "doc", revID)
+	assert.NoError(t, err)
+	assert.False(t, userHasDocAccess)
+}
+
+func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
+	if !base.UnitTestUrlIsWalrus() {
+		t.Skip("Skip test with LeakyBucket dependency when running in integration")
+	}
+
+	revocationTester, rt := initScenario(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			QueryPaginationLimit: base.IntPtr(2),
+			CacheConfig: &CacheConfig{
+				RevCacheConfig: &RevCacheConfig{
+					Size: base.Uint32Ptr(0),
+				},
+				ChannelCacheConfig: &ChannelCacheConfig{
+					MaxNumber: base.IntPtr(0),
+				},
+			},
+		},
+	})
+	defer rt.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "A")
+
+	resp := rt.SendAdminRequest("PUT", "/db/doc", `{"channels": ["A"]}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	changes := revocationTester.getChanges(0, 2)
+	assert.Len(t, changes.Results, 2)
+
+	revocationTester.removeRoleChannel("foo", "A")
+	_, err := rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changes.Last_Seq), "", true)
+	assert.NoError(t, err)
+
+	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	require.True(t, ok)
+
+	leakyBucket.SetGetRawCallback(func(s string) {
+		err = leakyBucket.Delete("doc")
+		assert.NoError(t, err)
+	})
+
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	require.Len(t, changes.Results, 1)
+	assert.True(t, changes.Results[0].Revoked)
+	assert.Equal(t, changes.Results[0].ID, "doc")
+}
+
+// Test does not directly run wasDocInChannelAtSeq but aims to test this through performing revocation operations
+// that will hit the various cases that wasDocInChannelAtSeq will handle
+func TestWasDocInChannelAtSeq(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	revocationTester, rt := initScenario(t, nil)
+	defer rt.Close()
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "a")
+	revocationTester.addRoleChannel("foo", "c")
+
+	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
+
+	changes := revocationTester.getChanges(0, 2)
+	assert.Len(t, changes.Results, 2)
+
+	revocationTester.removeRoleChannel("foo", "a")
+	revocationTester.removeRoleChannel("foo", "c")
+
+	_ = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{}})
+	_ = rt.createDocReturnRev(t, "doc2", "", map[string]interface{}{"channels": []string{"b", "a"}})
+
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.addRoleChannel("foo", "c")
+	doc3Rev := rt.createDocReturnRev(t, "doc3", "", map[string]interface{}{"channels": []string{"c"}})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.removeRoleChannel("foo", "c")
+	_ = rt.createDocReturnRev(t, "doc3", doc3Rev, map[string]interface{}{"channels": []string{"c"}})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+}
+
+// Test does not directly run ChannelGrantedPeriods but aims to test this through performing revocation operations
+// that will hit the various cases that ChannelGrantedPeriods will handle
+func TestChannelGrantedPeriods(t *testing.T) {
+	t.Skip("Currently hits issue fixed in: https://github.com/couchbase/sync_gateway/pull/5080")
+
+	defer db.SuspendSequenceBatching()()
+	revocationTester, rt := initScenario(t, nil)
+	defer rt.Close()
+
+	revocationTester.addUserChannel("user", "a")
+	revId := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
+	changes := revocationTester.getChanges(0, 2)
+	assert.Len(t, changes.Results, 2)
+
+	revocationTester.removeUserChannel("user", "a")
+	revId = rt.createDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate", "channels": []string{"a"}})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.addUserChannel("user", "a")
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.removeUserChannel("user", "a")
+	revId = rt.createDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate2", "channels": []string{"a"}})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.addUserChannel("user", "a")
+	revId = rt.createDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate3", "channels": []string{"a"}})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+
+	revocationTester.addRole("user", "foo")
+	revocationTester.addRoleChannel("foo", "b")
+	revId = rt.createDocReturnRev(t, "doc", revId, map[string]interface{}{"channels": []string{"b"}})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+
+	revocationTester.removeRoleChannel("foo", "b")
+	revocationTester.removeRole("user", "foo")
+	revId = rt.createDocReturnRev(t, "doc", revId, map[string]interface{}{"mutate": "mutate", "channels": []string{"b"}})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+}
+
 func TestChannelHistoryPruning(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	revocationTester, rt := initScenario(t)
+	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
 
 	revocationTester.addRole("user", "foo")
