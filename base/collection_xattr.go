@@ -105,9 +105,10 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 			// Attempt to retrieve the document body, if present
 			docContentErr := res.ContentAt(1, rv)
 			xattrContentErr := res.ContentAt(0, xv)
+			cas = uint64(res.Cas())
 
 			if isKVError(docContentErr, memd.StatusSubDocMultiPathFailureDeleted) && isKVError(xattrContentErr, memd.StatusSubDocMultiPathFailureDeleted) {
-				// No doc, no xattr can be treated as NotFound from Sync Gateway's perspective, even if it is a server tombstone
+				// No doc, no xattr can be treated as NotFound from Sync Gateway's perspective, even if it is a server tombstone, but should return cas
 				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 				return false, ErrNotFound, cas
 			}
@@ -119,7 +120,6 @@ func (c *Collection) SubdocGetBodyAndXattr(k string, xattrKey string, userXattrK
 			if xattrContentErr != nil {
 				Debugf(KeyCRUD, "No xattr content found for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), xattrContentErr)
 			}
-			cas = uint64(res.Cas())
 
 		case gocbcore.ErrMemdSubDocMultiPathFailureDeleted:
 			//   ErrSubDocMultiPathFailureDeleted - one of the subdoc operations failed, and the doc is deleted.  Occurs when xattr may exist but doc is deleted (tombstone)
@@ -215,7 +215,7 @@ func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uin
 	}
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
-		StoreSemantic: gocb.StoreSemanticsUpsert,
+		StoreSemantic: gocb.StoreSemanticsInsert,
 	}
 	result, mutateErr := c.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {

@@ -54,6 +54,10 @@ func (tb TestBucket) Close() {
 	tb.closeFn()
 }
 
+func (tb *TestBucket) GetUnderlyingBucket() Bucket {
+	return tb.Bucket
+}
+
 // LeakyBucketClone wraps the underlying bucket on the TestBucket with a LeakyBucket and returns a new TestBucket handle.
 func (tb *TestBucket) LeakyBucketClone(c LeakyBucketConfig) *TestBucket {
 	return &TestBucket{
@@ -111,39 +115,56 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 }
 
 func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
-	if driver == GoCBv2 {
-		// TODO: add GoCBv2 support to TestBucketPool.
 
-		// Reserve test bucket from pool
-		_, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
+	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
 
-		spec.CouchbaseDriver = GoCBv2
-		if spec.Server == kTestCouchbaseServerURL {
-			spec.Server = "couchbase://localhost"
-		}
-		if !strings.HasPrefix(spec.Server, "couchbase") {
-			closeFn()
-			t.Fatalf("Server must use couchbase scheme for gocb v2 testing")
-		}
-
-		collection, err := GetCouchbaseCollection(spec)
-		if err != nil {
-			t.Fatalf("Unable to get collection: %v", collection)
-		}
-
-		closeAll := func() {
-			collection.Close()
-			closeFn()
-		}
-
+	// If walrus, use bucket as-is
+	if !TestUseCouchbaseServer() {
 		return &TestBucket{
-			Bucket:     collection,
+			Bucket:     bucket,
+			BucketSpec: spec,
+			closeFn:    closeFn,
+		}
+	}
+
+	// If the spec being used by the test bucket pool matches the requested, use that
+	if spec.CouchbaseDriver == driver {
+		closeAll := func() {
+			bucket.Close()
+			closeFn()
+		}
+		return &TestBucket{
+			Bucket:     bucket,
 			BucketSpec: spec,
 			closeFn:    closeAll,
 		}
+	}
 
-	} else {
-		return GetTestBucket(t)
+	// Otherwise, open a bucket for the requested driver based on the connection
+	// information from the pool bucket
+	spec.CouchbaseDriver = driver
+	if spec.Server == kTestCouchbaseServerURL {
+		spec.Server = "couchbase://localhost"
+	}
+	if !strings.HasPrefix(spec.Server, "couchbase") {
+		closeFn()
+		t.Fatalf("Server must use couchbase scheme for gocb testing")
+	}
+
+	store, err := GetBucket(spec)
+	if err != nil {
+		t.Fatalf("Unable to get store for driver %s: %v", driver, err)
+	}
+
+	closeAll := func() {
+		store.Close()
+		closeFn()
+	}
+
+	return &TestBucket{
+		Bucket:     store,
+		BucketSpec: spec,
+		closeFn:    closeAll,
 	}
 }
 
@@ -209,10 +230,10 @@ func (t TestAuthenticator) GetCredentials() (username, password, bucketname stri
 }
 
 // Reset bucket state
-func DropAllBucketIndexes(gocbBucket *CouchbaseBucketGoCB) error {
+func DropAllBucketIndexes(bucket N1QLStore) error {
 
 	// Retrieve all indexes
-	indexes, err := getIndexes(gocbBucket)
+	indexes, err := bucket.getIndexes()
 	if err != nil {
 		return err
 	}
@@ -229,14 +250,14 @@ func DropAllBucketIndexes(gocbBucket *CouchbaseBucketGoCB) error {
 
 			defer wg.Done()
 
-			log.Printf("Dropping index %s on bucket %s...", indexToDrop, gocbBucket.Name())
-			dropErr := gocbBucket.DropIndex(indexToDrop)
+			log.Printf("Dropping index %s on bucket %s...", indexToDrop, bucket.GetName())
+			dropErr := bucket.DropIndex(indexToDrop)
 			if dropErr != nil {
 				asyncErrors <- dropErr
-				log.Printf("...failed to drop index %s on bucket %s: %s", indexToDrop, gocbBucket.Name(), dropErr)
+				log.Printf("...failed to drop index %s on bucket %s: %s", indexToDrop, bucket.GetName(), dropErr)
 				return
 			}
-			log.Printf("...successfully dropped index %s on bucket %s", indexToDrop, gocbBucket.Name())
+			log.Printf("...successfully dropped index %s on bucket %s", indexToDrop, bucket.GetName())
 		}(index)
 
 	}
@@ -252,30 +273,6 @@ func DropAllBucketIndexes(gocbBucket *CouchbaseBucketGoCB) error {
 	}
 
 	return nil
-}
-
-// Get a list of all index names in the bucket
-func getIndexes(gocbBucket *CouchbaseBucketGoCB) (indexes []string, err error) {
-
-	indexes = []string{}
-
-	manager, err := gocbBucket.getBucketManager()
-	if err != nil {
-		return indexes, err
-	}
-
-	indexInfo, err := manager.GetIndexes()
-	if err != nil {
-		return indexes, err
-	}
-
-	for _, indexInfo := range indexInfo {
-		if indexInfo.Keyspace == gocbBucket.GetName() {
-			indexes = append(indexes, indexInfo.Name)
-		}
-	}
-
-	return indexes, nil
 }
 
 // Generates a string of size int
@@ -478,7 +475,7 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataS
 	}
 	dataStores = append(dataStores, dataStore{
 		name:   "gocb.v1",
-		driver: GoCB,
+		driver: GoCBCustomSGTranscoder,
 	})
 
 	for _, dataStore := range dataStores {

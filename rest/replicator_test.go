@@ -2877,7 +2877,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	assert.NoError(t, ar.Stop())
 
 	// roll back checkpoint value to first one and remove the associated doc
-	err = rt2.Bucket().SetRaw(checkpointDocID, 0, firstCheckpoint)
+	err = rt2.Bucket().Set(checkpointDocID, 0, firstCheckpoint)
 	assert.NoError(t, err)
 
 	rt2db, err := db.GetDatabase(rt2.GetDatabase(), nil)
@@ -2970,13 +2970,13 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 
 	pushCheckpointID := ar.Push.CheckpointID
 	pushCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pushCheckpointID
-	err = rt2.Bucket().SetRaw(pushCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
+	err = rt2.Bucket().Set(pushCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
 	require.NoError(t, err)
 
 	pullCheckpointID := ar.Pull.CheckpointID
 	require.NoError(t, err)
 	pullCheckpointDocID := base.SyncPrefix + "local:checkpoint/" + pullCheckpointID
-	err = rt1.Bucket().SetRaw(pullCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
+	err = rt1.Bucket().Set(pullCheckpointDocID, 0, []byte(`{"last_sequence":"0","_rev":"abc"}`))
 	require.NoError(t, err)
 
 	// Create doc1 on rt1
@@ -5684,7 +5684,7 @@ func requireErrorKeyNotFound(t *testing.T, rt *RestTester, docID string) {
 	var body []byte
 	_, err := rt.Bucket().Get(docID, &body)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "key not found")
+	require.True(t, base.IsKeyNotFoundError(rt.Bucket(), err))
 }
 
 // requireRevID asserts that the specified document revision is written to the

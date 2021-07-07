@@ -26,6 +26,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/couchbase/go-blip"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
@@ -187,6 +189,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}
 
+	// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
+	// will be closed when the rest tester closes the server context. The original bucket will be closed using the
+	// testBucket's closeFn
 	rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
 	rt.SetAdminParty(rt.guestEnabled)
@@ -672,6 +677,14 @@ func assertStatus(t testing.TB, response *TestResponse, expectedStatus int) {
 		response.Code, http.StatusText(response.Code),
 		expectedStatus, http.StatusText(expectedStatus),
 		response.Req.Method, response.Req.URL, response.Body)
+}
+
+// gocb V2 accepts expiry as a duration and converts to a uint32 epoch time, then does the reverse on retrieval.
+// Sync Gateway's bucket interface uses uint32 expiry. The net result is that expiry values written and then read via SG's
+// bucket API go through a transformation based on time.Now (or time.Until) that can result in inexact matches.
+// assertExpiry validates that the two expiry values are within a 5 second window
+func assertExpiry(t testing.TB, expected uint32, actual uint32) {
+	assert.True(t, base.DiffUint32(expected, actual) < 5, fmt.Sprintf("Unexpected difference between expected: %v actual %v", expected, actual))
 }
 
 func NewSlowResponseRecorder(responseDelay time.Duration, responseRecorder *httptest.ResponseRecorder) *SlowResponseRecorder {

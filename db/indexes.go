@@ -11,13 +11,11 @@ licenses/APL2.txt.
 package db
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -280,17 +278,7 @@ func (i *SGIndex) createIfNeeded(bucket base.N1QLStore, useXattrs bool, numRepli
 }
 
 // Initializes Sync Gateway indexes for bucket.  Creates required indexes if not found, then waits for index readiness.
-func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) error {
-
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
-	if !ok {
-		base.Warnf("Using a non-Couchbase bucket: %T - indexes will not be created.", bucket)
-		return nil
-	}
-
-	if !gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql) {
-		return errors.New("No available nodes running the Query Service. Either add the Query Service to your Couchbase Server cluster or set `use_views` to true in your Sync Gateway config")
-	}
+func InitializeIndexes(bucket base.N1QLStore, useXattrs bool, numReplicas uint) error {
 
 	base.Infof(base.KeyAll, "Initializing indexes with numReplicas: %d...", numReplicas)
 
@@ -299,7 +287,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 	allSGIndexes := make([]string, 0)
 	for _, sgIndex := range sgIndexes {
 		fullIndexName := sgIndex.fullIndexName(useXattrs)
-		isDeferred, err := sgIndex.createIfNeeded(gocbBucket, useXattrs, numReplicas)
+		isDeferred, err := sgIndex.createIfNeeded(bucket, useXattrs, numReplicas)
 		if err != nil {
 			return base.RedactErrorf("Unable to install index %s: %v", base.MD(sgIndex.simpleName), err)
 		}
@@ -312,7 +300,7 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 
 	// Issue BUILD INDEX for any deferred indexes.
 	if len(deferredIndexes) > 0 {
-		buildErr := gocbBucket.BuildDeferredIndexes(deferredIndexes)
+		buildErr := bucket.BuildDeferredIndexes(deferredIndexes)
 		if buildErr != nil {
 			base.Infof(base.KeyQuery, "Error building deferred indexes.  Error: %v", buildErr)
 			return buildErr
@@ -321,15 +309,15 @@ func InitializeIndexes(bucket base.Bucket, useXattrs bool, numReplicas uint) err
 
 	// Wait for newly built indexes to be online
 	for _, indexName := range deferredIndexes {
-		_ = gocbBucket.WaitForIndexOnline(indexName)
+		_ = bucket.WaitForIndexOnline(indexName)
 	}
 
 	// Wait for initial readiness queries to complete
-	return waitForIndexes(gocbBucket, useXattrs)
+	return waitForIndexes(bucket, useXattrs)
 }
 
 // Issue a consistency=request_plus query against critical indexes to guarantee indexing is complete and indexes are ready.
-func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
+func waitForIndexes(bucket base.N1QLStore, useXattrs bool) error {
 	var indexesWg sync.WaitGroup
 	base.Infof(base.KeyAll, "Verifying index availability for bucket %s...", base.MD(bucket.GetName()))
 	indexErrors := make(chan error, len(sgIndexes))
@@ -369,7 +357,7 @@ func waitForIndexes(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 
 // Issues adhoc consistency=request_plus query to determine if specified index is ready.
 // Retries indefinitely on timeout, backoff retry on all other errors.
-func waitForIndex(bucket *base.CouchbaseBucketGoCB, indexName string, queryStatement string) error {
+func waitForIndex(bucket base.N1QLStore, indexName string, queryStatement string) error {
 
 	// For non-timeout errors, backoff retry up to ~15m, to handle large initial indexing times
 	retrySleeper := base.CreateMaxDoublingSleeperFunc(180, 100, 5000)

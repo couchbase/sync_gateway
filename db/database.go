@@ -486,9 +486,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	if dbContext.UseXattrs() {
 		// Set the purge interval for tombstone compaction
 		dbContext.PurgeInterval = DefaultPurgeInterval
-		gocbBucket, ok := base.AsGoCBBucket(bucket)
+		cbStore, ok := base.AsCouchbaseStore(bucket)
 		if ok {
-			serverPurgeInterval, err := gocbBucket.GetMetadataPurgeInterval()
+			serverPurgeInterval, err := cbStore.MetadataPurgeInterval()
 			if err != nil {
 				base.Warnf("Unable to retrieve server's metadata purge interval - will use default value. %s", err)
 			} else if serverPurgeInterval > 0 {
@@ -519,10 +519,9 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 	}
 
 	// Make sure there is no MaxTTL set on the bucket (SG #3314)
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	cbs, ok := base.AsCouchbaseStore(bucket)
 	if ok {
-		maxTTL, err := gocbBucket.GetMaxTTL()
-
+		maxTTL, err := cbs.MaxTTL()
 		if err != nil {
 			return nil, err
 		}
@@ -581,13 +580,13 @@ func (context *DatabaseContext) GetServerUUID() string {
 
 	// Lazy load the server UUID, if we can get it.
 	if context.serverUUID == "" {
-		b, ok := base.AsGoCBBucket(context.Bucket)
+		cbs, ok := base.AsCouchbaseStore(context.Bucket)
 		if !ok {
 			base.Warnf("Database %v: Unable to get server UUID. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
 			return ""
 		}
 
-		uuid, err := b.GetServerUUID()
+		uuid, err := cbs.ServerUUID()
 		if err != nil {
 			base.Warnf("Database %v: Unable to get server UUID: %v", base.MD(context.Name), err)
 			return ""
@@ -680,17 +679,17 @@ func (context *DatabaseContext) RemoveObsoleteDesignDocs(previewOnly bool) (remo
 // Removes previous versions of Sync Gateway's indexes found on the server
 func (context *DatabaseContext) RemoveObsoleteIndexes(previewOnly bool) (removedIndexes []string, err error) {
 
-	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
+	if !context.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql) {
+		return removedIndexes, nil
+	}
+
+	n1qlStore, ok := base.AsN1QLStore(context.Bucket)
 	if !ok {
 		base.Warnf("Cannot remove obsolete indexes for non-gocb bucket - skipping.")
 		return make([]string, 0), nil
 	}
 
-	if !gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql) {
-		return removedIndexes, nil
-	}
-
-	return removeObsoleteIndexes(gocbBucket, previewOnly, context.UseXattrs(), context.UseViews(), sgIndexes)
+	return removeObsoleteIndexes(n1qlStore, previewOnly, context.UseXattrs(), context.UseViews(), sgIndexes)
 }
 
 // Trigger terminate check handling for connected continuous replications.
@@ -1406,29 +1405,29 @@ func (db *Database) invalUserOrRoleChannels(name string, invalSeq uint64) {
 }
 
 func (context *DatabaseContext) ObtainManagementEndpoints() ([]string, error) {
-	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
+	cbStore, ok := base.AsCouchbaseStore(context.Bucket)
 	if !ok {
 		base.Warnf("Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
 		return nil, nil
 	}
 
-	return base.GoCBBucketMgmtEndpoints(gocbBucket.Bucket)
+	return base.GoCBBucketMgmtEndpoints(cbStore)
 }
 
 func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
-	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
+	cbStore, ok := base.AsCouchbaseStore(context.Bucket)
 	if !ok {
 		base.Warnf("Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
 		return nil, nil, nil
 	}
 
-	endpoints, err := base.GoCBBucketMgmtEndpoints(gocbBucket.Bucket)
+	endpoints, err := base.GoCBBucketMgmtEndpoints(cbStore)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// Clone HTTP transport for use in our httpClient
-	transport := gocbBucket.Bucket.IoRouter().HttpClient().Transport.(*http.Transport).Clone()
+	transport := cbStore.HttpClient().Transport.(*http.Transport).Clone()
 
 	httpClient := &http.Client{
 		Transport: transport,

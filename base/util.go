@@ -837,13 +837,10 @@ func BoolDefault(b *bool, ifNil bool) bool {
 // Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string, connSpec *gocbconnstr.ConnSpec) (httpUrls []string, err error) {
 
-	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
-	typedBucket, ok := AsGoCBBucket(bucket)
+	// If we're using a couchbase bucket, use the bucket to retrieve the mgmt endpoints.
+	cbBucket, ok := AsCouchbaseStore(bucket)
 	if ok {
-		if typedBucket.IoRouter() != nil {
-			mgmtEps := typedBucket.IoRouter().MgmtEps()
-			return mgmtEps, nil
-		}
+		return cbBucket.MgmtEps()
 	}
 
 	// No bucket-based handling, fall back to URI parsing
@@ -1437,6 +1434,13 @@ func MaxUint64(x, y uint64) uint64 {
 	return y
 }
 
+func DiffUint32(x, y uint32) uint32 {
+	if x > y {
+		return x - y
+	}
+	return y - x
+}
+
 // GetRestrictedIntQuery returns the integer value of a URL query, restricted to a min and max value,
 // but returning 0 if missing or unparseable.  If allowZero is true, values coming in
 // as zero will stay zero, instead of being set to the minValue.
@@ -1494,7 +1498,7 @@ func GetRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64,
 	return value
 }
 
-// GetHttpClient returns a new HTTP client with TLS certificate verification
+// HttpClient returns a new HTTP client with TLS certificate verification
 // disabled when insecureSkipVerify is true and enabled otherwise.
 func GetHttpClient(insecureSkipVerify bool) *http.Client {
 	if insecureSkipVerify {

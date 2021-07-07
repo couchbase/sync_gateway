@@ -62,11 +62,13 @@ func TestSetGet(t *testing.T) {
 		val := make(map[string]interface{}, 0)
 		val["foo"] = "bar"
 
+		rawVal := []byte(`{"foo":"bar"}`)
+
 		var rVal map[string]interface{}
 		_, err := bucket.Get(key, &rVal)
 		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
 
-		err = bucket.Set(key, 0, val)
+		err = bucket.Set(key, 0, rawVal)
 		assert.NoError(t, err, "Error calling Set()")
 
 		_, err = bucket.Get(key, &rVal)
@@ -295,6 +297,96 @@ func TestUpdate(t *testing.T) {
 		state, ok = rv["state"]
 		assert.True(t, ok, "expected state property not present")
 		assert.Equal(t, "updated", state)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
+}
+
+func TestUpdateCASFailure(t *testing.T) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+		key := t.Name()
+		valInitial := []byte(`{"state":"initial"}`)
+		valCasMismatch := []byte(`{"state":"casMismatch"}`)
+		valUpdated := []byte(`{"state":"updated"}`)
+
+		var rv map[string]interface{}
+		_, err := bucket.Get(key, &rv)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		// Initialize document
+		setErr := bucket.Set(key, 0, valInitial)
+		assert.NoError(t, setErr)
+
+		triggerCasFail := true
+		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			if triggerCasFail == true {
+				// mutate the document to trigger cas failure
+				setErr := bucket.Set(key, 0, valCasMismatch)
+				assert.NoError(t, setErr)
+				triggerCasFail = false
+			}
+			return valUpdated, nil, false, nil
+		}
+
+		_, err = bucket.Update(key, 0, updateFunc)
+		if err != nil {
+			t.Errorf("Error calling Update: %v", err)
+		}
+
+		// verify update succeeded
+		_, err = bucket.Get(key, &rv)
+		assert.NoError(t, err, "error retrieving updated value")
+		state, ok := rv["state"]
+		assert.True(t, ok, "expected state property not present")
+		assert.Equal(t, "updated", state)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
+}
+
+func TestUpdateCASFailureOnInsert(t *testing.T) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+		key := t.Name()
+		valCasMismatch := []byte(`{"state":"casMismatch"}`)
+		valInitial := []byte(`{"state":"initial"}`)
+
+		var rv map[string]interface{}
+		_, err := bucket.Get(key, &rv)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		// Attempt to create the doc via update
+		triggerCasFail := true
+		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			if triggerCasFail == true {
+				// mutate the document to trigger cas failure
+				setErr := bucket.Set(key, 0, valCasMismatch)
+				assert.NoError(t, setErr)
+				triggerCasFail = false
+			}
+			return valInitial, nil, false, nil
+		}
+
+		_, err = bucket.Update(key, 0, updateFunc)
+		if err != nil {
+			t.Errorf("Error calling Update: %v", err)
+		}
+
+		// verify update succeeded
+		_, err = bucket.Get(key, &rv)
+		assert.NoError(t, err, "error retrieving updated value")
+		state, ok := rv["state"]
+		assert.True(t, ok, "expected state property not present")
+		assert.Equal(t, "initial", state)
 
 		err = bucket.Delete(key)
 		if err != nil {
@@ -1960,21 +2052,6 @@ func TestApplyViewQueryStaleOptions(t *testing.T) {
 
 }
 
-// Make sure that calling CouchbaseServerVersion against actual couchbase server does not return an error
-func TestCouchbaseServerVersion(t *testing.T) {
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
-
-	major, _, _ := bucket.CouchbaseServerVersion()
-	assert.NotZero(t, major)
-
-}
-
 func TestCouchbaseServerMaxTTL(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -1983,8 +2060,9 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	gocbBucket := bucket.Bucket.(*CouchbaseBucketGoCB)
-	maxTTL, err := gocbBucket.GetMaxTTL()
+	cbStore, ok := AsCouchbaseStore(bucket)
+	require.True(t, ok)
+	maxTTL, err := cbStore.MaxTTL()
 	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, maxTTL, 0)
 
@@ -2017,6 +2095,10 @@ func TestCouchbaseServerIncorrectLogin(t *testing.T) {
 func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if TestClusterDriver() == GoCBv2 {
+		t.Skip("This test doesn't work using GoCBv2")
 	}
 
 	testBucket := GetTestBucket(t)
@@ -2311,5 +2393,127 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 		assert.Len(t, docResult, 0)
 		assert.Equal(t, "1-EmDC", xattrResult["rev"])
 		assert.Equal(t, "0x00000000", xattrResult[xattrMacroValueCrc32c])
+	})
+}
+
+// TestRawBackwardCompatibilityFromJSON ensures that bucket implementation handles the case
+// where legacy SG versions set incorrect data types:
+//    - write as JSON, read as binary, (re-)write as binary
+func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
+	}
+
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		key := t.Name()
+		val := []byte(`{"foo":"bar"}`)
+		updatedVal := []byte(`{"foo":"bars"}`)
+
+		var body []byte
+		_, err := bucket.Get(key, &body)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		// Write as JSON
+		setErr := bucket.Set(key, 0, val)
+		assert.NoError(t, setErr)
+
+		// Read as binary
+		rv, _, getRawErr := bucket.GetRaw(key)
+		assert.NoError(t, getRawErr)
+		if string(rv) != string(val) {
+			t.Errorf("%v != %v", string(rv), string(val))
+		}
+
+		// Write as binary
+		setRawErr := bucket.SetRaw(key, 0, updatedVal)
+		assert.NoError(t, setRawErr)
+
+	})
+}
+
+// TestRawBackwardCompatibilityFromBinary ensures that bucket implementation handles the case
+// where legacy SG versions set incorrect data types:
+//    - write as binary, read as raw JSON, rewrite as raw JSON
+func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
+	}
+
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		key := t.Name()
+		val := []byte(`{{"foo":"bar"}`)
+		updatedVal := []byte(`{"foo":"bars"}`)
+
+		var body []byte
+		_, err := bucket.Get(key, &body)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		// Write as binary
+		err = bucket.SetRaw(key, 0, val)
+		assert.NoError(t, err)
+
+		// Read as raw JSON
+		var rv []byte
+		_, getErr := bucket.Get(key, &rv)
+		assert.NoError(t, getErr)
+		if string(rv) != string(val) {
+			t.Errorf("%v != %v", string(rv), string(val))
+		}
+
+		// Write as raw JSON
+		setErr := bucket.Set(key, 0, updatedVal)
+		assert.NoError(t, setErr)
+
+	})
+}
+
+func TestGetExpiry(t *testing.T) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		store, ok := AsCouchbaseStore(bucket)
+		assert.True(t, ok)
+
+		key := t.Name()
+		val := make(map[string]interface{}, 0)
+		val["foo"] = "bar"
+
+		rawVal := []byte(`{"foo":"bar"}`)
+
+		expiryValue := uint32(time.Now().Add(1 * time.Minute).Unix())
+		err := bucket.Set(key, expiryValue, rawVal)
+		assert.NoError(t, err, "Error calling Set()")
+
+		expiry, expiryErr := store.GetExpiry(key)
+		assert.NoError(t, expiryErr)
+
+		// gocb v2 expiry does an expiry-to-duration conversion which results in non-exact equality,
+		// so check whether it's within 30s
+		assert.True(t, DiffUint32(expiryValue, expiry) < 30)
+		log.Printf("expiryValue: %d", expiryValue)
+		log.Printf("expiry: %d", expiry)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+
+		// ensure expiry retrieval on tombstone doesn't return error
+		tombstoneExpiry, tombstoneExpiryErr := store.GetExpiry(key)
+		assert.NoError(t, tombstoneExpiryErr)
+		log.Printf("tombstoneExpiry: %d", tombstoneExpiry)
+
+		// ensure expiry retrieval on non-existent doc returns key not found
+		_, nonExistentExpiryErr := store.GetExpiry("nonExistentKey")
+		assert.Error(t, nonExistentExpiryErr)
+		assert.True(t, IsKeyNotFoundError(bucket, nonExistentExpiryErr))
+
 	})
 }

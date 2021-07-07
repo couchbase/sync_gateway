@@ -485,6 +485,76 @@ func TestRegisterUser(t *testing.T) {
 
 }
 
+func TestCASUpdatePrincipal(t *testing.T) {
+
+	bucket := base.GetTestBucket(t)
+	defer bucket.Close()
+
+	// Create user
+	username := "foo"
+	password := "password"
+	email := "foo@bar.org"
+
+	// Create user
+	auth := NewAuthenticator(bucket, nil, DefaultAuthenticatorOptions())
+
+	// Modify the bcrypt cost to test rehashPassword properly below
+	require.Error(t, auth.SetBcryptCost(5))
+
+	user, _ := auth.NewUser(username, password, ch.SetOf(t, "123", "456"))
+	user.SetExplicitRoles(ch.TimedSet{"role1": ch.NewVbSimpleSequence(1), "role2": ch.NewVbSimpleSequence(1)}, 1)
+	createErr := auth.Save(user)
+	if createErr != nil {
+		t.Errorf("Error creating user: %v", createErr)
+	}
+	user, getErr := auth.GetUser(username)
+	if getErr != nil {
+		t.Errorf("Error retrieving user: %v", getErr)
+	}
+	if user == nil {
+		t.Errorf("User is nil prior to invalidate channels, error: %v", getErr)
+	}
+
+	// updateEmailWithConflictCallback causes CAS failure three times
+	updateCount := uint64(0)
+	updateEmailWithConflictCallback := func(currentPrincipal Principal) (updatedPrincipal Principal, err error) {
+		currentUser, ok := currentPrincipal.(User)
+		if !ok {
+			return nil, base.ErrUpdateCancel
+		}
+
+		log.Printf("attempting update with CAS:%v", currentUser.Cas())
+		if updateCount < 3 {
+			// Update principal externally to trigger CAS error three times
+			concurrentUser, err := auth.GetUser(username)
+			assert.NoError(t, err)
+			log.Printf("setting explicit channels to %v", updateCount)
+			concurrentUser.SetExplicitChannels(ch.TimedSet{"ch1": ch.NewVbSimpleSequence(updateCount)}, updateCount)
+			updateErr := auth.Save(concurrentUser)
+			assert.NoError(t, updateErr)
+
+			updatedConcurrentUser, err := auth.GetUser(username)
+			assert.NoError(t, err)
+			log.Printf("Forcing cas failure, updated CAS: %v", updatedConcurrentUser.Cas())
+
+			updateCount++
+		}
+
+		err = currentUser.SetEmail(email)
+		if err != nil {
+			return nil, err
+		}
+		return currentUser, nil
+	}
+
+	updateErr := auth.casUpdatePrincipal(user, updateEmailWithConflictCallback)
+	assert.NoError(t, updateErr)
+
+	updatedUser, err := auth.GetUser(username)
+	assert.NoError(t, err)
+	assert.Equal(t, email, updatedUser.Email())
+}
+
 func TestConcurrentUserWrites(t *testing.T) {
 	bucket := base.GetTestBucket(t)
 	defer bucket.Close()

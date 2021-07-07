@@ -21,7 +21,6 @@ import (
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 func TestInitializeIndexes(t *testing.T) {
@@ -32,17 +31,17 @@ func TestInitializeIndexes(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	goCbBucket, isGoCBBucket := base.AsGoCBBucket(db.Bucket)
+	n1qlStore, isGoCBBucket := base.AsN1QLStore(db.Bucket)
 	require.True(t, isGoCBBucket)
 
-	dropErr := base.DropAllBucketIndexes(goCbBucket)
+	dropErr := base.DropAllBucketIndexes(n1qlStore)
 	assert.NoError(t, dropErr, "Error dropping all indexes")
 
-	initErr := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
+	initErr := InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
 	assert.NoError(t, initErr, "Error initializing all indexes")
 
 	// Recreate the primary index required by the test bucket pooling framework
-	err := goCbBucket.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
@@ -53,15 +52,14 @@ func TestInitializeIndexes(t *testing.T) {
 // Reset bucket state
 func validateAllIndexesOnline(bucket base.Bucket) error {
 
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	n1QLStore, ok := base.AsN1QLStore(bucket)
 	if !ok {
 		return fmt.Errorf("Bucket is not gocb bucket: %T", bucket)
 	}
 
 	// Retrieve all indexes
-	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes where keyspace_id = %q", gocbBucket.GetName())
-	n1qlQuery := gocb.NewN1qlQuery(getIndexesStatement)
-	results, err := gocbBucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes where keyspace_id = %q", n1QLStore.GetName())
+	results, err := n1QLStore.Query(getIndexesStatement, nil, base.RequestPlus, true)
 	if err != nil {
 		return err
 	}
@@ -91,9 +89,10 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
+	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+
+	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
 	assert.True(t, ok)
-	require.True(t, gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
 	// We have one xattr-only index - adjust expected indexes accordingly
 	expectedIndexes := int(indexTypeCount)
@@ -103,30 +102,30 @@ func TestPostUpgradeIndexesSimple(t *testing.T) {
 
 	// We don't know the current state of the bucket (may already have xattrs enabled), so run
 	// an initial cleanup to remove existing obsolete indexes
-	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, false, db.UseXattrs(), db.UseViews(), sgIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in setup case")
 
-	err := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
 	// Running w/ opposite xattrs flag should preview removal of the indexes associated with this db context
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in preview mode")
 
 	// Running again w/ preview=false to perform cleanup
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	goassert.Equals(t, len(removedIndexes), int(expectedIndexes))
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in non-preview mode")
 
 	// One more time to make sure they are actually gone
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, false, !db.UseXattrs(), db.UseViews(), sgIndexes)
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in post-cleanup no-op")
 
 	// Restore indexes after test
-	err = InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
+	err = InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 }
 
@@ -138,14 +137,14 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
+	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+	n1qlStore, ok := base.AsN1QLStore(db.Bucket)
 	assert.True(t, ok)
-	require.True(t, gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
 	copiedIndexes := copySGIndexes(sgIndexes)
 
 	// Validate that removeObsoleteIndexes is a no-op for the default case
-	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 0)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes in no-op case")
@@ -162,13 +161,13 @@ func TestPostUpgradeIndexesVersionChange(t *testing.T) {
 	copiedIndexes[IndexAccess] = accessIndex
 
 	// Validate that removeObsoleteIndexes now triggers removal of one index
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(n1qlStore, true, db.UseXattrs(), db.UseViews(), copiedIndexes)
 	log.Printf("removedIndexes: %+v", removedIndexes)
 	goassert.Equals(t, len(removedIndexes), 1)
 	assert.NoError(t, removeErr, "Unexpected error running removeObsoleteIndexes with hacked sgIndexes")
 
 	// Restore indexes after test
-	err := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
@@ -186,13 +185,13 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 
 	copiedIndexes := copySGIndexes(sgIndexes)
 
-	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
+	require.True(t, db.Bucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
+	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
 	assert.True(t, ok)
-	require.True(t, gocbBucket.IsSupported(sgbucket.DataStoreFeatureN1ql))
 
-	_, err := removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), db.UseViews())
+	_, err := removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 
 	expectedIndexes := int(indexTypeCount)
@@ -201,30 +200,30 @@ func TestRemoveIndexesUseViewsTrueAndFalse(t *testing.T) {
 		expectedIndexes--
 	}
 
-	removedIndexes, removeErr := removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), true, copiedIndexes)
+	removedIndexes, removeErr := removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), true, copiedIndexes)
 	assert.Equal(t, expectedIndexes, len(removedIndexes))
 	assert.NoError(t, removeErr)
 
-	removedIndexes, removeErr = removeObsoleteIndexes(gocbBucket, false, db.UseXattrs(), false, copiedIndexes)
+	removedIndexes, removeErr = removeObsoleteIndexes(n1QLStore, false, db.UseXattrs(), false, copiedIndexes)
 	require.Len(t, removedIndexes, 0)
 	assert.NoError(t, removeErr)
 
 	// Cleanup design docs created during test
-	_, err = removeObsoleteDesignDocs(gocbBucket, db.UseXattrs(), db.UseViews())
+	_, err = removeObsoleteDesignDocs(db.Bucket, db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(gocbBucket, db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(db.Bucket, db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), db.UseViews())
+	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), db.UseViews())
 	assert.NoError(t, err)
-	_, err = removeObsoleteDesignDocs(gocbBucket, !db.UseXattrs(), !db.UseViews())
+	_, err = removeObsoleteDesignDocs(db.Bucket, !db.UseXattrs(), !db.UseViews())
 	assert.NoError(t, err)
 
 	// Restore ddocs after test
-	err = InitializeViews(gocbBucket)
+	err = InitializeViews(db.Bucket)
 	assert.NoError(t, err)
 
 	// Restore indexes after test
-	err = InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
+	err = InitializeIndexes(n1QLStore, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
@@ -270,7 +269,8 @@ func TestRemoveObsoleteIndexOnError(t *testing.T) {
 	}
 
 	// Restore indexes after test
-	err := InitializeIndexes(db.Bucket, db.UseXattrs(), 0)
+	n1qlStore, _ := base.AsN1QLStore(db.Bucket)
+	err := InitializeIndexes(n1qlStore, db.UseXattrs(), 0)
 	assert.NoError(t, err)
 
 	validateErr := validateAllIndexesOnline(db.Bucket)
