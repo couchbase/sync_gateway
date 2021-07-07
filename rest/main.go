@@ -59,11 +59,12 @@ func serverMain(ctx context.Context, osArgs []string) error {
 		return legacyServerMain(osArgs)
 	}
 
-	return serverMainPersistentConfig(fs, &flagStartupConfig)
+	// 3.0 config (or auto-upgrade) handling
+	return serverMainPersistentConfig(fs, &flagStartupConfig, osArgs)
 }
 
 // serverMainPersistentConfig runs the Sync Gateway server with persistent config.
-func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConfig) error {
+func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConfig, osArgs []string) error {
 
 	// 3.0 config - bootstrap and pull configs from server buckets.
 	base.Infof(base.KeyAll, "Running in persistent config mode")
@@ -86,6 +87,11 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			return fmt.Errorf("Couldn't open config file: %w", err)
 		}
 		if fileStartupConfig != nil {
+			// TODO: CBG-1399 Remove this handling when we're able to perform legacy config upgrade...
+			if fileStartupConfig.DisablePersistentConfig != nil && *fileStartupConfig.DisablePersistentConfig {
+				return legacyServerMain(osArgs)
+			}
+
 			redactedConfig, err := sc.Redacted()
 			if err != nil {
 				return err

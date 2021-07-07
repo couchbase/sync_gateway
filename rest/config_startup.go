@@ -72,6 +72,9 @@ type StartupConfig struct {
 
 	MaxFileDescriptors uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 
+	// TODO: CBG-1399 - After auto legacy config upgrade, can remove this.
+	DisablePersistentConfig *bool `json:"disable_persistent_config,omitempty" help:"Can be set to false to force persistent config handling."`
+
 	DeprecatedConfig *DeprecatedConfig `json:"-,omitempty" help:"Deprecated options that can be set from a legacy config upgrade, but cannot be set from a 3.0 config."`
 }
 
