@@ -23,7 +23,7 @@ const (
 	GuestUsername = "GUEST"
 	ISO8601Format = "2006-01-02T15:04:05.000Z07:00"
 
-	kTestCouchbaseServerURL = "http://localhost:8091"
+	kTestCouchbaseServerURL = "couchbase://localhost"
 	kTestWalrusURL          = "walrus:"
 
 	// These settings are used when running unit tests against a live Couchbase Server to create/flush buckets

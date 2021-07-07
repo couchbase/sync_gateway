@@ -1960,21 +1960,6 @@ func TestApplyViewQueryStaleOptions(t *testing.T) {
 
 }
 
-// Make sure that calling CouchbaseServerVersion against actual couchbase server does not return an error
-func TestCouchbaseServerVersion(t *testing.T) {
-
-	if UnitTestUrlIsWalrus() {
-		t.Skip("This test only works against Couchbase Server")
-	}
-
-	bucket := GetTestBucket(t)
-	defer bucket.Close()
-
-	major, _, _ := bucket.CouchbaseServerVersion()
-	assert.NotZero(t, major)
-
-}
-
 func TestCouchbaseServerMaxTTL(t *testing.T) {
 	if UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
@@ -1983,8 +1968,9 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 	bucket := GetTestBucket(t)
 	defer bucket.Close()
 
-	gocbBucket := bucket.Bucket.(*CouchbaseBucketGoCB)
-	maxTTL, err := gocbBucket.GetMaxTTL()
+	cbStore, ok := AsCouchbaseStore(bucket)
+	require.True(t, ok)
+	maxTTL, err := GetMaxTTL(cbStore)
 	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, maxTTL, 0)
 

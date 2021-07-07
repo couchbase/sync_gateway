@@ -133,3 +133,7 @@ func (c *Collection) executeStatement(statement string) error {
 func (c *Collection) IsErrNoResults(err error) bool {
 	return err == gocb.ErrNoResult
 }
+
+func (c *Collection) getIndexes() (indexes []string, err error) {
+	return nil, errors.New("not implemented")
+}

@@ -829,13 +829,10 @@ func BoolPtr(b bool) *bool {
 // Related CBGT ticket: https://issues.couchbase.com/browse/MB-25522
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string, connSpec *gocbconnstr.ConnSpec) (httpUrls []string, err error) {
 
-	// If we're using a gocb bucket, use the bucket to retrieve the mgmt endpoints.  Note that incoming bucket may be CouchbaseBucketGoCB or *CouchbaseBucketGoCB.
-	typedBucket, ok := AsGoCBBucket(bucket)
+	// If we're using a couchbase bucket, use the bucket to retrieve the mgmt endpoints.
+	cbBucket, ok := bucket.(CouchbaseStore)
 	if ok {
-		if typedBucket.IoRouter() != nil {
-			mgmtEps := typedBucket.IoRouter().MgmtEps()
-			return mgmtEps, nil
-		}
+		return cbBucket.MgmtEps()
 	}
 
 	// No bucket-based handling, fall back to URI parsing
@@ -1486,7 +1483,7 @@ func GetRestrictedInt(rawValue *uint64, defaultValue, minValue, maxValue uint64,
 	return value
 }
 
-// GetHttpClient returns a new HTTP client with TLS certificate verification
+// HttpClient returns a new HTTP client with TLS certificate verification
 // disabled when insecureSkipVerify is true and enabled otherwise.
 func GetHttpClient(insecureSkipVerify bool) *http.Client {
 	if insecureSkipVerify {

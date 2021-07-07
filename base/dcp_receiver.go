@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"expvar"
+	"log"
 
 	"github.com/couchbase/go-couchbase"
 	"github.com/couchbase/go-couchbase/cbdatasource"
@@ -217,12 +218,17 @@ func StartDCPFeed(bucket Bucket, spec BucketSpec, args sgbucket.FeedArguments, c
 	// Recommended usage of cbdatasource is to let it manage it's own dedicated connection, so we're not
 	// reusing the bucket connection we've already established.
 	urls, errConvertServerSpec := CouchbaseURIToHttpURL(bucket, spec.Server, &connSpec)
+
+	log.Printf(".....urls: %v", urls)
 	if errConvertServerSpec != nil {
 		return errConvertServerSpec
 	}
 
 	poolName := DefaultPool
 	bucketName := spec.BucketName
+
+	log.Printf(".....spec: %v", spec)
+	log.Printf(".....bucketName: %v", bucketName)
 
 	vbucketIdsArr := []uint16(nil) // nil means get all the vbuckets.
 

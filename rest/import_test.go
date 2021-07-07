@@ -25,7 +25,6 @@ import (
 	goassert "github.com/couchbaselabs/go.assert"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 func SkipImportTestsIfNotEnabled(t *testing.T) {
@@ -612,11 +611,10 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	subdocXattrStore, ok := base.AsSubdocXattrStore(bucket)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
-		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
-		Execute()
+	_, mutateErr := subdocXattrStore.SubdocInsertXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
+
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.
@@ -669,11 +667,9 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	subdocXattrStore, ok := base.AsSubdocXattrStore(bucket)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
-		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
-		Execute()
+	_, mutateErr := subdocXattrStore.SubdocInsertXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to update the document again via Sync Gateway.  Should not trigger import, PUT should be successful,
@@ -732,11 +728,9 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	// Modify the document via the SDK to add a new, non-mobile xattr
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	subdocXattrStore, ok := base.AsSubdocXattrStore(bucket)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
-		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
-		Execute()
+	_, mutateErr := subdocXattrStore.SubdocInsertXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Wait until crc match count changes
@@ -1297,13 +1291,13 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, bucket, mobileKeyNoExpiry, 1)
 
 	// Verify the expiry has been preserved after the import
-	gocbBucket, _ := base.AsGoCBBucket(bucket)
-	expiry, err := gocbBucket.GetExpiry(mobileKey)
+	cbStore, _ := base.AsCouchbaseStore(bucket)
+	expiry, err := cbStore.GetExpiry(mobileKey)
 	assert.NoError(t, err, "Error calling GetExpiry()")
 	goassert.True(t, expiry == uint32(expiryUnixEpoch))
 
 	// Negative test case -- make sure no expiry was erroneously added by the the import
-	expiry, err = gocbBucket.GetExpiry(mobileKeyNoExpiry)
+	expiry, err = cbStore.GetExpiry(mobileKeyNoExpiry)
 	assert.NoError(t, err, "Error calling GetExpiry()")
 	goassert.True(t, expiry == 0)
 
@@ -1349,8 +1343,8 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 	assertXattrSyncMetaRevGeneration(t, bucket, key, 1)
 
 	// Now get the doc expiry and validate that it has been migrated into the doc metadata
-	gocbBucket, _ := base.AsGoCBBucket(bucket)
-	expiry, err := gocbBucket.GetExpiry(key)
+	cbStore, _ := base.AsCouchbaseStore(bucket)
+	expiry, err := cbStore.GetExpiry(key)
 	goassert.True(t, expiry > 0)
 	assert.NoError(t, err, "Error calling getExpiry()")
 	log.Printf("expiry: %v", expiry)
@@ -1456,8 +1450,8 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			require.NoError(t, err, "Error writing SDK doc")
 
 			// Verify the expiry before the on-demand import is triggered
-			gocbBucket, _ := base.AsGoCBBucket(bucket)
-			expiry, err := gocbBucket.GetExpiry(key)
+			cbStore, _ := base.AsCouchbaseStore(bucket)
+			expiry, err := cbStore.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry == uint32(expiryUnixEpoch))
 
@@ -1474,7 +1468,7 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, bucket, key, testCase.expectedRevGeneration)
 
 			// Verify the expiry has not been changed from the original expiry value
-			expiry, err = gocbBucket.GetExpiry(key)
+			expiry, err = cbStore.GetExpiry(key)
 			require.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry == uint32(expiryUnixEpoch))
 
@@ -1547,8 +1541,8 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 			assertXattrSyncMetaRevGeneration(t, bucket, key, testCase.expectedRevGeneration)
 
 			// Now get the doc expiry and validate that it has been migrated into the doc metadata
-			gocbBucket, _ := base.AsGoCBBucket(bucket)
-			expiry, err := gocbBucket.GetExpiry(key)
+			cbStore, _ := base.AsCouchbaseStore(bucket)
+			expiry, err := cbStore.GetExpiry(key)
 			assert.NoError(t, err, "Error calling GetExpiry()")
 			goassert.True(t, expiry > 0)
 			log.Printf("expiry: %v", expiry)
@@ -2047,11 +2041,9 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 	// Modify the document via the SDK to add the body back
 	xattrVal := make(map[string]interface{})
 	xattrVal["actor"] = "not mobile"
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	subdocXattrStore, ok := base.AsSubdocXattrStore(bucket)
 	assert.True(t, ok, "Unable to cast bucket to gocb bucket")
-	_, mutateErr := gocbBucket.MutateInEx(mobileKey, gocb.SubdocDocFlagNone, gocb.Cas(cas), uint32(0)).
-		UpsertEx("_nonmobile", xattrVal, gocb.SubdocFlagXattr). // Update the xattr
-		Execute()
+	_, mutateErr := subdocXattrStore.SubdocInsertXattr(mobileKey, "_nonmobile", uint32(0), cas, xattrVal)
 	assert.NoError(t, mutateErr, "Error updating non-mobile xattr for multi-actor document")
 
 	// Attempt to get the document again via Sync Gateway.  Should not trigger import.

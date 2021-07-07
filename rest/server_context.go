@@ -398,8 +398,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		if config.NumIndexReplicas != nil {
 			numReplicas = *config.NumIndexReplicas
 		}
+		n1qlStore, ok := base.AsN1QLStore(bucket)
+		if !ok {
+			return nil, errors.New("Cannot create indexes on non-Couchbase data store.")
 
-		indexErr := db.InitializeIndexes(bucket, config.UseXattrs(), numReplicas)
+		}
+		indexErr := db.InitializeIndexes(n1qlStore, config.UseXattrs(), numReplicas)
 		if indexErr != nil {
 			return nil, indexErr
 		}

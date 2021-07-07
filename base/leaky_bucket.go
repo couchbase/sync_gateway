@@ -421,10 +421,6 @@ func (b *LeakyBucket) Dump() {
 	b.bucket.Dump()
 }
 
-func (b *LeakyBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
-	return b.bucket.CouchbaseServerVersion()
-}
-
 func (b *LeakyBucket) UUID() (string, error) {
 	return b.bucket.UUID()
 }
@@ -434,10 +430,6 @@ func (b *LeakyBucket) CloseAndDelete() error {
 		return bucket.CloseAndDelete()
 	}
 	return nil
-}
-
-func (b *LeakyBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
-	return b.bucket.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
 }
 
 // Accessors to set leaky bucket config for a running bucket.  Used to tune properties on a walrus bucket created as part of rest tester - it will
@@ -568,6 +560,14 @@ func (b *LeakyBucket) executeStatement(statement string) error {
 		return errors.New("Not N1QL Store")
 	}
 	return n1qlStore.executeStatement(statement)
+}
+
+func (b *LeakyBucket) getIndexes() ([]string, error) {
+	n1qlStore, ok := AsN1QLStore(b.bucket)
+	if !ok {
+		return nil, errors.New("Not N1QL Store")
+	}
+	return n1qlStore.getIndexes()
 }
 
 func (b *LeakyBucket) IsErrNoResults(err error) bool {

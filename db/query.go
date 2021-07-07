@@ -242,14 +242,14 @@ func (context *DatabaseContext) N1QLQueryWithStats(queryName string, statement s
 		defer base.SlowQueryLog(startTime, threshold, "N1QL Query(%q)", queryName)
 	}
 
-	gocbBucket, ok := base.AsGoCBBucket(context.Bucket)
+	n1QLStore, ok := base.AsN1QLStore(context.Bucket)
 	if !ok {
 		return nil, errors.New("Cannot perform N1QL query on non-Couchbase bucket.")
 	}
 
 	queryStat := context.DbStats.Query(queryName)
 
-	results, err = gocbBucket.Query(statement, params, consistency, adhoc)
+	results, err = n1QLStore.Query(statement, params, consistency, adhoc)
 	if err != nil {
 		queryStat.QueryErrorCount.Add(1)
 	}

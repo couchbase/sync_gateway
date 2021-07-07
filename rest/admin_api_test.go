@@ -2783,7 +2783,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 	defer rt.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
@@ -2793,7 +2793,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	_, err := rt.WaitForChanges(1, "/db/_changes", "", true)
 	assert.NoError(t, err)
 
-	_, err = gocbBucket.WriteUserXattr(docKey, xattrKey, "val")
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "val")
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {

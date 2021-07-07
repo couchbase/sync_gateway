@@ -186,19 +186,9 @@ func (b *LoggingBucket) GetMaxVbno() (uint16, error) {
 	return b.bucket.GetMaxVbno()
 }
 
-func (b *LoggingBucket) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
-	defer b.log(time.Now())
-	return b.bucket.CouchbaseServerVersion()
-}
-
 func (b *LoggingBucket) UUID() (string, error) {
 	defer b.log(time.Now())
 	return b.bucket.UUID()
-}
-
-func (b *LoggingBucket) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
-	defer b.log(time.Now())
-	return b.bucket.GetStatsVbSeqno(maxVbno, useAbsHighSeqNo)
 }
 
 // GetUnderlyingBucket returns the underlying bucket for the LoggingBucket.

@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"expvar"
 	"fmt"
 	"strconv"
@@ -313,7 +314,12 @@ func (c *DCPCommon) updateSeq(vbucketId uint16, seq uint64, warnOnLowerSeqNo boo
 // Initializes DCP Feed.  Determines starting position based on feed type.
 func (c *DCPCommon) initFeed(backfillType uint64) error {
 
-	statsUuids, highSeqnos, err := c.bucket.GetStatsVbSeqno(c.maxVbNo, false)
+	couchbaseBucket, ok := AsCouchbaseStore(c.bucket)
+	if !ok {
+		return errors.New("DCP not supported for non-Couchbase data source")
+	}
+
+	statsUuids, highSeqnos, err := couchbaseBucket.GetStatsVbSeqno(c.maxVbNo, false)
 	if err != nil {
 		return pkgerrors.Wrap(err, "Error retrieving stats-vbseqno - DCP not supported")
 	}
