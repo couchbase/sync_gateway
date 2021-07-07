@@ -7425,3 +7425,24 @@ func TestChannelHistoryPruning(t *testing.T) {
 	assert.NotContains(t, role.ChannelHistory(), "a")
 	assert.Contains(t, role.ChannelHistory(), "b")
 }
+
+func TestDocChannelSetPruning(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
+
+	for i := 0; i < 10; i++ {
+		revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{}})
+		revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": []string{"a"}})
+	}
+
+	syncData, err := rt.GetDatabase().GetDocSyncData("doc")
+	assert.NoError(t, err)
+
+	require.Len(t, syncData.ChannelSetHistory, db.DocumentHistoryMaxEntriesPerChannel)
+	assert.Equal(t, "a", syncData.ChannelSetHistory[0].Name)
+	assert.Equal(t, uint64(1), syncData.ChannelSetHistory[0].Start)
+	assert.Equal(t, uint64(12), syncData.ChannelSetHistory[0].End)
+}

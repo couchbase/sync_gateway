@@ -15,6 +15,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -42,6 +43,10 @@ const (
 	RemovedRedactedDocument = `{"` + BodyRemoved + `":true}`
 	// DeletedDocument is returned by SG when a given document has been deleted
 	DeletedDocument = `{"` + BodyDeleted + `":true}`
+)
+
+const (
+	DocumentHistoryMaxEntriesPerChannel = 5
 )
 
 // Maps what users have access to what channels or roles, and when they got that access.
@@ -853,7 +858,7 @@ func (doc *Document) updateChannelHistory(channelName string, seq uint64, additi
 				if doc.ChannelSet[idx].End == 0 {
 					return
 				}
-				doc.ChannelSetHistory = append(doc.ChannelSetHistory, historyEntry)
+				doc.addToChannelSetHistory(channelName, historyEntry)
 				doc.ChannelSet[idx] = ChannelSetEntry{Name: channelName, Start: seq}
 			} else {
 				doc.ChannelSet[idx].End = seq
@@ -879,6 +884,49 @@ func (doc *Document) updateChannelHistory(channelName string, seq uint64, additi
 		})
 	}
 
+}
+
+func (doc *Document) addToChannelSetHistory(channelName string, historyEntry ChannelSetEntry) {
+	// Before adding the entry we need to verify the number of items in the document channel history so verify
+	// whether we need to prune them.
+	// As we iterate over the existing channels we will keep track of the oldest and second oldest entries along with
+	// their location in the slice. If we need to then prune we can 'merge' the oldest and second oldest and remove
+	// the oldest.
+
+	var oldestEntryStartSeq uint64 = math.MaxUint64
+	var secondOldestEntryStartSeq uint64 = math.MaxUint64
+
+	oldestEntryIdx := -1
+	secondOldestEntryIdx := -1
+
+	entryCount := 0
+
+	for entryIdx, entry := range doc.ChannelSetHistory {
+		if entry.Name == channelName {
+			entryCount++
+
+			if entry.Start < oldestEntryStartSeq {
+				secondOldestEntryStartSeq = oldestEntryStartSeq
+				oldestEntryStartSeq = entry.Start
+
+				secondOldestEntryIdx = oldestEntryIdx
+				oldestEntryIdx = entryIdx
+				continue
+			}
+
+			if entry.Start < secondOldestEntryStartSeq {
+				secondOldestEntryStartSeq = entry.Start
+				secondOldestEntryIdx = entryIdx
+			}
+		}
+	}
+
+	if entryCount == DocumentHistoryMaxEntriesPerChannel {
+		doc.ChannelSetHistory[secondOldestEntryIdx].Start = oldestEntryStartSeq
+		doc.ChannelSetHistory = append(doc.ChannelSetHistory[:oldestEntryIdx], doc.ChannelSetHistory[oldestEntryIdx+1:]...)
+	}
+
+	doc.ChannelSetHistory = append(doc.ChannelSetHistory, historyEntry)
 }
 
 // Updates the Channels property of a document object with current & past channels.
