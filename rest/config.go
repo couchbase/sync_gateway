@@ -833,6 +833,18 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	return errorMessages
 }
 
+// Validate insecure connections
+func (sc *StartupConfig) ValidateInsecureTLSConnection() (err error) {
+	// Validate SSL is provided if not allowing unsecure connections
+	if sc.API.HTTPS.AllowInsecureTLSConnections == nil || !*sc.API.HTTPS.AllowInsecureTLSConnections {
+		if sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "" {
+			err = fmt.Errorf("a TLS key and cert path must be provided when not allowing insecure TLS connections")
+			return err
+		}
+	}
+	return nil
+}
+
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
 func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
 	// Logging config will now have been loaded from command line
@@ -843,6 +855,11 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
 		log.Printf("[ERR] Error setting up logging: %v", err)
 		return nil, fmt.Errorf("error setting up logging: %v", err)
+	}
+
+	if err := config.ValidateInsecureTLSConnection(); err != nil {
+		log.Printf("[ERR] Error validating configuration: %v", err)
+		return nil, err
 	}
 
 	base.FlushLoggerBuffers()

@@ -1194,11 +1194,84 @@ func TestSetupServerContext(t *testing.T) {
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
+		config.API.HTTPS.AllowInsecureTLSConnections = base.BoolPtr(true)
 		sc, err := setupServerContext(&config, false)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
 		sc.Close()
 	})
+}
+
+// CBG-1535
+func TestAllowInsecureTLSConnections(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	testCases := []struct {
+		name                        string
+		tlsKey                      bool
+		tlsCert                     bool
+		allowInsecureTLSConnections bool
+		expectError                 bool
+	}{
+		{
+			name:        "Nothing provided",
+			expectError: true,
+		},
+		{
+			name:                        "No TLS provided, Allowing Insecure",
+			allowInsecureTLSConnections: true,
+			expectError:                 false,
+		},
+		{
+			name:        "TLS Key but no cert provided",
+			tlsKey:      true,
+			expectError: true,
+		},
+		{
+			name:        "TLS Cert but no key provided",
+			tlsCert:     true,
+			expectError: true,
+		},
+		{
+			name:        "TLS Cert and key provided",
+			tlsKey:      true,
+			tlsCert:     true,
+			expectError: false,
+		},
+		{
+			name:                        "TLS Cert and key provided, and allowing insecure",
+			tlsKey:                      true,
+			tlsCert:                     true,
+			allowInsecureTLSConnections: true,
+			expectError:                 false,
+		},
+		{
+			name:                        "TLS Key but no cert provided, but allowing insecure",
+			tlsKey:                      true,
+			allowInsecureTLSConnections: true,
+			expectError:                 false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			config := DefaultStartupConfig("")
+			config.API.HTTPS.AllowInsecureTLSConnections = &test.allowInsecureTLSConnections
+			if test.tlsKey {
+				config.API.HTTPS.TLSKeyPath = "test.key"
+			}
+			if test.tlsCert {
+				config.API.HTTPS.TLSCertPath = "test.cert"
+			}
+			sc, err := setupServerContext(&config, false)
+			if test.expectError {
+				assert.Error(t, err, "a TLS key and cert path must be provided when not allowing insecure TLS connections")
+				require.Nil(t, sc)
+			} else {
+				assert.NoError(t, err)
+				require.NotNil(t, sc)
+				sc.Close()
+			}
+		})
+	}
 }
 
 // missingJavaScriptFilePath represents a nonexistent JavaScript file path on the disk.

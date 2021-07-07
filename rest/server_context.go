@@ -369,6 +369,12 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		return nil, err
 	}
 
+	if sc.config.Bootstrap.AllowInsecureServerConnections == nil || !*sc.config.Bootstrap.AllowInsecureServerConnections {
+		if !spec.IsTLS() && !spec.IsWalrusBucket() {
+			return nil, fmt.Errorf("couchbase server URL must use secure protocol when disallowing insecure server connections. Current URL: %s", spec.Server)
+		}
+	}
+
 	// Connect to bucket
 	base.Infof(base.KeyAll, "Opening db /%s as bucket %q, pool %q, server <%s>",
 		base.MD(dbName), base.MD(spec.BucketName), base.SD(base.DefaultPool), base.SD(spec.Server))

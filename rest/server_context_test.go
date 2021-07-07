@@ -439,3 +439,89 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 		})
 	}
 }
+
+func TestAllowInsecureServerConnections(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	testCases := []struct {
+		name                           string
+		allowInsecureServerConnections bool
+		server                         string
+		expectError                    bool
+	}{
+		{
+			name:                           "Walrus allowed without flag",
+			allowInsecureServerConnections: false,
+			server:                         "walrus://",
+			expectError:                    false,
+		},
+		{
+			name:                           "couchbase: not allowed",
+			allowInsecureServerConnections: false,
+			server:                         "couchbase://localhost:1212",
+			expectError:                    true,
+		},
+		{
+			name:                           "http not allowed",
+			allowInsecureServerConnections: false,
+			server:                         "http://localhost:1212",
+			expectError:                    true,
+		},
+		{
+			name:                           "http allowed",
+			allowInsecureServerConnections: true,
+			server:                         "http://localhost:1212",
+			expectError:                    false,
+		},
+		{
+			name:                           "https mandatory",
+			allowInsecureServerConnections: false,
+			server:                         "https://localhost:1234",
+			expectError:                    false,
+		},
+		{
+			name:                           "https not mandatory",
+			allowInsecureServerConnections: true,
+			server:                         "https://localhost:1234",
+			expectError:                    false,
+		},
+		{
+			name:                           "couchbases:",
+			allowInsecureServerConnections: false,
+			server:                         "couchbases://localhost:1234",
+			expectError:                    false,
+		},
+		{
+			name:                           "ftps:", // Testing if the S at the end is what makes it secure
+			allowInsecureServerConnections: false,
+			server:                         "ftps://localhost:1234",
+			expectError:                    true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// Setup
+			config := DefaultStartupConfig("")
+			config.Bootstrap.AllowInsecureServerConnections = &test.allowInsecureServerConnections
+
+			config.API.HTTPS.AllowInsecureTLSConnections = base.BoolPtr(true)
+			sc := NewServerContext(&config, false)
+			databaseConfig := DatabaseConfig{
+				DbConfig: DbConfig{
+					BucketConfig: BucketConfig{
+						Server: &test.server,
+					},
+				},
+			}
+			// Run test
+			_, err := sc._getOrAddDatabaseFromConfig(databaseConfig, false)
+
+			expectedError := "couchbase server URL must use secure protocol. Current URL: " + test.server
+			if test.expectError {
+				assert.Error(t, err, expectedError)
+			} else {
+				assert.NotEqual(t, expectedError, err) // Will still error due to no DB name, or not being able to connect to bucket
+			}
+			sc.Close()
+		})
+	}
+}
