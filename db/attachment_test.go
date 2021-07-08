@@ -439,14 +439,14 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// Call ForEachStubAttachment with invalid attachment; simulates the error scenario.
 	doc := `{"_attachments": "No Attachment"}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback)
+	err = db.ForEachStubAttachment(body, 1, callback)
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
 	// Call ForEachStubAttachment with invalid attachment; simulates the error scenario.
 	doc = `{"_attachments": {"image1.jpeg": "", "image2.jpeg": ""}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback)
+	err = db.ForEachStubAttachment(body, 1, callback)
 	assert.Error(t, err, "It should throw 400 Invalid _attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
@@ -454,20 +454,20 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// Check whether the attachment iteration is getting skipped if revpos < minRevpos
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x2, callback)
+	err = db.ForEachStubAttachment(body, 2, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	// Call ForEachStubAttachment with no data in attachment and revpos; simulates the error scenario.
 	// Check whether the attachment iteration is getting skipped if there is no revpos.
 	doc = `{"_attachments": {"image.jpg": {"stub":true}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x2, callback)
+	err = db.ForEachStubAttachment(body, 2, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	// Should throw invalid attachment error is the digest is not valid string or empty.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":true}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback)
+	err = db.ForEachStubAttachment(body, 1, callback)
 	assert.Error(t, err, "It should throw 400 Invalid attachments")
 	assert.Contains(t, err.Error(), strconv.Itoa(http.StatusBadRequest))
 
@@ -475,7 +475,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	// document error and invoke the callback function.
 	doc = `{"_attachments": {"image.jpg": {"stub":true, "revpos":1, "digest":"9304cdd066efa64f78387e9cc9240a70527271bc"}}}`
 	assert.NoError(t, base.JSONUnmarshal([]byte(doc), &body))
-	err = db.ForEachStubAttachment(body, 0x1, callback)
+	err = db.ForEachStubAttachment(body, 1, callback)
 	assert.NoError(t, err, "It should not throw any error")
 
 	// Simulate an error from the callback function; it should return the same error from ForEachStubAttachment.
@@ -484,7 +484,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 	callback = func(name string, digest string, knownData []byte, meta map[string]interface{}) ([]byte, error) {
 		return nil, errors.New("Can't work with this digest value!")
 	}
-	err = db.ForEachStubAttachment(body, 0x1, callback)
+	err = db.ForEachStubAttachment(body, 1, callback)
 	assert.Error(t, err, "It should throw the actual error")
 	assert.Contains(t, err.Error(), "Can't work with this digest value!")
 }
@@ -1358,4 +1358,162 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 	require.NoError(t, err)
 	bodyAtts, foundBodyAtts := body1[BodyAttachments]
 	assert.False(t, foundBodyAtts, "not expecting '_attachments' in body but found them: %v", bodyAtts)
+}
+
+func TestAllowedAttachments(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeySync)()
+
+	var tests = []struct {
+		name              string
+		inputBlipProtocol string
+		inputAttVersion   int
+	}{
+		{"TestAllowedAttachmentsCBMobile2AttVer1", BlipCBMobileReplicationV2, AttVersion1},
+		{"TestAllowedAttachmentsCBMobile2AttVer2", BlipCBMobileReplicationV2, AttVersion2},
+		{"TestAllowedAttachmentsCBMobile3AttVer1", BlipCBMobileReplicationV3, AttVersion1},
+		{"TestAllowedAttachmentsCBMobile3AttVer2", BlipCBMobileReplicationV3, AttVersion2},
+	}
+
+	requireIsAttachmentAllowedTrue := func(t *testing.T, ctx *BlipSyncContext, docID string, meta []AttachmentStorageMeta, activeSubprotocol string) {
+		docIDForAllowedAttKey := docID
+		if activeSubprotocol == BlipCBMobileReplicationV2 {
+			docIDForAllowedAttKey = ""
+		}
+		for _, att := range meta {
+			key := allowedAttachmentKey(docIDForAllowedAttKey, att.digest, activeSubprotocol)
+			require.True(t, ctx.isAttachmentAllowed(key))
+		}
+	}
+
+	requireIsAttachmentAllowedFalse := func(t *testing.T, ctx *BlipSyncContext, docID string, meta []AttachmentStorageMeta, activeSubprotocol string) {
+		docIDForAllowedAttKey := docID
+		if activeSubprotocol == BlipCBMobileReplicationV2 {
+			docIDForAllowedAttKey = ""
+		}
+		for _, att := range meta {
+			key := allowedAttachmentKey(docIDForAllowedAttKey, att.digest, activeSubprotocol)
+			require.False(t, ctx.isAttachmentAllowed(key))
+		}
+	}
+
+	// Single document associated with multiple attachments of different digests.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &BlipSyncContext{}
+			meta := []AttachmentStorageMeta{
+				{digest: "digest1", version: tt.inputAttVersion},
+				{digest: "digest2", version: tt.inputAttVersion},
+			}
+			docID := "doc1"
+
+			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID, meta, tt.inputBlipProtocol)
+
+			ctx.removeAllowedAttachments(docID, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedFalse(t, ctx, docID, meta, tt.inputBlipProtocol)
+		})
+	}
+
+	// Single document associated with multiple attachments with matching digests.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &BlipSyncContext{}
+			meta := []AttachmentStorageMeta{
+				{digest: "digest1", version: tt.inputAttVersion},
+				{digest: "digest1", version: tt.inputAttVersion},
+			}
+			docID := "doc1"
+
+			ctx.addAllowedAttachments(docID, meta, tt.inputBlipProtocol)
+			key := allowedAttachmentKey(docID, meta[0].digest, tt.inputBlipProtocol)
+			require.True(t, ctx.isAttachmentAllowed(key))
+
+			ctx.removeAllowedAttachments(docID, meta, tt.inputBlipProtocol)
+			require.False(t, ctx.isAttachmentAllowed(key))
+		})
+	}
+
+	// Multiple documents associated with multiple attachments with different digests.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &BlipSyncContext{}
+			meta := []AttachmentStorageMeta{
+				{digest: "digest1", version: tt.inputAttVersion},
+				{digest: "digest2", version: tt.inputAttVersion},
+			}
+
+			docID1 := "doc1"
+			ctx.addAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
+
+			docID2 := "doc2"
+			ctx.addAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
+
+			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
+			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 {
+				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
+			} else if tt.inputBlipProtocol == BlipCBMobileReplicationV3 {
+				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
+			}
+
+			ctx.removeAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedFalse(t, ctx, docID2, meta, tt.inputBlipProtocol)
+		})
+	}
+
+	// Multiple documents associated with multiple attachments with matching digests.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &BlipSyncContext{}
+			meta := []AttachmentStorageMeta{
+				{digest: "digest1", version: tt.inputAttVersion},
+				{digest: "digest1", version: tt.inputAttVersion},
+			}
+
+			docID1 := "doc1"
+			ctx.addAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
+
+			docID2 := "doc2"
+			ctx.addAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
+
+			ctx.removeAllowedAttachments(docID1, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, meta, tt.inputBlipProtocol)
+			if tt.inputBlipProtocol == BlipCBMobileReplicationV2 {
+				requireIsAttachmentAllowedTrue(t, ctx, docID1, meta, tt.inputBlipProtocol)
+			} else if tt.inputBlipProtocol == BlipCBMobileReplicationV3 {
+				requireIsAttachmentAllowedFalse(t, ctx, docID1, meta, tt.inputBlipProtocol)
+			}
+
+			ctx.removeAllowedAttachments(docID2, meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedFalse(t, ctx, docID2, meta, tt.inputBlipProtocol)
+		})
+	}
+
+	// Two document with different attachments.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := &BlipSyncContext{}
+
+			docID1 := "doc1"
+			att1Meta := []AttachmentStorageMeta{{digest: "att1", version: tt.inputAttVersion}}
+			ctx.addAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID1, att1Meta, tt.inputBlipProtocol)
+
+			docID2 := "doc2"
+			att2Meta := []AttachmentStorageMeta{{digest: "att2", version: tt.inputAttVersion}}
+			ctx.addAllowedAttachments(docID2, att2Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
+
+			ctx.removeAllowedAttachments(docID1, att1Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedFalse(t, ctx, docID1, att1Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedTrue(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
+
+			ctx.removeAllowedAttachments(docID2, att2Meta, tt.inputBlipProtocol)
+			requireIsAttachmentAllowedFalse(t, ctx, docID2, att2Meta, tt.inputBlipProtocol)
+		})
+	}
 }

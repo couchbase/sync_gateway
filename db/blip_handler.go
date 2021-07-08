@@ -956,9 +956,20 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 	if digest == "" {
 		return base.HTTPErrorf(http.StatusBadRequest, "Missing 'digest'")
 	}
-	if !bh.isAttachmentAllowed(digest) {
+
+	attachmentAllowedKey := digest
+	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
+		docID := getAttachmentParams.docID()
+		if docID == "" {
+			return base.HTTPErrorf(http.StatusBadRequest, "Missing 'docID'")
+		}
+		attachmentAllowedKey = docID + digest
+	}
+
+	if !bh.isAttachmentAllowed(attachmentAllowedKey) {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
 	}
+
 	attachment, err := bh.db.GetAttachment(AttachmentKey(digest))
 	if err != nil {
 		return err
@@ -984,6 +995,11 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 	if isCompressible(name, meta) {
 		outrq.Properties[BlipCompress] = "true"
 	}
+
+	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
+		outrq.Properties[GetAttachmentID] = docID
+	}
+
 	if !bh.sendBLIPMessage(sender, outrq) {
 		return nil, ErrClosedBLIPSender
 	}
@@ -1059,7 +1075,7 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 				return bh.sendGetAttachment(sender, docID, name, digest, meta)
 			}
 
-			// ask client to prove they have the attachemnt without sending it
+			// ask client to prove they have the attachment without sending it
 			proveAttErr := bh.sendProveAttachment(sender, docID, name, digest, knownData)
 			if proveAttErr == nil {
 				return nil, nil
@@ -1083,8 +1099,8 @@ func (bsc *BlipSyncContext) incrementSerialNumber() uint64 {
 	return atomic.AddUint64(&bsc.handlerSerialNumber, 1)
 }
 
-func (bsc *BlipSyncContext) addAllowedAttachments(attDigests []string) {
-	if len(attDigests) == 0 {
+func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol string) {
+	if len(attMeta) == 0 {
 		return
 	}
 
@@ -1092,32 +1108,58 @@ func (bsc *BlipSyncContext) addAllowedAttachments(attDigests []string) {
 	defer bsc.lock.Unlock()
 
 	if bsc.allowedAttachments == nil {
-		bsc.allowedAttachments = make(map[string]int, 100)
+		bsc.allowedAttachments = make(map[string]AllowedAttachment, 100)
 	}
-	for _, digest := range attDigests {
-		bsc.allowedAttachments[digest] = bsc.allowedAttachments[digest] + 1
+	for _, attachment := range attMeta {
+		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
+		att, found := bsc.allowedAttachments[key]
+		if found {
+			if activeSubprotocol == BlipCBMobileReplicationV2 {
+				att.counter = att.counter + 1
+				bsc.allowedAttachments[key] = att
+			}
+		} else {
+			bsc.allowedAttachments[key] = AllowedAttachment{
+				version: attachment.version,
+				counter: 1,
+			}
+		}
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attDigests, bsc.allowedAttachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "addAllowedAttachments, added: %v current set: %v", attMeta, bsc.allowedAttachments)
 }
 
-func (bsc *BlipSyncContext) removeAllowedAttachments(attDigests []string) {
-	if len(attDigests) == 0 {
+func (bsc *BlipSyncContext) removeAllowedAttachments(docID string, attMeta []AttachmentStorageMeta, activeSubprotocol string) {
+	if len(attMeta) == 0 {
 		return
 	}
 
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
 
-	for _, digest := range attDigests {
-		if n := bsc.allowedAttachments[digest]; n > 1 {
-			bsc.allowedAttachments[digest] = n - 1
-		} else {
-			delete(bsc.allowedAttachments, digest)
+	for _, attachment := range attMeta {
+		key := allowedAttachmentKey(docID, attachment.digest, activeSubprotocol)
+		att, found := bsc.allowedAttachments[key]
+		if found && activeSubprotocol == BlipCBMobileReplicationV2 {
+			if n := att.counter; n > 1 {
+				att.counter = n - 1
+				bsc.allowedAttachments[key] = att
+			} else {
+				delete(bsc.allowedAttachments, key)
+			}
+		} else if found && activeSubprotocol == BlipCBMobileReplicationV3 {
+			delete(bsc.allowedAttachments, key)
 		}
 	}
 
-	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attDigests, bsc.allowedAttachments)
+	base.TracefCtx(bsc.loggingCtx, base.KeySync, "removeAllowedAttachments, removed: %v current set: %v", attMeta, bsc.allowedAttachments)
+}
+
+func allowedAttachmentKey(docID, digest, activeSubprotocol string) string {
+	if activeSubprotocol == BlipCBMobileReplicationV3 {
+		return docID + digest
+	}
+	return digest
 }
 
 func (bh *blipHandler) logEndpointEntry(profile, endpoint string) {

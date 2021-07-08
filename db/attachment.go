@@ -12,8 +12,16 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
-
+	"encoding/json"
 	"github.com/couchbase/sync_gateway/base"
+)
+
+const (
+	// AttVersion1 attachments are persisted to the bucket based on attachment body digest.
+	AttVersion1 int = 1
+
+	// AttVersion2 attachments are persisted to the bucket based on docID and body digest.
+	AttVersion2 int = 2
 )
 
 // Key for retrieving an attachment from Couchbase.
@@ -31,6 +39,7 @@ type DocAttachment struct {
 	Length      int    `json:"length,omitempty"`
 	Revpos      int    `json:"revpos,omitempty"`
 	Stub        bool   `json:"stub,omitempty"`
+	Version     int    `json:"ver,omitempty"`
 	Data        []byte `json:"-"` // tell json marshal/unmarshal to ignore this field
 }
 
@@ -293,6 +302,37 @@ func AttachmentDigests(attachments AttachmentsMeta) []string {
 		}
 	}
 	return digests
+}
+
+// AttachmentStorageMeta holds the metadata for building
+// the key for attachment storage and retrieval.
+type AttachmentStorageMeta struct {
+	digest  string
+	version int
+}
+
+// ToAttachmentStorageMeta returns a slice of AttachmentStorageMeta, which is contains the
+// necessary metadata properties to build the key for attachment storage and retrieval.
+func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMeta {
+	meta := make([]AttachmentStorageMeta, 0, len(attachments))
+	for _, att := range attachments {
+		if attMap, ok := att.(map[string]interface{}); ok {
+			if digest, ok := attMap["digest"]; ok {
+				if digestString, ok := digest.(string); ok {
+					m := AttachmentStorageMeta{digest: digestString}
+					if ver, ok := attMap["ver"].(json.Number); ok {
+						if version, err := ver.Int64(); err == nil {
+							m.version = int(version)
+						}
+					} else {
+						m.version = AttVersion1
+					}
+					meta = append(meta, m)
+				}
+			}
+		}
+	}
+	return meta
 }
 
 func attachmentKeyToString(key AttachmentKey) string {

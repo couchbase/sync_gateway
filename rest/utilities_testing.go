@@ -1235,7 +1235,7 @@ func (bt *BlipTester) WaitForNumDocsViaChanges(numDocsExpected int) (docs map[st
 // - Invoking one-shot subChanges request
 // - Responding to all incoming "changes" requests from peer to request the changed rev, and accumulate rev body
 // - Responding to all incoming "rev" requests from peer to get all attachments, and accumulate them
-// - Return accumulated docs + attachements to caller
+// - Return accumulated docs + attachments to caller
 //
 // It is basically a pull replication without the checkpointing
 // Warning: this can only be called from a single goroutine, given the fact it registers profile handlers.
@@ -1325,8 +1325,11 @@ func (bt *BlipTester) PullDocs() (docs map[string]RestDocument) {
 
 			// Get attachments and append to RestDocument
 			getAttachmentRequest := blip.NewRequest()
-			getAttachmentRequest.SetProfile("getAttachment")
-			getAttachmentRequest.Properties["digest"] = attachment.Digest
+			getAttachmentRequest.SetProfile(db.MessageGetAttachment)
+			getAttachmentRequest.Properties[db.GetAttachmentDigest] = attachment.Digest
+			if bt.blipContext.ActiveSubprotocol() == db.BlipCBMobileReplicationV3 {
+				getAttachmentRequest.Properties[db.GetAttachmentID] = docId
+			}
 			sent := bt.sender.Send(getAttachmentRequest)
 			if !sent {
 				panic(fmt.Sprintf("Unable to get attachment."))
