@@ -778,8 +778,13 @@ func GetGoCBBucketFromBaseBucket(baseBucket Bucket) (bucket CouchbaseBucketGoCB,
 	}
 }
 
-// DurationPtr returns a pointer to the given time.Duration literal.
-func DurationPtr(value time.Duration) *time.Duration {
+// StdlibDurationPtr returns a pointer to the given time.Duration literal.
+func StdlibDurationPtr(value time.Duration) *time.Duration {
+	return &value
+}
+
+// DurationPtr returns a pointer to the given Duration literal.
+func DurationPtr(value Duration) *Duration {
 	return &value
 }
 
@@ -1510,4 +1515,46 @@ func IsConnectionRefusedError(err error) bool {
 	}
 
 	return strings.Contains(err.Error(), errorMessage)
+}
+
+// Duration is a time.Duration that supports JSON marshalling/unmarshalling.
+type Duration struct {
+	time.Duration
+}
+
+// NewDuration returns a *Duration from a time.Duration
+func NewDuration(d time.Duration) *Duration {
+	return &Duration{d}
+}
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(d.String())
+}
+
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	var v interface{}
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+	switch value := v.(type) {
+	case string:
+		tmp, err := time.ParseDuration(value)
+		if err != nil {
+			return err
+		}
+		*d = Duration{tmp}
+		return nil
+	case float64:
+		*d = Duration{time.Duration(value)}
+		return nil
+	case json.Number:
+		iVal, err := value.Int64()
+		if err != nil {
+			return err
+		}
+		*d = Duration{time.Duration(iVal)}
+	default:
+		return fmt.Errorf("invalid duration type %T", value)
+	}
+	return nil
 }

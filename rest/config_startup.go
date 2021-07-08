@@ -21,7 +21,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 	return StartupConfig{
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:         persistentConfigDefaultGroupID,
-			ConfigUpdateFrequency: persistentConfigDefaultUpdateFrequency,
+			ConfigUpdateFrequency: base.Duration{persistentConfigDefaultUpdateFrequency},
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,
@@ -32,8 +32,8 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
-			ReadHeaderTimeout:              base.DefaultReadHeaderTimeout,
-			IdleTimeout:                    base.DefaultIdleTimeout,
+			ReadHeaderTimeout:              base.Duration{base.DefaultReadHeaderTimeout},
+			IdleTimeout:                    base.Duration{base.DefaultIdleTimeout},
 			AdminInterfaceAuthentication:   base.BoolPtr(true),
 			MetricsInterfaceAuthentication: base.BoolPtr(true),
 		},
@@ -55,7 +55,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Unsupported: UnsupportedConfig{
-			StatsLogFrequency: base.DurationPtr(time.Minute),
+			StatsLogFrequency: base.NewDuration(time.Minute),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
@@ -78,7 +78,7 @@ type StartupConfig struct {
 // BootstrapConfig describes the set of properties required in order to bootstrap config from Couchbase Server.
 type BootstrapConfig struct {
 	ConfigGroupID         string        `json:"group_id,omitempty"                help:"The config group ID to use when discovering databases. Allows for non-homogenous configuration"`
-	ConfigUpdateFrequency time.Duration `json:"config_update_frequency,omitempty" help:"How often to poll Couchbase Server for new config changes. Default: 10s"`
+	ConfigUpdateFrequency base.Duration `json:"config_update_frequency,omitempty" help:"How often to poll Couchbase Server for new config changes. Default: 10s"`
 	Server                string        `json:"server,omitempty"                  help:"Couchbase Server connection string/URL"`
 	Username              string        `json:"username,omitempty"                help:"Username for authenticating to server"`
 	Password              string        `json:"password,omitempty"                help:"Password for authenticating to server"`
@@ -96,10 +96,10 @@ type APIConfig struct {
 	AdminInterfaceAuthentication   *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 
-	ServerReadTimeout  time.Duration `json:"server_read_timeout,omitempty"  help:"maximum duration.Second before timing out read of the HTTP(S) request"`
-	ServerWriteTimeout time.Duration `json:"server_write_timeout,omitempty" help:"maximum duration.Second before timing out write of the HTTP(S) response"`
-	ReadHeaderTimeout  time.Duration `json:"read_header_timeout,omitempty"  help:"The amount of time allowed to read request headers"`
-	IdleTimeout        time.Duration `json:"idle_timeout,omitempty"         help:"The maximum amount of time to wait for the next request when keep-alives are enabled"`
+	ServerReadTimeout  base.Duration `json:"server_read_timeout,omitempty"  help:"maximum duration.Second before timing out read of the HTTP(S) request"`
+	ServerWriteTimeout base.Duration `json:"server_write_timeout,omitempty" help:"maximum duration.Second before timing out write of the HTTP(S) response"`
+	ReadHeaderTimeout  base.Duration `json:"read_header_timeout,omitempty"  help:"The amount of time allowed to read request headers"`
+	IdleTimeout        base.Duration `json:"idle_timeout,omitempty"         help:"The maximum amount of time to wait for the next request when keep-alives are enabled"`
 
 	Pretty             bool  `json:"pretty,omitempty"               help:"Pretty-print JSON responses"`
 	MaximumConnections uint  `json:"max_connections,omitempty"      help:"Max # of incoming HTTP connections to accept"`
@@ -140,12 +140,12 @@ type AuthConfig struct {
 }
 
 type ReplicatorConfig struct {
-	MaxHeartbeat    time.Duration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
+	MaxHeartbeat    base.Duration `json:"max_heartbeat,omitempty"    help:"Max heartbeat value for _changes request"`
 	BLIPCompression *int          `json:"blip_compression,omitempty" help:"BLIP data compression level (0-9)"`
 }
 
 type UnsupportedConfig struct {
-	StatsLogFrequency *time.Duration `json:"stats_log_frequency,omitempty" help:"How often should stats be written to stats logs"`
+	StatsLogFrequency *base.Duration `json:"stats_log_frequency,omitempty" help:"How often should stats be written to stats logs"`
 	UseStdlibJSON     bool           `json:"use_stdlib_json,omitempty"     help:"Bypass the jsoniter package and use Go's stdlib instead"`
 
 	HTTP2 *HTTP2Config `json:"http2,omitempty"`
