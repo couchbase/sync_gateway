@@ -1146,8 +1146,10 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	}
 
 	config := gocbcore.AgentConfig{
-		Auth:              authenticator,
-		TLSRootCAProvider: tlsRootCAProvider,
+		SecurityConfig: gocbcore.SecurityConfig{
+			TLSRootCAProvider: tlsRootCAProvider,
+			Auth:              authenticator,
+		},
 	}
 
 	err = config.FromConnStr(clusterAddress)
