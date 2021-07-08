@@ -112,7 +112,9 @@ func TestAllDatabaseNames(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close()
 
-	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+	serverConfig := &StartupConfig{
+		Bootstrap: BootstrapConfig{AllowInsecureServerConnections: base.BoolPtr(true)},
+		API:       APIConfig{HTTPS: HTTPSConfig{AllowInsecureTLSConnections: base.BoolPtr(true)}, CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
 
