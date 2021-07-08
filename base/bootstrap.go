@@ -49,8 +49,9 @@ func NewCouchbaseCluster(server, username, password,
 	}
 
 	err = cluster.WaitUntilReady(time.Second*5, &gocb.WaitUntilReadyOptions{
-		DesiredState: gocb.ClusterStateOnline,
-		ServiceTypes: []gocb.ServiceType{gocb.ServiceTypeManagement},
+		DesiredState:  gocb.ClusterStateOnline,
+		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
+		RetryStrategy: &goCBv2FailFastRetryStrategy{},
 	})
 	if err != nil {
 		return nil, err
