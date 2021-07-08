@@ -224,7 +224,7 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient(false)
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	clusterAddress := base.UnitTestUrl()
@@ -265,7 +265,7 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	}, false)
 	defer ctx.Close()
 
-	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient(false)
+	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	baseSpec, err := connstr.Parse(base.UnitTestUrl())
@@ -420,7 +420,7 @@ func TestCheckPermissions(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
-	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient(false)
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	for _, testCase := range testCases {
@@ -453,7 +453,7 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	}, false)
 	defer ctx.Close()
 
-	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient(false)
+	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	statusCode, _, err := CheckPermissions(httpClient, eps, "", base.TestClusterUsername(), base.TestClusterPassword(), []Permission{Permission{"admin", false}}, nil)
@@ -546,7 +546,7 @@ func TestCheckRoles(t *testing.T) {
 		},
 	}
 
-	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient(true)
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	for _, testCase := range testCases {
@@ -682,7 +682,7 @@ func TestAdminAuth(t *testing.T) {
 		if testCase.BucketName != "" {
 			managementEndpoints, httpClient, err = rt.GetDatabase().ObtainManagementEndpointsAndHTTPClient()
 		} else {
-			managementEndpoints, httpClient, err = rt.ServerContext().ObtainManagementEndpointsAndHTTPClient(true)
+			managementEndpoints, httpClient, err = rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 		}
 		require.NoError(t, err)
 
@@ -721,7 +721,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	}, false)
 	defer ctx.Close()
 
-	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient(true)
+	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), httpClient, managementEndpoints, []Permission{{"admin", false}}, nil)

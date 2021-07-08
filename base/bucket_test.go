@@ -421,16 +421,16 @@ func TestTLSConfig(t *testing.T) {
 	require.Len(t, conf.Certificates, 1)
 	assert.False(t, conf.InsecureSkipVerify)
 
-	// Check TLSConfig with no CA certificate, and CACertUnsetTlsSkipVerify true; InsecureSkipVerify should be true
-	spec = BucketSpec{CACertUnsetTlsSkipVerify: true, Certpath: clientCertPath, Keypath: clientKeyPath}
+	// Check TLSConfig with no CA certificate, and TlsSkipVerify true; InsecureSkipVerify should be true
+	spec = BucketSpec{TLSSkipVerify: true, Certpath: clientCertPath, Keypath: clientKeyPath}
 	conf = spec.TLSConfig()
 	assert.NotEmpty(t, conf)
 	assert.True(t, conf.InsecureSkipVerify)
 	require.Len(t, conf.Certificates, 1)
 	assert.Nil(t, conf.RootCAs)
 
-	// Check TLSConfig with no certificates provided, and CACertUnsetTlsSkipVerify true. InsecureSkipVerify should be true and fields should be nil
-	spec = BucketSpec{CACertUnsetTlsSkipVerify: true}
+	// Check TLSConfig with no certificates provided, and TlsSkipVerify true. InsecureSkipVerify should be true and fields should be nil
+	spec = BucketSpec{TLSSkipVerify: true}
 	conf = spec.TLSConfig()
 	assert.NotEmpty(t, conf)
 	assert.True(t, conf.InsecureSkipVerify)

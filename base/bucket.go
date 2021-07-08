@@ -10,6 +10,7 @@ package base
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -109,7 +110,7 @@ type BucketSpec struct {
 	Auth                          AuthHandler
 	CouchbaseDriver               CouchbaseDriver
 	Certpath, Keypath, CACertPath string         // X.509 auth parameters
-	CACertUnsetTlsSkipVerify      bool           // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
+	TLSSkipVerify                 bool           // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
 	KvTLSPort                     int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
 	MaxNumRetries                 int            // max number of retries before giving up
 	InitialRetrySleepTimeMS       int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
@@ -203,39 +204,35 @@ func (b BucketSpec) GetViewQueryTimeoutMs() uint64 {
 	return uint64(*b.ViewQueryTimeoutSecs * 1000)
 }
 
+// TLSConfig creates a TLS configuration and populates the certificates
+// Errors will get logged then nil is returned.
 func (b BucketSpec) TLSConfig() *tls.Config {
-	tlsConfig, err := TLSConfigForX509(b.CACertUnsetTlsSkipVerify, b.CACertPath, b.Certpath, b.Keypath)
-	if err != nil {
-		Errorf("Error creating tlsConfig for DCP processing: %v", err)
-		return nil
+	var certPool *x509.CertPool = nil
+	if !b.TLSSkipVerify { // Add certs if ServerTLSSkipVerify is not set
+		var err error
+		certPool, err = getRootCAs(b.CACertPath)
+		if err != nil {
+			Errorf("Error creating tlsConfig for DCP processing: %v", err)
+			return nil
+		}
 	}
-	return tlsConfig
-}
 
-// TLSConfigForX509 returns a TLSConfig based on the specified certificate paths.  If none are provided then the system
-// root pool is used (except on Windows which will error), unless CACertUnsetTlsSkipVerify is true which will return
-// tlsConfig with InsecureSkipVerify: true.
-func TLSConfigForX509(caCertUnsetTlsSkipVerify bool, caCertPath, certPath, keyPath string) (tlsConfig *tls.Config, err error) {
-	certPool, err := getRootCAs(caCertUnsetTlsSkipVerify, caCertPath)
-	if err != nil {
-		return nil, err
-	}
-	tlsConfig = &tls.Config{
+	tlsConfig := &tls.Config{
 		RootCAs:            certPool,
-		InsecureSkipVerify: caCertUnsetTlsSkipVerify,
+		InsecureSkipVerify: b.TLSSkipVerify,
 	}
 
 	// If client cert and key are provided, add to config as x509 key pair
-	if certPath != "" && keyPath != "" {
-		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if b.Certpath != "" && b.Keypath != "" {
+		cert, err := tls.LoadX509KeyPair(b.Certpath, b.Keypath)
 		if err != nil {
-			return nil, err
+			Errorf("Error creating tlsConfig for DCP processing: %v", err)
+			return nil
 		}
-
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
 
-	return tlsConfig, nil
+	return tlsConfig
 }
 
 type couchbaseFeedImpl struct {

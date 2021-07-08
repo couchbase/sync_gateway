@@ -12,10 +12,16 @@ import (
 )
 
 // GoCBv2SecurityConfig returns a gocb.SecurityConfig to use when connecting given a CA Cert path.
-func GoCBv2SecurityConfig(caCertUnsetTlsSkipVerify bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
-	roots, err := getRootCAs(caCertUnsetTlsSkipVerify, caCertPath)
-	sc.TLSRootCAs = roots
-	sc.TLSSkipVerify = caCertUnsetTlsSkipVerify
+func GoCBv2SecurityConfig(tlsSkipVerify bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
+	var certPool *x509.CertPool = nil
+	if !tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
+		certPool, err = getRootCAs(caCertPath)
+		if err != nil {
+			return sc, err
+		}
+	}
+	sc.TLSRootCAs = certPool
+	sc.TLSSkipVerify = tlsSkipVerify
 	return sc, err
 }
 
@@ -101,22 +107,23 @@ func GoCBCoreAuthConfig(username, password, certPath, keyPath string) (a gocbcor
 	}, nil
 }
 
-func GoCBCoreTLSRootCAProvider(CACertUnsetTlsSkipVerify bool, caCertPath string) (func() *x509.CertPool, error) {
-	rootCAs, err := getRootCAs(CACertUnsetTlsSkipVerify, caCertPath)
-	if err != nil {
-		return nil, err
+func GoCBCoreTLSRootCAProvider(tlsSkipVerify bool, caCertPath string) (wrapper func() *x509.CertPool, err error) {
+	var certPool *x509.CertPool = nil
+	if tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
+		certPool, err = getRootCAs(caCertPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return func() *x509.CertPool {
-		return rootCAs
+		return certPool
 	}, nil
 }
 
-func getRootCAs(CACertUnsetTlsSkipVerify bool, caCertPath string) (*x509.CertPool, error) {
-	if CACertUnsetTlsSkipVerify {
-		return nil, nil
-	}
-
+// getRootCAs gets generates a cert pool from the certs at caCertPath. If caCertPath is empty, the systems cert pool is used.
+// If an error happens when retrieving the system cert pool, it is logged (not returned) and an empty (not nil) cert pool is returned.
+func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 	if caCertPath != "" {
 		rootCAs := x509.NewCertPool()
 
@@ -134,5 +141,9 @@ func getRootCAs(CACertUnsetTlsSkipVerify bool, caCertPath string) (*x509.CertPoo
 	}
 
 	rootCAs, err := x509.SystemCertPool()
-	return rootCAs, err
+	if err != nil {
+		rootCAs = &x509.CertPool{}
+		Errorf("Error getting root CAs: %v", err)
+	}
+	return rootCAs, nil
 }

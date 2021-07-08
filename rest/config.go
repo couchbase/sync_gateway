@@ -865,7 +865,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 			cluster, err := base.NewCouchbaseCluster(sc.config.Bootstrap.Server,
 				sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
 				sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
-				sc.config.Bootstrap.CACertPath)
+				sc.config.Bootstrap.CACertPath, *sc.config.Unsupported.ServerTLSSkipVerify)
 			if err != nil {
 				base.Infof(base.KeyConfig, "Couldn't connect to bootstrap cluster: %v - will retry...", err)
 				return true, err, nil
