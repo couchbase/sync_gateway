@@ -21,7 +21,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 	return StartupConfig{
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:         persistentConfigDefaultGroupID,
-			ConfigUpdateFrequency: base.Duration{persistentConfigDefaultUpdateFrequency},
+			ConfigUpdateFrequency: base.Duration{Duration: persistentConfigDefaultUpdateFrequency},
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,
@@ -32,8 +32,8 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
-			ReadHeaderTimeout:              base.Duration{base.DefaultReadHeaderTimeout},
-			IdleTimeout:                    base.Duration{base.DefaultIdleTimeout},
+			ReadHeaderTimeout:              base.Duration{Duration: base.DefaultReadHeaderTimeout},
+			IdleTimeout:                    base.Duration{Duration: base.DefaultIdleTimeout},
 			AdminInterfaceAuthentication:   base.BoolPtr(true),
 			MetricsInterfaceAuthentication: base.BoolPtr(true),
 		},

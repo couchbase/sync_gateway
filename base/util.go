@@ -1524,7 +1524,7 @@ type Duration struct {
 
 // NewDuration returns a *Duration from a time.Duration
 func NewDuration(d time.Duration) *Duration {
-	return &Duration{d}
+	return &Duration{Duration: d}
 }
 
 func (d Duration) MarshalJSON() ([]byte, error) {
@@ -1542,17 +1542,17 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		if err != nil {
 			return err
 		}
-		*d = Duration{tmp}
+		*d = Duration{Duration: tmp}
 		return nil
 	case float64:
-		*d = Duration{time.Duration(value)}
+		*d = Duration{Duration: time.Duration(value)}
 		return nil
 	case json.Number:
 		iVal, err := value.Int64()
 		if err != nil {
 			return err
 		}
-		*d = Duration{time.Duration(iVal)}
+		*d = Duration{Duration: time.Duration(iVal)}
 	default:
 		return fmt.Errorf("invalid duration type %T", value)
 	}

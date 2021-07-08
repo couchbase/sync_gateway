@@ -147,7 +147,7 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 			BcryptCost: lc.BcryptCost,
 		},
 		Replicator: ReplicatorConfig{
-			MaxHeartbeat:    base.Duration{time.Second * time.Duration(lc.MaxHeartbeat)},
+			MaxHeartbeat:    base.Duration{Duration: time.Second * time.Duration(lc.MaxHeartbeat)},
 			BLIPCompression: lc.ReplicatorCompression,
 		},
 		DeprecatedConfig: &DeprecatedConfig{
@@ -198,16 +198,16 @@ func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 		sc.API.ProfileInterface = *lc.ProfileInterface
 	}
 	if lc.ServerReadTimeout != nil {
-		sc.API.ServerReadTimeout = base.Duration{time.Duration(*lc.ServerReadTimeout) * time.Second}
+		sc.API.ServerReadTimeout = base.Duration{Duration: time.Duration(*lc.ServerReadTimeout) * time.Second}
 	}
 	if lc.ServerWriteTimeout != nil {
-		sc.API.ServerWriteTimeout = base.Duration{time.Duration(*lc.ServerWriteTimeout) * time.Second}
+		sc.API.ServerWriteTimeout = base.Duration{Duration: time.Duration(*lc.ServerWriteTimeout) * time.Second}
 	}
 	if lc.ReadHeaderTimeout != nil {
-		sc.API.ReadHeaderTimeout = base.Duration{time.Duration(*lc.ReadHeaderTimeout) * time.Second}
+		sc.API.ReadHeaderTimeout = base.Duration{Duration: time.Duration(*lc.ReadHeaderTimeout) * time.Second}
 	}
 	if lc.IdleTimeout != nil {
-		sc.API.IdleTimeout = base.Duration{time.Duration(*lc.IdleTimeout) * time.Second}
+		sc.API.IdleTimeout = base.Duration{Duration: time.Duration(*lc.IdleTimeout) * time.Second}
 	}
 	if lc.MaxIncomingConnections != nil {
 		sc.API.MaximumConnections = uint(*lc.MaxIncomingConnections)
