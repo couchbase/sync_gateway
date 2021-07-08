@@ -1533,28 +1533,20 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 
 func (d *Duration) UnmarshalJSON(b []byte) error {
 	var v interface{}
-	if err := json.Unmarshal(b, &v); err != nil {
+	if err := JSONUnmarshal(b, &v); err != nil {
 		return err
 	}
-	switch value := v.(type) {
-	case string:
-		tmp, err := time.ParseDuration(value)
-		if err != nil {
-			return err
-		}
-		*d = Duration{Duration: tmp}
-		return nil
-	case float64:
-		*d = Duration{Duration: time.Duration(value)}
-		return nil
-	case json.Number:
-		iVal, err := value.Int64()
-		if err != nil {
-			return err
-		}
-		*d = Duration{Duration: time.Duration(iVal)}
-	default:
-		return fmt.Errorf("invalid duration type %T", value)
+
+	val, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("invalid duration type %T - must be string", v)
 	}
+
+	dur, err := time.ParseDuration(val)
+	if err != nil {
+		return err
+	}
+
+	*d = Duration{Duration: dur}
 	return nil
 }
