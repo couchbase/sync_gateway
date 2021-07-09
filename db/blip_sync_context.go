@@ -452,10 +452,10 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	return nil
 }
 
-func (bsc *BlipSyncContext) isAttachmentAllowed(digest string) bool {
+func (bsc *BlipSyncContext) allowedAttachment(digest string) AllowedAttachment {
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
-	return bsc.allowedAttachments[digest].counter > 0
+	return bsc.allowedAttachments[digest]
 }
 
 // setUseDeltas will set useDeltas on the BlipSyncContext as long as both sides of the connection have it enabled.

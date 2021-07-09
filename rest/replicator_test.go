@@ -339,10 +339,8 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
 	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
 
-	// Because we're targeting a Hydrogen node that supports proveAttachment, we only end up sending the attachment once.
-	// If targeting a pre-hydrogen node, GetAttachment would be 2.
-	assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
-	assert.Equal(t, int64(1), ar.Pull.GetStats().ProveAttachment.Value())
+	assert.Equal(t, int64(2), ar.Pull.GetStats().GetAttachment.Value())
+	assert.Equal(t, int64(0), ar.Pull.GetStats().ProveAttachment.Value())
 }
 
 // TestActiveReplicatorPullMergeConflictingAttachments:
@@ -1154,10 +1152,8 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
 	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
 
-	// Because we're targeting a Hydrogen node that supports proveAttachment, we only end up sending the attachment once.
-	// If targeting a pre-hydrogen node, HandleGetAttachment would be 2.
-	assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
-	assert.Equal(t, int64(1), ar.Push.GetStats().HandleProveAttachment.Value())
+	assert.Equal(t, int64(2), ar.Push.GetStats().HandleGetAttachment.Value())
+	assert.Equal(t, int64(0), ar.Push.GetStats().HandleProveAttachment.Value())
 }
 
 // TestActiveReplicatorPushFromCheckpoint:

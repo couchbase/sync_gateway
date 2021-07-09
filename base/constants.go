@@ -107,6 +107,7 @@ const (
 	SyncPrefix = "_sync:"
 
 	AttPrefix              = SyncPrefix + "att:"
+	Att2Prefix             = SyncPrefix + "att2:"
 	BackfillCompletePrefix = SyncPrefix + "backfill:complete:"
 	BackfillPendingPrefix  = SyncPrefix + "backfill:pending:"
 	DCPCheckpointPrefix    = SyncPrefix + "dcp_ck:"
