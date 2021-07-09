@@ -51,6 +51,7 @@ const (
 
 var BucketScopedEndpointRoles = []string{MobileSyncGatewayRole, BucketFullAccessRole, FullAdminRole}
 var ClusterScopedEndpointRoles = []string{ReadOnlyAdminRole}
+var wwwAuthenticateHeader = `Basic realm="` + base.ProductNameString + `"`
 
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
@@ -215,23 +216,32 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	}
 
 	// If an Admin Request we need to check the user credentials
-	if h.shouldCheckAdminAuth() {
+	if (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication) {
 		username, password := h.getBasicAuth()
+		if username == "" {
+			if dbContext == nil || dbContext.Options.SendWWWAuthenticateHeader == nil || *dbContext.Options.SendWWWAuthenticateHeader {
+				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
+			}
+			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+		}
 
 		var managementEndpoints []string
 		var httpClient *http.Client
+		var authScope string
 
 		if dbContext != nil {
 			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
+			authScope = dbContext.Bucket.GetName()
 		} else {
 			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
+			authScope = ""
 		}
 		if err != nil {
 			base.Warnf("An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
-		permissions, statusCode, err := checkAdminAuth(dbContext.Bucket.GetName(), username, password, httpClient, managementEndpoints, accessPermissions, responsePermissions)
+		permissions, statusCode, err := checkAdminAuth(authScope, username, password, httpClient, managementEndpoints, accessPermissions, responsePermissions)
 		if err != nil {
 			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
@@ -274,12 +284,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	}
 
 	return method(h) // Call the actual handler code
-}
-
-// FIXME: Temporarily disable admin auth check (return false)
-func (h *handler) shouldCheckAdminAuth() bool {
-	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
-	return false && !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication))
 }
 
 func (h *handler) logRequestLine() {
@@ -401,8 +405,6 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 			}
 		}
 	}
-
-	wwwAuthenticateHeader := `Basic realm="` + base.ProductNameString + `"`
 
 	// Check basic auth first
 	if userName, password := h.getBasicAuth(); userName != "" {
