@@ -25,7 +25,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/couchbase/gocb"
 	"github.com/hashicorp/go-multierror"
 
 	"github.com/couchbase/sync_gateway/auth"
@@ -883,7 +882,7 @@ func (sc *ServerContext) fetchConfigs() error {
 		}
 
 		cas, err := sc.bootstrapConnection.GetConfig(location, sc.config.Bootstrap.ConfigGroupID, &cnf)
-		if errors.As(err, &gocb.ErrDocumentNotFound) {
+		if err == base.ErrNotFound {
 			base.Debugf(base.KeyAll, "%q did not contain config in group %q", location, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}

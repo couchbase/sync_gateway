@@ -90,6 +90,9 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 
 	res, err := cc.c.Bucket(location).DefaultCollection().Get(PersistentConfigPrefix+groupID, nil)
 	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return 0, ErrNotFound
+		}
 		return 0, err
 	}
 	err = res.Content(valuePtr)
