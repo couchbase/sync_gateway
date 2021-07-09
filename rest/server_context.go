@@ -295,8 +295,11 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 
 	spec = config.MakeBucketSpec()
 
-	if (serverConfig.Unsupported.ServerTLSSkipVerify == nil || !*serverConfig.Unsupported.ServerTLSSkipVerify) && spec.CACertPath != "" {
-		return base.BucketSpec{}, errors.New("cannot skip server TLS validation and use CA Cert")
+	if serverConfig.Unsupported.ServerTLSSkipVerify != nil {
+		spec.TLSSkipVerify = *serverConfig.Unsupported.ServerTLSSkipVerify
+		if *serverConfig.Unsupported.ServerTLSSkipVerify && spec.CACertPath != "" {
+			return base.BucketSpec{}, errors.New("cannot skip server TLS validation and use CA Cert")
+		}
 	}
 
 	if spec.BucketName == "" {

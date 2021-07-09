@@ -22,7 +22,7 @@ func GoCBv2SecurityConfig(tlsSkipVerify bool, caCertPath string) (sc gocb.Securi
 	}
 	sc.TLSRootCAs = certPool
 	sc.TLSSkipVerify = tlsSkipVerify
-	return sc, err
+	return sc, nil
 }
 
 // GoCBv2AuthenticatorConfig returns a gocb.Authenticator to use when connecting given a set of credentials.
