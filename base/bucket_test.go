@@ -429,7 +429,7 @@ func TestTLSConfig(t *testing.T) {
 	require.Len(t, conf.Certificates, 1)
 	assert.Nil(t, conf.RootCAs)
 
-	// Check TLSConfig with no certificates provided, and TlsSkipVerify true. InsecureSkipVerify should be true and fields should be nil
+	// Check TLSConfig with no certificates provided, and TlsSkipVerify true. InsecureSkipVerify should be true and fields should be nil CBG-1518
 	spec = BucketSpec{TLSSkipVerify: true}
 	conf = spec.TLSConfig()
 	assert.NotEmpty(t, conf)
@@ -437,7 +437,7 @@ func TestTLSConfig(t *testing.T) {
 	assert.Nil(t, conf.RootCAs)
 	assert.Nil(t, conf.Certificates)
 
-	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should log error on Windows
+	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should log error on Windows CBG-1518
 	spec = BucketSpec{}
 	conf = spec.TLSConfig()
 	if runtime.GOOS != "windows" {
