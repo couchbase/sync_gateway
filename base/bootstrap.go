@@ -75,7 +75,7 @@ func (cc *CouchbaseCluster) GetConfigLocations() ([]string, error) {
 		return nil, err
 	}
 
-	bucketList := make([]string, len(buckets))
+	bucketList := make([]string, 0, len(buckets))
 	for bucketName := range buckets {
 		bucketList = append(bucketList, bucketName)
 	}
