@@ -132,7 +132,26 @@ func (c *Collection) Close() {
 }
 
 func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
-	return true
+
+	switch feature {
+	case sgbucket.DataStoreFeatureSubdocOperations, sgbucket.DataStoreFeatureXattrs, sgbucket.DataStoreFeatureCrc32cMacroExpansion:
+		// Available on all supported server versions
+		return true
+	case sgbucket.DataStoreFeatureN1ql:
+		router, routerErr := c.Bucket().Internal().IORouter()
+		if routerErr != nil {
+			return false
+		}
+		return len(router.N1qlEps()) > 0
+	case sgbucket.DataStoreFeatureCreateDeletedWithXattr:
+		status, err := c.Bucket().Internal().CapabilityStatus(gocb.CapabilityCreateAsDeleted)
+		if err != nil {
+			return false
+		}
+		return status == gocb.CapabilityStatusSupported
+	default:
+		return false
+	}
 }
 
 // KV store

@@ -1954,7 +1954,6 @@ func AsGoCBBucket(bucket Bucket) (*CouchbaseBucketGoCB, bool) {
 	return AsGoCBBucket(underlyingBucket)
 }
 
-<<<<<<< HEAD
 // AsLeakyBucket tries to return the given bucket as a LeakyBucket.
 func AsLeakyBucket(bucket Bucket) (*LeakyBucket, bool) {
 
@@ -1973,7 +1972,6 @@ func AsLeakyBucket(bucket Bucket) (*LeakyBucket, bool) {
 
 	return AsLeakyBucket(underlyingBucket)
 }
-
 
 func (bucket *CouchbaseBucketGoCB) MgmtEps() (url []string, err error) {
 	mgmtEps := bucket.Bucket.IoRouter().MgmtEps()

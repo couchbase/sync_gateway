@@ -1970,7 +1970,7 @@ func TestCouchbaseServerMaxTTL(t *testing.T) {
 
 	cbStore, ok := AsCouchbaseStore(bucket)
 	require.True(t, ok)
-	maxTTL, err := GetMaxTTL(cbStore)
+	maxTTL, err := cbStore.MaxTTL()
 	assert.NoError(t, err, "Unexpected error")
 	goassert.Equals(t, maxTTL, 0)
 

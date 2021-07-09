@@ -58,7 +58,7 @@ func validateAllIndexesOnline(bucket base.Bucket) error {
 	}
 
 	// Retrieve all indexes
-	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes where keyspace_id = %q", n1ql.GetName())
+	getIndexesStatement := fmt.Sprintf("SELECT indexes.name, indexes.state from system:indexes where keyspace_id = %q", n1QLStore.GetName())
 	results, err := n1QLStore.Query(getIndexesStatement, nil, base.RequestPlus, true)
 	if err != nil {
 		return err

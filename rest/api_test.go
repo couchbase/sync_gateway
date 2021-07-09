@@ -5814,7 +5814,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 	// Get sync data for doc and ensure user xattr has been used correctly to set channel
 	var syncData db.SyncData
-	cas, err := subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
+	_, err = subdocXattrStore.SubdocGetXattr(docKey, base.SyncXattrName, &syncData)
 	assert.NoError(t, err)
 
 	assert.Equal(t, []string{channelName}, syncData.Channels.KeySet())
