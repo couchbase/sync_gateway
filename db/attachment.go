@@ -11,8 +11,11 @@ package db
 import (
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
+
 	"github.com/couchbase/sync_gateway/base"
 )
 
@@ -66,13 +69,15 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 			if err != nil {
 				return nil, err
 			}
-			key := AttachmentKey(Sha1DigestKey(attachment))
+			digest := Sha1DigestKey(attachment)
+			key := AttachmentKey(sha256Digest([]byte(doc.ID)) + ":" + digest)
 			newAttachmentData[key] = attachment
 
 			newMeta := map[string]interface{}{
 				"stub":   true,
-				"digest": string(key),
+				"digest": digest,
 				"revpos": generation,
+				"ver":    AttVersion2,
 			}
 			if contentType, ok := meta["content_type"].(string); ok {
 				newMeta["content_type"] = contentType
@@ -167,8 +172,9 @@ func (db *Database) loadAttachmentsData(attachments AttachmentsMeta, minRevpos i
 			if !ok {
 				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to unexpected digest field: %v", base.UD(docid), base.UD(attachmentName), revpos, digest)
 			}
-			key := AttachmentKey(digestStr)
-			data, err := db.GetAttachment(key)
+			version := GetAttVersion(meta)
+			attKey := MakeAttachmentKey(version, docid, digestStr)
+			data, err := db.GetAttachmentBy(version, attKey)
 			if err != nil {
 				return nil, err
 			}
@@ -186,6 +192,18 @@ func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
 	return v, err
 }
 
+// GetAttachmentBy retrieves an attachment from the bucket by using its version, docID, and digest.
+func (db *Database) GetAttachmentBy(version int, attKey AttachmentKey) ([]byte, error) {
+	var key string
+	if version == AttVersion2 {
+		key = attachmentV2KeyToString(attKey)
+	} else {
+		key = attachmentKeyToString(attKey)
+	}
+	v, _, err := db.Bucket.GetRaw(key)
+	return v, err
+}
+
 // Stores a base64-encoded attachment and returns the key to get it by.
 func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
 	key := AttachmentKey(Sha1DigestKey(attachment))
@@ -200,7 +218,13 @@ func (db *Database) setAttachments(attachments AttachmentData) error {
 
 	for key, data := range attachments {
 		attachmentSize := int64(len(data))
-		_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, data)
+		var attKey string
+		if strings.Contains(string(key), ":") {
+			attKey = attachmentV2KeyToString(key)
+		} else {
+			attKey = attachmentKeyToString(key)
+		}
+		_, err := db.Bucket.AddRaw(attKey, 0, data)
 		if err == nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 			db.DbStats.CBLReplicationPush().AttachmentPushCount.Add(1)
@@ -218,7 +242,7 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 // its data. The callback is told whether the attachment body is known to the database, according
 // to its digest. If the attachment isn't known, the callback can return data for it, which will
 // be added to the metadata as a "data" property.
-func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback AttachmentCallback) error {
+func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
 		return base.HTTPErrorf(400, "Invalid _attachments")
@@ -236,7 +260,9 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback Att
 			if !ok {
 				return base.HTTPErrorf(400, "Invalid attachment")
 			}
-			data, err := db.GetAttachment(AttachmentKey(digest))
+			version := GetAttVersion(meta)
+			attKey := MakeAttachmentKey(version, docID, digest)
+			data, err := db.GetAttachmentBy(version, attKey)
 			if err != nil && !base.IsDocNotFoundError(err) {
 				return err
 			}
@@ -251,6 +277,21 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, callback Att
 		}
 	}
 	return nil
+}
+
+func GetAttVersion(meta map[string]interface{}) int {
+	if ver, ok := meta["ver"].(json.Number); ok {
+		if version, err := ver.Int64(); err != nil {
+			return AttVersion1
+		} else {
+			return int(version)
+		}
+	} else if ver, ok := meta["ver"].(int); ok {
+		return ver
+	} else if ver, ok := meta["ver"].(float64); ok {
+		return int(ver)
+	}
+	return AttVersion1
 }
 
 // GenerateProofOfAttachment returns a nonce and proof for an attachment body.
@@ -319,13 +360,9 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 		if attMap, ok := att.(map[string]interface{}); ok {
 			if digest, ok := attMap["digest"]; ok {
 				if digestString, ok := digest.(string); ok {
-					m := AttachmentStorageMeta{digest: digestString}
-					if ver, ok := attMap["ver"].(json.Number); ok {
-						if version, err := ver.Int64(); err == nil {
-							m.version = int(version)
-						}
-					} else {
-						m.version = AttVersion1
+					m := AttachmentStorageMeta{
+						digest:  digestString,
+						version: GetAttVersion(attMap),
 					}
 					meta = append(meta, m)
 				}
@@ -337,6 +374,10 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 
 func attachmentKeyToString(key AttachmentKey) string {
 	return base.AttPrefix + string(key)
+}
+
+func attachmentV2KeyToString(key AttachmentKey) string {
+	return base.Att2Prefix + string(key)
 }
 
 func DecodeAttachment(att interface{}) ([]byte, error) {
@@ -354,4 +395,20 @@ func Sha1DigestKey(data []byte) string {
 	digester := sha1.New()
 	digester.Write(data)
 	return "sha1-" + base64.StdEncoding.EncodeToString(digester.Sum(nil))
+}
+
+// MakeAttachmentKey returns the unique for attachment storage and retrieval.
+func MakeAttachmentKey(version int, docID, digest string) AttachmentKey {
+	if version == AttVersion2 {
+		return AttachmentKey(sha256Digest([]byte(docID)) + ":" + digest)
+	}
+	return AttachmentKey(digest)
+}
+
+// sha256Digest returns sha256 digest of the input bytes encoded
+// by using the standard base64 encoding, as defined in RFC 4648.
+func sha256Digest(key []byte) string {
+	digester := sha256.New()
+	digester.Write(key)
+	return base64.StdEncoding.EncodeToString(digester.Sum(nil))
 }
