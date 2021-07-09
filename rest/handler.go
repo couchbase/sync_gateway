@@ -215,7 +215,7 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	}
 
 	// If an Admin Request we need to check the user credentials
-	if h.shouldCheckAdminAuth() {
+	if (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication) {
 		username, password := h.getBasicAuth()
 
 		var managementEndpoints []string
@@ -274,12 +274,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	}
 
 	return method(h) // Call the actual handler code
-}
-
-// FIXME: Temporarily disable admin auth check (return false)
-func (h *handler) shouldCheckAdminAuth() bool {
-	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
-	return false && !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication))
 }
 
 func (h *handler) logRequestLine() {

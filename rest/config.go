@@ -832,7 +832,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 	sc := NewServerContext(config, persistentConfig)
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
-	if persistentConfig && !base.ServerIsWalrus(sc.config.Bootstrap.Server) {
+	if sc.persistentConfig {
 		err, c := base.RetryLoop("Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
 			cluster, err := base.NewCouchbaseCluster(sc.config.Bootstrap.Server,
 				sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,

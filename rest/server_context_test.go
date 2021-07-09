@@ -227,7 +227,7 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
-	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
+	clusterAddress := base.UnitTestUrl()
 	baseSpec, err := connstr.Parse(clusterAddress)
 	require.NoError(t, err)
 
@@ -255,16 +255,14 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	defer tb.Close()
 	defer teardownFn()
 
-	original := tempConnectionDetailsForManagementEndpoints
-	defer func() {
-		tempConnectionDetailsForManagementEndpoints = original
-	}()
-
-	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
-		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
-	}
-
-	ctx := NewServerContext(&StartupConfig{}, false)
+	ctx := NewServerContext(&StartupConfig{
+		Bootstrap: BootstrapConfig{
+			Server:       base.UnitTestUrl(),
+			X509CertPath: certPath,
+			X509KeyPath:  keyPath,
+			CACertPath:   caCertPath,
+		},
+	}, false)
 	defer ctx.Close()
 
 	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -442,16 +440,14 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	defer tb.Close()
 	defer teardownFn()
 
-	original := tempConnectionDetailsForManagementEndpoints
-	defer func() {
-		tempConnectionDetailsForManagementEndpoints = original
-	}()
-
-	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
-		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
-	}
-
-	ctx := NewServerContext(&StartupConfig{}, false)
+	ctx := NewServerContext(&StartupConfig{
+		Bootstrap: BootstrapConfig{
+			Server:       base.UnitTestUrl(),
+			X509CertPath: certPath,
+			X509KeyPath:  keyPath,
+			CACertPath:   caCertPath,
+		},
+	}, false)
 	defer ctx.Close()
 
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -710,16 +706,14 @@ func TestAdminAuthWithX509(t *testing.T) {
 	defer tb.Close()
 	defer teardownFn()
 
-	original := tempConnectionDetailsForManagementEndpoints
-	defer func() {
-		tempConnectionDetailsForManagementEndpoints = original
-	}()
-
-	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
-		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
-	}
-
-	ctx := NewServerContext(&StartupConfig{}, false)
+	ctx := NewServerContext(&StartupConfig{
+		Bootstrap: BootstrapConfig{
+			Server:       base.UnitTestUrl(),
+			X509CertPath: certPath,
+			X509KeyPath:  keyPath,
+			CACertPath:   caCertPath,
+		},
+	}, false)
 	defer ctx.Close()
 
 	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
