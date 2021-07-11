@@ -10,15 +10,17 @@ package base
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/couchbase/gocb"
 
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
 	pkgerrors "github.com/pkg/errors"
-	"gopkg.in/couchbase/gocb.v1"
-	"gopkg.in/couchbase/gocbcore.v7"
+	gocbv1 "gopkg.in/couchbase/gocb.v1"
 )
 
 type sgError struct {
@@ -84,22 +86,30 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 
 	// Check for SGErrors
 	switch unwrappedErr {
-	case gocb.ErrKeyNotFound:
+	case gocbv1.ErrKeyNotFound, ErrNotFound:
 		return http.StatusNotFound, "missing"
-	case gocb.ErrKeyExists:
+	case gocbv1.ErrKeyExists, ErrAlreadyExists:
 		return http.StatusConflict, "Conflict"
-	case gocb.ErrTimeout:
+	case gocbv1.ErrTimeout, gocb.ErrTimeout:
 		return http.StatusServiceUnavailable, "Database timeout error (gocb.ErrTimeout)"
-	case gocb.ErrOverload:
+	case gocbv1.ErrOverload, gocb.ErrOverload:
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrOverload)"
-	case gocb.ErrBusy:
+	case gocbv1.ErrBusy:
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrBusy)"
-	case gocb.ErrTmpFail:
+	case gocbv1.ErrTmpFail, gocb.ErrTemporaryFailure:
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTmpFail)"
-	case gocb.ErrTooBig:
+	case gocbv1.ErrTooBig, gocb.ErrValueTooLarge:
 		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case ErrViewTimeoutError:
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
+	}
+
+	if errors.Is(err, gocb.ErrDocumentNotFound) {
+		return http.StatusNotFound, "missing"
+	}
+
+	if errors.Is(err, gocb.ErrDocumentExists) {
+		return http.StatusConflict, "Conflict"
 	}
 
 	switch unwrappedErr := unwrappedErr.(type) {
@@ -175,7 +185,11 @@ func IsDocNotFoundError(err error) bool {
 		return true
 	}
 
-	if unwrappedErr == gocb.ErrKeyNotFound {
+	if unwrappedErr == gocbv1.ErrKeyNotFound {
+		return true
+	}
+
+	if errors.Is(err, gocb.ErrDocumentNotFound) {
 		return true
 	}
 
@@ -189,13 +203,4 @@ func IsDocNotFoundError(err error) bool {
 	default:
 		return false
 	}
-}
-
-func IsSubDocPathExistsError(err error) bool {
-
-	subdocMutateErr, ok := pkgerrors.Cause(err).(gocbcore.SubDocMutateError)
-	if ok {
-		return subdocMutateErr.Err == gocb.ErrSubDocPathExists
-	}
-	return false
 }
