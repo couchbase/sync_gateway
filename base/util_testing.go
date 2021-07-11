@@ -54,6 +54,10 @@ func (tb TestBucket) Close() {
 	tb.closeFn()
 }
 
+func (tb *TestBucket) GetUnderlyingBucket() Bucket {
+	return tb.Bucket
+}
+
 // LeakyBucketClone wraps the underlying bucket on the TestBucket with a LeakyBucket and returns a new TestBucket handle.
 func (tb *TestBucket) LeakyBucketClone(c LeakyBucketConfig) *TestBucket {
 	return &TestBucket{
