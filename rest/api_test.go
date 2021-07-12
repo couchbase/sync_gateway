@@ -7101,6 +7101,10 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 	revocationTester.fillToSeq(4)
 	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "A"})
 
+	// Make sure changes have gone through
+	err := rt.WaitForPendingChanges()
+	require.NoError(t, err)
+
 	// Do pull to get doc
 	changes := revocationTester.getChanges(4, 1)
 	assert.Equal(t, "5", changes.Last_Seq)
@@ -7112,6 +7116,10 @@ func TestEnsureRevocationUsingDocHistory(t *testing.T) {
 	// Remove doc from A and re-add
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{})
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"channels": "A"})
+
+	// Make sure changes have gone through
+	err = rt.WaitForPendingChanges()
+	require.NoError(t, err)
 
 	changes = revocationTester.getChanges(5, 1)
 	assert.Equal(t, "8:10", changes.Last_Seq)
