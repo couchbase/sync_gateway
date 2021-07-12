@@ -889,19 +889,7 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*Data
 	// phase 1: fetch configs from buckets, and hold in memory
 	for _, bucket := range buckets {
 		base.Tracef(base.KeyConfig, "Checking %q for Sync Gateway config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
-		// populate values from bootstrap, before we overwrite them with any values fetched from the bucket.
-		cnf := DbConfig{
-			BucketConfig: BucketConfig{
-				Server:     &sc.config.Bootstrap.Server,
-				Bucket:     &bucket,
-				Username:   sc.config.Bootstrap.Username,
-				Password:   sc.config.Bootstrap.Password,
-				CertPath:   sc.config.Bootstrap.X509CertPath,
-				KeyPath:    sc.config.Bootstrap.X509KeyPath,
-				CACertPath: sc.config.Bootstrap.CACertPath,
-			},
-		}
-
+		var cnf DbConfig
 		cas, err := sc.bootstrapConnection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
@@ -909,6 +897,19 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*Data
 		}
 		if err != nil {
 			return nil, fmt.Errorf("couldn't fetch config in group %q from bucket %q: %w", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+		}
+
+		// inherit properties the bootstrap config
+		cnf.Server = &sc.config.Bootstrap.Server
+		cnf.Bucket = &bucket
+		cnf.CACertPath = sc.config.Bootstrap.CACertPath
+
+		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
+		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
+			cnf.Username = sc.config.Bootstrap.Username
+			cnf.Password = sc.config.Bootstrap.Password
+			cnf.CertPath = sc.config.Bootstrap.X509CertPath
+			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 
 		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
