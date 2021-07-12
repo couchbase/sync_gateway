@@ -297,7 +297,7 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 
 	if serverConfig.Unsupported.ServerTLSSkipVerify != nil {
 		spec.TLSSkipVerify = *serverConfig.Unsupported.ServerTLSSkipVerify
-		if *serverConfig.Unsupported.ServerTLSSkipVerify && spec.CACertPath != "" {
+		if spec.TLSSkipVerify && spec.CACertPath != "" {
 			return base.BucketSpec{}, errors.New("cannot skip server TLS validation and use CA Cert")
 		}
 	}
@@ -1037,7 +1037,7 @@ func (sc *ServerContext) updateCalculatedStats() {
 
 }
 
-func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, tlsSkipVerify bool, timeout time.Duration) (*gocbcore.Agent, error) {
+func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, tlsSkipVerify *bool, timeout time.Duration) (*gocbcore.Agent, error) {
 	authenticator, err := base.GoCBCoreAuthConfig(clusterUser, clusterPass, certPath, keyPath)
 	if err != nil {
 		return nil, err
@@ -1089,7 +1089,7 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
 	agent, err := initClusterAgent(
 		sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
-		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, *sc.config.Unsupported.ServerTLSSkipVerify,
+		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Unsupported.ServerTLSSkipVerify,
 		sc.config.API.ServerReadTimeout.Value())
 	if err != nil {
 		return nil, nil, err

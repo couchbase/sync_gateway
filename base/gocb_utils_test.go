@@ -22,28 +22,35 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		tlsSkipVerify  bool
+		tlsSkipVerify  *bool
 		caCertPath     string
 		expectCertPool bool // True if should not be empty, false if nil (true on windows asserts empty due to no System Root Pool)
 		expectError    bool
 	}{
 		{
 			name:           "TLS Skip Verify",
-			tlsSkipVerify:  true,
+			tlsSkipVerify:  BoolPtr(true),
 			caCertPath:     "",
 			expectCertPool: false,
 			expectError:    false,
 		},
 		{
 			name:           "File does not exist",
-			tlsSkipVerify:  false,
+			tlsSkipVerify:  BoolPtr(false),
 			caCertPath:     "/var/lib/couchbase/unknown.root.ca.pem",
 			expectCertPool: false,
 			expectError:    true,
 		},
 		{
 			name:           "Normal CA",
-			tlsSkipVerify:  false,
+			tlsSkipVerify:  BoolPtr(false),
+			caCertPath:     rootCertPath,
+			expectCertPool: true,
+			expectError:    false,
+		},
+		{
+			name:           "Normal CA, TLSSkipVerify not set",
+			tlsSkipVerify:  nil,
 			caCertPath:     rootCertPath,
 			expectCertPool: true,
 			expectError:    false,
@@ -60,7 +67,10 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 			}
 
 			require.NotNil(t, sc)
-			assert.Equal(t, sc.TLSSkipVerify, test.tlsSkipVerify)
+			if test.tlsSkipVerify == nil {
+				test.tlsSkipVerify = BoolPtr(false)
+			}
+			assert.Equal(t, sc.TLSSkipVerify, *test.tlsSkipVerify)
 			if test.expectCertPool == false {
 				assert.Nil(t, sc.TLSRootCAs)
 			} else if runtime.GOOS == "windows" { // expect empty cert pool

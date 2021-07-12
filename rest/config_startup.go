@@ -50,7 +50,8 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Unsupported: UnsupportedConfig{
-			StatsLogFrequency: base.NewConfigDuration(time.Minute),
+			StatsLogFrequency:   base.NewConfigDuration(time.Minute),
+			ServerTLSSkipVerify: base.BoolPtr(false),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}

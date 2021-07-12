@@ -12,16 +12,17 @@ import (
 )
 
 // GoCBv2SecurityConfig returns a gocb.SecurityConfig to use when connecting given a CA Cert path.
-func GoCBv2SecurityConfig(tlsSkipVerify bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
+func GoCBv2SecurityConfig(tlsSkipVerify *bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
 	var certPool *x509.CertPool = nil
-	if !tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
+	if tlsSkipVerify == nil || !*tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
 		certPool, err = getRootCAs(caCertPath)
 		if err != nil {
 			return sc, err
 		}
+		tlsSkipVerify = BoolPtr(false)
 	}
 	sc.TLSRootCAs = certPool
-	sc.TLSSkipVerify = tlsSkipVerify
+	sc.TLSSkipVerify = *tlsSkipVerify
 	return sc, nil
 }
 
@@ -107,9 +108,9 @@ func GoCBCoreAuthConfig(username, password, certPath, keyPath string) (a gocbcor
 	}, nil
 }
 
-func GoCBCoreTLSRootCAProvider(tlsSkipVerify bool, caCertPath string) (wrapper func() *x509.CertPool, err error) {
+func GoCBCoreTLSRootCAProvider(tlsSkipVerify *bool, caCertPath string) (wrapper func() *x509.CertPool, err error) {
 	var certPool *x509.CertPool = nil
-	if tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
+	if tlsSkipVerify == nil || !*tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
 		certPool, err = getRootCAs(caCertPath)
 		if err != nil {
 			return nil, err

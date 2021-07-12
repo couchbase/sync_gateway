@@ -27,7 +27,7 @@ var _ BootstrapConnection = &CouchbaseCluster{}
 // NewCouchbaseCluster creates and opens a Couchbase Server cluster connection.
 func NewCouchbaseCluster(server, username, password,
 	x509CertPath, x509KeyPath,
-	caCertPath string, tlsSkipVerify bool) (*CouchbaseCluster, error) {
+	caCertPath string, tlsSkipVerify *bool) (*CouchbaseCluster, error) {
 
 	securityConfig, err := GoCBv2SecurityConfig(tlsSkipVerify, caCertPath)
 	if err != nil {
