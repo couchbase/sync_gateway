@@ -1824,8 +1824,10 @@ func TestGetRemovedDoc(t *testing.T) {
 
 // Make sure that a client cannot open multiple subChanges subscriptions on a single blip context (SG #3222)
 //
-// - Open two continuous subChanges feeds, and asserts that it gets an error on the 2nd one.
-// - Open a one-off subChanges request, assert no error
+// - Open a one-off subChanges request, ensure it works.
+// - Open a subsequent continuous request, and ensure it works.
+// - Open another continuous subChanges, and asserts that it gets an error on the 2nd one, because the first is still running.
+// - Open another one-off subChanges request, assert we still get an error.
 func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
@@ -1845,10 +1847,10 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 		}
 	}
 
-	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	// Open an initial continuous = false subChanges request, which we'd expect to release the lock after it's "caught up".
 	subChangesRequest := blip.NewRequest()
 	subChangesRequest.SetProfile("subChanges")
-	subChangesRequest.Properties["continuous"] = "true"
+	subChangesRequest.Properties["continuous"] = "false"
 	subChangesRequest.SetCompressed(false)
 	sent := bt.sender.Send(subChangesRequest)
 	goassert.True(t, sent)
@@ -1856,33 +1858,54 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
 	errorCode := subChangesResponse.Properties["Error-Code"]
 	log.Printf("errorCode: %v", errorCode)
-	goassert.True(t, errorCode == "")
+	respBody, err := subChangesResponse.Body()
+	require.NoError(t, err)
+	assert.Equal(t, "", errorCode, "resp: %s", respBody)
+
+	// Send continous subChanges to subscribe to changes, which will cause the "changes" profile handler above to be called back
+	subChangesRequest = blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "true"
+	subChangesRequest.SetCompressed(false)
+	sent = bt.sender.Send(subChangesRequest)
+	goassert.True(t, sent)
+	subChangesResponse = subChangesRequest.Response()
+	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	errorCode = subChangesResponse.Properties["Error-Code"]
+	log.Printf("errorCode: %v", errorCode)
+	respBody, err = subChangesResponse.Body()
+	require.NoError(t, err)
+	assert.Equal(t, "", errorCode, "resp: %s", respBody)
 
 	// Send a second continuous subchanges request, expect an error
-	subChangesRequest2 := blip.NewRequest()
-	subChangesRequest2.SetProfile("subChanges")
-	subChangesRequest2.Properties["continuous"] = "true"
-	subChangesRequest2.SetCompressed(false)
-	sent2 := bt.sender.Send(subChangesRequest2)
-	goassert.True(t, sent2)
-	subChangesResponse2 := subChangesRequest2.Response()
-	goassert.Equals(t, subChangesResponse2.SerialNumber(), subChangesRequest2.SerialNumber())
-	errorCode2 := subChangesResponse2.Properties["Error-Code"]
-	log.Printf("errorCode2: %v", errorCode2)
-	goassert.True(t, errorCode2 == "500")
+	subChangesRequest = blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "true"
+	subChangesRequest.SetCompressed(false)
+	sent = bt.sender.Send(subChangesRequest)
+	goassert.True(t, sent)
+	subChangesResponse = subChangesRequest.Response()
+	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	errorCode = subChangesResponse.Properties["Error-Code"]
+	log.Printf("errorCode2: %v", errorCode)
+	assert.Equal(t, "500", errorCode)
 
-	// Send a thirst subChanges request, but this time continuous = false.  Should not return an error
-	subChangesRequest3 := blip.NewRequest()
-	subChangesRequest3.SetProfile("subChanges")
-	subChangesRequest3.Properties["continuous"] = "false"
-	subChangesRequest3.SetCompressed(false)
-	sent3 := bt.sender.Send(subChangesRequest3)
-	goassert.True(t, sent3)
-	subChangesResponse3 := subChangesRequest3.Response()
-	goassert.Equals(t, subChangesResponse3.SerialNumber(), subChangesRequest3.SerialNumber())
-	errorCode3 := subChangesResponse3.Properties["Error-Code"]
-	log.Printf("errorCode: %v", errorCode3)
-	goassert.True(t, errorCode == "")
+	// Even a subsequent continuous = false subChanges request should return an error. This isn't restricted to only continuous changes.
+	subChangesRequest = blip.NewRequest()
+	subChangesRequest.SetProfile("subChanges")
+	subChangesRequest.Properties["continuous"] = "false"
+	subChangesRequest.SetCompressed(false)
+	sent = bt.sender.Send(subChangesRequest)
+	goassert.True(t, sent)
+	subChangesResponse = subChangesRequest.Response()
+	goassert.Equals(t, subChangesResponse.SerialNumber(), subChangesRequest.SerialNumber())
+	errorCode = subChangesResponse.Properties["Error-Code"]
+	log.Printf("errorCode: %v", errorCode)
+	respBody, err = subChangesResponse.Body()
+	require.NoError(t, err)
+	assert.Equal(t, "", errorCode, "resp: %s", respBody)
+
+}
 
 }
 
