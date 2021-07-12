@@ -1,6 +1,7 @@
 package base
 
 import (
+	"errors"
 	"time"
 
 	"github.com/couchbase/gocb"
@@ -8,7 +9,11 @@ import (
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
 type BootstrapConnection interface {
-	// TODO: CBG-1457 - Method(s) to retrieve configs from server (consider Testing/Walrus implementation too)
+	// GetConfigBuckets returns a list of bucket names where a database config could belong. In the future we'll need to fetch collections (and possibly scopes).
+	GetConfigBuckets() ([]string, error)
+	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
+	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
+	// Close closes the connection
 	Close() error
 }
 
@@ -58,6 +63,57 @@ func NewCouchbaseCluster(server, username, password,
 	}
 
 	return &CouchbaseCluster{c: cluster}, nil
+}
+
+func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
+	if cc == nil {
+		return nil, errors.New("nil CouchbaseCluster")
+	}
+
+	buckets, err := cc.c.Buckets().GetAllBuckets(nil)
+	if err != nil {
+		return nil, err
+	}
+
+	bucketList := make([]string, 0, len(buckets))
+	for bucketName := range buckets {
+		bucketList = append(bucketList, bucketName)
+	}
+
+	return bucketList, nil
+}
+
+func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interface{}) (cas uint64, err error) {
+	if cc == nil {
+		return 0, errors.New("nil CouchbaseCluster")
+	}
+
+	b := cc.c.Bucket(location)
+	err = b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
+		DesiredState:  gocb.ClusterStateOnline,
+		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	res, err := b.DefaultCollection().Get(PersistentConfigPrefix+groupID, &gocb.GetOptions{
+		Timeout:       time.Second * 10,
+		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+	})
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
+	err = res.Content(valuePtr)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(res.Cas()), nil
 }
 
 func (cc *CouchbaseCluster) Close() error {

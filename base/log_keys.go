@@ -37,6 +37,7 @@ const (
 	KeyCache
 	KeyChanges
 	KeyCluster
+	KeyConfig
 	KeyCRUD
 	KeyDCP
 	KeyEvents
@@ -68,6 +69,7 @@ var (
 		KeyCache:          "Cache",
 		KeyChanges:        "Changes",
 		KeyCluster:        "SGCluster",
+		KeyConfig:         "Config",
 		KeyCRUD:           "CRUD",
 		KeyDCP:            "DCP",
 		KeyEvents:         "Events",

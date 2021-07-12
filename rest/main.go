@@ -65,9 +65,6 @@ func serverMain(ctx context.Context, osArgs []string) error {
 // serverMainPersistentConfig runs the Sync Gateway server with persistent config.
 func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConfig) error {
 
-	// 3.0 config - bootstrap and pull configs from server buckets.
-	base.Infof(base.KeyAll, "Running in persistent config mode")
-
 	sc := DefaultStartupConfig(defaultLogFilePath)
 	base.Tracef(base.KeyAll, "default config: %#v", sc)
 
@@ -113,6 +110,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	}
 	base.Tracef(base.KeyAll, "final config: %#v", redactedConfig)
 
+	base.Infof(base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
 	ctx, err := setupServerContext(&sc, true)
 	if err != nil {
 		return err
