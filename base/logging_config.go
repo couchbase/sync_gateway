@@ -56,7 +56,7 @@ type LegacyLoggingConfig struct {
 	DeprecatedDefaultLog *LogAppenderConfig  `json:"default,omitempty"`         // Deprecated "default" logging option.
 }
 
-func InitLogging(defaultLogFilePath, logFilePath string,
+func InitLogging(logFilePath string,
 	console *ConsoleLoggerConfig,
 	error, warn, info, debug, trace, stats *FileLoggerConfig) (err error) {
 
@@ -66,7 +66,7 @@ func InitLogging(defaultLogFilePath, logFilePath string,
 	}
 
 	// If there's nowhere to specified put log files, we'll log an error, but continue anyway.
-	if !hasLogFilePath(&logFilePath, defaultLogFilePath) {
+	if logFilePath == "" {
 		Consolef(LevelInfo, KeyNone, "Logging: Files disabled")
 		// Explicitly log this error to console
 		Consolef(LevelError, KeyNone, ErrUnsetLogFilePath.Error())
@@ -82,7 +82,7 @@ func InitLogging(defaultLogFilePath, logFilePath string,
 		return nil
 	}
 
-	err = validateLogFilePath(&logFilePath, defaultLogFilePath)
+	err = validateLogFilePath(logFilePath)
 	if err != nil {
 		return err
 	} else {
@@ -171,19 +171,15 @@ func FlushLoggerBuffers() {
 }
 
 // validateLogFilePath ensures the given path is created and is a directory.
-func validateLogFilePath(logFilePath *string, defaultLogFilePath string) error {
-	if logFilePath == nil || *logFilePath == "" {
-		*logFilePath = defaultLogFilePath
-	}
-
+func validateLogFilePath(logFilePath string) error {
 	// Make full directory structure if it doesn't already exist
-	err := os.MkdirAll(*logFilePath, 0700)
+	err := os.MkdirAll(logFilePath, 0700)
 	if err != nil {
 		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
 	}
 
 	// Ensure LogFilePath is a directory. Lumberjack will check file permissions when it opens/creates the logfile.
-	if f, err := os.Stat(*logFilePath); err != nil {
+	if f, err := os.Stat(logFilePath); err != nil {
 		return errors.Wrap(err, ErrInvalidLogFilePath.Error())
 	} else if !f.IsDir() {
 		return errors.Wrap(ErrInvalidLogFilePath, "not a directory")
@@ -200,7 +196,7 @@ func validateLogFileOutput(logFileOutput string) error {
 
 	// Validate containing directory
 	logFileOutputDirectory := filepath.Dir(logFileOutput)
-	err := validateLogFilePath(&logFileOutputDirectory, "")
+	err := validateLogFilePath(logFileOutputDirectory)
 	if err != nil {
 		return err
 	}
@@ -215,9 +211,4 @@ func validateLogFileOutput(logFileOutput string) error {
 	}
 
 	return file.Close()
-}
-
-// hasLogFilePath returns true if there's either a logFilePath set, or we can fall back to a defaultLogFilePath.
-func hasLogFilePath(logFilePath *string, defaultLogFilePath string) bool {
-	return (logFilePath != nil && *logFilePath != "") || defaultLogFilePath != ""
 }
