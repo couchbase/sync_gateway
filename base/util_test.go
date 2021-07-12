@@ -1430,3 +1430,95 @@ func BenchmarkURLParse(b *testing.B) {
 		}
 	})
 }
+
+func TestConfigDuration(t *testing.T) {
+	tests := []struct {
+		duration     time.Duration
+		expectedJSON string
+		inputJSON    string
+	}{
+		{
+			duration:     0,
+			expectedJSON: `"0s"`,
+			inputJSON:    `"0"`,
+		},
+		{
+			duration:     123 * time.Nanosecond,
+			expectedJSON: `"123ns"`,
+			inputJSON:    `"123ns"`,
+		},
+		{
+			duration:     1234 * time.Nanosecond,
+			expectedJSON: `"1.234µs"`,
+			inputJSON:    `"1234ns"`,
+		},
+		{
+			duration:     250 * time.Millisecond,
+			expectedJSON: `"250ms"`,
+			inputJSON:    `"0.25s"`,
+		},
+		{
+			duration:     15 * time.Millisecond,
+			expectedJSON: `"15ms"`,
+			inputJSON:    `"15ms"`,
+		},
+		{
+			duration:     5 * time.Second,
+			expectedJSON: `"5s"`,
+			inputJSON:    `"5s"`,
+		},
+		// Times >= 1minute are formatted with 0 minutes and seconds
+		{
+			duration:     25 * time.Minute,
+			expectedJSON: `"25m0s"`,
+			inputJSON:    `"25m"`,
+		},
+		{
+			duration:     2 * time.Hour,
+			expectedJSON: `"2h0m0s"`,
+			inputJSON:    `"2h"`,
+		},
+		{
+			duration:     2*time.Hour + 13*time.Minute + 10*time.Second,
+			expectedJSON: `"2h13m10s"`,
+			inputJSON:    `"2h13m10s"`,
+		},
+		// no units larger than an hour
+		{
+			duration:     48 * time.Hour,
+			expectedJSON: `"48h0m0s"`,
+			inputJSON:    `"48h"`,
+		},
+		// negative durations are also valid
+		{
+			duration:     -5 * time.Second,
+			expectedJSON: `"-5s"`,
+			inputJSON:    `"-5s"`,
+		},
+		{
+			duration:     -(8*time.Hour + 30*time.Minute + 10*time.Second),
+			expectedJSON: `"-8h30m10s"`,
+			inputJSON:    `"-8h30m10s"`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.duration.String(), func(t *testing.T) {
+
+			// round trip (marshal -> unmarshal)
+			d := NewConfigDuration(test.duration)
+			durationJSON, err := d.MarshalJSON()
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedJSON, string(durationJSON))
+			d = &ConfigDuration{}
+			err = d.UnmarshalJSON(durationJSON)
+			require.NoError(t, err)
+			assert.Equal(t, test.duration, d.Duration)
+
+			// unmarshal test input
+			d = &ConfigDuration{}
+			err = d.UnmarshalJSON([]byte(test.inputJSON))
+			require.NoError(t, err)
+			assert.Equal(t, test.duration, d.Duration)
+		})
+	}
+}
