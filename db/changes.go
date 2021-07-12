@@ -783,7 +783,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 
 			if options.Revocations && db.user != nil {
-				channelsToRevoke := db.user.RevokedChannels(options.Since.SafeSequence(), options.Since.TriggeredBy)
+				channelsToRevoke := db.user.RevokedChannels(options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
 				for channel, revokedSeq := range channelsToRevoke {
 					revocationSinceSeq := options.Since.SafeSequence()
 					revokeFrom := uint64(0)

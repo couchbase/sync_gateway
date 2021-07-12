@@ -207,14 +207,19 @@ func (revokedChannels RevokedChannels) add(chanName string, triggeredBy uint64) 
 //  - Revoke the role revoked channels
 // Get user:
 //  - Revoke users revoked channels
-func (user *userImpl) RevokedChannels(safeSeq uint64, triggeredBy uint64) RevokedChannels {
+func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy uint64) RevokedChannels {
 	// We always need to check triggeredBy so that we can validate whether we are resuming an interrupted replication
 	// but we also need to calculate another value to check: checkSeq
 	// checkSeq is either the safeSeq which is passed in, or in the event we have a triggeredBy it may mean we need to
 	// resume an interrupted replication so need to 'step back' one sequence. We do, however, need to check the lowest
-	// of the safeSeq and triggeredBy - 1, in case we have a lowSeq.
-	checkSeq := safeSeq
-	if triggeredBy > 0 && checkSeq > triggeredBy-1 {
+	// of the safeSeq and triggeredBy - 1, in the case that we have a lowSeq.
+	checkSeq := since
+
+	if lowSeq > 0 {
+		checkSeq = lowSeq
+	}
+
+	if triggeredBy > 0 && (checkSeq > triggeredBy-1 || lowSeq == 0) {
 		checkSeq = triggeredBy - 1
 	}
 

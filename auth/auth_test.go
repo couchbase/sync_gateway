@@ -1369,7 +1369,7 @@ func TestRevocationScenario1(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	// Get Principals / Rebuild Seq 40
@@ -1382,7 +1382,7 @@ func TestRevocationScenario1(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
@@ -1401,7 +1401,7 @@ func TestRevocationScenario1(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(40, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(40, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 85)
@@ -1419,7 +1419,7 @@ func TestRevocationScenario1(t *testing.T) {
 	channelHistory, ok := fooPrincipal.ChannelHistory()["ch1"]
 	require.True(t, ok)
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 75, EndSeq: 85}, channelHistory.Entries[0])
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
@@ -1460,7 +1460,7 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
@@ -1476,7 +1476,7 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
@@ -1493,7 +1493,7 @@ func TestRevocationScenario2(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(50, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(50, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 85)
@@ -1516,7 +1516,7 @@ func TestRevocationScenario2(t *testing.T) {
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
@@ -1557,7 +1557,7 @@ func TestRevocationScenario3(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(55, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(55, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
@@ -1579,7 +1579,7 @@ func TestRevocationScenario3(t *testing.T) {
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
@@ -1596,7 +1596,7 @@ func TestRevocationScenario3(t *testing.T) {
 	assert.Equal(t, 1, len(fooPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(60, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(60, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 85)
@@ -1622,7 +1622,7 @@ func TestRevocationScenario3(t *testing.T) {
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
@@ -1663,7 +1663,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
@@ -1682,7 +1682,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(55), revokedChannelsCombined["ch1"])
 
@@ -1697,7 +1697,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.Equal(t, 1, len(fooPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(70, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(70, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 85)
@@ -1717,7 +1717,7 @@ func TestRevocationScenario4(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 75, EndSeq: 85}, channelHistory.Entries[1])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
@@ -1756,7 +1756,7 @@ func TestRevocationScenario5(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
@@ -1774,7 +1774,7 @@ func TestRevocationScenario5(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 85)
@@ -1794,7 +1794,7 @@ func TestRevocationScenario5(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 75, EndSeq: 85}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
@@ -1833,7 +1833,7 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	require.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
@@ -1855,7 +1855,7 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(55), revokedChannelsCombined["ch1"])
 
@@ -1875,7 +1875,7 @@ func TestRevocationScenario6(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 }
 
@@ -1913,7 +1913,7 @@ func TestRevocationScenario7(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 45)
@@ -1941,7 +1941,7 @@ func TestRevocationScenario7(t *testing.T) {
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
@@ -1955,7 +1955,7 @@ func TestRevocationScenario7(t *testing.T) {
 	assert.Equal(t, 1, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 1, len(fooPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(100, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(100, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 }
 
@@ -1992,7 +1992,7 @@ func TestRevocationScenario8(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(50, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(50, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 55)
@@ -2014,7 +2014,7 @@ func TestRevocationScenario8(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(50, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(50, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 }
 
@@ -2052,7 +2052,7 @@ func TestRevocationScenario9(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.addRole(t, auth, "alice", "foo", 65)
@@ -2070,7 +2070,7 @@ func TestRevocationScenario9(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(60, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(60, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 }
 
@@ -2110,7 +2110,7 @@ func TestRevocationScenario10(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.addRoleChannels(t, auth, "foo", "ch1", 75)
@@ -2129,7 +2129,7 @@ func TestRevocationScenario10(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(70, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(70, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 }
 
@@ -2170,7 +2170,7 @@ func TestRevocationScenario11(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRoleChannel(t, auth, "foo", "ch1", 85)
@@ -2193,7 +2193,7 @@ func TestRevocationScenario11(t *testing.T) {
 
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(80, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(85), revokedChannelsCombined["ch1"])
 }
@@ -2237,7 +2237,7 @@ func TestRevocationScenario12(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	testMockComputer.removeRole(t, auth, "alice", "foo", 95)
@@ -2253,7 +2253,7 @@ func TestRevocationScenario12(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 65, EndSeq: 95}, userRoleHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(90, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(90, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 }
 
@@ -2297,7 +2297,7 @@ func TestRevocationScenario13(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(5, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 	// Rebuild seq 110
@@ -2309,7 +2309,7 @@ func TestRevocationScenario13(t *testing.T) {
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	assert.Equal(t, 0, len(fooPrincipal.ChannelHistory()))
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(100, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(100, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 }
 
@@ -2348,7 +2348,7 @@ func TestRevocationScenario14(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 20, EndSeq: 45}, userRoleHistory.Entries[0])
 
 	// Ensure that a since 25 shows the revocation
-	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(25, 0)
+	revokedChannelsCombined := aliceUserPrincipal.RevokedChannels(25, 0, 0)
 	require.Contains(t, revokedChannelsCombined, "ch1")
 	assert.Equal(t, uint64(45), revokedChannelsCombined["ch1"])
 
@@ -2356,7 +2356,7 @@ func TestRevocationScenario14(t *testing.T) {
 	aliceUserPrincipal.CanSeeChannel("ch1")
 
 	// Ensure a pull from 45 (same seq as revocation) wouldn't send message
-	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(45, 0)
+	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(45, 0, 0)
 	assert.Len(t, revokedChannelsCombined, 0)
 
 }
