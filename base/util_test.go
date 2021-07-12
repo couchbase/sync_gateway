@@ -1431,7 +1431,7 @@ func BenchmarkURLParse(b *testing.B) {
 	})
 }
 
-func TestDurationJSON(t *testing.T) {
+func TestConfigDuration(t *testing.T) {
 	tests := []struct {
 		duration     time.Duration
 		expectedJSON string
@@ -1505,17 +1505,17 @@ func TestDurationJSON(t *testing.T) {
 		t.Run(test.duration.String(), func(t *testing.T) {
 
 			// round trip (marshal -> unmarshal)
-			d := NewDuration(test.duration)
+			d := NewConfigDuration(test.duration)
 			durationJSON, err := d.MarshalJSON()
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedJSON, string(durationJSON))
-			d = &Duration{}
+			d = &ConfigDuration{}
 			err = d.UnmarshalJSON(durationJSON)
 			require.NoError(t, err)
 			assert.Equal(t, test.duration, d.Duration)
 
 			// unmarshal test input
-			d = &Duration{}
+			d = &ConfigDuration{}
 			err = d.UnmarshalJSON([]byte(test.inputJSON))
 			require.NoError(t, err)
 			assert.Equal(t, test.duration, d.Duration)

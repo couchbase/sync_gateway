@@ -783,8 +783,8 @@ func StdlibDurationPtr(value time.Duration) *time.Duration {
 	return &value
 }
 
-// DurationPtr returns a pointer to the given Duration literal.
-func DurationPtr(value Duration) *Duration {
+// DurationPtr returns a pointer to the given ConfigDuration literal.
+func DurationPtr(value ConfigDuration) *ConfigDuration {
 	return &value
 }
 
@@ -1517,21 +1517,21 @@ func IsConnectionRefusedError(err error) bool {
 	return strings.Contains(err.Error(), errorMessage)
 }
 
-// Duration is a time.Duration that supports JSON marshalling/unmarshalling.
-type Duration struct {
+// ConfigDuration is a time.Duration that supports JSON marshalling/unmarshalling.
+type ConfigDuration struct {
 	time.Duration
 }
 
-// NewDuration returns a *Duration from a time.Duration
-func NewDuration(d time.Duration) *Duration {
-	return &Duration{Duration: d}
+// NewConfigDuration returns a *ConfigDuration from a time.Duration
+func NewConfigDuration(d time.Duration) *ConfigDuration {
+	return &ConfigDuration{Duration: d}
 }
 
-func (d Duration) MarshalJSON() ([]byte, error) {
+func (d ConfigDuration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
 
-func (d *Duration) UnmarshalJSON(b []byte) error {
+func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 	var v interface{}
 	if err := JSONUnmarshal(b, &v); err != nil {
 		return err
@@ -1547,6 +1547,6 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	*d = Duration{Duration: dur}
+	*d = ConfigDuration{Duration: dur}
 	return nil
 }
