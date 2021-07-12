@@ -9,10 +9,10 @@ import (
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
 type BootstrapConnection interface {
-	// GetConfigLocations returns a list of location names where a database config could belong (e.g. Bucket names, Collection names)
-	GetConfigLocations() ([]string, error)
-	// GetConfig fetches a database config for a given location and config group ID, along with the CAS of the document.
-	GetConfig(location, groupID string, valuePtr interface{}) (cas uint64, err error)
+	// GetConfigBuckets returns a list of bucket names where a database config could belong. In the future we'll need to fetch collections (and possibly scopes).
+	GetConfigBuckets() ([]string, error)
+	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
+	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
 	// Close closes the connection
 	Close() error
 }
@@ -65,7 +65,7 @@ func NewCouchbaseCluster(server, username, password,
 	return &CouchbaseCluster{c: cluster}, nil
 }
 
-func (cc *CouchbaseCluster) GetConfigLocations() ([]string, error) {
+func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 	if cc == nil {
 		return nil, errors.New("nil CouchbaseCluster")
 	}
