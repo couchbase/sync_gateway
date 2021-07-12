@@ -60,7 +60,7 @@ type ServerContext struct {
 
 type DatabaseConfig struct {
 	// TODO: Copy non-legacy properties into this struct?
-	CAS uint64
+	cas uint64
 	DbConfig
 }
 

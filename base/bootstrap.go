@@ -88,7 +88,20 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	res, err := cc.c.Bucket(location).DefaultCollection().Get(PersistentConfigPrefix+groupID, nil)
+	b := cc.c.Bucket(location)
+	err = b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
+		DesiredState:  gocb.ClusterStateOnline,
+		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	res, err := b.DefaultCollection().Get(PersistentConfigPrefix+groupID, &gocb.GetOptions{
+		Timeout:       time.Second * 10,
+		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+	})
 	if err != nil {
 		if errors.Is(err, gocb.ErrDocumentNotFound) {
 			return 0, ErrNotFound
