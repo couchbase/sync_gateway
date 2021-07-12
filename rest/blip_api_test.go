@@ -1903,8 +1903,7 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 	log.Printf("errorCode: %v", errorCode)
 	respBody, err = subChangesResponse.Body()
 	require.NoError(t, err)
-	assert.Equal(t, "", errorCode, "resp: %s", respBody)
-
+	assert.Equal(t, "500", errorCode, "resp: %s", respBody)
 }
 
 func TestMultipleOustandingChangesSubscriptions2(t *testing.T) {
