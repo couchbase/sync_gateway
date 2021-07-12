@@ -108,7 +108,7 @@ const (
 type handlerMethod func(*handler) error
 
 // Creates an http.Handler that will run a handler with the given method
-func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []string, responsePermissions []string, method handlerMethod) http.Handler {
+func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := false
 		h := newHandler(server, privs, r, rq, runOffline)
@@ -119,7 +119,7 @@ func makeHandler(server *ServerContext, privs handlerPrivs, accessPermissions []
 }
 
 // Creates an http.Handler that will run a handler with the given method even if the target DB is offline
-func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []string, responsePermissions []string, method handlerMethod) http.Handler {
+func makeOfflineHandler(server *ServerContext, privs handlerPrivs, accessPermissions []Permission, responsePermissions []Permission, method handlerMethod) http.Handler {
 	return http.HandlerFunc(func(r http.ResponseWriter, rq *http.Request) {
 		runOffline := true
 		h := newHandler(server, privs, r, rq, runOffline)
@@ -143,7 +143,7 @@ func newHandler(server *ServerContext, privs handlerPrivs, r http.ResponseWriter
 }
 
 // Top-level handler call. It's passed a pointer to the specific method to run.
-func (h *handler) invoke(method handlerMethod, accessPermissions []string, responsePermissions []string) error {
+func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, responsePermissions []Permission) error {
 
 	var err error
 	if h.server.config.API.CompressResponses == nil || *h.server.config.API.CompressResponses {
@@ -272,6 +272,13 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 		h.permissionsResults = permissions
 
 		base.Infof(base.KeyAuth, "User %s was successfully authorized as an admin", username)
+	} else {
+		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
+		// these still pass
+		h.permissionsResults = make(map[string]bool)
+		for _, responsePermission := range responsePermissions {
+			h.permissionsResults[responsePermission.PermissionName] = true
+		}
 	}
 
 	h.logRequestLine()
@@ -458,8 +465,8 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, httpClient *http.Client, managementEndpoints []string, accessPermissions []string, responsePermissions []string) (responsePermissionResults map[string]bool, statusCode int, err error) {
-	statusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
+func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, httpClient *http.Client, managementEndpoints []string, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
+	statusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, bucketName, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
@@ -505,7 +512,7 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 	if statusCode == http.StatusOK {
 		responsePermissionResults = make(map[string]bool)
 		for _, responsePerm := range responsePermissions {
-			responsePermissionResults[responsePerm] = true
+			responsePermissionResults[responsePerm.PermissionName] = true
 		}
 		return responsePermissionResults, statusCode, nil
 	}

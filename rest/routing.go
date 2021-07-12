@@ -43,34 +43,34 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 	r.Handle("/", makeHandler(sc, privs, nil, nil, (*handler).handleRoot)).Methods("GET", "HEAD")
 
 	// Operations on databases:
-	r.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, nil, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
-	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, nil, nil, (*handler).handlePostDoc)).Methods("POST")
+	r.Handle("/{db:"+dbRegex+"}/", makeOfflineHandler(sc, privs, []Permission{PermDevOps}, nil, (*handler).handleGetDB)).Methods("GET", "HEAD")
+	r.Handle("/{db:"+dbRegex+"}/", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePostDoc)).Methods("POST")
 
 	// Special database URLs:
 	dbr := r.PathPrefix("/{db:" + dbRegex + "}/").Subrouter()
 	dbr.StrictSlash(true)
-	dbr.Handle("/_all_docs", makeHandler(sc, privs, nil, nil, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, nil, nil, (*handler).handleBulkDocs)).Methods("POST")
-	dbr.Handle("/_bulk_get", makeHandler(sc, privs, nil, nil, (*handler).handleBulkGet)).Methods("POST")
-	dbr.Handle("/_changes", makeHandler(sc, privs, nil, nil, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, nil, nil, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, nil, nil, (*handler).handlePutDesignDoc)).Methods("PUT")
-	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, nil, nil, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
-	dbr.Handle("/_design/{ddoc}/_view/{view}", makeHandler(sc, privs, nil, nil, (*handler).handleView)).Methods("GET")
-	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, nil, nil, (*handler).handleEFC)).Methods("POST")
-	dbr.Handle("/_revs_diff", makeHandler(sc, privs, nil, nil, (*handler).handleRevsDiff)).Methods("POST")
+	dbr.Handle("/_all_docs", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleAllDocs)).Methods("GET", "HEAD", "POST")
+	dbr.Handle("/_bulk_docs", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleBulkDocs)).Methods("POST")
+	dbr.Handle("/_bulk_get", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleBulkGet)).Methods("POST")
+	dbr.Handle("/_changes", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleChanges)).Methods("GET", "HEAD", "POST")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetDesignDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutDesignDoc)).Methods("PUT")
+	dbr.Handle("/_design/{ddoc}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleDeleteDesignDoc)).Methods("DELETE")
+	dbr.Handle("/_design/{ddoc}/_view/{view}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleView)).Methods("GET")
+	dbr.Handle("/_ensure_full_commit", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleEFC)).Methods("POST")
+	dbr.Handle("/_revs_diff", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleRevsDiff)).Methods("POST")
 
 	// Document URLs:
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, nil, nil, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, nil, nil, (*handler).handlePutLocalDoc)).Methods("PUT")
-	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, nil, nil, (*handler).handleDelLocalDoc)).Methods("DELETE")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetLocalDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutLocalDoc)).Methods("PUT")
+	dbr.Handle("/_local/{docid}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleDelLocalDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, nil, nil, (*handler).handleGetDoc)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, nil, nil, (*handler).handlePutDoc)).Methods("PUT")
-	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, nil, nil, (*handler).handleDeleteDoc)).Methods("DELETE")
+	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetDoc)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutDoc)).Methods("PUT")
+	dbr.Handle("/{docid:"+docRegex+"}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleDeleteDoc)).Methods("DELETE")
 
-	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, nil, nil, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
-	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, nil, nil, (*handler).handlePutAttachment)).Methods("PUT")
+	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, []Permission{PermReadAppData}, nil, (*handler).handleGetAttachment)).Methods("GET", "HEAD")
+	dbr.Handle("/{docid:"+docRegex+"}/{attach}", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handlePutAttachment)).Methods("PUT")
 
 	// Session/login URLs are per-database (unlike in CouchDB)
 	// These have public privileges so that they can be called without being logged in already
@@ -104,7 +104,7 @@ func createCommonRouter(sc *ServerContext, privs handlerPrivs) (*mux.Router, *mu
 
 	oidcr.Handle("/authenticate", makeHandler(sc, publicPrivs, nil, nil, (*handler).handleOidcTestProviderAuthenticate)).Methods("GET", "POST")
 
-	dbr.Handle("/_blipsync", makeHandler(sc, privs, nil, nil, (*handler).handleBLIPSync)).Methods("GET")
+	dbr.Handle("/_blipsync", makeHandler(sc, privs, []Permission{PermWriteAppData}, nil, (*handler).handleBLIPSync)).Methods("GET")
 
 	return r, dbr
 }
@@ -136,160 +136,159 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r, dbr := createCommonRouter(sc, adminPrivs)
 
 	dbr.Handle("/_session",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).createUserSession)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).createUserSession)).Methods("POST")
 
 	dbr.Handle("/_session/{sessionid}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getUserSession)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, nil, (*handler).getUserSession)).Methods("GET")
 
 	dbr.Handle("/_session/{sessionid}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).deleteUserSession)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUserSession)).Methods("DELETE")
 
 	dbr.Handle("/_raw/{docid:"+docRegex+"}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetRawDoc)).Methods("GET", "HEAD")
 
 	dbr.Handle("/_revtree/{docid:"+docRegex+"}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetRevTree)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleGetRevTree)).Methods("GET")
 
 	dbr.Handle("/_user/",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getUsers)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, []Permission{PermReadPrincipal}, (*handler).getUsers)).Methods("GET", "HEAD")
 	dbr.Handle("/_user/",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).putUser)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putUser)).Methods("POST")
 	dbr.Handle("/_user/{name}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getUserInfo)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, (*handler).getUserInfo)).Methods("GET", "HEAD")
 	dbr.Handle("/_user/{name}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).putUser)).Methods("PUT")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putUser)).Methods("PUT")
 	dbr.Handle("/_user/{name}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).deleteUser)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUser)).Methods("DELETE")
 
 	dbr.Handle("/_user/{name}/_session",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).deleteUserSessions)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUserSessions)).Methods("DELETE")
 	dbr.Handle("/_user/{name}/_session/{sessionid}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).deleteUserSession)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUserSession)).Methods("DELETE")
 
 	dbr.Handle("/_role/",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getRoles)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, (*handler).getRoles)).Methods("GET", "HEAD")
 	dbr.Handle("/_role/",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).putRole)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putRole)).Methods("POST")
 	dbr.Handle("/_role/{name}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getRoleInfo)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, (*handler).getRoleInfo)).Methods("GET", "HEAD")
 	dbr.Handle("/_role/{name}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).putRole)).Methods("PUT")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putRole)).Methods("PUT")
 	dbr.Handle("/_role/{name}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).deleteRole)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteRole)).Methods("DELETE")
 
 	dbr.Handle("/_replication/",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getReplications)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadReplications}, nil, (*handler).getReplications)).Methods("GET", "HEAD")
 	dbr.Handle("/_replication/",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).putReplication)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermWriteReplications}, nil, (*handler).putReplication)).Methods("POST")
 	dbr.Handle("/_replication/{replicationID}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getReplication)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadReplications}, nil, (*handler).getReplication)).Methods("GET", "HEAD")
 	dbr.Handle("/_replication/{replicationID}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).putReplication)).Methods("PUT")
+		makeHandler(sc, adminPrivs, []Permission{PermWriteReplications}, nil, (*handler).putReplication)).Methods("PUT")
 	dbr.Handle("/_replication/{replicationID}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).deleteReplication)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, []Permission{PermWriteReplications}, nil, (*handler).deleteReplication)).Methods("DELETE")
 
 	dbr.Handle("/_replicationStatus/",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getReplicationsStatus)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadReplications}, nil, (*handler).getReplicationsStatus)).Methods("GET", "HEAD")
 	dbr.Handle("/_replicationStatus/{replicationID}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).getReplicationStatus)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadReplications}, nil, (*handler).getReplicationStatus)).Methods("GET", "HEAD")
 	dbr.Handle("/_replicationStatus/{replicationID}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).putReplicationStatus)).Methods("PUT")
+		makeHandler(sc, adminPrivs, []Permission{PermWriteReplications}, nil, (*handler).putReplicationStatus)).Methods("PUT")
 
 	r.Handle("/_logging",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetLogging)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetLogging)).Methods("GET")
 	r.Handle("/_logging",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleSetLogging)).Methods("PUT", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleSetLogging)).Methods("PUT", "POST")
 	r.Handle("/_profile/{profilename}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleProfiling)).Methods("POST")
 	r.Handle("/_profile",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleProfiling)).Methods("POST")
 	r.Handle("/_heap",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleHeapProfiling)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleHeapProfiling)).Methods("POST")
 	r.Handle("/_stats",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleStats)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleStats)).Methods("GET")
 	r.Handle(kDebugURLPathPrefix,
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleExpvar)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar)).Methods("GET")
 	r.Handle("/_config",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetConfig)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetConfig)).Methods("GET")
 	r.Handle("/_replicate",
 		makeOfflineHandler(sc, adminPrivs, nil, nil, (*handler).handleReplicate)).Methods("POST")
 	r.Handle("/_active_tasks",
 		makeOfflineHandler(sc, adminPrivs, nil, nil, (*handler).handleActiveTasks)).Methods("GET")
 
 	r.Handle("/_status",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetStatus)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus)).Methods("GET")
 
 	r.Handle("/_sgcollect_info",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleSGCollectStatus)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleSGCollectStatus)).Methods("GET")
 	r.Handle("/_sgcollect_info",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleSGCollectCancel)).Methods("DELETE")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleSGCollectCancel)).Methods("DELETE")
 	r.Handle("/_sgcollect_info",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleSGCollect)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleSGCollect)).Methods("POST")
 
 	// Debugging handlers
 	r.Handle("/_debug/pprof/goroutine",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofGoroutine)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofGoroutine)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/cmdline",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofCmdline)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofCmdline)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/symbol",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofSymbol)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofSymbol)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/heap",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofHeap)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofHeap)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/profile",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofProfile)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofProfile)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/block",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofBlock)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofBlock)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/threadcreate",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofThreadcreate)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofThreadcreate)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/mutex",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofMutex)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofMutex)).Methods("GET", "POST")
 	r.Handle("/_debug/pprof/trace",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePprofTrace)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePprofTrace)).Methods("GET", "POST")
 	r.Handle("/_debug/fgprof",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleFgprof)).Methods("GET", "POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleFgprof)).Methods("GET", "POST")
 
 	r.Handle("/_post_upgrade",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePostUpgrade)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePostUpgrade)).Methods("POST")
 
 	// Database-relative handlers:
 	dbr.Handle("/_config",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetDbConfig)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfig)).Methods("GET")
+	// TODO: This config endpoint is being altered in @bbrks admin config PR
 	dbr.Handle("/_config",
-		makeOfflineHandler(sc, adminPrivs, nil, nil, (*handler).handlePutDbConfig)).Methods("PUT")
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, (*handler).handlePutDbConfig)).Methods("PUT")
 	dbr.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, nil, nil, (*handler).handleGetResync)).Methods("GET")
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")
 	dbr.Handle("/_resync",
-		makeOfflineHandler(sc, adminPrivs, nil, nil, (*handler).handlePostResync)).Methods("POST")
-	dbr.Handle("/_vacuum",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleVacuum)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePostResync)).Methods("POST")
 	dbr.Handle("/_purge",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handlePurge)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermWriteAppData}, nil, (*handler).handlePurge)).Methods("POST")
 	dbr.Handle("/_flush",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleFlush)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleFlush)).Methods("POST")
 	dbr.Handle("/_online",
-		makeOfflineHandler(sc, adminPrivs, nil, nil, (*handler).handleDbOnline)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleDbOnline)).Methods("POST")
 	dbr.Handle("/_offline",
-		makeOfflineHandler(sc, adminPrivs, nil, nil, (*handler).handleDbOffline)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleDbOffline)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleDump)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDump)).Methods("GET")
 	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleView)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleView)).Methods("GET")
 	dbr.Handle("/_dumpchannel/{channel}",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleDumpChannel)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDumpChannel)).Methods("GET")
 	dbr.Handle("/_repair",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleRepair)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleRepair)).Methods("POST")
 
 	// The routes below are part of the CouchDB REST API but should only be available to admins,
 	// so the handlers are moved to the admin port.
 	r.Handle("/{newdb:"+dbRegex+"}/",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleCreateDB)).Methods("PUT")
+		makeHandler(sc, adminPrivs, []Permission{PermCreateDb}, nil, (*handler).handleCreateDB)).Methods("PUT")
 	r.Handle("/{db:"+dbRegex+"}/",
-		makeOfflineHandler(sc, adminPrivs, nil, nil, (*handler).handleDeleteDB)).Methods("DELETE")
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermDeleteDb}, nil, (*handler).handleDeleteDB)).Methods("DELETE")
 
 	r.Handle("/_all_dbs",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleAllDbs)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleAllDbs)).Methods("GET", "HEAD")
 	dbr.Handle("/_compact",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleCompact)).Methods("POST")
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleCompact)).Methods("POST")
 
 	return r
 }
@@ -306,8 +305,8 @@ func CreateMetricRouter(sc *ServerContext) *mux.Router {
 	r := mux.NewRouter()
 	r.StrictSlash(true)
 
-	r.Handle("/_metrics", makeHandler(sc, metricsPrivs, nil, nil, (*handler).handleMetrics)).Methods("GET")
-	r.Handle(kDebugURLPathPrefix, makeHandler(sc, metricsPrivs, nil, nil, (*handler).handleExpvar)).Methods("GET")
+	r.Handle("/_metrics", makeHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleMetrics)).Methods("GET")
+	r.Handle(kDebugURLPathPrefix, makeHandler(sc, metricsPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar)).Methods("GET")
 
 	return r
 }

@@ -80,16 +80,6 @@ func (h *handler) handleCompact() error {
 	return nil
 }
 
-func (h *handler) handleVacuum() error {
-	attsDeleted, err := db.VacuumAttachments(h.db.Bucket)
-	if err != nil {
-		return err
-	}
-
-	h.writeRawJSON([]byte(`{"atts":` + strconv.Itoa(attsDeleted) + `}`))
-	return nil
-}
-
 func (h *handler) handleFlush() error {
 
 	baseBucket := base.GetBaseBucket(h.db.Bucket)
