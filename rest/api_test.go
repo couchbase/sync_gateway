@@ -7537,7 +7537,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	_, err := rt.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changes.Last_Seq), "", true)
 	assert.NoError(t, err)
 
-	leakyBucket, ok := rt.Bucket().(*base.LeakyBucket)
+	leakyBucket, ok := base.AsLeakyBucket(rt.Bucket())
 	require.True(t, ok)
 
 	leakyBucket.SetGetRawCallback(func(s string) {
