@@ -874,7 +874,7 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 		return 0, err
 	}
 
-	return sc.applyConfigs(fetchedConfigs)
+	return sc.applyConfigs(fetchedConfigs), nil
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
@@ -896,7 +896,8 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*Data
 			continue
 		}
 		if err != nil {
-			return nil, fmt.Errorf("couldn't fetch config in group %q from bucket %q: %w", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.Errorf("couldn't fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			continue
 		}
 
 		// inherit properties the bootstrap config
@@ -919,8 +920,8 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*Data
 	return fetchedConfigs, nil
 }
 
-// applyConfigs takes a map of bucket->DatabaseConfig and loads them into the ServerContext where nessesary.
-func (sc *ServerContext) applyConfigs(fetchedConfigs map[string]*DatabaseConfig) (count int, err error) {
+// applyConfigs takes a map of bucket->DatabaseConfig and loads them into the ServerContext where necessary.
+func (sc *ServerContext) applyConfigs(fetchedConfigs map[string]*DatabaseConfig) (count int) {
 	// phase 2: apply the configs to the server context
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
@@ -936,7 +937,8 @@ func (sc *ServerContext) applyConfigs(fetchedConfigs map[string]*DatabaseConfig)
 		if dbc := sc.databases_[cnf.Name]; dbc != nil {
 			runningBucket := dbc.Bucket.GetName()
 			if runningBucket != bucket {
-				return count, fmt.Errorf("database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, bucket, cnf.Name, runningBucket)
+				base.Errorf("database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, bucket, cnf.Name, runningBucket)
+				continue
 			}
 		}
 
@@ -946,12 +948,13 @@ func (sc *ServerContext) applyConfigs(fetchedConfigs map[string]*DatabaseConfig)
 
 		// TODO: Dynamic update instead of reload
 		if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
-			return count, fmt.Errorf("couldn't reload database: %w", err)
+			base.Errorf("couldn't reload database: %v", err)
+			continue
 		}
 		count++
 	}
 
-	return count, nil
+	return count
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)
