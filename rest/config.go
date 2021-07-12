@@ -752,14 +752,16 @@ func envDefaultExpansion(key string, getEnvFn func(string) string) (value string
 	return value, nil
 }
 
-// setupAndValidateLogging sets up and validates logging,
-// and returns a slice of deferred logs to execute later.
+// SetupAndValidateLogging validates logging config and initializes all logging.
 func (sc *StartupConfig) SetupAndValidateLogging() (err error) {
 
 	base.SetRedaction(sc.Logging.RedactionLevel)
 
+	if sc.Logging.LogFilePath == "" {
+		sc.Logging.LogFilePath = defaultLogFilePath
+	}
+
 	return base.InitLogging(
-		defaultLogFilePath,
 		sc.Logging.LogFilePath,
 		sc.Logging.Console,
 		sc.Logging.Error,
