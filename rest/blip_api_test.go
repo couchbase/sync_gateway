@@ -1830,7 +1830,7 @@ func TestGetRemovedDoc(t *testing.T) {
 // - Open another one-off subChanges request, assert we still get an error.
 func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeySyncMsg)()
+	base.SetUpTestLogging(base.LevelTrace, base.KeyAll)
 
 	bt, err := NewBlipTester(t)
 	require.NoError(t, err, "Error creating BlipTester")
@@ -1907,6 +1907,8 @@ func TestMultipleOustandingChangesSubscriptions(t *testing.T) {
 
 }
 
+func TestMultipleOustandingChangesSubscriptions2(t *testing.T) {
+	time.Sleep(time.Minute * 60)
 }
 
 // Reproduce issue SG #3738
