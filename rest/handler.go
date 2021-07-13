@@ -215,14 +215,15 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 		}
 	}
 
-	// If an Admin Request we need to check the user credentials
-	if (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication) {
+	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
+	// user credentials
+	if h.shouldCheckAdminAuth() {
 		username, password := h.getBasicAuth()
 		if username == "" {
 			if dbContext == nil || dbContext.Options.SendWWWAuthenticateHeader == nil || *dbContext.Options.SendWWWAuthenticateHeader {
 				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
 			}
-			return base.HTTPErrorf(http.StatusUnauthorized, "Invalid login")
+			return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
 		}
 
 		var managementEndpoints []string
@@ -284,6 +285,10 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	}
 
 	return method(h) // Call the actual handler code
+}
+
+func (h *handler) shouldCheckAdminAuth() bool {
+	return (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
 }
 
 func (h *handler) logRequestLine() {
