@@ -16,9 +16,8 @@ func legacyServerMain(osArgs []string) error {
 		return err
 	}
 
-	lc := LegacyConfig{
+	lc := LegacyServerConfig{
 		DisablePersistentConfig: base.BoolPtr(true),
-		LegacyServerConfig:      *config,
 	}
 
 	sc, databases, err := lc.ToStartupConfig()

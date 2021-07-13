@@ -15,11 +15,6 @@ import (
 	pkgerrors "github.com/pkg/errors"
 )
 
-type LegacyConfig struct {
-	DisablePersistentConfig *bool `json:"disable_persistent_config,omitempty" help:"Can be set to true to disable 3.0/persistent config handling."`
-	LegacyServerConfig
-}
-
 // JSON object that defines the server configuration.
 type LegacyServerConfig struct {
 	TLSMinVersion              *string                        `json:"tls_minimum_version,omitempty"`    // Set TLS Version
@@ -57,6 +52,7 @@ type LegacyServerConfig struct {
 	BcryptCost                 int                            `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
 	MetricsInterface           *string                        `json:"metricsInterface,omitempty"`       // Interface to bind metrics to. If not set then metrics isn't accessible
 	HideProductVersion         bool                           `json:"hide_product_version,omitempty"`   // Determines whether product versions removed from Server headers and REST API responses. This setting does not apply to the Admin REST API.
+	DisablePersistentConfig    *bool                          `json:"disable_persistent_config,omitempty" help:"Can be set to true to disable 3.0/persistent config handling."`
 }
 
 type FacebookConfigLegacy struct {
@@ -110,9 +106,9 @@ type ReplicateV1ConfigLegacy struct {
 
 type ReplConfigMapLegacy map[string]*ReplicateV1ConfigLegacy
 
-// ToStartupConfig returns the given LegacyConfig as a StartupConfig and a set of DBConfigs.
+// ToStartupConfig returns the given LegacyServerConfig as a StartupConfig and a set of DBConfigs.
 // The returned configs do not contain any default values - only a direct mapping of legacy config options as they were given.
-func (lc *LegacyConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
+func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
 	bsc := &BootstrapConfig{Server: "walrus:"}
