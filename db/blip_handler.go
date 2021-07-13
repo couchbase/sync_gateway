@@ -931,23 +931,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusBadRequest, "no digest sent with proveAttachment")
 	}
 
-	docID := ""
-	attachmentAllowedKey := digest
-	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV3 {
-		docID = rq.Properties[ProveAttachmentID]
-		if docID == "" {
-			return base.HTTPErrorf(http.StatusBadRequest, "no docID sent with proveAttachment")
-		}
-		attachmentAllowedKey = docID + digest
-	}
-
-	allowedAttachment := bh.allowedAttachment(attachmentAllowedKey)
-	if allowedAttachment.counter <= 0 {
-		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
-	}
-
-	attKey := MakeAttachmentKey(allowedAttachment.version, docID, digest)
-	attData, err := bh.db.GetAttachmentBy(allowedAttachment.version, attKey)
+	attData, err := bh.db.GetAttachment(base.AttPrefix + digest)
 	if err != nil {
 		panic(fmt.Sprintf("error getting client attachment: %v", err))
 	}
@@ -988,8 +972,8 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
 	}
 
-	attKey := MakeAttachmentKey(allowedAttachment.version, docID, digest)
-	attachment, err := bh.db.GetAttachmentBy(allowedAttachment.version, attKey)
+	attachmentKey := MakeAttachmentKey(allowedAttachment.version, docID, digest)
+	attachment, err := bh.db.GetAttachment(attachmentKey)
 	if err != nil {
 		return err
 
@@ -1030,10 +1014,10 @@ func (bh *blipHandler) sendGetAttachment(sender *blip.Sender, docID string, name
 		return nil, err
 	}
 
-	lNum, metaLengthOK := meta["length"].(json.Number)
-	metaLength, err := lNum.Int64()
-	if err != nil {
-		return nil, err
+	lNum, metaLengthOK := meta["length"]
+	metaLength, ok := base.ToInt64(lNum)
+	if !ok {
+		return nil, fmt.Errorf("invalid attachment length found in meta")
 	}
 
 	// Verify that the attachment we received matches the metadata stored in the document
@@ -1053,11 +1037,7 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 	base.DebugfCtx(bh.loggingCtx, base.KeySync, "    Verifying attachment %q for doc %s (digest %s)", base.UD(name), base.UD(docID), digest)
 	nonce, proof := GenerateProofOfAttachment(knownData)
 	outrq := blip.NewRequest()
-	outrq.Properties = map[string]string{
-		BlipProfile:           MessageProveAttachment,
-		ProveAttachmentDigest: digest,
-		ProveAttachmentID:     docID,
-	}
+	outrq.Properties = map[string]string{BlipProfile: MessageProveAttachment, ProveAttachmentDigest: digest}
 	outrq.SetBody(nonce)
 	if !bh.sendBLIPMessage(sender, outrq) {
 		return ErrClosedBLIPSender
