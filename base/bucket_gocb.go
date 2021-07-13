@@ -1677,7 +1677,7 @@ func (bucket *CouchbaseBucketGoCB) Flush() error {
 // BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
 // but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
 func (bucket *CouchbaseBucketGoCB) BucketItemCount() (itemCount int, err error) {
-	itemCount, err = bucket.QueryBucketItemCount()
+	itemCount, err = QueryBucketItemCount(bucket)
 	if err == nil {
 		return itemCount, nil
 	}
@@ -1721,9 +1721,9 @@ func (bucket *CouchbaseBucketGoCB) APIBucketItemCount() (itemCount int, err erro
 
 // QueryBucketItemCount uses a request plus query to get the number of items in a bucket, as the REST API can be slow to update its value.
 // Requires a primary index on the bucket.
-func (bucket *CouchbaseBucketGoCB) QueryBucketItemCount() (itemCount int, err error) {
+func QueryBucketItemCount(n1qlStore N1QLStore) (itemCount int, err error) {
 	statement := fmt.Sprintf("SELECT COUNT(1) AS count FROM `%s`", KeyspaceQueryToken)
-	r, err := bucket.Query(statement, nil, RequestPlus, true)
+	r, err := n1qlStore.Query(statement, nil, RequestPlus, true)
 	if err != nil {
 		return -1, err
 	}

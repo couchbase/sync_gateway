@@ -24,10 +24,10 @@ import (
 
 // Workaround SG #3570 by doing a polling loop until the star channel query returns 0 results.
 // Uses the star channel index as a proxy to indicate that _all_ indexes are empty (which might not be true)
-func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
+func WaitForIndexEmpty(store base.N1QLStore, useXattrs bool) error {
 
 	retryWorker := func() (shouldRetry bool, err error, value interface{}) {
-		empty, err := isIndexEmpty(bucket, useXattrs)
+		empty, err := isIndexEmpty(store, useXattrs)
 		if err != nil {
 			return true, err, nil
 		}
@@ -44,7 +44,7 @@ func WaitForIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) error {
 
 }
 
-func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error) {
+func isIndexEmpty(store base.N1QLStore, useXattrs bool) (bool, error) {
 	// Create the star channel query
 	statement := fmt.Sprintf("%s LIMIT 1", QueryStarChannel.statement) // append LIMIT 1 since we only care if there are any results or not
 	starChannelQueryStatement := replaceActiveOnlyFilter(statement, false)
@@ -55,7 +55,7 @@ func isIndexEmpty(bucket *base.CouchbaseBucketGoCB, useXattrs bool) (bool, error
 	params[QueryParamEndSeq] = math.MaxInt64
 
 	// Execute the query
-	results, err := bucket.Query(starChannelQueryStatement, params, base.RequestPlus, true)
+	results, err := store.Query(starChannelQueryStatement, params, base.RequestPlus, true)
 
 	// If there was an error, then retry.  Assume it's an "index rollback" error which happens as
 	// the index processes the bucket flush operation
@@ -173,7 +173,7 @@ func WaitForUserWaiterChange(userWaiter *ChangeWaiter) bool {
 }
 
 // emptyAllDocsIndex ensures the AllDocs index for the given bucket is empty. Works similarly to db.Compact, except on a different index.
-func emptyAllDocsIndex(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.TestBucketPool) (numCompacted int, err error) {
+func emptyAllDocsIndex(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) (numCompacted int, err error) {
 	purgedDocCount := 0
 	purgeBody := Body{"_purged": true}
 
@@ -234,7 +234,7 @@ func emptyAllDocsIndex(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *ba
 }
 
 // ViewsAndGSIBucketReadier empties the bucket, initializes Views, and waits until GSI indexes are empty. It is run asynchronously as soon as a test is finished with a bucket.
-var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b *base.CouchbaseBucketGoCB, tbp *base.TestBucketPool) error {
+var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
 
 	if base.TestsDisableGSI() {
 		tbp.Logf(ctx, "flushing bucket and readying views")
@@ -258,9 +258,13 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 		return err
 	}
 
+	n1qlStore, ok := base.AsN1QLStore(b)
+	if !ok {
+		return errors.New("attempting to empty indexes with non-N1QL store")
+	}
 	tbp.Logf(ctx, "waiting for empty bucket indexes")
 	// we can't init indexes concurrently, so we'll just wait for them to be empty after emptying instead of recreating.
-	if err := WaitForIndexEmpty(b, base.TestUseXattrs()); err != nil {
+	if err := WaitForIndexEmpty(n1qlStore, base.TestUseXattrs()); err != nil {
 		tbp.Logf(ctx, "WaitForIndexEmpty returned an error: %v", err)
 		return err
 	}
