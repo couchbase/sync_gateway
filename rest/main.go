@@ -33,8 +33,7 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	// used by service scripts as a way to specify a per-distro defaultLogFilePath
 	defaultLogFilePath = *fs.String("defaultLogFilePath", "", "Path to log files, if not overridden by --logFilePath, or the config")
 
-	// TODO: CBG-1461 Change default when we're ready to enable 3.0/bootstrap/persistent config by default (once QE's existing tests are ready to handle it)
-	disablePersistentConfigFlag := fs.Bool("disable_persistent_config", true, "Can be set to false to disable persistent config handling, and read all configuration from a legacy config file.")
+	disablePersistentConfigFlag := fs.Bool("disable_persistent_config", false, "Can be set to false to disable persistent config handling, and read all configuration from a legacy config file.")
 
 	// TODO: CBG-1542 Merge legacyFlagStartupConfig onto default config before merging others.
 	legacyFlagStartupConfig := registerLegacyFlags(fs)
@@ -59,38 +58,46 @@ func serverMain(ctx context.Context, osArgs []string) error {
 		return legacyServerMain(osArgs)
 	}
 
-	return serverMainPersistentConfig(fs, &flagStartupConfig)
+	disablePersistentConfigFallback, err := serverMainPersistentConfig(fs, &flagStartupConfig)
+	if disablePersistentConfigFallback {
+		base.Infof(base.KeyAll, "Falling back to disabled persistent config...")
+		return legacyServerMain(osArgs)
+	}
+
+	return err
 }
 
 // serverMainPersistentConfig runs the Sync Gateway server with persistent config.
-func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConfig) error {
+func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConfig) (disablePersistentConfigFallback bool, err error) {
 
 	sc := DefaultStartupConfig(defaultLogFilePath)
 	base.Tracef(base.KeyAll, "default config: %#v", sc)
 
 	configPath := fs.Args()
 	if len(configPath) > 1 {
-		return fmt.Errorf("%d startup configs defined. Must be at most one startup config: %v", len(configPath), configPath)
+		return false, fmt.Errorf("%d startup configs defined. Must be at most one startup config: %v", len(configPath), configPath)
 	}
 
 	if len(configPath) == 1 {
 		fileStartupConfig, err := LoadStartupConfigFromPath(configPath[0])
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
 			// TODO: CBG-1399 Do automatic legacy config upgrade here
-			return fmt.Errorf("Couldn't parse config file: %w (legacy config upgrade not yet implemented)", err)
+			base.Warnf("Couldn't parse bootstrap config and legacy config migration not yet implemented: %v", err)
+			// When automatic legacy config upgrade is done return when disable_persistent_config=true
+			return true, nil
 		}
 		if err != nil {
-			return fmt.Errorf("Couldn't open config file: %w", err)
+			return false, fmt.Errorf("Couldn't open config file: %w", err)
 		}
 		if fileStartupConfig != nil {
 			redactedConfig, err := sc.Redacted()
 			if err != nil {
-				return err
+				return false, err
 			}
 			base.Tracef(base.KeyAll, "got config from file: %#v", redactedConfig)
 			err = mergo.Merge(&sc, fileStartupConfig, mergo.WithOverride)
 			if err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
@@ -100,21 +107,21 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 		base.Tracef(base.KeyAll, "got config from flags: %#v", flagStartupConfig)
 		err := mergo.Merge(&sc, flagStartupConfig, mergo.WithOverride)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
 	redactedConfig, err := sc.Redacted()
 	if err != nil {
-		return err
+		return false, err
 	}
 	base.Tracef(base.KeyAll, "final config: %#v", redactedConfig)
 
 	base.Infof(base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
 	ctx, err := setupServerContext(&sc, true)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	return startServer(&sc, ctx)
+	return false, startServer(&sc, ctx)
 }
