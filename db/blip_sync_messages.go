@@ -92,7 +92,6 @@ const (
 	GetAttachmentDigest = "digest"
 
 	// proveAttachment
-	ProveAttachmentID     = "docID"
 	ProveAttachmentDigest = "digest"
 
 	// Sync Gateway specific properties (used for testing)

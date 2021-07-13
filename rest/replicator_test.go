@@ -347,6 +347,10 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "rt2", body["source"])
 
+	// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
+	// the attachment only once. However, targeting a Lithium node sends the attachment twice like
+	// the pre-Hydrogen node, GetAttachment would be 2. The reason is that a Hydrogen node uses a
+	// new storage model for attachment storage and retrieval.
 	assert.Equal(t, int64(2), ar.Pull.GetStats().GetAttachment.Value())
 	assert.Equal(t, int64(0), ar.Pull.GetStats().ProveAttachment.Value())
 }
@@ -1178,6 +1182,10 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "rt1", body["source"])
 
+	// When targeting a Hydrogen node that supports proveAttachments, we typically end up sending
+	// the attachment only once. However, targeting a Lithium node sends the attachment twice like
+	// the pre-Hydrogen node, GetAttachment would be 2. The reason is that a Hydrogen node uses a
+	// new storage model for attachment storage and retrieval.
 	assert.Equal(t, int64(2), ar.Push.GetStats().HandleGetAttachment.Value())
 	assert.Equal(t, int64(0), ar.Push.GetStats().HandleProveAttachment.Value())
 }

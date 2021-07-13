@@ -560,9 +560,9 @@ func TestSetAttachment(t *testing.T) {
 
 	// Set attachment with a valid attachment
 	att := `{"att1.txt": {"data": "YXR0MS50eHQ="}}}`
-	key, err := db.setAttachment([]byte(att))
+	key := Sha1DigestKey([]byte(att))
+	err = db.setAttachment(key, []byte(att))
 	assert.NoError(t, err, "Attachment should be saved in db and key should be returned")
-	assert.Equal(t, "sha1-bSTy5ygcoFCI8E3aE7AQPJzsmBQ=", fmt.Sprintf("%v", key))
 	attBytes, err := db.GetAttachment(key)
 	assert.NoError(t, err, "Attachment should be retrieved from the database")
 	assert.Equal(t, att, string(attBytes))
@@ -1526,21 +1526,24 @@ func TestAllowedAttachments(t *testing.T) {
 
 func TestGetAttVersion(t *testing.T) {
 	var tests = []struct {
-		name               string
-		inputAttVersion    interface{}
-		expectedAttVersion int
+		name                    string
+		inputAttVersion         interface{}
+		expectedValidAttVersion bool
+		expectedAttVersion      int
 	}{
-		{"int attachment version", AttVersion2, AttVersion2},
-		{"float64 attachment version", float64(AttVersion2), AttVersion2},
-		{"invalid json.Number attachment version", json.Number(AttVersion2), AttVersion1},
-		{"valid json.Number attachment version", json.Number(strconv.Itoa(AttVersion2)), AttVersion2},
-		{"string attachment version", strconv.Itoa(AttVersion2), AttVersion1},
+		{"int attachment version", AttVersion2, true, AttVersion2},
+		{"float64 attachment version", float64(AttVersion2), true, AttVersion2},
+		{"invalid json.Number attachment version", json.Number("foo"), false, 0},
+		{"valid json.Number attachment version", json.Number(strconv.Itoa(AttVersion2)), true, AttVersion2},
+		{"invaid string attachment version", strconv.Itoa(AttVersion2), false, 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			meta := map[string]interface{}{"ver": tt.inputAttVersion}
-			assert.Equal(t, tt.expectedAttVersion, GetAttVersion(meta))
+			version, ok := GetAttachmentVersion(meta)
+			assert.Equal(t, tt.expectedValidAttVersion, ok)
+			assert.Equal(t, tt.expectedAttVersion, version)
 		})
 	}
 }

@@ -13,8 +13,7 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
-	"strings"
+	"net/http"
 
 	"github.com/couchbase/sync_gateway/base"
 )
@@ -27,9 +26,11 @@ const (
 	AttVersion2 int = 2
 )
 
-// Key for retrieving an attachment from Couchbase.
-type AttachmentKey string
-type AttachmentData map[AttachmentKey][]byte
+// ErrAttachmentVersion is thrown in case of any error in parsing version from the attachment meta.
+var ErrAttachmentVersion = base.HTTPErrorf(http.StatusBadRequest, "invalid version found in attachment meta")
+
+// AttachmentData holds the attachment key and value bytes.
+type AttachmentData map[string][]byte
 
 // A map of keys -> DocAttachments.
 type AttachmentMap map[string]*DocAttachment
@@ -70,7 +71,7 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 				return nil, err
 			}
 			digest := Sha1DigestKey(attachment)
-			key := AttachmentKey(sha256Digest([]byte(doc.ID)) + ":" + digest)
+			key := MakeAttachmentKey(AttVersion2, doc.ID, digest)
 			newAttachmentData[key] = attachment
 
 			newMeta := map[string]interface{}{
@@ -154,7 +155,7 @@ func (db *Database) retrieveAncestorAttachments(doc *Document, parentRev string,
 
 // Goes through a given attachments map, loads attachments (by their 'digest' properties)
 // and adds 'data' properties containing the data. The data is added as raw []byte; the JSON
-// marshaler will convert that to base64.
+// marshaller will convert that to base64.
 // If minRevpos is > 0, then only attachments that have been changed in a revision of that
 // generation or later are loaded.
 func (db *Database) loadAttachmentsData(attachments AttachmentsMeta, minRevpos int, docid string) (newAttachments AttachmentsMeta, err error) {
@@ -172,9 +173,12 @@ func (db *Database) loadAttachmentsData(attachments AttachmentsMeta, minRevpos i
 			if !ok {
 				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v and revpos: %v due to unexpected digest field: %v", base.UD(docid), base.UD(attachmentName), revpos, digest)
 			}
-			version := GetAttVersion(meta)
-			attKey := MakeAttachmentKey(version, docid, digestStr)
-			data, err := db.GetAttachmentBy(version, attKey)
+			version, ok := GetAttachmentVersion(meta)
+			if !ok {
+				return nil, base.RedactErrorf("Unable to load attachment for doc: %v with name: %v, revpos: %v and digest: %v due to unexpected version value: %v", base.UD(docid), base.UD(attachmentName), revpos, digest, version)
+			}
+			attachmentKey := MakeAttachmentKey(version, docid, digestStr)
+			data, err := db.GetAttachment(attachmentKey)
 			if err != nil {
 				return nil, err
 			}
@@ -186,45 +190,35 @@ func (db *Database) loadAttachmentsData(attachments AttachmentsMeta, minRevpos i
 	return newAttachments, nil
 }
 
-// Retrieves an attachment given its key.
-func (db *Database) GetAttachment(key AttachmentKey) ([]byte, error) {
-	v, _, err := db.Bucket.GetRaw(attachmentKeyToString(key))
-	return v, err
+// DeleteAttachmentVersion removes attachment versions from the AttachmentsMeta map specified.
+func DeleteAttachmentVersion(attachments AttachmentsMeta) (newAttachments AttachmentsMeta) {
+	newAttachments = attachments.ShallowCopy()
+	for _, value := range newAttachments {
+		meta := value.(map[string]interface{})
+		delete(meta, "ver")
+	}
+	return newAttachments
 }
 
-// GetAttachmentBy retrieves an attachment from the bucket by using its version, docID, and digest.
-func (db *Database) GetAttachmentBy(version int, attKey AttachmentKey) ([]byte, error) {
-	var key string
-	if version == AttVersion2 {
-		key = attachmentV2KeyToString(attKey)
-	} else {
-		key = attachmentKeyToString(attKey)
-	}
+// GetAttachment retrieves an attachment given its key.
+func (db *Database) GetAttachment(key string) ([]byte, error) {
 	v, _, err := db.Bucket.GetRaw(key)
 	return v, err
 }
 
 // Stores a base64-encoded attachment and returns the key to get it by.
-func (db *Database) setAttachment(attachment []byte) (AttachmentKey, error) {
-	key := AttachmentKey(Sha1DigestKey(attachment))
-	_, err := db.Bucket.AddRaw(attachmentKeyToString(key), 0, attachment)
+func (db *Database) setAttachment(key string, value []byte) error {
+	_, err := db.Bucket.AddRaw(key, 0, value)
 	if err == nil {
 		base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 	}
-	return key, err
+	return err
 }
 
 func (db *Database) setAttachments(attachments AttachmentData) error {
-
 	for key, data := range attachments {
 		attachmentSize := int64(len(data))
-		var attKey string
-		if strings.Contains(string(key), ":") {
-			attKey = attachmentV2KeyToString(key)
-		} else {
-			attKey = attachmentKeyToString(key)
-		}
-		_, err := db.Bucket.AddRaw(attKey, 0, data)
+		_, err := db.Bucket.AddRaw(key, 0, data)
 		if err == nil {
 			base.InfofCtx(db.Ctx, base.KeyCRUD, "\tAdded attachment %q", base.UD(key))
 			db.DbStats.CBLReplicationPush().AttachmentPushCount.Add(1)
@@ -245,12 +239,12 @@ type AttachmentCallback func(name string, digest string, knownData []byte, meta 
 func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string, callback AttachmentCallback) error {
 	atts := GetBodyAttachments(body)
 	if atts == nil && body[BodyAttachments] != nil {
-		return base.HTTPErrorf(400, "Invalid _attachments")
+		return base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
 	}
 	for name, value := range atts {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
-			return base.HTTPErrorf(400, "Invalid attachment")
+			return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 		}
 		if meta["data"] == nil {
 			if revpos, ok := base.ToInt64(meta["revpos"]); revpos < int64(minRevpos) || !ok {
@@ -258,15 +252,21 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string
 			}
 			digest, ok := meta["digest"].(string)
 			if !ok {
-				return base.HTTPErrorf(400, "Invalid attachment")
+				return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 			}
-			version := GetAttVersion(meta)
-			attKey := MakeAttachmentKey(version, docID, digest)
-			data, err := db.GetAttachmentBy(version, attKey)
-			if err != nil && !base.IsDocNotFoundError(err) {
-				return err
+			version, ok := GetAttachmentVersion(meta)
+			if !ok {
+				return ErrAttachmentVersion
 			}
-
+			var data []byte
+			var err error
+			if version == AttVersion1 {
+				attachmentKey := MakeAttachmentKey(version, docID, digest)
+				data, err = db.GetAttachment(attachmentKey)
+				if err != nil && !base.IsDocNotFoundError(err) {
+					return err
+				}
+			}
 			if newData, err := callback(name, digest, data, meta); err != nil {
 				return err
 			} else if newData != nil {
@@ -279,19 +279,13 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string
 	return nil
 }
 
-func GetAttVersion(meta map[string]interface{}) int {
-	if ver, ok := meta["ver"].(json.Number); ok {
-		if version, err := ver.Int64(); err != nil {
-			return AttVersion1
-		} else {
-			return int(version)
-		}
-	} else if ver, ok := meta["ver"].(int); ok {
-		return ver
-	} else if ver, ok := meta["ver"].(float64); ok {
-		return int(ver)
+func GetAttachmentVersion(meta map[string]interface{}) (int, bool) {
+	ver, ok := meta["ver"]
+	if !ok {
+		return AttVersion1, true
 	}
-	return AttVersion1
+	val, ok := base.ToInt64(ver)
+	return int(val), ok
 }
 
 // GenerateProofOfAttachment returns a nonce and proof for an attachment body.
@@ -360,9 +354,10 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 		if attMap, ok := att.(map[string]interface{}); ok {
 			if digest, ok := attMap["digest"]; ok {
 				if digestString, ok := digest.(string); ok {
+					version, _ := GetAttachmentVersion(attMap)
 					m := AttachmentStorageMeta{
 						digest:  digestString,
-						version: GetAttVersion(attMap),
+						version: version,
 					}
 					meta = append(meta, m)
 				}
@@ -370,14 +365,6 @@ func ToAttachmentStorageMeta(attachments AttachmentsMeta) []AttachmentStorageMet
 		}
 	}
 	return meta
-}
-
-func attachmentKeyToString(key AttachmentKey) string {
-	return base.AttPrefix + string(key)
-}
-
-func attachmentV2KeyToString(key AttachmentKey) string {
-	return base.Att2Prefix + string(key)
 }
 
 func DecodeAttachment(att interface{}) ([]byte, error) {
@@ -398,11 +385,11 @@ func Sha1DigestKey(data []byte) string {
 }
 
 // MakeAttachmentKey returns the unique for attachment storage and retrieval.
-func MakeAttachmentKey(version int, docID, digest string) AttachmentKey {
+func MakeAttachmentKey(version int, docID, digest string) string {
 	if version == AttVersion2 {
-		return AttachmentKey(sha256Digest([]byte(docID)) + ":" + digest)
+		return base.Att2Prefix + sha256Digest([]byte(docID)) + ":" + digest
 	}
-	return AttachmentKey(digest)
+	return base.AttPrefix + digest
 }
 
 // sha256Digest returns sha256 digest of the input bytes encoded
