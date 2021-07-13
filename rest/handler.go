@@ -218,6 +218,13 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
 	// user credentials
 	if h.shouldCheckAdminAuth() {
+
+		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
+		// validate credentials against
+		if base.ServerIsWalrus(h.server.config.Bootstrap.Server) {
+			return base.HTTPErrorf(http.StatusUnauthorized, "Authorization not possible with Walrus server")
+		}
+
 		username, password := h.getBasicAuth()
 		if username == "" {
 			if dbContext == nil || dbContext.Options.SendWWWAuthenticateHeader == nil || *dbContext.Options.SendWWWAuthenticateHeader {
