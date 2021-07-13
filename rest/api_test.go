@@ -7711,15 +7711,21 @@ func TestChannelRevocationWithContiguousSequences(t *testing.T) {
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"mutate": "mutate", "channels": "a"})
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
 
 	revocationTester.addUserChannel("user", "a")
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.False(t, changes.Results[0].Revoked)
 
 	revocationTester.removeUserChannel("user", "a")
 	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"mutate": "mutate2", "channels": "a"})
 	changes = revocationTester.getChanges(changes.Last_Seq, 1)
 	assert.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
 }
 
 func TestRevocationWithUserXattrs(t *testing.T) {

@@ -175,7 +175,8 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 // revokedAt: This is the point at which the channel was revoked from the user. Used here for the triggeredBy value of
 // the.
 // revocationSinceSeq: The point in time at which we need to 'diff' against in order to check what documents we need to
-// revoke. This is used in this function in 'wasDocInChannelAtSeq'.
+// revoke - only documents in the channel at the revocationSinceSeq may have been replicated, and need to be revoked.
+// This is used in this function in 'wasDocInChannelAtSeq'.
 // revokeFrom: This is the point at which we should run the changes feed from to find the documents we should revoke. It
 // is calculated higher up based on whether we are resuming an interrupted feed or not.
 func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, revokedAt, revocationSinceSeq, revokeFrom uint64, to string) <-chan *ChangeEntry {
