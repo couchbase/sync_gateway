@@ -1523,8 +1523,8 @@ type ConfigDuration struct {
 }
 
 // NewConfigDuration returns a *ConfigDuration from a time.Duration
-func NewConfigDuration(d time.Duration) *ConfigDuration {
-	return &ConfigDuration{Duration: d}
+func NewConfigDuration(d time.Duration) ConfigDuration {
+	return ConfigDuration{Duration: d}
 }
 
 func (d ConfigDuration) MarshalJSON() ([]byte, error) {

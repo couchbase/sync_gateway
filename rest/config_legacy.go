@@ -194,16 +194,16 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		sc.API.ProfileInterface = *lc.ProfileInterface
 	}
 	if lc.ServerReadTimeout != nil {
-		sc.API.ServerReadTimeout = base.ConfigDuration{Duration: time.Duration(*lc.ServerReadTimeout) * time.Second}
+		sc.API.ServerReadTimeout = base.NewConfigDuration(time.Duration(*lc.ServerReadTimeout) * time.Second)
 	}
 	if lc.ServerWriteTimeout != nil {
-		sc.API.ServerWriteTimeout = base.ConfigDuration{Duration: time.Duration(*lc.ServerWriteTimeout) * time.Second}
+		sc.API.ServerWriteTimeout = base.NewConfigDuration(time.Duration(*lc.ServerWriteTimeout) * time.Second)
 	}
 	if lc.ReadHeaderTimeout != nil {
-		sc.API.ReadHeaderTimeout = base.ConfigDuration{Duration: time.Duration(*lc.ReadHeaderTimeout) * time.Second}
+		sc.API.ReadHeaderTimeout = base.NewConfigDuration(time.Duration(*lc.ReadHeaderTimeout) * time.Second)
 	}
 	if lc.IdleTimeout != nil {
-		sc.API.IdleTimeout = base.ConfigDuration{Duration: time.Duration(*lc.IdleTimeout) * time.Second}
+		sc.API.IdleTimeout = base.NewConfigDuration(time.Duration(*lc.IdleTimeout) * time.Second)
 	}
 	if lc.MaxIncomingConnections != nil {
 		sc.API.MaximumConnections = uint(*lc.MaxIncomingConnections)

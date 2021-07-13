@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/imdario/mergo"
 )
 
 // legacyServerMain runs the pre-3.0 Sync Gateway server.
@@ -20,12 +21,19 @@ func legacyServerMain(osArgs []string) error {
 		DisablePersistentConfig: base.BoolPtr(true),
 	}
 
-	sc, databases, err := lc.ToStartupConfig()
+	sc := DefaultStartupConfig(defaultLogFilePath)
+
+	migratedStartupConfig, databases, err := lc.ToStartupConfig()
 	if err != nil {
 		return err
 	}
 
-	ctx, err := setupServerContext(sc, false)
+	err = mergo.Merge(&sc, migratedStartupConfig, mergo.WithOverride)
+	if err != nil {
+		return err
+	}
+
+	ctx, err := setupServerContext(&sc, false)
 	if err != nil {
 		return err
 	}
@@ -37,7 +45,7 @@ func legacyServerMain(osArgs []string) error {
 
 	ctx.legacyReplications = config.Replications
 
-	return startServer(sc, ctx)
+	return startServer(&sc, ctx)
 }
 
 func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
