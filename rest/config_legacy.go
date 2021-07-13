@@ -111,7 +111,7 @@ type ReplConfigMapLegacy map[string]*ReplicateV1ConfigLegacy
 func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
 
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
-	bsc := &BootstrapConfig{Server: "walrus:"}
+	bsc := &BootstrapConfig{}
 	for _, dbConfig := range lc.Databases {
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			continue
@@ -126,10 +126,6 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		}
 		break
 	}
-
-	// if bsc.Server == "" {
-	// 	return nil, nil, errors.New("missing required 'server' config option")
-	// }
 
 	sc := StartupConfig{
 		Bootstrap: *bsc,
@@ -146,10 +142,13 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			MaxHeartbeat:    base.ConfigDuration{Duration: time.Second * time.Duration(lc.MaxHeartbeat)},
 			BLIPCompression: lc.ReplicatorCompression,
 		},
-		DeprecatedConfig: &DeprecatedConfig{
+	}
+
+	if lc.Facebook != nil || lc.Google != nil {
+		sc.DeprecatedConfig = &DeprecatedConfig{
 			Facebook: lc.Facebook,
 			Google:   lc.Google,
-		},
+		}
 	}
 
 	if lc.Unsupported != nil {

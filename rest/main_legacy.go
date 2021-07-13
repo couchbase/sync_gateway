@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/imdario/mergo"
 )
 
 // legacyServerMain runs the pre-3.0 Sync Gateway server.
@@ -28,7 +27,7 @@ func legacyServerMain(osArgs []string) error {
 		return err
 	}
 
-	err = mergo.Merge(&sc, migratedStartupConfig, mergo.WithOverride)
+	err = sc.Merge(migratedStartupConfig)
 	if err != nil {
 		return err
 	}

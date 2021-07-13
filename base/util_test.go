@@ -1509,13 +1509,13 @@ func TestConfigDuration(t *testing.T) {
 			durationJSON, err := d.MarshalJSON()
 			require.NoError(t, err)
 			assert.Equal(t, test.expectedJSON, string(durationJSON))
-			d = ConfigDuration{}
+			d = &ConfigDuration{}
 			err = d.UnmarshalJSON(durationJSON)
 			require.NoError(t, err)
 			assert.Equal(t, test.duration, d.Duration)
 
 			// unmarshal test input
-			d = ConfigDuration{}
+			d = &ConfigDuration{}
 			err = d.UnmarshalJSON([]byte(test.inputJSON))
 			require.NoError(t, err)
 			assert.Equal(t, test.duration, d.Duration)
