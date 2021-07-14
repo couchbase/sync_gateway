@@ -217,7 +217,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 
 	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
 	// user credentials
-	if h.shouldCheckAdminAuth() {
+	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
+	if shouldCheckAdminAuth {
 
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
@@ -292,10 +293,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	}
 
 	return method(h) // Call the actual handler code
-}
-
-func (h *handler) shouldCheckAdminAuth() bool {
-	return (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
 }
 
 func (h *handler) logRequestLine() {
