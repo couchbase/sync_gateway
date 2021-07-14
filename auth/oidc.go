@@ -168,8 +168,9 @@ type OIDCProvider struct {
 	client *OIDCClient
 
 	// clientOnce synchronises access to the GetClient() and ensures that
-	// the OpenID Connect client only gets initialized exactly once.
-	clientOnce sync.Once
+	// the OpenID Connect client only gets initialized exactly once when
+	// successfully connected to the OIDC provider
+	clientOnce base.AtomicBool
 
 	// IsDefault indicates whether this OpenID Connect provider (the current
 	// instance of OIDCProvider is explicitly specified as default provider
@@ -245,7 +246,7 @@ func (opm OIDCProviderMap) Stop() {
 func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OIDCClient {
 	// Initialize the client on first request. If the callback URL isn't defined for the provider,
 	// uses buildCallbackURLFunc to construct (based on current request)
-	op.clientOnce.Do(func() {
+	if op.clientOnce.CompareAndSwap(false, true) { // If false, make true
 		var err error
 		// If the redirect URL is not defined for the provider generate it from the
 		// handler request and set it on the provider
@@ -257,9 +258,9 @@ func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OID
 		}
 		if err = op.initOIDCClient(); err != nil {
 			base.Errorf("Unable to initialize OIDC client: %v", err)
+			op.clientOnce.Set(false)
 		}
-	})
-
+	}
 	return op.client
 }
 

@@ -1032,6 +1032,15 @@ func deleteUser(t *testing.T, restTester *RestTester, name string) {
 	assertStatus(t, response, http.StatusNotFound)
 }
 
+// createOIDCRequest creates the request with the sessionEndpoint and token put in.
+// sessionEndpoint should end with "/_session".
+func createOIDCRequest(t *testing.T, sessionEndpoint string, token string) *http.Request {
+	request, err := http.NewRequest(http.MethodPost, sessionEndpoint, strings.NewReader(`{}`))
+	require.NoError(t, err, "Error creating new request")
+	request.Header.Add("Authorization", BearerToken+" "+token)
+	return request
+}
+
 // E2E test that checks OpenID Connect Implicit Flow.
 func TestOpenIDConnectImplicitFlow(t *testing.T) {
 	type test struct {
@@ -1100,9 +1109,7 @@ func TestOpenIDConnectImplicitFlow(t *testing.T) {
 			require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 			sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
 
-			request, err := http.NewRequest(http.MethodPost, sessionEndpoint, strings.NewReader(`{}`))
-			require.NoError(t, err, "Error creating new request")
-			request.Header.Add("Authorization", BearerToken+" "+token)
+			request := createOIDCRequest(t, sessionEndpoint, token)
 			response, err := http.DefaultClient.Do(request)
 			require.NoError(t, err, "Error sending request with bearer token")
 
@@ -1168,9 +1175,7 @@ func TestOpenIDConnectImplicitFlowEdgeCases(t *testing.T) {
 		require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
 		require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
 		sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
-		request, err := http.NewRequest(http.MethodPost, sessionEndpoint, strings.NewReader(`{}`))
-		require.NoError(t, err, "Error creating new request")
-		request.Header.Add("Authorization", BearerToken+" "+token)
+		request := createOIDCRequest(t, sessionEndpoint, token)
 		return http.DefaultClient.Do(request)
 	}
 
@@ -2087,6 +2092,88 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 			require.NoError(t, json.NewDecoder(response.Body).Decode(&responseBody))
 			require.NoError(t, response.Body.Close(), "Error closing response body")
 			assert.Equal(t, restTester.DatabaseConfig.Name, responseBody["db_name"])
+		})
+	}
+}
+
+// CBG-1378 - test when OIDC provider is not reachable, and then becomes reachable
+// at a later request
+func TestEventuallyReachableOIDCClient(t *testing.T) {
+	// Modified copy of TestOpenIDConnectImplicitFlow
+	unreachableAddr := "0.0.0.0:1234"
+	tests := []struct {
+		name                string
+		providers           auth.OIDCProviderMap
+		defaultProvider     string
+		requireExistingUser bool
+	}{
+		{
+			// Successful new user authentication against single provider
+			// when auto registration is enabled.
+			name: "successful user registration against single provider",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProviderWithRegister("foo"),
+			},
+			defaultProvider: "foo",
+		},
+		{
+			name: "successful registered user authentication against single provider",
+			providers: auth.OIDCProviderMap{
+				"foo": mockProvider("foo"),
+			},
+			defaultProvider:     "foo",
+			requireExistingUser: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockAuthServer, err := newMockAuthServer()
+			require.NoError(t, err, "Error creating mock oauth2 server")
+			mockAuthServer.Start()
+			defer mockAuthServer.Shutdown()
+			mockAuthServer.options.issuer = mockAuthServer.URL + "/" + tc.defaultProvider
+			refreshProviderConfig(tc.providers, unreachableAddr)
+
+			opts := auth.OIDCOptions{Providers: tc.providers, DefaultProvider: &tc.defaultProvider}
+			restTesterConfig := RestTesterConfig{DatabaseConfig: &DbConfig{OIDCConfig: &opts}}
+			restTester := NewRestTester(t, &restTesterConfig)
+			restTester.SetAdminParty(false)
+			defer restTester.Close()
+
+			// Create the user first if the test requires a registered user.
+			if tc.requireExistingUser {
+				createUser(t, restTester, "foo_noah")
+			}
+
+			mockSyncGateway := httptest.NewServer(restTester.TestPublicHandler())
+			defer mockSyncGateway.Close()
+			mockSyncGatewayURL := mockSyncGateway.URL
+
+			token, err := mockAuthServer.makeToken(claimsAuthentic())
+			require.NoError(t, err, "Error obtaining signed token from OpenID Connect provider")
+			require.NotEmpty(t, token, "Empty token retrieved from OpenID Connect provider")
+			sessionEndpoint := mockSyncGatewayURL + "/" + restTester.DatabaseConfig.Name + "/_session"
+
+			// Unreachable
+			request := createOIDCRequest(t, sessionEndpoint, token)
+			response, err := http.DefaultClient.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			assert.Equal(t, http.StatusUnauthorized, response.StatusCode) // Status code when unreachable
+
+			// Now reachable - success
+			refreshProviderConfig(restTester.DatabaseConfig.OIDCConfig.Providers, mockAuthServer.URL)
+			request = createOIDCRequest(t, sessionEndpoint, token)
+			response, err = http.DefaultClient.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			checkGoodAuthResponse(t, response, "foo_noah")
+
+			// Unreachable again after being reachable - still success
+			refreshProviderConfig(restTester.DatabaseConfig.OIDCConfig.Providers, unreachableAddr)
+			request = createOIDCRequest(t, sessionEndpoint, token)
+			response, err = http.DefaultClient.Do(request)
+			require.NoError(t, err, "Error sending request with bearer token")
+			checkGoodAuthResponse(t, response, "foo_noah")
 		})
 	}
 }
