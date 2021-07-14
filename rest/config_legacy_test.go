@@ -14,61 +14,61 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 	tests := []struct {
 		name     string
 		base     StartupConfig
-		input    LegacyConfig
+		input    LegacyServerConfig
 		expected StartupConfig
 	}{
 		{
 			name:     "No overrides",
 			base:     DefaultStartupConfig(""),
-			input:    LegacyConfig{},
+			input:    LegacyServerConfig{},
 			expected: DefaultStartupConfig(""),
 		},
 		{
 			name:     "Override *duration for StatsLogFrequency",
 			base:     StartupConfig{Unsupported: UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Minute)}},
-			input:    LegacyConfig{LegacyServerConfig: LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: base.UintPtr(10)}}},
+			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{StatsLogFrequencySecs: base.UintPtr(10)}},
 			expected: StartupConfig{Unsupported: UnsupportedConfig{StatsLogFrequency: base.NewConfigDuration(time.Second * 10)}},
 		},
 		{
 			name:     "Override duration zero ServerReadTimeout",
 			base:     StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(time.Second * 10)}},
-			input:    LegacyConfig{LegacyServerConfig: LegacyServerConfig{ServerReadTimeout: base.IntPtr(0)}},
+			input:    LegacyServerConfig{ServerReadTimeout: base.IntPtr(0)},
 			expected: StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(0)}},
 		},
 		{
 			name:     "Override duration non-zero ServerWriteTimeout",
 			base:     StartupConfig{API: APIConfig{ServerWriteTimeout: base.NewConfigDuration(time.Second * 10)}},
-			input:    LegacyConfig{LegacyServerConfig: LegacyServerConfig{ServerWriteTimeout: base.IntPtr(30)}},
+			input:    LegacyServerConfig{ServerWriteTimeout: base.IntPtr(30)},
 			expected: StartupConfig{API: APIConfig{ServerWriteTimeout: base.NewConfigDuration(time.Second * 30)}},
 		},
 		{
 			name:     "Override duration nil ReadHeaderTimeout",
 			base:     StartupConfig{API: APIConfig{ReadHeaderTimeout: base.NewConfigDuration(time.Second * 10)}},
-			input:    LegacyConfig{LegacyServerConfig: LegacyServerConfig{ReadHeaderTimeout: nil}},
+			input:    LegacyServerConfig{ReadHeaderTimeout: nil},
 			expected: StartupConfig{API: APIConfig{ReadHeaderTimeout: base.NewConfigDuration(time.Second * 10)}},
 		},
 		{
 			name:     "Override bool Pretty",
 			base:     StartupConfig{API: APIConfig{Pretty: true}},
-			input:    LegacyConfig{LegacyServerConfig: LegacyServerConfig{Pretty: false}},
+			input:    LegacyServerConfig{Pretty: false},
 			expected: StartupConfig{API: APIConfig{Pretty: true}},
 		},
 		{
 			name:     "Override *bool(false) CompressResponses",
 			base:     StartupConfig{API: APIConfig{CompressResponses: base.BoolPtr(true)}},
-			input:    LegacyConfig{LegacyServerConfig: LegacyServerConfig{CompressResponses: base.BoolPtr(false)}},
+			input:    LegacyServerConfig{CompressResponses: base.BoolPtr(false)},
 			expected: StartupConfig{API: APIConfig{CompressResponses: base.BoolPtr(false)}},
 		},
 		{
 			name:     "Override nil *bool HTTP2Enable",
 			base:     StartupConfig{},
-			input:    LegacyConfig{LegacyServerConfig: LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{Http2Config: &HTTP2Config{Enabled: base.BoolPtr(false)}}}},
+			input:    LegacyServerConfig{Unsupported: &UnsupportedServerConfigLegacy{Http2Config: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
 			expected: StartupConfig{Unsupported: UnsupportedConfig{HTTP2: &HTTP2Config{Enabled: base.BoolPtr(false)}}},
 		},
 		{
 			name:     "Absent property AdminInterfaceAuthentication",
 			base:     StartupConfig{API: APIConfig{AdminInterfaceAuthentication: base.BoolPtr(true)}},
-			input:    LegacyConfig{},
+			input:    LegacyServerConfig{},
 			expected: StartupConfig{API: APIConfig{AdminInterfaceAuthentication: base.BoolPtr(true)}},
 		},
 	}
