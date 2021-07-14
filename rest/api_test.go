@@ -7242,14 +7242,14 @@ func TestRevocationResumeAndLowSeqCheck(t *testing.T) {
 	revIDDoc2 = rt.createDocReturnRev(t, "doc2", revIDDoc2, map[string]interface{}{"channels": []string{"ch2"}, "val": "mutate"})
 
 	changes = revocationTester.getChanges(changes.Last_Seq, 2)
-
 	assert.Equal(t, "doc1", changes.Results[0].ID)
+	assert.Equal(t, revIDDoc, changes.Results[0].Changes[0]["rev"])
 	assert.True(t, changes.Results[0].Revoked)
 	assert.Equal(t, "doc2", changes.Results[1].ID)
+	assert.Equal(t, revIDDoc2, changes.Results[1].Changes[0]["rev"])
 	assert.True(t, changes.Results[1].Revoked)
 
 	changes = revocationTester.getChanges("20:40", 1)
-
 	assert.Equal(t, "doc2", changes.Results[0].ID)
 	assert.True(t, changes.Results[0].Revoked)
 
@@ -7590,8 +7590,6 @@ func TestWasDocInChannelAtSeq(t *testing.T) {
 // Test does not directly run ChannelGrantedPeriods but aims to test this through performing revocation operations
 // that will hit the various cases that ChannelGrantedPeriods will handle
 func TestChannelGrantedPeriods(t *testing.T) {
-	t.Skip("Currently hits issue fixed in: https://github.com/couchbase/sync_gateway/pull/5080")
-
 	defer db.SuspendSequenceBatching()()
 	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
@@ -7697,6 +7695,95 @@ func TestChannelHistoryPruning(t *testing.T) {
 
 	assert.NotContains(t, role.ChannelHistory(), "a")
 	assert.Contains(t, role.ChannelHistory(), "b")
+}
+
+func TestChannelRevocationWithContiguousSequences(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+	revocationTester, rt := initScenario(t, nil)
+	defer rt.Close()
+
+	revocationTester.addUserChannel("user", "a")
+	revID := rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": "a"})
+	changes := revocationTester.getChanges(0, 2)
+	assert.Len(t, changes.Results, 2)
+
+	revocationTester.removeUserChannel("user", "a")
+	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"mutate": "mutate", "channels": "a"})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+
+	revocationTester.addUserChannel("user", "a")
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.False(t, changes.Results[0].Revoked)
+
+	revocationTester.removeUserChannel("user", "a")
+	revID = rt.createDocReturnRev(t, "doc", revID, map[string]interface{}{"mutate": "mutate2", "channels": "a"})
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
+	assert.Equal(t, "doc", changes.Results[0].ID)
+	assert.True(t, changes.Results[0].Revoked)
+}
+
+func TestRevocationWithUserXattrs(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	xattrKey := "channelInfo"
+
+	revocationTester, rt := initScenario(t, &RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			AutoImport:   true,
+			UserXattrKey: xattrKey,
+		},
+		SyncFn: `
+			function (doc, oldDoc, meta){
+				if (doc._id === 'accessDoc' && meta.xattrs.channelInfo !== undefined){
+					for (var key in meta.xattrs.channelInfo.userChannels){
+						access(key, meta.xattrs.channelInfo.userChannels[key]);
+					}
+				}
+				if (doc._id.indexOf("doc") >= 0){				
+					channel(doc.channels);
+				}
+			}`,
+	})
+
+	defer rt.Close()
+
+	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	if !ok {
+		t.Skip("Test requires Couchbase Bucket")
+	}
+
+	resp := rt.SendAdminRequest("PUT", "/db/accessDoc", `{}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	_, err := gocbBucket.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{"userChannels": map[string]interface{}{"user": "a"}})
+	assert.NoError(t, err)
+
+	_ = rt.createDocReturnRev(t, "doc", "", map[string]interface{}{"channels": []string{"a"}})
+
+	changes := revocationTester.getChanges(0, 2)
+	assert.Len(t, changes.Results, 2)
+
+	_, err = gocbBucket.WriteUserXattr("accessDoc", xattrKey, map[string]interface{}{})
+	assert.NoError(t, err)
+
+	changes = revocationTester.getChanges(changes.Last_Seq, 1)
+	assert.Len(t, changes.Results, 1)
 }
 
 func TestDocChannelSetPruning(t *testing.T) {

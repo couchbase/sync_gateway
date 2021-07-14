@@ -171,7 +171,15 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 	}
 }
 
-func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, revokedSeq, revocationSinceSeq uint64, to string) <-chan *ChangeEntry {
+// Parameters
+// revokedAt: This is the point at which the channel was revoked from the user. Used here for the triggeredBy value of
+// the.
+// revocationSinceSeq: The point in time at which we need to 'diff' against in order to check what documents we need to
+// revoke - only documents in the channel at the revocationSinceSeq may have been replicated, and need to be revoked.
+// This is used in this function in 'wasDocInChannelAtSeq'.
+// revokeFrom: This is the point at which we should run the changes feed from to find the documents we should revoke. It
+// is calculated higher up based on whether we are resuming an interrupted feed or not.
+func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, options ChangesOptions, revokedAt, revocationSinceSeq, revokeFrom uint64, to string) <-chan *ChangeEntry {
 	feed := make(chan *ChangeEntry, 1)
 	sinceVal := options.Since.Seq
 
@@ -179,14 +187,12 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 	requestLimit := options.Limit
 
 	paginationOptions := options
-	paginationOptions.Since.Seq = 0
 	paginationOptions.Since.LowSeq = 0
 
-	// If this replication has since been interrupted we'll be given a triggered by seq in the since request and can use
-	// this to resume.
-	if options.Since.TriggeredBy > 0 {
-		paginationOptions.Since.Seq = options.Since.Seq
-	}
+	// For changes feed we can initiate the revocation work from this passed in value.
+	// In the event that we have a interrupted replication we can restart part way through, otherwise we have to
+	// check from 0.
+	paginationOptions.Since.Seq = revokeFrom
 
 	go func() {
 		defer base.FatalPanicHandler()
@@ -224,7 +230,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 			for _, logEntry := range changes {
 				seqID := SequenceID{
 					Seq:         logEntry.Sequence,
-					TriggeredBy: revokedSeq,
+					TriggeredBy: revokedAt,
 				}
 
 				// We need to check whether a change / document sequence is greater than since.
@@ -778,27 +784,30 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 			}
 
 			if options.Revocations && db.user != nil {
-
-				// revocationSinceSeq is the earliest (lowest) value inside of the passed in since sequence i.e. lowest
-				// of lowSeq, triggeredBy and Seq. The value is used to denote the point in time we need to diff against
-				// ie. What has changed in the the time since that sequence and now. This will be used to calculate the
-				// channels to revoke and then passed  into "buildRevokedFeed" to validate whether a document was in the
-				// given channel at the sequence.
-				revocationSinceSeq := options.Since.SafeSequence()
-
-				// We need to do this with triggeredBy - 1 because multiple mutations can have the same 'triggeredBy'
-				// and if we're resuming with a triggeredBy we can't be sure that all of the changes with that
-				// 'triggeredBy' have been processed so need to step back and re-process all changes with that
-				// triggeredBy.
-				// The 'if' check here is checking whether we have a triggeredBy and if we do we should use the lowest
-				// value out of triggeredBy - 1 and the above used SafeSeq (lowSeq if there or regular Seq).
-				if options.Since.TriggeredBy > 0 && revocationSinceSeq > options.Since.TriggeredBy-1 {
-					revocationSinceSeq = options.Since.TriggeredBy - 1
-				}
-
-				channelsToRevoke := db.user.RevokedChannels(revocationSinceSeq)
+				channelsToRevoke := db.user.RevokedChannels(options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
 				for channel, revokedSeq := range channelsToRevoke {
-					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, revokedSeq, revocationSinceSeq, to)
+					revocationSinceSeq := options.Since.SafeSequence()
+					revokeFrom := uint64(0)
+
+					// If we have a triggeredBy sequence:
+					// If channel access was lost at the triggeredBy sequence then replication may have been interrupted
+					// so we need to roll back one sequence to re-send the values with that previous triggeredBy as we
+					// cannot be sure that they were all sent. However, we can get changes from triggeredBy rather than
+					// 0 when finding docs to revoke.
+					// If channel access was after the triggeredBy then we can just use the triggeredBy and need to
+					// check for docs to revoke since 0.
+					if options.Since.TriggeredBy != 0 {
+						if revokedSeq == options.Since.TriggeredBy {
+							revocationSinceSeq = options.Since.TriggeredBy - 1
+							revokeFrom = options.Since.Seq
+						}
+						if revokedSeq > options.Since.TriggeredBy {
+							revocationSinceSeq = options.Since.TriggeredBy
+							revokeFrom = 0
+						}
+					}
+
+					feed := db.buildRevokedFeed(db.changeCache.getChannelCache().getSingleChannelCache(channel), options, revokedSeq, revocationSinceSeq, revokeFrom, to)
 					feeds = append(feeds, feed)
 				}
 			}
