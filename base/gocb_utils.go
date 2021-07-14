@@ -143,7 +143,7 @@ func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 
 	rootCAs, err := x509.SystemCertPool()
 	if err != nil {
-		rootCAs = &x509.CertPool{}
+		rootCAs = x509.NewCertPool()
 		Errorf("Error getting root CAs: %v", err)
 	}
 	return rootCAs, nil

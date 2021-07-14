@@ -65,12 +65,14 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 				assert.Nil(t, sc.TLSRootCAs)
 				return
 			}
-
 			require.NotNil(t, sc)
+
+			expectTLSSkipVerify := false
 			if test.tlsSkipVerify == nil {
-				test.tlsSkipVerify = BoolPtr(false)
+				expectTLSSkipVerify = *test.tlsSkipVerify
 			}
-			assert.Equal(t, sc.TLSSkipVerify, *test.tlsSkipVerify)
+
+			assert.Equal(t, expectTLSSkipVerify, sc.TLSSkipVerify)
 			if test.expectCertPool == false {
 				assert.Nil(t, sc.TLSRootCAs)
 			} else if runtime.GOOS == "windows" { // expect empty cert pool

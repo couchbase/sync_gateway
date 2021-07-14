@@ -821,7 +821,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 				assert.Empty(t, spec)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, spec.CACertPath, test.caCert)
+				assert.Equal(t, test.caCert, spec.CACertPath)
 				if test.serverTLSSkipVerify == nil {
 					test.serverTLSSkipVerify = base.BoolPtr(false)
 				}
