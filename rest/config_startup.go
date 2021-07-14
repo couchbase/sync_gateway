@@ -174,14 +174,15 @@ func (sc *StartupConfig) Redacted() (*StartupConfig, error) {
 }
 
 func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
-	f, err := os.Open(path)
+	rc, err := readFromPath(path, false)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = f.Close() }()
+
+	defer func() { _ = rc.Close() }()
 
 	var sc StartupConfig
-	err = decodeAndSanitiseConfig(f, &sc)
+	err = decodeAndSanitiseConfig(rc, &sc)
 	return &sc, err
 }
 
