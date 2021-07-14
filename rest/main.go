@@ -45,6 +45,13 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	// 	return err
 	// }
 
+	// TODO: Be removed in a future commit once flags are sorted
+	adminInterfaceAuthFlag := fs.Bool("api.admin_interface_authentication", true, "")
+	metricsInterfaceAuthFlag := fs.Bool("api.metrics_interface_authentication", true, "")
+
+	allowInsecureServerConnections := fs.Bool("bootstrap.allow_insecure_server_connections", false, "")
+	allowInsecureTLSConnections := fs.Bool("bootstrap.allow_insecure_tls_connections", false, "")
+
 	if err := fs.Parse(osArgs[1:]); err != nil {
 		// Return nil for ErrHelp so the shell exit code is 0
 		if err == flag.ErrHelp {
@@ -53,14 +60,22 @@ func serverMain(ctx context.Context, osArgs []string) error {
 		return err
 	}
 
+	// TODO: Be removed in a future commit once flags are sorted
+	flagStartupConfig.API.AdminInterfaceAuthentication = adminInterfaceAuthFlag
+	flagStartupConfig.API.MetricsInterfaceAuthentication = metricsInterfaceAuthFlag
+
+	// Actually hook this up @Isaac
+	_ = allowInsecureServerConnections
+	_ = allowInsecureTLSConnections
+
 	if *disablePersistentConfigFlag {
-		return legacyServerMain(osArgs)
+		return legacyServerMain(osArgs, &flagStartupConfig)
 	}
 
 	disablePersistentConfigFallback, err := serverMainPersistentConfig(fs, &flagStartupConfig)
 	if disablePersistentConfigFallback {
 		base.Infof(base.KeyAll, "Falling back to disabled persistent config...")
-		return legacyServerMain(osArgs)
+		return legacyServerMain(osArgs, &flagStartupConfig)
 	}
 
 	return err
