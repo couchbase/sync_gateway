@@ -68,7 +68,7 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 			require.NotNil(t, sc)
 
 			expectTLSSkipVerify := false
-			if test.tlsSkipVerify == nil {
+			if test.tlsSkipVerify != nil {
 				expectTLSSkipVerify = *test.tlsSkipVerify
 			}
 
