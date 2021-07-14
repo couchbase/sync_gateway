@@ -10,7 +10,7 @@ import (
 	gocbv1 "gopkg.in/couchbase/gocb.v1"
 )
 
-// tbpCluster defines the required test bucket pool operations against a cluster
+// tbpCluster defines the required test bucket pool cluster operations
 type tbpCluster interface {
 	getBucketNames() ([]string, error)
 	insertBucket(name string, quotaMB int) error
@@ -21,6 +21,8 @@ type tbpCluster interface {
 
 type clusterLogFunc func(ctx context.Context, format string, args ...interface{})
 
+// newTestCluster returns a cluster based on the driver used by the defaultBucketSpec.  Accepts a clusterLogFunc to support
+// cluster logging within a test bucket pool context
 func newTestCluster(server string, logger clusterLogFunc) tbpCluster {
 	if tbpDefaultBucketSpec.CouchbaseDriver == GoCBv2 {
 		return newTestClusterV2(server, logger)
@@ -32,6 +34,7 @@ func newTestCluster(server string, logger clusterLogFunc) tbpCluster {
 
 var _ tbpCluster = &tbpClusterV1{}
 
+// tbpClusterV1 implements the tbpCluster interface for a gocb v1 cluster
 type tbpClusterV1 struct {
 	cluster    *gocbv1.Cluster
 	clusterMgr *gocbv1.ClusterManager
@@ -141,6 +144,7 @@ func (c *tbpClusterV1) close() error {
 	return nil
 }
 
+// tbpClusterV2 implements the tbpCluster interface for a gocb v2 cluster
 type tbpClusterV2 struct {
 	cluster *gocb.Cluster
 	logger  clusterLogFunc
@@ -151,7 +155,6 @@ var _ tbpCluster = &tbpClusterV2{}
 func newTestClusterV2(server string, logger clusterLogFunc) *tbpClusterV2 {
 	tbpCluster := &tbpClusterV2{}
 	tbpCluster.cluster = initV2Cluster(server)
-	//tbpCluster.clusterMgr = tbpCluster.cluster.Manager(TestClusterUsername(), TestClusterPassword())
 	tbpCluster.logger = logger
 	return tbpCluster
 }

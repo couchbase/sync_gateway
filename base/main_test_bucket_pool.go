@@ -22,7 +22,6 @@ import (
 	"time"
 
 	sgbucket "github.com/couchbase/sg-bucket"
-
 	"github.com/couchbaselabs/walrus"
 	"github.com/pkg/errors"
 )
