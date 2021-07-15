@@ -834,7 +834,7 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 }
 
 // Validate insecure connections
-func (sc *StartupConfig) ValidateInsecureTLSConnection() (err error) {
+func (sc *StartupConfig) validateInsecureTLSConnection() (err error) {
 	// Validate SSL is provided if not allowing unsecure connections
 	if sc.API.HTTPS.AllowInsecureTLSConnections == nil || !*sc.API.HTTPS.AllowInsecureTLSConnections {
 		if sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "" {
@@ -862,8 +862,8 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		return nil, fmt.Errorf("error setting up logging: %v", err)
 	}
 
-	if err := config.ValidateInsecureTLSConnection(); err != nil {
-		log.Printf("[ERR] Error validating configuration: %v", err)
+	if err := config.validateInsecureTLSConnection(); err != nil {
+		base.Consolef(base.LevelError, base.KeyConfig, err.Error())
 		return nil, err
 	}
 
