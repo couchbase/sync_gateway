@@ -209,7 +209,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 
 // Merge applies non-empty fields from new onto non-empty fields on sc.
 func (sc *StartupConfig) Merge(new *StartupConfig) error {
-	return mergo.Merge(sc, new, mergo.WithTransformers(&mergoNilTransformer{}))
+	return mergo.Merge(sc, new, mergo.WithTransformers(&mergoNilTransformer{}), mergo.WithOverride)
 }
 
 // mergoNilTransformer is a mergo.Transformers implementation that treats non-nil zero values as non-empty when merging.
