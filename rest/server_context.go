@@ -1192,7 +1192,7 @@ var tempConnectionDetailsForManagementEndpoints = func() (serverAddress string, 
 
 func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
 	clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath := tempConnectionDetailsForManagementEndpoints()
-	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath, sc.config.API.ServerReadTimeout.Duration)
+	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath, sc.config.API.ServerReadTimeout.Value())
 	if err != nil {
 		return nil, nil, err
 	}
