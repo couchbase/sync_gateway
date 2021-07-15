@@ -417,3 +417,63 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 	}
 	return false
 }
+
+// This flushes the *entire* bucket associated with the collection (not just the collection).  Intended for test usage only.
+func (c *Collection) Flush() error {
+
+	bucketManager := c.cluster.Buckets()
+
+	workerFlush := func() (shouldRetry bool, err error, value interface{}) {
+		err = bucketManager.FlushBucket(c.Bucket().Name(), nil)
+		if err != nil {
+			Warnf("Error flushing bucket: %v  Will retry.", err)
+			shouldRetry = true
+		}
+		return shouldRetry, err, nil
+	}
+
+	err, _ := RetryLoop("EmptyTestBucket", workerFlush, CreateDoublingSleeperFunc(12, 10))
+	if err != nil {
+		return err
+	}
+
+	// Wait until the bucket item count is 0, since flush is asynchronous
+	worker := func() (shouldRetry bool, err error, value interface{}) {
+		itemCount, err := c.BucketItemCount()
+		if err != nil {
+			return false, err, nil
+		}
+
+		if itemCount == 0 {
+			// bucket flushed, we're done
+			return false, nil, nil
+		}
+
+		// Retry
+		return true, nil, nil
+
+	}
+
+	// Kick off retry loop
+	err, _ = RetryLoop("Wait until bucket has 0 items after flush", worker, CreateMaxDoublingSleeperFunc(25, 100, 10000))
+	if err != nil {
+		return pkgerrors.Wrapf(err, "Error during Wait until bucket %s has 0 items after flush", MD(c.Bucket().Name()).Redact())
+	}
+
+	return nil
+
+}
+
+// BucketItemCount first tries to retrieve an accurate bucket count via N1QL,
+// but falls back to the REST API if that cannot be done (when there's no index to count all items in a bucket)
+func (c *Collection) BucketItemCount() (itemCount int, err error) {
+	itemCount, err = QueryBucketItemCount(c)
+	if err == nil {
+		return itemCount, nil
+	}
+
+	// TODO: implement APIBucketItemCount for collections as part of CouchbaseStore refactoring.  Until then, give flush a moment to finish
+	time.Sleep(1 * time.Second)
+	//itemCount, err = bucket.APIBucketItemCount()
+	return 0, err
+}
