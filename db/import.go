@@ -35,6 +35,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 	var body Body
 	if isDelete {
 		body = Body{}
+		expiry = base.Uint32Ptr(0)
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
@@ -50,7 +51,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		return nil, base.ErrImportCancelledPurged
 	}
 
-	// Get the doc expiry if it wasn't passed in
+	// Get the doc expiry if it wasn't passed in, and this isn't a server tombstone
 	if expiry == nil {
 		cbStore, _ := base.AsCouchbaseStore(db.Bucket)
 		getExpiry, getExpiryErr := cbStore.GetExpiry(docid)

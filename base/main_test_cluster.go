@@ -192,6 +192,10 @@ func initV2Cluster(server string) *gocb.Cluster {
 	if err != nil {
 		Fatalf("Couldn't connect to %q: %v", server, err)
 	}
+	err = cluster.WaitUntilReady(15*time.Second, nil)
+	if err != nil {
+		Fatalf("Cluster not ready: %v", err)
+	}
 
 	return cluster
 }
@@ -243,6 +247,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 		Collection: bucket.DefaultCollection(),
 		cluster:    c.cluster,
 		viewOps:    make(chan struct{}, MaxConcurrentViewOps),
+		Spec:       bucketSpec,
 	}
 
 	return collection, nil

@@ -112,6 +112,8 @@ func (couchbaseDriver CouchbaseDriver) String() string {
 		return "GoCB"
 	case GoCBCustomSGTranscoder:
 		return "GoCBCustomSGTranscoder"
+	case GoCBv2:
+		return "GoCBv2"
 	default:
 		return "UnknownCouchbaseDriver"
 	}
@@ -451,6 +453,8 @@ func GetFeedType(bucket Bucket) (feedType string) {
 		return GetFeedType(typedBucket.bucket)
 	case *LoggingBucket:
 		return GetFeedType(typedBucket.bucket)
+	case *TestBucket:
+		return GetFeedType(typedBucket.Bucket)
 	default:
 		return TapFeedType
 	}

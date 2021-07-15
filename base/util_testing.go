@@ -116,8 +116,6 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 
 func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 	if driver == GoCBv2 {
-		// TODO: add GoCBv2 support to TestBucketPool.
-
 		// Reserve test bucket from pool
 		_, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
 

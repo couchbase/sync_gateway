@@ -638,5 +638,4 @@ func (c *Collection) mgmtRequest(method, uri, contentType string, body io.Reader
 	}
 
 	return c.HttpClient().Do(req)
->>>>>>> Support running w/ gocb V2
 }
