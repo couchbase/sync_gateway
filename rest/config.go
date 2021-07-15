@@ -809,6 +809,13 @@ func (config *StartupConfig) Serve(addr string, handler http.Handler) error {
 	)
 }
 
+func (sc *StartupConfig) validateServerProvided() (err error) {
+	if sc.Bootstrap.Server == "" {
+		return fmt.Errorf("a server must be provided in the Bootstrap configuration")
+	}
+	return nil
+}
+
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
 func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
 	// Logging config will now have been loaded from command line
@@ -819,6 +826,11 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		// as a best-effort, last-ditch attempt, we'll log to stderr as well.
 		log.Printf("[ERR] Error setting up logging: %v", err)
 		return nil, fmt.Errorf("error setting up logging: %v", err)
+	}
+
+	if err := config.validateServerProvided(); err != nil {
+		base.Consolef(base.LevelError, base.KeyConfig, err.Error())
+		return nil, err
 	}
 
 	base.FlushLoggerBuffers()
