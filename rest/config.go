@@ -871,7 +871,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 	}
 
 	if err := config.validateInsecureTLSConnection(); err != nil {
-		base.Consolef(base.LevelError, base.KeyConfig, err.Error())
+		base.Errorf("Config: %v", err)
 		return nil, err
 	}
 
