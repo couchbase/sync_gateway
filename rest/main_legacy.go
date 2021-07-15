@@ -8,7 +8,7 @@ import (
 )
 
 // legacyServerMain runs the pre-3.0 Sync Gateway server.
-func legacyServerMain(osArgs []string) error {
+func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 	base.Warnf("Running in legacy config mode")
 
 	lc, err := setupServerConfig(osArgs)
@@ -28,6 +28,14 @@ func legacyServerMain(osArgs []string) error {
 	err = sc.Merge(migratedStartupConfig)
 	if err != nil {
 		return err
+	}
+
+	if flagStartupConfig != nil {
+		base.Tracef(base.KeyAll, "got config from flags: %#v", flagStartupConfig)
+		err := sc.Merge(flagStartupConfig)
+		if err != nil {
+			return err
+		}
 	}
 
 	ctx, err := setupServerContext(&sc, false)
