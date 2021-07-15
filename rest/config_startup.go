@@ -2,11 +2,13 @@ package rest
 
 import (
 	"os"
+	"reflect"
 	"runtime"
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/imdario/mergo"
 )
 
 const (
@@ -21,7 +23,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 	return StartupConfig{
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:         persistentConfigDefaultGroupID,
-			ConfigUpdateFrequency: base.ConfigDuration{Duration: persistentConfigDefaultUpdateFrequency},
+			ConfigUpdateFrequency: *base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,
@@ -32,24 +34,17 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
-			ReadHeaderTimeout:              base.ConfigDuration{Duration: base.DefaultReadHeaderTimeout},
-			IdleTimeout:                    base.ConfigDuration{Duration: base.DefaultIdleTimeout},
+			ReadHeaderTimeout:              base.NewConfigDuration(base.DefaultReadHeaderTimeout),
+			IdleTimeout:                    base.NewConfigDuration(base.DefaultIdleTimeout),
 			AdminInterfaceAuthentication:   base.BoolPtr(true),
 			MetricsInterfaceAuthentication: base.BoolPtr(true),
 		},
-		// TODO: logging defaults
 		Logging: LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
 			RedactionLevel: base.DefaultRedactionLevel,
 			Console: &base.ConsoleLoggerConfig{
 				LogLevel: base.LogLevelPtr(base.LevelNone),
 			},
-			Error: &base.FileLoggerConfig{},
-			Warn:  &base.FileLoggerConfig{},
-			Info:  &base.FileLoggerConfig{},
-			Debug: &base.FileLoggerConfig{},
-			Trace: &base.FileLoggerConfig{},
-			Stats: &base.FileLoggerConfig{},
 		},
 		Auth: AuthConfig{
 			BcryptCost: auth.DefaultBcryptCost,
@@ -96,10 +91,10 @@ type APIConfig struct {
 	AdminInterfaceAuthentication   *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 
-	ServerReadTimeout  base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"maximum duration.Second before timing out read of the HTTP(S) request"`
-	ServerWriteTimeout base.ConfigDuration `json:"server_write_timeout,omitempty" help:"maximum duration.Second before timing out write of the HTTP(S) response"`
-	ReadHeaderTimeout  base.ConfigDuration `json:"read_header_timeout,omitempty"  help:"The amount of time allowed to read request headers"`
-	IdleTimeout        base.ConfigDuration `json:"idle_timeout,omitempty"         help:"The maximum amount of time to wait for the next request when keep-alives are enabled"`
+	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"maximum duration.Second before timing out read of the HTTP(S) request"`
+	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"maximum duration.Second before timing out write of the HTTP(S) response"`
+	ReadHeaderTimeout  *base.ConfigDuration `json:"read_header_timeout,omitempty"  help:"The amount of time allowed to read request headers"`
+	IdleTimeout        *base.ConfigDuration `json:"idle_timeout,omitempty"         help:"The maximum amount of time to wait for the next request when keep-alives are enabled"`
 
 	Pretty             bool  `json:"pretty,omitempty"               help:"Pretty-print JSON responses"`
 	MaximumConnections uint  `json:"max_connections,omitempty"      help:"Max # of incoming HTTP connections to accept"`
@@ -209,5 +204,27 @@ func setGlobalConfig(sc *StartupConfig) error {
 		base.UseStdlibJSON = true
 	}
 
+	return nil
+}
+
+// Merge applies non-empty fields from new onto non-empty fields on sc.
+func (sc *StartupConfig) Merge(new *StartupConfig) error {
+	return mergo.Merge(sc, new, mergo.WithTransformers(&mergoNilTransformer{}))
+}
+
+// mergoNilTransformer is a mergo.Transformers implementation that treats non-nil zero values as non-empty when merging.
+type mergoNilTransformer struct{}
+
+var _ mergo.Transformers = &mergoNilTransformer{}
+
+func (t *mergoNilTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
+	if typ.Kind() == reflect.Ptr {
+		return func(dst, src reflect.Value) error {
+			if dst.CanSet() && !src.IsNil() {
+				dst.Set(src)
+			}
+			return nil
+		}
+	}
 	return nil
 }

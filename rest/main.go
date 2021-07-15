@@ -7,7 +7,6 @@ import (
 	"os"
 
 	"github.com/couchbase/sync_gateway/base"
-	"github.com/imdario/mergo"
 	pkgerrors "github.com/pkg/errors"
 )
 
@@ -95,7 +94,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 				return false, err
 			}
 			base.Tracef(base.KeyAll, "got config from file: %#v", redactedConfig)
-			err = mergo.Merge(&sc, fileStartupConfig, mergo.WithOverride)
+			err = sc.Merge(fileStartupConfig)
 			if err != nil {
 				return false, err
 			}
@@ -105,7 +104,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	// merge flagStartupConfig on top of fileStartupConfig, because flags take precedence over config files.
 	if flagStartupConfig != nil {
 		base.Tracef(base.KeyAll, "got config from flags: %#v", flagStartupConfig)
-		err := mergo.Merge(&sc, flagStartupConfig, mergo.WithOverride)
+		err := sc.Merge(flagStartupConfig)
 		if err != nil {
 			return false, err
 		}

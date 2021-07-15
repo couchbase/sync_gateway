@@ -11,21 +11,26 @@ import (
 func legacyServerMain(osArgs []string) error {
 	base.Warnf("Running in legacy config mode")
 
-	config, err := setupServerConfig(osArgs)
+	lc, err := setupServerConfig(osArgs)
 	if err != nil {
 		return err
 	}
 
-	lc := LegacyServerConfig{
-		DisablePersistentConfig: base.BoolPtr(true),
-	}
+	sc := DefaultStartupConfig(defaultLogFilePath)
 
-	sc, databases, err := lc.ToStartupConfig()
+	lc.DisablePersistentConfig = base.BoolPtr(true)
+
+	migratedStartupConfig, databases, err := lc.ToStartupConfig()
 	if err != nil {
 		return err
 	}
 
-	ctx, err := setupServerContext(sc, false)
+	err = sc.Merge(migratedStartupConfig)
+	if err != nil {
+		return err
+	}
+
+	ctx, err := setupServerContext(&sc, false)
 	if err != nil {
 		return err
 	}
@@ -35,9 +40,9 @@ func legacyServerMain(osArgs []string) error {
 		return err
 	}
 
-	ctx.legacyReplications = config.Replications
+	ctx.legacyReplications = lc.Replications
 
-	return startServer(sc, ctx)
+	return startServer(&sc, ctx)
 }
 
 func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
