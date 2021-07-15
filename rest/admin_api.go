@@ -716,8 +716,8 @@ func (h *handler) getUserInfo() error {
 		}
 		return err
 	}
-
-	_, includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
+	// If not specified will default to false
+	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
 	bytes, err := marshalPrincipal(user, includeDynamicGrantInfo)
 	h.writeRawJSON(bytes)
 	return err
@@ -732,7 +732,8 @@ func (h *handler) getRoleInfo() error {
 		}
 		return err
 	}
-	_, includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
+	// If not specified will default to false
+	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
 	bytes, err := marshalPrincipal(role, includeDynamicGrantInfo)
 	_, _ = h.response.Write(bytes)
 	return err
