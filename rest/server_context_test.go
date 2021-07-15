@@ -443,8 +443,9 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 }
 
 func TestAllowInsecureServerConnections(t *testing.T) {
+	// Long test as has to wait for retry loop to fail
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	errorMustBeSecure := "couchbase server URL must use secure protocol. Current URL: %v"
+	errorMustBeSecure := "couchbase server URL must use secure protocol when disallowing insecure server connections. Current URL: %v"
 	errorAllowInsecureAndBeSecure := "couchbase server URL cannot use secure protocol while allowing insecure server connections. Current URL: %v"
 	testCases := []struct {
 		name                           string
@@ -517,8 +518,12 @@ func TestAllowInsecureServerConnections(t *testing.T) {
 			sc := NewServerContext(&config, false)
 			databaseConfig := DatabaseConfig{
 				DbConfig: DbConfig{
+					Name: "test",
 					BucketConfig: BucketConfig{
-						Server: &test.server,
+						Server:   &test.server,
+						Username: "test",
+						Password: "test",
+						Bucket:   base.StringPtr("test"),
 					},
 				},
 			}
@@ -526,7 +531,8 @@ func TestAllowInsecureServerConnections(t *testing.T) {
 			_, err := sc._getOrAddDatabaseFromConfig(databaseConfig, false)
 
 			if test.expectedError != nil {
-				assert.Error(t, err, fmt.Sprintf(*test.expectedError, test.server))
+				assert.Error(t, err)
+				assert.Equal(t, fmt.Sprintf(*test.expectedError, test.server), err.Error())
 			} else {
 				// Will still error due to no DB name, or not being able to connect to bucket
 				// So make sure it's not the 2 errors that can happen due to secure protocol

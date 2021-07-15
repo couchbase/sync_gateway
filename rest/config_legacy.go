@@ -100,14 +100,13 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			continue
 		}
 		bsc = &BootstrapConfig{
-			Server:                         *dbConfig.Server,
-			Username:                       dbConfig.Username,
-			Password:                       dbConfig.Password,
-			CACertPath:                     dbConfig.CACertPath,
-			X509CertPath:                   dbConfig.CertPath,
-			X509KeyPath:                    dbConfig.KeyPath,
-			ServerTLSSkipVerify:            lc.ServerTLSSkipVerify,
-			AllowInsecureServerConnections: base.BoolPtr(true),
+			Server:              *dbConfig.Server,
+			Username:            dbConfig.Username,
+			Password:            dbConfig.Password,
+			CACertPath:          dbConfig.CACertPath,
+			X509CertPath:        dbConfig.CertPath,
+			X509KeyPath:         dbConfig.KeyPath,
+			ServerTLSSkipVerify: lc.ServerTLSSkipVerify,
 		}
 		break
 	}
@@ -121,9 +120,6 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			AdminInterfaceAuthentication:              lc.AdminInterfaceAuthentication,
 			MetricsInterfaceAuthentication:            lc.MetricsInterfaceAuthentication,
 			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
-			HTTPS: HTTPSConfig{
-				AllowInsecureTLSConnections: base.BoolPtr(true),
-			},
 		},
 		Logging: LoggingConfig{},
 		Auth: AuthConfig{

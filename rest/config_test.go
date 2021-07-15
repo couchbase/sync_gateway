@@ -1274,7 +1274,8 @@ func TestAllowInsecureTLSConnections(t *testing.T) {
 			}
 			sc, err := setupServerContext(&config, false)
 			if test.expectError != nil {
-				assert.Error(t, err, *test.expectError)
+				assert.Error(t, err)
+				assert.Equal(t, err.Error(), *test.expectError)
 				require.Nil(t, sc)
 			} else {
 				assert.NoError(t, err)
