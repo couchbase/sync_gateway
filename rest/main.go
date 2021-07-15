@@ -63,10 +63,8 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	// TODO: Be removed in a future commit once flags are sorted
 	flagStartupConfig.API.AdminInterfaceAuthentication = adminInterfaceAuthFlag
 	flagStartupConfig.API.MetricsInterfaceAuthentication = metricsInterfaceAuthFlag
-
-	// Actually hook this up @Isaac
-	_ = useTLSServer
-	_ = useTLSClient
+	flagStartupConfig.Bootstrap.AllowInsecureServerConnections = useTLSServer
+	flagStartupConfig.API.HTTPS.AllowInsecureTLSConnections = useTLSClient
 
 	if *disablePersistentConfigFlag {
 		return legacyServerMain(osArgs, &flagStartupConfig)
