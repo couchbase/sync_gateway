@@ -113,6 +113,17 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		statsContext:     &statsContext{},
 	}
 
+	if base.ServerIsWalrus(sc.config.Bootstrap.Server) {
+		sc.persistentConfig = false
+
+		// Disable Admin API authentication when running as walrus on the default admin interface to support dev
+		// environments.
+		if sc.config.API.AdminInterface == DefaultAdminInterface {
+			sc.config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
+			sc.config.API.MetricsInterfaceAuthentication = base.BoolPtr(false)
+		}
+	}
+
 	// TODO: Remove with GoCB DCP switch
 	// if config.CouchbaseKeepaliveInterval != nil {
 	// 	couchbase.SetTcpKeepalive(true, *config.CouchbaseKeepaliveInterval)
@@ -1185,14 +1196,11 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	return agent, nil
 }
 
-// FIXME: Temporary connection settings. Awaiting bootstrap PR so we can use those details directly from server context
-var tempConnectionDetailsForManagementEndpoints = func() (serverAddress string, username string, password string, certPath string, keyPath string, caCertPath string) {
-	return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), "", "", ""
-}
-
 func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
-	clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath := tempConnectionDetailsForManagementEndpoints()
-	agent, err := initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath, sc.config.API.ServerReadTimeout.Value())
+	agent, err := initClusterAgent(
+		sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
+		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath,
+		sc.config.API.ServerReadTimeout.Value())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1265,7 +1273,7 @@ func CheckPermissions(httpClient *http.Client, managementEndpoints []string, use
 	return http.StatusForbidden, nil, nil
 }
 
-func CheckRoles(httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []string, bucketName string) (statusCode int, err error) {
+func CheckRoles(httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []RouteRole, bucketName string) (statusCode int, err error) {
 	statusCode, bodyResponse, err := doHTTPAuthRequest(httpClient, username, password, "GET", "/whoami", managementEndpoints, nil)
 	if err != nil {
 		return http.StatusInternalServerError, err
@@ -1289,7 +1297,12 @@ func CheckRoles(httpClient *http.Client, managementEndpoints []string, username,
 
 	for _, roleResult := range whoAmIResults.Roles {
 		for _, requireRole := range requestedRoles {
-			if roleResult.BucketName == bucketName && roleResult.RoleName == requireRole {
+			requireBucket := ""
+			if requireRole.DatabaseScoped {
+				requireBucket = bucketName
+			}
+
+			if roleResult.BucketName == requireBucket && roleResult.RoleName == requireRole.RoleName {
 				return http.StatusOK, nil
 			}
 		}

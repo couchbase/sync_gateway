@@ -221,13 +221,13 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	ctx := NewServerContext(&StartupConfig{}, false)
-	defer ctx.Close()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
 
-	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
-	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
+	clusterAddress := base.UnitTestUrl()
 	baseSpec, err := connstr.Parse(clusterAddress)
 	require.NoError(t, err)
 
@@ -255,16 +255,14 @@ func TestObtainManagementEndpointsFromServerContextWithX509(t *testing.T) {
 	defer tb.Close()
 	defer teardownFn()
 
-	original := tempConnectionDetailsForManagementEndpoints
-	defer func() {
-		tempConnectionDetailsForManagementEndpoints = original
-	}()
-
-	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
-		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
-	}
-
-	ctx := NewServerContext(&StartupConfig{}, false)
+	ctx := NewServerContext(&StartupConfig{
+		Bootstrap: BootstrapConfig{
+			Server:       base.UnitTestUrl(),
+			X509CertPath: certPath,
+			X509KeyPath:  keyPath,
+			CACertPath:   caCertPath,
+		},
+	}, false)
 	defer ctx.Close()
 
 	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -416,10 +414,10 @@ func TestCheckPermissions(t *testing.T) {
 		},
 	}
 
-	ctx := NewServerContext(&StartupConfig{}, false)
-	defer ctx.Close()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
 
-	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	for _, testCase := range testCases {
@@ -442,16 +440,14 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	defer tb.Close()
 	defer teardownFn()
 
-	original := tempConnectionDetailsForManagementEndpoints
-	defer func() {
-		tempConnectionDetailsForManagementEndpoints = original
-	}()
-
-	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
-		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
-	}
-
-	ctx := NewServerContext(&StartupConfig{}, false)
+	ctx := NewServerContext(&StartupConfig{
+		Bootstrap: BootstrapConfig{
+			Server:       base.UnitTestUrl(),
+			X509CertPath: certPath,
+			X509KeyPath:  keyPath,
+			CACertPath:   caCertPath,
+		},
+	}, false)
 	defer ctx.Close()
 
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
@@ -476,7 +472,7 @@ func TestCheckRoles(t *testing.T) {
 		Username           string
 		Password           string
 		BucketName         string
-		RequestRoles       []string
+		RequestRoles       []RouteRole
 		ExpectedStatusCode int
 		CreateUser         string
 		CreatePassword     string
@@ -487,7 +483,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           base.TestClusterUsername(),
 			Password:           base.TestClusterPassword(),
 			BucketName:         "",
-			RequestRoles:       []string{"admin"},
+			RequestRoles:       []RouteRole{FullAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 		},
 		{
@@ -495,7 +491,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreatedAdmin",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []string{"admin"},
+			RequestRoles:       []RouteRole{FullAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "CreatedAdmin",
 			CreatePassword:     "password",
@@ -506,7 +502,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "ReadOnlyAdmin",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []string{"ro_admin"},
+			RequestRoles:       []RouteRole{ReadOnlyAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "ReadOnlyAdmin",
 			CreatePassword:     "password",
@@ -517,7 +513,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreatedBucketAdmin",
 			Password:           "password",
 			BucketName:         rt.Bucket().GetName(),
-			RequestRoles:       []string{"mobile_sync_gateway"},
+			RequestRoles:       []RouteRole{MobileSyncGatewayRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "CreatedBucketAdmin",
 			CreatePassword:     "password",
@@ -528,7 +524,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreateUserNoRole",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []string{"ro_admin"},
+			RequestRoles:       []RouteRole{ReadOnlyAdminRole},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "CreateUserNoRole",
 			CreatePassword:     "password",
@@ -539,7 +535,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreateUserInsufficientRole",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []string{"mobile_sync_gateway"},
+			RequestRoles:       []RouteRole{MobileSyncGatewayRole},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "CreateUserInsufficientRole",
 			CreatePassword:     "password",
@@ -710,16 +706,14 @@ func TestAdminAuthWithX509(t *testing.T) {
 	defer tb.Close()
 	defer teardownFn()
 
-	original := tempConnectionDetailsForManagementEndpoints
-	defer func() {
-		tempConnectionDetailsForManagementEndpoints = original
-	}()
-
-	tempConnectionDetailsForManagementEndpoints = func() (string, string, string, string, string, string) {
-		return base.UnitTestUrl(), base.TestClusterUsername(), base.TestClusterPassword(), certPath, keyPath, caCertPath
-	}
-
-	ctx := NewServerContext(&StartupConfig{}, false)
+	ctx := NewServerContext(&StartupConfig{
+		Bootstrap: BootstrapConfig{
+			Server:       base.UnitTestUrl(),
+			X509CertPath: certPath,
+			X509KeyPath:  keyPath,
+			CACertPath:   caCertPath,
+		},
+	}, false)
 	defer ctx.Close()
 
 	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()

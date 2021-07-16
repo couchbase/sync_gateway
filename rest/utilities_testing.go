@@ -42,17 +42,19 @@ import (
 // file, they wouldn't be publicly exported to other packages)
 
 type RestTesterConfig struct {
-	guestEnabled          bool                       // If this is true, Admin Party is in full effect
-	SyncFn                string                     // put the sync() function source in here (optional)
-	DatabaseConfig        *DbConfig                  // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
-	InitSyncSeq           uint64                     // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
-	EnableNoConflictsMode bool                       // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
-	distributedIndex      bool                       // Test with walrus-based index bucket
-	TestBucket            *base.TestBucket           // If set, use this bucket instead of requesting a new one.
-	adminInterface        string                     // adminInterface overrides the default admin interface.
-	sgReplicateEnabled    bool                       // sgReplicateManager disabled by default for RestTester
-	sgr1Replications      []*ReplicateV1ConfigLegacy // sgr1Replications are a list of replications to enable on the server context.
-	hideProductInfo       bool
+	guestEnabled                   bool                       // If this is true, Admin Party is in full effect
+	SyncFn                         string                     // put the sync() function source in here (optional)
+	DatabaseConfig                 *DbConfig                  // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	InitSyncSeq                    uint64                     // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
+	EnableNoConflictsMode          bool                       // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
+	distributedIndex               bool                       // Test with walrus-based index bucket
+	TestBucket                     *base.TestBucket           // If set, use this bucket instead of requesting a new one.
+	adminInterface                 string                     // adminInterface overrides the default admin interface.
+	sgReplicateEnabled             bool                       // sgReplicateManager disabled by default for RestTester
+	sgr1Replications               []*ReplicateV1ConfigLegacy // sgr1Replications are a list of replications to enable on the server context.
+	hideProductInfo                bool
+	adminInterfaceAuthentication   bool
+	metricsInterfaceAuthentication bool
 }
 
 type RestTester struct {
@@ -137,6 +139,8 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.CORS = corsConfig
 	sc.API.HideProductVersion = rt.RestTesterConfig.hideProductInfo
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
+	sc.API.AdminInterfaceAuthentication = &rt.adminInterfaceAuthentication
+	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
 	rt.RestTesterServerContext.legacyReplications = rt.RestTesterConfig.sgr1Replications

@@ -41,17 +41,6 @@ const (
 	minCompressibleJSONSize = 1000
 )
 
-// Admin API Auth Roles
-const (
-	MobileSyncGatewayRole = "mobile_sync_gateway"
-	BucketFullAccessRole  = "bucket_full_access"
-	FullAdminRole         = "admin"
-	ReadOnlyAdminRole     = "ro_admin"
-)
-
-var BucketScopedEndpointRoles = []string{MobileSyncGatewayRole, BucketFullAccessRole, FullAdminRole}
-var ClusterScopedEndpointRoles = []string{ReadOnlyAdminRole}
-
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
@@ -67,6 +56,25 @@ func init() {
 var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
 var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
 var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
+
+var wwwAuthenticateHeader = `Basic realm="` + base.ProductNameString + `"`
+
+// Admin API Auth Roles
+type RouteRole struct {
+	RoleName       string
+	DatabaseScoped bool
+}
+
+var (
+	MobileSyncGatewayRole = RouteRole{"mobile_sync_gateway", true}
+	BucketFullAccessRole  = RouteRole{"bucket_full_access", true}
+	BucketAdmin           = RouteRole{"bucket_admin", true}
+	FullAdminRole         = RouteRole{"admin", false}
+	ReadOnlyAdminRole     = RouteRole{"ro_admin", false}
+)
+
+var BucketScopedEndpointRoles = []RouteRole{MobileSyncGatewayRole, BucketFullAccessRole, BucketAdmin, ReadOnlyAdminRole, FullAdminRole}
+var ClusterScopedEndpointRoles = []RouteRole{ReadOnlyAdminRole, FullAdminRole}
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -214,24 +222,43 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 		}
 	}
 
-	// If an Admin Request we need to check the user credentials
-	if h.shouldCheckAdminAuth() {
+	// If an Admin Request and admin auth enabled or a metrics request with metrics auth enabled we need to check the
+	// user credentials
+	shouldCheckAdminAuth := (h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication)
+	if shouldCheckAdminAuth {
+
+		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
+		// validate credentials against
+		if base.ServerIsWalrus(h.server.config.Bootstrap.Server) {
+			return base.HTTPErrorf(http.StatusUnauthorized, "Authorization not possible with Walrus server. "+
+				"Either use Couchbase Server or disable admin auth by setting api.admin_interface_authentication and api.metrics_interface_authentication to false.")
+		}
+
 		username, password := h.getBasicAuth()
+		if username == "" {
+			if dbContext == nil || dbContext.Options.SendWWWAuthenticateHeader == nil || *dbContext.Options.SendWWWAuthenticateHeader {
+				h.response.Header().Set("WWW-Authenticate", wwwAuthenticateHeader)
+			}
+			return base.HTTPErrorf(http.StatusUnauthorized, "Login required")
+		}
 
 		var managementEndpoints []string
 		var httpClient *http.Client
+		var authScope string
 
 		if dbContext != nil {
 			managementEndpoints, httpClient, err = dbContext.ObtainManagementEndpointsAndHTTPClient()
+			authScope = dbContext.Bucket.GetName()
 		} else {
 			managementEndpoints, httpClient, err = h.server.ObtainManagementEndpointsAndHTTPClient()
+			authScope = ""
 		}
 		if err != nil {
 			base.Warnf("An error occurred whilst obtaining management endpoints: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
-		permissions, statusCode, err := checkAdminAuth(dbContext.Bucket.GetName(), username, password, httpClient, managementEndpoints, accessPermissions, responsePermissions)
+		permissions, statusCode, err := checkAdminAuth(authScope, username, password, httpClient, managementEndpoints, accessPermissions, responsePermissions)
 		if err != nil {
 			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
@@ -274,12 +301,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 	}
 
 	return method(h) // Call the actual handler code
-}
-
-// FIXME: Temporarily disable admin auth check (return false)
-func (h *handler) shouldCheckAdminAuth() bool {
-	clusterAddress, _, _, _, _, _ := tempConnectionDetailsForManagementEndpoints()
-	return false && !base.ServerIsWalrus(clusterAddress) && ((h.privs == adminPrivs && *h.server.config.API.AdminInterfaceAuthentication) || (h.privs == metricsPrivs && *h.server.config.API.MetricsInterfaceAuthentication))
 }
 
 func (h *handler) logRequestLine() {
@@ -402,8 +423,6 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 		}
 	}
 
-	wwwAuthenticateHeader := `Basic realm="` + base.ProductNameString + `"`
-
 	// Check basic auth first
 	if userName, password := h.getBasicAuth(); userName != "" {
 		h.user = context.Authenticator().AuthenticateUser(userName, password)
@@ -469,7 +488,7 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 		return nil, statusCode, nil
 	}
 
-	var requestRoles []string
+	var requestRoles []RouteRole
 	if bucketName != "" {
 		requestRoles = BucketScopedEndpointRoles
 	} else {
