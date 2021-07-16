@@ -266,9 +266,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_flush",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleFlush)).Methods("POST")
 	dbr.Handle("/_online",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleDbOnline)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleDbOnline)).Methods("POST")
 	dbr.Handle("/_offline",
-		makeOfflineHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleDbOffline)).Methods("POST")
+		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleDbOffline)).Methods("POST")
 	dbr.Handle("/_dump/{view}",
 		makeHandler(sc, adminPrivs, []Permission{PermReadAppData}, nil, (*handler).handleDump)).Methods("GET")
 	dbr.Handle("/_view/{view}", // redundant; just for backward compatibility with 1.0
