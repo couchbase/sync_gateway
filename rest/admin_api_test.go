@@ -2114,117 +2114,6 @@ func TestPurgeWithSomeInvalidDocs(t *testing.T) {
 	assertStatus(t, rt.SendAdminRequest("PUT", "/db/doc2", `{"moo":"car"}`), 409)
 }
 
-func TestReplicateErrorConditions(t *testing.T) {
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
-	}
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
-	//Send empty JSON
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", ""), 400)
-
-	//Send empty JSON Object
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{}`), 400)
-
-	//Send JSON Object with random properties
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"foo":"bar"}`), 400)
-
-	//Send JSON Object containing create_target property
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"create_target":true}`), 400)
-
-	//Send JSON Object containing doc_ids property
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"doc_ids":["foo","bar","moo","car"]}`), 400)
-
-	//Send JSON Object containing filter property other than 'sync_gateway/bychannel'
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"filter":"somefilter"}`), 400)
-
-	//Send JSON Object containing filter 'sync_gateway/bychannel' with non array query_params property
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"filter":"`+base.ByChannelFilter+`", "query_params":{"someproperty":"somevalue"}}`), 400)
-
-	//Send JSON Object containing filter 'sync_gateway/bychannel' with non string array query_params property
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"filter":"`+base.ByChannelFilter+`", "query_params":["someproperty",false]}`), 400)
-
-	//Send JSON Object containing proxy property
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"proxy":"http://myproxy/"}`), 400)
-
-	//Send JSON Object containing source as absolute URL but no target
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb"}`), 400)
-
-	//Send JSON Object containing no source and target as absolute URL
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"target":"http://myhost:4985/mytargetdb"}`), 400)
-
-	//Send JSON Object containing source as local DB but no target
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"mylocalsourcedb"}`), 400)
-
-	//Send JSON Object containing no source and target as local DB
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"target":"mylocaltargetdb"}`), 400)
-
-}
-
-// These tests validate request parameters not actual replication.
-// For actual replication tests, see:
-// - sg-replicate mock-based unit test suite
-// - Functional tests in mobile-testkit repo
-func TestDocumentChangeReplicate(t *testing.T) {
-
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
-
-	if !base.UnitTestUrlIsWalrus() {
-		t.Skip("Skip replication tests during integration tests, since they might be leaving replications running in background")
-	}
-
-	rt := NewRestTester(t, nil)
-	defer rt.Close() // Close RestTester, which closes ServerContext, which stops all replications
-
-	mockClient := NewMockClient()
-	fakeConfigURL := "http://myhost:4985"
-	mockClient.RespondToGET(fakeConfigURL+"/db", MakeResponse(200, nil, ``))
-	mockClient.RespondToGET(fakeConfigURL+"/db2", MakeResponse(200, nil, ``))
-	mockClient.RespondToGET(fakeConfigURL+"/db3", MakeResponse(200, nil, ``))
-	mockClient.RespondToGET(fakeConfigURL+"/db4", MakeResponse(200, nil, ``))
-	mockClient.RespondToGET(fakeConfigURL+"/mysourcedb", MakeResponse(200, nil, ``))
-	mockClient.RespondToGET(fakeConfigURL+"/mytargetdb", MakeResponse(200, nil, ``))
-	sc := rt.ServerContext()
-	sc.HTTPClient = mockClient.Client
-
-	//Initiate synchronous one shot replication
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db", "target":"http://myhost:4985/db"}`), 500)
-
-	//Initiate asyncronous one shot replication
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db", "target":"http://myhost:4985/db", "async":true}`), 200)
-
-	//Initiate continuous replication
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db", "target":"http://myhost:4985/db", "continuous":true}`), 200)
-
-	//Initiate synchronous one shot replication with channel filter and JSON array of channel names
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db2", "target":"http://myhost:4985/db2", "filter":"`+base.ByChannelFilter+`", "query_params":["A"]}`), 500)
-
-	//Initiate synchronous one shot replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db3", "target":"http://myhost:4985/db3", "filter":"`+base.ByChannelFilter+`", "query_params":{"channels":["A"]}}`), 500)
-
-	//Initiate synchronous one shot replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names and custom changes_feed_limit
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db4", "target":"http://myhost:4985/db4", "filter":"`+base.ByChannelFilter+`", "query_params":{"channels":["B"]}, "changes_feed_limit":10}`), 500)
-
-	//Initiate continuous replication with channel filter and JSON array of channel names
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db2", "target":"http://myhost:4985/db2", "filter":"`+base.ByChannelFilter+`", "query_params":["A"], "continuous":true}`), 200)
-
-	//Initiate continuous replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db3", "target":"http://myhost:4985/db3", "filter":"`+base.ByChannelFilter+`", "query_params":{"channels":["A"]}, "continuous":true}`), 200)
-
-	//Initiate continuous replication with channel filter and JSON object containing a property "channels" and value of JSON Array pf channel names and custom changes_feed_limit
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/db4", "target":"http://myhost:4985/db4", "filter":"`+base.ByChannelFilter+`", "query_params":{"channels":["B"]}, "changes_feed_limit":10, "continuous":true}`), 200)
-
-	//Send JSON Object containing source and target as absolute URL and a replication_id
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"source":"http://myhost:4985/mysourcedb", "target":"http://myhost:4985/mytargetdb", "replication_id":"myreplicationid"}`), 500)
-
-	//Cancel a replication
-	assertStatus(t, rt.SendAdminRequest("POST", "/_replicate", `{"replication_id":"ABC", "cancel":true}`), 404)
-
-}
-
 func TestRawRedaction(t *testing.T) {
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -2498,17 +2387,6 @@ func TestHandleGetRevTree(t *testing.T) {
 	assert.Contains(t, resp.Body.String(), "1-456")
 	assert.Contains(t, resp.Body.String(), "1-789")
 	assert.True(t, strings.HasPrefix(resp.Body.String(), "digraph"))
-}
-
-func TestHandleActiveTasks(t *testing.T) {
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-	// Check the count of active tasks
-	var tasks []interface{}
-	resp := rt.SendAdminRequest(http.MethodGet, "/_active_tasks", "")
-	assertStatus(t, resp, http.StatusOK)
-	assert.NoError(t, json.Unmarshal([]byte(resp.Body.String()), &tasks))
-	require.Len(t, tasks, 0)
 }
 
 func TestHandleSGCollect(t *testing.T) {

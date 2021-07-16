@@ -48,8 +48,6 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 		return err
 	}
 
-	ctx.legacyReplications = lc.Replications
-
 	return startServer(&sc, ctx)
 }
 

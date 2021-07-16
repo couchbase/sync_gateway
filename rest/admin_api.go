@@ -10,17 +10,13 @@ package rest
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
-	"net/url"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
-	sgreplicate "github.com/couchbaselabs/sg-replicate"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
@@ -157,186 +153,6 @@ func (h *handler) handleDeleteDB() error {
 	return nil
 }
 
-/////// Replication and Task monitoring
-
-func (h *handler) handleReplicate() error {
-
-	h.assertAdminOnly()
-	body, err := h.readBody()
-	if err != nil {
-		return err
-	}
-
-	base.Warnf("The /_replicate API is deprecated - use /{db}/_replication instead.")
-
-	params, cancel, _, err := h.readReplicateV1ParametersFromJSON(body)
-	if err != nil {
-		return err
-	}
-
-	if !cancel {
-		response, err := h.server.HTTPClient.Get(params.GetTargetDbUrl())
-		if err != nil {
-			return err
-		}
-		defer func() { _ = response.Body.Close() }()
-		if response.StatusCode >= 400 {
-			b, err := ioutil.ReadAll(response.Body)
-			if err != nil {
-				return err
-			}
-			fmt.Println(string(b))
-			var body db.Body
-			err = base.JSONUnmarshal(b, &body)
-			if err != nil {
-				return err
-			}
-			return base.HTTPErrorf(response.StatusCode, "Unable to start replication to target db: %s", body["reason"])
-		}
-
-		response, err = h.server.HTTPClient.Get(params.GetSourceDbUrl())
-		if err != nil {
-			return err
-		}
-		defer func() { _ = response.Body.Close() }()
-		if response.StatusCode >= 400 {
-			b, err := ioutil.ReadAll(response.Body)
-			if err != nil {
-				return err
-			}
-			fmt.Println(string(b))
-			var body db.Body
-			err = base.JSONUnmarshal(b, &body)
-			if err != nil {
-				return err
-			}
-			return base.HTTPErrorf(response.StatusCode, "Unable to start replication from source db: %s", body["reason"])
-		}
-	}
-
-	replication, err := h.server.replicator.Replicate(params, cancel)
-
-	if err == nil {
-		h.writeJSON(replication)
-	}
-
-	return err
-
-}
-func (h *handler) readReplicateV1ParametersFromJSON(jsonData []byte) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
-
-	var in ReplicateV1ConfigLegacy
-	if err = base.JSONUnmarshal(jsonData, &in); err != nil {
-		return params, false, localdb, err
-	}
-
-	return validateReplicateV1Parameters(in, false, h.server.config.API.AdminInterface)
-}
-
-func validateReplicateV1Parameters(requestParams ReplicateV1ConfigLegacy, paramsFromConfig bool, adminInterface string) (params sgreplicate.ReplicationParameters, cancel bool, localdb bool, err error) {
-	if requestParams.CreateTarget {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate create_target option is not currently supported.")
-		return
-	}
-
-	if len(requestParams.DocIds) > 0 {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate doc_ids option is not currently supported.")
-		return
-	}
-
-	if requestParams.Proxy != "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate proxy option is not currently supported.")
-		return
-	}
-
-	params.ReplicationId = requestParams.ReplicationId
-
-	//cancel parameter is only supported via the REST API
-	if requestParams.Cancel {
-		if paramsFromConfig {
-			err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate cancel is invalid in Sync Gateway configuration")
-			return
-		} else {
-			cancel = true
-			if params.ReplicationId != "" {
-				return params, cancel, localdb, nil
-			}
-		}
-	}
-
-	sourceUrl, err := url.Parse(requestParams.Source)
-	if err != nil || requestParams.Source == "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate source URL [%s] is invalid.", requestParams.Source)
-		return
-	}
-	syncSource := base.SyncSourceFromURL(sourceUrl)
-	if syncSource != "" {
-		params.Source, _ = url.Parse(syncSource)
-	}
-	// Strip leading and trailing / from path to get db name
-	params.SourceDb = strings.Trim(sourceUrl.Path, "/")
-
-	targetUrl, err := url.Parse(requestParams.Target)
-	if err != nil || requestParams.Target == "" {
-		err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate target URL [%s] is invalid.", requestParams.Target)
-		return
-	}
-	syncTarget := base.SyncSourceFromURL(targetUrl)
-	if syncTarget != "" {
-		params.Target, _ = url.Parse(syncTarget)
-	}
-	params.TargetDb = strings.Trim(targetUrl.Path, "/")
-
-	if requestParams.Continuous {
-		params.Lifecycle = sgreplicate.CONTINUOUS
-	}
-
-	params.Async = requestParams.Async
-	if requestParams.ChangesFeedLimit != nil {
-		params.ChangesFeedLimit = *requestParams.ChangesFeedLimit
-	} else {
-		params.ChangesFeedLimit = sgreplicate.DefaultChangesFeedLimit
-	}
-
-	if requestParams.Filter != "" {
-		if requestParams.Filter == base.ByChannelFilter {
-			if requestParams.QueryParams == "" {
-				err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate sync_gateway/bychannel filter; Missing query_params")
-				return
-			}
-
-			params.Channels, err = db.ChannelsFromQueryParams(requestParams.QueryParams)
-			if err != nil {
-				return params, cancel, localdb, base.HTTPErrorf(http.StatusBadRequest, "/_replicate "+err.Error())
-			}
-		} else {
-			err = base.HTTPErrorf(http.StatusBadRequest, "/_replicate Unknown filter; try sync_gateway/bychannel")
-			return
-		}
-	}
-
-	//If source and/or target are local DB names add local AdminInterface URL
-	localDbUrl := "http://" + adminInterface
-	if params.Source == nil {
-		localdb = true
-		params.Source, _ = url.Parse(localDbUrl)
-	}
-
-	if params.Target == nil {
-		localdb = true
-		params.Target, _ = url.Parse(localDbUrl)
-	}
-
-	return params, requestParams.Cancel, localdb, nil
-}
-
-func (h *handler) handleActiveTasks() error {
-
-	base.Warnf("The /_active_tasks API is deprecated - use /{db}/_replicationStatus instead.")
-	h.writeJSON(h.server.replicator.ActiveTasks())
-	return nil
-}
-
 // raw document access for admin api
 
 func (h *handler) handleGetRawDoc() error {
@@ -429,18 +245,16 @@ type DatabaseStatus struct {
 }
 
 type Status struct {
-	Databases   map[string]DatabaseStatus `json:"databases"`
-	ActiveTasks []base.Task               `json:"active_tasks"`
-	Version     string                    `json:"version"`
-	Vendor      vendor                    `json:"vendor"`
+	Databases map[string]DatabaseStatus `json:"databases"`
+	Version   string                    `json:"version"`
+	Vendor    vendor                    `json:"vendor"`
 }
 
 func (h *handler) handleGetStatus() error {
 
 	var status = Status{
-		Databases:   make(map[string]DatabaseStatus),
-		ActiveTasks: h.server.replicator.ActiveTasks(),
-		Vendor:      vendor{Name: base.ProductNameString},
+		Databases: make(map[string]DatabaseStatus),
+		Vendor:    vendor{Name: base.ProductNameString},
 	}
 
 	// This handler is supposed to be admin-only anyway, but being defensive if this is opened up in the routes file.

@@ -82,29 +82,6 @@ func (GoCBCoreV7Logger) Log(level gocbcorev7.LogLevel, offset int, format string
 	return GoCBLogger{}.Log(gocb.LogLevel(level), offset, format, v...)
 }
 
-// ******************************************************
-// SG Replicate Logging
-// ******************************************************
-// Log levels are mapped as follows:
-//   Debug   -> SG Debug
-//   Normal  -> SG Info
-//   Warning -> SG Warn
-//   Error   -> SG Error
-//   Panic   -> SG Error
-
-func sgreplicateLogFn(level clog.LogLevel, format string, args ...interface{}) {
-	switch level {
-	case clog.LevelError, clog.LevelPanic:
-		logTo(context.TODO(), LevelError, KeyAll, KeyReplicate.String()+": "+format, args...)
-	case clog.LevelWarning:
-		logTo(context.TODO(), LevelWarn, KeyAll, KeyReplicate.String()+": "+format, args...)
-	case clog.LevelNormal:
-		logTo(context.TODO(), LevelInfo, KeyReplicate, format, args...)
-	case clog.LevelDebug:
-		logTo(context.TODO(), LevelDebug, KeyReplicate, format, args...)
-	}
-}
-
 // **************************************************************************
 // Implementation of callback for github.com/couchbase/clog.SetLoggerCallback
 //    Our main library that uses clog is cbgt, so all logging goes to KeyDCP.

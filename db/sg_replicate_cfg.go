@@ -125,9 +125,8 @@ func DefaultReplicationConfig() ReplicationConfig {
 // ReplicationCfg represents a replication definition as stored in the cluster config.
 type ReplicationCfg struct {
 	ReplicationConfig
-	SGR1CheckpointID string `json:"sgr1_checkpoint_id,omitempty"` // can be set to fall back to when SGR2 checkpoints can't be found
-	AssignedNode     string `json:"assigned_node"`                // UUID of node assigned to this replication
-	TargetState      string `json:"target_state,omitempty"`       // Target state for replication.
+	AssignedNode string `json:"assigned_node"`          // UUID of node assigned to this replication
+	TargetState  string `json:"target_state,omitempty"` // Target state for replication.
 }
 
 // ReplicationUpsertConfig is used for operations that support upsert of a subset of replication properties.
@@ -149,7 +148,6 @@ type ReplicationUpsertConfig struct {
 	Cancel                 *bool       `json:"cancel,omitempty"`
 	Adhoc                  *bool       `json:"adhoc,omitempty"`
 	BatchSize              *int        `json:"batch_size,omitempty"`
-	SGR1CheckpointID       *string     `json:"sgr1_checkpoint_id,omitempty"`
 }
 
 func (rc *ReplicationConfig) ValidateReplication(fromConfig bool) (err error) {
@@ -486,7 +484,6 @@ func (m *sgReplicateManager) NewActiveReplicatorConfig(config *ReplicationCfg) (
 		PurgeOnRemoval:     config.PurgeOnRemoval,
 		DeltasEnabled:      config.DeltaSyncEnabled,
 		InsecureSkipVerify: m.dbContext.Options.UnsupportedOptions.SgrTlsSkipVerify,
-		SGR1CheckpointID:   config.SGR1CheckpointID,
 		CheckpointInterval: m.CheckpointInterval,
 	}
 
@@ -909,7 +906,7 @@ func (m *sgReplicateManager) AddReplication(replication *ReplicationCfg) error {
 }
 
 // PutReplications sets the value of one or more replications in the config
-func (m *sgReplicateManager) PutReplications(replications map[string]*ReplicationConfig, sgr1CheckpointIDs map[string]string) error {
+func (m *sgReplicateManager) PutReplications(replications map[string]*ReplicationConfig) error {
 	addReplicationCallback := func(cluster *SGRCluster) (cancel bool, err error) {
 		if len(replications) == 0 {
 			return true, nil
@@ -926,9 +923,6 @@ func (m *sgReplicateManager) PutReplications(replications map[string]*Replicatio
 				} else {
 					replicationCfg.TargetState = ReplicationStateRunning
 				}
-			}
-			if sgr1CheckpointID, ok := sgr1CheckpointIDs[replicationID]; ok {
-				replicationCfg.SGR1CheckpointID = sgr1CheckpointID
 			}
 			replicationCfg.ReplicationConfig = *replication
 			cluster.Replications[replicationID] = replicationCfg

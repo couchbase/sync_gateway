@@ -44,7 +44,6 @@ type LegacyServerConfig struct {
 	MaxFileDescriptors         *uint64                        `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses          *bool                          `json:",omitempty"`                       // If false, disables compression of HTTP responses
 	Databases                  DbConfigMap                    `json:",omitempty"`                       // Pre-configured databases, mapped by name
-	Replications               []*ReplicateV1ConfigLegacy     `json:",omitempty"`                       // sg-replicate replication definitions
 	MaxHeartbeat               uint64                         `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
 	ClusterConfig              *ClusterConfigLegacy           `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
 	Unsupported                *UnsupportedServerConfigLegacy `json:"unsupported,omitempty"`            // Config for unsupported features
@@ -87,24 +86,6 @@ type UnsupportedServerConfigLegacy struct {
 	StatsLogFrequencySecs *uint        `json:"stats_log_freq_secs,omitempty"` // How often should stats be written to stats logs
 	UseStdlibJSON         *bool        `json:"use_stdlib_json,omitempty"`     // Bypass the jsoniter package and use Go's stdlib instead
 }
-
-type ReplicateV1ConfigLegacy struct {
-	Source           string      `json:"source"`
-	Target           string      `json:"target"`
-	Continuous       bool        `json:"continuous"`
-	CreateTarget     bool        `json:"create_target"`
-	DocIds           []string    `json:"doc_ids"`
-	Filter           string      `json:"filter"`
-	Proxy            string      `json:"proxy"`
-	QueryParams      interface{} `json:"query_params"`
-	Cancel           bool        `json:"cancel"`
-	Async            bool        `json:"async"`
-	ChangesFeedLimit *int        `json:"changes_feed_limit"`
-	ReplicationId    string      `json:"replication_id"`
-	upgradedToSGR2   bool        // upgradedToSGR2 is set to true when an equivalent SGR2 replication is found, which prevents this v1 replication from starting.
-}
-
-type ReplConfigMapLegacy map[string]*ReplicateV1ConfigLegacy
 
 // ToStartupConfig returns the given LegacyServerConfig as a StartupConfig and a set of DBConfigs.
 // The returned configs do not contain any default values - only a direct mapping of legacy config options as they were given.
