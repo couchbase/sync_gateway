@@ -221,10 +221,10 @@ func TestObtainManagementEndpointsFromServerContext(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	ctx := NewServerContext(&StartupConfig{}, false)
-	defer ctx.Close()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
 
-	eps, _, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
 	clusterAddress := base.UnitTestUrl()
@@ -414,10 +414,10 @@ func TestCheckPermissions(t *testing.T) {
 		},
 	}
 
-	ctx := NewServerContext(&StartupConfig{}, false)
-	defer ctx.Close()
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
 
-	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
+	eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	for _, testCase := range testCases {
@@ -472,7 +472,7 @@ func TestCheckRoles(t *testing.T) {
 		Username           string
 		Password           string
 		BucketName         string
-		RequestRoles       []string
+		RequestRoles       []Role
 		ExpectedStatusCode int
 		CreateUser         string
 		CreatePassword     string
@@ -483,7 +483,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           base.TestClusterUsername(),
 			Password:           base.TestClusterPassword(),
 			BucketName:         "",
-			RequestRoles:       []string{"admin"},
+			RequestRoles:       []Role{FullAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 		},
 		{
@@ -491,7 +491,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreatedAdmin",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []string{"admin"},
+			RequestRoles:       []Role{FullAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "CreatedAdmin",
 			CreatePassword:     "password",
@@ -502,7 +502,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "ReadOnlyAdmin",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []string{"ro_admin"},
+			RequestRoles:       []Role{ReadOnlyAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "ReadOnlyAdmin",
 			CreatePassword:     "password",
@@ -513,7 +513,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreatedBucketAdmin",
 			Password:           "password",
 			BucketName:         rt.Bucket().GetName(),
-			RequestRoles:       []string{"mobile_sync_gateway"},
+			RequestRoles:       []Role{MobileSyncGatewayRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "CreatedBucketAdmin",
 			CreatePassword:     "password",
@@ -524,7 +524,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreateUserNoRole",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []string{"ro_admin"},
+			RequestRoles:       []Role{ReadOnlyAdminRole},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "CreateUserNoRole",
 			CreatePassword:     "password",
@@ -535,7 +535,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreateUserInsufficientRole",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []string{"mobile_sync_gateway"},
+			RequestRoles:       []Role{MobileSyncGatewayRole},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "CreateUserInsufficientRole",
 			CreatePassword:     "password",

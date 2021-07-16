@@ -41,18 +41,6 @@ const (
 	minCompressibleJSONSize = 1000
 )
 
-// Admin API Auth Roles
-const (
-	MobileSyncGatewayRole = "mobile_sync_gateway"
-	BucketFullAccessRole  = "bucket_full_access"
-	FullAdminRole         = "admin"
-	ReadOnlyAdminRole     = "ro_admin"
-)
-
-var BucketScopedEndpointRoles = []string{MobileSyncGatewayRole, BucketFullAccessRole, FullAdminRole}
-var ClusterScopedEndpointRoles = []string{ReadOnlyAdminRole}
-var wwwAuthenticateHeader = `Basic realm="` + base.ProductNameString + `"`
-
 // If set to true, JSON output will be pretty-printed.
 var PrettyPrint bool = false
 
@@ -68,6 +56,25 @@ func init() {
 var kNotFoundError = base.HTTPErrorf(http.StatusNotFound, "missing")
 var kBadMethodError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Method Not Allowed")
 var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request")
+
+var wwwAuthenticateHeader = `Basic realm="` + base.ProductNameString + `"`
+
+// Admin API Auth Roles
+type Role struct {
+	RoleName       string
+	DatabaseScoped bool
+}
+
+var (
+	MobileSyncGatewayRole = Role{"mobile_sync_gateway", true}
+	BucketFullAccessRole  = Role{"bucket_full_access", true}
+	BucketAdmin           = Role{"bucket_admin", true}
+	FullAdminRole         = Role{"admin", false}
+	ReadOnlyAdminRole     = Role{"ro_admin", false}
+)
+
+var BucketScopedEndpointRoles = []Role{MobileSyncGatewayRole, BucketFullAccessRole, BucketAdmin, ReadOnlyAdminRole, FullAdminRole}
+var ClusterScopedEndpointRoles = []Role{ReadOnlyAdminRole, FullAdminRole}
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -223,7 +230,8 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []string, respo
 		// If server is walrus but auth is enabled we should just kick the user out as invalid as we have nothing to
 		// validate credentials against
 		if base.ServerIsWalrus(h.server.config.Bootstrap.Server) {
-			return base.HTTPErrorf(http.StatusUnauthorized, "Authorization not possible with Walrus server")
+			return base.HTTPErrorf(http.StatusUnauthorized, "Authorization not possible with Walrus server. "+
+				"Either use Couchbase Server or disable admin auth by setting api.admin_interface_authentication and api.metrics_interface_authentication to false.")
 		}
 
 		username, password := h.getBasicAuth()
@@ -480,7 +488,7 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 		return nil, statusCode, nil
 	}
 
-	var requestRoles []string
+	var requestRoles []Role
 	if bucketName != "" {
 		requestRoles = BucketScopedEndpointRoles
 	} else {
