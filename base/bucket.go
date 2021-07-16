@@ -360,6 +360,12 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 				return nil, fmt.Errorf("unsupported feed type: %v", spec.FeedType)
 			} else {
 				bucket, err = GetCouchbaseBucketGoCB(spec)
+				if err != nil {
+					if pkgerrors.Cause(err) == gocbV1.ErrAuthError {
+						Warnf("Unable to authenticate as user %q: %v", UD(username), err)
+						return nil, ErrFatalBucketConnection
+					}
+				}
 			}
 		case GoCBv2:
 			bucket, err = GetCouchbaseCollection(spec)
@@ -368,10 +374,6 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		}
 
 		if err != nil {
-			if pkgerrors.Cause(err) == gocbV1.ErrAuthError {
-				Warnf("Unable to authenticate as user %q: %v", UD(username), err)
-				return nil, ErrFatalBucketConnection
-			}
 			return nil, err
 		}
 
