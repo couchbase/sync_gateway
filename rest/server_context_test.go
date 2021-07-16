@@ -472,7 +472,7 @@ func TestCheckRoles(t *testing.T) {
 		Username           string
 		Password           string
 		BucketName         string
-		RequestRoles       []Role
+		RequestRoles       []RouteRole
 		ExpectedStatusCode int
 		CreateUser         string
 		CreatePassword     string
@@ -483,7 +483,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           base.TestClusterUsername(),
 			Password:           base.TestClusterPassword(),
 			BucketName:         "",
-			RequestRoles:       []Role{FullAdminRole},
+			RequestRoles:       []RouteRole{FullAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 		},
 		{
@@ -491,7 +491,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreatedAdmin",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []Role{FullAdminRole},
+			RequestRoles:       []RouteRole{FullAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "CreatedAdmin",
 			CreatePassword:     "password",
@@ -502,7 +502,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "ReadOnlyAdmin",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []Role{ReadOnlyAdminRole},
+			RequestRoles:       []RouteRole{ReadOnlyAdminRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "ReadOnlyAdmin",
 			CreatePassword:     "password",
@@ -513,7 +513,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreatedBucketAdmin",
 			Password:           "password",
 			BucketName:         rt.Bucket().GetName(),
-			RequestRoles:       []Role{MobileSyncGatewayRole},
+			RequestRoles:       []RouteRole{MobileSyncGatewayRole},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "CreatedBucketAdmin",
 			CreatePassword:     "password",
@@ -524,7 +524,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreateUserNoRole",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []Role{ReadOnlyAdminRole},
+			RequestRoles:       []RouteRole{ReadOnlyAdminRole},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "CreateUserNoRole",
 			CreatePassword:     "password",
@@ -535,7 +535,7 @@ func TestCheckRoles(t *testing.T) {
 			Username:           "CreateUserInsufficientRole",
 			Password:           "password",
 			BucketName:         "",
-			RequestRoles:       []Role{MobileSyncGatewayRole},
+			RequestRoles:       []RouteRole{MobileSyncGatewayRole},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "CreateUserInsufficientRole",
 			CreatePassword:     "password",

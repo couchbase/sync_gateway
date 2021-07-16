@@ -60,21 +60,21 @@ var kBadRequestError = base.HTTPErrorf(http.StatusMethodNotAllowed, "Bad Request
 var wwwAuthenticateHeader = `Basic realm="` + base.ProductNameString + `"`
 
 // Admin API Auth Roles
-type Role struct {
+type RouteRole struct {
 	RoleName       string
 	DatabaseScoped bool
 }
 
 var (
-	MobileSyncGatewayRole = Role{"mobile_sync_gateway", true}
-	BucketFullAccessRole  = Role{"bucket_full_access", true}
-	BucketAdmin           = Role{"bucket_admin", true}
-	FullAdminRole         = Role{"admin", false}
-	ReadOnlyAdminRole     = Role{"ro_admin", false}
+	MobileSyncGatewayRole = RouteRole{"mobile_sync_gateway", true}
+	BucketFullAccessRole  = RouteRole{"bucket_full_access", true}
+	BucketAdmin           = RouteRole{"bucket_admin", true}
+	FullAdminRole         = RouteRole{"admin", false}
+	ReadOnlyAdminRole     = RouteRole{"ro_admin", false}
 )
 
-var BucketScopedEndpointRoles = []Role{MobileSyncGatewayRole, BucketFullAccessRole, BucketAdmin, ReadOnlyAdminRole, FullAdminRole}
-var ClusterScopedEndpointRoles = []Role{ReadOnlyAdminRole, FullAdminRole}
+var BucketScopedEndpointRoles = []RouteRole{MobileSyncGatewayRole, BucketFullAccessRole, BucketAdmin, ReadOnlyAdminRole, FullAdminRole}
+var ClusterScopedEndpointRoles = []RouteRole{ReadOnlyAdminRole, FullAdminRole}
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -488,7 +488,7 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 		return nil, statusCode, nil
 	}
 
-	var requestRoles []Role
+	var requestRoles []RouteRole
 	if bucketName != "" {
 		requestRoles = BucketScopedEndpointRoles
 	} else {

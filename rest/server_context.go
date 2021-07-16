@@ -1273,7 +1273,7 @@ func CheckPermissions(httpClient *http.Client, managementEndpoints []string, use
 	return http.StatusForbidden, nil, nil
 }
 
-func CheckRoles(httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []Role, bucketName string) (statusCode int, err error) {
+func CheckRoles(httpClient *http.Client, managementEndpoints []string, username, password string, requestedRoles []RouteRole, bucketName string) (statusCode int, err error) {
 	statusCode, bodyResponse, err := doHTTPAuthRequest(httpClient, username, password, "GET", "/whoami", managementEndpoints, nil)
 	if err != nil {
 		return http.StatusInternalServerError, err
