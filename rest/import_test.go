@@ -606,7 +606,8 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
-	_, cas, getErr := bucket.GetRaw(mobileKey)
+	var casCheck []byte
+	cas, getErr := bucket.Get(mobileKey, &casCheck)
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
@@ -663,7 +664,8 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
-	_, cas, getErr := bucket.GetRaw(mobileKey)
+	var casCheck []byte
+	cas, getErr := bucket.Get(mobileKey, &casCheck)
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Modify the document via the SDK to add a new, non-mobile xattr
@@ -723,7 +725,8 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 	assert.True(t, ok, "No rev included in response")
 
 	// Go get the cas for the doc to use for update
-	_, cas, getErr := bucket.GetRaw(mobileKey)
+	var casCheck []byte
+	cas, getErr := bucket.Get(mobileKey, &casCheck)
 	assert.NoError(t, getErr, "Error retrieving cas for multi-actor document")
 
 	// Check expvars before update

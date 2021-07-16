@@ -140,9 +140,10 @@ func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
 	return rv, uint64(getRawResult.Cas()), err
 }
 
+// TODO: Refactor to GetAndTouch, since the only use case isn't working with binary data
 func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
 	getAndTouchOptions := &gocb.GetAndTouchOptions{
-		Transcoder: gocb.NewRawBinaryTranscoder(),
+		Transcoder: getTranscoder(rv),
 	}
 	getAndTouchRawResult, getErr := c.Collection.GetAndTouch(k, expAsDuration(exp), getAndTouchOptions)
 	if getErr != nil {

@@ -921,7 +921,7 @@ func (bucket *CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (add
 
 // GoCB AddRaw writes as BinaryDocument, which results in the document having the
 // binary doc common flag set.  Callers that want to write JSON documents as raw bytes should
-// pass v as []byte to the stanard bucket.Add
+// pass v as []byte to the standard bucket.Add
 func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {
