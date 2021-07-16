@@ -85,8 +85,8 @@ func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *Princi
 		info.Channels = user.InheritedChannels().AsSet()
 		info.Email = user.Email()
 		info.Disabled = user.Disabled()
-		info.ExplicitRoleNames = user.ExplicitRoles().AllChannels()
-		info.RoleNames = user.RoleNames().AllChannels()
+		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
+		info.RoleNames = user.RoleNames().AllKeys()
 	} else {
 		info.Channels = princ.Channels().AsSet()
 	}

@@ -533,10 +533,10 @@ func TestAdminAPIAuth(t *testing.T) {
 	MakeUser(t, eps[0], "noaccess", "password", []string{})
 	defer DeleteUser(t, eps[0], "noaccess")
 
-	MakeUser(t, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole, rt.Bucket().GetName())})
+	MakeUser(t, eps[0], "MobileSyncGatewayUser", "password", []string{fmt.Sprintf("%s[%s]", MobileSyncGatewayRole.RoleName, rt.Bucket().GetName())})
 	defer DeleteUser(t, eps[0], "MobileSyncGatewayUser")
 
-	MakeUser(t, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole})
+	MakeUser(t, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
 	defer DeleteUser(t, eps[0], "ROAdminUser")
 
 	for _, endPoint := range endPoints {

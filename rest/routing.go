@@ -155,7 +155,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_user/",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putUser)).Methods("POST")
 	dbr.Handle("/_user/{name}",
-		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, (*handler).getUserInfo)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, []Permission{PermReadPrincipalAppData}, (*handler).getUserInfo)).Methods("GET", "HEAD")
 	dbr.Handle("/_user/{name}",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putUser)).Methods("PUT")
 	dbr.Handle("/_user/{name}",
@@ -167,11 +167,11 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).deleteUserSession)).Methods("DELETE")
 
 	dbr.Handle("/_role/",
-		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, (*handler).getRoles)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, []Permission{PermReadPrincipal}, (*handler).getRoles)).Methods("GET", "HEAD")
 	dbr.Handle("/_role/",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putRole)).Methods("POST")
 	dbr.Handle("/_role/{name}",
-		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, []Permission{PermReadPrincipal, PermReadPrincipalAppData}, (*handler).getRoleInfo)).Methods("GET", "HEAD")
+		makeHandler(sc, adminPrivs, []Permission{PermReadPrincipal}, []Permission{PermReadPrincipalAppData}, (*handler).getRoleInfo)).Methods("GET", "HEAD")
 	dbr.Handle("/_role/{name}",
 		makeHandler(sc, adminPrivs, []Permission{PermWritePrincipal}, nil, (*handler).putRole)).Methods("PUT")
 	dbr.Handle("/_role/{name}",

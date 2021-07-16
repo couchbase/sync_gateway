@@ -273,7 +273,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 		// First check 'current channels' if role isn't deleted
 		// Current roles should be invalidated on deleted anyway but for safety
 		if !role.IsDeleted() {
-			for _, chanName := range role.Channels().AllChannels() {
+			for _, chanName := range role.Channels().AllKeys() {
 				if !accessibleChannels.Contains(chanName) {
 					combinedRevokedChannels.add(chanName, roleRevokeSeq)
 				}

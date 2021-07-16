@@ -410,7 +410,7 @@ func TestCheckPermissions(t *testing.T) {
 			RequestPermissions:        []Permission{clusterAdminPermission},
 			ResponsePermissions:       []Permission{clusterReadOnlyAdminPermission},
 			ExpectedStatusCode:        http.StatusOK,
-			ExpectedPermissionResults: map[string]bool{"cluster!ro_admin": true},
+			ExpectedPermissionResults: map[string]bool{"ro_admin": true},
 			CreateUser:                "ValidateResponsePermission",
 			CreatePassword:            "password",
 			CreateRoles:               []string{"admin"},
