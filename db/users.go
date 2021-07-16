@@ -25,7 +25,7 @@ import (
 type PrincipalConfig struct {
 	Name             *string  `json:"name,omitempty"`
 	ExplicitChannels base.Set `json:"admin_channels,omitempty"`
-	Channels         base.Set `json:"all_channels"`
+	Channels         base.Set `json:"all_channels,omitempty"`
 	// Fields below only apply to Users, not Roles:
 	Email             string   `json:"email,omitempty"`
 	Disabled          bool     `json:"disabled,omitempty"`
@@ -85,8 +85,8 @@ func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *Princi
 		info.Channels = user.InheritedChannels().AsSet()
 		info.Email = user.Email()
 		info.Disabled = user.Disabled()
-		info.ExplicitRoleNames = user.ExplicitRoles().AllChannels()
-		info.RoleNames = user.RoleNames().AllChannels()
+		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
+		info.RoleNames = user.RoleNames().AllKeys()
 	} else {
 		info.Channels = princ.Channels().AsSet()
 	}

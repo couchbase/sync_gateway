@@ -1364,7 +1364,7 @@ func TestRevocationScenario1(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -1377,7 +1377,7 @@ func TestRevocationScenario1(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -1396,7 +1396,7 @@ func TestRevocationScenario1(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -1455,7 +1455,7 @@ func TestRevocationScenario2(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -1552,7 +1552,7 @@ func TestRevocationScenario3(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -1658,7 +1658,7 @@ func TestRevocationScenario4(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -1751,7 +1751,7 @@ func TestRevocationScenario5(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -1828,7 +1828,7 @@ func TestRevocationScenario6(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -1908,7 +1908,7 @@ func TestRevocationScenario7(t *testing.T) {
 
 	// Ensure user can see ch1 (via role)
 	// Verify history
-	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllChannels())
+	assert.ElementsMatch(t, []string{"!", "ch1"}, fooPrincipal.Channels().AllKeys())
 	assert.True(t, aliceUserPrincipal.CanSeeChannel("ch1"))
 	assert.Equal(t, 0, len(aliceUserPrincipal.RoleHistory()))
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
@@ -2381,7 +2381,7 @@ func TestRoleSoftDelete(t *testing.T) {
 	role, err = auth.GetRole(roleName)
 	assert.NoError(t, err)
 	assert.NotNil(t, role)
-	assert.Equal(t, 2, len(role.Channels().AllChannels()))
+	assert.Equal(t, 2, len(role.Channels().AllKeys()))
 	assert.True(t, role.Channels().Contains("channel"))
 
 	// Delete role
@@ -2397,7 +2397,7 @@ func TestRoleSoftDelete(t *testing.T) {
 	role, err = auth.GetRoleIncDeleted(roleName)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(role.ChannelHistory()))
-	assert.Equal(t, 0, len(role.Channels().AllChannels()))
+	assert.Equal(t, 0, len(role.Channels().AllKeys()))
 	require.Equal(t, 1, len(role.ChannelHistory()["channel"].Entries))
 	require.Equal(t, 1, len(role.ChannelHistory()["!"].Entries))
 	assert.Equal(t, expectedChannelHistory, role.ChannelHistory()["channel"].Entries[0])
@@ -2421,7 +2421,7 @@ func TestRoleSoftDelete(t *testing.T) {
 	role, err = auth.GetRole(roleName)
 	assert.NoError(t, err)
 	assert.NotNil(t, role)
-	assert.Equal(t, 2, len(role.Channels().AllChannels()))
+	assert.Equal(t, 2, len(role.Channels().AllKeys()))
 	assert.False(t, role.Channels().Contains("channel"))
 	assert.True(t, role.Channels().Contains("channel2"))
 	assert.Equal(t, 2, len(role.ChannelHistory()))
@@ -2447,7 +2447,7 @@ func TestObtainChannelsForDeletedRole(t *testing.T) {
 			assert.NoError(t, err)
 
 			// Successfully able to get inherited channels even though role is missing
-			assert.Equal(t, []string{"!"}, user.InheritedChannels().AllChannels())
+			assert.Equal(t, []string{"!"}, user.InheritedChannels().AllKeys())
 		},
 	},
 		{
@@ -2462,7 +2462,7 @@ func TestObtainChannelsForDeletedRole(t *testing.T) {
 				assert.NoError(t, err)
 
 				// Successfully able to get inherited channels even though role is missing
-				assert.Equal(t, []string{"!"}, user.InheritedChannels().AllChannels())
+				assert.Equal(t, []string{"!"}, user.InheritedChannels().AllKeys())
 			},
 		},
 	}

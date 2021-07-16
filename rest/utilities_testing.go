@@ -295,6 +295,21 @@ func (rt *RestTester) SendUserRequestWithHeaders(method, resource string, body s
 	}
 	return rt.Send(req)
 }
+
+func (rt *RestTester) SendAdminRequestWithAuth(method, resource string, body string, username string, password string) *TestResponse {
+	input := bytes.NewBufferString(body)
+	request, err := http.NewRequest(method, "http://localhost"+resource, input)
+	require.NoError(rt.tb, err)
+
+	request.SetBasicAuth(username, password)
+
+	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
+	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188
+
+	rt.TestAdminHandler().ServeHTTP(response, request)
+	return response
+}
+
 func (rt *RestTester) Send(request *http.Request) *TestResponse {
 	response := &TestResponse{ResponseRecorder: httptest.NewRecorder(), Req: request}
 	response.Code = 200 // doesn't seem to be initialized by default; filed Go bug #4188

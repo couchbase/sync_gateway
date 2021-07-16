@@ -1224,9 +1224,9 @@ func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *ht
 // For Authorization it checks whether the user has any ONE of the supplied accessPermissions
 // If the user is authorized it will also check the responsePermissions and return the results for these. These can be
 // used by handlers to determine different responses based on the permissions the user has.
-func CheckPermissions(httpClient *http.Client, managementEndpoints []string, username, password string, accessPermissions []string, responsePermissions []string) (statusCode int, permissionResults map[string]bool, err error) {
+func CheckPermissions(httpClient *http.Client, managementEndpoints []string, bucketName, username, password string, accessPermissions []Permission, responsePermissions []Permission) (statusCode int, permissionResults map[string]bool, err error) {
 	combinedPermissions := append(accessPermissions, responsePermissions...)
-	body := []byte(strings.Join(combinedPermissions, ","))
+	body := []byte(strings.Join(FormatPermissionNames(combinedPermissions, bucketName), ","))
 	statusCode, bodyResponse, err := doHTTPAuthRequest(httpClient, username, password, "POST", "/pools/default/checkPermissions", managementEndpoints, body)
 	if err != nil {
 		return http.StatusInternalServerError, nil, err
@@ -1255,16 +1255,16 @@ func CheckPermissions(httpClient *http.Client, managementEndpoints []string, use
 		if len(responsePermissions) > 0 {
 			permissionResults = make(map[string]bool)
 			for _, responsePermission := range responsePermissions {
-				hasPermission, ok := permissions[responsePermission]
+				hasPermission, ok := permissions[responsePermission.FormattedName(bucketName)]
 				// This should always be true but better to be safe to avoid panic
 				if ok {
-					permissionResults[responsePermission] = hasPermission
+					permissionResults[responsePermission.PermissionName] = hasPermission
 				}
 			}
 		}
 
 		for _, accessPermission := range accessPermissions {
-			if hasPermission, ok := permissions[accessPermission]; ok && hasPermission {
+			if hasPermission, ok := permissions[accessPermission.FormattedName(bucketName)]; ok && hasPermission {
 				return http.StatusOK, permissionResults, nil
 			}
 		}

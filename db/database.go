@@ -1067,11 +1067,6 @@ func (db *Database) Compact() (int, error) {
 	return purgedDocCount, nil
 }
 
-// Deletes all orphaned CouchDB attachments not used by any revisions.
-func VacuumAttachments(bucket base.Bucket) (int, error) {
-	return 0, base.HTTPErrorf(http.StatusNotImplemented, "Vacuum is temporarily out of order")
-}
-
 //////// SYNC FUNCTION:
 
 // Sets the database context's sync function based on the JS code from config.

@@ -327,12 +327,15 @@ func TestCheckPermissions(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
+	clusterAdminPermission := Permission{"admin", false}
+	clusterReadOnlyAdminPermission := Permission{"ro_admin", false}
+
 	testCases := []struct {
 		Name                      string
 		Username                  string
 		Password                  string
-		RequestPermissions        []string
-		ResponsePermissions       []string
+		RequestPermissions        []Permission
+		ResponsePermissions       []Permission
 		ExpectedStatusCode        int
 		ExpectedPermissionResults map[string]bool
 		CreateUser                string
@@ -343,7 +346,7 @@ func TestCheckPermissions(t *testing.T) {
 			Name:                      "ClusterAdminTest",
 			Username:                  base.TestClusterUsername(),
 			Password:                  base.TestClusterPassword(),
-			RequestPermissions:        []string{"cluster!admin"},
+			RequestPermissions:        []Permission{clusterAdminPermission},
 			ExpectedStatusCode:        http.StatusOK,
 			ExpectedPermissionResults: nil,
 		},
@@ -351,7 +354,7 @@ func TestCheckPermissions(t *testing.T) {
 			Name:                      "CreatedAdmin",
 			Username:                  "CreatedAdmin",
 			Password:                  "password",
-			RequestPermissions:        []string{"cluster!admin"},
+			RequestPermissions:        []Permission{clusterAdminPermission},
 			ExpectedStatusCode:        http.StatusOK,
 			ExpectedPermissionResults: nil,
 			CreateUser:                "CreatedAdmin",
@@ -362,7 +365,7 @@ func TestCheckPermissions(t *testing.T) {
 			Name:                      "Non-Existent User",
 			Username:                  "NonExistent",
 			Password:                  "",
-			RequestPermissions:        []string{"cluster!admin"},
+			RequestPermissions:        []Permission{clusterAdminPermission},
 			ExpectedStatusCode:        http.StatusUnauthorized,
 			ExpectedPermissionResults: nil,
 		},
@@ -381,7 +384,7 @@ func TestCheckPermissions(t *testing.T) {
 			Name:                      "Missing Permission",
 			Username:                  "NoPermUser",
 			Password:                  "password",
-			RequestPermissions:        []string{"cluster!admin"},
+			RequestPermissions:        []Permission{clusterAdminPermission},
 			ExpectedStatusCode:        http.StatusForbidden,
 			ExpectedPermissionResults: nil,
 			CreateUser:                "NoPermUser",
@@ -392,8 +395,8 @@ func TestCheckPermissions(t *testing.T) {
 			Name:                      "HasResponsePermissionWithoutAccessPermission",
 			Username:                  "HasResponsePermissionWithoutAccessPermission",
 			Password:                  "password",
-			RequestPermissions:        []string{"cluster!admin"},
-			ResponsePermissions:       []string{"cluster!ro_admin"},
+			RequestPermissions:        []Permission{clusterAdminPermission},
+			ResponsePermissions:       []Permission{clusterReadOnlyAdminPermission},
 			ExpectedStatusCode:        http.StatusForbidden,
 			ExpectedPermissionResults: nil,
 			CreateUser:                "HasResponsePermissionWithoutAccessPermission",
@@ -404,10 +407,10 @@ func TestCheckPermissions(t *testing.T) {
 			Name:                      "ValidateResponsePermission",
 			Username:                  "ValidateResponsePermission",
 			Password:                  "password",
-			RequestPermissions:        []string{"cluster!admin"},
-			ResponsePermissions:       []string{"cluster!ro_admin"},
+			RequestPermissions:        []Permission{clusterAdminPermission},
+			ResponsePermissions:       []Permission{clusterReadOnlyAdminPermission},
 			ExpectedStatusCode:        http.StatusOK,
-			ExpectedPermissionResults: map[string]bool{"cluster!ro_admin": true},
+			ExpectedPermissionResults: map[string]bool{"ro_admin": true},
 			CreateUser:                "ValidateResponsePermission",
 			CreatePassword:            "password",
 			CreateRoles:               []string{"admin"},
@@ -427,7 +430,7 @@ func TestCheckPermissions(t *testing.T) {
 				defer DeleteUser(t, eps[0], testCase.CreateUser)
 			}
 
-			statusCode, permResults, err := CheckPermissions(httpClient, eps, testCase.Username, testCase.Password, testCase.RequestPermissions, testCase.ResponsePermissions)
+			statusCode, permResults, err := CheckPermissions(httpClient, eps, "", testCase.Username, testCase.Password, testCase.RequestPermissions, testCase.ResponsePermissions)
 			require.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
 			assert.True(t, reflect.DeepEqual(testCase.ExpectedPermissionResults, permResults))
@@ -453,7 +456,7 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
-	statusCode, _, err := CheckPermissions(httpClient, eps, base.TestClusterUsername(), base.TestClusterPassword(), []string{"cluster!admin"}, nil)
+	statusCode, _, err := CheckPermissions(httpClient, eps, "", base.TestClusterUsername(), base.TestClusterPassword(), []Permission{Permission{"admin", false}}, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, statusCode)
@@ -569,13 +572,15 @@ func TestAdminAuth(t *testing.T) {
 	defer rt.Close()
 
 	BucketFullAccessRoleTest := fmt.Sprintf("bucket_full_access[%s]", rt.Bucket().GetName())
+	clusterAdminPermission := Permission{"admin", false}
+	bucketWritePermission := Permission{"write", true}
 
 	testCases := []struct {
 		Name                string
 		Username            string
 		Password            string
-		CheckPermissions    []string
-		ResponsePermissions []string
+		CheckPermissions    []Permission
+		ResponsePermissions []Permission
 		ExpectedStatusCode  int
 		ExpectedPermResults map[string]bool
 		CreateUser          string
@@ -587,7 +592,7 @@ func TestAdminAuth(t *testing.T) {
 			Name:               "ClusterAdmin",
 			Username:           base.TestClusterUsername(),
 			Password:           base.TestClusterPassword(),
-			CheckPermissions:   []string{"cluster!admin"},
+			CheckPermissions:   []Permission{clusterAdminPermission},
 			ExpectedStatusCode: http.StatusOK,
 			BucketName:         "",
 		},
@@ -595,7 +600,7 @@ func TestAdminAuth(t *testing.T) {
 			Name:               "ClusterAdminWrongPassword",
 			Username:           "ClusterAdminWrongPassword",
 			Password:           "wrongpassword",
-			CheckPermissions:   []string{"cluster!admin"},
+			CheckPermissions:   []Permission{clusterAdminPermission},
 			ExpectedStatusCode: http.StatusUnauthorized,
 			CreateUser:         "ClusterAdminWrongPassword",
 			CreatePassword:     "password",
@@ -606,7 +611,7 @@ func TestAdminAuth(t *testing.T) {
 			Name:               "NoUser",
 			Username:           "IDontExist",
 			Password:           "password",
-			CheckPermissions:   []string{"cluster!admin"},
+			CheckPermissions:   []Permission{clusterAdminPermission},
 			ExpectedStatusCode: http.StatusUnauthorized,
 			BucketName:         "",
 		},
@@ -614,7 +619,7 @@ func TestAdminAuth(t *testing.T) {
 			Name:               "MissingPermissionAndRole",
 			Username:           "MissingPermissionAndRole",
 			Password:           "password",
-			CheckPermissions:   []string{"cluster!admin"},
+			CheckPermissions:   []Permission{clusterAdminPermission},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "MissingPermissionAndRole",
 			CreatePassword:     "password",
@@ -625,7 +630,7 @@ func TestAdminAuth(t *testing.T) {
 			Name:               "MissingPermissionAndRoleDBScoped",
 			Username:           "MissingPermissionAndRoleDBScoped",
 			Password:           "password",
-			CheckPermissions:   []string{"cluster!admin"},
+			CheckPermissions:   []Permission{clusterAdminPermission},
 			ExpectedStatusCode: http.StatusForbidden,
 			CreateUser:         "MissingPermissionAndRoleDBScoped",
 			CreatePassword:     "password",
@@ -636,7 +641,7 @@ func TestAdminAuth(t *testing.T) {
 			Name:               "MissingPermissionHasRole",
 			Username:           "MissingPermissionHasRole",
 			Password:           "password",
-			CheckPermissions:   []string{"cluster!admin"},
+			CheckPermissions:   []Permission{clusterAdminPermission},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "MissingPermissionHasRole",
 			CreatePassword:     "password",
@@ -647,7 +652,7 @@ func TestAdminAuth(t *testing.T) {
 			Name:               "MissingPermissionHasDBScoped",
 			Username:           "MissingPermissionHasDBScoped",
 			Password:           "password",
-			CheckPermissions:   []string{"cluster!admin"},
+			CheckPermissions:   []Permission{clusterAdminPermission},
 			ExpectedStatusCode: http.StatusOK,
 			CreateUser:         "MissingPermissionHasDBScoped",
 			CreatePassword:     "password",
@@ -658,10 +663,10 @@ func TestAdminAuth(t *testing.T) {
 			Name:                "HasOneAccessPermissionButHasRole",
 			Username:            "HasOneAccessPermissionButHasRole",
 			Password:            "password",
-			CheckPermissions:    []string{fmt.Sprintf("cluster.bucket[%s]!write", rt.Bucket().GetName())},
-			ResponsePermissions: []string{"cluster!admin"},
+			CheckPermissions:    []Permission{bucketWritePermission},
+			ResponsePermissions: []Permission{clusterAdminPermission},
 			ExpectedStatusCode:  http.StatusOK,
-			ExpectedPermResults: map[string]bool{"cluster!admin": true},
+			ExpectedPermResults: map[string]bool{"admin": true},
 			CreateUser:          "HasOneAccessPermissionButHasRole",
 			CreatePassword:      "password",
 			CreateRoles:         []string{BucketFullAccessRoleTest},
@@ -719,6 +724,6 @@ func TestAdminAuthWithX509(t *testing.T) {
 	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), httpClient, managementEndpoints, []string{"cluster!admin"}, nil)
+	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), httpClient, managementEndpoints, []Permission{{"admin", false}}, nil)
 	assert.NoError(t, err)
 }

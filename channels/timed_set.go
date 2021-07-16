@@ -100,7 +100,7 @@ func (set TimedSet) Validate() error {
 	return nil
 }
 
-func (set TimedSet) AllChannels() []string {
+func (set TimedSet) AllKeys() []string {
 	result := make([]string, 0, len(set))
 	for name := range set {
 		result = append(result, name)

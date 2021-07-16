@@ -601,20 +601,24 @@ func externalUserName(name string) string {
 	return name
 }
 
-func marshalPrincipal(princ auth.Principal) ([]byte, error) {
+func marshalPrincipal(princ auth.Principal, includeDynamicGrantInfo bool) ([]byte, error) {
 	name := externalUserName(princ.Name())
 	info := db.PrincipalConfig{
 		Name:             &name,
 		ExplicitChannels: princ.ExplicitChannels().AsSet(),
 	}
 	if user, ok := princ.(auth.User); ok {
-		info.Channels = user.InheritedChannels().AsSet()
 		info.Email = user.Email()
 		info.Disabled = user.Disabled()
-		info.ExplicitRoleNames = user.ExplicitRoles().AllChannels()
-		info.RoleNames = user.RoleNames().AllChannels()
+		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
+		if includeDynamicGrantInfo {
+			info.Channels = user.InheritedChannels().AsSet()
+			info.RoleNames = user.RoleNames().AllKeys()
+		}
 	} else {
-		info.Channels = princ.Channels().AsSet()
+		if includeDynamicGrantInfo {
+			info.Channels = princ.Channels().AsSet()
+		}
 	}
 	return base.JSONMarshal(info)
 }
@@ -712,8 +716,9 @@ func (h *handler) getUserInfo() error {
 		}
 		return err
 	}
-
-	bytes, err := marshalPrincipal(user)
+	// If not specified will default to false
+	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
+	bytes, err := marshalPrincipal(user, includeDynamicGrantInfo)
 	h.writeRawJSON(bytes)
 	return err
 }
@@ -727,7 +732,9 @@ func (h *handler) getRoleInfo() error {
 		}
 		return err
 	}
-	bytes, err := marshalPrincipal(role)
+	// If not specified will default to false
+	includeDynamicGrantInfo := h.permissionsResults[PermReadPrincipalAppData.PermissionName]
+	bytes, err := marshalPrincipal(role, includeDynamicGrantInfo)
 	_, _ = h.response.Write(bytes)
 	return err
 }
