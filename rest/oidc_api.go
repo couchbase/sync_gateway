@@ -95,10 +95,11 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 		return redirectURLString, err
 	}
 
-	client := provider.GetClient(h.getOIDCCallbackURL)
-	if client == nil {
+	client, err := provider.GetClient(h.getOIDCCallbackURL)
+	if err != nil {
+		base.Errorf("OIDC initialization error: %v", err)
 		return redirectURLString, base.HTTPErrorf(
-			http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider:%s", providerName))
+			http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider: %s", providerName))
 	}
 
 	var redirectURL *url.URL
@@ -168,9 +169,9 @@ func (h *handler) handleOIDCCallback() error {
 		http.SetCookie(h.response, stateCookie)
 	}
 
-	client := provider.GetClient(h.getOIDCCallbackURL)
-	if client == nil {
-		return err
+	client, err := provider.GetClient(h.getOIDCCallbackURL)
+	if err != nil {
+		return fmt.Errorf("OIDC initialization error: %v", err)
 	}
 
 	// Converts the authorization code into a token.
@@ -221,9 +222,9 @@ func (h *handler) handleOIDCRefresh() error {
 		return base.HTTPErrorf(http.StatusBadRequest, "Unable to identify provider for callback request")
 	}
 
-	client := provider.GetClient(h.getOIDCCallbackURL)
-	if client == nil {
-		return err
+	client, err := provider.GetClient(h.getOIDCCallbackURL)
+	if err != nil {
+		return fmt.Errorf("OIDC initialization error: %v", err)
 	}
 
 	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)

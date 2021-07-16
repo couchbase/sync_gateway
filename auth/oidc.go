@@ -246,30 +246,34 @@ func (opm OIDCProviderMap) Stop() {
 	}
 }
 
-func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OIDCClient {
-	// Initialize the client on first request. If the callback URL isn't defined for the provider,
-	// uses buildCallbackURLFunc to construct (based on current request)
-	if !op.clientInit.IsTrue() { // If client not initialized
-		op.clientInitLock.Lock()
-		if !op.clientInit.IsTrue() {
-			var err error
-			// If the redirect URL is not defined for the provider generate it from the
-			// handler request and set it on the provider
-			if op.CallbackURL == nil || *op.CallbackURL == "" {
-				callbackURL := buildCallbackURLFunc(op.Name, op.IsDefault)
-				if callbackURL != "" {
-					op.CallbackURL = &callbackURL
-				}
-			}
-			if err = op.initOIDCClient(); err != nil {
-				base.Errorf("Unable to initialize OIDC client: %v", err)
-			} else {
-				op.clientInit.Set(true)
-			}
-		}
-		op.clientInitLock.Unlock()
+// GetClient initializes the client on first successful request.
+func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) (*OIDCClient, error) {
+	// If the callback URL isn't defined for the provider, uses buildCallbackURLFunc to construct (based on current request)
+
+	if op.clientInit.IsTrue() { // If client not initialized
+		return op.client, nil
 	}
-	return op.client
+	// Acquire lock
+	op.clientInitLock.Lock()
+	defer op.clientInitLock.Unlock()
+
+	if op.clientInit.IsTrue() { // Make sure past thread didn't init in lock
+		return op.client, nil
+	}
+
+	// If the redirect URL is not defined for the provider generate it from the
+	// handler request and set it on the provider
+	if op.CallbackURL == nil || *op.CallbackURL == "" {
+		callbackURL := buildCallbackURLFunc(op.Name, op.IsDefault)
+		if callbackURL != "" {
+			op.CallbackURL = &callbackURL
+		}
+	}
+	if err := op.initOIDCClient(); err != nil {
+		return nil, err
+	}
+	op.clientInit.Set(true)
+	return op.client, nil
 }
 
 // To support multiple providers referencing the same issuer, the user prefix used to build the SG usernames for

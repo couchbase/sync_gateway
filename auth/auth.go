@@ -649,9 +649,9 @@ func (auth *Authenticator) AuthenticateUntrustedJWT(token string, providers OIDC
 // Returns identity claims extracted from the token if the verification is successful and an identity error if not.
 func verifyToken(token string, provider *OIDCProvider, callbackURLFunc OIDCCallbackURLFunc) (identity *Identity, err error) {
 	// Get client for issuer
-	client := provider.GetClient(callbackURLFunc)
-	if client == nil {
-		return nil, fmt.Errorf("OIDC client was not initialized")
+	client, err := provider.GetClient(callbackURLFunc)
+	if err != nil {
+		return nil, fmt.Errorf("OIDC initialization error: %v", err)
 	}
 
 	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
