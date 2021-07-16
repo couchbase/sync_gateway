@@ -72,7 +72,7 @@ type BucketConfig struct {
 
 func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
 
-	server := "http://localhost:8091"
+	server := ""
 	bucketName := ""
 	tlsPort := 11207
 
@@ -828,11 +828,6 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		return nil, fmt.Errorf("error setting up logging: %v", err)
 	}
 
-	if err := config.validateServerProvided(); err != nil {
-		base.Consolef(base.LevelError, base.KeyConfig, err.Error())
-		return nil, err
-	}
-
 	base.FlushLoggerBuffers()
 
 	base.Infof(base.KeyAll, "Logging: Console level: %v", base.ConsoleLogLevel())
@@ -840,6 +835,11 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 	base.Infof(base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
 	if err := setGlobalConfig(config); err != nil {
+		return nil, err
+	}
+
+	if err := config.validateServerProvided(); err != nil {
+		base.Errorf("Config: ", err.Error())
 		return nil, err
 	}
 
