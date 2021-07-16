@@ -88,7 +88,8 @@ func TestSetGetRaw(t *testing.T) {
 		key := t.Name()
 		val := []byte("bar")
 
-		_, _, err := bucket.GetRaw(key)
+		var body []byte
+		_, err := bucket.Get(key, &body)
 		if err == nil {
 			t.Errorf("Key should not exist yet, expected error but got nil")
 		}
@@ -113,11 +114,6 @@ func TestAddRaw(t *testing.T) {
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 		val := []byte("bar")
-
-		_, _, err := bucket.GetRaw(key)
-		if err == nil {
-			t.Errorf("Key should not exist yet, expected error but got nil")
-		}
 
 		added, err := bucket.AddRaw(key, 0, val)
 		if err != nil {
@@ -184,7 +180,8 @@ func TestWriteCasBasic(t *testing.T) {
 		key := t.Name()
 		val := []byte("bar2")
 
-		_, _, err := bucket.GetRaw(key)
+		var body []byte
+		_, err := bucket.Get(key, &body)
 		if err == nil {
 			t.Errorf("Key should not exist yet, expected error but got nil")
 		}
@@ -219,7 +216,8 @@ func TestWriteCasAdvanced(t *testing.T) {
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 		key := t.Name()
 
-		_, _, err := bucket.GetRaw(key)
+		var body []byte
+		_, err := bucket.Get(key, &body)
 		if err == nil {
 			t.Errorf("Key should not exist yet, expected error but got nil")
 		}
@@ -1036,7 +1034,8 @@ func TestXattrDeleteDocument(t *testing.T) {
 		xattrVal["rev"] = "1-1234"
 
 		key := t.Name()
-		_, _, err := bucket.GetRaw(key)
+		var body []byte
+		_, err := bucket.Get(key, &body)
 		if err == nil {
 			log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
 			require.NoError(t, bucket.Delete(key))
@@ -1085,7 +1084,8 @@ func TestXattrDeleteDocumentUpdate(t *testing.T) {
 		xattrVal["rev"] = "1-1234"
 
 		key := t.Name()
-		_, _, err := bucket.GetRaw(key)
+		var body []byte
+		_, err := bucket.Get(key, &body)
 		if err == nil {
 			log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
 			require.NoError(t, bucket.Delete(key))
@@ -1152,7 +1152,8 @@ func TestXattrDeleteDocumentAndUpdateXattr(t *testing.T) {
 		xattrVal["rev"] = "1-1234"
 
 		key := t.Name()
-		_, _, err := bucket.GetRaw(key)
+		var body []byte
+		_, err := bucket.Get(key, &body)
 		if err == nil {
 			log.Printf("Key should not exist yet, expected error but got nil.  Doing cleanup, assuming couchbase bucket testing")
 			require.NoError(t, bucket.DeleteWithXattr(key, xattrName))
@@ -2099,7 +2100,8 @@ func createTombstonedDoc(bucket sgbucket.DataStore, key, xattrName string) {
 	xattrVal["seq"] = 123
 	xattrVal["rev"] = "1-1234"
 
-	_, _, err := bucket.GetRaw(key)
+	var body []byte
+	_, err := bucket.Get(key, &body)
 	if err == nil {
 		panic(fmt.Sprintf("Expected empty bucket"))
 	}
