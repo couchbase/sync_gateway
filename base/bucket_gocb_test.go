@@ -2345,7 +2345,7 @@ func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
 
 // TestRawBackwardCompatibilityFromBinary ensures that bucket implementation handles the case
 // where legacy SG versions set incorrect data types:
-//    - write as binary, read as JSON, rewrite as JSON
+//    - write as binary, read as raw JSON, rewrite as raw JSON
 func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 
 	if UnitTestUrlIsWalrus() {

@@ -156,7 +156,8 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			assert.NoError(t, err, "Error unmarshalling body")
 
 			// Set the expiry value
-			existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
+			syncMetaExpiryUnix := syncMetaExpiry.Unix()
+			existingBucketDoc.Expiry = uint32(syncMetaExpiryUnix)
 
 			// Perform an SDK update to turn existingBucketDoc into a stale doc
 			laterExpiryDuration := time.Minute * 60
@@ -184,9 +185,10 @@ func TestImportWithStaleBucketDocCorrectExpiry(t *testing.T) {
 			// Verify the expiry has been preserved after the import
 			cbStore, _ := base.AsCouchbaseStore(db.Bucket)
 			expiry, err := cbStore.GetExpiry(key)
-			assert.NoError(t, err, "Error calling GetExpiry()")
-			goassert.True(t, expiry == uint32(laterSyncMetaExpiry.Unix()))
-
+			require.NoError(t, err, "Error calling GetExpiry()")
+			updatedExpiryDuration := base.CbsExpiryToDuration(expiry)
+			assert.True(t, updatedExpiryDuration > expiryDuration)
+			assert.True(t, updatedExpiryDuration <= laterExpiryDuration)
 		})
 	}
 }

@@ -173,7 +173,7 @@ func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
 
 func (c *Collection) Get(k string, rv interface{}) (cas uint64, err error) {
 	getOptions := &gocb.GetOptions{
-		Transcoder: SGJsonTranscoder(rv),
+		Transcoder: NewSGJSONTranscoder(),
 	}
 	getResult, err := c.Collection.Get(k, getOptions)
 	if err != nil {
@@ -200,7 +200,7 @@ func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64
 	getAndTouchOptions := &gocb.GetAndTouchOptions{
 		Transcoder: NewSGRawTranscoder(),
 	}
-	getAndTouchRawResult, getErr := c.Collection.GetAndTouch(k, expAsDuration(exp), getAndTouchOptions)
+	getAndTouchRawResult, getErr := c.Collection.GetAndTouch(k, CbsExpiryToDuration(exp), getAndTouchOptions)
 	if getErr != nil {
 		return nil, 0, getErr
 	}
@@ -210,7 +210,7 @@ func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64
 }
 
 func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
-	result, err := c.Collection.Touch(k, expAsDuration(exp), nil)
+	result, err := c.Collection.Touch(k, CbsExpiryToDuration(exp), nil)
 	if err != nil {
 		return 0, err
 	}
@@ -219,8 +219,8 @@ func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
 
 func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	opts := &gocb.InsertOptions{
-		Expiry:     expAsDuration(exp),
-		Transcoder: SGJsonTranscoder(v),
+		Expiry:     CbsExpiryToDuration(exp),
+		Transcoder: NewSGJSONTranscoder(),
 	}
 	_, gocbErr := c.Collection.Insert(k, v, opts)
 	if gocbErr != nil {
@@ -235,7 +235,7 @@ func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err e
 
 func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	opts := &gocb.InsertOptions{
-		Expiry:     expAsDuration(exp),
+		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGRawTranscoder(),
 	}
 	_, gocbErr := c.Collection.Insert(k, v, opts)
@@ -251,8 +251,8 @@ func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err err
 
 func (c *Collection) Set(k string, exp uint32, v interface{}) error {
 	upsertOptions := &gocb.UpsertOptions{
-		Expiry:     expAsDuration(exp),
-		Transcoder: SGJsonTranscoder(v),
+		Expiry:     CbsExpiryToDuration(exp),
+		Transcoder: NewSGJSONTranscoder(),
 	}
 	if _, ok := v.([]byte); ok {
 		upsertOptions.Transcoder = gocb.NewRawJSONTranscoder()
@@ -264,7 +264,7 @@ func (c *Collection) Set(k string, exp uint32, v interface{}) error {
 
 func (c *Collection) SetRaw(k string, exp uint32, v []byte) error {
 	upsertOptions := &gocb.UpsertOptions{
-		Expiry:     expAsDuration(exp),
+		Expiry:     CbsExpiryToDuration(exp),
 		Transcoder: NewSGRawTranscoder(),
 	}
 	_, err := c.Collection.Upsert(k, v, upsertOptions)
@@ -275,8 +275,8 @@ func (c *Collection) WriteCas(k string, flags int, exp uint32, cas uint64, v int
 	var result *gocb.MutationResult
 	if cas == 0 {
 		insertOpts := &gocb.InsertOptions{
-			Expiry:     expAsDuration(exp),
-			Transcoder: SGJsonTranscoder(v),
+			Expiry:     CbsExpiryToDuration(exp),
+			Transcoder: NewSGJSONTranscoder(),
 		}
 		if opt == sgbucket.Raw {
 			insertOpts.Transcoder = gocb.NewRawBinaryTranscoder()
@@ -285,8 +285,8 @@ func (c *Collection) WriteCas(k string, flags int, exp uint32, cas uint64, v int
 	} else {
 		replaceOpts := &gocb.ReplaceOptions{
 			Cas:        gocb.Cas(cas),
-			Expiry:     expAsDuration(exp),
-			Transcoder: SGJsonTranscoder(v),
+			Expiry:     CbsExpiryToDuration(exp),
+			Transcoder: NewSGJSONTranscoder(),
 		}
 		if opt == sgbucket.Raw {
 			replaceOpts.Transcoder = gocb.NewRawBinaryTranscoder()
@@ -358,7 +358,7 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 			// go back through the cas loop
 			insertOpts := &gocb.InsertOptions{
 				Transcoder: gocb.NewRawJSONTranscoder(),
-				Expiry:     expAsDuration(exp),
+				Expiry:     CbsExpiryToDuration(exp),
 			}
 			result, err = c.Collection.Insert(k, value, insertOpts)
 			if err == nil {
@@ -379,7 +379,7 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 				replaceOptions := &gocb.ReplaceOptions{
 					Transcoder: gocb.NewRawJSONTranscoder(),
 					Cas:        gocb.Cas(cas),
-					Expiry:     expAsDuration(exp),
+					Expiry:     CbsExpiryToDuration(exp),
 				}
 				result, err = c.Collection.Replace(k, value, replaceOptions)
 				if err == nil {
@@ -404,7 +404,7 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 	incrOptions := gocb.IncrementOptions{
 		Initial: int64(def),
 		Delta:   amt,
-		Expiry:  expAsDuration(exp),
+		Expiry:  CbsExpiryToDuration(exp),
 	}
 	incrResult, err := c.Collection.Binary().Increment(k, &incrOptions)
 	if err != nil {
@@ -455,10 +455,6 @@ func (c *Collection) getConfigSnapshot() (*gocbcore.ConfigSnapshot, error) {
 		return nil, fmt.Errorf("no router config snapshot: %w", configErr)
 	}
 	return config, nil
-}
-
-func expAsDuration(exp uint32) time.Duration {
-	return time.Duration(exp) * time.Second
 }
 
 func (c *Collection) IsError(err error, errorType sgbucket.DataStoreErrorType) bool {
@@ -655,13 +651,60 @@ func (c *Collection) mgmtRequest(method, uri, contentType string, body io.Reader
 	return c.HttpClient().Do(req)
 }
 
-// SGJsonTranscoder uses a SGRawTranscoder when the requested type is []byte or *[]byte
-func SGJsonTranscoder(value interface{}) gocb.Transcoder {
+// SGJsonTranscoder reads and writes JSON, with relaxed datatype restrictions on decode, and
+// embedded support for writing raw JSON on encode
+type SGJSONTranscoder struct {
+}
+
+func NewSGJSONTranscoder() *SGJSONTranscoder {
+	return &SGJSONTranscoder{}
+}
+
+// SGJSONTranscoder supports reading BinaryType documents as JSON, for backward
+// compatibility with legacy Sync Gateway data
+func (t *SGJSONTranscoder) Decode(bytes []byte, flags uint32, out interface{}) error {
+	valueType, compression := gocbcore.DecodeCommonFlags(flags)
+
+	// Make sure compression is disabled
+	if compression != gocbcore.NoCompression {
+		return errors.New("unexpected value compression")
+	}
+	// Type-based decoding
+	if valueType == gocbcore.BinaryType {
+		switch typedOut := out.(type) {
+		case *[]byte:
+			*typedOut = bytes
+			return nil
+		case *interface{}:
+			*typedOut = bytes
+			return nil
+		case *string:
+			*typedOut = string(bytes)
+			return nil
+		default:
+			return errors.New("you must encode raw JSON data in a byte array or string")
+		}
+	} else if valueType == gocbcore.StringType {
+		return gocb.NewRawStringTranscoder().Decode(bytes, flags, out)
+	} else if valueType == gocbcore.JSONType {
+		switch out.(type) {
+		case []byte, *[]byte:
+			return gocb.NewRawJSONTranscoder().Decode(bytes, flags, out)
+		default:
+			return gocb.NewJSONTranscoder().Decode(bytes, flags, out)
+		}
+	}
+
+	return errors.New("unexpected expectedFlags value")
+}
+
+// SGJSONTranscoder.Encode supports writing JSON as either raw bytes or an unmarshalled interface
+func (t *SGJSONTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
 	switch value.(type) {
 	case []byte, *[]byte:
-		return NewSGRawTranscoder()
+		return gocb.NewRawJSONTranscoder().Encode(value)
 	default:
-		return nil // gocb will use default JSONTranscoder
+		return gocb.NewJSONTranscoder().Encode(value)
 	}
 }
 

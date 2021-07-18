@@ -2356,7 +2356,9 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	defer db.Close()
 
 	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
-	require.True(t, ok)
+	if !ok {
+		t.Skip("GoCB bucket required for cluster compatibility override")
+	}
 
 	// Set something lower than version required for CreateAsDeleted subdoc flag
 	gocbBucket.OverrideClusterCompatVersion(5, 5)
