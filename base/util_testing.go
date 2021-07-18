@@ -118,6 +118,15 @@ func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 
 	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
 
+	// If walrus, use bucket as-is
+	if !TestUseCouchbaseServer() {
+		return &TestBucket{
+			Bucket:     bucket,
+			BucketSpec: spec,
+			closeFn:    closeFn,
+		}
+	}
+
 	// If the spec being used by the test bucket pool matches the requested, use that
 	if spec.CouchbaseDriver == driver {
 		closeAll := func() {
