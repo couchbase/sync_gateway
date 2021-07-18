@@ -2005,6 +2005,10 @@ func TestCouchbaseServerIncorrectX509Login(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	if TestClusterDriver() == GoCBv2 {
+		t.Skip("This test doesn't work using GoCBv2")
+	}
+
 	testBucket := GetTestBucket(t)
 	defer testBucket.Close()
 

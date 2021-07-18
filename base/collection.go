@@ -45,7 +45,10 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
-	username, password, _ := spec.Auth.GetCredentials()
+	var username, password string
+	if spec.Auth != nil {
+		username, password, _ = spec.Auth.GetCredentials()
+	}
 	authenticatorConfig, isX509, err := GoCBv2AuthenticatorConfig(username, password, spec.Certpath, spec.Keypath)
 	if err != nil {
 		return nil, err
@@ -62,6 +65,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		Authenticator:  authenticatorConfig,
 		SecurityConfig: securityConfig,
 		TimeoutsConfig: timeoutsConfig,
+		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
 	}
 
 	if spec.KvPoolSize > 0 {
@@ -74,7 +78,18 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
-	// TODO: Cluster compatibility not exposed, need to make manual /pools/default/ call?
+	err = cluster.WaitUntilReady(time.Second*5, &gocb.WaitUntilReadyOptions{
+		DesiredState:  gocb.ClusterStateOnline,
+		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
+		RetryStrategy: &goCBv2FailFastRetryStrategy{},
+	})
+	if err != nil {
+		if errors.Is(err, gocb.ErrAuthenticationFailure) {
+			return nil, ErrAuthError
+		}
+		Warnf("Error waiting for cluster to be ready: %v", err)
+		return nil, err
+	}
 
 	// Connect to bucket
 	bucket := cluster.Bucket(spec.BucketName)

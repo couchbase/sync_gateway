@@ -116,6 +116,9 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 	goCBBucket, err := cluster.OpenBucket(spec.BucketName, bucketPassword)
 	if err != nil {
 		Infof(KeyAll, "Error opening bucket %s: %v", spec.BucketName, err)
+		if pkgerrors.Cause(err) == gocb.ErrAuthError {
+			return nil, ErrAuthError
+		}
 		return nil, pkgerrors.WithStack(err)
 	}
 	Infof(KeyAll, "Successfully opened bucket %s", spec.BucketName)

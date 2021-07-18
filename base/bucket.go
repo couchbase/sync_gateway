@@ -119,6 +119,20 @@ func (couchbaseDriver CouchbaseDriver) String() string {
 	}
 }
 
+func AsCouchbaseDriver(d string) CouchbaseDriver {
+	switch d {
+	case "GoCB":
+		return GoCB
+	case "GoCBCustomSGTranscoder":
+		return GoCBCustomSGTranscoder
+	case "GoCBv2":
+		return GoCBv2
+	default:
+		return GoCBv2
+	}
+
+}
+
 func init() {
 	// Increase max memcached request size to 20M bytes, to support large docs (attachments!)
 	// arriving in a tap feed. (see issues #210, #333, #342)
@@ -368,7 +382,7 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		}
 
 		if err != nil {
-			if pkgerrors.Cause(err) == gocbV1.ErrAuthError {
+			if pkgerrors.Cause(err) == ErrAuthError {
 				Warnf("Unable to authenticate as user %q: %v", UD(username), err)
 				return nil, ErrFatalBucketConnection
 			}
@@ -420,12 +434,12 @@ func IsCasMismatch(err error) bool {
 	unwrappedErr := pkgerrors.Cause(err)
 
 	// GoCB handling
-	if unwrappedErr == gocbV1.ErrKeyExists {
+	if unwrappedErr == gocbV1.ErrKeyExists || unwrappedErr == gocbV1.ErrNotStored {
 		return true
 	}
 
 	// GoCB V2 handling
-	if isKVError(unwrappedErr, memd.StatusKeyExists) {
+	if isKVError(unwrappedErr, memd.StatusKeyExists) || isKVError(unwrappedErr, memd.StatusNotStored) {
 		return true
 	}
 

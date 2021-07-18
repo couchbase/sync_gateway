@@ -36,6 +36,7 @@ var (
 	ErrImportCancelledFilter = &sgError{"Import cancelled based on import filter"}
 	ErrDocumentMigrated      = &sgError{"Document migrated"}
 	ErrFatalBucketConnection = &sgError{"Fatal error connecting to bucket"}
+	ErrAuthError             = &sgError{"Authentication failure"}
 	ErrEmptyMetadata         = &sgError{"Empty Sync Gateway metadata"}
 	ErrCasFailureShouldRetry = &sgError{"CAS failure should retry"}
 	ErrIndexerError          = &sgError{"Indexer error"}
