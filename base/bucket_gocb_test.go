@@ -2299,3 +2299,82 @@ func TestInsertTombstoneWithXattr(t *testing.T) {
 		assert.Equal(t, "0x00000000", xattrResult[xattrMacroValueCrc32c])
 	})
 }
+
+// TestRawBackwardCompatibilityFromJSON ensures that bucket implementation handles the case
+// where legacy SG versions set incorrect data types:
+//    - write as JSON, read as binary, (re-)write as binary
+func TestRawBackwardCompatibilityFromJSON(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
+	}
+
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		key := t.Name()
+		val := []byte(`{"foo":"bar"}`)
+		updatedVal := []byte(`{"foo":"bars"}`)
+
+		var body []byte
+		_, err := bucket.Get(key, &body)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		// Write as JSON
+		setErr := bucket.Set(key, 0, val)
+		assert.NoError(t, setErr)
+
+		// Read as binary
+		rv, _, getRawErr := bucket.GetRaw(key)
+		assert.NoError(t, getRawErr)
+		if string(rv) != string(val) {
+			t.Errorf("%v != %v", string(rv), string(val))
+		}
+
+		// Write as binary
+		setRawErr := bucket.SetRaw(key, 0, updatedVal)
+		assert.NoError(t, setRawErr)
+
+	})
+}
+
+// TestRawBackwardCompatibilityFromBinary ensures that bucket implementation handles the case
+// where legacy SG versions set incorrect data types:
+//    - write as binary, read as JSON, rewrite as JSON
+func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("RawBackwardCompatibility tests depend on couchbase transcoding")
+	}
+
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		key := t.Name()
+		val := []byte(`{"foo":"bar"}`)
+		updatedVal := []byte(`{"foo":"bars"}`)
+
+		var body []byte
+		_, err := bucket.Get(key, &body)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		// Write as binary
+		err = bucket.SetRaw(key, 0, val)
+		assert.NoError(t, err)
+
+		// Read as raw JSON
+		var rv []byte
+		_, getErr := bucket.Get(key, &rv)
+		assert.NoError(t, getErr)
+		if string(rv) != string(val) {
+			t.Errorf("%v != %v", string(rv), string(val))
+		}
+
+		// Write as raw JSON
+		setErr := bucket.Set(key, 0, updatedVal)
+		assert.NoError(t, setErr)
+
+	})
+}

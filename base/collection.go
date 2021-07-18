@@ -158,7 +158,7 @@ func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
 
 func (c *Collection) Get(k string, rv interface{}) (cas uint64, err error) {
 	getOptions := &gocb.GetOptions{
-		Transcoder: getTranscoder(rv),
+		Transcoder: SGJsonTranscoder(rv),
 	}
 	getResult, err := c.Collection.Get(k, getOptions)
 	if err != nil {
@@ -170,7 +170,7 @@ func (c *Collection) Get(k string, rv interface{}) (cas uint64, err error) {
 
 func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
 	getOptions := &gocb.GetOptions{
-		Transcoder: gocb.NewRawBinaryTranscoder(),
+		Transcoder: NewSGRawTranscoder(),
 	}
 	getRawResult, getErr := c.Collection.Get(k, getOptions)
 	if getErr != nil {
@@ -183,7 +183,7 @@ func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
 
 func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
 	getAndTouchOptions := &gocb.GetAndTouchOptions{
-		Transcoder: gocb.NewRawBinaryTranscoder(),
+		Transcoder: NewSGRawTranscoder(),
 	}
 	getAndTouchRawResult, getErr := c.Collection.GetAndTouch(k, expAsDuration(exp), getAndTouchOptions)
 	if getErr != nil {
@@ -205,7 +205,7 @@ func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
 func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	opts := &gocb.InsertOptions{
 		Expiry:     expAsDuration(exp),
-		Transcoder: getTranscoder(v),
+		Transcoder: SGJsonTranscoder(v),
 	}
 	_, gocbErr := c.Collection.Insert(k, v, opts)
 	if gocbErr != nil {
@@ -221,7 +221,7 @@ func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err e
 func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	opts := &gocb.InsertOptions{
 		Expiry:     expAsDuration(exp),
-		Transcoder: gocb.NewRawBinaryTranscoder(),
+		Transcoder: NewSGRawTranscoder(),
 	}
 	_, gocbErr := c.Collection.Insert(k, v, opts)
 	if gocbErr != nil {
@@ -237,7 +237,7 @@ func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err err
 func (c *Collection) Set(k string, exp uint32, v interface{}) error {
 	upsertOptions := &gocb.UpsertOptions{
 		Expiry:     expAsDuration(exp),
-		Transcoder: getTranscoder(v),
+		Transcoder: SGJsonTranscoder(v),
 	}
 	if _, ok := v.([]byte); ok {
 		upsertOptions.Transcoder = gocb.NewRawJSONTranscoder()
@@ -250,7 +250,7 @@ func (c *Collection) Set(k string, exp uint32, v interface{}) error {
 func (c *Collection) SetRaw(k string, exp uint32, v []byte) error {
 	upsertOptions := &gocb.UpsertOptions{
 		Expiry:     expAsDuration(exp),
-		Transcoder: gocb.NewRawBinaryTranscoder(),
+		Transcoder: NewSGRawTranscoder(),
 	}
 	_, err := c.Collection.Upsert(k, v, upsertOptions)
 	return err
@@ -261,7 +261,7 @@ func (c *Collection) WriteCas(k string, flags int, exp uint32, cas uint64, v int
 	if cas == 0 {
 		insertOpts := &gocb.InsertOptions{
 			Expiry:     expAsDuration(exp),
-			Transcoder: getTranscoder(v),
+			Transcoder: SGJsonTranscoder(v),
 		}
 		if opt == sgbucket.Raw {
 			insertOpts.Transcoder = gocb.NewRawBinaryTranscoder()
@@ -271,7 +271,7 @@ func (c *Collection) WriteCas(k string, flags int, exp uint32, cas uint64, v int
 		replaceOpts := &gocb.ReplaceOptions{
 			Cas:        gocb.Cas(cas),
 			Expiry:     expAsDuration(exp),
-			Transcoder: getTranscoder(v),
+			Transcoder: SGJsonTranscoder(v),
 		}
 		if opt == sgbucket.Raw {
 			replaceOpts.Transcoder = gocb.NewRawBinaryTranscoder()
@@ -638,4 +638,51 @@ func (c *Collection) mgmtRequest(method, uri, contentType string, body io.Reader
 	}
 
 	return c.HttpClient().Do(req)
+}
+
+// SGJsonTranscoder uses a SGRawTranscoder when the requested type is []byte or *[]byte
+func SGJsonTranscoder(value interface{}) gocb.Transcoder {
+	switch value.(type) {
+	case []byte, *[]byte:
+		return NewSGRawTranscoder()
+	default:
+		return nil // gocb will use default JSONTranscoder
+	}
+}
+
+// SGBinaryTranscoder uses the appropriate raw transcoder for the data type.  Provides backward compatibility
+// for pre-3.0 documents intended to be binary but written with JSON datatype, and vice versa
+type SGRawTranscoder struct {
+}
+
+// NewRawBinaryTranscoder returns a new RawBinaryTranscoder.
+func NewSGRawTranscoder() *SGRawTranscoder {
+	return &SGRawTranscoder{}
+}
+
+// Decode applies raw binary transcoding behaviour to decode into a Go type.
+func (t *SGRawTranscoder) Decode(bytes []byte, flags uint32, out interface{}) error {
+	valueType, compression := gocbcore.DecodeCommonFlags(flags)
+
+	// Make sure compression is disabled
+	if compression != gocbcore.NoCompression {
+		return errors.New("unexpected value compression")
+	}
+	// Normal types of decoding
+	if valueType == gocbcore.BinaryType {
+		return gocb.NewRawBinaryTranscoder().Decode(bytes, flags, out)
+	} else if valueType == gocbcore.StringType {
+		return gocb.NewRawStringTranscoder().Decode(bytes, flags, out)
+		return errors.New("only binary datatype is supported by RawBinaryTranscoder")
+	} else if valueType == gocbcore.JSONType {
+		return gocb.NewRawJSONTranscoder().Decode(bytes, flags, out)
+	}
+
+	return errors.New("unexpected expectedFlags value")
+}
+
+// Encode applies raw binary transcoding behaviour to encode a Go type.
+func (t *SGRawTranscoder) Encode(value interface{}) ([]byte, uint32, error) {
+	return gocb.NewRawBinaryTranscoder().Encode(value)
+
 }

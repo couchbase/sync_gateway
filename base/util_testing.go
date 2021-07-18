@@ -115,37 +115,47 @@ func GetPersistentWalrusBucket(t testing.TB) (*TestBucket, func()) {
 }
 
 func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
-	if driver == GoCBv2 {
-		// Reserve test bucket from pool
-		_, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
 
-		spec.CouchbaseDriver = GoCBv2
-		if spec.Server == kTestCouchbaseServerURL {
-			spec.Server = "couchbase://localhost"
-		}
-		if !strings.HasPrefix(spec.Server, "couchbase") {
-			closeFn()
-			t.Fatalf("Server must use couchbase scheme for gocb v2 testing")
-		}
+	bucket, spec, closeFn := GTestBucketPool.GetTestBucketAndSpec(t)
 
-		collection, err := GetCouchbaseCollection(spec)
-		if err != nil {
-			t.Fatalf("Unable to get collection: %v", collection)
-		}
-
+	// If the spec being used by the test bucket pool matches the requested, use that
+	if spec.CouchbaseDriver == driver {
 		closeAll := func() {
-			collection.Close()
+			bucket.Close()
 			closeFn()
 		}
-
 		return &TestBucket{
-			Bucket:     collection,
+			Bucket:     bucket,
 			BucketSpec: spec,
 			closeFn:    closeAll,
 		}
+	}
 
-	} else {
-		return GetTestBucket(t)
+	// Otherwise, open a bucket for the requested driver based on the connection
+	// information from the pool bucket
+	spec.CouchbaseDriver = driver
+	if spec.Server == kTestCouchbaseServerURL {
+		spec.Server = "couchbase://localhost"
+	}
+	if !strings.HasPrefix(spec.Server, "couchbase") {
+		closeFn()
+		t.Fatalf("Server must use couchbase scheme for gocb testing")
+	}
+
+	store, err := GetBucket(spec)
+	if err != nil {
+		t.Fatalf("Unable to get store for driver %s: %v", driver, err)
+	}
+
+	closeAll := func() {
+		store.Close()
+		closeFn()
+	}
+
+	return &TestBucket{
+		Bucket:     store,
+		BucketSpec: spec,
+		closeFn:    closeAll,
 	}
 }
 
@@ -457,7 +467,7 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataS
 	}
 	dataStores = append(dataStores, dataStore{
 		name:   "gocb.v1",
-		driver: GoCB,
+		driver: GoCBCustomSGTranscoder,
 	})
 
 	for _, dataStore := range dataStores {
