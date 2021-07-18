@@ -2058,6 +2058,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 
 	body := Body{"name": "Bob", "age": 52}
 	_, _, err := db.Put("doc1", body)
+	require.Error(t, err)
 	assert.Equal(t, "409 Document exists", err.Error())
 
 	doc, err := db.GetDocument("doc1", DocUnmarshalAll)

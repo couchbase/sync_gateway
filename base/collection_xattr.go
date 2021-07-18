@@ -215,7 +215,7 @@ func (c *Collection) SubdocInsertBodyAndXattr(k string, xattrKey string, exp uin
 	}
 	options := &gocb.MutateInOptions{
 		Expiry:        CbsExpiryToDuration(exp),
-		StoreSemantic: gocb.StoreSemanticsUpsert,
+		StoreSemantic: gocb.StoreSemanticsInsert,
 	}
 	result, mutateErr := c.MutateIn(k, mutateOps, options)
 	if mutateErr != nil {
