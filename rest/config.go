@@ -833,19 +833,18 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	return errorMessages
 }
 
-// Validate insecure connections
-func (sc *StartupConfig) validateInsecureTLSConnection() (err error) {
+func (sc *StartupConfig) validate() (errorMessages error) {
 	// Validate SSL is provided if not allowing unsecure connections
 	if sc.API.HTTPS.AllowInsecureTLSConnections == nil || !*sc.API.HTTPS.AllowInsecureTLSConnections {
 		if sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "" {
-			return fmt.Errorf("a TLS key and cert path must be provided when not allowing insecure TLS connections")
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("a TLS key and cert path must be provided when not allowing insecure TLS connections"))
 		}
 	} else { // Make sure TLS key and cert is not provided
 		if sc.API.HTTPS.TLSKeyPath != "" || sc.API.HTTPS.TLSCertPath != "" {
-			return fmt.Errorf("cannot use TLS and also use insecure TLS connections")
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot use TLS and also use insecure TLS connections"))
 		}
 	}
-	return nil
+	return errorMessages
 }
 
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
@@ -870,8 +869,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		return nil, err
 	}
 
-	if err := config.validateInsecureTLSConnection(); err != nil {
-		base.Errorf("Config: %v", err)
+	if err := config.validate(); err != nil {
 		return nil, err
 	}
 
