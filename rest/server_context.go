@@ -165,7 +165,6 @@ func (sc *ServerContext) Close() {
 		ctx.Close()
 		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", &sc.config.API.AdminInterface)
 	}
-
 	sc.databases_ = nil
 
 	for _, s := range sc._httpServers {
@@ -174,6 +173,7 @@ func (sc *ServerContext) Close() {
 			base.Warnf("Error closing HTTP server %q: %v", s.Addr, err)
 		}
 	}
+	sc._httpServers = nil
 
 	if sc.bootstrapConnection != nil {
 		if err := sc.bootstrapConnection.Close(); err != nil {
