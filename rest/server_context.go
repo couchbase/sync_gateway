@@ -297,9 +297,6 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 
 	if serverConfig.Unsupported.ServerTLSSkipVerify != nil {
 		spec.TLSSkipVerify = *serverConfig.Unsupported.ServerTLSSkipVerify
-		if spec.TLSSkipVerify && spec.CACertPath != "" {
-			return base.BucketSpec{}, errors.New("cannot skip server TLS validation and use CA Cert")
-		}
 	}
 
 	if spec.BucketName == "" {

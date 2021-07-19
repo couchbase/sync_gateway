@@ -830,6 +830,13 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	return errorMessages
 }
 
+func (sc *StartupConfig) validate() (errorMessages error) {
+	if sc.Unsupported.ServerTLSSkipVerify != nil && *sc.Unsupported.ServerTLSSkipVerify && sc.Bootstrap.CACertPath != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot skip server TLS validation and use CA Cert"))
+	}
+	return errorMessages
+}
+
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
 func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
 	// Logging config will now have been loaded from command line
