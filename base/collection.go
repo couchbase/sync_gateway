@@ -15,13 +15,11 @@ import (
 	"expvar"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
-	"github.com/couchbase/gocbcore"
-
 	"github.com/couchbase/gocb"
+	"github.com/couchbase/gocbcore"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )
@@ -31,8 +29,6 @@ var _ CouchbaseStore = &Collection{}
 
 // Connect to the default collection for the specified bucket
 func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
-
-	log.Printf("getting collection with spec: %+v", spec)
 
 	connString, err := spec.GetGoCBConnString()
 	if err != nil {
@@ -352,6 +348,7 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 
 		var casGoCB gocb.Cas
 		var result *gocb.MutationResult
+		casRetry := false
 		if cas == 0 {
 			// If the Get fails, the cas will be 0 and so call Insert().
 			// If we get an error on the insert, due to a race, this will
@@ -363,6 +360,8 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 			result, err = c.Collection.Insert(k, value, insertOpts)
 			if err == nil {
 				casGoCB = result.Cas()
+			} else if errors.Is(err, gocb.ErrDocumentExists) {
+				casRetry = true
 			}
 		} else {
 			if value == nil && isDelete {
@@ -372,6 +371,8 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 				result, err = c.Collection.Remove(k, removeOptions)
 				if err == nil {
 					casGoCB = result.Cas()
+				} else if errors.Is(err, gocb.ErrCasMismatch) {
+					casRetry = true
 				}
 			} else {
 				// Otherwise, attempt to do a replace.  won't succeed if
@@ -384,11 +385,13 @@ func (c *Collection) Update(k string, exp uint32, callback sgbucket.UpdateFunc) 
 				result, err = c.Collection.Replace(k, value, replaceOptions)
 				if err == nil {
 					casGoCB = result.Cas()
+				} else if errors.Is(err, gocb.ErrCasMismatch) {
+					casRetry = true
 				}
 			}
 		}
 
-		if errors.Is(err, gocb.ErrDocumentExists) {
+		if casRetry {
 			// retry on cas failure
 		} else {
 			// err will be nil if successful

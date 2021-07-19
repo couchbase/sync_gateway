@@ -62,11 +62,13 @@ func TestSetGet(t *testing.T) {
 		val := make(map[string]interface{}, 0)
 		val["foo"] = "bar"
 
+		rawVal := []byte(`{{"foo":"bar"}`)
+
 		var rVal map[string]interface{}
 		_, err := bucket.Get(key, &rVal)
 		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
 
-		err = bucket.Set(key, 0, val)
+		err = bucket.Set(key, 0, rawVal)
 		assert.NoError(t, err, "Error calling Set()")
 
 		_, err = bucket.Get(key, &rVal)
@@ -295,6 +297,96 @@ func TestUpdate(t *testing.T) {
 		state, ok = rv["state"]
 		assert.True(t, ok, "expected state property not present")
 		assert.Equal(t, "updated", state)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
+}
+
+func TestUpdateCASFailure(t *testing.T) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+		key := t.Name()
+		valInitial := []byte(`{"state":"initial"}`)
+		valCasMismatch := []byte(`{"state":"casMismatch"}`)
+		valUpdated := []byte(`{"state":"updated"}`)
+
+		var rv map[string]interface{}
+		_, err := bucket.Get(key, &rv)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		// Initialize document
+		setErr := bucket.Set(key, 0, valInitial)
+		assert.NoError(t, setErr)
+
+		triggerCasFail := true
+		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			if triggerCasFail == true {
+				// mutate the document to trigger cas failure
+				setErr := bucket.Set(key, 0, valCasMismatch)
+				assert.NoError(t, setErr)
+				triggerCasFail = false
+			}
+			return valUpdated, nil, false, nil
+		}
+
+		_, err = bucket.Update(key, 0, updateFunc)
+		if err != nil {
+			t.Errorf("Error calling Update: %v", err)
+		}
+
+		// verify update succeeded
+		_, err = bucket.Get(key, &rv)
+		assert.NoError(t, err, "error retrieving updated value")
+		state, ok := rv["state"]
+		assert.True(t, ok, "expected state property not present")
+		assert.Equal(t, "updated", state)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+	})
+}
+
+func TestUpdateCASFailureOnInsert(t *testing.T) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+		key := t.Name()
+		valCasMismatch := []byte(`{"state":"casMismatch"}`)
+		valInitial := []byte(`{"state":"initial"}`)
+
+		var rv map[string]interface{}
+		_, err := bucket.Get(key, &rv)
+		if err == nil {
+			t.Errorf("Key should not exist yet, expected error but got nil")
+		}
+
+		// Attempt to create the doc via update
+		triggerCasFail := true
+		updateFunc := func(current []byte) (updated []byte, expiry *uint32, isDelete bool, err error) {
+			if triggerCasFail == true {
+				// mutate the document to trigger cas failure
+				setErr := bucket.Set(key, 0, valCasMismatch)
+				assert.NoError(t, setErr)
+				triggerCasFail = false
+			}
+			return valInitial, nil, false, nil
+		}
+
+		_, err = bucket.Update(key, 0, updateFunc)
+		if err != nil {
+			t.Errorf("Error calling Update: %v", err)
+		}
+
+		// verify update succeeded
+		_, err = bucket.Get(key, &rv)
+		assert.NoError(t, err, "error retrieving updated value")
+		state, ok := rv["state"]
+		assert.True(t, ok, "expected state property not present")
+		assert.Equal(t, "initial", state)
 
 		err = bucket.Delete(key)
 		if err != nil {
@@ -2355,7 +2447,7 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
 		key := t.Name()
-		val := []byte(`{"foo":"bar"}`)
+		val := []byte(`{{"foo":"bar"}`)
 		updatedVal := []byte(`{"foo":"bars"}`)
 
 		var body []byte

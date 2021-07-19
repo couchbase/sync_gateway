@@ -2344,6 +2344,10 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 }
 
 func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
+
+	// TODO: re-enable after adding ability to override bucket capabilities
+	t.Skip("GoCB bucket required for cluster compatibility override")
+
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Requires gocb bucket")
 	}
@@ -2355,10 +2359,7 @@ func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 	db := setupTestDBWithOptionsAndImport(t, DatabaseContextOptions{})
 	defer db.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
-	if !ok {
-		t.Skip("GoCB bucket required for cluster compatibility override")
-	}
+	gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
 
 	// Set something lower than version required for CreateAsDeleted subdoc flag
 	gocbBucket.OverrideClusterCompatVersion(5, 5)

@@ -550,7 +550,7 @@ func (auth *Authenticator) casUpdatePrincipal(p Principal, callback casUpdatePri
 		}
 
 		if err != nil {
-			return err
+			return fmt.Errorf("Error reloading principal after CAS failure: %w", err)
 		}
 	}
 	base.Infof(base.KeyAuth, "Unable to update principal after %d attempts.  Principal:%s Error:%v", PrincipalUpdateMaxCasRetries, base.UD(p.Name()), err)
