@@ -479,7 +479,8 @@ function(doc, oldDoc) {
 
 			numTries++
 			if numTries > maxTries {
-				t.Fatalf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
+				t.Errorf("Giving up trying to receive %d changes.  Only received %d", numExpectedChanges, len(changesAccumulated))
+				return
 			}
 
 		}

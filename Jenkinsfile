@@ -4,7 +4,7 @@ pipeline {
     agent { label 'sync-gateway-pipeline-builder' }
 
     environment {
-        GO_VERSION = 'go1.14'
+        GO_VERSION = 'go1.16.6'
         GVM = "/root/.gvm/bin/gvm"
         GO = "/root/.gvm/gos/${GO_VERSION}/bin"
         GOPATH = "${WORKSPACE}/godeps"
@@ -15,6 +15,7 @@ pipeline {
         EE_BUILD_TAG = "cb_sg_enterprise"
         SGW_REPO = "github.com/couchbase/sync_gateway"
         GH_ACCESS_TOKEN_CREDENTIAL = "github_cb-robot-sg_access_token"
+        GO111MODULE = "off"
     }
 
     stages {
