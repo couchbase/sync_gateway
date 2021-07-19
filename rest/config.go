@@ -809,11 +809,11 @@ func (config *StartupConfig) Serve(addr string, handler http.Handler) error {
 	)
 }
 
-func (sc *StartupConfig) validateServerProvided() (err error) {
+func (sc *StartupConfig) validate() (errorMessages error) {
 	if sc.Bootstrap.Server == "" {
-		return fmt.Errorf("a server must be provided in the Bootstrap configuration")
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("a server must be provided in the Bootstrap configuration"))
 	}
-	return nil
+	return errorMessages
 }
 
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
@@ -838,8 +838,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		return nil, err
 	}
 
-	if err := config.validateServerProvided(); err != nil {
-		base.Errorf("Config: ", err.Error())
+	if err := config.validate(); err != nil {
 		return nil, err
 	}
 
