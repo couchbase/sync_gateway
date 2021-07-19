@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: 1.13.4
+          go-version: 1.16.6
       - name: Bootstrap
         run: |
           wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: 1.13.4
+          go-version: 1.16.6
       - name: Bootstrap
         run: |
           wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
@@ -56,7 +56,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: 1.13.4
+          go-version: 1.16.6
       - name: Bootstrap
         run: |
           wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
