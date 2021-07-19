@@ -85,8 +85,6 @@ licenses/APL2.txt.
 
   <project name="crypto" path="godeps/src/golang.org/x/crypto" remote="couchbasedeps" revision="release-branch.go1.11"/>
 
-  <project name="sg-replicate" path="godeps/src/github.com/couchbaselabs/sg-replicate" remote="couchbaselabs" revision="6fb5493d6168e70813dd27208456cc36f1394cfd"/>
-
   <project name="clog" path="godeps/src/github.com/couchbase/clog" remote="couchbase" revision="dcae66272b24600ae0005fa06b511cfae8914d3d"/>
 
   <project name="service" path="godeps/src/github.com/kardianos/service" remote="couchbasedeps" revision="2954cfdd7b0c8ab45ef2aa22a44b5f086201836f"/>

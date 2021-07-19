@@ -73,8 +73,6 @@ type ActiveReplicatorConfig struct {
 	ConflictResolutionType ConflictResolverType
 	// Conflict resolver source, for custom conflict resolver.  Required for Equals comparison only
 	ConflictResolverFuncSrc string
-	// SGR1CheckpointID can be used as a fallback when SGR2 checkpoints can't be found.
-	SGR1CheckpointID string
 	// InitialReconnectInterval is the initial time to wait for exponential backoff reconnects.
 	InitialReconnectInterval time.Duration
 	// MaxReconnectInterval is the maximum amount of time to wait between exponential backoff reconnect attempts.
