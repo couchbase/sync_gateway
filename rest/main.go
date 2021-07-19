@@ -46,8 +46,8 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	// }
 
 	// TODO: Be removed in a future commit once flags are sorted
-	adminInterfaceAuthFlag := fs.Bool("api.admin_interface_authentication", true, "")
-	metricsInterfaceAuthFlag := fs.Bool("api.metrics_interface_authentication", true, "")
+	adminInterfaceAuthFlag := fs.Bool("api.admin_interface_authentication", false, "")
+	metricsInterfaceAuthFlag := fs.Bool("api.metrics_interface_authentication", false, "")
 
 	allowInsecureServerConnections := fs.Bool("bootstrap.allow_insecure_server_connections", false, "")
 	allowInsecureTLSConnections := fs.Bool("api.https.allow_insecure_tls_connections", false, "")
