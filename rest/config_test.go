@@ -1208,8 +1208,8 @@ func TestSetupServerContext(t *testing.T) {
 // CBG-1535
 func TestAllowInsecureTLSConnections(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	errorTLSNotProvided := "a TLS key and cert path must be provided when not allowing insecure TLS connections"
-	errorTLSProvidedButInsecure := "cannot use TLS and also use insecure TLS connections"
+	errorTLSNotProvided := "TLS key path and cert path must be provided unless api.https.allow_insecure_tls_connections is set"
+	errorTLSProvidedButInsecure := "cannot use TLS with api.https.allow_insecure_tls_connections set"
 	testCases := []struct {
 		name                        string
 		tlsKey                      bool

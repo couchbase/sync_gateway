@@ -444,8 +444,8 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 
 func TestAllowInsecureServerConnections(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	errorMustBeSecure := "couchbase server URL must use secure protocol when disallowing insecure server connections. Current URL: %v"
-	errorAllowInsecureAndBeSecure := "couchbase server URL cannot use secure protocol while allowing insecure server connections. Current URL: %v"
+	errorMustBeSecure := "Must use secure scheme in Couchbase Server URL, or opt out using bootstrap.allow_insecure_server_connections. Current URL: %v"
+	errorAllowInsecureAndBeSecure := "Couchbase server URL cannot use secure protocol while bootstrap.allow_insecure_server_connections is set. Current URL: %v"
 	testCases := []struct {
 		name                           string
 		allowInsecureServerConnections bool

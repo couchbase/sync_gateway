@@ -116,7 +116,7 @@ type HTTPSConfig struct {
 	TLSMinimumVersion           string `json:"tls_minimum_version,omitempty"     help:"The minimum allowable TLS version for the REST APIs"`
 	TLSCertPath                 string `json:"tls_cert_path,omitempty" help:"The TLS cert file to use for the REST APIs"`
 	TLSKeyPath                  string `json:"tls_key_path,omitempty"  help:"The TLS key file to use for the REST APIs"`
-	AllowInsecureTLSConnections *bool  `json:"allow_insecure_tls_connections" help:"Allow TLS to be optional for the REST APIs"`
+	AllowInsecureTLSConnections *bool  `json:"allow_insecure_tls_connections" help:"Allows REST APIs to start without TLS"`
 }
 
 type CORSConfig struct {

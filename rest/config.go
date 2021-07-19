@@ -837,11 +837,11 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	// Validate SSL is provided if not allowing unsecure connections
 	if sc.API.HTTPS.AllowInsecureTLSConnections == nil || !*sc.API.HTTPS.AllowInsecureTLSConnections {
 		if sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "" {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("a TLS key and cert path must be provided when not allowing insecure TLS connections"))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("TLS key path and cert path must be provided unless api.https.allow_insecure_tls_connections is set"))
 		}
 	} else { // Make sure TLS key and cert is not provided
 		if sc.API.HTTPS.TLSKeyPath != "" || sc.API.HTTPS.TLSCertPath != "" {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot use TLS and also use insecure TLS connections"))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot use TLS with api.https.allow_insecure_tls_connections set"))
 		}
 	}
 	return errorMessages
