@@ -36,8 +36,8 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			},
 			ReadHeaderTimeout:              base.NewConfigDuration(base.DefaultReadHeaderTimeout),
 			IdleTimeout:                    base.NewConfigDuration(base.DefaultIdleTimeout),
-			AdminInterfaceAuthentication:   base.BoolPtr(true),
-			MetricsInterfaceAuthentication: base.BoolPtr(true),
+			AdminInterfaceAuthentication:   base.BoolPtr(false),
+			MetricsInterfaceAuthentication: base.BoolPtr(false),
 		},
 		Logging: LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
