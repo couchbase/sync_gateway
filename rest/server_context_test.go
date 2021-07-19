@@ -443,7 +443,6 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 }
 
 func TestAllowInsecureServerConnections(t *testing.T) {
-	// Long test as has to wait for retry loop to fail
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	errorMustBeSecure := "couchbase server URL must use secure protocol when disallowing insecure server connections. Current URL: %v"
 	errorAllowInsecureAndBeSecure := "couchbase server URL cannot use secure protocol while allowing insecure server connections. Current URL: %v"
