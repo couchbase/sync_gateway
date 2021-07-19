@@ -2265,10 +2265,9 @@ func TestHandleDBConfig(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	rt := NewRestTester(t, nil)
-	defer rt.Close()
-
 	tb := base.GetTestBucket(t)
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
+	defer rt.Close()
 
 	bucket := tb.GetName()
 	kvTLSPort := 443
