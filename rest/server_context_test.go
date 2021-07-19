@@ -729,6 +729,8 @@ func TestAdminAuthWithX509(t *testing.T) {
 }
 
 func TestStartAndStopHTTPServers(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
 	tb := base.GetTestBucket(t)
 	defer tb.Close()
 
