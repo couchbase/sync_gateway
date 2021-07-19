@@ -205,6 +205,19 @@ func (h *handler) handleGetAttachment() error {
 		return err
 	}
 
+	metaOption := h.getBoolQuery("meta")
+	if metaOption {
+		meta["key"] = attachmentKey
+		bytes, err := base.JSONMarshal(meta)
+		if err != nil {
+			base.Errorf("Error marshalling attachment metadata: %v", err)
+			return base.HTTPErrorf(http.StatusInternalServerError, "error fetching attachment metadata")
+		}
+		h.setHeader("Content-Type", "application/json")
+		h.writeRawJSONStatus(http.StatusOK, bytes)
+		return nil
+	}
+
 	status, start, end := h.handleRange(uint64(len(data)))
 	if status > 299 {
 		return base.HTTPErrorf(status, "")
