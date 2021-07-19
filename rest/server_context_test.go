@@ -727,3 +727,41 @@ func TestAdminAuthWithX509(t *testing.T) {
 	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), httpClient, managementEndpoints, []Permission{{"admin", false}}, nil)
 	assert.NoError(t, err)
 }
+
+func TestStartAndStopHTTPServers(t *testing.T) {
+	tb := base.GetTestBucket(t)
+	defer tb.Close()
+
+	config := DefaultStartupConfig("")
+
+	// choose high ports to avoid port conflicts when testing
+	config.API.PublicInterface = "127.0.0.1:24984"
+	config.API.AdminInterface = "127.0.0.1:24985"
+	config.API.MetricsInterface = "127.0.0.1:24986"
+
+	config.Bootstrap.Server = base.UnitTestUrl()
+	config.Bootstrap.Username = base.TestClusterUsername()
+	config.Bootstrap.Password = base.TestClusterPassword()
+
+	sc, err := setupServerContext(&config, false)
+	require.NoError(t, err)
+
+	serveErr := make(chan error, 0)
+	go func() {
+		serveErr <- startServer(&config, sc)
+	}()
+
+	err, _ = base.RetryLoop("try http request", func() (shouldRetry bool, err error, value interface{}) {
+		resp, err := http.Get("http://" + config.API.PublicInterface)
+		if err != nil {
+			return true, err, nil
+		}
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		return false, nil, nil
+	}, base.CreateMaxDoublingSleeperFunc(10, 10, 1000))
+	assert.NoError(t, err)
+
+	sc.Close()
+
+	assert.NoError(t, <-serveErr)
+}
