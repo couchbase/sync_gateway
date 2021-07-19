@@ -16,6 +16,8 @@ on:
 
 jobs:
   static-analysis:
+    env:
+      GO111MODULE: off
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v2
@@ -37,6 +39,8 @@ jobs:
         run: go vet github.com/couchbase/sync_gateway/...
 
   test:
+    env:
+      GO111MODULE: off
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v2
@@ -52,6 +56,8 @@ jobs:
         run: go test -timeout=30m -count=1 -v github.com/couchbase/sync_gateway/...
 
   test-race:
+    env:
+      GO111MODULE: off
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-go@v2
