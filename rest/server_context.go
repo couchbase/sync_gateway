@@ -340,6 +340,21 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 	return spec, nil
 }
 
+// validateServerTLS checks if a secure protocol should be enforced and then errors if a secure protocol should or shouldn't be used based on the config
+func validateServerTLS(spec base.BucketSpec, config *StartupConfig) (err error) {
+	secure := spec.IsTLS()
+	if config.Bootstrap.AllowInsecureServerConnections == nil || !*config.Bootstrap.AllowInsecureServerConnections {
+		if !secure && !spec.IsWalrusBucket() {
+			return fmt.Errorf("couchbase server URL must use secure protocol when disallowing insecure server connections. Current URL: %s", spec.Server)
+		}
+	} else {
+		if secure { // If using secure protocol while AllowInsecureServerConnections flag is set, error as user probably forgot to turn it off
+			return fmt.Errorf("couchbase server URL cannot use secure protocol while allowing insecure server connections. Current URL: %s", spec.Server)
+		}
+	}
+	return nil
+}
+
 // Adds a database to the ServerContext.  Attempts a read after it gets the write
 // lock to see if it's already been added by another process. If so, returns either the
 // existing DatabaseContext or an error based on the useExisting flag.
@@ -369,15 +384,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		return nil, err
 	}
 
-	secure := spec.IsTLS()
-	if sc.config.Bootstrap.AllowInsecureServerConnections == nil || !*sc.config.Bootstrap.AllowInsecureServerConnections {
-		if !secure && !spec.IsWalrusBucket() {
-			return nil, fmt.Errorf("couchbase server URL must use secure protocol when disallowing insecure server connections. Current URL: %s", spec.Server)
-		}
-	} else {
-		if secure { // If using secure protocol while AllowInsecureServerConnections flag is set, error as user probably forgot to turn it off
-			return nil, fmt.Errorf("couchbase server URL cannot use secure protocol while allowing insecure server connections. Current URL: %s", spec.Server)
-		}
+	if err := validateServerTLS(spec, sc.config); err != nil {
+		return nil, err
 	}
 
 	// Connect to bucket

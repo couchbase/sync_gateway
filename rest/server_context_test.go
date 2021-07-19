@@ -516,19 +516,15 @@ func TestAllowInsecureServerConnections(t *testing.T) {
 
 			config.API.HTTPS.AllowInsecureTLSConnections = base.BoolPtr(true)
 			sc := NewServerContext(&config, false)
-			databaseConfig := DatabaseConfig{
-				DbConfig: DbConfig{
-					Name: "test",
-					BucketConfig: BucketConfig{
-						Server:   &test.server,
-						Username: "test",
-						Password: "test",
-						Bucket:   base.StringPtr("test"),
-					},
+			dbConfig := DbConfig{
+				BucketConfig: BucketConfig{
+					Server: &test.server,
 				},
 			}
+			spec, err := GetBucketSpec(&dbConfig)
+			require.Nil(t, err)
 			// Run test
-			_, err := sc._getOrAddDatabaseFromConfig(databaseConfig, false)
+			err = validateServerTLS(spec, &config)
 
 			if test.expectedError != nil {
 				assert.Error(t, err)
