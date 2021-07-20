@@ -531,7 +531,7 @@ func TestAdminAPIAuth(t *testing.T) {
 	})
 	defer rt.Close()
 
-	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient(false)
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
 	MakeUser(t, eps[0], "noaccess", "password", []string{})
