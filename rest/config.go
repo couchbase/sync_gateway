@@ -72,7 +72,7 @@ type BucketConfig struct {
 
 func (bc *BucketConfig) MakeBucketSpec() base.BucketSpec {
 
-	server := "http://localhost:8091"
+	server := ""
 	bucketName := ""
 	tlsPort := 11207
 
@@ -822,6 +822,13 @@ func (sc *ServerContext) addHTTPServer(s *http.Server) {
 	sc._httpServers = append(sc._httpServers, s)
 }
 
+func (sc *StartupConfig) validate() (errorMessages error) {
+	if sc.Bootstrap.Server == "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("a server must be provided in the Bootstrap configuration"))
+	}
+	return errorMessages
+}
+
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
 func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
 	// Logging config will now have been loaded from command line
@@ -841,6 +848,10 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 	base.Infof(base.KeyAll, "Logging: Redaction level: %s", config.Logging.RedactionLevel)
 
 	if err := setGlobalConfig(config); err != nil {
+		return nil, err
+	}
+
+	if err := config.validate(); err != nil {
 		return nil, err
 	}
 

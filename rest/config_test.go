@@ -1265,6 +1265,7 @@ func TestSetupServerContext(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
 		config := DefaultStartupConfig("")
+		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
 		sc, err := setupServerContext(&config, false)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
