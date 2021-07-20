@@ -167,9 +167,13 @@ type OIDCProvider struct {
 	// use the accessor method GetClient() instead.
 	client *OIDCClient
 
-	// clientOnce synchronises access to the GetClient() and ensures that
-	// the OpenID Connect client only gets initialized exactly once.
-	clientOnce sync.Once
+	// clientInitLock synchronises access to the GetClient() and ensures that
+	// the OpenID Connect client only gets initialized exactly once when
+	// the client has been successfully initialized.
+	clientInitLock sync.Mutex
+
+	// clientInit tracks whether the client has been successfully initialized or not
+	clientInit base.AtomicBool
 
 	// IsDefault indicates whether this OpenID Connect provider (the current
 	// instance of OIDCProvider is explicitly specified as default provider
@@ -242,25 +246,34 @@ func (opm OIDCProviderMap) Stop() {
 	}
 }
 
-func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) *OIDCClient {
-	// Initialize the client on first request. If the callback URL isn't defined for the provider,
-	// uses buildCallbackURLFunc to construct (based on current request)
-	op.clientOnce.Do(func() {
-		var err error
-		// If the redirect URL is not defined for the provider generate it from the
-		// handler request and set it on the provider
-		if op.CallbackURL == nil || *op.CallbackURL == "" {
-			callbackURL := buildCallbackURLFunc(op.Name, op.IsDefault)
-			if callbackURL != "" {
-				op.CallbackURL = &callbackURL
-			}
-		}
-		if err = op.initOIDCClient(); err != nil {
-			base.Errorf("Unable to initialize OIDC client: %v", err)
-		}
-	})
+// GetClient initializes the client on first successful request.
+func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) (*OIDCClient, error) {
+	// If the callback URL isn't defined for the provider, uses buildCallbackURLFunc to construct (based on current request)
 
-	return op.client
+	if op.clientInit.IsTrue() {
+		return op.client, nil
+	}
+	op.clientInitLock.Lock()
+	defer op.clientInitLock.Unlock()
+
+	// Check again to see if the previous lock holder initialized the client
+	if op.clientInit.IsTrue() {
+		return op.client, nil
+	}
+
+	// If the redirect URL is not defined for the provider generate it from the
+	// handler request and set it on the provider
+	if op.CallbackURL == nil || *op.CallbackURL == "" {
+		callbackURL := buildCallbackURLFunc(op.Name, op.IsDefault)
+		if callbackURL != "" {
+			op.CallbackURL = &callbackURL
+		}
+	}
+	if err := op.initOIDCClient(); err != nil {
+		return nil, err
+	}
+	op.clientInit.Set(true)
+	return op.client, nil
 }
 
 // To support multiple providers referencing the same issuer, the user prefix used to build the SG usernames for
@@ -462,7 +475,13 @@ func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, fmt.Errorf("unsuccessful response: %v", err)
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			err = fmt.Errorf("unsuccessful response and could not read returned response body: %w", err)
+		} else {
+			err = fmt.Errorf("unsuccessful response: %v", body)
+		}
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 
 	ttl, _, err = cacheable(resp.Header)
