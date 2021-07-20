@@ -12,6 +12,7 @@ package base
 
 import (
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 	"sync"
@@ -34,7 +35,7 @@ const (
 // uses ThrottledListen to limit the number of open HTTP connections.
 func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, handler http.Handler,
 	readTimeout, writeTimeout, readHeaderTimeout, idleTimeout time.Duration, http2Enabled bool,
-	tlsMinVersion uint16) error {
+	tlsMinVersion uint16) (serveFn func() error, server *http.Server, err error) {
 	var config *tls.Config
 	if certFile != "" {
 		config = &tls.Config{}
@@ -49,18 +50,17 @@ func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, h
 		var err error
 		config.Certificates[0], err = tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 	}
 	listener, err := ThrottledListen("tcp", addr, connLimit)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if config != nil {
 		listener = tls.NewListener(listener, config)
 	}
-	defer func() { _ = listener.Close() }()
-	server := &http.Server{
+	server = &http.Server{
 		Addr:              addr,
 		Handler:           handler,
 		ReadTimeout:       readTimeout,
@@ -69,7 +69,18 @@ func ListenAndServeHTTP(addr string, connLimit uint, certFile, keyFile string, h
 		IdleTimeout:       idleTimeout,
 	}
 
-	return server.Serve(listener)
+	serveFn = func() error {
+		defer func() {
+			_ = listener.Close()
+		}()
+		err := server.Serve(listener)
+		if !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
+
+	return serveFn, server, nil
 }
 
 type throttledListener struct {

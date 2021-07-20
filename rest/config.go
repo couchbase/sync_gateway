@@ -786,7 +786,7 @@ func SetMaxFileDescriptors(maxP *uint64) error {
 	return nil
 }
 
-func (config *StartupConfig) Serve(addr string, handler http.Handler) error {
+func (sc *ServerContext) Serve(config *StartupConfig, addr string, handler http.Handler) error {
 	http2Enabled := false
 	if config.Unsupported.HTTP2 != nil {
 		http2Enabled = *config.Unsupported.HTTP2.Enabled
@@ -794,7 +794,7 @@ func (config *StartupConfig) Serve(addr string, handler http.Handler) error {
 
 	tlsMinVersion := GetTLSVersionFromString(&config.API.HTTPS.TLSMinimumVersion)
 
-	return base.ListenAndServeHTTP(
+	serveFn, server, err := base.ListenAndServeHTTP(
 		addr,
 		config.API.MaximumConnections,
 		config.API.HTTPS.TLSCertPath,
@@ -807,6 +807,19 @@ func (config *StartupConfig) Serve(addr string, handler http.Handler) error {
 		http2Enabled,
 		tlsMinVersion,
 	)
+	if err != nil {
+		return err
+	}
+
+	sc.addHTTPServer(server)
+
+	return serveFn()
+}
+
+func (sc *ServerContext) addHTTPServer(s *http.Server) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	sc._httpServers = append(sc._httpServers, s)
 }
 
 // ServerContext creates a new ServerContext given its configuration and performs the context validation.
@@ -973,20 +986,20 @@ func startServer(config *StartupConfig, sc *ServerContext) error {
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting metrics server on %s", config.API.MetricsInterface)
 	go func() {
-		if err := config.Serve(config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
-			base.Errorf("Error starting the Metrics API: %v", err)
+		if err := sc.Serve(config, config.API.MetricsInterface, CreateMetricHandler(sc)); err != nil {
+			base.Errorf("Error serving the Metrics API: %v", err)
 		}
 	}()
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting admin server on %s", config.API.AdminInterface)
 	go func() {
-		if err := config.Serve(config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
-			base.Errorf("Error starting the Admin API: %v", err)
+		if err := sc.Serve(config, config.API.AdminInterface, CreateAdminHandler(sc)); err != nil {
+			base.Errorf("Error serving the Admin API: %v", err)
 		}
 	}()
 
 	base.Consolef(base.LevelInfo, base.KeyAll, "Starting server on %s ...", config.API.PublicInterface)
-	return config.Serve(config.API.PublicInterface, CreatePublicHandler(sc))
+	return sc.Serve(config, config.API.PublicInterface, CreatePublicHandler(sc))
 }
 
 func sharedBucketDatabaseCheck(sc *ServerContext) (errors error) {

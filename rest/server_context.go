@@ -50,8 +50,9 @@ type ServerContext struct {
 	statsContext        *statsContext
 	bootstrapConnection base.BootstrapConnection
 	HTTPClient          *http.Client
-	cpuPprofFileMutex   sync.Mutex // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile        *os.File   // An open file descriptor holds the reference during CPU profiling
+	cpuPprofFileMutex   sync.Mutex     // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile        *os.File       // An open file descriptor holds the reference during CPU profiling
+	_httpServers        []*http.Server // A list of HTTP servers running under the ServerContext
 }
 
 type DatabaseConfig struct {
@@ -164,8 +165,15 @@ func (sc *ServerContext) Close() {
 		ctx.Close()
 		_ = ctx.EventMgr.RaiseDBStateChangeEvent(ctx.Name, "offline", "Database context closed", &sc.config.API.AdminInterface)
 	}
-
 	sc.databases_ = nil
+
+	for _, s := range sc._httpServers {
+		base.Infof(base.KeyHTTP, "Closing HTTP Server: %v", s.Addr)
+		if err := s.Close(); err != nil {
+			base.Warnf("Error closing HTTP server %q: %v", s.Addr, err)
+		}
+	}
+	sc._httpServers = nil
 
 	if sc.bootstrapConnection != nil {
 		if err := sc.bootstrapConnection.Close(); err != nil {
