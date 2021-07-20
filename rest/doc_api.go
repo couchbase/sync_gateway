@@ -208,13 +208,7 @@ func (h *handler) handleGetAttachment() error {
 	metaOption := h.getBoolQuery("meta")
 	if metaOption {
 		meta["key"] = attachmentKey
-		bytes, err := base.JSONMarshal(meta)
-		if err != nil {
-			base.Errorf("Error marshalling attachment metadata: %v", err)
-			return base.HTTPErrorf(http.StatusInternalServerError, "error fetching attachment metadata")
-		}
-		h.setHeader("Content-Type", "application/json")
-		h.writeRawJSONStatus(http.StatusOK, bytes)
+		h.writeJSONStatus(http.StatusOK, meta)
 		return nil
 	}
 
