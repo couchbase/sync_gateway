@@ -830,7 +830,7 @@ func BoolPtr(b bool) *bool {
 func CouchbaseURIToHttpURL(bucket Bucket, couchbaseUri string, connSpec *gocbconnstr.ConnSpec) (httpUrls []string, err error) {
 
 	// If we're using a couchbase bucket, use the bucket to retrieve the mgmt endpoints.
-	cbBucket, ok := bucket.(CouchbaseStore)
+	cbBucket, ok := AsCouchbaseStore(bucket)
 	if ok {
 		return cbBucket.MgmtEps()
 	}
