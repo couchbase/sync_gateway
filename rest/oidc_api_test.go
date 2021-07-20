@@ -2100,7 +2100,8 @@ func TestOpenIDConnectAuthCodeFlowWithUsernameClaim(t *testing.T) {
 // at a later request
 func TestEventuallyReachableOIDCClient(t *testing.T) {
 	// Modified copy of TestOpenIDConnectImplicitFlow
-	unreachableAddr := "0.0.0.0:1234"
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	unreachableAddr := "http://0.0.0.0"
 	tests := []struct {
 		name                string
 		providers           auth.OIDCProviderMap
