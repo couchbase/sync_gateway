@@ -181,6 +181,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	rt.testBucket = testBucket
+
+	// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket
+	// will be closed when the rest tester closes the server context. The original bucket will be closed using the
+	// testBucket's closeFn
 	rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
 	rt.SetAdminParty(rt.guestEnabled)
