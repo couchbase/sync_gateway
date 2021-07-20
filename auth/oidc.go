@@ -250,14 +250,14 @@ func (opm OIDCProviderMap) Stop() {
 func (op *OIDCProvider) GetClient(buildCallbackURLFunc OIDCCallbackURLFunc) (*OIDCClient, error) {
 	// If the callback URL isn't defined for the provider, uses buildCallbackURLFunc to construct (based on current request)
 
-	if op.clientInit.IsTrue() { // If client not initialized
+	if op.clientInit.IsTrue() {
 		return op.client, nil
 	}
-	// Acquire lock
 	op.clientInitLock.Lock()
 	defer op.clientInitLock.Unlock()
 
-	if op.clientInit.IsTrue() { // Make sure past thread didn't init in lock
+	// Check again to see if the previous lock holder initialized the client
+	if op.clientInit.IsTrue() {
 		return op.client, nil
 	}
 

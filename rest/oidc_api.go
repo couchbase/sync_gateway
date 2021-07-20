@@ -97,9 +97,8 @@ func (h *handler) handleOIDCCommon() (redirectURLString string, err error) {
 
 	client, err := provider.GetClient(h.getOIDCCallbackURL)
 	if err != nil {
-		base.Errorf("OIDC initialization error: %v", err)
 		return redirectURLString, base.HTTPErrorf(
-			http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider: %s", providerName))
+			http.StatusInternalServerError, fmt.Sprintf("Unable to obtain client for provider: %s - %v", providerName, err))
 	}
 
 	var redirectURL *url.URL
@@ -171,7 +170,7 @@ func (h *handler) handleOIDCCallback() error {
 
 	client, err := provider.GetClient(h.getOIDCCallbackURL)
 	if err != nil {
-		return fmt.Errorf("OIDC initialization error: %v", err)
+		return fmt.Errorf("OIDC initialization error: %w", err)
 	}
 
 	// Converts the authorization code into a token.
@@ -224,7 +223,7 @@ func (h *handler) handleOIDCRefresh() error {
 
 	client, err := provider.GetClient(h.getOIDCCallbackURL)
 	if err != nil {
-		return fmt.Errorf("OIDC initialization error: %v", err)
+		return fmt.Errorf("OIDC initialization error: %w", err)
 	}
 
 	context := auth.GetOIDCClientContext(provider.InsecureSkipVerify)

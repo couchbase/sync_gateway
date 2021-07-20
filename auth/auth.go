@@ -651,7 +651,7 @@ func verifyToken(token string, provider *OIDCProvider, callbackURLFunc OIDCCallb
 	// Get client for issuer
 	client, err := provider.GetClient(callbackURLFunc)
 	if err != nil {
-		return nil, fmt.Errorf("OIDC initialization error: %v", err)
+		return nil, fmt.Errorf("OIDC initialization error: %w", err)
 	}
 
 	// Verify claims and signature on the JWT; ensure that it's been signed by the provider.
