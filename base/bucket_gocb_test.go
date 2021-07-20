@@ -62,7 +62,7 @@ func TestSetGet(t *testing.T) {
 		val := make(map[string]interface{}, 0)
 		val["foo"] = "bar"
 
-		rawVal := []byte(`{{"foo":"bar"}`)
+		rawVal := []byte(`{"foo":"bar"}`)
 
 		var rVal map[string]interface{}
 		_, err := bucket.Get(key, &rVal)

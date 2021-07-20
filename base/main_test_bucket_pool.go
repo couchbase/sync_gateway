@@ -244,6 +244,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
+		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
 		return tbp.GetWalrusTestBucket(t, kTestWalrusURL)
 	}
 
