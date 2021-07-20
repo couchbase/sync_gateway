@@ -475,7 +475,13 @@ func (op *OIDCProvider) fetchCustomProviderConfig(discoveryURL string) (metadata
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode != http.StatusOK {
-		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, fmt.Errorf("unsuccessful response: %v", err)
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			err = fmt.Errorf("unsuccessful response and could not read returned response body: %w", err)
+		} else {
+			err = fmt.Errorf("unsuccessful response: %v", body)
+		}
+		return ProviderMetadata{}, MaxProviderConfigSyncInterval, false, err
 	}
 
 	ttl, _, err = cacheable(resp.Header)
