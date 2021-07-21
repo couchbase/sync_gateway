@@ -353,7 +353,8 @@ func (user *userImpl) ChannelGrantedPeriods(chanName string) ([]GrantHistorySequ
 		roleChannelHistory, ok := currentRole.ChannelHistory()[chanName]
 		if ok {
 			for _, roleChannelHistoryEntry := range roleChannelHistory.Entries {
-				compareAndAddPair(roleChannelHistoryEntry.StartSeq, currentRole.Sequence(), roleChannelHistoryEntry.EndSeq, math.MaxUint64)
+				roleGrantedAt := user.RolesSince_[currentRole.Name()].Sequence
+				compareAndAddPair(roleChannelHistoryEntry.StartSeq, roleGrantedAt, roleChannelHistoryEntry.EndSeq, math.MaxUint64)
 			}
 		}
 
