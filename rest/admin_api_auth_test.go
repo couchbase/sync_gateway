@@ -1015,6 +1015,10 @@ func TestAdminAPIAuth(t *testing.T) {
 }
 
 func TestDisablePermissionCheck(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
 	clusterAdminPermission := Permission{"!admin", false}
 
 	// Some random role and perm
