@@ -86,6 +86,7 @@ type handler struct {
 	requestBody           io.ReadCloser
 	db                    *db.Database
 	user                  auth.User
+	authorizedAdminUser   string
 	privs                 handlerPrivs
 	startTime             time.Time
 	serialNumber          uint64
@@ -254,20 +255,22 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
-		permissions, statusCode, err := checkAdminAuth(authScope, username, password, httpClient, managementEndpoints, accessPermissions, responsePermissions)
+		permissions, statusCode, err := checkAdminAuth(authScope, username, password, httpClient, managementEndpoints,
+			*h.server.config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions, responsePermissions)
 		if err != nil {
 			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
 		if statusCode != http.StatusOK {
-			base.Infof(base.KeyAuth, "User %s failed to auth as an admin statusCode: %d", username, statusCode)
+			base.Infof(base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), username, statusCode)
 			return base.HTTPErrorf(statusCode, "")
 		}
 
+		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 
-		base.Infof(base.KeyAuth, "User %s was successfully authorized as an admin", username)
+		base.Infof(base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), username)
 	} else {
 		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
 		// these still pass
@@ -429,13 +432,13 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, httpClient *http.Client, managementEndpoints []string, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
+func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, httpClient *http.Client, managementEndpoints []string, shouldCheckPermissions bool, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
+
+	anyResponsePermFailed := false
 	statusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, bucketName, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
-
-	anyResponsePermFailed := false
 	if len(responsePermissions) > 0 {
 		responsePermissionResults = permResults
 		for _, permResult := range permResults {
@@ -446,17 +449,24 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 		}
 	}
 
-	// If user has required accessPerms and all response perms return with statusOK
-	// Otherwise we need to fall through to continue as the user may have access to responsePermissions through roles.
-	if statusCode == http.StatusOK && !anyResponsePermFailed {
-		return responsePermissionResults, http.StatusOK, nil
+	// If the user has not logged in correctly we shouldn't continue to do any more work and return
+	if statusCode == http.StatusUnauthorized {
+		return nil, statusCode, nil
 	}
 
-	// If status code was not 'ok' or 'forbidden' return an error
-	// If forbidden user has authenticated correctly but is not authorized via permissions. We'll fall through to try
-	// with roles.
-	if statusCode != http.StatusForbidden {
-		return nil, statusCode, nil
+	if shouldCheckPermissions {
+		// If user has required accessPerms and all response perms return with statusOK
+		// Otherwise we need to fall through to continue as the user may have access to responsePermissions through roles.
+		if statusCode == http.StatusOK && !anyResponsePermFailed {
+			return responsePermissionResults, http.StatusOK, nil
+		}
+
+		// If status code was not 'ok' or 'forbidden' return an error
+		// If forbidden user has authenticated correctly but is not authorized via permissions. We'll fall through to try
+		// with roles.
+		if statusCode != http.StatusForbidden {
+			return nil, statusCode, nil
+		}
 	}
 
 	var requestRoles []RouteRole
@@ -681,13 +691,18 @@ func (h *handler) getBearerToken() string {
 // taggedEffectiveUserName returns the tagged effective name of the user for the request.
 // e.g: '<ud>alice</ud>' or 'GUEST'
 func (h *handler) taggedEffectiveUserName() string {
-	if h.privs == adminPrivs {
+	if h.authorizedAdminUser != "" {
+		return h.authorizedAdminUser + " as ADMIN"
+	}
+
+	if h.privs == adminPrivs || h.privs == metricsPrivs {
 		return "ADMIN"
-	} else if h.user == nil {
+	}
+
+	if h.user == nil {
 		return ""
 	}
 
-	// Tag actual user names ahead of actual logging, as we lose the UD type information
 	if name := h.user.Name(); name != "" {
 		return base.UD(name).Redact()
 	}
