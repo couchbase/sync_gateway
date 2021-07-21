@@ -46,8 +46,8 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	// }
 
 	// TODO: Be removed in a future commit once flags are sorted
-	adminInterfaceAuthFlag := fs.Bool("api.admin_interface_authentication", false, "")
-	metricsInterfaceAuthFlag := fs.Bool("api.metrics_interface_authentication", false, "")
+	adminInterfaceAuthFlag := fs.Bool("api.admin_interface_authentication", true, "")
+	metricsInterfaceAuthFlag := fs.Bool("api.metrics_interface_authentication", true, "")
 
 	useTLSServer := fs.Bool("bootstrap.use_tls_server", true, "")
 	useTLSClient := fs.Bool("api.https.use_tls_client", true, "")
