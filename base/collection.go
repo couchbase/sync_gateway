@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/couchbase/gocb"
@@ -602,16 +603,32 @@ func (c *Collection) HttpClient() *http.Client {
 // current use cases (on-demand import).  If there's a need for expiry as part of normal get, this shouldn't be
 // used - an enhanced version of Get() should be implemented to avoid two ops
 func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
-	getOptions := &gocb.GetOptions{
-		WithExpiry: true,
-	}
-	getResult, err := c.Collection.Get(k, getOptions)
-	if err != nil {
-		return 0, err
-	}
-	expiryTime := getResult.ExpiryTime()
 
-	return DurationToCbsExpiry(time.Until(expiryTime)), nil
+	router, routerErr := c.Bucket().Internal().IORouter()
+	if routerErr != nil {
+		Warnf("Unable to obtain router while retrieving expiry:%v", routerErr)
+		return 0, routerErr
+	}
+	getMetaOptions := gocbcore.GetMetaOptions{
+		Key: []byte(k),
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	getMetaCallback := func(result *gocbcore.GetMetaResult, err error) {
+		defer wg.Done()
+		if err != nil {
+			getMetaError = err
+			return
+		}
+		expiry = result.Expiry
+	}
+
+	router.GetMeta(getMetaOptions, getMetaCallback)
+	wg.Wait()
+
+	return expiry, getMetaError
 }
 
 func (c *Collection) BucketName() string {

@@ -2474,3 +2474,46 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 
 	})
 }
+
+func TestGetExpiry(t *testing.T) {
+	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
+
+		store, ok := AsCouchbaseStore(bucket)
+		assert.True(t, ok)
+
+		key := t.Name()
+		val := make(map[string]interface{}, 0)
+		val["foo"] = "bar"
+
+		rawVal := []byte(`{"foo":"bar"}`)
+
+		expiryValue := uint32(time.Now().Add(1 * time.Minute).Unix())
+		err := bucket.Set(key, expiryValue, rawVal)
+		assert.NoError(t, err, "Error calling Set()")
+
+		expiry, expiryErr := store.GetExpiry(key)
+		assert.NoError(t, expiryErr)
+
+		// gocb v2 expiry does an expiry-to-duration conversion which results in non-exact equality,
+		// so check whether it's within 30s
+		assert.True(t, DiffUint32(expiryValue, expiry) < 30)
+		log.Printf("expiryValue: %d", expiryValue)
+		log.Printf("expiry: %d", expiry)
+
+		err = bucket.Delete(key)
+		if err != nil {
+			t.Errorf("Error removing key from bucket")
+		}
+
+		// ensure expiry retrieval on tombstone doesn't return error
+		tombstoneExpiry, tombstoneExpiryErr := store.GetExpiry(key)
+		assert.NoError(t, tombstoneExpiryErr)
+		log.Printf("tombstoneExpiry: %d", tombstoneExpiry)
+
+		// ensure expiry retrieval on non-existent doc returns key not found
+		_, nonExistentExpiryErr := store.GetExpiry("nonExistentKey")
+		assert.Error(t, nonExistentExpiryErr)
+		assert.True(t, IsKeyNotFoundError(bucket, nonExistentExpiryErr))
+
+	})
+}
