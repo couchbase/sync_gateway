@@ -825,12 +825,12 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 
 			sc, err := setupServerContext(startupConfig, false)
 			if test.expectError {
-				require.Error(t, err)
+				assert.Error(t, err)
 				assert.Contains(t, err.Error(), errorText)
 				assert.Empty(t, sc)
 			} else if err != nil {
 				// check if unrelated error
-				assert.NotContains(t, err, errorText)
+				assert.NotContains(t, err.Error(), errorText)
 			}
 		})
 	}

@@ -827,10 +827,6 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	if sc.Bootstrap.Server == "" {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("a server must be provided in the Bootstrap configuration"))
 	}
-	return errorMessages
-}
-
-func (sc *StartupConfig) validate() (errorMessages error) {
 	if sc.Unsupported.ServerTLSSkipVerify != nil && *sc.Unsupported.ServerTLSSkipVerify && sc.Bootstrap.CACertPath != "" {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot skip server TLS validation and use CA Cert"))
 	}
