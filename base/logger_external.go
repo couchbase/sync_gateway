@@ -125,7 +125,7 @@ func (CBGoUtilsLogger) Level() logging.Level {
 	if consoleLogger == nil || consoleLogger.LogLevel == nil {
 		return logging.INFO
 	}
-	return ToDeprecatedLogLevel(*consoleLogger.LogLevel).cgLevel()
+	return consoleLogger.cgLevel()
 }
 
 func (CBGoUtilsLogger) Fatalf(fmt string, args ...interface{}) {

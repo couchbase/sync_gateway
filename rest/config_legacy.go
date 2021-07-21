@@ -4,8 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -286,56 +284,6 @@ func (config *LegacyServerConfig) validate() (errorMessages error) {
 	}
 
 	return errorMessages
-}
-
-// deprecatedConfigLoggingFallback will parse the LegacyServerConfig and try to
-// use older logging config options for backwards compatibility.
-// It will return a slice of deferred warnings to log at a later time.
-func (config *LegacyServerConfig) deprecatedConfigLoggingFallback() {
-
-	warningMsgFmt := "Using deprecated config option: %q. Use %q instead."
-
-	if config.Logging.DeprecatedDefaultLog != nil {
-		// Fall back to the old logging.["default"].LogFilePath option
-		if config.Logging.LogFilePath == "" && config.Logging.DeprecatedDefaultLog.LogFilePath != nil {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogFilePath`, "logging.log_file_path")
-
-			// Set the new LogFilePath to be the directory containing the old logfile, instead of the full path.
-			// SGCollect relies on this path to pick up the standard and rotated log files.
-			info, err := os.Stat(*config.Logging.DeprecatedDefaultLog.LogFilePath)
-			if err == nil && info.IsDir() {
-				config.Logging.LogFilePath = *config.Logging.DeprecatedDefaultLog.LogFilePath
-			} else {
-				config.Logging.LogFilePath = filepath.Dir(*config.Logging.DeprecatedDefaultLog.LogFilePath)
-				base.Infof(base.KeyAll, "Using %v as log file path (parent directory of deprecated logging."+
-					"[\"default\"].LogFilePath)", config.Logging.LogFilePath)
-			}
-		}
-
-		// Fall back to the old logging.["default"].LogKeys option
-		if len(config.Logging.Console.LogKeys) == 0 && len(config.Logging.DeprecatedDefaultLog.LogKeys) > 0 {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogKeys`, "logging.console.log_keys")
-			config.Logging.Console.LogKeys = config.Logging.DeprecatedDefaultLog.LogKeys
-		}
-
-		// Fall back to the old logging.["default"].LogLevel option
-		if config.Logging.Console.LogLevel == nil && config.Logging.DeprecatedDefaultLog.LogLevel != 0 {
-			base.Warnf(warningMsgFmt, `logging.["default"].LogLevel`, "logging.console.log_level")
-			config.Logging.Console.LogLevel = base.ToLogLevel(config.Logging.DeprecatedDefaultLog.LogLevel)
-		}
-	}
-
-	// Fall back to the old LogFilePath option
-	if config.Logging.LogFilePath == "" && config.DeprecatedLogFilePath != nil {
-		base.Warnf(warningMsgFmt, "logFilePath", "logging.log_file_path")
-		config.Logging.LogFilePath = *config.DeprecatedLogFilePath
-	}
-
-	// Fall back to the old Log option
-	if config.Logging.Console.LogKeys == nil && len(config.DeprecatedLog) > 0 {
-		base.Warnf(warningMsgFmt, "log", "logging.console.log_keys")
-		config.Logging.Console.LogKeys = config.DeprecatedLog
-	}
 }
 
 func (self *LegacyServerConfig) MergeWith(other *LegacyServerConfig) error {

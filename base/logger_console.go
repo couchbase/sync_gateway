@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/couchbase/goutils/logging"
+
 	"github.com/natefinch/lumberjack"
 )
 
@@ -94,6 +96,27 @@ func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*Con
 	}
 
 	return logger, nil
+}
+
+// cgLevel returns a compatible go-couchbase/golog Log Level for
+// the given logging config Level
+func (l *ConsoleLogger) cgLevel() logging.Level {
+	switch *l.LogLevel {
+	case LevelTrace:
+		return logging.TRACE
+	case LevelDebug:
+		return logging.DEBUG
+	case LevelInfo:
+		return logging.INFO
+	case LevelWarn:
+		return logging.WARN
+	case LevelError:
+		return logging.ERROR
+	case LevelNone:
+		return logging.NONE
+	default:
+		return logging.NONE
+	}
 }
 
 func (l *ConsoleLogger) logf(format string, args ...interface{}) {
