@@ -121,11 +121,28 @@ func (CBGoUtilsLogger) SetLevel(l logging.Level) {
 	return // no-op
 }
 
+// CBGoUtilsLogger.Level returns a compatible go-couchbase/golog Log Level for
+// the given logging config LogLevel
 func (CBGoUtilsLogger) Level() logging.Level {
 	if consoleLogger == nil || consoleLogger.LogLevel == nil {
 		return logging.INFO
 	}
-	return ToDeprecatedLogLevel(*consoleLogger.LogLevel).cgLevel()
+	switch *consoleLogger.LogLevel {
+	case LevelTrace:
+		return logging.TRACE
+	case LevelDebug:
+		return logging.DEBUG
+	case LevelInfo:
+		return logging.INFO
+	case LevelWarn:
+		return logging.WARN
+	case LevelError:
+		return logging.ERROR
+	case LevelNone:
+		return logging.NONE
+	default:
+		return logging.NONE
+	}
 }
 
 func (CBGoUtilsLogger) Fatalf(fmt string, args ...interface{}) {

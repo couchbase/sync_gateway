@@ -12,14 +12,12 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 
-	"github.com/couchbase/goutils/logging"
 	"github.com/natefinch/lumberjack"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,45 +67,6 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 		Warnf("some crud'y message")
 		Errorf("some crud'y message")
 	}
-}
-
-// func PrependContextID(contextID, format string, params ...interface{}) (newFormat string, newParams []interface{}) {
-
-func TestPrependContextID(t *testing.T) {
-
-	contextID := "context"
-
-	var testInputsOutputs = []struct {
-		inputFormat  string        // input
-		inputParams  []interface{} // input
-		outputFormat string        // output
-		outputParams []interface{} // outout
-	}{
-		{
-			"%v",
-			[]interface{}{"hello"},
-			"[%s] %v",
-			[]interface{}{contextID, "hello"},
-		},
-		{
-			"",
-			[]interface{}{},
-			"[%s] ",
-			[]interface{}{contextID},
-		},
-	}
-
-	for _, testInputOutput := range testInputsOutputs {
-		newFormat, newParams := PrependContextID(contextID, testInputOutput.inputFormat, testInputOutput.inputParams...)
-		assert.Equal(t, testInputOutput.outputFormat, newFormat)
-
-		assert.Equal(t, len(testInputOutput.outputParams), len(newParams))
-		for i, newParam := range newParams {
-			assert.Equal(t, testInputOutput.outputParams[i], newParam)
-		}
-	}
-
-	log.Printf("testInputsOutputs: %+v", testInputsOutputs)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.
@@ -162,78 +121,6 @@ func BenchmarkLogRotation(b *testing.B) {
 		})
 	}
 
-}
-
-func TestLoggingLevel(t *testing.T) {
-	level := DebugLevel
-	assert.Equal(t, logging.Level(0x8), level.cgLevel())
-	assert.Equal(t, logging.DEBUG, level.cgLevel())
-	assert.Equal(t, "debug", level.String())
-	bytes, err := level.MarshalText()
-	assert.Equal(t, []byte(level.String()), bytes)
-	assert.NoError(t, err, "No error while marshalling debug logging level")
-	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
-	assert.Equal(t, level.String(), ToDeprecatedLogLevel(LevelDebug).String())
-	assert.Equal(t, level.String(), ToLogLevel(*(ToDeprecatedLogLevel(LevelDebug))).String())
-
-	level = InfoLevel
-	assert.Equal(t, logging.Level(0x5), level.cgLevel())
-	assert.Equal(t, logging.INFO, level.cgLevel())
-	assert.Equal(t, "info", level.String())
-	bytes, err = level.MarshalText()
-	assert.Equal(t, []byte(level.String()), bytes)
-	assert.NoError(t, err, "No error while marshalling info logging level")
-	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
-	assert.Equal(t, level.String(), ToDeprecatedLogLevel(LevelInfo).String())
-	assert.Equal(t, level.String(), ToLogLevel(*(ToDeprecatedLogLevel(LevelInfo))).String())
-
-	level = WarnLevel
-	assert.Equal(t, logging.Level(0x4), level.cgLevel())
-	assert.Equal(t, logging.WARN, level.cgLevel())
-	assert.Equal(t, "warn", level.String())
-	bytes, err = level.MarshalText()
-	assert.Equal(t, []byte(level.String()), bytes)
-	assert.NoError(t, err, "No error while marshalling warn logging level")
-	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
-	assert.Equal(t, level.String(), ToDeprecatedLogLevel(LevelWarn).String())
-	assert.Equal(t, level.String(), ToLogLevel(*(ToDeprecatedLogLevel(LevelWarn))).String())
-
-	level = ErrorLevel
-	assert.Equal(t, logging.Level(0x3), level.cgLevel())
-	assert.Equal(t, logging.ERROR, level.cgLevel())
-	assert.Equal(t, "error", level.String())
-	bytes, err = level.MarshalText()
-	assert.Equal(t, []byte(level.String()), bytes)
-	assert.NoError(t, err, "No error while marshalling error logging level")
-	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
-	assert.Equal(t, level.String(), ToDeprecatedLogLevel(LevelError).String())
-	assert.Equal(t, level.String(), ToLogLevel(*(ToDeprecatedLogLevel(LevelError))).String())
-
-	level = PanicLevel
-	assert.Equal(t, logging.Level(0x2), level.cgLevel())
-	assert.Equal(t, logging.SEVERE, level.cgLevel())
-	assert.Equal(t, "panic", level.String())
-	bytes, err = level.MarshalText()
-	assert.Equal(t, []byte(level.String()), bytes)
-	assert.NoError(t, err, "No error while marshalling panic logging level")
-	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
-
-	level = FatalLevel
-	assert.Equal(t, logging.Level(0x2), level.cgLevel())
-	assert.Equal(t, logging.SEVERE, level.cgLevel())
-	assert.Equal(t, "fatal", level.String())
-	bytes, err = level.MarshalText()
-	assert.Equal(t, []byte(level.String()), bytes)
-	assert.NoError(t, err, "No error while marshalling fatal logging level")
-	assert.NoError(t, level.UnmarshalText([]byte(level.String())), level.String())
-
-	level = Level(0x5)
-	assert.Equal(t, logging.NONE, level.cgLevel())
-	assert.Equal(t, "Level(5)", level.String())
-	bytes, err = level.MarshalText()
-	assert.Equal(t, []byte(level.String()), bytes)
-	assert.NoError(t, err, "No error while marshalling unknown logging level")
-	assert.Error(t, level.UnmarshalText([]byte(level.String())), level.String())
 }
 
 func TestLogColor(t *testing.T) {
@@ -293,14 +180,6 @@ func BenchmarkLogColorEnabled(b *testing.B) {
 			_ = colorEnabled()
 		}
 	})
-}
-
-func TestMarshalTextError(t *testing.T) {
-	var level *Level
-	bytes, err := level.MarshalText()
-	assert.Nil(t, bytes, "bytes should be nil")
-	assert.Error(t, err, "Can't marshal a nil *Level to text")
-	assert.Equal(t, err.Error(), "can't marshal a nil *Level to text")
 }
 
 func TestGetCallersNameRecoverInfoImpossible(t *testing.T) {

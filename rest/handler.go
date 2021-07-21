@@ -172,10 +172,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		return base.HTTPErrorf(http.StatusUnsupportedMediaType, "Unsupported Content-Encoding; use gzip")
 	}
 
-	if base.EnableLogHTTPBodies {
-		h.logRequestBody()
-	}
-
 	if h.shouldShowProductVersion() {
 		h.setHeader("Server", base.VersionString)
 	} else {
@@ -295,18 +291,6 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		)
 	}
 
-	if base.EnableLogHTTPBodies {
-		// Wrap the existing ResponseWriter with one that "Tees" the output
-		// to stdout as well as writing back to the socket
-		h.response = NewLoggerTeeResponseWriter(
-			h.response,
-			base.KeyHTTP,
-			h.formatSerialNumber(),
-			h.rq,
-			h.getQueryValues(),
-		)
-	}
-
 	return method(h) // Call the actual handler code
 }
 
@@ -323,26 +307,6 @@ func (h *handler) logRequestLine() {
 
 	queryValues := h.getQueryValues()
 	base.Infof(base.KeyHTTP, " %s: %s %s%s%s", h.formatSerialNumber(), h.rq.Method, base.SanitizeRequestURL(h.rq, &queryValues), proto, h.formattedEffectiveUserName())
-}
-
-func (h *handler) logRequestBody() {
-
-	if !base.EnableLogHTTPBodies {
-		return
-	}
-
-	// Replace the requestBody io.ReadCloser with a TeeReadCloser that
-	// tees the request body to the base.Log with the HTTPBody logging key
-	h.requestBody = NewTeeReadCloser(
-		h.requestBody,
-		base.NewLoggerWriter(
-			base.KeyHTTP,
-			h.formatSerialNumber(),
-			h.rq,
-			h.getQueryValues(),
-		),
-	)
-
 }
 
 func (h *handler) logDuration(realTime bool) {
