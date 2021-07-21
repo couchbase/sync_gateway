@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -68,45 +67,6 @@ func Benchmark_LoggingPerformance(b *testing.B) {
 		Warnf("some crud'y message")
 		Errorf("some crud'y message")
 	}
-}
-
-// func PrependContextID(contextID, format string, params ...interface{}) (newFormat string, newParams []interface{}) {
-
-func TestPrependContextID(t *testing.T) {
-
-	contextID := "context"
-
-	var testInputsOutputs = []struct {
-		inputFormat  string        // input
-		inputParams  []interface{} // input
-		outputFormat string        // output
-		outputParams []interface{} // outout
-	}{
-		{
-			"%v",
-			[]interface{}{"hello"},
-			"[%s] %v",
-			[]interface{}{contextID, "hello"},
-		},
-		{
-			"",
-			[]interface{}{},
-			"[%s] ",
-			[]interface{}{contextID},
-		},
-	}
-
-	for _, testInputOutput := range testInputsOutputs {
-		newFormat, newParams := PrependContextID(contextID, testInputOutput.inputFormat, testInputOutput.inputParams...)
-		assert.Equal(t, testInputOutput.outputFormat, newFormat)
-
-		assert.Equal(t, len(testInputOutput.outputParams), len(newParams))
-		for i, newParam := range newParams {
-			assert.Equal(t, testInputOutput.outputParams[i], newParam)
-		}
-	}
-
-	log.Printf("testInputsOutputs: %+v", testInputsOutputs)
 }
 
 // Benchmark the time it takes to write x bytes of data to a logger, and optionally rotate and compress it.

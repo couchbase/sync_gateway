@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
-	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -78,47 +76,8 @@ func lastComponent(path string) string {
 	return path
 }
 
-// This provides an io.Writer interface around the base.Infof API
-type LoggerWriter struct {
-	LogKey                LogKey        // The log key to log to, eg, KeyHTTP
-	FormattedSerialNumber string        // The request ID
-	Request               *http.Request // The request
-	QueryValues           url.Values    // A cached copy of the URL query values
-}
-
-// Write() method to satisfy the io.Writer interface
-func (lw *LoggerWriter) Write(p []byte) (n int, err error) {
-	Infof(lw.LogKey, " %s: %s %s %s", lw.FormattedSerialNumber, lw.Request.Method, SanitizeRequestURL(lw.Request, &lw.QueryValues), string(p))
-	return len(p), nil
-}
-
-// Create a new LoggerWriter
-func NewLoggerWriter(logKey LogKey, formattedSerialNumber string, req *http.Request, queryValues url.Values) *LoggerWriter {
-	return &LoggerWriter{
-		LogKey:                logKey,
-		FormattedSerialNumber: formattedSerialNumber,
-		Request:               req,
-		QueryValues:           queryValues,
-	}
-}
-
-// Prepend a context ID to each blip logging message.  The contextID uniquely identifies the blip context, and
-// is useful for grouping the blip connections in the log output.
-func PrependContextID(contextID, format string, params ...interface{}) (newFormat string, newParams []interface{}) {
-
-	// Add a new format placeholder for the context ID, which should appear at the beginning of the logs
-	formatWithContextID := `[%s] ` + format
-
-	params = append(params, 0)
-	copy(params[1:], params[0:])
-	params[0] = contextID
-
-	return formatWithContextID, params
-
-}
-
 // *************************************************************************
-//   2018-04-10: New logging below. Above code is to be removed/cleaned up
+//   2018-04-10: New logging below
 // *************************************************************************
 
 var (
