@@ -35,6 +35,7 @@ const (
 
 // N1QLStore defines the set of operations Sync Gateway uses to manage and interact with N1QL
 type N1QLStore interface {
+	GetName() string
 	BuildDeferredIndexes(indexSet []string) error
 	CreateIndex(indexName string, expression string, filterExpression string, options *N1qlIndexOptions) error
 	CreatePrimaryIndex(indexName string, options *N1qlIndexOptions) error
@@ -51,6 +52,9 @@ type N1QLStore interface {
 
 	// executeStatement executes the specified statement and closes the response, returning any errors received.
 	executeStatement(statement string) error
+
+	// getIndexes retrieves all index names, used by test harness
+	getIndexes() (indexes []string, err error)
 }
 
 func ExplainQuery(store N1QLStore, statement string, params map[string]interface{}) (plan map[string]interface{}, err error) {

@@ -37,20 +37,20 @@ type CbgtContext struct {
 
 // StartShardedDCPFeed initializes and starts a CBGT Manager targeting the provided bucket.
 // dbName is used to define a unique path name for local file storage of pindex files
-func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bucket *CouchbaseBucketGoCB, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
+func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
 
-	cbgtContext, err := initCBGTManager(bucket, bucket.Spec, cfg, uuid)
+	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid)
 	if err != nil {
 		return nil, err
 	}
 
-	dcpContextID := MD(bucket.Spec.BucketName).Redact() + "-" + DCPImportFeedID
+	dcpContextID := MD(spec.BucketName).Redact() + "-" + DCPImportFeedID
 	cbgtContext.loggingCtx = context.WithValue(context.Background(), LogContextKey{},
 		LogContext{CorrelationID: dcpContextID},
 	)
 
 	// Start Manager.  Registers this node in the cfg
-	err = cbgtContext.StartManager(dbName, bucket, bucket.Spec, numPartitions)
+	err = cbgtContext.StartManager(dbName, bucket, spec, numPartitions)
 	if err != nil {
 		return nil, err
 	}

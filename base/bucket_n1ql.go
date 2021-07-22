@@ -141,3 +141,27 @@ func (bucket *CouchbaseBucketGoCB) DropIndex(indexName string) error {
 func (bucket *CouchbaseBucketGoCB) IsErrNoResults(err error) bool {
 	return err == gocb.ErrNoResults
 }
+
+// Get a list of all index names in the bucket
+func (bucket *CouchbaseBucketGoCB) getIndexes() (indexes []string, err error) {
+
+	indexes = []string{}
+
+	manager, err := bucket.getBucketManager()
+	if err != nil {
+		return indexes, err
+	}
+
+	indexInfo, err := manager.GetIndexes()
+	if err != nil {
+		return indexes, err
+	}
+
+	for _, indexInfo := range indexInfo {
+		if indexInfo.Keyspace == bucket.GetName() {
+			indexes = append(indexes, indexInfo.Name)
+		}
+	}
+
+	return indexes, nil
+}

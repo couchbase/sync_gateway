@@ -13,15 +13,27 @@ package base
 import (
 	"errors"
 	"expvar"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"time"
+
+	"github.com/couchbase/gocbcore"
 
 	"github.com/couchbase/gocb"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )
 
+var _ sgbucket.KVStore = &Collection{}
+var _ CouchbaseStore = &Collection{}
+
 // Connect to the default collection for the specified bucket
 func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
+
+	log.Printf("getting collection with spec: %+v", spec)
+
 	connString, err := spec.GetGoCBConnString()
 	if err != nil {
 		Warnf("Unable to parse server value: %s error: %v", SD(spec.Server), err)
@@ -85,6 +97,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 	viewOpsQueue := make(chan struct{}, MaxConcurrentViewOps*nodeCount)
 	collection := &Collection{
 		Collection: bucket.DefaultCollection(),
+		Spec:       spec,
 		cluster:    cluster,
 		viewOps:    viewOpsQueue,
 	}
@@ -101,25 +114,53 @@ type Collection struct {
 
 // DataStore
 func (c *Collection) GetName() string {
-	return c.Collection.Name()
+	// Returning bucket name until full collection support is implemented
+	return c.Collection.Bucket().Name()
 }
 
 func (c *Collection) UUID() (string, error) {
-	return "", errors.New("Not implemented")
+	config, configErr := c.getConfigSnapshot()
+	if configErr != nil {
+		return "", fmt.Errorf("Unable to determine bucket UUID: %w", configErr)
+	}
+	return config.BucketUUID(), nil
 }
+
 func (c *Collection) Close() {
 	// No close handling for collection
 	return
 }
 
 func (c *Collection) IsSupported(feature sgbucket.DataStoreFeature) bool {
-	return true
+
+	switch feature {
+	case sgbucket.DataStoreFeatureSubdocOperations, sgbucket.DataStoreFeatureXattrs, sgbucket.DataStoreFeatureCrc32cMacroExpansion:
+		// Available on all supported server versions
+		return true
+	case sgbucket.DataStoreFeatureN1ql:
+		router, routerErr := c.Bucket().Internal().IORouter()
+		if routerErr != nil {
+			return false
+		}
+		return len(router.N1qlEps()) > 0
+	case sgbucket.DataStoreFeatureCreateDeletedWithXattr:
+		status, err := c.Bucket().Internal().CapabilityStatus(gocb.CapabilityCreateAsDeleted)
+		if err != nil {
+			return false
+		}
+		return status == gocb.CapabilityStatusSupported
+	default:
+		return false
+	}
 }
 
 // KV store
 
 func (c *Collection) Get(k string, rv interface{}) (cas uint64, err error) {
-	getResult, err := c.Collection.Get(k, nil)
+	getOptions := &gocb.GetOptions{
+		Transcoder: getTranscoder(rv),
+	}
+	getResult, err := c.Collection.Get(k, getOptions)
 	if err != nil {
 		return 0, err
 	}
@@ -140,9 +181,10 @@ func (c *Collection) GetRaw(k string) (rv []byte, cas uint64, err error) {
 	return rv, uint64(getRawResult.Cas()), err
 }
 
+// TODO: Refactor to GetAndTouch, since the only use case isn't working with binary data
 func (c *Collection) GetAndTouchRaw(k string, exp uint32) (rv []byte, cas uint64, err error) {
 	getAndTouchOptions := &gocb.GetAndTouchOptions{
-		Transcoder: gocb.NewRawBinaryTranscoder(),
+		Transcoder: getTranscoder(rv),
 	}
 	getAndTouchRawResult, getErr := c.Collection.GetAndTouch(k, expAsDuration(exp), getAndTouchOptions)
 	if getErr != nil {
@@ -163,7 +205,8 @@ func (c *Collection) Touch(k string, exp uint32) (cas uint64, err error) {
 
 func (c *Collection) Add(k string, exp uint32, v interface{}) (added bool, err error) {
 	opts := &gocb.InsertOptions{
-		Expiry: expAsDuration(exp),
+		Expiry:     expAsDuration(exp),
+		Transcoder: getTranscoder(v),
 	}
 	_, gocbErr := c.Collection.Insert(k, v, opts)
 	if gocbErr != nil {
@@ -194,8 +237,13 @@ func (c *Collection) AddRaw(k string, exp uint32, v []byte) (added bool, err err
 
 func (c *Collection) Set(k string, exp uint32, v interface{}) error {
 	upsertOptions := &gocb.UpsertOptions{
-		Expiry: expAsDuration(exp),
+		Expiry:     expAsDuration(exp),
+		Transcoder: getTranscoder(v),
 	}
+	if _, ok := v.([]byte); ok {
+		upsertOptions.Transcoder = gocb.NewRawJSONTranscoder()
+	}
+
 	_, err := c.Collection.Upsert(k, v, upsertOptions)
 	return err
 }
@@ -213,7 +261,8 @@ func (c *Collection) WriteCas(k string, flags int, exp uint32, cas uint64, v int
 	var result *gocb.MutationResult
 	if cas == 0 {
 		insertOpts := &gocb.InsertOptions{
-			Expiry: expAsDuration(exp),
+			Expiry:     expAsDuration(exp),
+			Transcoder: getTranscoder(v),
 		}
 		if opt == sgbucket.Raw {
 			insertOpts.Transcoder = gocb.NewRawBinaryTranscoder()
@@ -221,8 +270,9 @@ func (c *Collection) WriteCas(k string, flags int, exp uint32, cas uint64, v int
 		result, err = c.Collection.Insert(k, v, insertOpts)
 	} else {
 		replaceOpts := &gocb.ReplaceOptions{
-			Cas:    gocb.Cas(cas),
-			Expiry: expAsDuration(exp),
+			Cas:        gocb.Cas(cas),
+			Expiry:     expAsDuration(exp),
+			Transcoder: getTranscoder(v),
 		}
 		if opt == sgbucket.Raw {
 			replaceOpts.Transcoder = gocb.NewRawBinaryTranscoder()
@@ -351,7 +401,7 @@ func (c *Collection) Incr(k string, amt, def uint64, exp uint32) (uint64, error)
 }
 
 func (c *Collection) StartDCPFeed(args sgbucket.FeedArguments, callback sgbucket.FeedEventCallbackFunc, dbStats *expvar.Map) error {
-	return errors.New("StartDCPFeed not implemented")
+	return StartDCPFeed(c, c.Spec, args, callback, dbStats)
 }
 func (c *Collection) StartTapFeed(args sgbucket.FeedArguments, dbStats *expvar.Map) (sgbucket.MutationFeed, error) {
 	return nil, errors.New("StartTapFeed not implemented")
@@ -362,14 +412,35 @@ func (c *Collection) Dump() {
 
 // CouchbaseStore
 
-func (c *Collection) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
-	return 0, 0, ""
-}
 func (c *Collection) GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error) {
 	return nil, nil, nil
 }
 func (c *Collection) GetMaxVbno() (uint16, error) {
-	return 0, nil
+
+	config, configErr := c.getConfigSnapshot()
+	if configErr != nil {
+		return 0, fmt.Errorf("Unable to determine vbucket count: %w", configErr)
+	}
+
+	vbNo, err := config.NumVbuckets()
+	if err != nil {
+		return 0, fmt.Errorf("Unable to determine vbucket count: %w", err)
+	}
+
+	return uint16(vbNo), nil
+}
+
+func (c *Collection) getConfigSnapshot() (*gocbcore.ConfigSnapshot, error) {
+	router, routerErr := c.Bucket().Internal().IORouter()
+	if routerErr != nil {
+		return nil, fmt.Errorf("no router: %w", routerErr)
+	}
+
+	config, configErr := router.ConfigSnapshot()
+	if configErr != nil {
+		return nil, fmt.Errorf("no router config snapshot: %w", configErr)
+	}
+	return config, nil
 }
 
 func expAsDuration(exp uint32) time.Duration {
@@ -476,4 +547,96 @@ func (c *Collection) BucketItemCount() (itemCount int, err error) {
 	time.Sleep(1 * time.Second)
 	//itemCount, err = bucket.APIBucketItemCount()
 	return 0, err
+}
+
+func (c *Collection) MgmtEps() (url []string, err error) {
+
+	router, routerErr := c.Bucket().Internal().IORouter()
+	if routerErr != nil {
+		return url, routerErr
+	}
+	mgmtEps := router.MgmtEps()
+	if len(mgmtEps) == 0 {
+		return nil, fmt.Errorf("No available Couchbase Server nodes")
+	}
+	return mgmtEps, nil
+}
+
+// Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
+// found, retrieves the cluster-wide value.
+func (c *Collection) MetadataPurgeInterval() (time.Duration, error) {
+	return getMetadataPurgeInterval(c)
+}
+
+func (c *Collection) ServerUUID() (uuid string, err error) {
+	return getServerUUID(c)
+}
+
+func (c *Collection) MaxTTL() (int, error) {
+	return getMaxTTL(c)
+}
+
+func (c *Collection) HttpClient() *http.Client {
+	router, routerErr := c.Bucket().Internal().IORouter()
+	if routerErr != nil {
+		Warnf("Unable to obtain router while retrieving httpClient:%v", routerErr)
+		return nil
+	}
+	return router.HTTPClient()
+}
+
+// GetExpiry requires a full document retrieval in order to obtain the expiry, which is reasonable for
+// current use cases (on-demand import).  If there's a need for expiry as part of normal get, this shouldn't be
+// used - an enhanced version of Get() should be implemented to avoid two ops
+func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
+	getOptions := &gocb.GetOptions{
+		WithExpiry: true,
+	}
+	getResult, err := c.Collection.Get(k, getOptions)
+	if err != nil {
+		return 0, err
+	}
+	expiryTime := getResult.ExpiryTime()
+
+	return DurationToCbsExpiry(time.Until(expiryTime)), nil
+}
+
+func (c *Collection) BucketName() string {
+	return c.Bucket().Name()
+}
+
+func getTranscoder(value interface{}) gocb.Transcoder {
+	switch value.(type) {
+	case []byte, *[]byte:
+		return gocb.NewRawJSONTranscoder()
+	default:
+		return nil
+	}
+}
+
+func (c *Collection) mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error) {
+	if contentType == "" && body != nil {
+		panic("Content-type must be specified for non-null body.")
+	}
+
+	mgmtEp, err := GoCBBucketMgmtEndpoint(c)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(method, mgmtEp+uri, body)
+	if err != nil {
+		return nil, err
+	}
+
+	if contentType != "" {
+		req.Header.Add("Content-Type", contentType)
+	}
+
+	if c.Spec.Auth != nil {
+		username, password, _ := c.Spec.Auth.GetCredentials()
+		req.SetBasicAuth(username, password)
+	}
+
+	return c.HttpClient().Do(req)
 }

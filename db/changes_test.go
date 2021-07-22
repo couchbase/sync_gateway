@@ -228,12 +228,10 @@ func TestDocDeletionFromChannelCoalescedRemoved(t *testing.T) {
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
-	// Get raw document from the bucket
-	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
-
-	//Unmarshall into nested maps
+	// Get document from the bucket
 	var x map[string]interface{}
-	assert.NoError(t, base.JSONUnmarshal(rv, &x))
+	_, err = db.Bucket.Get("alpha", &x) // cas, err
+	assert.NoError(t, err)
 
 	sync := x[base.SyncXattrName].(map[string]interface{})
 	sync["sequence"] = 3
@@ -313,12 +311,10 @@ func TestDocDeletionFromChannelCoalesced(t *testing.T) {
 	lastSeq := getLastSeq(changes)
 	lastSeq, _ = db.ParseSequenceID(lastSeq.String())
 
-	// Get raw document from the bucket
-	rv, _, _ := db.Bucket.GetRaw("alpha") // cas, err
-
-	//Unmarshall into nested maps
+	// Get document from the bucket
 	var x map[string]interface{}
-	assert.NoError(t, base.JSONUnmarshal(rv, &x))
+	_, err = db.Bucket.Get("alpha", &x) // cas, err
+	assert.NoError(t, err)
 
 	sync := x[base.SyncXattrName].(map[string]interface{})
 	sync["sequence"] = 3

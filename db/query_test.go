@@ -313,14 +313,14 @@ func TestCoveringQueries(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(db.Bucket)
+	n1QLStore, ok := base.AsN1QLStore(db.Bucket)
 	if !ok {
-		t.Errorf("Unable to get gocbBucket for testBucket")
+		t.Errorf("Unable to get n1QLStore for testBucket")
 	}
 
 	// channels
 	channelsStatement, params := db.buildChannelsQuery("ABC", 0, 10, 100, false)
-	plan, explainErr := gocbBucket.ExplainQuery(channelsStatement, params)
+	plan, explainErr := n1QLStore.ExplainQuery(channelsStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for channels query")
 	covered := isCovered(plan)
 	planJSON, err := base.JSONMarshal(plan)
@@ -329,7 +329,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	// star channel
 	channelStarStatement, params := db.buildChannelsQuery("*", 0, 10, 100, false)
-	plan, explainErr = gocbBucket.ExplainQuery(channelStarStatement, params)
+	plan, explainErr = n1QLStore.ExplainQuery(channelStarStatement, params)
 	assert.NoError(t, explainErr, "Error generating explain for star channel query")
 	covered = isCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
@@ -340,7 +340,7 @@ func TestCoveringQueries(t *testing.T) {
 	// in the SELECT.
 	// Including here for ease-of-conversion when we get an indexing enhancement to support covered queries.
 	accessStatement := db.buildAccessQuery("user1")
-	plan, explainErr = gocbBucket.ExplainQuery(accessStatement, nil)
+	plan, explainErr = n1QLStore.ExplainQuery(accessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for access query")
 	covered = isCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)
@@ -349,7 +349,7 @@ func TestCoveringQueries(t *testing.T) {
 
 	// roleAccess
 	roleAccessStatement := db.buildRoleAccessQuery("user1")
-	plan, explainErr = gocbBucket.ExplainQuery(roleAccessStatement, nil)
+	plan, explainErr = n1QLStore.ExplainQuery(roleAccessStatement, nil)
 	assert.NoError(t, explainErr, "Error generating explain for roleAccess query")
 	covered = isCovered(plan)
 	planJSON, err = base.JSONMarshal(plan)

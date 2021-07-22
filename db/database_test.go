@@ -123,9 +123,15 @@ func setupTestLeakyDBWithCacheOptions(t *testing.T, options CacheOptions, leakyO
 	testBucket := base.GetTestBucket(t)
 	leakyBucket := base.NewLeakyBucket(testBucket, leakyOptions)
 	context, err := NewDatabaseContext("db", leakyBucket, false, dbcOptions)
-	assert.NoError(t, err, "Couldn't create context for database 'db'")
+	if err != nil {
+		testBucket.Close()
+		t.Fatalf("Unable to create database context: %v", err)
+	}
 	db, err := CreateDatabase(context)
-	assert.NoError(t, err, "Couldn't create database 'db'")
+	if err != nil {
+		context.Close()
+		t.Fatalf("Unable to create database: %v", err)
+	}
 	return db
 }
 
@@ -975,8 +981,8 @@ func TestConflicts(t *testing.T) {
 
 	cacheWaiter.Add(2)
 
-	rawBody, _, _ := db.Bucket.GetRaw("doc")
-
+	var rawBody []byte
+	_, _ = db.Bucket.Get("doc", &rawBody)
 	log.Printf("got raw body: %s", rawBody)
 
 	// Verify the change with the higher revid won:
@@ -1018,8 +1024,9 @@ func TestConflicts(t *testing.T) {
 	rev3, err := db.DeleteDoc("doc", "2-b")
 	assert.NoError(t, err, "delete 2-b")
 
-	rawBody, _, _ = db.Bucket.GetRaw("doc")
-	log.Printf("post-delete, got raw body: %s", rawBody)
+	var postRawBody []byte
+	_, _ = db.Bucket.Get("doc", &postRawBody)
+	log.Printf("post-delete, got raw body: %s", postRawBody)
 
 	gotBody, err = db.Get1xBody("doc")
 	expectedResult = Body{BodyId: "doc", BodyRev: "2-a", "n": 3, "channels": []string{"all", "2a"}}

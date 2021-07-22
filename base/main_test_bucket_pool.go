@@ -638,7 +638,7 @@ type tbpBucketName string
 
 var tbpDefaultBucketSpec = BucketSpec{
 	Server:          UnitTestUrl(),
-	CouchbaseDriver: GoCBCustomSGTranscoder,
+	CouchbaseDriver: ChooseCouchbaseDriver(DataBucket),
 	Auth: TestAuthenticator{
 		Username: TestClusterUsername(),
 		Password: TestClusterPassword(),

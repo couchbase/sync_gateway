@@ -11,8 +11,11 @@ package base
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -54,6 +57,29 @@ type WrappingBucket interface {
 	GetUnderlyingBucket() Bucket
 }
 
+// CouchbaseStore defines operations specific to Couchbase data stores
+type CouchbaseStore interface {
+	BucketName() string
+	MgmtEps() ([]string, error)
+	MetadataPurgeInterval() (time.Duration, error)
+	ServerUUID() (uuid string, err error)
+	MaxTTL() (int, error)
+	HttpClient() *http.Client
+	GetExpiry(k string) (expiry uint32, getMetaError error)
+	GetSpec() BucketSpec
+
+	// GetStatsVbSeqno retrieves the high sequence number for all vbuckets and returns
+	// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
+	GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error)
+
+	mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error)
+}
+
+func AsCouchbaseStore(b Bucket) (CouchbaseStore, bool) {
+	couchbaseBucket, ok := GetBaseBucket(b).(CouchbaseStore)
+	return couchbaseBucket, ok
+}
+
 // GetBaseBucket returns the lowest level non-wrapping bucket wrapped by one or more WrappingBuckets
 func GetBaseBucket(b Bucket) Bucket {
 	wb, ok := b.(WrappingBucket)
@@ -69,13 +95,13 @@ func ChooseCouchbaseDriver(bucketType CouchbaseBucketType) CouchbaseDriver {
 	// return DefaultDriverForBucketType[bucketType]
 	switch bucketType {
 	case DataBucket:
-		return GoCBCustomSGTranscoder
+		return GoCBv2
 	case IndexBucket:
-		return GoCB
+		return GoCBv2
 	default:
 		// If a new bucket type is added and this method isn't updated, flag a warning (or, could panic)
 		Warnf("Unexpected bucket type: %v", bucketType)
-		return GoCB
+		return GoCBv2
 	}
 
 }
@@ -86,6 +112,8 @@ func (couchbaseDriver CouchbaseDriver) String() string {
 		return "GoCB"
 	case GoCBCustomSGTranscoder:
 		return "GoCBCustomSGTranscoder"
+	case GoCBv2:
+		return "GoCBv2"
 	default:
 		return "UnknownCouchbaseDriver"
 	}
@@ -332,6 +360,12 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 				return nil, fmt.Errorf("unsupported feed type: %v", spec.FeedType)
 			} else {
 				bucket, err = GetCouchbaseBucketGoCB(spec)
+				if err != nil {
+					if pkgerrors.Cause(err) == gocbV1.ErrAuthError {
+						Warnf("Unable to authenticate as user %q: %v", UD(username), err)
+						return nil, ErrFatalBucketConnection
+					}
+				}
 			}
 		case GoCBv2:
 			bucket, err = GetCouchbaseCollection(spec)
@@ -340,10 +374,6 @@ func GetBucket(spec BucketSpec) (bucket Bucket, err error) {
 		}
 
 		if err != nil {
-			if pkgerrors.Cause(err) == gocbV1.ErrAuthError {
-				Warnf("Unable to authenticate as user %q: %v", UD(username), err)
-				return nil, ErrFatalBucketConnection
-			}
 			return nil, err
 		}
 
@@ -419,11 +449,126 @@ func GetFeedType(bucket Bucket) (feedType string) {
 		} else {
 			return DcpFeedType
 		}
+	case *Collection:
+		return DcpFeedType
 	case *LeakyBucket:
 		return GetFeedType(typedBucket.bucket)
 	case *LoggingBucket:
 		return GetFeedType(typedBucket.bucket)
+	case *TestBucket:
+		return GetFeedType(typedBucket.Bucket)
 	default:
 		return TapFeedType
 	}
+}
+
+// Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
+// since it's not meant to operate against buckets that auto-delete data.
+func getMaxTTL(store CouchbaseStore) (int, error) {
+	var bucketResponseWithMaxTTL struct {
+		MaxTTLSeconds int `json:"maxTTL,omitempty"`
+	}
+
+	uri := fmt.Sprintf("/pools/default/buckets/%s", store.GetSpec().BucketName)
+	resp, err := store.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return -1, err
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return -1, err
+	}
+
+	if err := JSONUnmarshal(respBytes, &bucketResponseWithMaxTTL); err != nil {
+		return -1, err
+	}
+
+	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
+}
+
+// Get the Server UUID of the bucket, this is also known as the Cluster UUID
+func getServerUUID(store CouchbaseStore) (uuid string, err error) {
+	resp, err := store.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
+	if err != nil {
+		return "", err
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var responseJson struct {
+		ServerUUID string `json:"uuid"`
+	}
+
+	if err := JSONUnmarshal(respBytes, &responseJson); err != nil {
+		return "", err
+	}
+
+	return responseJson.ServerUUID, nil
+}
+
+// Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
+// found, retrieves the cluster-wide value.
+func getMetadataPurgeInterval(store CouchbaseStore) (time.Duration, error) {
+
+	// Bucket-specific settings
+	uri := fmt.Sprintf("/pools/default/buckets/%s", store.BucketName())
+	bucketPurgeInterval, err := retrievePurgeInterval(store, uri)
+	if bucketPurgeInterval > 0 || err != nil {
+		return bucketPurgeInterval, err
+	}
+
+	// Cluster-wide settings
+	uri = fmt.Sprintf("/settings/autoCompaction")
+	clusterPurgeInterval, err := retrievePurgeInterval(store, uri)
+	if clusterPurgeInterval > 0 || err != nil {
+		return clusterPurgeInterval, err
+	}
+
+	return 0, nil
+
+}
+
+// Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
+// that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
+// bucket and server purge intervals).
+func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, error) {
+
+	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
+	var purgeResponse struct {
+		PurgeInterval float64 `json:"purgeInterval,omitempty"`
+	}
+
+	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
+	if err != nil {
+		return 0, err
+	}
+
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusForbidden {
+		Warnf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
+	} else if resp.StatusCode != http.StatusOK {
+		return 0, errors.New(resp.Status)
+	}
+
+	respBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+
+	if err := JSONUnmarshal(respBytes, &purgeResponse); err != nil {
+		return 0, err
+	}
+
+	// Server purge interval is a float value, in days.  Round up to hours
+	purgeIntervalHours := int(purgeResponse.PurgeInterval*24 + 0.5)
+	return time.Duration(purgeIntervalHours) * time.Hour, nil
 }

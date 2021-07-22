@@ -58,7 +58,7 @@ var recoverableGocbV1Errors = map[string]struct{}{
 	gocbcore.ErrTmpFail.Error():  {},
 }
 
-// Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb
+// Implementation of sgbucket.Bucket that talks to a Couchbase server and useAsGocs gocb
 type CouchbaseBucketGoCB struct {
 	*gocb.Bucket               // the underlying gocb bucket
 	Spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
@@ -70,6 +70,7 @@ type CouchbaseBucketGoCB struct {
 }
 
 var _ sgbucket.KVStore = &CouchbaseBucketGoCB{}
+var _ CouchbaseStore = &CouchbaseBucketGoCB{}
 
 // Creates a Bucket that talks to a real live Couchbase server.
 func GetCouchbaseBucketGoCB(spec BucketSpec) (bucket *CouchbaseBucketGoCB, err error) {
@@ -188,7 +189,6 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 }
 
 func (bucket *CouchbaseBucketGoCB) GetBucketCredentials() (username, password string) {
-
 	if bucket.Spec.Auth != nil {
 		username, password, _ = bucket.Spec.Auth.GetCredentials()
 	}
@@ -197,113 +197,19 @@ func (bucket *CouchbaseBucketGoCB) GetBucketCredentials() (username, password st
 
 // Gets the metadata purge interval for the bucket.  First checks for a bucket-specific value.  If not
 // found, retrieves the cluster-wide value.
-func (bucket *CouchbaseBucketGoCB) GetMetadataPurgeInterval() (time.Duration, error) {
-
-	// Bucket-specific settings
-	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.Name())
-	bucketPurgeInterval, err := bucket.retrievePurgeInterval(uri)
-	if bucketPurgeInterval > 0 || err != nil {
-		return bucketPurgeInterval, err
-	}
-
-	// Cluster-wide settings
-	uri = fmt.Sprintf("/settings/autoCompaction")
-	clusterPurgeInterval, err := bucket.retrievePurgeInterval(uri)
-	if clusterPurgeInterval > 0 || err != nil {
-		return clusterPurgeInterval, err
-	}
-
-	return 0, nil
-
-}
-
-// Helper function to retrieve a Metadata Purge Interval from server and convert to hours.  Works for any uri
-// that returns 'purgeInterval' as a root-level property (which includes the two server endpoints for
-// bucket and server purge intervals).
-func (bucket *CouchbaseBucketGoCB) retrievePurgeInterval(uri string) (time.Duration, error) {
-
-	// Both of the purge interval endpoints (cluster and bucket) return purgeInterval in the same way
-	var purgeResponse struct {
-		PurgeInterval float64 `json:"purgeInterval,omitempty"`
-	}
-
-	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
-	if err != nil {
-		return 0, err
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode == http.StatusForbidden {
-		Warnf("403 Forbidden attempting to access %s.  Bucket user must have Bucket Full Access and Bucket Admin roles to retrieve metadata purge interval.", UD(uri))
-	} else if resp.StatusCode != http.StatusOK {
-		return 0, errors.New(resp.Status)
-	}
-
-	respBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	if err := JSONUnmarshal(respBytes, &purgeResponse); err != nil {
-		return 0, err
-	}
-
-	// Server purge interval is a float value, in days.  Round up to hours
-	purgeIntervalHours := int(purgeResponse.PurgeInterval*24 + 0.5)
-	return time.Duration(purgeIntervalHours) * time.Hour, nil
+func (bucket *CouchbaseBucketGoCB) MetadataPurgeInterval() (time.Duration, error) {
+	return getMetadataPurgeInterval(bucket)
 }
 
 // Get the Server UUID of the bucket, this is also known as the Cluster UUID
-func (bucket *CouchbaseBucketGoCB) GetServerUUID() (uuid string, err error) {
-	resp, err := bucket.mgmtRequest(http.MethodGet, "/pools", "application/json", nil)
-	if err != nil {
-		return "", err
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	respBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	var responseJson struct {
-		ServerUUID string `json:"uuid"`
-	}
-
-	if err := JSONUnmarshal(respBytes, &responseJson); err != nil {
-		return "", err
-	}
-
-	return responseJson.ServerUUID, nil
+func (bucket *CouchbaseBucketGoCB) ServerUUID() (uuid string, err error) {
+	return getServerUUID(bucket)
 }
 
 // Gets the bucket max TTL, or 0 if no TTL was set.  Sync gateway should fail to bring the DB online if this is non-zero,
 // since it's not meant to operate against buckets that auto-delete data.
-func (bucket *CouchbaseBucketGoCB) GetMaxTTL() (int, error) {
-	var bucketResponseWithMaxTTL struct {
-		MaxTTLSeconds int `json:"maxTTL,omitempty"`
-	}
-
-	uri := fmt.Sprintf("/pools/default/buckets/%s", bucket.Spec.BucketName)
-	resp, err := bucket.mgmtRequest(http.MethodGet, uri, "application/json", nil)
-	if err != nil {
-		return -1, err
-	}
-
-	defer func() { _ = resp.Body.Close() }()
-
-	respBytes, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return -1, err
-	}
-
-	if err := JSONUnmarshal(respBytes, &bucketResponseWithMaxTTL); err != nil {
-		return -1, err
-	}
-
-	return bucketResponseWithMaxTTL.MaxTTLSeconds, nil
+func (bucket *CouchbaseBucketGoCB) MaxTTL() (int, error) {
+	return getMaxTTL(bucket)
 }
 
 // mgmtRequest is a re-implementation of gocb's mgmtRequest
@@ -315,7 +221,7 @@ func (bucket *CouchbaseBucketGoCB) mgmtRequest(method, uri, contentType string, 
 		panic("Content-type must be specified for non-null body.")
 	}
 
-	mgmtEp, err := GoCBBucketMgmtEndpoint(bucket.Bucket)
+	mgmtEp, err := GoCBBucketMgmtEndpoint(bucket)
 	if err != nil {
 		return nil, err
 	}
@@ -921,7 +827,7 @@ func (bucket *CouchbaseBucketGoCB) Add(k string, exp uint32, v interface{}) (add
 
 // GoCB AddRaw writes as BinaryDocument, which results in the document having the
 // binary doc common flag set.  Callers that want to write JSON documents as raw bytes should
-// pass v as []byte to the stanard bucket.Add
+// pass v as []byte to the standard bucket.Add
 func (bucket *CouchbaseBucketGoCB) AddRaw(k string, exp uint32, v []byte) (added bool, err error) {
 	bucket.singleOps <- struct{}{}
 	defer func() {
@@ -1610,10 +1516,6 @@ func (bucket *CouchbaseBucketGoCB) GetMaxVbno() (uint16, error) {
 	return 0, fmt.Errorf("Unable to determine vbucket count")
 }
 
-func (bucket *CouchbaseBucketGoCB) CouchbaseServerVersion() (major uint64, minor uint64, micro string) {
-	return bucket.clusterCompatMajorVersion, bucket.clusterCompatMinorVersion, ""
-}
-
 func (bucket *CouchbaseBucketGoCB) UUID() (string, error) {
 	return bucket.Bucket.IoRouter().BucketUUID(), nil
 }
@@ -1812,7 +1714,9 @@ func (bucket *CouchbaseBucketGoCB) FormatBinaryDocument(input []byte) interface{
 }
 
 func (bucket *CouchbaseBucketGoCB) IsSupported(feature sgbucket.DataStoreFeature) bool {
-	major, minor, _ := bucket.CouchbaseServerVersion()
+
+	major := bucket.clusterCompatMajorVersion
+	minor := bucket.clusterCompatMinorVersion
 	switch feature {
 	case sgbucket.DataStoreFeatureSubdocOperations:
 		return isMinimumVersion(major, minor, 4, 5)
@@ -2069,17 +1973,29 @@ func AsLeakyBucket(bucket Bucket) (*LeakyBucket, bool) {
 	return AsLeakyBucket(underlyingBucket)
 }
 
-func GoCBBucketMgmtEndpoints(bucket *gocb.Bucket) (url []string, err error) {
-	mgmtEps := bucket.IoRouter().MgmtEps()
+func (bucket *CouchbaseBucketGoCB) MgmtEps() (url []string, err error) {
+	mgmtEps := bucket.Bucket.IoRouter().MgmtEps()
 	if len(mgmtEps) == 0 {
 		return nil, fmt.Errorf("No available Couchbase Server nodes")
 	}
 	return mgmtEps, nil
 }
 
+func (bucket *CouchbaseBucketGoCB) HttpClient() *http.Client {
+	return bucket.Bucket.IoRouter().HttpClient()
+}
+
+func (bucket *CouchbaseBucketGoCB) BucketName() string {
+	return bucket.Bucket.Name()
+}
+
+func GoCBBucketMgmtEndpoints(bucket CouchbaseStore) (url []string, err error) {
+	return bucket.MgmtEps()
+}
+
 // Get one of the management endpoints.  It will be a string such as http://couchbase
-func GoCBBucketMgmtEndpoint(bucket *gocb.Bucket) (url string, err error) {
-	mgmtEps, err := GoCBBucketMgmtEndpoints(bucket)
+func GoCBBucketMgmtEndpoint(bucket CouchbaseStore) (url string, err error) {
+	mgmtEps, err := bucket.MgmtEps()
 	if err != nil {
 		return "", err
 	}

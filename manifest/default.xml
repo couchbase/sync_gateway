@@ -59,7 +59,7 @@ licenses/APL2.txt.
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="4201f50df22f08f75a0491451fa6507387d41304"/>
 
-  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="7a9f15d95f07f7f30f567cf19919f554d14b12d5"/>
+  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="3f290c1ec18cd8dbf967af8183a64801a8cf5db1"/>
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="couchbasedeps" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
 

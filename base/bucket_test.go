@@ -265,10 +265,10 @@ func TestGetStatsVbSeqno(t *testing.T) {
 }
 
 func TestChooseCouchbaseDriver(t *testing.T) {
-	assert.Equal(t, GoCBCustomSGTranscoder, ChooseCouchbaseDriver(DataBucket))
-	assert.Equal(t, GoCB, ChooseCouchbaseDriver(IndexBucket))
+	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(DataBucket))
+	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(IndexBucket))
 	unknownCouchbaseBucketType := CouchbaseBucketType(math.MaxInt8)
-	assert.Equal(t, GoCB, ChooseCouchbaseDriver(unknownCouchbaseBucketType))
+	assert.Equal(t, GoCBv2, ChooseCouchbaseDriver(unknownCouchbaseBucketType))
 }
 
 func TestCouchbaseDriverToString(t *testing.T) {

@@ -97,8 +97,42 @@ func (c *Collection) PutDDoc(docname string, sgDesignDoc *sgbucket.DesignDoc) er
 // design doc property. XattrEnabledDesignDocV2 extends gocb.DesignDocument to support
 // use of putDDocForTombstones
 type XattrEnabledDesignDocV2 struct {
-	*gocb.DesignDocument
+	*jsonDesignDocument
 	IndexXattrOnTombstones bool `json:"index_xattr_on_deleted_docs,omitempty"`
+}
+
+// gocb's DesignDocument and View aren't directly marshallable for use in viewEp requests - they
+// copy into *private* structs with the correct json annotations.  Cloning those here to support
+// use of index_xattr_on_deleted_docs.
+type jsonView struct {
+	Map    string `json:"map,omitempty"`
+	Reduce string `json:"reduce,omitempty"`
+}
+
+type jsonDesignDocument struct {
+	Views map[string]jsonView `json:"views,omitempty"`
+}
+
+func asJsonDesignDocument(ddoc *gocb.DesignDocument) *jsonDesignDocument {
+	jsonDDoc := &jsonDesignDocument{}
+	jsonDDoc.Views = make(map[string]jsonView, 0)
+	for name, view := range ddoc.Views {
+		jsonDDoc.Views[name] = jsonView{
+			Map:    view.Map,
+			Reduce: view.Reduce,
+		}
+	}
+	return jsonDDoc
+}
+
+type NoNameView struct {
+	Map    string `json:"map,omitempty"`
+	Reduce string `json:"reduce,omitempty"`
+}
+
+type NoNameDesignDocument struct {
+	Name  string                `json:"-"`
+	Views map[string]NoNameView `json:"views"`
 }
 
 func (c *Collection) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
@@ -108,8 +142,10 @@ func (c *Collection) putDDocForTombstones(ddoc *gocb.DesignDocument) error {
 		return fmt.Errorf("Unable to get handle for bucket router: %v", err)
 	}
 
+	jsonDdoc := asJsonDesignDocument(ddoc)
+
 	xattrEnabledDesignDoc := XattrEnabledDesignDocV2{
-		DesignDocument:         ddoc,
+		jsonDesignDocument:     jsonDdoc,
 		IndexXattrOnTombstones: true,
 	}
 	data, err := JSONMarshal(&xattrEnabledDesignDoc)

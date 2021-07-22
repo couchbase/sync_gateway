@@ -48,12 +48,11 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 		return treeMeta.RevTree, nil
 
 	default:
-		rawDoc, _, err := bucket.GetRaw(key)
+		var doc treeDoc
+		_, err := bucket.Get(key, &doc)
 		if err != nil {
 			return revTreeList{}, err
 		}
-		var doc treeDoc
-		err = base.JSONUnmarshal(rawDoc, &doc)
 		return doc.Meta.RevTree, err
 	}
 

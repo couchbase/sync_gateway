@@ -465,7 +465,8 @@ func (dh *documentBackedListener) updateNodeList(nodeID string, remove bool) err
 
 func (dh *documentBackedListener) loadNodeIDs() error {
 
-	docBytes, cas, err := dh.bucket.GetRaw(dh.nodeListKey)
+	var docBytes []byte
+	cas, err := dh.bucket.Get(dh.nodeListKey, &docBytes)
 	if err != nil {
 		dh.cas = 0
 		dh.nodeIDs = []string{}

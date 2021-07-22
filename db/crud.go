@@ -74,7 +74,8 @@ func (db *DatabaseContext) GetDocument(docid string, unmarshalLevel DocumentUnma
 			return nil, base.HTTPErrorf(404, "Not imported")
 		}
 	} else {
-		rawDoc, _, getErr := db.Bucket.GetRaw(key)
+		var rawDoc []byte
+		_, getErr := db.Bucket.Get(key, &rawDoc)
 		if getErr != nil {
 			return nil, getErr
 		}
@@ -157,7 +158,9 @@ func (db *DatabaseContext) GetDocSyncData(docid string) (SyncData, error) {
 
 	} else {
 		// Non-xattr.  Retrieve doc from bucket, unmarshal metadata only.
-		rawDocBytes, _, err := db.Bucket.GetRaw(key)
+
+		var rawDocBytes []byte
+		_, err := db.Bucket.Get(key, &rawDocBytes)
 		if err != nil {
 			return emptySyncData, err
 		}

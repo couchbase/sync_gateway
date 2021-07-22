@@ -59,12 +59,12 @@ func (il *importListener) StartImportFeed(bucket base.Bucket, dbStats *base.DbSt
 	base.Infof(base.KeyDCP, "Starting DCP import feed for bucket: %q ", base.UD(bucket.GetName()))
 
 	// TODO: need to clean up StartDCPFeed to push bucket dependencies down
-	gocbBucket, ok := base.AsGoCBBucket(bucket)
+	cbStore, ok := base.AsCouchbaseStore(bucket)
 	if !ok || !base.IsEnterpriseEdition() {
-		// Non-gocb bucket or CE, start a non-sharded feed
+		// Non-couchbase bucket or CE, start a non-sharded feed
 		return bucket.StartDCPFeed(feedArgs, il.ProcessFeedEvent, importFeedStatsMap.Map)
 	} else {
-		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.UUID, dbContext.Heartbeater, gocbBucket, dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
+		il.cbgtContext, err = base.StartShardedDCPFeed(dbContext.Name, dbContext.UUID, dbContext.Heartbeater, bucket, cbStore.GetSpec(), dbContext.Options.ImportOptions.ImportPartitions, dbContext.CfgSG)
 		return err
 	}
 

@@ -43,7 +43,7 @@ func (db *DatabaseContext) GetSpecialBytes(doctype string, docid string) ([]byte
 	if doctype == "local" && db.Options.LocalDocExpirySecs > 0 {
 		rawDocBytes, _, err = db.Bucket.GetAndTouchRaw(key, base.SecondsToCbsExpiry(int(db.Options.LocalDocExpirySecs)))
 	} else {
-		rawDocBytes, _, err = db.Bucket.GetRaw(key)
+		_, err = db.Bucket.Get(key, &rawDocBytes)
 	}
 	if err != nil {
 		return nil, err
