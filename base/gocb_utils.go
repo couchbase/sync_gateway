@@ -12,21 +12,17 @@ import (
 )
 
 // GoCBv2SecurityConfig returns a gocb.SecurityConfig to use when connecting given a CA Cert path.
-func GoCBv2SecurityConfig(caCertPath string) (sc gocb.SecurityConfig, err error) {
-	if caCertPath != "" {
-		roots := x509.NewCertPool()
-		cacert, err := ioutil.ReadFile(caCertPath)
+func GoCBv2SecurityConfig(tlsSkipVerify *bool, caCertPath string) (sc gocb.SecurityConfig, err error) {
+	var certPool *x509.CertPool = nil
+	if tlsSkipVerify == nil || !*tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
+		certPool, err = getRootCAs(caCertPath)
 		if err != nil {
 			return sc, err
 		}
-		ok := roots.AppendCertsFromPEM(cacert)
-		if !ok {
-			return sc, errors.New("Invalid CA cert")
-		}
-		sc.TLSRootCAs = roots
-	} else {
-		sc.TLSSkipVerify = true
+		tlsSkipVerify = BoolPtr(false)
 	}
+	sc.TLSRootCAs = certPool
+	sc.TLSSkipVerify = *tlsSkipVerify
 	return sc, nil
 }
 
@@ -112,17 +108,22 @@ func GoCBCoreAuthConfig(username, password, certPath, keyPath string) (a gocbcor
 	}, nil
 }
 
-func GoCBCoreTLSRootCAProvider(caCertPath string) (func() *x509.CertPool, error) {
-	rootCAs, err := getRootCAs(caCertPath)
-	if err != nil {
-		return nil, err
+func GoCBCoreTLSRootCAProvider(tlsSkipVerify *bool, caCertPath string) (wrapper func() *x509.CertPool, err error) {
+	var certPool *x509.CertPool = nil
+	if tlsSkipVerify == nil || !*tlsSkipVerify { // Add certs if ServerTLSSkipVerify is not set
+		certPool, err = getRootCAs(caCertPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return func() *x509.CertPool {
-		return rootCAs
+		return certPool
 	}, nil
 }
 
+// getRootCAs gets generates a cert pool from the certs at caCertPath. If caCertPath is empty, the systems cert pool is used.
+// If an error happens when retrieving the system cert pool, it is logged (not returned) and an empty (not nil) cert pool is returned.
 func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 	if caCertPath != "" {
 		rootCAs := x509.NewCertPool()
@@ -134,14 +135,16 @@ func getRootCAs(caCertPath string) (*x509.CertPool, error) {
 
 		ok := rootCAs.AppendCertsFromPEM(caCert)
 		if !ok {
-			return nil, errors.New("Invalid CA cert")
+			return nil, errors.New("invalid CA cert")
 		}
 
 		return rootCAs, nil
 	}
 
-	// We're purposefully ignoring the error here Due to the fact that the main error case is that this call is not
-	// supported in Windows.
-	rootCAs, _ := x509.SystemCertPool()
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil {
+		rootCAs = x509.NewCertPool()
+		Errorf("Error getting root CAs: %v", err)
+	}
 	return rootCAs, nil
 }

@@ -50,7 +50,8 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Unsupported: UnsupportedConfig{
-			StatsLogFrequency: base.NewConfigDuration(time.Minute),
+			StatsLogFrequency:   base.NewConfigDuration(time.Minute),
+			ServerTLSSkipVerify: base.BoolPtr(false),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
@@ -140,8 +141,9 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
-	StatsLogFrequency *base.ConfigDuration `json:"stats_log_frequency,omitempty" help:"How often should stats be written to stats logs"`
-	UseStdlibJSON     bool                 `json:"use_stdlib_json,omitempty"     help:"Bypass the jsoniter package and use Go's stdlib instead"`
+	StatsLogFrequency   *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
+	UseStdlibJSON       bool                 `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
+	ServerTLSSkipVerify *bool                `json:"server_tls_skip_verify,omitempty" help:"Allow empty server CA Cert Path without attempting to use system root pool"`
 
 	HTTP2 *HTTP2Config `json:"http2,omitempty"`
 }

@@ -170,7 +170,7 @@ func initV2Cluster(server string) *gocb.Cluster {
 		Fatalf("error getting connection string: %v", err)
 	}
 
-	securityConfig, err := GoCBv2SecurityConfig(spec.CACertPath)
+	securityConfig, err := GoCBv2SecurityConfig(&spec.TLSSkipVerify, spec.CACertPath)
 	if err != nil {
 		Fatalf("Couldn't initialize cluster security config: %v", err)
 	}

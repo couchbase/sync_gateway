@@ -767,3 +767,118 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 
 	assert.NoError(t, <-serveErr)
 }
+
+// CBG-1518 - Test CA Certificate behaviour with and with Bootstrap.ServerTLSSkipVerify
+func TestTLSSkipVerifyCombinations(t *testing.T) {
+	// Force teardown due to setupServerContext setting up logging
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
+	errorText := "cannot skip server TLS validation and use CA Cert"
+	testCases := []struct {
+		name                string
+		serverTLSSkipVerify *bool
+		caCert              string
+		expectError         bool
+	}{
+		{
+			name:                "CA Provided, explicitly not skipping TLS validation",
+			serverTLSSkipVerify: base.BoolPtr(false),
+			caCert:              "t.ca",
+			expectError:         false,
+		},
+		{
+			name:        "CA Provided only",
+			caCert:      "t.ca",
+			expectError: false,
+		},
+		{
+			name:                "CA Provided and skipping TLS validation",
+			serverTLSSkipVerify: base.BoolPtr(true),
+			caCert:              "t.ca",
+			expectError:         true,
+		},
+		{
+			name:                "Skipping TLS validation, no CA",
+			serverTLSSkipVerify: base.BoolPtr(true),
+			caCert:              "",
+			expectError:         false,
+		},
+		{
+			name:        "No CA, no TLS validation skip",
+			expectError: false,
+		},
+		{
+			name:                "No CA, no TLS validation skip explicitly",
+			serverTLSSkipVerify: base.BoolPtr(false),
+			expectError:         false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			startupConfig := &StartupConfig{
+				Unsupported: UnsupportedConfig{
+					ServerTLSSkipVerify: test.serverTLSSkipVerify,
+				},
+				Bootstrap: BootstrapConfig{
+					CACertPath: test.caCert,
+				},
+			}
+
+			sc, err := setupServerContext(startupConfig, false)
+			if test.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), errorText)
+				assert.Empty(t, sc)
+			} else if err != nil {
+				// check if unrelated error
+				assert.NotContains(t, err.Error(), errorText)
+			}
+		})
+	}
+
+}
+
+// CBG-1518 - Test GetbucketSpec() ServerTLSSkipVerify and empty CA Cert behaviour.
+// Does not test validation of having CA Cert provided and TLS Skip verify on. See TestTLSSkipVerifyCombinations for that.
+func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
+	testCases := []struct {
+		name                string
+		serverTLSSkipVerify *bool
+		caCert              string
+	}{
+		{
+			name:                "CA Provided, explicitly not skipping TLS validation",
+			serverTLSSkipVerify: base.BoolPtr(false),
+			caCert:              "t.ca",
+		},
+		{
+			name:   "CA Provided only",
+			caCert: "t.ca",
+		},
+		{
+			name:                "Skipping TLS validation, no CA",
+			serverTLSSkipVerify: base.BoolPtr(true),
+			caCert:              "",
+		},
+		{
+			name: "No CA, no TLS validation skip",
+		},
+		{
+			name:                "No CA, no TLS validation skip explicitly",
+			serverTLSSkipVerify: base.BoolPtr(false),
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			startupConfig := &StartupConfig{Unsupported: UnsupportedConfig{ServerTLSSkipVerify: test.serverTLSSkipVerify}}
+			dbConfig := &DbConfig{BucketConfig: BucketConfig{CACertPath: test.caCert}}
+			spec, err := GetBucketSpec(dbConfig, startupConfig)
+
+			assert.NoError(t, err)
+			assert.Equal(t, test.caCert, spec.CACertPath)
+			if test.serverTLSSkipVerify == nil {
+				test.serverTLSSkipVerify = base.BoolPtr(false)
+			}
+			assert.Equal(t, spec.TLSSkipVerify, *test.serverTLSSkipVerify)
+		})
+	}
+}
