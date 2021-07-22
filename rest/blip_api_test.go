@@ -2855,7 +2855,6 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 // 5. Update doc in the test client by adding another attachment
 // 6. Have that update pushed using delta sync via the continuous replication started in step 2
 func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
-	t.Skip("Skipping this test temporarily")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
@@ -2929,6 +2928,77 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	assert.Equal(t, float64(11), world["length"])
 	assert.Equal(t, float64(2), world["revpos"])
 	assert.Equal(t, true, world["stub"])
+}
+
+// Test pushing and pulling v2 attachments
+// 1. Create test client.
+// 2. Start continuous push and pull replication in client
+// 3. Create doc with attachment in SGW
+// 4. Update doc in the test client and keep the same attachment stub.
+// 5. Have that update pushed via the continuous replication started in step 2
+func TestBlipPushPullNewAttachmentV2(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	rtConfig := RestTesterConfig{
+		DatabaseConfig: &DbConfig{
+			DeltaSync: &DeltaSyncConfig{
+				Enabled: base.BoolPtr(true),
+			},
+		},
+		guestEnabled: true,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	err = btc.StartPull()
+	assert.NoError(t, err)
+	const docId = "doc1"
+
+	// Create doc revision with attachment on SG.
+	bodyText := `{"greetings":[{"hi": "alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
+	response := rt.SendAdminRequest(http.MethodPut, "/db/"+docId, bodyText)
+	assert.Equal(t, http.StatusCreated, response.Code)
+
+	// Wait for the document to be replicated to client.
+	revId := respRevID(t, response)
+	data, ok := btc.WaitForRev(docId, revId)
+	assert.True(t, ok)
+	bodyTextExpected := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+	require.JSONEq(t, bodyTextExpected, string(data))
+
+	// Update the replicated doc at client along with keeping the same attachment stub.
+	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
+	require.NoError(t, err)
+	assert.Equal(t, "2-abcxyz", revId)
+
+	// Wait for the document to be replicated at SG
+	_, ok = btc.pushReplication.WaitForMessage(2)
+	assert.True(t, ok)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+	var respBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
+
+	assert.Equal(t, docId, respBody[db.BodyId])
+	assert.Equal(t, "2-abcxyz", respBody[db.BodyRev])
+	greetings := respBody["greetings"].([]interface{})
+	assert.Len(t, greetings, 1)
+	assert.Equal(t, map[string]interface{}{"hi": "bob"}, greetings[0])
+
+	attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
+	require.True(t, ok)
+	assert.Len(t, attachments, 1)
+	hello, ok := attachments["hello.txt"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, float64(11), hello["length"])
+	assert.Equal(t, float64(2), hello["revpos"])
+	assert.True(t, hello["stub"].(bool))
 }
 
 func TestUpdateExistingAttachment(t *testing.T) {
