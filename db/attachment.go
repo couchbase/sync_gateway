@@ -269,7 +269,7 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string
 			}
 			if newData, err := callback(name, digest, data, meta); err != nil {
 				return err
-			} else if newData != nil {
+			} else if newData != nil && version == AttVersion1 {
 				meta["data"] = newData
 				delete(meta, "stub")
 				delete(meta, "follows")
