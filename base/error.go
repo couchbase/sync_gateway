@@ -15,7 +15,7 @@ import (
 	"net/http"
 
 	"github.com/couchbase/gocb"
-
+	"github.com/couchbase/gocbcore/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
@@ -99,18 +99,21 @@ func ErrorAsHTTPStatus(err error) (int, string) {
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrBusy)"
 	case gocbv1.ErrTmpFail, gocb.ErrTemporaryFailure:
 		return http.StatusServiceUnavailable, "Database server is over capacity (gocb.ErrTmpFail)"
-	case gocbv1.ErrTooBig, gocb.ErrValueTooLarge:
+	case gocbv1.ErrTooBig:
 		return http.StatusRequestEntityTooLarge, "Document too large!"
 	case ErrViewTimeoutError:
 		return http.StatusServiceUnavailable, unwrappedErr.Error()
 	}
 
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
+	// gocb V2 errors
+	if errors.Is(unwrappedErr, gocb.ErrDocumentNotFound) {
 		return http.StatusNotFound, "missing"
 	}
-
-	if errors.Is(err, gocb.ErrDocumentExists) {
+	if errors.Is(unwrappedErr, gocb.ErrDocumentExists) {
 		return http.StatusConflict, "Conflict"
+	}
+	if isKVError(unwrappedErr, memd.StatusTooBig) {
+		return http.StatusRequestEntityTooLarge, "Document too large!"
 	}
 
 	switch unwrappedErr := unwrappedErr.(type) {
