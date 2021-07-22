@@ -225,6 +225,81 @@ func TestDocAttachment(t *testing.T) {
 	goassert.Equals(t, response.Header().Get("Content-Type"), attachmentContentType)
 }
 
+func TestDocAttachmentMetaOption(t *testing.T) {
+	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
+	defer rt.Close()
+
+	response := rt.SendRequest(http.MethodPut, "/db/doc", `{"prop":true}`)
+	assertStatus(t, response, http.StatusCreated)
+	var body db.Body
+	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	revid := body["rev"].(string)
+
+	attachmentBody := "this is the body of attachment"
+	attachmentContentType := "content/type"
+	reqHeaders := map[string]string{
+		"Content-Type": attachmentContentType,
+	}
+
+	// Validate attachment response.
+	assertAttachmentResponse := func(response *TestResponse) {
+		assertStatus(t, response, http.StatusOK)
+		assert.Equal(t, attachmentBody, string(response.Body.Bytes()))
+		assert.Equal(t, "bytes", response.Header().Get("Accept-Ranges"))
+		assert.Empty(t, response.Header().Get("Content-Disposition"))
+		assert.Equal(t, "30", response.Header().Get("Content-Length"))
+		assert.Equal(t, attachmentContentType, response.Header().Get("Content-Type"))
+	}
+
+	// Attach to existing document.
+	response = rt.SendRequestWithHeaders(http.MethodPut, "/db/doc/attach1?rev="+revid, attachmentBody, reqHeaders)
+	assertStatus(t, response, http.StatusCreated)
+
+	// Retrieve attachment
+	response = rt.SendRequest(http.MethodGet, "/db/doc/attach1", "")
+	assertAttachmentResponse(response)
+
+	// Retrieve attachment meta only by explicitly enabling meta option.
+	response = rt.SendRequest(http.MethodGet, "/db/doc/attach1?meta=true", "")
+	assertStatus(t, response, http.StatusOK)
+
+	responseBody := make(map[string]interface{})
+	err := base.JSONUnmarshal(response.Body.Bytes(), &responseBody)
+	require.NoError(t, err)
+
+	contentType, contentTypeOK := responseBody["content_type"].(string)
+	require.True(t, contentTypeOK)
+	assert.Equal(t, attachmentContentType, contentType)
+
+	digest, digestOK := responseBody["digest"].(string)
+	require.True(t, digestOK)
+	assert.Equal(t, "sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=", digest)
+
+	key, keyOK := responseBody["key"].(string)
+	require.True(t, keyOK)
+	assert.Equal(t, "_sync:att2:E51US4IbE+vqFPGw/hhXciLkFcKWbjo1EcQZYFUjIgI=:sha1-nq0xWBV2IEkkpY3ng+PEtFnCcVY=", key)
+
+	length, lengthOK := responseBody["length"].(float64)
+	require.True(t, lengthOK)
+	assert.Equal(t, float64(30), length)
+
+	revpos, revposOK := responseBody["revpos"].(float64)
+	require.True(t, revposOK)
+	assert.Equal(t, float64(2), revpos)
+
+	version, versionOK := responseBody["ver"].(float64)
+	require.True(t, versionOK)
+	assert.Equal(t, float64(2), version)
+
+	stub, stubOK := responseBody["stub"].(bool)
+	require.True(t, stubOK)
+	require.True(t, stub)
+
+	// Retrieve attachment by explicitly disabling meta option.
+	response = rt.SendRequest(http.MethodGet, "/db/doc/attach1?meta=false", "")
+	assertAttachmentResponse(response)
+}
+
 // Add an attachment to a document that has been removed from the users channels
 func TestDocAttachmentOnRemovedRev(t *testing.T) {
 	rt := NewRestTester(t, nil)

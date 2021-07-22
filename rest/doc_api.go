@@ -205,6 +205,13 @@ func (h *handler) handleGetAttachment() error {
 		return err
 	}
 
+	metaOption := h.getBoolQuery("meta")
+	if metaOption {
+		meta["key"] = attachmentKey
+		h.writeJSONStatus(http.StatusOK, meta)
+		return nil
+	}
+
 	status, start, end := h.handleRange(uint64(len(data)))
 	if status > 299 {
 		return base.HTTPErrorf(status, "")
