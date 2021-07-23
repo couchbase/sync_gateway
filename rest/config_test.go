@@ -1266,6 +1266,7 @@ func TestUseTLSClient(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			config := DefaultStartupConfig("")
 			config.API.HTTPS.UseTLSClient = &test.useTLSClient
+			config.Bootstrap.Server = base.UnitTestUrl()
 			if test.tlsKey {
 				config.API.HTTPS.TLSKeyPath = "test.key"
 			}

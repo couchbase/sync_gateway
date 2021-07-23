@@ -830,10 +830,7 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	if sc.Bootstrap.ServerTLSSkipVerify != nil && *sc.Bootstrap.ServerTLSSkipVerify && sc.Bootstrap.CACertPath != "" {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot skip server TLS validation and use CA Cert"))
 	}
-	return errorMessages
-}
 
-func (sc *StartupConfig) validate() (errorMessages error) {
 	// Validate SSL is provided if not allowing unsecure connections
 	if sc.API.HTTPS.UseTLSClient == nil || *sc.API.HTTPS.UseTLSClient {
 		if sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "" {
