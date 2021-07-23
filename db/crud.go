@@ -378,10 +378,12 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		if fromRevision.Attachments != nil {
 			// the delta library does not handle deltas in non builtin types,
 			// so we need the map[string]interface{} type conversion here
-			fromBodyCopy[BodyAttachments] = map[string]interface{}(fromRevision.Attachments)
+			attachments := DeleteAttachmentVersion(fromRevision.Attachments)
+			fromBodyCopy[BodyAttachments] = map[string]interface{}(attachments)
 		}
 		if toRevision.Attachments != nil {
-			toBodyCopy[BodyAttachments] = map[string]interface{}(toRevision.Attachments)
+			attachments := DeleteAttachmentVersion(toRevision.Attachments)
+			toBodyCopy[BodyAttachments] = map[string]interface{}(attachments)
 		}
 
 		deltaBytes, err := base.Diff(fromBodyCopy, toBodyCopy)

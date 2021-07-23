@@ -452,10 +452,10 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	return nil
 }
 
-func (bsc *BlipSyncContext) isAttachmentAllowed(digest string) bool {
+func (bsc *BlipSyncContext) allowedAttachment(digest string) AllowedAttachment {
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
-	return bsc.allowedAttachments[digest].counter > 0
+	return bsc.allowedAttachments[digest]
 }
 
 // setUseDeltas will set useDeltas on the BlipSyncContext as long as both sides of the connection have it enabled.
@@ -554,7 +554,8 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
-			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
+			attachments := DeleteAttachmentVersion(rev.Attachments)
+			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: attachments})
 			if err != nil {
 				return err
 			}
@@ -569,7 +570,8 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
-			body[BodyAttachments] = rev.Attachments
+			attachments := DeleteAttachmentVersion(rev.Attachments)
+			body[BodyAttachments] = attachments
 		}
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)

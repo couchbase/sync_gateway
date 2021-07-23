@@ -195,7 +195,12 @@ func (h *handler) handleGetAttachment() error {
 		return base.HTTPErrorf(http.StatusNotFound, "missing attachment %s", attachmentName)
 	}
 	digest := meta["digest"].(string)
-	data, err := h.db.GetAttachment(db.AttachmentKey(digest))
+	version, ok := db.GetAttachmentVersion(meta)
+	if !ok {
+		return db.ErrAttachmentVersion
+	}
+	attachmentKey := db.MakeAttachmentKey(version, docid, digest)
+	data, err := h.db.GetAttachment(attachmentKey)
 	if err != nil {
 		return err
 	}
@@ -288,7 +293,7 @@ func (h *handler) handlePutAttachment() error {
 	if err != nil {
 		if base.IsDocNotFoundError(err) {
 			// couchdb creates empty body on attachment PUT
-			// for non-existant doc id
+			// for non-existent doc id
 			body = db.Body{db.BodyRev: revid}
 		} else if err != nil {
 			return err
