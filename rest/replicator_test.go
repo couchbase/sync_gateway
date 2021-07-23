@@ -5092,6 +5092,106 @@ func TestReplicatorRevocationsNoRevButAlternateAccess(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 }
 
+func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Passive
+	revocationTester, rt2 := initScenario(t, nil)
+	defer rt2.Close()
+
+	// Active
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+	})
+	defer rt1.Close()
+
+	// Setup replicator
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	passiveDBURL.User = url.UserPassword("user", "test")
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          true,
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+	})
+	require.NoError(t, ar.Start())
+
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein"}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A", "B", "C"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	revocationTester.addRole("user", "foo")
+
+	_ = rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.createDocReturnRev(t, "docAB", "", map[string][]string{"channels": []string{"A", "B"}})
+	_ = rt2.createDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
+	_ = rt2.createDocReturnRev(t, "docABC", "", map[string][]string{"channels": []string{"A", "B", "C"}})
+	_ = rt2.createDocReturnRev(t, "docC", "", map[string][]string{"channels": []string{"C"}})
+
+	// Wait for docs to turn up on local / rt1
+	changesResults, err := rt1.WaitForChanges(5, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 5)
+
+	// Revoke C and ensure docC gets purged from local
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A", "B"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docC", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	// Revoke B and ensure docB gets purged from local
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": ["A"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docB", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	// Revoke A and ensure docA, docAB, docABC gets purged from local
+	resp = rt2.SendAdminRequest("PUT", "/db/_role/foo", `{"admin_channels": []}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docAB", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docABC", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {
