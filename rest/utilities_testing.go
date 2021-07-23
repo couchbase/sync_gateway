@@ -54,6 +54,8 @@ type RestTesterConfig struct {
 	hideProductInfo                bool
 	adminInterfaceAuthentication   bool
 	metricsInterfaceAuthentication bool
+	useTLSClient                   *bool // If false, TLS will be used with SG. Default (nil): true
+	useTLSServer                   *bool // If false, TLS will be required for communications with CBS. Default (nil): true
 }
 
 type RestTester struct {
@@ -140,6 +142,18 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
 	sc.API.AdminInterfaceAuthentication = &rt.adminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
+
+	useTLSServer := true
+	if rt.RestTesterConfig.useTLSServer != nil {
+		useTLSServer = *rt.RestTesterConfig.useTLSServer
+	}
+	sc.Bootstrap.UseTLSServer = base.BoolPtr(useTLSServer)
+
+	useTLSClient := true
+	if rt.RestTesterConfig.useTLSClient != nil {
+		useTLSClient = *rt.RestTesterConfig.useTLSClient
+	}
+	sc.API.HTTPS.UseTLSClient = base.BoolPtr(useTLSClient)
 
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
 
