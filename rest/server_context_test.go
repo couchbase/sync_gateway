@@ -815,11 +815,9 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			startupConfig := &StartupConfig{
-				Unsupported: UnsupportedConfig{
-					ServerTLSSkipVerify: test.serverTLSSkipVerify,
-				},
 				Bootstrap: BootstrapConfig{
-					CACertPath: test.caCert,
+					CACertPath:          test.caCert,
+					ServerTLSSkipVerify: test.serverTLSSkipVerify,
 				},
 			}
 
@@ -869,7 +867,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			startupConfig := &StartupConfig{Unsupported: UnsupportedConfig{ServerTLSSkipVerify: test.serverTLSSkipVerify}}
+			startupConfig := &StartupConfig{Bootstrap: BootstrapConfig{ServerTLSSkipVerify: test.serverTLSSkipVerify}}
 			dbConfig := &DbConfig{BucketConfig: BucketConfig{CACertPath: test.caCert}}
 			spec, err := GetBucketSpec(dbConfig, startupConfig)
 

@@ -827,7 +827,7 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	if sc.Bootstrap.Server == "" {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("a server must be provided in the Bootstrap configuration"))
 	}
-	if sc.Unsupported.ServerTLSSkipVerify != nil && *sc.Unsupported.ServerTLSSkipVerify && sc.Bootstrap.CACertPath != "" {
+	if sc.Bootstrap.ServerTLSSkipVerify != nil && *sc.Bootstrap.ServerTLSSkipVerify && sc.Bootstrap.CACertPath != "" {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot skip server TLS validation and use CA Cert"))
 	}
 	return errorMessages
@@ -867,7 +867,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 			cluster, err := base.NewCouchbaseCluster(sc.config.Bootstrap.Server,
 				sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
 				sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
-				sc.config.Bootstrap.CACertPath, sc.config.Unsupported.ServerTLSSkipVerify)
+				sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify)
 			if err != nil {
 				base.Infof(base.KeyConfig, "Couldn't connect to bootstrap cluster: %v - will retry...", err)
 				return true, err, nil
