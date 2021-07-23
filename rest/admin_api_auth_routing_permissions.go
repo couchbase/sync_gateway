@@ -47,7 +47,7 @@ var (
 	PermConfigureSyncFn      = Permission{"!sgw_configure_sync_fn", true}
 	PermConfigureAuth        = Permission{"!sgw_configure_auth", true}
 	PermWritePrincipal       = Permission{"!sgw_write_principal", true}
-	PermReadPrincipal        = Permission{"sgw_read_principal", true}
+	PermReadPrincipal        = Permission{"!sgw_read_principal", true}
 	PermReadAppData          = Permission{"!sgw_read_appdata", true}
 	PermReadPrincipalAppData = Permission{"!sgw_read_principal_appdata", true}
 	PermWriteAppData         = Permission{"!sgw_write_appdata", true}
