@@ -932,8 +932,10 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*Data
 
 		// inherit properties the bootstrap config
 		cnf.Server = &sc.config.Bootstrap.Server
-		cnf.Bucket = &bucket
 		cnf.CACertPath = sc.config.Bootstrap.CACertPath
+		// copy loop variable
+		bucketCopy := bucket
+		cnf.Bucket = &bucketCopy
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
 		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
