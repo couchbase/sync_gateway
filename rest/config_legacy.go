@@ -470,6 +470,8 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 		}
 
 		config = &LegacyServerConfig{
+			UseTLSServer:     base.BoolPtr(true),
+			UseTLSClient:     base.BoolPtr(true),
 			Interface:        addr,
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
