@@ -295,8 +295,8 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 
 	spec = config.MakeBucketSpec()
 
-	if serverConfig.Unsupported.ServerTLSSkipVerify != nil {
-		spec.TLSSkipVerify = *serverConfig.Unsupported.ServerTLSSkipVerify
+	if serverConfig.Bootstrap.ServerTLSSkipVerify != nil {
+		spec.TLSSkipVerify = *serverConfig.Bootstrap.ServerTLSSkipVerify
 	}
 
 	if spec.BucketName == "" {
@@ -1086,7 +1086,7 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
 	agent, err := initClusterAgent(
 		sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
-		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Unsupported.ServerTLSSkipVerify,
+		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify,
 		sc.config.API.ServerReadTimeout.Value())
 	if err != nil {
 		return nil, nil, err

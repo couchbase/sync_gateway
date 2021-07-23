@@ -24,6 +24,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:         persistentConfigDefaultGroupID,
 			ConfigUpdateFrequency: *base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
+			ServerTLSSkipVerify:   base.BoolPtr(false),
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,
@@ -50,8 +51,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			BcryptCost: auth.DefaultBcryptCost,
 		},
 		Unsupported: UnsupportedConfig{
-			StatsLogFrequency:   base.NewConfigDuration(time.Minute),
-			ServerTLSSkipVerify: base.BoolPtr(false),
+			StatsLogFrequency: base.NewConfigDuration(time.Minute),
 		},
 		MaxFileDescriptors: DefaultMaxFileDescriptors,
 	}
@@ -81,6 +81,7 @@ type BootstrapConfig struct {
 	CACertPath            string              `json:"ca_cert_path,omitempty"            help:"Root CA cert path for TLS connection"`
 	X509CertPath          string              `json:"x509_cert_path,omitempty"          help:"Cert path (public key) for X.509 bucket auth"`
 	X509KeyPath           string              `json:"x509_key_path,omitempty"           help:"Key path (private key) for X.509 bucket auth"`
+	ServerTLSSkipVerify   *bool               `json:"server_tls_skip_verify,omitempty"  help:"Allow empty server CA Cert Path without attempting to use system root pool"`
 }
 
 type APIConfig struct {
@@ -141,9 +142,8 @@ type ReplicatorConfig struct {
 }
 
 type UnsupportedConfig struct {
-	StatsLogFrequency   *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
-	UseStdlibJSON       bool                 `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
-	ServerTLSSkipVerify *bool                `json:"server_tls_skip_verify,omitempty" help:"Allow empty server CA Cert Path without attempting to use system root pool"`
+	StatsLogFrequency *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
+	UseStdlibJSON     bool                 `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
 
 	HTTP2 *HTTP2Config `json:"http2,omitempty"`
 }
