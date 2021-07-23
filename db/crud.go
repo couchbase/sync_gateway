@@ -962,7 +962,6 @@ func (db *Database) PutExistingRevWithConflictResolution(newDoc *Document, docHi
 		allowConflictingTombstone := forceAllowConflictingTombstone && doc.IsDeleted()
 
 		if !allowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts, docHistory) {
-			//if !forceAllowConflictingTombstone && db.IsIllegalConflict(doc, parent, newDoc.Deleted, noConflicts) {
 			if conflictResolver == nil {
 				return nil, nil, false, nil, base.HTTPErrorf(http.StatusConflict, "Document revision conflict")
 			}
@@ -1094,6 +1093,14 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 		return "", nil, resolveFuncError
 	}
 
+	// Restore rev ID onto localDoc and remoteDoc in the event that these have been mutated inside a custom conflict
+	// resolver
+	localDoc.RevID = localRevID
+	remoteDoc.RevID = remoteRevID
+
+	localDoc.CurrentRev = localRevID
+	remoteDoc.CurrentRev = remoteRevID
+
 	switch resolutionType {
 	case ConflictResolutionLocal:
 		resolvedRevID, updatedHistory, resolveError = db.resolveDocLocalWins(localDoc, remoteDoc, conflict, docHistory)
@@ -1115,7 +1122,7 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 func (db *Database) resolveDocRemoteWins(localDoc *Document, conflict Conflict) (resolvedRevID string, err error) {
 
 	// Tombstone the local revision
-	localRevID := conflict.LocalDocument.ExtractRev()
+	localRevID := localDoc.RevID
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
 	if err != nil {
 		return "", tombstoneErr
@@ -1141,7 +1148,7 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 		return "", nil, fmt.Errorf("Unable to retrieve local document body while resolving conflict: %w", err)
 	}
 
-	remoteRevID := conflict.RemoteDocument.ExtractRev()
+	remoteRevID := remoteDoc.RevID
 	remoteGeneration, _ := ParseRevID(remoteRevID)
 	var newRevID string
 
@@ -1206,7 +1213,7 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 	remoteDoc._rawBody = docBodyBytes
 
 	// Tombstone the local revision
-	localRevID := conflict.LocalDocument.ExtractRev()
+	localRevID := localDoc.RevID
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
 	if tombstoneErr != nil {
 		return "", nil, tombstoneErr
@@ -1233,13 +1240,13 @@ func (db *Database) resolveDocMerge(localDoc *Document, remoteDoc *Document, con
 	}
 
 	// Tombstone the local revision
-	localRevID := conflict.LocalDocument.ExtractRev()
+	localRevID := localDoc.RevID
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
 	if tombstoneErr != nil {
 		return "", nil, tombstoneErr
 	}
 
-	remoteRevID := conflict.RemoteDocument.ExtractRev()
+	remoteRevID := remoteDoc.RevID
 	remoteGeneration, _ := ParseRevID(remoteRevID)
 	mergedRevID, err := CreateRevID(remoteGeneration+1, remoteRevID, mergedBody)
 	if err != nil {
