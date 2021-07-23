@@ -5192,6 +5192,64 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 
 }
 
+func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Passive
+	rt2 := NewRestTester(t, nil)
+	defer rt2.Close()
+
+	// Active
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+	})
+	defer rt1.Close()
+
+	srv := httptest.NewServer(rt2.TestAdminHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	customConflictResolver, err := db.NewCustomConflictResolver(`function(conflict){
+			var mutatedLocal = conflict.LocalDocument;
+			mutatedLocal.source = "merged";
+			mutatedLocal["_deleted"] = true;
+			mutatedLocal["_rev"] = "";
+			return mutatedLocal;
+		}`)
+	require.NoError(t, err)
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:             false,
+		ReplicationStatsMap:    base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+		ConflictResolutionType: db.ConflictResolverCustom,
+		ConflictResolverFunc:   customConflictResolver,
+	})
+
+	resp := rt2.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	resp = rt1.SendAdminRequest("PUT", "/db/doc", `{"some_val": "val"}`)
+	assertStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, ar.Start())
+	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
+
+	pulledDocCount := base.SyncGatewayStats.DbStats[t.Name()].DBReplicatorStats(ar.ID).PulledCount.Value()
+	assert.Equal(t, int64(1), pulledDocCount)
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {
