@@ -23,7 +23,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 	return StartupConfig{
 		Bootstrap: BootstrapConfig{
 			ConfigGroupID:         persistentConfigDefaultGroupID,
-			ConfigUpdateFrequency: *base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
+			ConfigUpdateFrequency: base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
 			ServerTLSSkipVerify:   base.BoolPtr(false),
 			UseTLSServer:          base.BoolPtr(true),
 		},
@@ -76,16 +76,16 @@ type StartupConfig struct {
 
 // BootstrapConfig describes the set of properties required in order to bootstrap config from Couchbase Server.
 type BootstrapConfig struct {
-	ConfigGroupID         string              `json:"group_id,omitempty"                help:"The config group ID to use when discovering databases. Allows for non-homogenous configuration"`
-	ConfigUpdateFrequency base.ConfigDuration `json:"config_update_frequency,omitempty" help:"How often to poll Couchbase Server for new config changes. Default: 10s"`
-	Server                string              `json:"server,omitempty"                  help:"Couchbase Server connection string/URL"`
-	Username              string              `json:"username,omitempty"                help:"Username for authenticating to server"`
-	Password              string              `json:"password,omitempty"                help:"Password for authenticating to server"`
-	CACertPath            string              `json:"ca_cert_path,omitempty"            help:"Root CA cert path for TLS connection"`
-	ServerTLSSkipVerify   *bool               `json:"server_tls_skip_verify,omitempty"  help:"Allow empty server CA Cert Path without attempting to use system root pool"`
-	X509CertPath          string              `json:"x509_cert_path,omitempty"          help:"Cert path (public key) for X.509 bucket auth"`
-	X509KeyPath           string              `json:"x509_key_path,omitempty"           help:"Key path (private key) for X.509 bucket auth"`
-	UseTLSServer          *bool               `json:"use_tls_server,omitempty"          help:"Forces the connection to Couchbase Server to use TLS"`
+	ConfigGroupID         string               `json:"group_id,omitempty"                help:"The config group ID to use when discovering databases. Allows for non-homogenous configuration"`
+	ConfigUpdateFrequency *base.ConfigDuration `json:"config_update_frequency,omitempty" help:"How often to poll Couchbase Server for new config changes. Default: 10s"`
+	Server                string               `json:"server,omitempty"                  help:"Couchbase Server connection string/URL"`
+	Username              string               `json:"username,omitempty"                help:"Username for authenticating to server"`
+	Password              string               `json:"password,omitempty"                help:"Password for authenticating to server"`
+	CACertPath            string               `json:"ca_cert_path,omitempty"            help:"Root CA cert path for TLS connection"`
+	ServerTLSSkipVerify   *bool                `json:"server_tls_skip_verify,omitempty"  help:"Allow empty server CA Cert Path without attempting to use system root pool"`
+	X509CertPath          string               `json:"x509_cert_path,omitempty"          help:"Cert path (public key) for X.509 bucket auth"`
+	X509KeyPath           string               `json:"x509_key_path,omitempty"           help:"Key path (private key) for X.509 bucket auth"`
+	UseTLSServer          *bool                `json:"use_tls_server,omitempty"          help:"Forces the connection to Couchbase Server to use TLS"`
 }
 
 type APIConfig struct {

@@ -905,26 +905,30 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 			base.Warnf("Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
 		}
 
-		go func() {
-			t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())
+		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
 			base.Infof(base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
-			for {
-				select {
-				case <-sc.ctx.Done():
-					base.Infof(base.KeyConfig, "Stopping background config polling loop")
-					t.Stop()
-					return
-				case <-t.C:
-					count, err := sc.fetchAndLoadConfigs()
-					if err != nil {
-						base.Warnf("Couldn't load configs from bucket when polled: %v", err)
-					}
-					if count > 0 {
-						base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+			go func() {
+				t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())
+				for {
+					select {
+					case <-sc.ctx.Done():
+						base.Infof(base.KeyConfig, "Stopping background config polling loop")
+						t.Stop()
+						return
+					case <-t.C:
+						count, err := sc.fetchAndLoadConfigs()
+						if err != nil {
+							base.Warnf("Couldn't load configs from bucket when polled: %v", err)
+						}
+						if count > 0 {
+							base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+						}
 					}
 				}
-			}
-		}()
+			}()
+		} else {
+			base.Infof(base.KeyConfig, "Disabled background polling for new configs/buckets")
+		}
 	}
 
 	return sc, nil
