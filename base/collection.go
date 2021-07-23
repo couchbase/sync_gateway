@@ -412,6 +412,8 @@ func (c *Collection) isRecoverableWriteError(err error) bool {
 		return false
 	}
 
+	// TODO: CBG-1142 Handle SyncWriteInProgress errors --> Currently gocbv2 retries this internally and returns a
+	//  timeout with KV_SYNC_WRITE_IN_PROGRESS as its reason. Decision on whether to handle inside gocb or retry here
 	if errors.Is(err, gocb.ErrTemporaryFailure) || errors.Is(err, gocb.ErrOverload) {
 		return true
 	}

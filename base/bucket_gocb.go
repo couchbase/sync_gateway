@@ -810,8 +810,19 @@ func (bucket *CouchbaseBucketGoCB) isRecoverableWriteError(err error) bool {
 	}
 
 	_, ok := recoverableGocbV1Errors[pkgerrors.Cause(err).Error()]
+	if ok {
+		return ok
+	}
 
-	return ok
+	// In some circumstances we are unable to supply errors in the recoverable error map so need to check the error
+	// codes
+	gocbcoreKvError, ok := err.(*gocbcore.KvError)
+	// 0xA2 error is "SyncWriteInProgress" error
+	if gocbcoreKvError.Code == 0xA2 {
+		return true
+	}
+
+	return false
 }
 
 func isGoCBTimeoutError(err error) bool {
