@@ -303,6 +303,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	config.API.MetricsInterface = "127.0.0.1:24986"
 
 	config.Bootstrap.Server = base.UnitTestUrl()
+	config.API.HTTPS.UseTLSClient = base.BoolPtr(false)
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 
@@ -521,7 +522,7 @@ func TestUseTLSServer(t *testing.T) {
 					Server: &test.server,
 				},
 			}
-			spec, err := GetBucketSpec(&dbConfig)
+			spec, err := GetBucketSpec(&dbConfig, &config)
 			require.Nil(t, err)
 			// Run test
 			err = validateServerTLS(spec, &config)
@@ -529,11 +530,11 @@ func TestUseTLSServer(t *testing.T) {
 			if test.expectedError != nil {
 				require.Error(t, err)
 				assert.Equal(t, fmt.Sprintf(*test.expectedError, test.server), err.Error())
-			} else {
+			} else if err != nil {
 				// Will still error due to no DB name, or not being able to connect to bucket
 				// So make sure it's not the 2 errors that can happen due to secure protocol
-				assert.NotEqual(t, fmt.Sprintf(errorMustBeSecure, test.server), err)
-				assert.NotEqual(t, fmt.Sprintf(errorAllowInsecureAndBeSecure, test.server), err)
+				assert.NotEqual(t, fmt.Sprintf(errorMustBeSecure, test.server), err.Error())
+				assert.NotEqual(t, fmt.Sprintf(errorAllowInsecureAndBeSecure, test.server), err.Error())
 			}
 			sc.Close()
 		})
