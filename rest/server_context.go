@@ -193,6 +193,21 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 	} else if db.ValidateDatabaseName(name) != nil {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	}
+
+	// database not loaded, go look for it in the cluster
+	found, err := sc.fetchAndLoadDatabase(name)
+	if err != nil {
+		return nil, base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+	}
+	if found {
+		sc.lock.RLock()
+		dbc := sc.databases_[name]
+		sc.lock.RUnlock()
+		if dbc != nil {
+			return dbc, nil
+		}
+	}
+
 	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 }
 

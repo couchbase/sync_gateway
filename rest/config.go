@@ -907,6 +907,66 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 	return sc.applyConfigs(fetchedConfigs), nil
 }
 
+// fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
+// but then fall back to searching through configs in each bucket to try and find a config.
+func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err error) {
+	buckets, err := sc.bootstrapConnection.GetConfigBuckets()
+	if err != nil {
+		return false, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+	}
+
+	// move bucket matching dbName to the front so it's searched first
+	for i, bucket := range buckets {
+		if bucket == dbName {
+			buckets = append(buckets[i:], buckets[:i]...)
+		}
+	}
+
+	for _, bucket := range buckets {
+		bucket := bucket
+		var cnf DatabaseConfig
+		cas, err := sc.bootstrapConnection.GetConfig(dbName, sc.config.Bootstrap.ConfigGroupID, &cnf)
+		if err == base.ErrNotFound {
+			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			continue
+		}
+		if err != nil {
+			base.Errorf("couldn't fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			continue
+		}
+
+		if cnf.Name == "" {
+			cnf.Name = bucket
+		}
+		if cnf.Name != dbName {
+			base.Tracef(base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
+			continue
+		}
+
+		cnf.cas = cas
+
+		// TODO: This code is mostly copied from fetchConfigs, move into shared function with DbConfig REST API work?
+
+		// inherit properties the bootstrap config
+		cnf.Server = &sc.config.Bootstrap.Server
+		cnf.CACertPath = sc.config.Bootstrap.CACertPath
+		cnf.Bucket = &bucket
+
+		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
+		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
+			cnf.Username = sc.config.Bootstrap.Username
+			cnf.Password = sc.config.Bootstrap.Password
+			cnf.CertPath = sc.config.Bootstrap.X509CertPath
+			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
+		}
+		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", dbName, cas)
+		sc.applyConfigs(map[string]*DatabaseConfig{dbName: &cnf})
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*DatabaseConfig, err error) {
 	buckets, err := sc.bootstrapConnection.GetConfigBuckets()
