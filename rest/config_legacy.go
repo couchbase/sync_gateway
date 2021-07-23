@@ -16,6 +16,8 @@ import (
 // JSON object that defines the server configuration.
 type LegacyServerConfig struct {
 	TLSMinVersion              *string                        `json:"tls_minimum_version,omitempty"`    // Set TLS Version
+	UseTLSServer               *bool                          `json:"use_tls_server,omitempty"`         // Use TLS for CBS <> SGW communications
+	UseTLSClient               *bool                          `json:"use_tls_client,omitempty"`         // Use TLS for REST API
 	Interface                  *string                        `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
 	SSLCert                    *string                        `json:",omitempty"`                       // Path to SSL cert file, or nil
 	SSLKey                     *string                        `json:",omitempty"`                       // Path to SSL private key file, or nil
@@ -102,6 +104,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			CACertPath:   dbConfig.CACertPath,
 			X509CertPath: dbConfig.CertPath,
 			X509KeyPath:  dbConfig.KeyPath,
+			UseTLSServer: lc.UseTLSServer,
 		}
 		break
 	}
@@ -112,6 +115,9 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			Pretty:             lc.Pretty,
 			CompressResponses:  lc.CompressResponses,
 			HideProductVersion: lc.HideProductVersion,
+			HTTPS: HTTPSConfig{
+				UseTLSClient: lc.UseTLSClient,
+			},
 		},
 		Logging: LoggingConfig{},
 		Auth: AuthConfig{
@@ -355,8 +361,8 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 
 	_ = flagSet.Bool("api.admin_interface_authentication", true, "")
 	_ = flagSet.Bool("api.metrics_interface_authentication", true, "")
-	_ = flagSet.Bool("bootstrap.use_tls_server", false, "")
-	_ = flagSet.Bool("api.https.use_tls_client", false, "")
+	_ = flagSet.Bool("bootstrap.use_tls_server", true, "")
+	_ = flagSet.Bool("api.https.use_tls_client", true, "")
 
 	addr := flagSet.String("interface", DefaultPublicInterface, "Address to bind to")
 	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
