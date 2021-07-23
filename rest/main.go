@@ -63,8 +63,15 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	// TODO: Be removed in a future commit once flags are sorted
 	flagStartupConfig.API.AdminInterfaceAuthentication = adminInterfaceAuthFlag
 	flagStartupConfig.API.MetricsInterfaceAuthentication = metricsInterfaceAuthFlag
-	flagStartupConfig.Bootstrap.UseTLSServer = useTLSServer
-	flagStartupConfig.API.HTTPS.UseTLSClient = useTLSClient
+	// Only override config value if user explicitly set flag
+	fs.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "bootstrap.use_tls_server":
+			flagStartupConfig.Bootstrap.UseTLSServer = useTLSServer
+		case "api.https.use_tls_client":
+			flagStartupConfig.API.HTTPS.UseTLSClient = useTLSClient
+		}
+	})
 
 	if *disablePersistentConfigFlag {
 		return legacyServerMain(osArgs, &flagStartupConfig)
