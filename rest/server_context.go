@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,6 +54,8 @@ type ServerContext struct {
 	cpuPprofFileMutex   sync.Mutex     // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
 	cpuPprofFile        *os.File       // An open file descriptor holds the reference during CPU profiling
 	_httpServers        []*http.Server // A list of HTTP servers running under the ServerContext
+	ctx                 context.Context
+	ctxCancel           context.CancelFunc
 }
 
 type DatabaseConfig struct {
@@ -100,6 +103,7 @@ func (sc *ServerContext) CloseCpuPprofFile() {
 }
 
 func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerContext {
+	ctx, ctxCancel := context.WithCancel(context.TODO())
 	sc := &ServerContext{
 		config:           config,
 		persistentConfig: persistentConfig,
@@ -108,6 +112,8 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		databases_:       map[string]*db.DatabaseContext{},
 		HTTPClient:       http.DefaultClient,
 		statsContext:     &statsContext{},
+		ctx:              ctx,
+		ctxCancel:        ctxCancel,
 	}
 
 	if base.ServerIsWalrus(sc.config.Bootstrap.Server) {
@@ -158,6 +164,8 @@ func (sc *ServerContext) PostStartup() {
 func (sc *ServerContext) Close() {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
+
+	sc.ctxCancel()
 
 	sc.stopStatsLogger()
 
