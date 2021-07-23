@@ -35,10 +35,11 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
 			},
-			ReadHeaderTimeout:              base.NewConfigDuration(base.DefaultReadHeaderTimeout),
-			IdleTimeout:                    base.NewConfigDuration(base.DefaultIdleTimeout),
-			AdminInterfaceAuthentication:   base.BoolPtr(false),
-			MetricsInterfaceAuthentication: base.BoolPtr(false),
+			ReadHeaderTimeout:                         base.NewConfigDuration(base.DefaultReadHeaderTimeout),
+			IdleTimeout:                               base.NewConfigDuration(base.DefaultIdleTimeout),
+			AdminInterfaceAuthentication:              base.BoolPtr(true),
+			MetricsInterfaceAuthentication:            base.BoolPtr(true),
+			EnableAdminAuthenticationPermissionsCheck: base.BoolPtr(false),
 		},
 		Logging: LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
@@ -90,8 +91,9 @@ type APIConfig struct {
 	MetricsInterface string `json:"metrics_interface,omitempty" help:"Network interface to bind metrics API to"`
 	ProfileInterface string `json:"profile_interface,omitempty" help:"Network interface to bind profiling API to"`
 
-	AdminInterfaceAuthentication   *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
-	MetricsInterfaceAuthentication *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+	AdminInterfaceAuthentication              *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
+	MetricsInterfaceAuthentication            *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_admin_authentication_permissions_check" help:"Whether to enable the DP permissions check feature of admin auth"`
 
 	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"maximum duration.Second before timing out read of the HTTP(S) request"`
 	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"maximum duration.Second before timing out write of the HTTP(S) response"`
