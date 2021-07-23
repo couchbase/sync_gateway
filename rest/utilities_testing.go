@@ -55,8 +55,8 @@ type RestTesterConfig struct {
 	adminInterfaceAuthentication    bool
 	metricsInterfaceAuthentication  bool
 	enableAdminAuthPermissionsCheck bool
-	allowInsecureTLSConnections     *bool // If false, TLS will be used with SG. Default (nil): true
-	allowInsecureServerConnections  *bool // If false, TLS will be required for communications with CBS. Default (nil): true
+	useTLSClient                    *bool // If false, TLS will be used with SG. Default (nil): true
+	useTLSServer                    *bool // If false, TLS will be required for communications with CBS. Default (nil): true
 }
 
 type RestTester struct {
@@ -144,17 +144,18 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.API.AdminInterfaceAuthentication = &rt.adminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
 	sc.API.EnableAdminAuthenticationPermissionsCheck = &rt.enableAdminAuthPermissionsCheck
-	allowInsecureServerConnections := true
-	if rt.RestTesterConfig.allowInsecureServerConnections != nil {
-		allowInsecureServerConnections = *rt.RestTesterConfig.allowInsecureServerConnections
-	}
-	sc.Bootstrap.AllowInsecureServerConnections = base.BoolPtr(allowInsecureServerConnections)
 
-	allowInsecureTLSConnections := true
-	if rt.RestTesterConfig.allowInsecureTLSConnections != nil {
-		allowInsecureTLSConnections = *rt.RestTesterConfig.allowInsecureTLSConnections
+	useTLSServer := true
+	if rt.RestTesterConfig.useTLSServer != nil {
+		useTLSServer = *rt.RestTesterConfig.useTLSServer
 	}
-	sc.API.HTTPS.AllowInsecureTLSConnections = base.BoolPtr(allowInsecureTLSConnections)
+	sc.Bootstrap.UseTLSServer = base.BoolPtr(useTLSServer)
+
+	useTLSClient := true
+	if rt.RestTesterConfig.useTLSClient != nil {
+		useTLSClient = *rt.RestTesterConfig.useTLSClient
+	}
+	sc.API.HTTPS.UseTLSClient = base.BoolPtr(useTLSClient)
 
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
 

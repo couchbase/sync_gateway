@@ -818,8 +818,8 @@ func TestValidateServerContext(t *testing.T) {
 
 	xattrs := base.TestUseXattrs()
 	config := &StartupConfig{
-		API:       APIConfig{HTTPS: HTTPSConfig{AllowInsecureTLSConnections: base.BoolPtr(true)}},
-		Bootstrap: BootstrapConfig{AllowInsecureServerConnections: base.BoolPtr(true)},
+		API:       APIConfig{HTTPS: HTTPSConfig{UseTLSClient: base.BoolPtr(true)}},
+		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(true)},
 	}
 	databases := DbConfigMap{
 		"db1": {
@@ -1197,7 +1197,7 @@ func TestSetupServerContext(t *testing.T) {
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
-		config.API.HTTPS.AllowInsecureTLSConnections = base.BoolPtr(true)
+		config.API.HTTPS.UseTLSClient = base.BoolPtr(false)
 		sc, err := setupServerContext(&config, false)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
@@ -1205,67 +1205,71 @@ func TestSetupServerContext(t *testing.T) {
 	})
 }
 
-// CBG-1535
-func TestAllowInsecureTLSConnections(t *testing.T) {
+// CBG-1535 - Test api.http.UseTLSClient option
+func TestUseTLSClient(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	errorTLSNotProvided := "TLS key path and cert path must be provided unless api.https.allow_insecure_tls_connections is set"
-	errorTLSProvidedButInsecure := "cannot use TLS with api.https.allow_insecure_tls_connections set"
+	errorTLSNotProvided := "TLS key path and cert path must be provided when api.https.use_tls_client is set"
+	errorTLSProvidedButInsecure := "cannot use TLS when api.https.use_tls_client is false"
 	testCases := []struct {
-		name                        string
-		tlsKey                      bool
-		tlsCert                     bool
-		allowInsecureTLSConnections bool
-		expectError                 *string
+		name         string
+		tlsKey       bool
+		tlsCert      bool
+		useTLSClient bool
+		expectError  *string
 	}{
 		{
-			name:        "Nothing provided",
-			expectError: &errorTLSNotProvided,
+			name:         "Nothing provided",
+			useTLSClient: true,
+			expectError:  &errorTLSNotProvided,
 		},
 		{
-			name:                        "No TLS provided, Allowing Insecure",
-			allowInsecureTLSConnections: true,
-			expectError:                 nil,
+			name:         "No TLS provided, Allowing Insecure",
+			useTLSClient: false,
+			expectError:  nil,
 		},
 		{
-			name:        "TLS Key but no cert provided",
-			tlsKey:      true,
-			expectError: &errorTLSNotProvided,
+			name:         "TLS Key but no cert provided",
+			useTLSClient: true,
+			tlsKey:       true,
+			expectError:  &errorTLSNotProvided,
 		},
 		{
-			name:        "TLS Cert but no key provided",
-			tlsCert:     true,
-			expectError: &errorTLSNotProvided,
+			name:         "TLS Cert but no key provided",
+			useTLSClient: true,
+			tlsCert:      true,
+			expectError:  &errorTLSNotProvided,
 		},
 		{
-			name:        "TLS Cert and key provided",
-			tlsKey:      true,
-			tlsCert:     true,
-			expectError: nil,
+			name:         "TLS Cert and key provided",
+			useTLSClient: true,
+			tlsKey:       true,
+			tlsCert:      true,
+			expectError:  nil,
 		},
 		{
-			name:                        "TLS Cert and key provided, and allowing insecure",
-			tlsKey:                      true,
-			tlsCert:                     true,
-			allowInsecureTLSConnections: true,
-			expectError:                 &errorTLSProvidedButInsecure,
+			name:         "TLS Cert and key provided, and allowing insecure",
+			tlsKey:       true,
+			tlsCert:      true,
+			useTLSClient: false,
+			expectError:  &errorTLSProvidedButInsecure,
 		},
 		{
-			name:                        "TLS Key but no cert provided, but allowing insecure",
-			tlsKey:                      true,
-			allowInsecureTLSConnections: true,
-			expectError:                 &errorTLSProvidedButInsecure,
+			name:         "TLS Key but no cert provided, but allowing insecure",
+			tlsKey:       true,
+			useTLSClient: false,
+			expectError:  &errorTLSProvidedButInsecure,
 		},
 		{
-			name:                        "TLS cert but no key provided, but allowing insecure",
-			tlsKey:                      true,
-			allowInsecureTLSConnections: true,
-			expectError:                 &errorTLSProvidedButInsecure,
+			name:         "TLS cert but no key provided, but allowing insecure",
+			tlsKey:       true,
+			useTLSClient: false,
+			expectError:  &errorTLSProvidedButInsecure,
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			config := DefaultStartupConfig("")
-			config.API.HTTPS.AllowInsecureTLSConnections = &test.allowInsecureTLSConnections
+			config.API.HTTPS.UseTLSClient = &test.useTLSClient
 			if test.tlsKey {
 				config.API.HTTPS.TLSKeyPath = "test.key"
 			}
@@ -1274,7 +1278,7 @@ func TestAllowInsecureTLSConnections(t *testing.T) {
 			}
 			sc, err := setupServerContext(&config, false)
 			if test.expectError != nil {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), *test.expectError)
 				require.Nil(t, sc)
 			} else {

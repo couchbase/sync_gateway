@@ -110,8 +110,8 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer tb2.Close()
 
 	serverConfig := &StartupConfig{
-		Bootstrap: BootstrapConfig{AllowInsecureServerConnections: base.BoolPtr(true)},
-		API:       APIConfig{HTTPS: HTTPSConfig{AllowInsecureTLSConnections: base.BoolPtr(true)}, CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(true)},
+		API:       APIConfig{HTTPS: HTTPSConfig{UseTLSClient: base.BoolPtr(true)}, CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
 
@@ -442,78 +442,79 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	}
 }
 
-func TestAllowInsecureServerConnections(t *testing.T) {
+// CBG-1535 - test Bootstrap.UseTLSServer option
+func TestUseTLSServer(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	errorMustBeSecure := "Must use secure scheme in Couchbase Server URL, or opt out using bootstrap.allow_insecure_server_connections. Current URL: %v"
-	errorAllowInsecureAndBeSecure := "Couchbase server URL cannot use secure protocol while bootstrap.allow_insecure_server_connections is set. Current URL: %v"
+	errorMustBeSecure := "Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %v"
+	errorAllowInsecureAndBeSecure := "Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %v"
 	testCases := []struct {
-		name                           string
-		allowInsecureServerConnections bool
-		server                         string
-		expectedError                  *string
+		name          string
+		useTLSServer  bool
+		server        string
+		expectedError *string
 	}{
 		{
-			name:                           "Walrus allowed without flag",
-			allowInsecureServerConnections: false,
-			server:                         "walrus://",
-			expectedError:                  nil,
+			name:          "Walrus allowed without flag",
+			useTLSServer:  false,
+			server:        "walrus://",
+			expectedError: nil,
 		},
 		{
-			name:                           "Walrus allowed with flag",
-			allowInsecureServerConnections: true,
-			server:                         "walrus://",
-			expectedError:                  nil,
+			name:          "Walrus allowed with flag",
+			useTLSServer:  true,
+			server:        "walrus://",
+			expectedError: nil,
 		},
 		{
-			name:                           "couchbase: not allowed",
-			allowInsecureServerConnections: false,
-			server:                         "couchbase://localhost:1212",
-			expectedError:                  &errorMustBeSecure,
+			name:          "couchbase: not allowed",
+			useTLSServer:  true,
+			server:        "couchbase://localhost:1212",
+			expectedError: &errorMustBeSecure,
 		},
 		{
-			name:                           "http not allowed",
-			allowInsecureServerConnections: false,
-			server:                         "http://localhost:1212",
-			expectedError:                  &errorMustBeSecure,
+			name:          "http not allowed",
+			useTLSServer:  true,
+			server:        "http://localhost:1212",
+			expectedError: &errorMustBeSecure,
 		},
 		{
-			name:                           "http allowed",
-			allowInsecureServerConnections: true,
-			server:                         "http://localhost:1212",
-			expectedError:                  nil,
+			name:          "http allowed",
+			useTLSServer:  false,
+			server:        "http://localhost:1212",
+			expectedError: nil,
 		},
 		{
-			name:                           "https mandatory",
-			allowInsecureServerConnections: false,
-			server:                         "https://localhost:1234",
-			expectedError:                  nil,
+			name:          "https mandatory",
+			useTLSServer:  true,
+			server:        "https://localhost:1234",
+			expectedError: nil,
 		},
 		{
-			name:                           "Secure https not allowed",
-			allowInsecureServerConnections: true,
-			server:                         "https://localhost:1234",
-			expectedError:                  &errorAllowInsecureAndBeSecure,
+			name:          "Secure https not allowed",
+			useTLSServer:  false,
+			server:        "https://localhost:1234",
+			expectedError: &errorAllowInsecureAndBeSecure,
 		},
 		{
-			name:                           "couchbases:",
-			allowInsecureServerConnections: false,
-			server:                         "couchbases://localhost:1234",
-			expectedError:                  nil,
+			name:          "couchbases:",
+			useTLSServer:  true,
+			server:        "couchbases://localhost:1234",
+			expectedError: nil,
 		},
 		{
-			name:                           "ftps:", // Testing if the S at the end is what makes it secure
-			allowInsecureServerConnections: false,
-			server:                         "ftps://localhost:1234",
-			expectedError:                  &errorMustBeSecure,
+			name:          "ftps:", // Testing if the S at the end is what makes it secure
+			useTLSServer:  true,
+			server:        "ftps://localhost:1234",
+			expectedError: &errorMustBeSecure,
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			// Setup
 			config := DefaultStartupConfig("")
-			config.Bootstrap.AllowInsecureServerConnections = &test.allowInsecureServerConnections
+			config.Bootstrap.UseTLSServer = &test.useTLSServer
 
-			config.API.HTTPS.AllowInsecureTLSConnections = base.BoolPtr(true)
+			config.API.HTTPS.UseTLSClient = base.BoolPtr(true)
 			sc := NewServerContext(&config, false)
 			dbConfig := DbConfig{
 				BucketConfig: BucketConfig{
@@ -526,7 +527,7 @@ func TestAllowInsecureServerConnections(t *testing.T) {
 			err = validateServerTLS(spec, &config)
 
 			if test.expectedError != nil {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Equal(t, fmt.Sprintf(*test.expectedError, test.server), err.Error())
 			} else {
 				// Will still error due to no DB name, or not being able to connect to bucket

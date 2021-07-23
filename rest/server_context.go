@@ -343,13 +343,13 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 // validateServerTLS checks if a secure protocol should be enforced and then errors if a secure protocol should or shouldn't be used based on the config
 func validateServerTLS(spec base.BucketSpec, config *StartupConfig) (err error) {
 	secure := spec.IsTLS()
-	if config.Bootstrap.AllowInsecureServerConnections == nil || !*config.Bootstrap.AllowInsecureServerConnections {
+	if config.Bootstrap.UseTLSServer == nil || *config.Bootstrap.UseTLSServer {
 		if !secure && !spec.IsWalrusBucket() {
-			return fmt.Errorf("Must use secure scheme in Couchbase Server URL, or opt out using bootstrap.allow_insecure_server_connections. Current URL: %s", spec.Server)
+			return fmt.Errorf("Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %s", spec.Server)
 		}
 	} else {
-		if secure { // If using secure protocol while AllowInsecureServerConnections flag is set, error as user probably forgot to turn it off
-			return fmt.Errorf("Couchbase server URL cannot use secure protocol while bootstrap.allow_insecure_server_connections is set. Current URL: %s", spec.Server)
+		if secure { // If using secure protocol while UseTLSServer flag is set, error as user probably forgot to turn it off
+			return fmt.Errorf("Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %s", spec.Server)
 		}
 	}
 	return nil

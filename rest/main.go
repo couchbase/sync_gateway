@@ -69,8 +69,8 @@ func serverMain(ctx context.Context, osArgs []string) error {
 			flagStartupConfig.API.MetricsInterfaceAuthentication = metricsInterfaceAuthFlag
 		}
 	})
-	flagStartupConfig.Bootstrap.AllowInsecureServerConnections = useTLSServer
-	flagStartupConfig.API.HTTPS.AllowInsecureTLSConnections = useTLSClient
+	flagStartupConfig.Bootstrap.UseTLSServer = useTLSServer
+	flagStartupConfig.API.HTTPS.UseTLSClient = useTLSClient
 
 	if *disablePersistentConfigFlag {
 		return legacyServerMain(osArgs, &flagStartupConfig)
