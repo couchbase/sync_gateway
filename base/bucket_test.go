@@ -14,6 +14,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -437,7 +438,7 @@ func TestTLSConfig(t *testing.T) {
 	assert.Nil(t, conf.RootCAs)
 	assert.Nil(t, conf.Certificates)
 
-	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should log error on Windows CBG-1518
+	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should be empty config on Windows CBG-1518
 	spec = BucketSpec{}
 	conf = spec.TLSConfig()
 	if runtime.GOOS != "windows" {
@@ -445,7 +446,7 @@ func TestTLSConfig(t *testing.T) {
 		assert.False(t, conf.InsecureSkipVerify)
 		assert.NotNil(t, conf.RootCAs)
 	} else {
-		assert.Empty(t, conf)
+		assert.Equal(t, tls.Config{RootCAs: x509.NewCertPool(), InsecureSkipVerify: false}, *conf)
 	}
 
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path

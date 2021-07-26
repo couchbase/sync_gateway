@@ -1,6 +1,7 @@
 package base
 
 import (
+	"crypto/x509"
 	"os"
 	"runtime"
 	"testing"
@@ -55,6 +56,13 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 			expectCertPool: true,
 			expectError:    false,
 		},
+		{
+			name:           "Get root pool",
+			tlsSkipVerify:  nil,
+			caCertPath:     "",
+			expectCertPool: true,
+			expectError:    false,
+		},
 	}
 	//
 	for _, test := range tests {
@@ -75,8 +83,8 @@ func TestGoCBv2SecurityConfig(t *testing.T) {
 			assert.Equal(t, expectTLSSkipVerify, sc.TLSSkipVerify)
 			if test.expectCertPool == false {
 				assert.Nil(t, sc.TLSRootCAs)
-			} else if runtime.GOOS == "windows" { // expect empty cert pool
-				assert.Empty(t, sc.TLSRootCAs)
+			} else if runtime.GOOS == "windows" && test.caCertPath == "" { // expect empty cert pool when getting root pool on windows
+				assert.Equal(t, x509.NewCertPool(), sc.TLSRootCAs)
 			} else { // Expect populated cert pool
 				assert.NotEmpty(t, sc.TLSRootCAs)
 			}
