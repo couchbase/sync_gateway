@@ -245,13 +245,13 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 		err    string
 	}{
 		{
-			name:   "Import enabled, shared bucket not enabled",
-			config: `{"databases": {"db": {"import_docs":true}}}`,
+			name:   "Import enabled, shared bucket disabled",
+			config: `{"databases": {"db": {"import_docs":true, "enable_shared_bucket_access":false}}}`,
 			err:    "Invalid configuration - import_docs enabled, but enable_shared_bucket_access not enabled",
 		},
 		{
-			name:   "Import partitions set, shared bucket not enabled",
-			config: `{"databases": {"db": {"import_partitions":32}}}`,
+			name:   "Import partitions set, shared bucket disabled",
+			config: `{"databases": {"db": {"import_partitions":32, "enable_shared_bucket_access":false}}}`,
 			err:    "Invalid configuration - import_partitions set, but enable_shared_bucket_access not enabled",
 		},
 		{
@@ -272,6 +272,10 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 		{
 			name:   "Valid partitions",
 			config: `{"databases": {"db": {"enable_shared_bucket_access":true,"import_partitions":32}}}`,
+		},
+		{
+			name:   "Valid partitions, enable_shared_bucket_access default value (true)",
+			config: `{"databases": {"db": {"import_partitions":32}}}`,
 		},
 	}
 
