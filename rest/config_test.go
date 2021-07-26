@@ -1812,3 +1812,34 @@ func TestJSLoadTypeString(t *testing.T) {
 	// Test out of bounds JSLoadType
 	assert.Equal(t, "JSLoadType(4294967295)", JSLoadType(math.MaxUint32).String())
 }
+
+func TestUseXattrs(t *testing.T) {
+	testCases := []struct {
+		name           string
+		enableXattrs   *bool
+		expectedXattrs bool
+	}{
+		{
+			name:           "Nil Xattrs",
+			enableXattrs:   nil,
+			expectedXattrs: true, // Expects base.DefaultUseXattrs
+		},
+		{
+			name:           "False Xattrs",
+			enableXattrs:   base.BoolPtr(false),
+			expectedXattrs: false,
+		},
+		{
+			name:           "True Xattrs",
+			enableXattrs:   base.BoolPtr(true),
+			expectedXattrs: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			dbc := &DbConfig{EnableXattrs: test.enableXattrs}
+			result := dbc.UseXattrs()
+			assert.Equal(t, test.expectedXattrs, result)
+		})
+	}
+}

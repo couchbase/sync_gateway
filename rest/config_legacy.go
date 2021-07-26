@@ -210,6 +210,13 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	// TODO: Translate database configs too?
 	dbs := lc.Databases
 
+	// Follow legacy behaviour of having xattrs false by default
+	for _, database := range dbs {
+		if database.EnableXattrs == nil {
+			database.EnableXattrs = base.BoolPtr(false)
+		}
+	}
+
 	return &sc, dbs, nil
 }
 
