@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/gocbcore/memd"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocb.v1"
@@ -816,9 +817,7 @@ func (bucket *CouchbaseBucketGoCB) isRecoverableWriteError(err error) bool {
 
 	// In some circumstances we are unable to supply errors in the recoverable error map so need to check the error
 	// codes
-	gocbcoreKvError, ok := err.(*gocbcore.KvError)
-	// 0xA2 error is "SyncWriteInProgress" error
-	if gocbcoreKvError.Code == 0xA2 {
+	if isKVError(err, memd.StatusSyncWriteInProgress) {
 		return true
 	}
 
