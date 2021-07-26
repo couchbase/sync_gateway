@@ -263,14 +263,14 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 		}
 
 		if statusCode != http.StatusOK {
-			base.Infof(base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), username, statusCode)
+			base.Infof(base.KeyAuth, "%s: User %s failed to auth as an admin statusCode: %d", h.formatSerialNumber(), base.UD(username), statusCode)
 			return base.HTTPErrorf(statusCode, "")
 		}
 
 		h.authorizedAdminUser = username
 		h.permissionsResults = permissions
 
-		base.Infof(base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), username)
+		base.Infof(base.KeyAuth, "%s: User %s was successfully authorized as an admin", h.formatSerialNumber(), base.UD(username))
 	} else {
 		// If admin auth is not enabled we should set any responsePermissions to true so that any handlers checking for
 		// these still pass
@@ -692,7 +692,7 @@ func (h *handler) getBearerToken() string {
 // e.g: '<ud>alice</ud>' or 'GUEST'
 func (h *handler) taggedEffectiveUserName() string {
 	if h.authorizedAdminUser != "" {
-		return h.authorizedAdminUser + " as ADMIN"
+		return base.UD(h.authorizedAdminUser).Redact() + " as ADMIN"
 	}
 
 	if h.privs == adminPrivs || h.privs == metricsPrivs {
