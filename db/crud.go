@@ -1093,14 +1093,6 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 		return "", nil, resolveFuncError
 	}
 
-	// Restore rev ID onto localDoc and remoteDoc in the event that these have been mutated inside a custom conflict
-	// resolver
-	localDoc.RevID = localRevID
-	remoteDoc.RevID = remoteRevID
-
-	localDoc.CurrentRev = localRevID
-	remoteDoc.CurrentRev = remoteRevID
-
 	switch resolutionType {
 	case ConflictResolutionLocal:
 		resolvedRevID, updatedHistory, resolveError = db.resolveDocLocalWins(localDoc, remoteDoc, conflict, docHistory)
@@ -1122,7 +1114,7 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 func (db *Database) resolveDocRemoteWins(localDoc *Document, conflict Conflict) (resolvedRevID string, err error) {
 
 	// Tombstone the local revision
-	localRevID := localDoc.RevID
+	localRevID := localDoc.CurrentRev
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
 	if err != nil {
 		return "", tombstoneErr
@@ -1213,7 +1205,7 @@ func (db *Database) resolveDocLocalWins(localDoc *Document, remoteDoc *Document,
 	remoteDoc._rawBody = docBodyBytes
 
 	// Tombstone the local revision
-	localRevID := localDoc.RevID
+	localRevID := localDoc.CurrentRev
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
 	if tombstoneErr != nil {
 		return "", nil, tombstoneErr
@@ -1240,7 +1232,7 @@ func (db *Database) resolveDocMerge(localDoc *Document, remoteDoc *Document, con
 	}
 
 	// Tombstone the local revision
-	localRevID := localDoc.RevID
+	localRevID := localDoc.CurrentRev
 	tombstoneRevID, tombstoneErr := db.tombstoneActiveRevision(localDoc, localRevID)
 	if tombstoneErr != nil {
 		return "", nil, tombstoneErr
