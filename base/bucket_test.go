@@ -437,15 +437,16 @@ func TestTLSConfig(t *testing.T) {
 	assert.Nil(t, conf.RootCAs)
 	assert.Nil(t, conf.Certificates)
 
-	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should log error on Windows CBG-1518
+	// Check TLSConfig with no certs provided. InsecureSkipVerify should always be false. Should be empty config on Windows CBG-1518
 	spec = BucketSpec{}
 	conf = spec.TLSConfig()
+	assert.NotEmpty(t, conf)
+	assert.False(t, conf.InsecureSkipVerify)
+	require.NotNil(t, conf.RootCAs)
 	if runtime.GOOS != "windows" {
-		assert.NotEmpty(t, conf)
-		assert.False(t, conf.InsecureSkipVerify)
-		assert.NotNil(t, conf.RootCAs)
+		assert.NotEqual(t, x509.NewCertPool(), conf.RootCAs)
 	} else {
-		assert.Empty(t, conf)
+		assert.Equal(t, x509.NewCertPool(), conf.RootCAs)
 	}
 
 	// Check TLSConfig by providing invalid root CA certificate; provide root certificate key path
