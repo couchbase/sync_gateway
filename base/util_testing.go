@@ -149,7 +149,6 @@ func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 
 // Should Sync Gateway use XATTRS functionality when running unit tests?
 func TestUseXattrs() bool {
-
 	// First check if the SG_TEST_USE_XATTRS env variable is set
 	useXattrs := os.Getenv(TestEnvSyncGatewayUseXattrs)
 	if strings.ToLower(useXattrs) == strings.ToLower(TestEnvSyncGatewayTrue) {
@@ -157,7 +156,7 @@ func TestUseXattrs() bool {
 	}
 
 	// Otherwise fallback to hardcoded default
-	return DefaultUseXattrs
+	return !UnitTestUrlIsWalrus()
 
 }
 

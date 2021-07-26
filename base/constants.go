@@ -67,8 +67,8 @@ const (
 	// Can be used to set a global log level for all tests at runtime.
 	TestEnvGlobalLogLevel = "SG_TEST_LOG_LEVEL"
 
-	DefaultUseXattrs      = false // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
-	DefaultAllowConflicts = true  // Whether Sync Gateway allows revision conflicts, if not specified in the config
+	DefaultUseXattrs      = true // Whether Sync Gateway uses xattrs for metadata storage, if not specified in the config
+	DefaultAllowConflicts = true // Whether Sync Gateway allows revision conflicts, if not specified in the config
 
 	DefaultDropIndexes = false // Whether Sync Gateway drops GSI indexes before each test while running in integration mode
 

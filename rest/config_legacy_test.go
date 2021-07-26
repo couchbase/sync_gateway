@@ -86,3 +86,36 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		})
 	}
 }
+
+// CBG-1415
+func TestLegacyConfigXattrsDefault(t *testing.T) {
+	tests := []struct {
+		name           string
+		xattrs         *bool
+		expectedXattrs bool
+	}{
+		{
+			name:           "Nil Xattrs",
+			xattrs:         nil,
+			expectedXattrs: false,
+		},
+		{
+			name:           "False Xattrs",
+			xattrs:         base.BoolPtr(false),
+			expectedXattrs: false,
+		},
+		{
+			name:           "True Xattrs",
+			xattrs:         base.BoolPtr(true),
+			expectedXattrs: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			lc := LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{EnableXattrs: test.xattrs}}}
+			_, dbcm, err := lc.ToStartupConfig()
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedXattrs, *dbcm["db"].EnableXattrs)
+		})
+	}
+}

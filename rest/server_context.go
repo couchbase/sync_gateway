@@ -312,6 +312,9 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 	}
 
 	spec.UseXattrs = config.UseXattrs()
+	if !spec.UseXattrs {
+		base.Warnf("Deprecation notice: the option to disable Shared Bucket Access is due to be deprecated. It is recommended that this is enabled.")
+	}
 
 	if config.BucketOpTimeoutMs != nil {
 		operationTimeout := time.Millisecond * time.Duration(*config.BucketOpTimeoutMs)
