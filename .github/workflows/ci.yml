@@ -58,7 +58,6 @@ jobs:
   test-dos:
     env:
       GO111MODULE: off
-      GOPATH: $GITHUB_WORKSPACE/godeps
     runs-on: windows-latest
     steps:
       - uses: actions/setup-go@v2
@@ -68,6 +67,7 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh --output bootstrap.sh
           ./bootstrap.sh -c ${{ github.event.pull_request.head.sha }}
+          echo "GOPATH=$Env:GITHUB_WORKSPACE/godeps" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf-8 -Append
       - name: 'test'
         run: go test -timeout=30m -count=1 -v github.com/couchbase/sync_gateway/...
 
