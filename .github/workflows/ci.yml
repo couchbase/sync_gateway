@@ -65,7 +65,7 @@ jobs:
           go-version: 1.16.6
       - name: Bootstrap
         run: |
-          wget https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
+          curl https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh
           chmod +x bootstrap.sh
           ./bootstrap.sh -c ${{ github.event.pull_request.head.sha }}
           echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
