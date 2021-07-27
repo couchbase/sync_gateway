@@ -99,7 +99,7 @@ jobs:
           TACbBS+Up3RpfYVfd63c1cDdlru13pQAn3NQy/SN858MkxN+zym86UBgOad2
           =CMiZ
           -----END PGP PUBLIC KEY BLOCK-----
-      GPG_KEYS_CONLEY_OWENS: >
+      GPG_KEYS_CONLEY_OWENS: >-
           Conley Owens <cco3@android.com>
           -----BEGIN PGP PUBLIC KEY BLOCK-----
           Version: GnuPG v1.4.11 (GNU/Linux)
@@ -141,14 +141,13 @@ jobs:
           curl https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh > bootstrap.sh
           chmod +x bootstrap.sh
           echo "Importing time"
-          echo "$GPG_KEYS_REPO_MAINTAINER" > repo.gpg
-          echo "$GPG_KEYS_CONLEY_OWENS" > conley.gpg
-          gpg --import repo.gpg
-          gpg --import conley.gpg
+          # echo "$GPG_KEYS_REPO_MAINTAINER" > repo.gpg
+          # echo "$GPG_KEYS_CONLEY_OWENS" > conley.gpg
+          # gpg --import repo.gpg
+          # gpg --import conley.gpg
           echo "Bootstrap time"
-          ./bootstrap.sh -e ee -c ${{ github.event.pull_request.head.sha }}
+          ./bootstrap.sh -c ${{ github.event.pull_request.head.sha }}
           echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
-        shell: bash
       - name: 'test'
         run: go test -timeout=30m -count=1 -v github.com/couchbase/sync_gateway/...
 
