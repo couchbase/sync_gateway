@@ -58,7 +58,7 @@ jobs:
   test-dos-EE:
     env:
       GO111MODULE: off
-      GPG_KEYS_REPO_MAINTAINER: >
+      GPG_KEYS_REPO_MAINTAINER: >-
           Repo Maintainer <repo@android.kernel.org>
           -----BEGIN PGP PUBLIC KEY BLOCK-----
           Version: GnuPG v1.4.2.2 (GNU/Linux)
@@ -99,7 +99,7 @@ jobs:
           TACbBS+Up3RpfYVfd63c1cDdlru13pQAn3NQy/SN858MkxN+zym86UBgOad2
           =CMiZ
           -----END PGP PUBLIC KEY BLOCK-----
-      GPG_KEYS_CONLEY_OWENS: >
+      GPG_KEYS_CONLEY_OWENS: >-
           Conley Owens <cco3@android.com>
           -----BEGIN PGP PUBLIC KEY BLOCK-----
           Version: GnuPG v1.4.11 (GNU/Linux)
