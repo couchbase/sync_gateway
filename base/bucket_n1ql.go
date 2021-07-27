@@ -106,14 +106,16 @@ func (bucket *CouchbaseBucketGoCB) BuildDeferredIndexes(indexSet []string) error
 }
 
 func (bucket *CouchbaseBucketGoCB) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
+	bucket.waitForAvailViewOp()
+	defer bucket.releaseViewOp()
+
 	n1qlQuery := gocb.NewN1qlQuery(statement)
 	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
 	return results, err
 }
 
 func (bucket *CouchbaseBucketGoCB) executeStatement(statement string) error {
-	n1qlQuery := gocb.NewN1qlQuery(statement)
-	results, err := bucket.ExecuteN1qlQuery(n1qlQuery, nil)
+	results, err := bucket.executeQuery(statement)
 	if err != nil {
 		return err
 	}
