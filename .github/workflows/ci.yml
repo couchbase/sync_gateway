@@ -140,8 +140,9 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh > bootstrap.sh
           chmod +x bootstrap.sh
-          $GPG_KEYS_REPO_MAINTAINER | gpg --import
-          $GPG_KEYS_CONLEY_OWENS | gpg --import
+          echo "Importing time"
+          echo $GPG_KEYS_REPO_MAINTAINER | gpg --import
+          echo $GPG_KEYS_CONLEY_OWENS | gpg --import
           echo "Bootstrap time"
           ./bootstrap.sh -e ee -c ${{ github.event.pull_request.head.sha }}
           echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
