@@ -58,10 +58,10 @@ jobs:
   test-dos-EE:
     env:
       GO111MODULE: off
-      GPG_KEYS: >
-        Repo Maintainer <repo@android.kernel.org>
+      GPG_KEYS_REPO_MAINTAINER: >
+          Repo Maintainer <repo@android.kernel.org>
           -----BEGIN PGP PUBLIC KEY BLOCK-----
-        Version: GnuPG v1.4.2.2 (GNU/Linux)
+          Version: GnuPG v1.4.2.2 (GNU/Linux)
           mQGiBEj3ugERBACrLJh/ZPyVSKeClMuznFIrsQ+hpNnmJGw1a9GXKYKk8qHPhAZf
           WKtrBqAVMNRLhL85oSlekRz98u41H5si5zcuv+IXJDF5MJYcB8f22wAy15lUqPWi
           VCkk1l8qqLiuW0fo+ZkPY5qOgrvc0HW1SmdH649uNwqCbcKb6CxaTxzhOwCgj3AP
@@ -99,9 +99,10 @@ jobs:
           TACbBS+Up3RpfYVfd63c1cDdlru13pQAn3NQy/SN858MkxN+zym86UBgOad2
           =CMiZ
           -----END PGP PUBLIC KEY BLOCK-----
+      GPG_KEYS_CONLEY_OWENS: >
           Conley Owens <cco3@android.com>
           -----BEGIN PGP PUBLIC KEY BLOCK-----
-        Version: GnuPG v1.4.11 (GNU/Linux)
+          Version: GnuPG v1.4.11 (GNU/Linux)
           mQENBFHRvc8BCADFg45Xx/y6QDC+T7Y/gGc7vx0ww7qfOwIKlAZ9xG3qKunMxo+S
           hPCnzEl3cq+6I1Ww/ndop/HB3N3toPXRCoN8Vs4/Hc7by+SnaLFnacrm+tV5/OgT
           V37Lzt8lhay1Kl+YfpFwHYYpIEBLFV9knyfRXS/428W2qhdzYfvB15/AasRmwmor
@@ -129,6 +130,7 @@ jobs:
           +H/g3HsL2LOB9uoIm8/5p2TTU5ttYCXMHhQZ81AY
           =AUp4
           -----END PGP PUBLIC KEY BLOCK-----
+
     runs-on: windows-latest
     steps:
       - uses: actions/setup-go@v2
@@ -138,7 +140,9 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/couchbase/sync_gateway/master/bootstrap.sh > bootstrap.sh
           chmod +x bootstrap.sh
-          $GPG_KEYS | gpg --import
+          $GPG_KEYS_REPO_MAINTAINER | gpg --import
+          $GPG_KEYS_CONLEY_OWENS | gpg --import
+          echo "Bootstrap time"
           ./bootstrap.sh -e ee -c ${{ github.event.pull_request.head.sha }}
           echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
         shell: bash
