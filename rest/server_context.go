@@ -10,7 +10,6 @@ package rest
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,20 +41,25 @@ const KDefaultNumShards = 16
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config              *StartupConfig
-	persistentConfig    bool
-	bucketDbName        map[string]string              // bucketDbName is a map of bucket to database name
-	dbConfigs           map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
-	databases_          map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
-	lock                sync.RWMutex
-	statsContext        *statsContext
-	bootstrapConnection base.BootstrapConnection
-	HTTPClient          *http.Client
-	cpuPprofFileMutex   sync.Mutex     // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile        *os.File       // An open file descriptor holds the reference during CPU profiling
-	_httpServers        []*http.Server // A list of HTTP servers running under the ServerContext
-	ctx                 context.Context
-	ctxCancel           context.CancelFunc
+	config            *StartupConfig
+	persistentConfig  bool
+	bucketDbName      map[string]string              // bucketDbName is a map of bucket to database name
+	dbConfigs         map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
+	databases_        map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
+	lock              sync.RWMutex
+	statsContext      *statsContext
+	bootstrapContext  *bootstrapContext
+	HTTPClient        *http.Client
+	cpuPprofFileMutex sync.Mutex     // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile      *os.File       // An open file descriptor holds the reference during CPU profiling
+	_httpServers      []*http.Server // A list of HTTP servers running under the ServerContext
+}
+
+type bootstrapContext struct {
+	connection base.BootstrapConnection
+	ticker     *time.Ticker
+	terminator chan struct{} // Used to stop the goroutine handling the stats logging
+	doneChan   chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
 
 type DatabaseConfig struct {
@@ -103,7 +107,6 @@ func (sc *ServerContext) CloseCpuPprofFile() {
 }
 
 func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerContext {
-	ctx, ctxCancel := context.WithCancel(context.TODO())
 	sc := &ServerContext{
 		config:           config,
 		persistentConfig: persistentConfig,
@@ -112,8 +115,7 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 		databases_:       map[string]*db.DatabaseContext{},
 		HTTPClient:       http.DefaultClient,
 		statsContext:     &statsContext{},
-		ctx:              ctx,
-		ctxCancel:        ctxCancel,
+		bootstrapContext: &bootstrapContext{},
 	}
 
 	if base.ServerIsWalrus(sc.config.Bootstrap.Server) {
@@ -161,13 +163,23 @@ func (sc *ServerContext) PostStartup() {
 
 }
 
+// serverContextStopMaxWait is the maximum amount of time to wait for
+// background goroutines to terminate before the server is stopped.
+const serverContextStopMaxWait = 30 * time.Second
+
 func (sc *ServerContext) Close() {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
 
-	sc.ctxCancel()
+	err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait)
+	if err != nil {
+		base.Infof(base.KeyAll, "Couldn't stop stats logger:", err)
+	}
 
-	sc.stopStatsLogger()
+	err = base.TerminateAndWaitForClose(sc.bootstrapContext.terminator, sc.bootstrapContext.doneChan, serverContextStopMaxWait)
+	if err != nil {
+		base.Infof(base.KeyAll, "Couldn't stop background config update worker:", err)
+	}
 
 	for _, ctx := range sc.databases_ {
 		ctx.Close()
@@ -183,8 +195,8 @@ func (sc *ServerContext) Close() {
 	}
 	sc._httpServers = nil
 
-	if sc.bootstrapConnection != nil {
-		if err := sc.bootstrapConnection.Close(); err != nil {
+	if c := sc.bootstrapContext.connection; c != nil {
+		if err := c.Close(); err != nil {
 			base.Warnf("Error closing bootstrap cluster connection: %v", err)
 		}
 	}
@@ -1007,25 +1019,6 @@ func (sc *ServerContext) startStatsLogger() {
 	}()
 	base.Infof(base.KeyAll, "Logging stats with frequency: %v", interval)
 
-}
-
-// StatsLoggerStopMaxWait is the maximum amount of time to wait for
-// stats logger goroutine to terminate before the server is stopped.
-const StatsLoggerStopMaxWait = 30 * time.Second
-
-// stopStatsLogger stops the stats logger.
-func (sc *ServerContext) stopStatsLogger() {
-	if sc.statsContext.terminator != nil {
-		close(sc.statsContext.terminator)
-
-		waitTime := StatsLoggerStopMaxWait
-		select {
-		case <-sc.statsContext.doneChan:
-			// Stats logger goroutine is terminated and doneChan is already closed.
-		case <-time.After(waitTime):
-			base.Infof(base.KeyAll, "Timeout after %v of waiting for stats logger to terminate", waitTime)
-		}
-	}
 }
 
 func (sc *ServerContext) logStats() error {

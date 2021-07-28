@@ -1557,3 +1557,19 @@ func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 	*d = ConfigDuration{Duration: dur}
 	return nil
 }
+
+// TerminateAndWaitForClose will close the given terminator, and wait up to timeout for the done channel to be closed in response.
+func TerminateAndWaitForClose(terminator chan struct{}, done chan struct{}, timeout time.Duration) error {
+	if terminator == nil && done == nil {
+		return errors.New("terminateAndWaitForClose requires both terminator and done channels")
+	}
+	close(terminator)
+	t := time.NewTimer(timeout)
+	select {
+	case <-done:
+		t.Stop()
+	case <-t.C:
+		return fmt.Errorf("terminateAndWaitForClose timed out waiting for done channel after %v", timeout)
+	}
+	return nil
+}
