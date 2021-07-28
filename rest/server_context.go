@@ -378,7 +378,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	}
 
 	// If using a walrus bucket, force use of views
-	useViews := config.UseViews
+	useViews := base.BoolDefault(config.UseViews, false)
 	if !useViews && spec.IsWalrusBucket() {
 		base.Warnf("Using GSI is not supported when using a walrus bucket - switching to use views.  Set 'use_views':true in Sync Gateway's database config to avoid this warning.")
 		useViews = true
@@ -490,8 +490,8 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		}
 	}
 
-	dbcontext.AllowEmptyPassword = config.AllowEmptyPassword
-	dbcontext.ServeInsecureAttachmentTypes = config.ServeInsecureAttachmentTypes
+	dbcontext.AllowEmptyPassword = base.BoolDefault(config.AllowEmptyPassword, false)
+	dbcontext.ServeInsecureAttachmentTypes = base.BoolDefault(config.ServeInsecureAttachmentTypes, false)
 
 	if dbcontext.ChannelMapper == nil {
 		base.Infof(base.KeyAll, "Using default sync function 'channel(doc.channels)' for database %q", base.MD(dbName))
@@ -521,7 +521,7 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	// Save the config
 	sc.dbConfigs[dbcontext.Name] = &config
 
-	if config.StartOffline {
+	if base.BoolDefault(config.StartOffline, false) {
 		atomic.StoreUint32(&dbcontext.State, db.DBOffline)
 		_ = dbcontext.EventMgr.RaiseDBStateChangeEvent(dbName, "offline", "DB loaded from config", &sc.config.API.AdminInterface)
 	} else {
@@ -539,7 +539,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 	if config.ImportFilter != nil {
 		importOptions.ImportFilter = db.NewImportFilterFunction(*config.ImportFilter)
 	}
-	importOptions.BackupOldRev = config.ImportBackupOldRev
+	importOptions.BackupOldRev = base.BoolDefault(config.ImportBackupOldRev, false)
 
 	if config.ImportPartitions == nil {
 		importOptions.ImportPartitions = base.DefaultImportPartitions
@@ -707,7 +707,7 @@ func dbcOptionsFromConfig(sc *ServerContext, config *DbConfig, dbName string) (d
 		EnableXattr:               config.UseXattrs(),
 		SecureCookieOverride:      secureCookieOverride,
 		SessionCookieName:         config.SessionCookieName,
-		SessionCookieHttpOnly:     config.SessionCookieHTTPOnly,
+		SessionCookieHttpOnly:     base.BoolDefault(config.SessionCookieHTTPOnly, false),
 		AllowConflicts:            config.ConflictsAllowed(),
 		SendWWWAuthenticateHeader: config.SendWWWAuthenticateHeader,
 		DeltaSyncOptions:          deltaSyncOptions,

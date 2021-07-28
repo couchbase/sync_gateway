@@ -100,10 +100,10 @@ type APIConfig struct {
 	ReadHeaderTimeout  *base.ConfigDuration `json:"read_header_timeout,omitempty"  help:"The amount of time allowed to read request headers"`
 	IdleTimeout        *base.ConfigDuration `json:"idle_timeout,omitempty"         help:"The maximum amount of time to wait for the next request when keep-alives are enabled"`
 
-	Pretty             bool  `json:"pretty,omitempty"               help:"Pretty-print JSON responses"`
+	Pretty             *bool `json:"pretty,omitempty"               help:"Pretty-print JSON responses"`
 	MaximumConnections uint  `json:"max_connections,omitempty"      help:"Max # of incoming HTTP connections to accept"`
 	CompressResponses  *bool `json:"compress_responses,omitempty"   help:"If false, disables compression of HTTP responses"`
-	HideProductVersion bool  `json:"hide_product_version,omitempty" help:"Whether product versions removed from Server headers and REST API responses"`
+	HideProductVersion *bool `json:"hide_product_version,omitempty" help:"Whether product versions removed from Server headers and REST API responses"`
 
 	HTTPS HTTPSConfig `json:"https,omitempty"`
 	CORS  *CORSConfig `json:"cors,omitempty"`
@@ -145,7 +145,7 @@ type ReplicatorConfig struct {
 
 type UnsupportedConfig struct {
 	StatsLogFrequency *base.ConfigDuration `json:"stats_log_frequency,omitempty"    help:"How often should stats be written to stats logs"`
-	UseStdlibJSON     bool                 `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
+	UseStdlibJSON     *bool                `json:"use_stdlib_json,omitempty"        help:"Bypass the jsoniter package and use Go's stdlib instead"`
 
 	HTTP2 *HTTP2Config `json:"http2,omitempty"`
 }
@@ -203,7 +203,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 	}
 
 	// Given unscoped usage of base.JSON functions, this can't be scoped.
-	if sc.Unsupported.UseStdlibJSON {
+	if base.BoolDefault(sc.Unsupported.UseStdlibJSON, false) {
 		base.Infof(base.KeyAll, "Using the stdlib JSON package")
 		base.UseStdlibJSON = true
 	}

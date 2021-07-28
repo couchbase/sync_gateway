@@ -823,6 +823,14 @@ func BoolPtr(b bool) *bool {
 	return &b
 }
 
+// BoolDefault returns ifNil if b is nil, or else returns dereferenced value of b
+func BoolDefault(b *bool, ifNil bool) bool {
+	if b != nil {
+		return *b
+	}
+	return ifNil
+}
+
 // Convert a Bucket, or a Couchbase URI (eg, couchbase://host1,host2) to a list of HTTP URLs with ports (eg, ["http://host1:8091", "http://host2:8091"])
 // connSpec can be optionally passed in if available, to prevent unnecessary double-parsing of connstr
 // Primary use case is for backwards compatibility with go-couchbase, cbdatasource, and CBGT. Supports secure URI's as well (couchbases://).

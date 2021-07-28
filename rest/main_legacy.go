@@ -82,7 +82,7 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 			PublicInterface:  *publicInterface,
 			AdminInterface:   *adminInterface,
 			ProfileInterface: *profileInterface,
-			Pretty:           *pretty,
+			Pretty:           pretty,
 		},
 		Logging: LoggingConfig{
 			LogFilePath: *logFilePath,
