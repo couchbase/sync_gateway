@@ -17,6 +17,7 @@ import (
 type LegacyServerConfig struct {
 	TLSMinVersion              *string                        `json:"tls_minimum_version,omitempty"`    // Set TLS Version
 	Interface                  *string                        `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
+	ServerTLSSkipVerify        *bool                          `json:"server_tls_skip_verify,omitempty"` // Allow empty server CA Cert Path without attempting to use system root pool
 	SSLCert                    *string                        `json:",omitempty"`                       // Path to SSL cert file, or nil
 	SSLKey                     *string                        `json:",omitempty"`                       // Path to SSL private key file, or nil
 	ServerReadTimeout          *int                           `json:",omitempty"`                       // maximum duration.Second before timing out read of the HTTP(S) request
@@ -96,12 +97,13 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			continue
 		}
 		bsc = &BootstrapConfig{
-			Server:       *dbConfig.Server,
-			Username:     dbConfig.Username,
-			Password:     dbConfig.Password,
-			CACertPath:   dbConfig.CACertPath,
-			X509CertPath: dbConfig.CertPath,
-			X509KeyPath:  dbConfig.KeyPath,
+			Server:              *dbConfig.Server,
+			Username:            dbConfig.Username,
+			Password:            dbConfig.Password,
+			CACertPath:          dbConfig.CACertPath,
+			X509CertPath:        dbConfig.CertPath,
+			X509KeyPath:         dbConfig.KeyPath,
+			ServerTLSSkipVerify: lc.ServerTLSSkipVerify,
 		}
 		break
 	}
@@ -289,7 +291,13 @@ func (config *LegacyServerConfig) validate() (errorMessages error) {
 				"unsupported.stats_log_freq_secs", 10))
 		}
 	}
-
+	if config.ServerTLSSkipVerify != nil && *config.ServerTLSSkipVerify {
+		for name, database := range config.Databases {
+			if database.CACertPath != "" {
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot skip server TLS validation and use CA Cert for database %s", name))
+			}
+		}
+	}
 	return errorMessages
 }
 

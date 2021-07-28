@@ -119,3 +119,55 @@ func TestLegacyConfigXattrsDefault(t *testing.T) {
 		})
 	}
 }
+
+func TestCACertSkipVerify(t *testing.T) {
+	errExpected := "cannot skip server TLS validation and use CA Cert for database"
+	testCases := []struct {
+		name                string
+		cacert              string
+		serverTLSSkipVerify *bool
+		expectError         bool
+	}{
+		{
+			name:                "Skip Verify and CA provided",
+			cacert:              "cert.ca",
+			serverTLSSkipVerify: base.BoolPtr(true),
+			expectError:         true,
+		},
+		{
+			name:                "Skip Verify and no CA provided",
+			cacert:              "",
+			serverTLSSkipVerify: base.BoolPtr(true),
+			expectError:         false,
+		},
+		{
+			name:                "No Skip Verify and no CA provided",
+			cacert:              "",
+			serverTLSSkipVerify: base.BoolPtr(false),
+			expectError:         false,
+		},
+		{
+			name:                "No Skip Verify and CA provided",
+			cacert:              "cert.ca",
+			serverTLSSkipVerify: base.BoolPtr(false),
+			expectError:         false,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			lc := LegacyServerConfig{
+				ServerTLSSkipVerify: test.serverTLSSkipVerify,
+				Databases:           DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{CACertPath: test.cacert}}},
+			}
+			errMsg := lc.validate()
+			if test.expectError {
+				require.Error(t, errMsg)
+				assert.Contains(t, errMsg.Error(), errExpected)
+				return
+			}
+			if errMsg != nil {
+				assert.NotContains(t, errMsg.Error(), errExpected)
+			}
+		})
+	}
+}
