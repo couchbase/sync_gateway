@@ -291,13 +291,6 @@ func (config *LegacyServerConfig) validate() (errorMessages error) {
 				"unsupported.stats_log_freq_secs", 10))
 		}
 	}
-	if config.ServerTLSSkipVerify != nil && *config.ServerTLSSkipVerify {
-		for name, database := range config.Databases {
-			if database.CACertPath != "" {
-				errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot skip server TLS validation and use CA Cert for database %s", name))
-			}
-		}
-	}
 	return errorMessages
 }
 
