@@ -830,6 +830,17 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	if sc.Bootstrap.ServerTLSSkipVerify != nil && *sc.Bootstrap.ServerTLSSkipVerify && sc.Bootstrap.CACertPath != "" {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot skip server TLS validation and use CA Cert"))
 	}
+
+	// Validate SSL is provided if not allowing unsecure connections
+	if sc.API.HTTPS.UseTLSClient == nil || *sc.API.HTTPS.UseTLSClient {
+		if sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "" {
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("TLS key path and cert path must be provided when api.https.use_tls_client is set"))
+		}
+	} else { // Make sure TLS key and cert is not provided
+		if sc.API.HTTPS.TLSKeyPath != "" || sc.API.HTTPS.TLSCertPath != "" {
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot use TLS when api.https.use_tls_client is false"))
+		}
+	}
 	return errorMessages
 }
 

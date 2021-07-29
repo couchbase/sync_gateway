@@ -25,6 +25,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			ConfigGroupID:         persistentConfigDefaultGroupID,
 			ConfigUpdateFrequency: *base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
 			ServerTLSSkipVerify:   base.BoolPtr(false),
+			UseTLSServer:          base.BoolPtr(true),
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,
@@ -34,6 +35,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			CompressResponses:  base.BoolPtr(true),
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
+				UseTLSClient:      base.BoolPtr(true),
 			},
 			ReadHeaderTimeout:                         base.NewConfigDuration(base.DefaultReadHeaderTimeout),
 			IdleTimeout:                               base.NewConfigDuration(base.DefaultIdleTimeout),
@@ -80,9 +82,10 @@ type BootstrapConfig struct {
 	Username              string              `json:"username,omitempty"                help:"Username for authenticating to server"`
 	Password              string              `json:"password,omitempty"                help:"Password for authenticating to server"`
 	CACertPath            string              `json:"ca_cert_path,omitempty"            help:"Root CA cert path for TLS connection"`
+	ServerTLSSkipVerify   *bool               `json:"server_tls_skip_verify,omitempty"  help:"Allow empty server CA Cert Path without attempting to use system root pool"`
 	X509CertPath          string              `json:"x509_cert_path,omitempty"          help:"Cert path (public key) for X.509 bucket auth"`
 	X509KeyPath           string              `json:"x509_key_path,omitempty"           help:"Key path (private key) for X.509 bucket auth"`
-	ServerTLSSkipVerify   *bool               `json:"server_tls_skip_verify,omitempty"  help:"Allow empty server CA Cert Path without attempting to use system root pool"`
+	UseTLSServer          *bool               `json:"use_tls_server,omitempty"          help:"Forces the connection to Couchbase Server to use TLS"`
 }
 
 type APIConfig struct {
@@ -110,9 +113,10 @@ type APIConfig struct {
 }
 
 type HTTPSConfig struct {
-	TLSMinimumVersion string `json:"tls_minimum_version,omitempty"     help:"The minimum allowable TLS version for the REST APIs"`
-	TLSCertPath       string `json:"tls_cert_path,omitempty" help:"The TLS cert file to use for the REST APIs"`
-	TLSKeyPath        string `json:"tls_key_path,omitempty"  help:"The TLS key file to use for the REST APIs"`
+	TLSMinimumVersion string `json:"tls_minimum_version,omitempty" help:"The minimum allowable TLS version for the REST APIs"`
+	TLSCertPath       string `json:"tls_cert_path,omitempty"       help:"The TLS cert file to use for the REST APIs"`
+	TLSKeyPath        string `json:"tls_key_path,omitempty"        help:"The TLS key file to use for the REST APIs"`
+	UseTLSClient      *bool  `json:"use_tls_client,omitempty"      help:"Forces the REST APIs to use TLS/HTTPS"`
 }
 
 type CORSConfig struct {

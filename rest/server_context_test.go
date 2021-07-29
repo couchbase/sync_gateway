@@ -109,7 +109,9 @@ func TestAllDatabaseNames(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	defer tb2.Close()
 
-	serverConfig := &StartupConfig{API: APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
+	serverConfig := &StartupConfig{
+		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(false)},
+		API:       APIConfig{CORS: &CORSConfig{}, AdminInterface: DefaultAdminInterface}}
 	serverContext := NewServerContext(serverConfig, false)
 	defer serverContext.Close()
 
@@ -301,6 +303,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	config.API.MetricsInterface = "127.0.0.1:24986"
 
 	config.Bootstrap.Server = base.UnitTestUrl()
+	config.API.HTTPS.UseTLSClient = base.BoolPtr(false)
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 
@@ -436,6 +439,103 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 				test.serverTLSSkipVerify = base.BoolPtr(false)
 			}
 			assert.Equal(t, spec.TLSSkipVerify, *test.serverTLSSkipVerify)
+		})
+	}
+}
+
+// CBG-1535 - test Bootstrap.UseTLSServer option
+func TestUseTLSServer(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	errorMustBeSecure := "Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %v"
+	errorAllowInsecureAndBeSecure := "Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %v"
+	testCases := []struct {
+		name          string
+		useTLSServer  bool
+		server        string
+		expectedError *string
+	}{
+		{
+			name:          "Walrus allowed without flag",
+			useTLSServer:  false,
+			server:        "walrus://",
+			expectedError: nil,
+		},
+		{
+			name:          "Walrus allowed with flag",
+			useTLSServer:  true,
+			server:        "walrus://",
+			expectedError: nil,
+		},
+		{
+			name:          "couchbase: not allowed",
+			useTLSServer:  true,
+			server:        "couchbase://localhost:1212",
+			expectedError: &errorMustBeSecure,
+		},
+		{
+			name:          "http not allowed",
+			useTLSServer:  true,
+			server:        "http://localhost:1212",
+			expectedError: &errorMustBeSecure,
+		},
+		{
+			name:          "http allowed",
+			useTLSServer:  false,
+			server:        "http://localhost:1212",
+			expectedError: nil,
+		},
+		{
+			name:          "https mandatory",
+			useTLSServer:  true,
+			server:        "https://localhost:1234",
+			expectedError: nil,
+		},
+		{
+			name:          "Secure https not allowed",
+			useTLSServer:  false,
+			server:        "https://localhost:1234",
+			expectedError: &errorAllowInsecureAndBeSecure,
+		},
+		{
+			name:          "couchbases:",
+			useTLSServer:  true,
+			server:        "couchbases://localhost:1234",
+			expectedError: nil,
+		},
+		{
+			name:          "ftps:", // Testing if the S at the end is what makes it secure
+			useTLSServer:  true,
+			server:        "ftps://localhost:1234",
+			expectedError: &errorMustBeSecure,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			// Setup
+			config := DefaultStartupConfig("")
+			config.Bootstrap.UseTLSServer = &test.useTLSServer
+
+			sc := NewServerContext(&config, false)
+			dbConfig := DbConfig{
+				BucketConfig: BucketConfig{
+					Server: &test.server,
+				},
+			}
+			spec, err := GetBucketSpec(&dbConfig, &config)
+			require.Nil(t, err)
+			// Run test
+			err = validateServerTLS(spec, &config)
+
+			if test.expectedError != nil {
+				require.Error(t, err)
+				assert.Equal(t, fmt.Sprintf(*test.expectedError, test.server), err.Error())
+			} else if err != nil {
+				// Will still error due to no DB name, or not being able to connect to bucket
+				// So make sure it's not the 2 errors that can happen due to secure protocol
+				assert.NotEqual(t, fmt.Sprintf(errorMustBeSecure, test.server), err.Error())
+				assert.NotEqual(t, fmt.Sprintf(errorAllowInsecureAndBeSecure, test.server), err.Error())
+			}
+			sc.Close()
 		})
 	}
 }
