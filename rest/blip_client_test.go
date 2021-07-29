@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -672,6 +673,151 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	revRequest.Properties[db.RevMessageId] = docID
 	revRequest.Properties[db.RevMessageRev] = newRevID
 	revRequest.Properties[db.RevMessageHistory] = parentRev
+
+	if btc.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
+		base.Debugf(base.KeySync, "TEST: sending deltas from test client")
+		var parentDocJSON, newDocJSON db.Body
+		err := parentDocJSON.Unmarshal(parentDocBody)
+		if err != nil {
+			return "", err
+		}
+
+		err = newDocJSON.Unmarshal(body)
+		if err != nil {
+			return "", err
+		}
+
+		delta, err := base.Diff(parentDocJSON, newDocJSON)
+		if err != nil {
+			return "", err
+		}
+		revRequest.Properties[db.RevMessageDeltaSrc] = parentRev
+		body = delta
+	} else {
+		base.Debugf(base.KeySync, "TEST: not sending deltas from client")
+	}
+
+	revRequest.SetBody(body)
+	if err := btc.pushReplication.sendMsg(revRequest); err != nil {
+		return "", err
+	}
+
+	revResponse := revRequest.Response()
+	rspBody, err = revResponse.Body()
+	if err != nil {
+		return "", fmt.Errorf("error getting body of revResponse: %v", err)
+	}
+
+	if revResponse.Type() == blip.ErrorType {
+		return "", fmt.Errorf("error %s %s from revResponse: %s", revResponse.Properties["Error-Domain"], revResponse.Properties["Error-Code"], rspBody)
+	}
+
+	btc.updateLastReplicatedRev(docID, newRevID)
+	return newRevID, nil
+}
+
+// PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
+func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []byte, revCount, revpos int) (revID string, err error) {
+	parentRevGen, _ := db.ParseRevID(parentRev)
+	revGen := parentRevGen + revCount
+
+	var revisionHistory []string
+	for i := revGen - 1; i > parentRevGen; i-- {
+		rev := fmt.Sprintf("%d-%s", i, "abc")
+		revisionHistory = append(revisionHistory, rev)
+	}
+
+	// Inline attachment processing
+	if bytes.Contains(body, []byte(db.BodyAttachments)) {
+		var newDocJSON map[string]interface{}
+		if err = base.JSONUnmarshal(body, &newDocJSON); err != nil {
+			return "", err
+		}
+		if attachments, ok := newDocJSON[db.BodyAttachments]; ok {
+			if attachmentMap, ok := attachments.(map[string]interface{}); ok {
+				for attachmentName, inlineAttachment := range attachmentMap {
+					inlineAttachmentMap := inlineAttachment.(map[string]interface{})
+					attachmentData, ok := inlineAttachmentMap["data"]
+					if !ok {
+						if isStub, _ := inlineAttachmentMap["stub"].(bool); isStub {
+							// push the stub as-is
+							continue
+						}
+						return "", fmt.Errorf("couldn't find data property for inline attachment")
+					}
+
+					// Transform inline attachment data into metadata
+					data, ok := attachmentData.(string)
+					if !ok {
+						return "", fmt.Errorf("inline attachment data was not a string")
+					}
+
+					contentType, _ := inlineAttachmentMap["content_type"].(string)
+
+					length, digest, err := btc.saveAttachment(contentType, data)
+					if err != nil {
+						return "", err
+					}
+
+					attachmentMap[attachmentName] = map[string]interface{}{
+						"content_type": contentType,
+						"digest":       digest,
+						"length":       length,
+						"revpos":       revpos,
+						"stub":         true,
+					}
+					newDocJSON[db.BodyAttachments] = attachmentMap
+				}
+			}
+			if body, err = base.JSONMarshal(newDocJSON); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	var parentDocBody []byte
+	newRevID := fmt.Sprintf("%d-%s", revGen, "abc")
+	btc.docsLock.Lock()
+	if parentRev != "" {
+		revisionHistory = append(revisionHistory, parentRev)
+		if _, ok := btc.docs[docID]; ok {
+			// create new rev if doc and parent rev already exists
+			if parentDoc, okParent := btc.docs[docID][parentRev]; okParent {
+				parentDocBody = parentDoc.body
+				bodyMessagePair := &BodyMessagePair{body: body}
+				btc.docs[docID][newRevID] = bodyMessagePair
+			} else {
+				btc.docsLock.Unlock()
+				return "", fmt.Errorf("docID: %v with parent rev: %v was not found on the client", docID, parentRev)
+			}
+		}
+	} else {
+		// create new doc + rev
+		bodyMessagePair := &BodyMessagePair{body: body}
+		btc.docs[docID] = map[string]*BodyMessagePair{newRevID: bodyMessagePair}
+	}
+	btc.docsLock.Unlock()
+
+	// send msg proposeChanges with rev
+	proposeChangesRequest := blip.NewRequest()
+	proposeChangesRequest.SetProfile(db.MessageProposeChanges)
+	proposeChangesRequest.SetBody([]byte(fmt.Sprintf(`[["%s","%s","%s"]]`, docID, newRevID, parentRev)))
+	if err := btc.pushReplication.sendMsg(proposeChangesRequest); err != nil {
+		return "", err
+	}
+
+	proposeChangesResponse := proposeChangesRequest.Response()
+	rspBody, err := proposeChangesResponse.Body()
+	if err != nil || string(rspBody) != `[]` {
+		return "", fmt.Errorf("error from proposeChangesResponse: %v %s\n", err, string(rspBody))
+	}
+
+	// send msg rev with new doc
+	revRequest := blip.NewRequest()
+	revRequest.SetProfile(db.MessageRev)
+	revRequest.Properties[db.RevMessageId] = docID
+	revRequest.Properties[db.RevMessageRev] = newRevID
+	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
 	if btc.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
 		base.Debugf(base.KeySync, "TEST: sending deltas from test client")

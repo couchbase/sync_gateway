@@ -3435,3 +3435,117 @@ func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	assert.Equal(t, "doc", docID)
 	assert.Equal(t, int64(4), deletedFlags)
 }
+
+func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	rtConfig := RestTesterConfig{
+		guestEnabled: true,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	err = btc.StartPull()
+	assert.NoError(t, err)
+	const docId = "doc1"
+
+	// CBL creates revisions 1-abc,2-abc on the client, with an attachment associated with rev 2.
+	bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
+	revId, err := btc.PushRevWithHistory(docId, "", []byte(bodyText), 2, 2)
+	require.NoError(t, err)
+	assert.Equal(t, "2-abc", revId)
+
+	// Wait for the documents to be replicated at SG
+	_, ok := btc.pushReplication.WaitForMessage(2)
+	assert.True(t, ok)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+
+	// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
+	// these are sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2
+	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+	revId, err = btc.PushRevWithHistory(docId, revId, []byte(bodyText), 2, 0)
+	require.NoError(t, err)
+	assert.Equal(t, "4-abc", revId)
+
+	// Wait for the document to be replicated at SG
+	_, ok = btc.pushReplication.WaitForMessage(4)
+	assert.True(t, ok)
+
+	resp = rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+
+	var respBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
+
+	assert.Equal(t, docId, respBody[db.BodyId])
+	assert.Equal(t, "4-abc", respBody[db.BodyRev])
+	greetings := respBody["greetings"].([]interface{})
+	assert.Len(t, greetings, 1)
+	assert.Equal(t, map[string]interface{}{"hi": "bob"}, greetings[0])
+
+	attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
+	require.True(t, ok)
+	assert.Len(t, attachments, 1)
+	hello, ok := attachments["hello.txt"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, float64(11), hello["length"])
+	assert.Equal(t, float64(2), hello["revpos"])
+	assert.True(t, hello["stub"].(bool))
+}
+
+func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+	rtConfig := RestTesterConfig{
+		guestEnabled: true,
+	}
+	rt := NewRestTester(t, &rtConfig)
+	defer rt.Close()
+
+	btc, err := NewBlipTesterClientOptsWithRT(t, rt, nil)
+	require.NoError(t, err)
+	defer btc.Close()
+
+	err = btc.StartPull()
+	assert.NoError(t, err)
+	const docId = "doc1"
+
+	// CBL creates revisions 1-abc, 2-abc, 3-abc, 4-abc on the client, with an attachment associated with rev 2.
+	// rev tree pruning on the CBL side, so 1-abc no longer exists.
+	// CBL replicates, sends to client as 4-abc history:[4-abc, 3-abc, 2-abc], attachment has revpos=2
+	bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
+	revId, err := btc.PushRevWithHistory(docId, "2-abc", []byte(bodyText), 2, 2)
+	require.NoError(t, err)
+	assert.Equal(t, "4-abc", revId)
+
+	// Wait for the document to be replicated at SG
+	_, ok := btc.pushReplication.WaitForMessage(2)
+	assert.True(t, ok)
+
+	resp := rt.SendAdminRequest(http.MethodGet, "/db/"+docId+"?rev="+revId, "")
+	assert.Equal(t, http.StatusOK, resp.Code)
+
+	var respBody db.Body
+	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
+
+	assert.Equal(t, docId, respBody[db.BodyId])
+	assert.Equal(t, "4-abc", respBody[db.BodyRev])
+	greetings := respBody["greetings"].([]interface{})
+	assert.Len(t, greetings, 1)
+	assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
+
+	attachments, ok := respBody[db.BodyAttachments].(map[string]interface{})
+	require.True(t, ok)
+	assert.Len(t, attachments, 1)
+	hello, ok := attachments["hello.txt"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
+	assert.Equal(t, float64(11), hello["length"])
+	assert.Equal(t, float64(4), hello["revpos"])
+	assert.True(t, hello["stub"].(bool))
+}
