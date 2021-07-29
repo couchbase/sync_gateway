@@ -57,7 +57,6 @@ type ServerContext struct {
 
 type bootstrapContext struct {
 	connection base.BootstrapConnection
-	ticker     *time.Ticker
 	terminator chan struct{} // Used to stop the goroutine handling the stats logging
 	doneChan   chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
