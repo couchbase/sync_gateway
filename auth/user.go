@@ -223,10 +223,10 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 	}
 
 	// Note
-	// entry.StartSeq <= checkSeq && (entry.EndSeq > checkSeq || entry.EndSeq == triggeredBy)
+	// entry.EndSeq > checkSeq || entry.EndSeq == triggeredBy
 	// The above check is used in a number of places and represents:
-	// If the current changes lastSeq was in a window where the user had channel access, or we're in an interrupted
-	// revocation backfill for the end of one of those windows we should return this as a channel to revoke.
+	// If there has been a revocation somewhere after the since value or we're in an interrupted revocation backfill
+	// at the point a revocation occurred we should return this as a channel to revoke.
 
 	accessibleChannels := user.InheritedChannels()
 	// Get revoked roles
@@ -235,7 +235,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 	for roleName, history := range roleHistory {
 		if !user.RoleNames().Contains(roleName) {
 			for _, entry := range history.Entries {
-				if entry.StartSeq <= checkSeq && (entry.EndSeq > checkSeq || entry.EndSeq == triggeredBy) {
+				if entry.EndSeq > checkSeq || entry.EndSeq == triggeredBy {
 					mostRecentEndSeq := history.Entries[len(history.Entries)-1]
 					rolesToRevoke[roleName] = mostRecentEndSeq.EndSeq
 				}
@@ -252,7 +252,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 		for chanName, history := range princ.ChannelHistory() {
 			if !accessibleChannels.Contains(chanName) {
 				for _, entry := range history.Entries {
-					if entry.StartSeq <= checkSeq && (entry.EndSeq > checkSeq || entry.EndSeq == triggeredBy) {
+					if entry.EndSeq > checkSeq || entry.EndSeq == triggeredBy {
 						mostRecentEndSeq := history.Entries[len(history.Entries)-1]
 						combinedRevokedChannels.add(chanName, mostRecentEndSeq.EndSeq)
 					}
@@ -284,7 +284,7 @@ func (user *userImpl) RevokedChannels(since uint64, lowSeq uint64, triggeredBy u
 		for chanName, history := range role.ChannelHistory() {
 			if !accessibleChannels.Contains(chanName) {
 				for _, channelEntry := range history.Entries {
-					if channelEntry.StartSeq <= checkSeq && (channelEntry.EndSeq > checkSeq || channelEntry.EndSeq == triggeredBy) {
+					if channelEntry.EndSeq > checkSeq || channelEntry.EndSeq == triggeredBy {
 						// If triggeredBy falls in channel history grant period then revocation actually caused by role
 						// revocation. So use triggeredBy.
 						// Otherwise this was a channel revocation whilst role was still assigned. So use end seq.
