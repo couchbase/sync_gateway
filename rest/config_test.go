@@ -818,8 +818,7 @@ func TestValidateServerContext(t *testing.T) {
 
 	xattrs := base.TestUseXattrs()
 	config := &StartupConfig{
-		API:       APIConfig{HTTPS: HTTPSConfig{UseTLSClient: base.BoolPtr(true)}},
-		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(true)},
+		Bootstrap: BootstrapConfig{UseTLSServer: base.BoolPtr(false)},
 	}
 	databases := DbConfigMap{
 		"db1": {

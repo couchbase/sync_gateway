@@ -870,10 +870,6 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		return nil, err
 	}
 
-	if err := config.validate(); err != nil {
-		return nil, err
-	}
-
 	sc := NewServerContext(config, persistentConfig)
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
