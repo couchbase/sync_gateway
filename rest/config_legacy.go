@@ -15,42 +15,45 @@ import (
 
 // JSON object that defines the server configuration.
 type LegacyServerConfig struct {
-	TLSMinVersion              *string                        `json:"tls_minimum_version,omitempty"`    // Set TLS Version
-	Interface                  *string                        `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
-	ServerTLSSkipVerify        *bool                          `json:"server_tls_skip_verify,omitempty"` // Allow empty server CA Cert Path without attempting to use system root pool
-	SSLCert                    *string                        `json:",omitempty"`                       // Path to SSL cert file, or nil
-	SSLKey                     *string                        `json:",omitempty"`                       // Path to SSL private key file, or nil
-	ServerReadTimeout          *int                           `json:",omitempty"`                       // maximum duration.Second before timing out read of the HTTP(S) request
-	ServerWriteTimeout         *int                           `json:",omitempty"`                       // maximum duration.Second before timing out write of the HTTP(S) response
-	ReadHeaderTimeout          *int                           `json:",omitempty"`                       // The amount of time allowed to read request headers.
-	IdleTimeout                *int                           `json:",omitempty"`                       // The maximum amount of time to wait for the next request when keep-alives are enabled.
-	AdminInterface             *string                        `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
-	AdminUI                    *string                        `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
-	ProfileInterface           *string                        `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
-	ConfigServer               *string                        `json:",omitempty"`                       // URL of config server (for dynamic db discovery)
-	Facebook                   *FacebookConfigLegacy          `json:",omitempty"`                       // Configuration for Facebook validation
-	Google                     *GoogleConfigLegacy            `json:",omitempty"`                       // Configuration for Google validation
-	CORS                       *CORSConfigLegacy              `json:",omitempty"`                       // Configuration for allowing CORS
-	DeprecatedLog              []string                       `json:"log,omitempty"`                    // Log keywords to enable
-	DeprecatedLogFilePath      *string                        `json:"logFilePath,omitempty"`            // Path to log file, if missing write to stderr
-	Logging                    *base.LegacyLoggingConfig      `json:",omitempty"`                       // Configuration for logging with optional log file rotation
-	Pretty                     bool                           `json:",omitempty"`                       // Pretty-print JSON responses?
-	DeploymentID               *string                        `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
-	StatsReportInterval        *float64                       `json:",omitempty"`                       // Optional stats report interval (0 to disable)
-	CouchbaseKeepaliveInterval *int                           `json:",omitempty"`                       // TCP keep-alive interval between SG and Couchbase server
-	SlowQueryWarningThreshold  *int                           `json:",omitempty"`                       // Log warnings if N1QL queries take this many ms
-	MaxIncomingConnections     *int                           `json:",omitempty"`                       // Max # of incoming HTTP connections to accept
-	MaxFileDescriptors         *uint64                        `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
-	CompressResponses          *bool                          `json:",omitempty"`                       // If false, disables compression of HTTP responses
-	Databases                  DbConfigMap                    `json:",omitempty"`                       // Pre-configured databases, mapped by name
-	MaxHeartbeat               uint64                         `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
-	ClusterConfig              *ClusterConfigLegacy           `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
-	Unsupported                *UnsupportedServerConfigLegacy `json:"unsupported,omitempty"`            // Config for unsupported features
-	ReplicatorCompression      *int                           `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
-	BcryptCost                 int                            `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
-	MetricsInterface           *string                        `json:"metricsInterface,omitempty"`       // Interface to bind metrics to. If not set then metrics isn't accessible
-	HideProductVersion         bool                           `json:"hide_product_version,omitempty"`   // Determines whether product versions removed from Server headers and REST API responses. This setting does not apply to the Admin REST API.
-	DisablePersistentConfig    *bool                          `json:"disable_persistent_config,omitempty" help:"Can be set to true to disable 3.0/persistent config handling."`
+	TLSMinVersion                             *string                        `json:"tls_minimum_version,omitempty"`    // Set TLS Version
+	Interface                                 *string                        `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
+	ServerTLSSkipVerify                       *bool                          `json:"server_tls_skip_verify,omitempty"` // Allow empty server CA Cert Path without attempting to use system root pool
+	SSLCert                                   *string                        `json:",omitempty"`                       // Path to SSL cert file, or nil
+	SSLKey                                    *string                        `json:",omitempty"`                       // Path to SSL private key file, or nil
+	ServerReadTimeout                         *int                           `json:",omitempty"`                       // maximum duration.Second before timing out read of the HTTP(S) request
+	ServerWriteTimeout                        *int                           `json:",omitempty"`                       // maximum duration.Second before timing out write of the HTTP(S) response
+	ReadHeaderTimeout                         *int                           `json:",omitempty"`                       // The amount of time allowed to read request headers.
+	IdleTimeout                               *int                           `json:",omitempty"`                       // The maximum amount of time to wait for the next request when keep-alives are enabled.
+	AdminInterface                            *string                        `json:",omitempty"`                       // Interface to bind admin API to, default "localhost:4985"
+	AdminUI                                   *string                        `json:",omitempty"`                       // Path to Admin HTML page, if omitted uses bundled HTML
+	ProfileInterface                          *string                        `json:",omitempty"`                       // Interface to bind Go profile API to (no default)
+	ConfigServer                              *string                        `json:",omitempty"`                       // URL of config server (for dynamic db discovery)
+	Facebook                                  *FacebookConfigLegacy          `json:",omitempty"`                       // Configuration for Facebook validation
+	Google                                    *GoogleConfigLegacy            `json:",omitempty"`                       // Configuration for Google validation
+	CORS                                      *CORSConfigLegacy              `json:",omitempty"`                       // Configuration for allowing CORS
+	DeprecatedLog                             []string                       `json:"log,omitempty"`                    // Log keywords to enable
+	DeprecatedLogFilePath                     *string                        `json:"logFilePath,omitempty"`            // Path to log file, if missing write to stderr
+	Logging                                   *base.LegacyLoggingConfig      `json:",omitempty"`                       // Configuration for logging with optional log file rotation
+	Pretty                                    bool                           `json:",omitempty"`                       // Pretty-print JSON responses?
+	DeploymentID                              *string                        `json:",omitempty"`                       // Optional customer/deployment ID for stats reporting
+	StatsReportInterval                       *float64                       `json:",omitempty"`                       // Optional stats report interval (0 to disable)
+	CouchbaseKeepaliveInterval                *int                           `json:",omitempty"`                       // TCP keep-alive interval between SG and Couchbase server
+	SlowQueryWarningThreshold                 *int                           `json:",omitempty"`                       // Log warnings if N1QL queries take this many ms
+	MaxIncomingConnections                    *int                           `json:",omitempty"`                       // Max # of incoming HTTP connections to accept
+	MaxFileDescriptors                        *uint64                        `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
+	CompressResponses                         *bool                          `json:",omitempty"`                       // If false, disables compression of HTTP responses
+	Databases                                 DbConfigMap                    `json:",omitempty"`                       // Pre-configured databases, mapped by name
+	MaxHeartbeat                              uint64                         `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
+	ClusterConfig                             *ClusterConfigLegacy           `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
+	Unsupported                               *UnsupportedServerConfigLegacy `json:"unsupported,omitempty"`            // Config for unsupported features
+	ReplicatorCompression                     *int                           `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
+	BcryptCost                                int                            `json:"bcrypt_cost,omitempty"`            // bcrypt cost to use for password hashes - Default: bcrypt.DefaultCost
+	MetricsInterface                          *string                        `json:"metricsInterface,omitempty"`       // Interface to bind metrics to. If not set then metrics isn't accessible
+	HideProductVersion                        bool                           `json:"hide_product_version,omitempty"`   // Determines whether product versions removed from Server headers and REST API responses. This setting does not apply to the Admin REST API.
+	DisablePersistentConfig                   *bool                          `json:"disable_persistent_config,omitempty" help:"Can be set to true to disable 3.0/persistent config handling."`
+	AdminInterfaceAuthentication              *bool                          `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
+	MetricsInterfaceAuthentication            *bool                          `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
+	EnableAdminAuthenticationPermissionsCheck *bool                          `json:"enable_admin_authentication_permissions_check" help:"Whether to enable the permissions check feature of admin auth"`
 }
 
 type FacebookConfigLegacy struct {
@@ -111,9 +114,12 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	sc := StartupConfig{
 		Bootstrap: *bsc,
 		API: APIConfig{
-			Pretty:             lc.Pretty,
-			CompressResponses:  lc.CompressResponses,
-			HideProductVersion: lc.HideProductVersion,
+			Pretty:                                    lc.Pretty,
+			CompressResponses:                         lc.CompressResponses,
+			HideProductVersion:                        lc.HideProductVersion,
+			AdminInterfaceAuthentication:              lc.AdminInterfaceAuthentication,
+			MetricsInterfaceAuthentication:            lc.MetricsInterfaceAuthentication,
+			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
 		},
 		Logging: LoggingConfig{},
 		Auth: AuthConfig{
