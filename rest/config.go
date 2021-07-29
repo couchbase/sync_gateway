@@ -951,7 +951,7 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 // fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
 func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err error) {
-	buckets, err := sc.bootstrapConnection.GetConfigBuckets()
+	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return false, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
@@ -966,7 +966,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 	for _, bucket := range buckets {
 		bucket := bucket
 		var cnf DatabaseConfig
-		cas, err := sc.bootstrapConnection.GetConfig(dbName, sc.config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.bootstrapContext.connection.GetConfig(dbName, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue

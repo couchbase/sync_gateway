@@ -214,7 +214,7 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 		return nil, base.HTTPErrorf(http.StatusBadRequest, "invalid database name %q", name)
 	}
 
-	if sc.bootstrapConnection != nil {
+	if sc.bootstrapContext.connection != nil {
 		// database not loaded, go look for it in the cluster
 		found, err := sc.fetchAndLoadDatabase(name)
 		if err != nil {
