@@ -130,11 +130,11 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	}
 
 	if lc.Pretty {
-		sc.API.Pretty = base.BoolPtr(lc.Pretty)
+		sc.API.Pretty = &lc.Pretty
 	}
 
 	if lc.HideProductVersion {
-		sc.API.HideProductVersion = base.BoolPtr(lc.HideProductVersion)
+		sc.API.HideProductVersion = &lc.HideProductVersion
 	}
 
 	if lc.Facebook != nil || lc.Google != nil {
