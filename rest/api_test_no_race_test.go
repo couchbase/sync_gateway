@@ -219,7 +219,8 @@ func TestSetupAndValidate(t *testing.T) {
 		assert.Equal(t, "Administrator", db.Username)
 
 		assert.Equal(t, "password", db.Password)
-		assert.False(t, db.UseViews)
+		require.NotNil(t, db.UseViews)
+		assert.False(t, *db.UseViews)
 
 		assert.NotNil(t, db.RevsLimit)
 		assert.Equal(t, 200, int(*db.RevsLimit))

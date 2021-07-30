@@ -171,14 +171,14 @@ type APIEndpoints struct {
 }
 
 type UnsupportedOptions struct {
-	UserViews                 UserViewsOptions        `json:"user_views,omitempty"`                  // Config settings for user views
-	OidcTestProvider          OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`          // Config settings for OIDC Provider
-	APIEndpoints              APIEndpoints            `json:"api_endpoints,omitempty"`               // Config settings for API endpoints
-	WarningThresholds         WarningThresholds       `json:"warning_thresholds,omitempty"`          // Warning thresholds related to _sync size
-	DisableCleanSkippedQuery  bool                    `json:"disable_clean_skipped_query,omitempty"` // Clean skipped sequence processing bypasses final check
-	OidcTlsSkipVerify         bool                    `json:"oidc_tls_skip_verify"`                  // Config option to enable self-signed certs for OIDC testing.
-	SgrTlsSkipVerify          bool                    `json:"sgr_tls_skip_verify"`                   // Config option to enable self-signed certs for SG-Replicate testing.
-	RemoteConfigTlsSkipVerify bool                    `json:"remote_config_tls_skip_verify"`         // Config option to enable self signed certificates for external JavaScript load.
+	UserViews                 UserViewsOptions        `json:"user_views,omitempty"`                    // Config settings for user views
+	OidcTestProvider          OidcTestProviderOptions `json:"oidc_test_provider,omitempty"`            // Config settings for OIDC Provider
+	APIEndpoints              APIEndpoints            `json:"api_endpoints,omitempty"`                 // Config settings for API endpoints
+	WarningThresholds         WarningThresholds       `json:"warning_thresholds,omitempty"`            // Warning thresholds related to _sync size
+	DisableCleanSkippedQuery  bool                    `json:"disable_clean_skipped_query,omitempty"`   // Clean skipped sequence processing bypasses final check
+	OidcTlsSkipVerify         bool                    `json:"oidc_tls_skip_verify,omitempty"`          // Config option to enable self-signed certs for OIDC testing.
+	SgrTlsSkipVerify          bool                    `json:"sgr_tls_skip_verify,omitempty"`           // Config option to enable self-signed certs for SG-Replicate testing.
+	RemoteConfigTlsSkipVerify bool                    `json:"remote_config_tls_skip_verify,omitempty"` // Config option to enable self signed certificates for external JavaScript load.
 }
 
 type WarningThresholds struct {

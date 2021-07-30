@@ -138,7 +138,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	sc.Bootstrap.Password = base.TestClusterPassword()
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
-	sc.API.HideProductVersion = rt.RestTesterConfig.hideProductInfo
+	sc.API.HideProductVersion = base.BoolPtr(rt.RestTesterConfig.hideProductInfo)
 	sc.DeprecatedConfig = &DeprecatedConfig{Facebook: &FacebookConfigLegacy{}}
 	sc.API.AdminInterfaceAuthentication = &rt.adminInterfaceAuthentication
 	sc.API.MetricsInterfaceAuthentication = &rt.metricsInterfaceAuthentication
@@ -155,7 +155,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	}
 
 	if base.TestsDisableGSI() {
-		rt.DatabaseConfig.UseViews = true
+		rt.DatabaseConfig.UseViews = base.BoolPtr(true)
 	}
 
 	// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.

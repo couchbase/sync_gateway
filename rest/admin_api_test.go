@@ -324,7 +324,7 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AllowEmptyPassword: true}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AllowEmptyPassword: base.BoolPtr(true)}})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)

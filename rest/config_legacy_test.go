@@ -49,9 +49,9 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		},
 		{
 			name:     "Override bool Pretty",
-			base:     StartupConfig{API: APIConfig{Pretty: true}},
+			base:     StartupConfig{API: APIConfig{Pretty: base.BoolPtr(true)}},
 			input:    LegacyServerConfig{Pretty: false},
-			expected: StartupConfig{API: APIConfig{Pretty: true}},
+			expected: StartupConfig{API: APIConfig{Pretty: base.BoolPtr(true)}},
 		},
 		{
 			name:     "Override *bool(false) CompressResponses",

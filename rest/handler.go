@@ -779,7 +779,7 @@ func (h *handler) writeJSONStatus(status int, value interface{}) {
 		h.writeStatus(http.StatusInternalServerError, "JSON serialization failed")
 		return
 	}
-	if h.server.config.API.Pretty {
+	if base.BoolDefault(h.server.config.API.Pretty, false) {
 		var buffer bytes.Buffer
 		_ = json.Indent(&buffer, jsonOut, "", "  ")
 		jsonOut = append(buffer.Bytes(), '\n')
@@ -1032,5 +1032,7 @@ func (h *handler) formatSerialNumber() string {
 // shouldShowProductVersion returns whether the handler should show detailed product info (version).
 // Admin requests can always see this, regardless of the HideProductVersion setting.
 func (h *handler) shouldShowProductVersion() bool {
-	return h.privs == adminPrivs || !h.server.config.API.HideProductVersion
+	hideProductVersion := base.BoolDefault(h.server.config.API.HideProductVersion, false)
+	return h.privs == adminPrivs || !hideProductVersion
+
 }

@@ -116,13 +116,13 @@ func TestAllDatabaseNames(t *testing.T) {
 	defer serverContext.Close()
 
 	xattrs := base.TestUseXattrs()
-	dbConfig := DbConfig{BucketConfig: bucketConfigFromTestBucket(tb1), Name: "imdb1", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
+	dbConfig := DbConfig{BucketConfig: bucketConfigFromTestBucket(tb1), Name: "imdb1", AllowEmptyPassword: base.BoolPtr(true), NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
 	_, err := serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 1)
 	assert.Contains(t, serverContext.AllDatabaseNames(), "imdb1")
 
-	dbConfig = DbConfig{BucketConfig: bucketConfigFromTestBucket(tb2), Name: "imdb2", AllowEmptyPassword: true, NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
+	dbConfig = DbConfig{BucketConfig: bucketConfigFromTestBucket(tb2), Name: "imdb2", AllowEmptyPassword: base.BoolPtr(true), NumIndexReplicas: base.UintPtr(0), EnableXattrs: &xattrs}
 	_, err = serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 	assert.NoError(t, err, "No error while adding database to server context")
 	assert.Len(t, serverContext.AllDatabaseNames(), 2)
@@ -170,7 +170,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 	assert.Error(t, err, "It should throw Unrecognized value for import_docs")
 
 	bucketConfig := BucketConfig{Server: &server, Bucket: &bucketName}
-	dbConfig = DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: true}
+	dbConfig = DbConfig{BucketConfig: bucketConfig, Name: databaseName, AllowEmptyPassword: base.BoolPtr(true)}
 	dbContext, err = serverContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: dbConfig})
 
 	assert.NoError(t, err, "No error while adding database to server context")

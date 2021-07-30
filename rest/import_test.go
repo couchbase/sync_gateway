@@ -1774,7 +1774,7 @@ func TestImportRevisionCopy(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			ImportBackupOldRev: true,
+			ImportBackupOldRev: base.BoolPtr(true),
 			AutoImport:         false,
 		},
 	}
@@ -1831,7 +1831,7 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
 		DatabaseConfig: &DbConfig{
-			ImportBackupOldRev: true,
+			ImportBackupOldRev: base.BoolPtr(true),
 			AutoImport:         false,
 		},
 	}

@@ -829,7 +829,7 @@ func TestValidateServerContext(t *testing.T) {
 				Password: tb1Password,
 			},
 			EnableXattrs:     &xattrs,
-			UseViews:         base.TestsDisableGSI(),
+			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
 			NumIndexReplicas: base.UintPtr(0),
 		},
 		"db2": {
@@ -840,7 +840,7 @@ func TestValidateServerContext(t *testing.T) {
 				Password: tb1Password,
 			},
 			EnableXattrs:     &xattrs,
-			UseViews:         base.TestsDisableGSI(),
+			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
 			NumIndexReplicas: base.UintPtr(0),
 		},
 		"db3": {
@@ -851,7 +851,7 @@ func TestValidateServerContext(t *testing.T) {
 				Password: tb2Password,
 			},
 			EnableXattrs:     &xattrs,
-			UseViews:         base.TestsDisableGSI(),
+			UseViews:         base.BoolPtr(base.TestsDisableGSI()),
 			NumIndexReplicas: base.UintPtr(0),
 		},
 	}

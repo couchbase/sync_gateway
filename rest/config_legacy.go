@@ -117,9 +117,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	sc := StartupConfig{
 		Bootstrap: *bsc,
 		API: APIConfig{
-			Pretty:                                    lc.Pretty,
 			CompressResponses:                         lc.CompressResponses,
-			HideProductVersion:                        lc.HideProductVersion,
 			AdminInterfaceAuthentication:              lc.AdminInterfaceAuthentication,
 			MetricsInterfaceAuthentication:            lc.MetricsInterfaceAuthentication,
 			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
@@ -135,6 +133,14 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			MaxHeartbeat:    base.ConfigDuration{Duration: time.Second * time.Duration(lc.MaxHeartbeat)},
 			BLIPCompression: lc.ReplicatorCompression,
 		},
+	}
+
+	if lc.Pretty {
+		sc.API.Pretty = &lc.Pretty
+	}
+
+	if lc.HideProductVersion {
+		sc.API.HideProductVersion = &lc.HideProductVersion
 	}
 
 	if lc.Facebook != nil || lc.Google != nil {
@@ -214,7 +220,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			sc.Unsupported.StatsLogFrequency = base.NewConfigDuration(time.Second * time.Duration(*lc.Unsupported.StatsLogFrequencySecs))
 		}
 		if lc.Unsupported.UseStdlibJSON != nil {
-			sc.Unsupported.UseStdlibJSON = *lc.Unsupported.UseStdlibJSON
+			sc.Unsupported.UseStdlibJSON = lc.Unsupported.UseStdlibJSON
 		}
 	}
 	if lc.MaxFileDescriptors != nil {
