@@ -13,6 +13,8 @@ type BootstrapConnection interface {
 	GetConfigBuckets() ([]string, error)
 	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
 	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
+	// PutConfig saves a database config for a given bucket and config group ID, along with the CAS of the document.
+	PutConfig(bucket, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error)
 	// Close closes the connection
 	Close() error
 }
@@ -114,6 +116,11 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	}
 
 	return uint64(res.Cas()), nil
+}
+
+func (cc *CouchbaseCluster) PutConfig(bucket, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error) {
+	// TODO: Implement
+	return 0, nil
 }
 
 func (cc *CouchbaseCluster) Close() error {
