@@ -1522,3 +1522,90 @@ func TestConfigDuration(t *testing.T) {
 		})
 	}
 }
+
+func TestTerminateAndWaitForClose(t *testing.T) {
+	tests := []struct {
+		name       string
+		terminator chan struct{}
+		done       chan struct{}
+		fn         func(terminator chan struct{}, done chan struct{})
+		timeout    time.Duration
+		wantErr    bool
+	}{
+		{
+			name:       "terminate and done",
+			terminator: make(chan struct{}),
+			done:       make(chan struct{}),
+			fn: func(t chan struct{}, d chan struct{}) {
+				select {
+				case <-t:
+					close(d)
+				}
+			},
+			timeout: time.Second * 3,
+			wantErr: false,
+		},
+		{
+			name:       "terminate and done within timeout",
+			terminator: make(chan struct{}),
+			done:       make(chan struct{}),
+			fn: func(t chan struct{}, d chan struct{}) {
+				select {
+				case <-t:
+					time.Sleep(time.Second * 5)
+					close(d)
+				}
+			},
+			timeout: time.Second * 10,
+			wantErr: false,
+		},
+		{
+			name:       "terminate and done after timeout",
+			terminator: make(chan struct{}),
+			done:       make(chan struct{}),
+			fn: func(t chan struct{}, d chan struct{}) {
+				select {
+				case <-t:
+					time.Sleep(time.Second * 10)
+					close(d)
+				}
+			},
+			timeout: time.Second * 3,
+			wantErr: true,
+		},
+		{
+			name:       "terminate and no done",
+			terminator: make(chan struct{}),
+			done:       make(chan struct{}),
+			fn: func(t chan struct{}, d chan struct{}) {
+				select {
+				case <-t:
+				}
+			},
+			timeout: time.Second * 3,
+			wantErr: true,
+		},
+		{
+			name:       "no terminate",
+			terminator: make(chan struct{}),
+			done:       make(chan struct{}),
+			fn: func(t chan struct{}, d chan struct{}) {
+				// block forever
+				select {}
+			},
+			timeout: time.Second * 3,
+			wantErr: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			go test.fn(test.terminator, test.done)
+			err := TerminateAndWaitForClose(test.terminator, test.done, test.timeout)
+			if test.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

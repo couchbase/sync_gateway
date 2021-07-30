@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 
@@ -891,7 +892,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		}
 
 		base.Infof(base.KeyConfig, "Successfully connected to cluster for bootstrapping")
-		sc.bootstrapConnection = c.(base.BootstrapConnection)
+		sc.bootstrapContext.connection = c.(base.BootstrapConnection)
 
 		count, err := sc.fetchAndLoadConfigs()
 		if err != nil {
@@ -902,6 +903,35 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 			base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
 		} else {
 			base.Warnf("Config: No database configs for group %q. Continuing startup to allow REST API database creation", sc.config.Bootstrap.ConfigGroupID)
+		}
+
+		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
+			sc.bootstrapContext.terminator = make(chan struct{})
+			sc.bootstrapContext.doneChan = make(chan struct{})
+
+			base.Infof(base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
+			go func() {
+				defer close(sc.bootstrapContext.doneChan)
+				t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())
+				for {
+					select {
+					case <-sc.bootstrapContext.terminator:
+						base.Infof(base.KeyConfig, "Stopping background config polling loop")
+						t.Stop()
+						return
+					case <-t.C:
+						count, err := sc.fetchAndLoadConfigs()
+						if err != nil {
+							base.Warnf("Couldn't load configs from bucket when polled: %v", err)
+						}
+						if count > 0 {
+							base.Infof(base.KeyConfig, "Successfully fetched %d database configs from buckets in cluster", count)
+						}
+					}
+				}
+			}()
+		} else {
+			base.Infof(base.KeyConfig, "Disabled background polling for new configs/buckets")
 		}
 	}
 
@@ -921,7 +951,7 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 // fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
 func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err error) {
-	buckets, err := sc.bootstrapConnection.GetConfigBuckets()
+	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return false, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
@@ -936,7 +966,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 	for _, bucket := range buckets {
 		bucket := bucket
 		var cnf DatabaseConfig
-		cas, err := sc.bootstrapConnection.GetConfig(dbName, sc.config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.bootstrapContext.connection.GetConfig(dbName, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
@@ -980,7 +1010,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
 func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*DatabaseConfig, err error) {
-	buckets, err := sc.bootstrapConnection.GetConfigBuckets()
+	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
@@ -991,7 +1021,7 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*Data
 	for _, bucket := range buckets {
 		base.Tracef(base.KeyConfig, "Checking %q for Sync Gateway config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 		var cnf DbConfig
-		cas, err := sc.bootstrapConnection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
