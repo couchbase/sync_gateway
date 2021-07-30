@@ -2999,6 +2999,9 @@ func TestBlipPushPullNewAttachmentV2(t *testing.T) {
 	assert.Equal(t, float64(11), hello["length"])
 	assert.Equal(t, float64(2), hello["revpos"])
 	assert.True(t, hello["stub"].(bool))
+
+	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
+	assert.Equal(t, int64(22), rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushBytes.Value())
 }
 
 func TestUpdateExistingAttachment(t *testing.T) {
