@@ -1207,8 +1207,8 @@ func TestSetupServerContext(t *testing.T) {
 // CBG-1535 - Test api.http.UseTLSClient option
 func TestUseTLSClient(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	errorTLSNotProvided := "TLS key path and cert path must be provided when api.https.use_tls_client is set"
-	errorTLSProvidedButInsecure := "cannot use TLS when api.https.use_tls_client is false"
+	errorTLSNotProvided := "Must supply a TLS key path and cert path, or opt out by setting api.https.use_tls_client to false"
+	errorTLSProvidedButInsecure := "Cannot use supplied TLS key or cert when api.https.use_tls_client is false"
 	testCases := []struct {
 		name         string
 		tlsKey       bool
