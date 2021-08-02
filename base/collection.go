@@ -73,16 +73,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 		return nil, err
 	}
 
-	nodeCount := 1
-	router, routerErr := bucket.Internal().IORouter()
-	if routerErr == nil {
-		mgmtEps := router.MgmtEps()
-		if mgmtEps != nil && len(mgmtEps) > 0 {
-			nodeCount = len(mgmtEps)
-		}
-	}
-
-	viewOpsQueue := make(chan struct{}, MaxConcurrentViewOps*nodeCount)
+	viewOpsQueue := make(chan struct{}, MaxConcurrentQueryOps)
 	collection := &Collection{
 		Collection: bucket.DefaultCollection(),
 		cluster:    cluster,

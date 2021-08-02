@@ -554,18 +554,18 @@ func TestViewQueryBucketOptionsOnBucketSpec(t *testing.T) {
 		{
 			Name:              "Set Nil",
 			OperationsPerNode: nil,
-			ExpectedValue:     base.MaxConcurrentViewOps,
+			ExpectedValue:     base.MaxConcurrentQueryOps,
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.Name, func(t *testing.T) {
 			startupConfig := &StartupConfig{Bootstrap: BootstrapConfig{}}
-			dbConfig := &DbConfig{BucketConfig: BucketConfig{MaxConcurrentViewQueryOperationsPerNode: testCase.OperationsPerNode}}
+			dbConfig := &DbConfig{BucketConfig: BucketConfig{MaxConcurrentQueryOps: testCase.OperationsPerNode}}
 			spec, err := GetBucketSpec(dbConfig, startupConfig)
 			assert.NoError(t, err)
 
-			assert.Equal(t, testCase.ExpectedValue, spec.ViewQueryMaxConcurrentOpsPerNode)
+			assert.Equal(t, testCase.ExpectedValue, spec.MaxConcurrentQueryOps)
 		})
 	}
 }

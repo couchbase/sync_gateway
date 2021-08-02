@@ -106,19 +106,19 @@ type CouchbaseBucketType int
 
 // Full specification of how to connect to a bucket
 type BucketSpec struct {
-	Server, BucketName, FeedType     string
-	Auth                             AuthHandler
-	CouchbaseDriver                  CouchbaseDriver
-	Certpath, Keypath, CACertPath    string         // X.509 auth parameters
-	TLSSkipVerify                    bool           // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
-	KvTLSPort                        int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
-	MaxNumRetries                    int            // max number of retries before giving up
-	InitialRetrySleepTimeMS          int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
-	UseXattrs                        bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
-	ViewQueryTimeoutSecs             *uint32        // the view query timeout in seconds (default: 75 seconds)
-	ViewQueryMaxConcurrentOpsPerNode int            // maximum number of concurrent view / query operations (default: 100)
-	BucketOpTimeout                  *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
-	KvPoolSize                       int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
+	Server, BucketName, FeedType  string
+	Auth                          AuthHandler
+	CouchbaseDriver               CouchbaseDriver
+	Certpath, Keypath, CACertPath string         // X.509 auth parameters
+	TLSSkipVerify                 bool           // Use insecureSkipVerify when secure scheme (couchbases) is used and cacertpath is undefined
+	KvTLSPort                     int            // Port to use for memcached over TLS.  Required for cbdatasource auth when using TLS
+	MaxNumRetries                 int            // max number of retries before giving up
+	InitialRetrySleepTimeMS       int            // the initial time to sleep in between retry attempts (in millisecond), which will double each retry
+	UseXattrs                     bool           // Whether to use xattrs to store _sync metadata.  Used during view initialization
+	ViewQueryTimeoutSecs          *uint32        // the view query timeout in seconds (default: 75 seconds)
+	MaxConcurrentQueryOps         int            // maximum number of concurrent query operations (default: DefaultMaxConcurrentQueryOps)
+	BucketOpTimeout               *time.Duration // How long bucket ops should block returning "operation timed out". If nil, uses GoCB default.  GoCB buckets only.
+	KvPoolSize                    int            // gocb kv_pool_size - number of pipelines per node. Initialized on GetGoCBConnString
 }
 
 // Create a RetrySleeper based on the bucket spec properties.  Used to retry bucket operations after transient errors.

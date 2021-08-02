@@ -34,7 +34,7 @@ import (
 const (
 	MaxConcurrentSingleOps = 1000 // Max 1000 concurrent single bucket ops
 	MaxConcurrentBulkOps   = 35   // Max 35 concurrent bulk ops
-	MaxConcurrentViewOps   = 100  // Max concurrent view ops
+	MaxConcurrentQueryOps  = 1000 // Max concurrent query ops
 	MaxBulkBatchSize       = 100  // Maximum number of ops per bulk call
 
 	// Causes the write op to block until the change has been replicated to numNodesReplicateTo many nodes.
@@ -169,7 +169,8 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 	// to avoid gocb queue overflow issues
 	singleOpsQueue := make(chan struct{}, MaxConcurrentSingleOps*nodeCount*numPools)
 	bucketOpsQueue := make(chan struct{}, MaxConcurrentBulkOps*nodeCount*numPools)
-	viewOpsQueue := make(chan struct{}, spec.ViewQueryMaxConcurrentOpsPerNode*nodeCount)
+
+	viewOpsQueue := make(chan struct{}, spec.MaxConcurrentQueryOps)
 
 	bucket = &CouchbaseBucketGoCB{
 		Bucket:                    goCBBucket,
