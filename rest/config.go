@@ -835,11 +835,11 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	// Validate SSL is provided if not allowing unsecure connections
 	if sc.API.HTTPS.UseTLSClient == nil || *sc.API.HTTPS.UseTLSClient {
 		if sc.API.HTTPS.TLSKeyPath == "" || sc.API.HTTPS.TLSCertPath == "" {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("TLS key path and cert path must be provided when api.https.use_tls_client is set"))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Must supply a TLS key path and cert path, or opt out by setting api.https.use_tls_client to false"))
 		}
 	} else { // Make sure TLS key and cert is not provided
 		if sc.API.HTTPS.TLSKeyPath != "" || sc.API.HTTPS.TLSCertPath != "" {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot use TLS when api.https.use_tls_client is false"))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Cannot use supplied TLS key or cert when api.https.use_tls_client is false"))
 		}
 	}
 	return errorMessages
