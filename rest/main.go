@@ -2,9 +2,14 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
@@ -102,10 +107,13 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	if len(configPath) == 1 {
 		fileStartupConfig, err := LoadStartupConfigFromPath(configPath[0])
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
-			// TODO: CBG-1399 Do automatic legacy config upgrade here
-			base.Warnf("Couldn't parse bootstrap config and legacy config migration not yet implemented: %v", err)
-			// When automatic legacy config upgrade is done return when disable_persistent_config=true
-			return true, nil
+
+			// Attempt to perform automatic config upgrade
+			fileStartupConfig, err = automaticConfigUpgrade(configPath[0])
+			if err != nil {
+				return false, err
+			}
+
 		}
 		if err != nil {
 			return false, fmt.Errorf("Couldn't open config file: %w", err)
@@ -145,4 +153,135 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	}
 
 	return false, startServer(&sc, ctx)
+}
+
+func automaticConfigUpgrade(configPath string) (*StartupConfig, error) {
+	legacyServerConfig, err := LoadServerConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	dbConfigs, err = sanitizeDbConfigs(dbConfigs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Attempt to establish connection to server, add retry like its other use-case
+	cluster, err := EstablishCouchbaseClusterConnection(startupConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	defer cluster.Close()
+
+	// Write database configs to CBS with groupID "default"
+	for _, dbConfig := range dbConfigs {
+		_, err = cluster.PutConfig(*dbConfig.Bucket, "default", base.Uint64Ptr(0), dbConfig)
+		if err != nil {
+			// TODO: if exists skip, else error
+			return nil, err
+		}
+	}
+
+	// Attempt to backup current config
+	err = backupCurrentConfigFile(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Overwrite old config with new migrated startup config
+	jsonStartupConfig, err := json.Marshal(startupConfig)
+	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	return startupConfig, nil
+}
+
+// validate / sanitize db configs
+// - remove servers
+// - remove users
+// - ensure servers are the same
+func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
+	var databaseServerAddress string
+
+	for dbName, dbConfig := range configMap {
+		if databaseServerAddress == "" {
+			databaseServerAddress = *dbConfig.Server
+		}
+
+		if *dbConfig.Server != databaseServerAddress {
+			return nil, fmt.Errorf("server addresses specified in dbConfig do not match. This is required for " +
+				"persistent config")
+		}
+
+		if dbConfig.Bucket == nil || *dbConfig.Bucket == "" {
+			*dbConfig.Bucket = dbName
+		}
+
+		dbConfig.Name = dbName
+
+		dbConfig.Server = nil
+		dbConfig.Users = nil
+		dbConfig.Roles = nil
+
+		// Make sure any updates are written back to the config
+		configMap[dbName] = dbConfig
+	}
+	return configMap, nil
+}
+
+// backupCurrentConfigFile takes the original config path and copies this to a file with -bk appended with a timestamp
+func backupCurrentConfigFile(sourcePath string) error {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	backupDirPath := filepath.Dir(sourcePath)
+	backupFileName := filepath.Base(sourcePath) + fmt.Sprintf("-bk-%s", time.Now().Format(base.ISO8601Format))
+
+	backupPath := filepath.Join(backupDirPath, backupFileName)
+
+	backup, err := os.Create(backupPath)
+	if err != nil {
+		return err
+	}
+	defer backup.Close()
+
+	_, err = io.Copy(backup, source)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func EstablishCouchbaseClusterConnection(config *StartupConfig) (*base.CouchbaseCluster, error) {
+	err, c := base.RetryLoop("Cluster Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
+		cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username,
+			config.Bootstrap.Password, config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath,
+			config.Bootstrap.CACertPath, config.Bootstrap.ServerTLSSkipVerify)
+		if err != nil {
+			base.Infof(base.KeyConfig, "Couldn't connect to bootstrap cluster: %v - will retry...", err)
+			return true, err, nil
+		}
+
+		return false, nil, cluster
+	}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitForReady timeout and 1 second interval
+	if err != nil {
+		return nil, err
+	}
+
+	base.Infof(base.KeyConfig, "Successfully connected to cluster")
+	clusterConnection := c.(*base.CouchbaseCluster)
+
+	return clusterConnection, nil
 }

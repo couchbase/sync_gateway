@@ -887,24 +887,12 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
-		err, c := base.RetryLoop("Cluster Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
-			cluster, err := base.NewCouchbaseCluster(sc.config.Bootstrap.Server,
-				sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
-				sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath,
-				sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify)
-			if err != nil {
-				base.Infof(base.KeyConfig, "Couldn't connect to bootstrap cluster: %v - will retry...", err)
-				return true, err, nil
-			}
-
-			return false, nil, cluster
-		}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitForReady timeout and 1 second interval
+		couchbaseCluster, err := EstablishCouchbaseClusterConnection(sc.config)
 		if err != nil {
 			return nil, err
 		}
 
-		base.Infof(base.KeyConfig, "Successfully connected to cluster for bootstrapping")
-		sc.bootstrapContext.connection = c.(base.BootstrapConnection)
+		sc.bootstrapContext.connection = base.BootstrapConnection(couchbaseCluster)
 
 		count, err := sc.fetchAndLoadConfigs()
 		if err != nil {

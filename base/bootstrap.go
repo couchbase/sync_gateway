@@ -118,9 +118,23 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	return uint64(res.Cas()), nil
 }
 
-func (cc *CouchbaseCluster) PutConfig(bucket, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error) {
-	// TODO: Implement
-	return 0, nil
+func (cc *CouchbaseCluster) PutConfig(location, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error) {
+	if cc == nil {
+		return 0, errors.New("nil CouchbaseCluster")
+	}
+	docID := PersistentConfigPrefix + groupID
+	collection := cc.c.Bucket(location).DefaultCollection()
+	// TODO: CBG-1452 - Optimistic concurrency control (CAS or Opaque field in config rather than in URL?)
+	// if cas != nil {
+	// 	res, err = collection.Replace(docID, value, &gocb.ReplaceOptions{Cas: gocb.Cas(*cas)})
+	res, err := collection.Upsert(docID, value, nil)
+	if err != nil {
+		switch err {
+		case gocb.ErrCasMismatch:
+		}
+		return 0, err
+	}
+	return uint64(res.Cas()), nil
 }
 
 func (cc *CouchbaseCluster) Close() error {
