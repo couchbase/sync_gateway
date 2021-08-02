@@ -2489,7 +2489,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	// create doc1 rev 2-abcxyz on client
 	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
-	assert.Equal(t, "2-abcxyz", newRev)
+	assert.Equal(t, "2-abc", newRev)
 
 	// Check EE is delta, and CE is full-body replication
 	msg, ok := client.pushReplication.WaitForMessage(2)
@@ -2522,7 +2522,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	var respBody db.Body
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 	assert.Equal(t, "doc1", respBody[db.BodyId])
-	assert.Equal(t, "2-abcxyz", respBody[db.BodyRev])
+	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 3)
 	assert.Equal(t, map[string]interface{}{"hello": "world!"}, greetings[0])
@@ -2533,7 +2533,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	resp = rt.SendAdminRequest(http.MethodDelete, "/db/doc1?rev="+newRev, "")
 	assert.Equal(t, http.StatusOK, resp.Code)
 
-	data, ok = client.WaitForRev("doc1", "3-f3be6c85e0362153005dae6f08fc68bb")
+	data, ok = client.WaitForRev("doc1", "3-fcc2db8cdbf1831799b7a39bb57edd71")
 	assert.True(t, ok)
 	assert.Equal(t, `{}`, string(data))
 
@@ -2542,7 +2542,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	if rt.GetDatabase().DbStats.DeltaSync() != nil {
 		deltaPushDocCountStart = rt.GetDatabase().DbStats.DeltaSync().DeltaPushDocCount.Value()
 	}
-	revID, err := client.PushRev("doc1", "3-f3be6c85e0362153005dae6f08fc68bb", []byte(`{"undelete":true}`))
+	revID, err := client.PushRev("doc1", "3-fcc2db8cdbf1831799b7a39bb57edd71", []byte(`{"undelete":true}`))
 
 	if base.IsEnterpriseEdition() {
 		// Now make the client push up a delta that has the parent of the tombstone.
@@ -2554,7 +2554,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 		// Pushing a full body revision on top of a tombstone is valid.
 		// CBL clients should fall back to this. The test client doesn't.
 		assert.NoError(t, err)
-		assert.Equal(t, "4-abcxyz", revID)
+		assert.Equal(t, "4-abc", revID)
 	}
 
 	var deltaPushDocCountEnd int64
@@ -2600,7 +2600,7 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	// create doc1 rev 2-abcxyz on client
 	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
-	assert.Equal(t, "2-abcxyz", newRev)
+	assert.Equal(t, "2-abc", newRev)
 
 	// Check EE is delta, and CE is full-body replication
 	msg, ok := client.pushReplication.WaitForMessage(2)
@@ -2895,7 +2895,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="},"world.txt":{"data":"bGVsbG8gd29ybGQ="}}}`
 	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
 	require.NoError(t, err)
-	assert.Equal(t, "2-abcxyz", revId)
+	assert.Equal(t, "2-abc", revId)
 
 	// Wait for the document to be replicated at SG
 	_, ok = btc.pushReplication.WaitForMessage(2)
@@ -2907,7 +2907,7 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, docId, respBody[db.BodyId])
-	assert.Equal(t, "2-abcxyz", respBody[db.BodyRev])
+	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
 	assert.Equal(t, map[string]interface{}{"hi": "alice"}, greetings[0])
@@ -3454,7 +3454,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 
 	// CBL creates revisions 1-abc,2-abc on the client, with an attachment associated with rev 2.
 	bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	revId, err := btc.PushRevWithHistory(docId, "", []byte(bodyText), 2, 2)
+	revId, err := btc.PushRevWithHistory(docId, "", []byte(bodyText), 2, 2, true)
 	require.NoError(t, err)
 	assert.Equal(t, "2-abc", revId)
 
@@ -3468,7 +3468,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
 	// these are sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2
 	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-	revId, err = btc.PushRevWithHistory(docId, revId, []byte(bodyText), 2, 0)
+	revId, err = btc.PushRevWithHistory(docId, revId, []byte(bodyText), 2, 0, true)
 	require.NoError(t, err)
 	assert.Equal(t, "4-abc", revId)
 
@@ -3497,6 +3497,9 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	assert.Equal(t, float64(11), hello["length"])
 	assert.Equal(t, float64(2), hello["revpos"])
 	assert.True(t, hello["stub"].(bool))
+
+	assert.Equal(t, int64(11), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushBytes.Value())
+	assert.Equal(t, int64(1), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
 }
 
 func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
@@ -3519,7 +3522,7 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	// rev tree pruning on the CBL side, so 1-abc no longer exists.
 	// CBL replicates, sends to client as 4-abc history:[4-abc, 3-abc, 2-abc], attachment has revpos=2
 	bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	revId, err := btc.PushRevWithHistory(docId, "2-abc", []byte(bodyText), 2, 2)
+	revId, err := btc.PushRevWithHistory(docId, "2-abc", []byte(bodyText), 2, 2, true)
 	require.NoError(t, err)
 	assert.Equal(t, "4-abc", revId)
 
@@ -3548,4 +3551,6 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	assert.Equal(t, float64(11), hello["length"])
 	assert.Equal(t, float64(4), hello["revpos"])
 	assert.True(t, hello["stub"].(bool))
+	assert.Equal(t, int64(11), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushBytes.Value())
+	assert.Equal(t, int64(1), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
 }
