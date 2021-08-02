@@ -58,16 +58,16 @@ jobs:
       GO111MODULE: off
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             set-gopath: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
-
+          - os: macos-latest
+            set-gopath: echo "GOPATH=$GITHUB_WORKSPACE/godeps" >> $GITHUB_ENV
           - os: windows-latest
             set-gopath: echo "GOPATH=$Env:GITHUB_WORKSPACE\godeps" >> $Env:GITHUB_ENV
-
     name: Test (${{ matrix.os }})
-
     steps:
       - uses: actions/cache@v1
         with:
