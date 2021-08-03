@@ -230,7 +230,10 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
@@ -318,7 +321,9 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 
 	assert.Equal(t, int64(1), ar.Pull.GetStats().GetAttachment.Value())
 
@@ -337,7 +342,10 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	body, err = doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 
 	// Because we're targeting a Hydrogen node that supports proveAttachment, we only end up sending the attachment once.
 	// If targeting a pre-hydrogen node, GetAttachment would be 2.
@@ -642,7 +650,10 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
 		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
-		assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
 	}
 
 	// one _changes from seq:0 with initial number of docs sent
@@ -692,7 +703,10 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 
 		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
-		assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
 	}
 
 	// Make sure we've not started any more since:0 replications on rt2 since the first one
@@ -961,7 +975,10 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 	assert.Equal(t, strconv.FormatUint(remoteDoc.Sequence, 10), ar.GetStatus().LastSeqPull)
 }
 
@@ -1047,7 +1064,10 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
 }
@@ -1133,7 +1153,10 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, int64(1), ar.Push.GetStats().HandleGetAttachment.Value())
 
@@ -1152,7 +1175,10 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc2.SyncData.CurrentRev)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err = doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	// Because we're targeting a Hydrogen node that supports proveAttachment, we only end up sending the attachment once.
 	// If targeting a pre-hydrogen node, HandleGetAttachment would be 2.
@@ -1251,7 +1277,10 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
-		assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
 	}
 
 	// one _changes from seq:0 with initial number of docs sent
@@ -1299,7 +1328,10 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 
 		doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
-		assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt1", body["source"])
 	}
 
 	// Make sure we've not started any more since:0 replications on rt1 since the first one
@@ -1550,7 +1582,10 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, strconv.FormatUint(localDoc.Sequence, 10), ar.GetStatus().LastSeqPush)
 }
@@ -1634,7 +1669,10 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 
 	// Tombstone the doc in rt2
 	resp = rt2.SendAdminRequest(http.MethodDelete, "/db/"+docID+"?rev="+revID, ``)
@@ -1734,7 +1772,10 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+docID+"?rev="+revID, `{"source":"rt2","channels":["bob"]}`)
 	assertStatus(t, resp, http.StatusCreated)
@@ -2310,7 +2351,10 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 }
 
 // TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled:
@@ -2453,7 +2497,10 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
 	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
 	numChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -2505,7 +2552,10 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 
 	doc, err = rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	body, err = doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
 	endNumChangesRequestedFromZeroTotal := rt2.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -2606,7 +2656,10 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
 	numChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -2671,7 +2724,10 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 
 	doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err = doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	// one _changes from seq:0 with initial number of docs sent
 	endNumChangesRequestedFromZeroTotal := rt1.GetDatabase().DbStats.CBLReplicationPull().NumPullReplSinceZero.Value()
@@ -2775,7 +2831,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	// Since we bumped the checkpointer interval, we're only setting checkpoints on replicator close.
 	assert.Equal(t, int64(0), ar.Push.Checkpointer.Stats().SetCheckpointCount)
@@ -2806,7 +2865,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err = doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, int64(1), ar.Push.Checkpointer.Stats().SetCheckpointCount)
 	ar.Push.Checkpointer.CheckpointNow()
@@ -2836,7 +2898,10 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 
 	doc, err = rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	require.NoError(t, err)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err = doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	assert.Equal(t, int64(0), ar.Push.Checkpointer.Stats().SetCheckpointCount)
 	ar.Push.Checkpointer.CheckpointNow()
@@ -3025,7 +3090,10 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, rt1revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt1", doc.GetDeepMutableBody()["source"])
+
+	body, err := doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt1", body["source"])
 
 	// write a doc on rt2 ...
 	rt2docID := t.Name() + "rt2doc1"
@@ -3044,7 +3112,10 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, rt2revID, doc.SyncData.CurrentRev)
-	assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+	body, err = doc.GetDeepMutableBody()
+	require.NoError(t, err)
+	assert.Equal(t, "rt2", body["source"])
 }
 
 // TestActiveReplicatorPullFromCheckpointModifiedHash:
@@ -3194,7 +3265,10 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 
 		doc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 		assert.NoError(t, err)
-		assert.Equal(t, "rt2", doc.GetDeepMutableBody()["source"])
+
+		body, err := doc.GetDeepMutableBody()
+		require.NoError(t, err)
+		assert.Equal(t, "rt2", body["source"])
 	}
 
 	// Should have two replications since zero
