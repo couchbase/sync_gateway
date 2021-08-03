@@ -60,15 +60,16 @@ const (
 
 // Bucket configuration elements - used by db, index
 type BucketConfig struct {
-	Server         *string `json:"server,omitempty"`      // Couchbase server URL
-	DeprecatedPool *string `json:"pool,omitempty"`        // Couchbase pool name - This is now deprecated and forced to be "default"
-	Bucket         *string `json:"bucket,omitempty"`      // Bucket name
-	Username       string  `json:"username,omitempty"`    // Username for authenticating to server
-	Password       string  `json:"password,omitempty"`    // Password for authenticating to server
-	CertPath       string  `json:"certpath,omitempty"`    // Cert path (public key) for X.509 bucket auth
-	KeyPath        string  `json:"keypath,omitempty"`     // Key path (private key) for X.509 bucket auth
-	CACertPath     string  `json:"cacertpath,omitempty"`  // Root CA cert path for X.509 bucket auth
-	KvTLSPort      int     `json:"kv_tls_port,omitempty"` // Memcached TLS port, if not default (11207)
+	Server                *string `json:"server,omitempty"`                   // Couchbase server URL
+	DeprecatedPool        *string `json:"pool,omitempty"`                     // Couchbase pool name - This is now deprecated and forced to be "default"
+	Bucket                *string `json:"bucket,omitempty"`                   // Bucket name
+	Username              string  `json:"username,omitempty"`                 // Username for authenticating to server
+	Password              string  `json:"password,omitempty"`                 // Password for authenticating to server
+	CertPath              string  `json:"certpath,omitempty"`                 // Cert path (public key) for X.509 bucket auth
+	KeyPath               string  `json:"keypath,omitempty"`                  // Key path (private key) for X.509 bucket auth
+	CACertPath            string  `json:"cacertpath,omitempty"`               // Root CA cert path for X.509 bucket auth
+	KvTLSPort             int     `json:"kv_tls_port,omitempty"`              // Memcached TLS port, if not default (11207)
+	MaxConcurrentQueryOps *int    `json:"max_concurrent_query_ops,omitempty"` // Max concurrent  query ops
 }
 
 func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
@@ -89,14 +90,20 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
+	maxConcurrentQueryOps := base.MaxConcurrentQueryOps
+	if bc.MaxConcurrentQueryOps != nil {
+		maxConcurrentQueryOps = *bc.MaxConcurrentQueryOps
+	}
+
 	return base.BucketSpec{
-		Server:     server,
-		BucketName: bucketName,
-		Keypath:    bc.KeyPath,
-		Certpath:   bc.CertPath,
-		CACertPath: bc.CACertPath,
-		KvTLSPort:  tlsPort,
-		Auth:       bc,
+		Server:                server,
+		BucketName:            bucketName,
+		Keypath:               bc.KeyPath,
+		Certpath:              bc.CertPath,
+		CACertPath:            bc.CACertPath,
+		KvTLSPort:             tlsPort,
+		Auth:                  bc,
+		MaxConcurrentQueryOps: maxConcurrentQueryOps,
 	}
 }
 

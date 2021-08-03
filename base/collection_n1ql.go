@@ -101,12 +101,20 @@ func (c *Collection) BuildDeferredIndexes(indexSet []string) error {
 	return BuildDeferredIndexes(c, indexSet)
 }
 
-func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
+func (c *Collection) runQuery(statement string) (*gocb.QueryResult, error) {
+	c.waitForAvailViewOp()
+	defer c.releaseViewOp()
+
 	n1qlOptions := &gocb.QueryOptions{}
-	queryResults, queryErr := c.cluster.Query(statement, n1qlOptions)
+	return c.cluster.Query(statement, n1qlOptions)
+}
+
+func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterator, error) {
+	queryResults, queryErr := c.runQuery(statement)
 	if queryErr != nil {
 		return nil, queryErr
 	}
+
 	resultsIterator := &gocbRawIterator{
 		rawResult: queryResults.Raw(),
 	}
@@ -114,8 +122,7 @@ func (c *Collection) executeQuery(statement string) (sgbucket.QueryResultIterato
 }
 
 func (c *Collection) executeStatement(statement string) error {
-	n1qlOptions := &gocb.QueryOptions{}
-	queryResults, queryErr := c.cluster.Query(statement, n1qlOptions)
+	queryResults, queryErr := c.runQuery(statement)
 	if queryErr != nil {
 		return queryErr
 	}
