@@ -1068,14 +1068,20 @@ func (db *Database) resolveConflict(localDoc *Document, remoteDoc *Document, doc
 	// TODO: Make doc expiry (_exp) available over replication.
 	// remoteExpiry := remoteDoc.Expiry
 
-	localDocBody := localDoc.GetDeepMutableBody()
+	localDocBody, err := localDoc.GetDeepMutableBody()
+	if err != nil {
+		return "", nil, err
+	}
 	localDocBody[BodyId] = localDoc.ID
 	localDocBody[BodyRev] = localRevID
 	localDocBody[BodyAttachments] = localAttachments
 	localDocBody[BodyExpiry] = localExpiry
 	localDocBody[BodyDeleted] = localDoc.IsDeleted()
 
-	remoteDocBody := remoteDoc.GetDeepMutableBody()
+	remoteDocBody, err := remoteDoc.GetDeepMutableBody()
+	if err != nil {
+		return "", nil, err
+	}
 	remoteDocBody[BodyId] = remoteDoc.ID
 	remoteDocBody[BodyRev] = remoteRevID
 	remoteDocBody[BodyAttachments] = remoteAttachments
@@ -1611,7 +1617,10 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	syncFnBody := newDoc.GetDeepMutableBody()
+	syncFnBody, err := newDoc.GetDeepMutableBody()
+	if err != nil {
+		return
+	}
 
 	// TODO: seems a bit late to do this. Could we move it earlier?
 	err = validateNewBody(syncFnBody)
