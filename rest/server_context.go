@@ -1223,13 +1223,15 @@ func CheckRoles(httpClient *http.Client, managementEndpoints []string, username,
 
 	for _, roleResult := range whoAmIResults.Roles {
 		for _, requireRole := range requestedRoles {
-			requireBucket := ""
+			requireBucketOptions := []string{""}
 			if requireRole.DatabaseScoped {
-				requireBucket = bucketName
+				requireBucketOptions = []string{bucketName, RoleBucketWildcard}
 			}
 
-			if roleResult.BucketName == requireBucket && roleResult.RoleName == requireRole.RoleName {
-				return http.StatusOK, nil
+			for _, requireBucket := range requireBucketOptions {
+				if (roleResult.BucketName == requireBucket) && roleResult.RoleName == requireRole.RoleName {
+					return http.StatusOK, nil
+				}
 			}
 		}
 	}
