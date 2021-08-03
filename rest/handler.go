@@ -65,6 +65,8 @@ type RouteRole struct {
 	DatabaseScoped bool
 }
 
+const RoleBucketWildcard = "*"
+
 var (
 	MobileSyncGatewayRole = RouteRole{"mobile_sync_gateway", true}
 	BucketFullAccessRole  = RouteRole{"bucket_full_access", true}

@@ -246,6 +246,17 @@ func TestCheckRoles(t *testing.T) {
 			CreateRoles:        []string{fmt.Sprintf("mobile_sync_gateway[%s]", rt.Bucket().GetName())},
 		},
 		{
+			Name:               "CreatedBucketAdminWildcard",
+			Username:           "CreatedBucketAdminWildcard",
+			Password:           "password",
+			BucketName:         rt.Bucket().GetName(),
+			RequestRoles:       []RouteRole{MobileSyncGatewayRole},
+			ExpectedStatusCode: http.StatusOK,
+			CreateUser:         "CreatedBucketAdminWildcard",
+			CreatePassword:     "password",
+			CreateRoles:        []string{"mobile_sync_gateway[*]"},
+		},
+		{
 			Name:               "CreateUserNoRole",
 			Username:           "CreateUserNoRole",
 			Password:           "password",
