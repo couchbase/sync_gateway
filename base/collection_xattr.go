@@ -402,6 +402,10 @@ func isKVError(err error, code memd.StatusCode) bool {
 	return false
 }
 
+func IsAlreadyExistsError(err error) bool {
+	return isKVError(err, memd.StatusKeyExists)
+}
+
 // If v is []byte or *[]byte, converts to json.RawMessage to avoid duplicate marshalling by gocb.
 func bytesToRawMessage(v interface{}) interface{} {
 	switch val := v.(type) {

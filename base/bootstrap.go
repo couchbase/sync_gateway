@@ -2,6 +2,7 @@ package base
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/couchbase/gocb"
@@ -124,17 +125,17 @@ func (cc *CouchbaseCluster) PutConfig(location, groupID string, cas *uint64, val
 	}
 	docID := PersistentConfigPrefix + groupID
 	collection := cc.c.Bucket(location).DefaultCollection()
-	// TODO: CBG-1452 - Optimistic concurrency control (CAS or Opaque field in config rather than in URL?)
-	// if cas != nil {
-	// 	res, err = collection.Replace(docID, value, &gocb.ReplaceOptions{Cas: gocb.Cas(*cas)})
-	res, err := collection.Upsert(docID, value, nil)
-	if err != nil {
-		switch err {
-		case gocb.ErrCasMismatch:
+
+	if cas != nil && *cas == 0 {
+		res, err := collection.Insert(docID, value, nil)
+		if err != nil {
+			return 0, err
 		}
-		return 0, err
+
+		return uint64(res.Cas()), nil
 	}
-	return uint64(res.Cas()), nil
+
+	return 0, fmt.Errorf("Not implemented")
 }
 
 func (cc *CouchbaseCluster) Close() error {

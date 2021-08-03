@@ -129,12 +129,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 				return true, nil
 			}
 
-			// If we have got this far the automatic config upgrade was successful so we should nil out the error so we
-			// can continue
-			err = nil
-
-		}
-		if err != nil {
+		} else if err != nil {
 			return false, fmt.Errorf("Couldn't open config file: %w", err)
 		}
 		if fileStartupConfig != nil {
@@ -211,7 +206,10 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 	for _, dbConfig := range dbConfigs {
 		_, err = cluster.PutConfig(*dbConfig.Bucket, persistentConfigDefaultGroupID, base.Uint64Ptr(0), dbConfig)
 		if err != nil {
-			// TODO: if exists skip, else error
+			// If key already exists just continue
+			if base.IsAlreadyExistsError(err) {
+				continue
+			}
 			return nil, false, err
 		}
 	}
@@ -284,7 +282,7 @@ func backupCurrentConfigFile(sourcePath string) error {
 	fileExtension := filepath.Ext(sourcePath)
 
 	// Remove file extension so we can easily modify filename
-	fileNameWithoutExtension := strings.ReplaceAll(sourcePath, fileExtension, "")
+	fileNameWithoutExtension := strings.TrimSuffix(filepath.Base(sourcePath), fileExtension)
 
 	// Modify file name and append file extension back onto it
 	fileName := fmt.Sprintf("%s-backup-%d%s", fileNameWithoutExtension, time.Now().Unix(), fileExtension)
