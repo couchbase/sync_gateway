@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
@@ -107,16 +108,30 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	if len(configPath) == 1 {
 		fileStartupConfig, err := LoadStartupConfigFromPath(configPath[0])
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
+			// If we have an unknown field error processing config its possible that the config is a 2.x config
+			// requiring automatic upgrade. We should attempt to perform this upgrade
 
-			// Attempt to perform automatic config upgrade
-			fileStartupConfig, disablePersistentConfigFallback, err = automaticConfigUpgrade(configPath[0])
-			if err != nil {
-				return false, err
+			var upgradeError error
+			fileStartupConfig, disablePersistentConfigFallback, upgradeError = automaticConfigUpgrade(configPath[0])
+			if upgradeError != nil {
+
+				// We need to validate if the error was again, an unknown field error. If this is the case its possible
+				// the config is actually a 3.x config but with a genuine unknown field, therefore we should  return the
+				// original error from LoadStartupConfigFromPath.
+				if pkgerrors.Cause(upgradeError) == base.ErrUnknownField {
+					return false, err
+				}
+
+				return false, upgradeError
 			}
 
 			if disablePersistentConfigFallback {
 				return true, nil
 			}
+
+			// If we have got this far the automatic config upgrade was successful so we should nil out the error so we
+			// can continue
+			err = nil
 
 		}
 		if err != nil {
@@ -159,6 +174,9 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	return false, startServer(&sc, ctx)
 }
 
+// automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to
+// update it to a 3.x config
+// Returns the new startup config, a bool of whether to fallback to legacy config and an error
 func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 	legacyServerConfig, err := LoadServerConfig(configPath)
 	if err != nil {
@@ -179,8 +197,8 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 		return nil, false, err
 	}
 
-	// Attempt to establish connection to server, add retry like its other use-case
-	cluster, err := EstablishCouchbaseClusterConnection(startupConfig)
+	// Attempt to establish connection to server
+	cluster, err := establishCouchbaseClusterConnection(startupConfig)
 	if err != nil {
 		return nil, false, err
 	}
@@ -191,7 +209,7 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 
 	// Write database configs to CBS with groupID "default"
 	for _, dbConfig := range dbConfigs {
-		_, err = cluster.PutConfig(*dbConfig.Bucket, "default", base.Uint64Ptr(0), dbConfig)
+		_, err = cluster.PutConfig(*dbConfig.Bucket, persistentConfigDefaultGroupID, base.Uint64Ptr(0), dbConfig)
 		if err != nil {
 			// TODO: if exists skip, else error
 			return nil, false, err
@@ -206,6 +224,10 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 
 	// Overwrite old config with new migrated startup config
 	jsonStartupConfig, err := json.Marshal(startupConfig)
+	if err != nil {
+		return nil, false, err
+	}
+
 	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
 	if err != nil {
 		return nil, false, err
@@ -227,12 +249,13 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 		}
 
 		if *dbConfig.Server != databaseServerAddress {
-			return nil, fmt.Errorf("server addresses specified in dbConfig do not match. This is required for " +
-				"persistent config")
+			return nil, fmt.Errorf("automatic upgrade to persistent config requires matching server addresses in " +
+				"2.x config")
 		}
 
 		if dbConfig.Bucket == nil || *dbConfig.Bucket == "" {
-			*dbConfig.Bucket = dbName
+			dbNameCopy := dbName
+			dbConfig.Bucket = &dbNameCopy
 		}
 
 		dbConfig.Name = dbName
@@ -257,10 +280,16 @@ func backupCurrentConfigFile(sourcePath string) error {
 		_ = source.Close()
 	}()
 
-	backupDirPath := filepath.Dir(sourcePath)
-	backupFileName := filepath.Base(sourcePath) + fmt.Sprintf("-bk-%s", time.Now().Format(base.ISO8601Format))
+	// Grab file extension
+	fileExtension := filepath.Ext(sourcePath)
 
-	backupPath := filepath.Join(backupDirPath, backupFileName)
+	// Remove file extension so we can easily modify filename
+	fileNameWithoutExtension := strings.ReplaceAll(sourcePath, fileExtension, "")
+
+	// Modify file name and append file extension back onto it
+	fileName := fmt.Sprintf("%s-backup-%d%s", fileNameWithoutExtension, time.Now().Unix(), fileExtension)
+
+	backupPath := filepath.Join(filepath.Dir(sourcePath), fileName)
 
 	backup, err := os.Create(backupPath)
 	if err != nil {
@@ -278,7 +307,7 @@ func backupCurrentConfigFile(sourcePath string) error {
 	return nil
 }
 
-func EstablishCouchbaseClusterConnection(config *StartupConfig) (*base.CouchbaseCluster, error) {
+func establishCouchbaseClusterConnection(config *StartupConfig) (*base.CouchbaseCluster, error) {
 	err, c := base.RetryLoop("Cluster Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
 		cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username,
 			config.Bootstrap.Password, config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath,

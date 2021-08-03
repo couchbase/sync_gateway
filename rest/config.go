@@ -887,12 +887,12 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {
-		couchbaseCluster, err := EstablishCouchbaseClusterConnection(sc.config)
+		couchbaseCluster, err := establishCouchbaseClusterConnection(sc.config)
 		if err != nil {
 			return nil, err
 		}
 
-		sc.bootstrapContext.connection = base.BootstrapConnection(couchbaseCluster)
+		sc.bootstrapContext.connection = couchbaseCluster
 
 		count, err := sc.fetchAndLoadConfigs()
 		if err != nil {

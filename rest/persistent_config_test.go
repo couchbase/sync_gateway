@@ -23,6 +23,8 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	rawConfig := `
 	{
+		"interface": ":4444",
+  		"adminInterface": ":4445",
 		"databases": {
 			"db": {
 			  "server": "%s",
@@ -48,8 +50,10 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	assert.Equal(t, base.UnitTestUrl(), startupConfig.Bootstrap.Server)
 	assert.Equal(t, base.TestClusterUsername(), startupConfig.Bootstrap.Username)
 	assert.Equal(t, base.TestClusterPassword(), startupConfig.Bootstrap.Password)
+	assert.Equal(t, ":4444", startupConfig.API.PublicInterface)
+	assert.Equal(t, ":4445", startupConfig.API.AdminInterface)
 
-	cbs, err := EstablishCouchbaseClusterConnection(startupConfig)
+	cbs, err := establishCouchbaseClusterConnection(startupConfig)
 	require.NoError(t, err)
 
 	var dbConfig DbConfig
