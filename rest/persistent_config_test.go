@@ -42,7 +42,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 	require.NoError(t, err)
 
-	startupConfig, err := automaticConfigUpgrade(configPath)
+	startupConfig, _, err := automaticConfigUpgrade(configPath)
 	assert.NoError(t, err)
 
 	assert.Equal(t, base.UnitTestUrl(), startupConfig.Bootstrap.Server)
@@ -111,7 +111,7 @@ func TestAutomaticConfigUpgradeError(t *testing.T) {
 			err = ioutil.WriteFile(configPath, []byte(config), os.FileMode(0644))
 			require.NoError(t, err)
 
-			_, err = automaticConfigUpgrade(configPath)
+			_, _, err = automaticConfigUpgrade(configPath)
 			assert.Error(t, err)
 		})
 	}

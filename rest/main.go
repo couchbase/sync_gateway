@@ -109,9 +109,13 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
 
 			// Attempt to perform automatic config upgrade
-			fileStartupConfig, err = automaticConfigUpgrade(configPath[0])
+			fileStartupConfig, disablePersistentConfigFallback, err = automaticConfigUpgrade(configPath[0])
 			if err != nil {
 				return false, err
+			}
+
+			if disablePersistentConfigFallback {
+				return true, nil
 			}
 
 		}
@@ -155,53 +159,59 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	return false, startServer(&sc, ctx)
 }
 
-func automaticConfigUpgrade(configPath string) (*StartupConfig, error) {
+func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 	legacyServerConfig, err := LoadServerConfig(configPath)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+
+	if legacyServerConfig.DisablePersistentConfig != nil && *legacyServerConfig.DisablePersistentConfig {
+		return nil, true, nil
 	}
 
 	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	dbConfigs, err = sanitizeDbConfigs(dbConfigs)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// Attempt to establish connection to server, add retry like its other use-case
 	cluster, err := EstablishCouchbaseClusterConnection(startupConfig)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	defer cluster.Close()
+	defer func() {
+		_ = cluster.Close()
+	}()
 
 	// Write database configs to CBS with groupID "default"
 	for _, dbConfig := range dbConfigs {
 		_, err = cluster.PutConfig(*dbConfig.Bucket, "default", base.Uint64Ptr(0), dbConfig)
 		if err != nil {
 			// TODO: if exists skip, else error
-			return nil, err
+			return nil, false, err
 		}
 	}
 
 	// Attempt to backup current config
 	err = backupCurrentConfigFile(configPath)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	// Overwrite old config with new migrated startup config
 	jsonStartupConfig, err := json.Marshal(startupConfig)
 	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	return startupConfig, nil
+	return startupConfig, false, nil
 }
 
 // validate / sanitize db configs
@@ -243,7 +253,9 @@ func backupCurrentConfigFile(sourcePath string) error {
 	if err != nil {
 		return err
 	}
-	defer source.Close()
+	defer func() {
+		_ = source.Close()
+	}()
 
 	backupDirPath := filepath.Dir(sourcePath)
 	backupFileName := filepath.Base(sourcePath) + fmt.Sprintf("-bk-%s", time.Now().Format(base.ISO8601Format))
@@ -254,7 +266,9 @@ func backupCurrentConfigFile(sourcePath string) error {
 	if err != nil {
 		return err
 	}
-	defer backup.Close()
+	defer func() {
+		_ = backup.Close()
+	}()
 
 	_, err = io.Copy(backup, source)
 	if err != nil {
