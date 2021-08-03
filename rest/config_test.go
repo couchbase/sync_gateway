@@ -796,7 +796,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
 }
 
-func TestValidateServerContext(t *testing.T) {
+func TestValidateServerContextSharedBuckets(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
@@ -856,7 +856,7 @@ func TestValidateServerContext(t *testing.T) {
 		},
 	}
 
-	require.Nil(t, databases.SetupAndValidate(), "Unexpected error while validating databases")
+	require.Nil(t, setupAndValidateDatabases(databases), "Unexpected error while validating databases")
 
 	sc := NewServerContext(config, false)
 	defer sc.Close()

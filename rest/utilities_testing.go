@@ -45,7 +45,7 @@ import (
 type RestTesterConfig struct {
 	guestEnabled                    bool             // If this is true, Admin Party is in full effect
 	SyncFn                          string           // put the sync() function source in here (optional)
-	DatabaseConfig                  *DbConfig        // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
+	DatabaseConfig                  *DatabaseConfig  // Supports additional config options.  BucketConfig, Name, Sync, Unsupported will be ignored (overridden)
 	InitSyncSeq                     uint64           // If specified, initializes _sync:seq on bucket creation.  Not supported when running against walrus
 	EnableNoConflictsMode           bool             // Enable no-conflicts mode.  By default, conflicts will be allowed, which is the default behavior
 	distributedIndex                bool             // Test with walrus-based index bucket
@@ -57,6 +57,8 @@ type RestTesterConfig struct {
 	metricsInterfaceAuthentication  bool
 	enableAdminAuthPermissionsCheck bool
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
+	persistentConfig                bool
+	skipDatabaseCreation            bool
 }
 
 type RestTester struct {
@@ -116,11 +118,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		}
 	}
 
-	var syncFnPtr *string
-	if len(rt.SyncFn) > 0 {
-		syncFnPtr = &rt.SyncFn
-	}
-
 	corsConfig := &CORSConfig{
 		Origin:      []string{"http://example.com", "*", "http://staging.example.com"},
 		LoginOrigin: []string{"http://example.com"},
@@ -157,41 +154,41 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	useXattrs := base.TestUseXattrs()
 
-	if rt.DatabaseConfig == nil {
-		// If no db config was passed in, create one
-		rt.DatabaseConfig = &DbConfig{}
-	}
+	if !rt.skipDatabaseCreation {
+		if rt.DatabaseConfig == nil {
+			// If no db config was passed in, create one
+			rt.DatabaseConfig = &DatabaseConfig{}
+		}
 
-	if base.TestsDisableGSI() {
-		rt.DatabaseConfig.UseViews = base.BoolPtr(true)
-	}
+		if base.TestsDisableGSI() {
+			rt.DatabaseConfig.UseViews = base.BoolPtr(true)
+		}
 
-	// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-	numReplicas := uint(0)
-	rt.DatabaseConfig.NumIndexReplicas = &numReplicas
-	un, pw, _ := testBucket.BucketSpec.Auth.GetCredentials()
-	rt.DatabaseConfig.BucketConfig = BucketConfig{
-		Server:     &testBucket.BucketSpec.Server,
-		Bucket:     &testBucket.BucketSpec.BucketName,
-		Username:   un,
-		Password:   pw,
-		CACertPath: testBucket.BucketSpec.CACertPath,
-		CertPath:   testBucket.BucketSpec.Certpath,
-		KeyPath:    testBucket.BucketSpec.Keypath,
-	}
-	rt.DatabaseConfig.Name = "db"
-	rt.DatabaseConfig.Sync = syncFnPtr
-	rt.DatabaseConfig.EnableXattrs = &useXattrs
-	if rt.EnableNoConflictsMode {
-		boolVal := false
-		rt.DatabaseConfig.AllowConflicts = &boolVal
-	}
+		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
+		numReplicas := uint(0)
+		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
 
-	rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
+		un, pw, _ := testBucket.BucketSpec.Auth.GetCredentials()
+		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
+		rt.DatabaseConfig.Username = un
+		rt.DatabaseConfig.Password = pw
+		rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
+		rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
+		rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath
+		rt.DatabaseConfig.Name = "db"
+		rt.DatabaseConfig.Sync = &rt.SyncFn
+		rt.DatabaseConfig.EnableXattrs = &useXattrs
+		if rt.EnableNoConflictsMode {
+			boolVal := false
+			rt.DatabaseConfig.AllowConflicts = &boolVal
+		}
 
-	_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *rt.DatabaseConfig})
-	if err != nil {
-		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
+
+		_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
+		if err != nil {
+			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
+		}
 	}
 
 	// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket

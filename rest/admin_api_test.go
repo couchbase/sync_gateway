@@ -325,7 +325,7 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AllowEmptyPassword: base.BoolPtr(true)}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.BoolPtr(true)}}})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -1180,12 +1180,12 @@ func TestDBGetConfigNames(t *testing.T) {
 
 	p := "password"
 
-	rt.DatabaseConfig = &DbConfig{
+	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
 		Users: map[string]*db.PrincipalConfig{
 			"alice": &db.PrincipalConfig{Password: &p},
 			"bob":   &db.PrincipalConfig{Password: &p},
 		},
-	}
+	}}
 
 	response := rt.SendAdminRequest("GET", "/db/_config", "")
 	var body DbConfig
@@ -1327,9 +1327,9 @@ func TestResync(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			rt := NewRestTester(t,
 				&RestTesterConfig{
-					DatabaseConfig: &DbConfig{
+					DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 						QueryPaginationLimit: &testCase.queryLimit,
-					},
+					}},
 					SyncFn: syncFn,
 				},
 			)
@@ -1501,9 +1501,9 @@ func TestResyncStop(t *testing.T) {
 	rt := NewRestTester(t,
 		&RestTesterConfig{
 			SyncFn: syncFn,
-			DatabaseConfig: &DbConfig{
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				QueryPaginationLimit: base.IntPtr(10),
-			},
+			}},
 			TestBucket: leakyTestBucket,
 		},
 	)
@@ -2582,7 +2582,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 }
 
 func TestConfigRedaction(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{Users: map[string]*db.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Users: map[string]*db.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}}})
 	defer rt.Close()
 
 	// Test default db config redaction
@@ -2664,9 +2664,11 @@ func TestUserXattrsRawGet(t *testing.T) {
 	xattrKey := "xattrKey"
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			AutoImport:   true,
-			UserXattrKey: xattrKey,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport:   true,
+				UserXattrKey: xattrKey,
+			},
 		},
 	})
 	defer rt.Close()
@@ -2913,10 +2915,10 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 			}
 			rt = NewRestTester(t, &RestTesterConfig{
 				SyncFn: syncFn,
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Unsupported: db.UnsupportedOptions{
 						WarningThresholds: thresholdConfig,
-					},
+					}},
 				},
 			})
 			defer rt.Close()

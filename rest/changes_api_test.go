@@ -976,7 +976,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 	skippedMaxWait := uint32(120000)
 
 	numIndexReplicas := uint(0)
-	shortWaitConfig := &DbConfig{
+	shortWaitConfig := &DatabaseConfig{DbConfig: DbConfig{
 		CacheConfig: &CacheConfig{
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MaxWaitPending: &pendingMaxWait,
@@ -985,7 +985,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
-	}
+	}}
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1067,7 +1067,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 	skippedMaxWait := uint32(120000)
 
 	numIndexReplicas := uint(0)
-	shortWaitConfig := &DbConfig{
+	shortWaitConfig := &DatabaseConfig{DbConfig: DbConfig{
 		CacheConfig: &CacheConfig{
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MaxWaitPending: &pendingMaxWait,
@@ -1076,7 +1076,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
-	}
+	}}
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1201,7 +1201,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 	skippedMaxWait := uint32(120000)
 
 	numIndexReplicas := uint(0)
-	shortWaitConfig := &DbConfig{
+	shortWaitConfig := &DatabaseConfig{DbConfig: DbConfig{
 		CacheConfig: &CacheConfig{
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MaxWaitPending: &pendingMaxWait,
@@ -1210,7 +1210,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
-	}
+	}}
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1332,7 +1332,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 	skippedMaxWait := uint32(120000)
 
 	numIndexReplicas := uint(0)
-	shortWaitConfig := &DbConfig{
+	shortWaitConfig := &DatabaseConfig{DbConfig: DbConfig{
 		CacheConfig: &CacheConfig{
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MaxWaitPending: &pendingMaxWait,
@@ -1341,7 +1341,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
-	}
+	}}
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2898,7 +2898,7 @@ func TestChangesQueryStarChannelBackfillLimit(t *testing.T) {
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc, oldDoc){channel(doc.channels);}`}
 	queryLimit := 5
-	rtConfig.DatabaseConfig = &DbConfig{CacheConfig: &CacheConfig{ChannelCacheConfig: &ChannelCacheConfig{DeprecatedQueryLimit: &queryLimit}}}
+	rtConfig.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{CacheConfig: &CacheConfig{ChannelCacheConfig: &ChannelCacheConfig{DeprecatedQueryLimit: &queryLimit}}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -3427,14 +3427,14 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyChanges, base.KeyCache)()
 
 	cacheSize := 2
-	shortWaitConfig := &DbConfig{
+	shortWaitConfig := &DatabaseConfig{DbConfig: DbConfig{
 		CacheConfig: &CacheConfig{
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MinLength: &cacheSize,
 				MaxLength: &cacheSize,
 			},
 		},
-	}
+	}}
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channel)}`, DatabaseConfig: shortWaitConfig}
 	rt := NewRestTester(t, &rtConfig)
@@ -3630,7 +3630,7 @@ func TestChangesLargeSequences(t *testing.T) {
 			 channel(doc.channel)
 		 }`,
 		InitSyncSeq:    initialSeq,
-		DatabaseConfig: &DbConfig{UseViews: base.BoolPtr(true)},
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{UseViews: base.BoolPtr(true)}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -3783,14 +3783,14 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 
 	numIndexReplicas := uint(0)
 	smallCacheSize := 100
-	minimumChannelCacheConfig := &DbConfig{
+	minimumChannelCacheConfig := &DatabaseConfig{DbConfig: DbConfig{
 		CacheConfig: &CacheConfig{
 			ChannelCacheConfig: &ChannelCacheConfig{
 				MaxNumber: &smallCacheSize,
 			},
 		},
 		NumIndexReplicas: &numIndexReplicas,
-	}
+	}}
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {channel(doc.channels)}`, DatabaseConfig: minimumChannelCacheConfig}
 
 	rt := NewRestTester(t, &rtConfig)

@@ -141,14 +141,14 @@ func restTesterConfigWithTestProviderEnabled() RestTesterConfig {
 		DefaultProvider: &defaultProvider,
 	}
 	restTesterConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			OIDCConfig: &opts,
 			Unsupported: db.UnsupportedOptions{
 				OidcTestProvider: db.OidcTestProviderOptions{
 					Enabled: true,
 				},
 			},
-		},
+		}},
 	}
 	return restTesterConfig
 }
@@ -293,14 +293,14 @@ func TestOpenIDConnectTestProviderWithRealWorldToken(t *testing.T) {
 			defaultProvider := "test"
 			opts := auth.OIDCOptions{Providers: providers, DefaultProvider: &defaultProvider}
 			restTesterConfig := RestTesterConfig{
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					OIDCConfig: &opts,
 					Unsupported: db.UnsupportedOptions{
 						OidcTestProvider: db.OidcTestProviderOptions{
 							Enabled: true,
 						},
 					},
-				}}
+				}}}
 			restTester := NewRestTester(t, &restTesterConfig)
 			restTester.SetAdminParty(false)
 			defer restTester.Close()

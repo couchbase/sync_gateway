@@ -36,11 +36,11 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
 			},
-		},
+		}},
 	})
 	defer rt.Close()
 
@@ -96,11 +96,11 @@ func TestActiveReplicatorHeartbeats(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyWebSocket, base.KeyWebSocketFrame)()
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
 			},
-		},
+		}},
 	})
 	defer rt.Close()
 
@@ -166,14 +166,14 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				username: {
 					Password:         base.StringPtr(password),
 					ExplicitChannels: base.SetOf(username),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -257,14 +257,14 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -437,14 +437,14 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*db.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("alice"),
 						},
 					},
-				},
+				}},
 			})
 			defer rt2.Close()
 
@@ -460,7 +460,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 
 			// Active
 			rt1 := NewRestTester(t, &RestTesterConfig{
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Replications: map[string]*db.ReplicationConfig{
 						"repl1": {
 							Remote:                 passiveDBURL.String(),
@@ -488,7 +488,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 						return mergedDoc;
 					}`},
 					},
-				},
+				}},
 			})
 			defer rt1.Close()
 
@@ -584,14 +584,14 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -751,14 +751,14 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -907,14 +907,14 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -1002,14 +1002,14 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -1099,14 +1099,14 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -1227,14 +1227,14 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -1386,14 +1386,14 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -1516,14 +1516,14 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -1613,14 +1613,14 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -1715,14 +1715,14 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -1893,14 +1893,14 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: tb2,
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*db.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("*"),
 						},
 					},
-				},
+				}},
 			})
 			defer rt2.Close()
 
@@ -2100,14 +2100,14 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: base.GetTestBucket(t),
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*db.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("*"),
 						},
 					},
-				},
+				}},
 			})
 			defer rt2.Close()
 
@@ -2296,14 +2296,14 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -2375,14 +2375,14 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -2441,14 +2441,14 @@ func TestActiveReplicatorRecoverFromLocalFlush(t *testing.T) {
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -2598,14 +2598,14 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
@@ -2693,14 +2693,14 @@ func TestActiveReplicatorRecoverFromRemoteFlush(t *testing.T) {
 	// recreate rt2 with a new bucket, http server and update target URL in the replicator
 	rt2 = NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -2772,14 +2772,14 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -2930,14 +2930,14 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -3031,7 +3031,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
@@ -3039,16 +3039,16 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
 	// Active
 	rt1 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
-		},
+		}},
 	})
 	defer rt1.Close()
 
@@ -3147,14 +3147,14 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("chan1", "chan2"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -3348,14 +3348,14 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 					tb2 := base.GetTestBucket(t)
 					rt2 := NewRestTester(t, &RestTesterConfig{
 						TestBucket: tb2,
-						DatabaseConfig: &DbConfig{
+						DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 							Users: map[string]*db.PrincipalConfig{
 								"alice": {
 									Password:         base.StringPtr("pass"),
 									ExplicitChannels: base.SetOf("alice"),
 								},
 							},
-						},
+						}},
 					})
 					defer rt2.Close()
 
@@ -3525,14 +3525,14 @@ func TestActiveReplicatorReconnectSendActions(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("alice"),
 				},
 			},
-		},
+		}},
 	})
 	defer rt2.Close()
 
@@ -3632,11 +3632,11 @@ func waitAndAssertCondition(t *testing.T, fn func() bool, failureMsgAndArgs ...i
 func TestBlipSyncNonUpgradableConnection(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyHTTPResp)()
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {Password: base.StringPtr("pass")},
 			},
-		},
+		}},
 	})
 	defer rt.Close()
 
@@ -3857,14 +3857,14 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: tb2,
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*db.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("*"),
 						},
 					},
-				},
+				}},
 			})
 			defer rt2.Close()
 
@@ -4341,14 +4341,14 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: base.GetTestBucket(t),
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*db.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("alice"),
 						},
 					},
-				},
+				}},
 			})
 			defer rt2.Close()
 
@@ -4495,14 +4495,14 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 			// Passive
 			rt2 := NewRestTester(t, &RestTesterConfig{
 				TestBucket: base.GetTestBucket(t),
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Users: map[string]*db.PrincipalConfig{
 						"alice": {
 							Password:         base.StringPtr("pass"),
 							ExplicitChannels: base.SetOf("alice"),
 						},
 					},
-				},
+				}},
 			})
 			defer rt2.Close()
 
@@ -4837,9 +4837,9 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 	tb2 := base.GetTestBucket(t)
 	rt2 := NewRestTester(t, &RestTesterConfig{
 		TestBucket: tb2,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AllowConflicts: base.BoolPtr(false),
-		},
+		}},
 	})
 	defer rt2.Close()
 

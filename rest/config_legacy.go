@@ -223,17 +223,24 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		sc.MaxFileDescriptors = *lc.MaxFileDescriptors
 	}
 
-	// TODO: Translate database configs too?
-	dbs := lc.Databases
+	return &sc, lc.Databases, nil
+}
 
-	// Follow legacy behaviour of having xattrs false by default
-	for _, database := range dbs {
-		if database.EnableXattrs == nil {
-			database.EnableXattrs = base.BoolPtr(false)
-		}
+func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
+	if dbc == nil {
+		return nil
 	}
 
-	return &sc, dbs, nil
+	// Backwards compatibility: Continue defaulting to xattrs=false for 2.x configs (3.0+ default xattrs=true)
+	if dbc.EnableXattrs == nil {
+		dbc.EnableXattrs = base.BoolPtr(false)
+	}
+
+	return &DatabaseConfig{
+		cas:      0,
+		Guest:    dbc.Users[base.GuestUsername],
+		DbConfig: *dbc,
+	}
 }
 
 // Implementation of AuthHandler interface for ClusterConfigLegacy
@@ -288,11 +295,23 @@ func setupServerConfig(args []string) (config *LegacyServerConfig, err error) {
 	return config, nil
 }
 
+func setupAndValidateDatabases(databases DbConfigMap) error {
+	for name, dbConfig := range databases {
+		if err := dbConfig.setup(name, BootstrapConfig{}); err != nil {
+			return err
+		}
+		if err := dbConfig.validateSgDbConfig(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (config *LegacyServerConfig) setupAndValidateDatabases() error {
 	if config == nil {
 		return nil
 	}
-	return config.Databases.SetupAndValidate()
+	return setupAndValidateDatabases(config.Databases)
 }
 
 // validate validates the given server config and returns all invalid options as a slice of errors

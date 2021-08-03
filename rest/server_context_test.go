@@ -427,7 +427,7 @@ func TestTLSSkipVerifyGetBucketSpec(t *testing.T) {
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
 			startupConfig := &StartupConfig{Bootstrap: BootstrapConfig{ServerTLSSkipVerify: test.serverTLSSkipVerify}}
-			dbConfig := &DbConfig{BucketConfig: BucketConfig{CACertPath: test.caCert}}
+			dbConfig := &DatabaseConfig{DbConfig: DbConfig{BucketConfig: BucketConfig{CACertPath: test.caCert}}}
 			spec, err := GetBucketSpec(dbConfig, startupConfig)
 
 			assert.NoError(t, err)

@@ -19,7 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	pkgerrors "github.com/pkg/errors"
+	"github.com/pkg/errors"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -30,17 +30,32 @@ const kDefaultDBOnlineDelay = 0
 func (h *handler) handleCreateDB() error {
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
-	config, err := h.readSanitizeConfigJSON()
+	config, err := h.readSanitizeDbConfigJSON()
 	if err != nil {
 		return err
 	}
-	config.inheritFromBootstrap(h.server.config.Bootstrap)
-	if err := config.setup(dbName); err != nil {
+	if err := config.setup(dbName, h.server.config.Bootstrap); err != nil {
 		return err
 	}
-	if _, err := h.server.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *config}); err != nil {
-		return err
+
+	if h.server.persistentConfig {
+		_, err := h.server.applyConfig(*config)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+		}
+		// Create DB only, don't update or overwrite
+		cas := base.Uint64Ptr(0)
+		config.cas, err = h.server.bootstrapContext.connection.PutConfig(*config.Bucket, h.server.config.Bootstrap.ConfigGroupID, cas, config)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
+		}
+	} else {
+		// load database in-memory
+		if _, err := h.server.AddDatabaseFromConfig(*config); err != nil {
+			return err
+		}
 	}
+
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
@@ -117,7 +132,7 @@ func (h *handler) handleGetDbConfig() error {
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name).DbConfig)
+		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
 	}
 	return nil
 }
@@ -232,7 +247,7 @@ func (h *handler) handlePutConfig() error {
 	var config ServerPutConfig
 	err := base.WrapJSONUnknownFieldErr(ReadJSONFromMIMERawErr(h.rq.Header, h.requestBody, &config))
 	if err != nil {
-		if pkgerrors.Cause(err) == base.ErrUnknownField {
+		if errors.Cause(err) == base.ErrUnknownField {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unable to configure given options at runtime: %v", err)
 		}
 		return err
@@ -282,21 +297,80 @@ func (h *handler) handlePutConfig() error {
 }
 
 // PUT a new database config
-func (h *handler) handlePutDbConfig() error {
+func (h *handler) handlePutDbConfig() (err error) {
 	h.assertAdminOnly()
+
+	var dbConfig *DatabaseConfig
+
+	// TODO: Move to standalone permissions PR
+	switch true {
+	case h.permissionsResults[PermUpdateDb.PermissionName]:
+		dbConfig, err = h.readSanitizeDbConfigJSON()
+		if err != nil {
+			return err
+		}
+	case h.permissionsResults[PermConfigureSyncFn.PermissionName]:
+		var value struct {
+			Sync *string `json:"sync,omitempty"`
+		}
+		if err := h.readSanitizeJSON(&value); err != nil {
+			if errors.Cause(err) == base.ErrUnknownField {
+				return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
+			}
+			return err
+		}
+		if value.Sync == nil {
+			// noop
+			return nil
+		}
+		dbConfig.Sync = value.Sync
+	case h.permissionsResults[PermConfigureAuth.PermissionName]:
+		// TODO: DB Guest User
+	default:
+		return base.HTTPErrorf(http.StatusForbidden, "not authorized to update database")
+	}
+
+	bucket := h.db.Bucket.GetName()
+	if dbConfig.Bucket != nil {
+		bucket = *dbConfig.Bucket
+	}
+
+	updatedDbConfig := dbConfig
+	if h.server.persistentConfig {
+		cas, err := h.server.bootstrapContext.connection.UpdateConfig(
+			bucket, h.server.config.Bootstrap.ConfigGroupID,
+			func(rawBucketConfig []byte) (newConfig []byte, err error) {
+				var bucketDbConfig DatabaseConfig
+				if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
+					return nil, err
+				}
+
+				// TODO: Optimistic Concurrency Control/RevID check?
+				if err := base.ConfigMerge(&bucketDbConfig, dbConfig); err != nil {
+					return nil, err
+				}
+
+				if err := bucketDbConfig.validate(); err != nil {
+					return nil, err
+				}
+
+				updatedDbConfig = &bucketDbConfig
+				return base.JSONMarshal(bucketDbConfig)
+			})
+		if err != nil {
+			return err
+		}
+		updatedDbConfig.cas = cas
+	}
+
 	dbName := h.db.Name
-	config, err := h.readSanitizeConfigJSON()
-	if err != nil {
+	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap); err != nil {
 		return err
 	}
-	config.inheritFromBootstrap(h.server.config.Bootstrap)
-	if err := config.setup(dbName); err != nil {
+
+	if _, err := h.server.getOrAddDatabaseFromConfig(*updatedDbConfig, true); err != nil {
 		return err
 	}
-	h.server.lock.Lock()
-	defer h.server.lock.Unlock()
-	dbc := DatabaseConfig{DbConfig: *config}
-	h.server.dbConfigs[dbName] = &dbc
 
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }

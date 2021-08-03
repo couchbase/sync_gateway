@@ -485,7 +485,7 @@ func TestReplicationsFromConfig(t *testing.T) {
 
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			dbConfig := &DbConfig{}
+			dbConfig := &DatabaseConfig{}
 			dbConfig.Replications = make(map[string]*db.ReplicationConfig)
 			for _, rc := range test.replicationSet {
 				dbConfig.Replications[rc.ID] = rc
@@ -1041,14 +1041,14 @@ func setupSGRPeers(t *testing.T) (activeRT *RestTester, passiveRT *RestTester, r
 	// Set up passive RestTester (rt2)
 	passiveRT = NewRestTester(t, &RestTesterConfig{
 		TestBucket: base.GetTestBucket(t),
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			Users: map[string]*db.PrincipalConfig{
 				"alice": {
 					Password:         base.StringPtr("pass"),
 					ExplicitChannels: base.SetOf("*"),
 				},
 			},
-		},
+		}},
 	})
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
