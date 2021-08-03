@@ -62,13 +62,11 @@ func TestSetGet(t *testing.T) {
 		val := make(map[string]interface{}, 0)
 		val["foo"] = "bar"
 
-		rawVal := []byte(`{"foo":"bar"}`)
-
 		var rVal map[string]interface{}
 		_, err := bucket.Get(key, &rVal)
 		assert.Error(t, err, "Key should not exist yet, expected error but got nil")
 
-		err = bucket.Set(key, 0, rawVal)
+		err = bucket.Set(key, 0, val)
 		assert.NoError(t, err, "Error calling Set()")
 
 		_, err = bucket.Get(key, &rVal)
@@ -2476,6 +2474,11 @@ func TestRawBackwardCompatibilityFromBinary(t *testing.T) {
 }
 
 func TestGetExpiry(t *testing.T) {
+
+	if UnitTestUrlIsWalrus() {
+		t.Skip("Walrus doesn't support expiry")
+	}
+
 	ForAllDataStores(t, func(t *testing.T, bucket sgbucket.DataStore) {
 
 		store, ok := AsCouchbaseStore(bucket)
@@ -2485,10 +2488,8 @@ func TestGetExpiry(t *testing.T) {
 		val := make(map[string]interface{}, 0)
 		val["foo"] = "bar"
 
-		rawVal := []byte(`{"foo":"bar"}`)
-
 		expiryValue := uint32(time.Now().Add(1 * time.Minute).Unix())
-		err := bucket.Set(key, expiryValue, rawVal)
+		err := bucket.Set(key, expiryValue, val)
 		assert.NoError(t, err, "Error calling Set()")
 
 		expiry, expiryErr := store.GetExpiry(key)
