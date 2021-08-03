@@ -84,7 +84,9 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	cbs, err := establishCouchbaseClusterConnection(startupConfig)
 	require.NoError(t, err)
-	defer cbs.Close()
+	defer func() {
+		_ = cbs.Close()
+	}()
 
 	var dbConfig DbConfig
 	_, err = cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
@@ -204,7 +206,9 @@ func TestAutomaticConfigUpgradeExistingConfig(t *testing.T) {
 
 	cbs, err := establishCouchbaseClusterConnection(startupConfig)
 	require.NoError(t, err)
-	defer cbs.Close()
+	defer func() {
+		_ = cbs.Close()
+	}()
 
 	var dbConfig DbConfig
 	_, err = cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
