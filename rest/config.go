@@ -842,6 +842,11 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Cannot use supplied TLS key or cert when api.https.use_tls_client is false"))
 		}
 	}
+
+	if !base.IsEnterpriseEdition() && sc.API.EnableAdminAuthenticationPermissionsCheck != nil && *sc.API.EnableAdminAuthenticationPermissionsCheck {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("enable_admin_authentication_permissions_check is only supported in enterprise edition"))
+	}
+
 	return errorMessages
 }
 
