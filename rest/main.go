@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -111,6 +112,8 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			// If we have an unknown field error processing config its possible that the config is a 2.x config
 			// requiring automatic upgrade. We should attempt to perform this upgrade
 
+			base.Infof(base.KeyAll, "Found unknown fields in startup config. Attempting automatic config upgrade.")
+
 			var upgradeError error
 			fileStartupConfig, disablePersistentConfigFallback, upgradeError = automaticConfigUpgrade(configPath[0])
 			if upgradeError != nil {
@@ -126,6 +129,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			}
 
 			if disablePersistentConfigFallback {
+				base.Infof(base.KeyAll, "Startup config specified disable_persistent_config. Falling back to legacy config.")
 				return true, nil
 			}
 
@@ -207,21 +211,25 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 		_, err = cluster.PutConfig(*dbConfig.Bucket, persistentConfigDefaultGroupID, base.Uint64Ptr(0), dbConfig)
 		if err != nil {
 			// If key already exists just continue
-			if base.IsAlreadyExistsError(err) {
+			if errors.Is(err, base.ErrAlreadyExists) {
+				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for %s. Already exists.", base.UD(dbConfig.Name))
 				continue
 			}
 			return nil, false, err
 		}
+		base.Infof(base.KeyAll, "Persisted database %s config to Couchbase Server bucket: %s", base.UD(dbConfig.Name), base.MD(*dbConfig.Bucket))
 	}
 
 	// Attempt to backup current config
-	err = backupCurrentConfigFile(configPath)
+	backupLocation, err := backupCurrentConfigFile(configPath)
 	if err != nil {
 		return nil, false, err
 	}
 
+	base.Infof(base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
+
 	// Overwrite old config with new migrated startup config
-	jsonStartupConfig, err := json.Marshal(startupConfig)
+	jsonStartupConfig, err := json.MarshalIndent(startupConfig, "", "  ")
 	if err != nil {
 		return nil, false, err
 	}
@@ -230,6 +238,8 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+
+	base.Infof(base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
 
 	return startupConfig, false, nil
 }
@@ -269,10 +279,10 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 }
 
 // backupCurrentConfigFile takes the original config path and copies this to a file with -bk appended with a timestamp
-func backupCurrentConfigFile(sourcePath string) error {
+func backupCurrentConfigFile(sourcePath string) (string, error) {
 	source, err := os.Open(sourcePath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() {
 		_ = source.Close()
@@ -291,7 +301,7 @@ func backupCurrentConfigFile(sourcePath string) error {
 
 	backup, err := os.Create(backupPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() {
 		_ = backup.Close()
@@ -299,10 +309,10 @@ func backupCurrentConfigFile(sourcePath string) error {
 
 	_, err = io.Copy(backup, source)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return backupPath, nil
 }
 
 func establishCouchbaseClusterConnection(config *StartupConfig) (*base.CouchbaseCluster, error) {
