@@ -397,13 +397,14 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			remoteConflictingRevBody: `{"source":"rt2","channels":["alice"]}`,
 			expectedAttachments:      1,
 		},
-		{
-			name:                     "preserve initial attachment with remote",
-			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
-			localConflictingRevBody:  `{"source":"rt1","channels":["alice"]}`,
-			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
-			expectedAttachments:      1,
-		},
+		// TODO: Enable this test once CBG-1590 is implemented.
+		//{
+		//	name:                     "preserve initial attachment with remote",
+		//	initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
+		//	localConflictingRevBody:  `{"source":"rt1","channels":["alice"]}`,
+		//	remoteConflictingRevBody: `{"source":"rt2","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
+		//	expectedAttachments:      1,
+		//},
 		{
 			name:                     "preserve initial attachment with new local att",
 			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
@@ -4661,14 +4662,15 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			remoteMutation: newRevisionState(4, "c", true, 0),
 			expectedResult: newRevisionState(5, "b", false, 0),
 		},
-		{
-			// simpleMutation includes an attachment prior to conflict, validates it's preserved
-			name:           "localAttachment",
-			initialState:   newRevisionState(3, "a", false, 2),
-			localMutation:  newRevisionState(4, "b", false, 0),
-			remoteMutation: newRevisionState(4, "c", false, 0),
-			expectedResult: newRevisionState(5, "b", false, 3), // revpos==3 here because the revision isn't replicated until rev 3
-		},
+		// TODO: Enable this test once CBG-1590 is implemented.
+		// {
+		// 	// simpleMutation includes an attachment prior to conflict, validates it's preserved
+		// 	name:           "localAttachment",
+		// 	initialState:   newRevisionState(3, "a", false, 2),
+		// 	localMutation:  newRevisionState(4, "b", false, 0),
+		// 	remoteMutation: newRevisionState(4, "c", false, 0),
+		// 	expectedResult: newRevisionState(5, "b", false, 3), // revpos==3 here because the revision isn't replicated until rev 3
+		// },
 		{
 			// localAttachmentPostConflict adds a local attachment on a conflicting branch
 			name:           "localAttachmentPostConflict",
@@ -4685,14 +4687,15 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			remoteMutation: newRevisionState(6, "c", false, 5),
 			expectedResult: newRevisionState(7, "b", false, 0),
 		},
-		{
-			// remoteAttachmentPostConflict adds the same attachment to local and remote conflicting branches
-			name:           "conflictingDocMatchingAttachmentPostConflict",
-			initialState:   newRevisionState(3, "a", false, 0),
-			localMutation:  newRevisionState(6, "b", false, 4),
-			remoteMutation: newRevisionState(6, "c", false, 5),
-			expectedResult: newRevisionState(7, "b", false, 7),
-		},
+		// TODO: Enable this test once CBG-1590 is implemented.
+		//{
+		//	// remoteAttachmentPostConflict adds the same attachment to local and remote conflicting branches
+		//	name:           "conflictingDocMatchingAttachmentPostConflict",
+		//	initialState:   newRevisionState(3, "a", false, 0),
+		//	localMutation:  newRevisionState(6, "b", false, 4),
+		//	remoteMutation: newRevisionState(6, "c", false, 5),
+		//	expectedResult: newRevisionState(7, "b", false, 7),
+		//},
 	}
 
 	for _, test := range conflictResolutionTests {

@@ -191,13 +191,11 @@ func (db *Database) loadAttachmentsData(attachments AttachmentsMeta, minRevpos i
 }
 
 // DeleteAttachmentVersion removes attachment versions from the AttachmentsMeta map specified.
-func DeleteAttachmentVersion(attachments AttachmentsMeta) (newAttachments AttachmentsMeta) {
-	newAttachments = attachments.ShallowCopy()
-	for _, value := range newAttachments {
+func DeleteAttachmentVersion(attachments AttachmentsMeta) {
+	for _, value := range attachments {
 		meta := value.(map[string]interface{})
 		delete(meta, "ver")
 	}
-	return newAttachments
 }
 
 // GetAttachment retrieves an attachment given its key.
@@ -254,22 +252,17 @@ func (db *Database) ForEachStubAttachment(body Body, minRevpos int, docID string
 			if !ok {
 				return base.HTTPErrorf(http.StatusBadRequest, "Invalid attachment")
 			}
-			version, ok := GetAttachmentVersion(meta)
-			if !ok {
-				return ErrAttachmentVersion
-			}
-			var data []byte
-			var err error
-			if version == AttVersion1 {
-				attachmentKey := MakeAttachmentKey(version, docID, digest)
-				data, err = db.GetAttachment(attachmentKey)
-				if err != nil && !base.IsDocNotFoundError(err) {
-					return err
-				}
+
+			// TODO: CBG-1590 to determine whether incoming attachment is AttVersion1 or AttVersion2
+			// Assumes the attachment is always AttVersion2 while checking whether it has already been uploaded.
+			attachmentKey := MakeAttachmentKey(AttVersion2, docID, digest)
+			data, err := db.GetAttachment(attachmentKey)
+			if err != nil && !base.IsDocNotFoundError(err) {
+				return err
 			}
 			if newData, err := callback(name, digest, data, meta); err != nil {
 				return err
-			} else if newData != nil && version == AttVersion1 {
+			} else if newData != nil {
 				meta["data"] = newData
 				delete(meta, "stub")
 				delete(meta, "follows")

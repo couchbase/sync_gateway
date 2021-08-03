@@ -2997,11 +2997,11 @@ func TestBlipPushPullNewAttachmentV2(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", hello["digest"])
 	assert.Equal(t, float64(11), hello["length"])
-	assert.Equal(t, float64(2), hello["revpos"])
+	assert.Equal(t, float64(1), hello["revpos"])
 	assert.True(t, hello["stub"].(bool))
 
-	assert.Equal(t, int64(2), rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
-	assert.Equal(t, int64(22), rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushBytes.Value())
+	assert.Equal(t, int64(1), rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
+	assert.Equal(t, int64(11), rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushBytes.Value())
 }
 
 func TestUpdateExistingAttachment(t *testing.T) {

@@ -550,12 +550,13 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	}
 
 	base.Tracef(base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
+	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
 	var bodyBytes []byte
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
-			attachments := DeleteAttachmentVersion(rev.Attachments)
-			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: attachments})
+			DeleteAttachmentVersion(rev.Attachments)
+			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
 			if err != nil {
 				return err
 			}
@@ -570,8 +571,8 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
-			attachments := DeleteAttachmentVersion(rev.Attachments)
-			body[BodyAttachments] = attachments
+			DeleteAttachmentVersion(rev.Attachments)
+			body[BodyAttachments] = rev.Attachments
 		}
 
 		bodyBytes, err = base.JSONMarshalCanonical(body)
@@ -582,7 +583,6 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
-	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
 	if base.LogDebugEnabled(base.KeySync) {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
 	}

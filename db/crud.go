@@ -356,7 +356,7 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 
 		// If the revision we're generating a delta to is a tombstone, mark it as such and don't bother generating a delta
 		if deleted {
-			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted)
+			revCacheDelta := newRevCacheDelta([]byte(base.EmptyDocument), fromRevID, toRevision, deleted, nil)
 			db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)
 			return &revCacheDelta, nil, nil
 		}
@@ -378,19 +378,23 @@ func (db *Database) GetDelta(docID, fromRevID, toRevID string) (delta *RevisionD
 		if fromRevision.Attachments != nil {
 			// the delta library does not handle deltas in non builtin types,
 			// so we need the map[string]interface{} type conversion here
-			attachments := DeleteAttachmentVersion(fromRevision.Attachments)
-			fromBodyCopy[BodyAttachments] = map[string]interface{}(attachments)
+			DeleteAttachmentVersion(fromRevision.Attachments)
+			fromBodyCopy[BodyAttachments] = map[string]interface{}(fromRevision.Attachments)
 		}
+
+		var toRevAttStorageMeta []AttachmentStorageMeta
 		if toRevision.Attachments != nil {
-			attachments := DeleteAttachmentVersion(toRevision.Attachments)
-			toBodyCopy[BodyAttachments] = map[string]interface{}(attachments)
+			// Flatten the AttachmentsMeta into a list of digest version pairs.
+			toRevAttStorageMeta = ToAttachmentStorageMeta(toRevision.Attachments)
+			DeleteAttachmentVersion(toRevision.Attachments)
+			toBodyCopy[BodyAttachments] = map[string]interface{}(toRevision.Attachments)
 		}
 
 		deltaBytes, err := base.Diff(fromBodyCopy, toBodyCopy)
 		if err != nil {
 			return nil, nil, err
 		}
-		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted)
+		revCacheDelta := newRevCacheDelta(deltaBytes, fromRevID, toRevision, deleted, toRevAttStorageMeta)
 
 		// Write the newly calculated delta back into the cache before returning
 		db.revisionCache.UpdateDelta(docID, fromRevID, revCacheDelta)

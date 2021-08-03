@@ -230,11 +230,11 @@ type RevisionDelta struct {
 	ToDeleted             bool                    // Flag if ToRevID is a tombstone
 }
 
-func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool) RevisionDelta {
+func newRevCacheDelta(deltaBytes []byte, fromRevID string, toRevision DocumentRevision, deleted bool, toRevAttStorageMeta []AttachmentStorageMeta) RevisionDelta {
 	return RevisionDelta{
 		ToRevID:               toRevision.RevID,
 		DeltaBytes:            deltaBytes,
-		AttachmentStorageMeta: ToAttachmentStorageMeta(toRevision.Attachments), // Flatten the AttachmentsMeta into a list of digest version pairs
+		AttachmentStorageMeta: toRevAttStorageMeta,
 		ToChannels:            toRevision.Channels,
 		RevisionHistory:       toRevision.History.parseAncestorRevisions(fromRevID),
 		ToDeleted:             deleted,
