@@ -1876,7 +1876,8 @@ func TestRevocationScenario6(t *testing.T) {
 	assert.Equal(t, GrantHistorySequencePair{StartSeq: 5, EndSeq: 55}, channelHistory.Entries[0])
 	assert.Equal(t, 0, len(aliceUserPrincipal.ChannelHistory()))
 	revokedChannelsCombined = aliceUserPrincipal.RevokedChannels(25, 0, 0)
-	assert.Len(t, revokedChannelsCombined, 0)
+	assert.Len(t, revokedChannelsCombined, 1)
+	assert.Equal(t, uint64(55), revokedChannelsCombined["ch1"])
 }
 
 // Scenario 7

@@ -5324,6 +5324,195 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	assert.Equal(t, int64(1), pulledDocCount)
 }
 
+func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Passive
+	_, rt2 := initScenario(t, nil)
+	defer rt2.Close()
+
+	// Active
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+	})
+	defer rt1.Close()
+
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Setup replicator
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	passiveDBURL.User = url.UserPassword("user", "letmein")
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          true,
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+	})
+
+	docARev := rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
+	docA1Rev := rt2.createDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.createDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
+
+	_ = rt2.createDocReturnRev(t, "docB", "", map[string][]string{"channels": []string{"B"}})
+
+	require.NoError(t, ar.Start())
+
+	changesResults, err := rt1.WaitForChanges(4, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 4)
+
+	require.NoError(t, ar.Stop())
+	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+	resp = rt2.SendAdminRequest("DELETE", "/db/docA?rev="+docARev, "")
+	assertStatus(t, resp, http.StatusOK)
+
+	resp = rt2.SendAdminRequest("DELETE", "/db/docA1?rev="+docA1Rev, "")
+	assertStatus(t, resp, http.StatusOK)
+
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, ar.Start())
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA1", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA2", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+}
+
+func TestReplicatorRevocationsFromZero(t *testing.T) {
+	defer db.SuspendSequenceBatching()()
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Passive
+	_, rt2 := initScenario(t, nil)
+	defer rt2.Close()
+
+	// Active
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+	})
+	defer rt1.Close()
+
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Setup replicator
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	passiveDBURL.User = url.UserPassword("user", "letmein")
+
+	activeReplCfg := &db.ActiveReplicatorConfig{
+		ID:          strings.ReplaceAll(t.Name(), "/", ""),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          false,
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+	}
+
+	ar := db.NewActiveReplicator(activeReplCfg)
+
+	_ = rt2.createDocReturnRev(t, "docA", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.createDocReturnRev(t, "docA1", "", map[string][]string{"channels": []string{"A"}})
+	_ = rt2.createDocReturnRev(t, "docA2", "", map[string][]string{"channels": []string{"A"}})
+
+	require.NoError(t, ar.Start())
+
+	changesResults, err := rt1.WaitForChanges(3, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 3)
+
+	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+	// Be sure docs have arrived
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
+		return resp.Code == http.StatusOK
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA1", "")
+		return resp.Code == http.StatusOK
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA2", "")
+		return resp.Code == http.StatusOK
+	})
+	assert.NoError(t, err)
+
+	// Reset checkpoint (since 0)
+	require.NoError(t, ar.Reset())
+
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	require.NoError(t, ar.Start())
+
+	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA1", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+
+	err = rt1.WaitForCondition(func() bool {
+		resp := rt1.SendAdminRequest("GET", "/db/docA2", "")
+		return resp.Code == http.StatusNotFound
+	})
+	assert.NoError(t, err)
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {

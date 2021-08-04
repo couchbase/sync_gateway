@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"runtime/debug"
 	"sort"
 	"time"
@@ -172,8 +173,7 @@ func (db *Database) AddDocInstanceToChangeEntry(entry *ChangeEntry, doc *Documen
 }
 
 // Parameters
-// revokedAt: This is the point at which the channel was revoked from the user. Used here for the triggeredBy value of
-// the.
+// revokedAt: This is the point at which the channel was revoked from the user. Used here for the triggeredBy.
 // revocationSinceSeq: The point in time at which we need to 'diff' against in order to check what documents we need to
 // revoke - only documents in the channel at the revocationSinceSeq may have been replicated, and need to be revoked.
 // This is used in this function in 'wasDocInChannelAtSeq'.
@@ -204,7 +204,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 		//   1. Query returns fewer rows than ChannelQueryLimit
 		//   2. A limit is specified on the incoming ChangesOptions, and that limit is reached
 		//   3. An error is returned when calling singleChannelCache.GetChanges
-		//   4. An error is returned when calling wasDocInChannelAtSeq
+		//   4. An error is returned when calling wasDocInChannelPriorToRevocation
 		for {
 			if requestLimit == 0 {
 				paginationOptions.Limit = queryLimit
@@ -238,7 +238,7 @@ func (db *Database) buildRevokedFeed(singleChannelCache SingleChannelCache, opti
 				// Otherwise: we need to determine whether a previous revision of the document was in the channel prior
 				// to the since value, and only send a revocation if that was the case
 				if logEntry.Sequence > sinceVal {
-					requiresRevocation, err := db.wasDocInChannelAtSeq(logEntry.DocID, singleChannelCache.ChannelName(), revocationSinceSeq)
+					requiresRevocation, err := db.wasDocInChannelPriorToRevocation(logEntry.DocID, singleChannelCache.ChannelName(), revocationSinceSeq)
 					if err != nil {
 						change := ChangeEntry{
 							Err: base.ErrChannelFeed,
@@ -315,8 +315,7 @@ func UserHasDocAccess(db *Database, docID, revID string) (bool, error) {
 }
 
 // Checks if a document needs to be revoked. This is used in the case where the since < doc sequence
-func (db *Database) wasDocInChannelAtSeq(docID, chanName string, since uint64) (bool, error) {
-
+func (db *Database) wasDocInChannelPriorToRevocation(docID, chanName string, since uint64) (bool, error) {
 	// Get doc sync data so we can verify the docs grant history
 	syncData, err := db.GetDocSyncData(docID)
 	if err != nil {
@@ -337,14 +336,23 @@ func (db *Database) wasDocInChannelAtSeq(docID, chanName string, since uint64) (
 		}
 
 		for _, accessPeriod := range channelAccessPeriods {
-			if accessPeriod.StartSeq > since || accessPeriod.EndSeq <= since {
+			if accessPeriod.EndSeq <= since {
 				continue
 			}
 
-			// If there is some overlap we can quit out as we know user has had access to the doc at the since seq
 			start := base.MaxUint64(docHistoryEntry.Start, accessPeriod.StartSeq)
-			end := base.MinUint64(docHistoryEntry.End, accessPeriod.EndSeq)
-			if start < end || (start <= since && end == 0) {
+
+			end := uint64(math.MaxUint64)
+			if docHistoryEntry.End != 0 {
+				end = docHistoryEntry.End
+			}
+
+			if accessPeriod.EndSeq != 0 {
+				end = base.MinUint64(end, accessPeriod.EndSeq)
+			}
+
+			// If we have an overlap between when the doc was in the channel and when we had access to the channel
+			if start < end {
 				return true, nil
 			}
 		}
@@ -783,7 +791,7 @@ func (db *Database) SimpleMultiChangesFeed(chans base.Set, options ChangesOption
 				feeds = db.appendUserFeed(feeds, options)
 			}
 
-			if options.Revocations && db.user != nil {
+			if options.Revocations && db.user != nil && !options.ActiveOnly {
 				channelsToRevoke := db.user.RevokedChannels(options.Since.Seq, options.Since.LowSeq, options.Since.TriggeredBy)
 				for channel, revokedSeq := range channelsToRevoke {
 					revocationSinceSeq := options.Since.SafeSequence()

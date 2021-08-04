@@ -7647,8 +7647,8 @@ func TestChannelHistoryPruning(t *testing.T) {
 		changes = revocationTester.getChanges(0, 2)
 		assert.Len(t, changes.Results, 2)
 		revocationTester.removeRoleChannel("foo", "a")
-		changes = revocationTester.getChanges(0, 1)
-		assert.Len(t, changes.Results, 1)
+		changes = revocationTester.getChanges(0, 2)
+		assert.Len(t, changes.Results, 2)
 		revocationTester.addRoleChannel("foo", "a")
 	}
 
