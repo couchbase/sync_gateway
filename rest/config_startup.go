@@ -37,10 +37,11 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 				TLSMinimumVersion: "tlsv1.2",
 				UseTLSClient:      base.BoolPtr(true),
 			},
-			ReadHeaderTimeout:                         base.NewConfigDuration(base.DefaultReadHeaderTimeout),
-			IdleTimeout:                               base.NewConfigDuration(base.DefaultIdleTimeout),
-			AdminInterfaceAuthentication:              base.BoolPtr(true),
-			MetricsInterfaceAuthentication:            base.BoolPtr(true),
+			ReadHeaderTimeout:              base.NewConfigDuration(base.DefaultReadHeaderTimeout),
+			IdleTimeout:                    base.NewConfigDuration(base.DefaultIdleTimeout),
+			AdminInterfaceAuthentication:   base.BoolPtr(true),
+			MetricsInterfaceAuthentication: base.BoolPtr(true),
+			// Post-DP this should be set to base.IsEnterpriseEdition as default
 			EnableAdminAuthenticationPermissionsCheck: base.BoolPtr(false),
 		},
 		Logging: LoggingConfig{

@@ -72,11 +72,13 @@ var (
 	BucketFullAccessRole  = RouteRole{"bucket_full_access", true}
 	BucketAdmin           = RouteRole{"bucket_admin", true}
 	FullAdminRole         = RouteRole{"admin", false}
+	ClusterAdminRole      = RouteRole{"cluster_admin", false}
 	ReadOnlyAdminRole     = RouteRole{"ro_admin", false}
 )
 
-var BucketScopedEndpointRoles = []RouteRole{MobileSyncGatewayRole, BucketFullAccessRole, BucketAdmin, ReadOnlyAdminRole, FullAdminRole}
-var ClusterScopedEndpointRoles = []RouteRole{ReadOnlyAdminRole, FullAdminRole}
+var BucketScopedEndpointRoles = []RouteRole{MobileSyncGatewayRole, BucketFullAccessRole, BucketAdmin, FullAdminRole}
+var ClusterScopedEndpointRolesRead = []RouteRole{ReadOnlyAdminRole, ClusterAdminRole, FullAdminRole}
+var ClusterScopedEndpointRolesWrite = []RouteRole{ClusterAdminRole, FullAdminRole}
 
 // Encapsulates the state of handling an HTTP request.
 type handler struct {
@@ -257,8 +259,9 @@ func (h *handler) invoke(method handlerMethod, accessPermissions []Permission, r
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
 		}
 
-		permissions, statusCode, err := checkAdminAuth(authScope, username, password, httpClient, managementEndpoints,
-			*h.server.config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions, responsePermissions)
+		permissions, statusCode, err := checkAdminAuth(authScope, username, password, h.rq.Method, httpClient,
+			managementEndpoints, *h.server.config.API.EnableAdminAuthenticationPermissionsCheck, accessPermissions,
+			responsePermissions)
 		if err != nil {
 			base.Warnf("An error occurred whilst checking whether a user was authorized: %v", err)
 			return base.HTTPErrorf(http.StatusInternalServerError, "")
@@ -434,7 +437,7 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 	return nil
 }
 
-func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, httpClient *http.Client, managementEndpoints []string, shouldCheckPermissions bool, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
+func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, attemptedHTTPOperation string, httpClient *http.Client, managementEndpoints []string, shouldCheckPermissions bool, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
 
 	anyResponsePermFailed := false
 	statusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, bucketName, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
@@ -475,7 +478,11 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, htt
 	if bucketName != "" {
 		requestRoles = BucketScopedEndpointRoles
 	} else {
-		requestRoles = ClusterScopedEndpointRoles
+		if attemptedHTTPOperation == http.MethodPut || attemptedHTTPOperation == http.MethodPost {
+			requestRoles = ClusterScopedEndpointRolesWrite
+		} else {
+			requestRoles = ClusterScopedEndpointRolesRead
+		}
 	}
 
 	statusCode, err = CheckRoles(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)

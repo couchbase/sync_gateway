@@ -426,7 +426,7 @@ func TestAdminAuth(t *testing.T) {
 				defer DeleteUser(t, managementEndpoints[0], testCase.CreateUser)
 			}
 
-			permResults, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, httpClient, managementEndpoints, true, testCase.CheckPermissions, testCase.ResponsePermissions)
+			permResults, statusCode, err := checkAdminAuth(testCase.BucketName, testCase.Username, testCase.Password, "", httpClient, managementEndpoints, true, testCase.CheckPermissions, testCase.ResponsePermissions)
 
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
@@ -458,7 +458,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
+	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
 	assert.NoError(t, err)
 }
 
@@ -995,6 +995,9 @@ func TestAdminAPIAuth(t *testing.T) {
 	MakeUser(t, eps[0], "ROAdminUser", "password", []string{ReadOnlyAdminRole.RoleName})
 	defer DeleteUser(t, eps[0], "ROAdminUser")
 
+	MakeUser(t, eps[0], "ClusterAdminUser", "password", []string{ClusterAdminRole.RoleName})
+	defer DeleteUser(t, eps[0], "ClusterAdminUser")
+
 	for _, endPoint := range endPoints {
 		t.Run(endPoint.Method+endPoint.Endpoint, func(t *testing.T) {
 			formattedEndpoint := endPoint.Endpoint
@@ -1008,17 +1011,25 @@ func TestAdminAPIAuth(t *testing.T) {
 			assertStatus(t, resp, http.StatusForbidden)
 
 			if !endPoint.SkipSuccessTest {
-				if endPoint.DBScoped {
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "MobileSyncGatewayUser", "password")
-				} else {
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "ROAdminUser", "password")
-				}
 
 				// For some of the endpoints they have other requirements, such as setting up users and others require
 				// bodies. Rather than doing a full test of the endpoint itself this will at least confirm that they pass
 				// the auth stage.
-				fmt.Println(resp.Code)
-				assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
+				if endPoint.DBScoped {
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "MobileSyncGatewayUser", "password")
+					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
+				} else {
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "ROAdminUser", "password")
+					if endPoint.Method == http.MethodPut || endPoint.Method == http.MethodPost {
+						assertStatus(t, resp, http.StatusForbidden)
+					} else {
+						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
+					}
+
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "ClusterAdminUser", "password")
+					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
+
+				}
 			}
 		})
 	}
@@ -1083,7 +1094,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 			MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s[%s]", testCase.CreateUserRole.RoleName, rt.Bucket().GetName())})
 			defer DeleteUser(t, eps[0], testCase.CreateUser)
 
-			_, statusCode, err := checkAdminAuth(rt.Bucket().GetName(), testCase.CreateUser, "password", httpClient, eps, testCase.DoPermissionCheck, testCase.RequirePerms, nil)
+			_, statusCode, err := checkAdminAuth(rt.Bucket().GetName(), testCase.CreateUser, "password", "", httpClient, eps, testCase.DoPermissionCheck, testCase.RequirePerms, nil)
 			assert.NoError(t, err)
 
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
