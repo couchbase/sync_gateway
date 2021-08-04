@@ -618,7 +618,11 @@ func (c *Collection) GetExpiry(k string) (expiry uint32, getMetaError error) {
 		expiry = result.Expiry
 	}
 
-	router.GetMeta(getMetaOptions, getMetaCallback)
+	_, err := router.GetMeta(getMetaOptions, getMetaCallback)
+	if err != nil {
+		wg.Done()
+		return 0, err
+	}
 	wg.Wait()
 
 	return expiry, getMetaError
