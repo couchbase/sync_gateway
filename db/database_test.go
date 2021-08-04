@@ -2345,7 +2345,7 @@ func TestRepairUnorderedRecentSequences(t *testing.T) {
 
 func TestDeleteWithNoTombstoneCreationSupport(t *testing.T) {
 
-	// TODO: re-enable after adding ability to override bucket capabilities
+	// TODO: re-enable after adding ability to override bucket capabilities (CBG-1593)
 	t.Skip("GoCB bucket required for cluster compatibility override")
 
 	if base.UnitTestUrlIsWalrus() {

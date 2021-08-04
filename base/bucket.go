@@ -72,6 +72,7 @@ type CouchbaseStore interface {
 	// a map of UUIDS and a map of high sequence numbers (map from vbno -> seq)
 	GetStatsVbSeqno(maxVbno uint16, useAbsHighSeqNo bool) (uuids map[uint16]uint64, highSeqnos map[uint16]uint64, seqErr error)
 
+	// mgmtRequest uses the CouchbaseStore's http client to make an http request against a management endpoint.
 	mgmtRequest(method, uri, contentType string, body io.Reader) (*http.Response, error)
 }
 
