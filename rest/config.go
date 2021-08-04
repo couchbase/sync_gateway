@@ -90,11 +90,6 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		tlsPort = bc.KvTLSPort
 	}
 
-	maxConcurrentQueryOps := base.MaxConcurrentQueryOps
-	if bc.MaxConcurrentQueryOps != nil {
-		maxConcurrentQueryOps = *bc.MaxConcurrentQueryOps
-	}
-
 	return base.BucketSpec{
 		Server:                server,
 		BucketName:            bucketName,
@@ -103,7 +98,7 @@ func (dc *DbConfig) MakeBucketSpec() base.BucketSpec {
 		CACertPath:            bc.CACertPath,
 		KvTLSPort:             tlsPort,
 		Auth:                  bc,
-		MaxConcurrentQueryOps: maxConcurrentQueryOps,
+		MaxConcurrentQueryOps: bc.MaxConcurrentQueryOps,
 	}
 }
 
