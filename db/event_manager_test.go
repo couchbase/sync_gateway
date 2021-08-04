@@ -554,7 +554,7 @@ func TestWebhookBasic(t *testing.T) {
 	log.Println("Test queue full, slow webhook, long wait")
 	wr.Clear()
 	em = NewEventManager()
-	em.Start(5, 1100)
+	em.Start(5, 1500)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", nil, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
 	for i := 0; i < 100; i++ {
@@ -813,7 +813,7 @@ func TestWebhookTimeout(t *testing.T) {
 	wr.Clear()
 	errCount = 0
 	em = NewEventManager()
-	em.Start(1, 1100)
+	em.Start(1, 1500)
 	timeout = uint64(0)
 	webhookHandler, _ = NewWebhook(fmt.Sprintf("%s/slow", url), "", &timeout, nil)
 	em.RegisterEventHandler(webhookHandler, DocumentChange)
