@@ -744,16 +744,16 @@ func (t *SGRawTranscoder) Decode(bytes []byte, flags uint32, out interface{}) er
 		return errors.New("unexpected value compression")
 	}
 	// Normal types of decoding
-	if valueType == gocbcore.BinaryType {
+	switch valueType {
+	case gocbcore.BinaryType:
 		return gocb.NewRawBinaryTranscoder().Decode(bytes, flags, out)
-	} else if valueType == gocbcore.StringType {
+	case gocbcore.StringType:
 		return gocb.NewRawStringTranscoder().Decode(bytes, flags, out)
-		return errors.New("only binary datatype is supported by RawBinaryTranscoder")
-	} else if valueType == gocbcore.JSONType {
+	case gocbcore.JSONType:
 		return gocb.NewRawJSONTranscoder().Decode(bytes, flags, out)
+	default:
+		return errors.New("unexpected expectedFlags value")
 	}
-
-	return errors.New("unexpected expectedFlags value")
 }
 
 // Encode applies raw binary transcoding behaviour to encode a Go type.
