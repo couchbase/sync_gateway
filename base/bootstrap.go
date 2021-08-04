@@ -2,9 +2,11 @@ package base
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/couchbase/gocb"
+	"github.com/couchbase/gocbcore/memd"
 )
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
@@ -118,9 +120,28 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	return uint64(res.Cas()), nil
 }
 
-func (cc *CouchbaseCluster) PutConfig(bucket, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error) {
-	// TODO: Implement
-	return 0, nil
+func (cc *CouchbaseCluster) PutConfig(location, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error) {
+	if cc == nil {
+		return 0, errors.New("nil CouchbaseCluster")
+	}
+	docID := PersistentConfigPrefix + groupID
+	collection := cc.c.Bucket(location).DefaultCollection()
+
+	if cas != nil && *cas == 0 {
+		res, err := collection.Insert(docID, value, nil)
+		if err != nil {
+
+			if isKVError(err, memd.StatusKeyExists) {
+				return 0, ErrAlreadyExists
+			}
+
+			return 0, err
+		}
+
+		return uint64(res.Cas()), nil
+	}
+
+	return 0, fmt.Errorf("Not implemented")
 }
 
 func (cc *CouchbaseCluster) Close() error {

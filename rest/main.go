@@ -2,9 +2,16 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	pkgerrors "github.com/pkg/errors"
@@ -102,12 +109,31 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	if len(configPath) == 1 {
 		fileStartupConfig, err := LoadStartupConfigFromPath(configPath[0])
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
-			// TODO: CBG-1399 Do automatic legacy config upgrade here
-			base.Warnf("Couldn't parse bootstrap config and legacy config migration not yet implemented: %v", err)
-			// When automatic legacy config upgrade is done return when disable_persistent_config=true
-			return true, nil
-		}
-		if err != nil {
+			// If we have an unknown field error processing config its possible that the config is a 2.x config
+			// requiring automatic upgrade. We should attempt to perform this upgrade
+
+			base.Infof(base.KeyAll, "Found unknown fields in startup config. Attempting automatic config upgrade.")
+
+			var upgradeError error
+			fileStartupConfig, disablePersistentConfigFallback, upgradeError = automaticConfigUpgrade(configPath[0])
+			if upgradeError != nil {
+
+				// We need to validate if the error was again, an unknown field error. If this is the case its possible
+				// the config is actually a 3.x config but with a genuine unknown field, therefore we should  return the
+				// original error from LoadStartupConfigFromPath.
+				if pkgerrors.Cause(upgradeError) == base.ErrUnknownField {
+					return false, err
+				}
+
+				return false, upgradeError
+			}
+
+			if disablePersistentConfigFallback {
+				base.Infof(base.KeyAll, "Startup config specified disable_persistent_config. Falling back to legacy config.")
+				return true, nil
+			}
+
+		} else if err != nil {
 			return false, fmt.Errorf("Couldn't open config file: %w", err)
 		}
 		if fileStartupConfig != nil {
@@ -145,4 +171,168 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	}
 
 	return false, startServer(&sc, ctx)
+}
+
+// automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to
+// update it to a 3.x config
+// Returns the new startup config, a bool of whether to fallback to legacy config and an error
+func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
+	legacyServerConfig, err := LoadServerConfig(configPath)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if legacyServerConfig.DisablePersistentConfig != nil && *legacyServerConfig.DisablePersistentConfig {
+		return nil, true, nil
+	}
+
+	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
+	if err != nil {
+		return nil, false, err
+	}
+
+	dbConfigs, err = sanitizeDbConfigs(dbConfigs)
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Attempt to establish connection to server
+	cluster, err := establishCouchbaseClusterConnection(startupConfig)
+	if err != nil {
+		return nil, false, err
+	}
+
+	defer func() {
+		_ = cluster.Close()
+	}()
+
+	// Write database configs to CBS with groupID "default"
+	for _, dbConfig := range dbConfigs {
+		_, err = cluster.PutConfig(*dbConfig.Bucket, persistentConfigDefaultGroupID, base.Uint64Ptr(0), dbConfig)
+		if err != nil {
+			// If key already exists just continue
+			if errors.Is(err, base.ErrAlreadyExists) {
+				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for %s. Already exists.", base.UD(dbConfig.Name))
+				continue
+			}
+			return nil, false, err
+		}
+		base.Infof(base.KeyAll, "Persisted database %s config to Couchbase Server bucket: %s", base.UD(dbConfig.Name), base.MD(*dbConfig.Bucket))
+	}
+
+	// Attempt to backup current config
+	backupLocation, err := backupCurrentConfigFile(configPath)
+	if err != nil {
+		return nil, false, err
+	}
+
+	base.Infof(base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
+
+	// Overwrite old config with new migrated startup config
+	jsonStartupConfig, err := json.MarshalIndent(startupConfig, "", "  ")
+	if err != nil {
+		return nil, false, err
+	}
+
+	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
+	if err != nil {
+		return nil, false, err
+	}
+
+	base.Infof(base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
+
+	return startupConfig, false, nil
+}
+
+// validate / sanitize db configs
+// - remove servers
+// - remove users
+// - ensure servers are the same
+func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
+	var databaseServerAddress string
+
+	for dbName, dbConfig := range configMap {
+		if databaseServerAddress == "" {
+			databaseServerAddress = *dbConfig.Server
+		}
+
+		if *dbConfig.Server != databaseServerAddress {
+			return nil, fmt.Errorf("automatic upgrade to persistent config requires matching server addresses in " +
+				"2.x config")
+		}
+
+		if dbConfig.Bucket == nil || *dbConfig.Bucket == "" {
+			dbNameCopy := dbName
+			dbConfig.Bucket = &dbNameCopy
+		}
+
+		dbConfig.Name = dbName
+
+		dbConfig.Server = nil
+		dbConfig.Users = nil
+		dbConfig.Roles = nil
+
+		// Make sure any updates are written back to the config
+		configMap[dbName] = dbConfig
+	}
+	return configMap, nil
+}
+
+// backupCurrentConfigFile takes the original config path and copies this to a file with -bk appended with a timestamp
+func backupCurrentConfigFile(sourcePath string) (string, error) {
+	source, err := os.Open(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = source.Close()
+	}()
+
+	// Grab file extension
+	fileExtension := filepath.Ext(sourcePath)
+
+	// Remove file extension so we can easily modify filename
+	fileNameWithoutExtension := strings.TrimSuffix(filepath.Base(sourcePath), fileExtension)
+
+	// Modify file name and append file extension back onto it
+	fileName := fmt.Sprintf("%s-backup-%d%s", fileNameWithoutExtension, time.Now().Unix(), fileExtension)
+
+	backupPath := filepath.Join(filepath.Dir(sourcePath), fileName)
+
+	backup, err := os.Create(backupPath)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = backup.Close()
+	}()
+
+	_, err = io.Copy(backup, source)
+	if err != nil {
+		return "", err
+	}
+
+	return backupPath, nil
+}
+
+func establishCouchbaseClusterConnection(config *StartupConfig) (*base.CouchbaseCluster, error) {
+	err, c := base.RetryLoop("Cluster Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
+		cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username,
+			config.Bootstrap.Password, config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath,
+			config.Bootstrap.CACertPath, config.Bootstrap.ServerTLSSkipVerify)
+		if err != nil {
+			base.Infof(base.KeyConfig, "Couldn't connect to bootstrap cluster: %v - will retry...", err)
+			return true, err, nil
+		}
+
+		return false, nil, cluster
+	}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitForReady timeout and 1 second interval
+	if err != nil {
+		return nil, err
+	}
+
+	base.Infof(base.KeyConfig, "Successfully connected to cluster")
+	clusterConnection := c.(*base.CouchbaseCluster)
+
+	return clusterConnection, nil
 }
