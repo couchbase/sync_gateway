@@ -13,6 +13,7 @@ package db
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -259,6 +260,13 @@ func (c *Checkpointer) _updateCheckpointLists() (safeSeq string) {
 // Returns -1 if no sequence in the list is able to be checkpointed.
 func (c *Checkpointer) _calculateSafeExpectedSeqsIdx() int {
 	safeIdx := -1
+
+	sort.Slice(c.expectedSeqs, func(i, j int) bool {
+		seqI, _ := parseIntegerSequenceID(c.expectedSeqs[i])
+		seqJ, _ := parseIntegerSequenceID(c.expectedSeqs[j])
+
+		return seqI.Seq < seqJ.Seq
+	})
 
 	// iterates over each (ordered) expected sequence and stops when we find the first sequence we've yet to process a rev message for
 	for i, seq := range c.expectedSeqs {
