@@ -162,6 +162,11 @@ Amazon*)
       rm /lib/systemd/system/${SERVICE_NAME}.service
     fi
     ;;
+  *)
+    echo "ERROR: Unsupported Amazon Linux Version \"$VER\""
+    usage
+    exit 1
+    ;;
   esac
   ;;
 Darwin)

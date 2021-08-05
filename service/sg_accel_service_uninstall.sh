@@ -47,9 +47,6 @@ ostype() {
   elif [ -f /etc/redhat-release ]; then
     OS=RedHat
     VER=$(cat /etc/redhat-release | sed s/.*release\ // | sed s/\ .*//)
-  elif [ -f /etc/os-release ]; then
-    OS=$(cat /etc/os-release | cut -d = -f 2 | sed -e 's/^"//' -e 's/"$//' | awk 'NR==1')
-    VER=$(cat /etc/os-release | cut -d = -f 2 | sed -e 's/^"//' -e 's/"$//' | awk 'NR==2')
   elif [ -f /etc/system-release ]; then
     OS=RedHat
     VER=5.0
@@ -149,18 +146,6 @@ RedHat* | CentOS | OracleServer)
     echo "ERROR: Unsupported RedHat/CentOS Version \"$VER\""
     usage
     exit 1
-    ;;
-  esac
-  ;;
-Amazon*)
-  case $OS_MAJOR_VERSION in
-  2)
-    systemctl stop ${SERVICE_NAME}
-    systemctl disable ${SERVICE_NAME}
-
-    if [ -f /lib/systemd/system/${SERVICE_NAME}.service ]; then
-      rm /lib/systemd/system/${SERVICE_NAME}.service
-    fi
     ;;
   esac
   ;;

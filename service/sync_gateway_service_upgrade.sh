@@ -136,6 +136,12 @@ Amazon*)
   2)
     systemctl stop ${SERVICE_NAME}
     systemctl start ${SERVICE_NAME}
+    ;;
+  *)
+    echo "ERROR: Unsupported Amazon Linux Version \"$VER\""
+    usage
+    exit 1
+    ;;
   esac
   ;;
 Darwin)
