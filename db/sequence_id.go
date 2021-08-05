@@ -146,23 +146,12 @@ func (s SequenceID) IsNonZero() bool {
 
 // Equality of sequences, based on seq, triggered by and low hash
 func (s SequenceID) Equals(s2 SequenceID) bool {
-	return s.intEquals(s2)
-}
-
-func (s SequenceID) intEquals(s2 SequenceID) bool {
 	return s.SafeSequence() == s2.SafeSequence() && s.TriggeredBy == s2.TriggeredBy
 }
 
 // The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
 // The tricky part is that "n" sorts after "n:m" for any nonzero m
 func (s SequenceID) Before(s2 SequenceID) bool {
-	return s.intBefore(s2)
-}
-
-// The most significant value is TriggeredBy, unless it's zero, in which case use Seq.
-// The tricky part is that "n" sorts after "n:m" for any nonzero m
-func (s SequenceID) intBefore(s2 SequenceID) bool {
-
 	// using SafeSequence for comparison, which takes the lower of LowSeq and Seq
 	if s.TriggeredBy == s2.TriggeredBy {
 		return s.SafeSequence() < s2.SafeSequence() // the simple case: untriggered, or triggered by same sequence

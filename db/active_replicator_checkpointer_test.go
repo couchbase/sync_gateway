@@ -81,6 +81,17 @@ func TestCheckpointerSafeSeq(t *testing.T) {
 			expectedExpectedSeqs:    []string{},
 			expectedProcessedSeqs:   map[string]struct{}{"4": {}, "5": {}},
 		},
+		{
+			name: "out of order expected seqs",
+			c: &Checkpointer{
+				expectedSeqs:  []string{"3", "2", "1"},
+				processedSeqs: map[string]struct{}{"1": {}, "2": {}, "3": {}},
+			},
+			expectedSafeSeq:         "3",
+			expectedExpectedSeqsIdx: 2,
+			expectedExpectedSeqs:    []string{},
+			expectedProcessedSeqs:   map[string]struct{}{},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
