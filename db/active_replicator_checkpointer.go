@@ -265,7 +265,7 @@ func (c *Checkpointer) _calculateSafeExpectedSeqsIdx() int {
 		seqI, _ := parseIntegerSequenceID(c.expectedSeqs[i])
 		seqJ, _ := parseIntegerSequenceID(c.expectedSeqs[j])
 
-		return seqI.Seq < seqJ.Seq
+		return seqI.Before(seqJ)
 	})
 
 	// iterates over each (ordered) expected sequence and stops when we find the first sequence we've yet to process a rev message for
