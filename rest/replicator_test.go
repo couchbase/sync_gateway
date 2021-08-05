@@ -5513,6 +5513,133 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+
+	defer db.SuspendSequenceBatching()()
+
+	if base.GTestBucketPool.NumUsableBuckets() < 2 {
+		t.Skipf("test requires at least 2 usable test buckets")
+	}
+
+	// Passive
+	_, rt2 := initScenario(t, nil)
+	defer rt2.Close()
+
+	// Active
+	rt1 := NewRestTester(t, &RestTesterConfig{
+		TestBucket: base.GetTestBucket(t),
+	})
+	defer rt1.Close()
+
+	resp := rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["A", "B"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Setup replicator
+	srv := httptest.NewServer(rt2.TestPublicHandler())
+	defer srv.Close()
+
+	passiveDBURL, err := url.Parse(srv.URL + "/db")
+	require.NoError(t, err)
+
+	passiveDBURL.User = url.UserPassword("user", "letmein")
+
+	ar := db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+	})
+
+	for i := 0; i < 10; i++ {
+		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docA%d", i), "", map[string][]string{"channels": []string{"A"}})
+	}
+
+	for i := 0; i < 7; i++ {
+		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
+	}
+
+	err = rt2.WaitForPendingChanges()
+	require.NoError(t, err)
+
+	require.NoError(t, ar.Start())
+
+	changesResults, err := rt1.WaitForChanges(17, "/db/_changes?since=0", "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 17)
+
+	// Going to stop & start replication between these actions to make out of order seq no's more likely. More likely
+	// to hit CBG-1591
+	require.NoError(t, ar.Stop())
+	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+	resp = rt2.SendAdminRequest("PUT", "/db/_user/user", `{"name": "user", "password": "letmein", "admin_channels": ["B"]}`)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Add another few docs to 'bump' rt1's seq no. Otherwise it'll end up revoking next time as the above user PUT is
+	// not processed by the rt1 receiver.
+	for i := 7; i < 15; i++ {
+		_ = rt2.createDocReturnRev(t, fmt.Sprintf("docB%d", i), "", map[string][]string{"channels": []string{"B"}})
+	}
+
+	err = rt2.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	require.NoError(t, ar.Start())
+	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+
+	changesResults, err = rt1.WaitForChanges(8, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	require.NoError(t, err)
+	assert.Len(t, changesResults.Results, 8)
+
+	require.NoError(t, ar.Stop())
+	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+
+	ar = db.NewActiveReplicator(&db.ActiveReplicatorConfig{
+		ID:          t.Name(),
+		Direction:   db.ActiveReplicatorTypePull,
+		RemoteDBURL: passiveDBURL,
+		ActiveDB: &db.Database{
+			DatabaseContext: rt1.GetDatabase(),
+		},
+		Continuous:          true,
+		PurgeOnRemoval:      true,
+		ReplicationStatsMap: base.SyncGatewayStats.NewDBStats(t.Name(), false, false, false).DBReplicatorStats(t.Name()),
+	})
+
+	// Send a doc to act as a 'marker' so we know when replication has completed
+	_ = rt2.createDocReturnRev(t, "docMarker", "", map[string][]string{"channels": []string{"B"}})
+
+	require.NoError(t, ar.Start())
+	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateRunning)
+
+	// Validate none of the documents are purged after flipping option
+	err = rt2.WaitForPendingChanges()
+	assert.NoError(t, err)
+
+	changesResults, err = rt1.WaitForChanges(1, fmt.Sprintf("/db/_changes?since=%v", changesResults.Last_Seq), "", true)
+	assert.NoError(t, err)
+	assert.Len(t, changesResults.Results, 1)
+
+	for i := 0; i < 10; i++ {
+		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/db/docA%d", i), "")
+		assertStatus(t, resp, http.StatusOK)
+	}
+
+	for i := 0; i < 7; i++ {
+		resp = rt1.SendAdminRequest("GET", fmt.Sprintf("/db/docB%d", i), "")
+		assertStatus(t, resp, http.StatusOK)
+	}
+
+	// Shutdown replicator to close out
+	require.NoError(t, ar.Stop())
+	rt1.waitForReplicationStatus(ar.ID, db.ReplicationStateStopped)
+}
+
 func getTestRevpos(t *testing.T, doc db.Body, attachmentKey string) (revpos int) {
 	attachments := db.GetBodyAttachments(doc)
 	if attachments == nil {
