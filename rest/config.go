@@ -846,7 +846,7 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	}
 
 	if !base.IsEnterpriseEdition() && sc.API.EnableAdminAuthenticationPermissionsCheck != nil && *sc.API.EnableAdminAuthenticationPermissionsCheck {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("enable_admin_authentication_permissions_check is only supported in enterprise edition"))
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("enable_advanced_auth_dp is only supported in enterprise edition"))
 	}
 
 	return errorMessages
