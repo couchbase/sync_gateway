@@ -67,6 +67,8 @@ type BlipTesterReplicator struct {
 
 	messagesLock sync.RWMutex                         // lock for messages map
 	messages     map[blip.MessageNumber]*blip.Message // Map of blip messages keyed by message number
+
+	replicationStats *db.BlipSyncStats // Stats of replications
 }
 
 func (btr *BlipTesterReplicator) Close() {
@@ -77,6 +79,10 @@ func (btr *BlipTesterReplicator) Close() {
 }
 
 func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
+	if btr.replicationStats == nil {
+		btr.replicationStats = db.NewBlipSyncStats()
+	}
+
 	btr.bt.blipContext.HandlerForProfile[db.MessageProveAttachment] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
@@ -103,6 +109,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		resp := msg.Response()
 		resp.SetBody([]byte(proof))
+		btr.replicationStats.ProveAttachment.Add(1)
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageChanges] = func(msg *blip.Message) {
@@ -376,6 +383,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		response := msg.Response()
 		response.SetBody(attachment)
+		btr.replicationStats.GetAttachment.Add(1)
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {

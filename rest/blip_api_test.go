@@ -3498,8 +3498,10 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	assert.Equal(t, float64(2), hello["revpos"])
 	assert.True(t, hello["stub"].(bool))
 
-	assert.Equal(t, int64(11), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushBytes.Value())
-	assert.Equal(t, int64(1), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
+	// Check the number of sendProveAttachment/sendGetAttachment calls.
+	require.NotNil(t, btc.pushReplication.replicationStats)
+	assert.Equal(t, int64(1), btc.pushReplication.replicationStats.GetAttachment.Value())
+	assert.Equal(t, int64(1), btc.pushReplication.replicationStats.ProveAttachment.Value())
 }
 
 func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
@@ -3551,6 +3553,9 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	assert.Equal(t, float64(11), hello["length"])
 	assert.Equal(t, float64(4), hello["revpos"])
 	assert.True(t, hello["stub"].(bool))
-	assert.Equal(t, int64(11), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushBytes.Value())
-	assert.Equal(t, int64(1), btc.rt.GetDatabase().DbStats.CBLReplicationPush().AttachmentPushCount.Value())
+
+	// Check the number of sendProveAttachment/sendGetAttachment calls.
+	require.NotNil(t, btc.pushReplication.replicationStats)
+	assert.Equal(t, int64(1), btc.pushReplication.replicationStats.GetAttachment.Value())
+	assert.Equal(t, int64(0), btc.pushReplication.replicationStats.ProveAttachment.Value())
 }
