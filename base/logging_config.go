@@ -128,7 +128,7 @@ func InitLogging(logFilePath string,
 // NewMemoryLogger will log to a buffer, which can then be flushed out elsewhere later.
 func NewMemoryLogger(level LogLevel) *FileLogger {
 	logger := &FileLogger{
-		Enabled: true,
+		Enabled: AtomicBool{1},
 		level:   level,
 		name:    level.String(),
 	}
@@ -167,6 +167,67 @@ func FlushLoggerBuffers() {
 	if statsLogger != nil {
 		statsLogger.FlushBufferToLog()
 	}
+}
+
+func EnableErrorLogger(enabled bool) {
+	if errorLogger != nil {
+		errorLogger.Enabled.Set(enabled)
+	}
+}
+
+func EnableWarnLogger(enabled bool) {
+	if warnLogger != nil {
+		warnLogger.Enabled.Set(enabled)
+	}
+}
+
+func EnableInfoLogger(enabled bool) {
+	if infoLogger != nil {
+		infoLogger.Enabled.Set(enabled)
+	}
+}
+
+func EnableDebugLogger(enabled bool) {
+	if debugLogger != nil {
+		debugLogger.Enabled.Set(enabled)
+	}
+}
+
+func EnableTraceLogger(enabled bool) {
+	if traceLogger != nil {
+		traceLogger.Enabled.Set(enabled)
+	}
+}
+
+func EnableStatsLogger(enabled bool) {
+	if statsLogger != nil {
+		statsLogger.Enabled.Set(enabled)
+	}
+}
+
+// === Used by tests only ===
+func ErrorLoggerIsEnabled() bool {
+	return errorLogger.Enabled.IsTrue()
+}
+
+func WarnLoggerIsEnabled() bool {
+	return warnLogger.Enabled.IsTrue()
+}
+
+func InfoLoggerIsEnabled() bool {
+	return infoLogger.Enabled.IsTrue()
+}
+
+func DebugLoggerIsEnabled() bool {
+	return debugLogger.Enabled.IsTrue()
+}
+
+func TraceLoggerIsEnabled() bool {
+	return traceLogger.Enabled.IsTrue()
+}
+
+func StatsLoggerIsEnabled() bool {
+	return statsLogger.Enabled.IsTrue()
 }
 
 // validateLogFilePath ensures the given path is created and is a directory.

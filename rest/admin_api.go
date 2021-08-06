@@ -9,6 +9,7 @@
 package rest
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"sync/atomic"
@@ -19,6 +20,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -133,10 +135,87 @@ func (h *handler) handleGetConfig() error {
 	return nil
 }
 
-// Put admin config info
 func (h *handler) handlePutConfig() error {
-	h.writeStatus(http.StatusOK, "updated")
-	return nil
+
+	type FileLoggerPutConfig struct {
+		Enabled *bool `json:"enabled,omitempty"`
+	}
+
+	type ConsoleLoggerPutConfig struct {
+		LogLevel *base.LogLevel `json:"log_level,omitempty"`
+		LogKeys  []string       `json:"log_keys,omitempty"`
+	}
+
+	// Probably need to make our own to remove log file path / redaction level
+	type ServerPutConfig struct {
+		Logging struct {
+			Console *ConsoleLoggerPutConfig `json:"console,omitempty"`
+			Error   FileLoggerPutConfig     `json:"error,omitempty"`
+			Warn    FileLoggerPutConfig     `json:"warn,omitempty"`
+			Info    FileLoggerPutConfig     `json:"info,omitempty"`
+			Debug   FileLoggerPutConfig     `json:"debug,omitempty"`
+			Trace   FileLoggerPutConfig     `json:"trace,omitempty"`
+			Stats   FileLoggerPutConfig     `json:"stats,omitempty"`
+		} `json:"logging"`
+	}
+
+	body, err := h.readBody()
+	if err != nil {
+		return err
+	}
+
+	var config ServerPutConfig
+	d := base.JSONDecoder(bytes.NewBuffer(body))
+	d.DisallowUnknownFields()
+	err = base.WrapJSONUnknownFieldErr(d.Decode(&config))
+	if err != nil {
+		if pkgerrors.Cause(err) == base.ErrUnknownField {
+			return base.HTTPErrorf(http.StatusBadRequest, "Unknown config field specified: %v", err)
+		}
+		return err
+	}
+
+	// Go over all loggers and use
+	if config.Logging.Console != nil {
+		if config.Logging.Console.LogLevel != nil {
+			base.ConsoleLogLevel().Set(*config.Logging.Console.LogLevel)
+		}
+
+		if config.Logging.Console.LogKeys != nil {
+			testMap := make(map[string]bool)
+			for _, key := range config.Logging.Console.LogKeys {
+				testMap[key] = true
+			}
+
+			base.UpdateLogKeys(testMap, true)
+		}
+	}
+
+	if config.Logging.Error.Enabled != nil {
+		base.EnableErrorLogger(*config.Logging.Error.Enabled)
+	}
+
+	if config.Logging.Warn.Enabled != nil {
+		base.EnableWarnLogger(*config.Logging.Warn.Enabled)
+	}
+
+	if config.Logging.Info.Enabled != nil {
+		base.EnableInfoLogger(*config.Logging.Info.Enabled)
+	}
+
+	if config.Logging.Debug.Enabled != nil {
+		base.EnableDebugLogger(*config.Logging.Debug.Enabled)
+	}
+
+	if config.Logging.Trace.Enabled != nil {
+		base.EnableTraceLogger(*config.Logging.Trace.Enabled)
+	}
+
+	if config.Logging.Stats.Enabled != nil {
+		base.EnableStatsLogger(*config.Logging.Stats.Enabled)
+	}
+
+	return base.HTTPErrorf(http.StatusOK, "Updated")
 }
 
 // PUT a new database config
@@ -283,6 +362,8 @@ func (h *handler) handleGetRevTree() error {
 
 func (h *handler) handleGetLogging() error {
 	h.writeJSON(base.GetLogKeys())
+	base.Warnf("Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints " +
+		"instead")
 	return nil
 }
 
@@ -348,6 +429,9 @@ func (h *handler) handleGetStatus() error {
 }
 
 func (h *handler) handleSetLogging() error {
+	base.Warnf("Deprecation notice: Current _logging endpoints are now deprecated. Using _config endpoints " +
+		"instead")
+
 	body, err := h.readBody()
 	if err != nil {
 		return nil

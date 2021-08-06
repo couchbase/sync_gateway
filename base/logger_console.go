@@ -64,11 +64,12 @@ func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*Con
 		LogKeyMask:   &logKey,
 		ColorEnabled: *config.ColorEnabled && isStderr,
 		FileLogger: FileLogger{
-			Enabled: *config.Enabled,
+			Enabled: AtomicBool{},
 			logger:  log.New(config.Output, "", 0),
 		},
 		isStderr: isStderr,
 	}
+	logger.Enabled.Set(*config.Enabled)
 
 	// Only create the collateBuffer channel and worker if required.
 	if *config.CollationBufferSize > 1 {
