@@ -152,7 +152,7 @@ func assertHTTPError(t *testing.T, err error, status int) {
 
 func TestDatabase(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	db := setupTestDB(t)
 	defer db.Close()
