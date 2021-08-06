@@ -59,7 +59,13 @@ const (
 
 type blipHandlerFunc func(*blipHandler, *blip.Message) error
 
-var ErrUseProposeChanges = base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
+var (
+	ErrUseProposeChanges = base.HTTPErrorf(http.StatusConflict, "Use 'proposeChanges' instead")
+
+	// ErrAttachmentNotFound is returned when the attachment that is asked by one of the peers does
+	// not exist in another to prove that it has the attachment during Inter-Sync Gateway Replication.
+	ErrAttachmentNotFound = base.HTTPErrorf(http.StatusNotFound, "attachment not found")
+)
 
 // userBlipHandler wraps another blip handler with code that reloads the user object when the user
 // or the user's roles have changed, to make sure that the replication has the latest channel access grants.
@@ -933,6 +939,9 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 
 	attData, err := bh.db.GetAttachment(base.AttPrefix + digest)
 	if err != nil {
+		if bh.clientType == BLIPClientTypeSGR2 {
+			return ErrAttachmentNotFound
+		}
 		panic(fmt.Sprintf("error getting client attachment: %v", err))
 	}
 
@@ -1057,6 +1066,18 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 		return NoBLIPHandlerError
 	}
 
+	if resp.Type() == blip.ErrorType &&
+		resp.Properties["Error-Domain"] == "HTTP" &&
+		resp.Properties["Error-Code"] == "404" {
+		return ErrAttachmentNotFound
+	}
+
+	if resp.Type() == blip.ErrorType &&
+		resp.Properties["Error-Domain"] == blip.BLIPErrorDomain &&
+		resp.Properties["Error-Code"] == "500" {
+		return ErrAttachmentNotFound
+	}
+
 	if string(body) != proof {
 		base.WarnfCtx(bh.loggingCtx, "Incorrect proof for attachment %s : I sent nonce %x, expected proof %q, got %q", digest, base.MD(nonce), base.MD(proof), base.MD(string(body)))
 		return base.HTTPErrorf(http.StatusForbidden, "Incorrect proof for attachment %s", digest)
@@ -1087,6 +1108,16 @@ func (bh *blipHandler) downloadOrVerifyAttachments(sender *blip.Sender, body Bod
 			// peer doesn't support proveAttachment... Fall back to using getAttachment as proof.
 			if proveAttErr == NoBLIPHandlerError {
 				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer doesn't support proveAttachment, falling back to getAttachment for proof in doc %s (digest %s)", base.UD(docID), digest)
+				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
+				if getAttErr == nil {
+					return nil, nil
+				}
+				return nil, getAttErr
+			}
+
+			// Peer doesn't have the attachment, falling back to getAttachment for proof.
+			if proveAttErr == ErrAttachmentNotFound {
+				base.InfofCtx(bh.loggingCtx, base.KeySync, "Peer doesn't have the attachment, falling back to getAttachment for proof in doc %s (digest %s)", base.UD(docID), digest)
 				_, getAttErr := bh.sendGetAttachment(sender, docID, name, digest, meta)
 				if getAttErr == nil {
 					return nil, nil
