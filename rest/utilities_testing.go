@@ -105,6 +105,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 	if testBucket == nil {
 		testBucket = base.GetTestBucket(rt.tb)
 	}
+	rt.testBucket = testBucket
 
 	if rt.InitSyncSeq > 0 {
 		log.Printf("Initializing %s to %d", base.SyncSeqKey, rt.InitSyncSeq)
@@ -186,7 +187,6 @@ func (rt *RestTester) Bucket() base.Bucket {
 		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}
 
-	rt.testBucket = testBucket
 	rt.testBucket.Bucket = rt.RestTesterServerContext.Database("db").Bucket
 
 	rt.SetAdminParty(rt.guestEnabled)
