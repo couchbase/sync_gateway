@@ -46,7 +46,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	require.NoError(t, err)
 
 	startupConfig, _, err := automaticConfigUpgrade(configPath)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, base.UnitTestUrl(), startupConfig.Bootstrap.Server)
 	assert.Equal(t, base.TestClusterUsername(), startupConfig.Bootstrap.Username)
@@ -55,11 +55,11 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	assert.Equal(t, ":4445", startupConfig.API.AdminInterface)
 
 	writtenNewFile, err := ioutil.ReadFile(configPath)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	var writtenFileStartupConfig StartupConfig
 	err = json.Unmarshal(writtenNewFile, &writtenFileStartupConfig)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, base.UnitTestUrl(), writtenFileStartupConfig.Bootstrap.Server)
 	assert.Equal(t, base.TestClusterUsername(), writtenFileStartupConfig.Bootstrap.Username)
@@ -75,10 +75,10 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 		}
 		return nil
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	writtenBackupFile, err := ioutil.ReadFile(backupFileName)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, config, string(writtenBackupFile))
 
@@ -90,7 +90,7 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 
 	var dbConfig DbConfig
 	_, err = cbs.GetConfig(tb.GetName(), persistentConfigDefaultGroupID, &dbConfig)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, "db", dbConfig.Name)
 	assert.Equal(t, tb.GetName(), *dbConfig.Bucket)
