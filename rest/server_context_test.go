@@ -391,8 +391,9 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 			if test.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), errorText)
-			} else {
-				assert.NoError(t, err)
+			} else if err != nil {
+				// check if unrelated error
+				assert.NotContains(t, err.Error(), errorText)
 			}
 		})
 	}
