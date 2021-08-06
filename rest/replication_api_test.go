@@ -909,7 +909,7 @@ func TestPullOneshotReplicationAPI(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	activeRT, remoteRT, remoteURLString, teardown := setupSGRPeers(t)
 	defer teardown()
@@ -966,7 +966,7 @@ func TestReplicationConcurrentPush(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyCRUD, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyCRUD, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()

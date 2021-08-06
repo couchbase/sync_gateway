@@ -63,7 +63,7 @@ func getRevTreeList(bucket base.Bucket, key string, useXattrs bool) (revTreeList
 // Tests simple retrieval of rev not resident in the cache
 func TestRevisionCacheLoad(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	db := setupTestDBWithViewsEnabled(t)
 	defer db.Close()
@@ -106,7 +106,7 @@ func TestRevisionCacheLoad(t *testing.T) {
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	db := setupTestDB(t)
 	defer db.Close()

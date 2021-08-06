@@ -1295,7 +1295,7 @@ func TestBulkDocsChangeToAccess(t *testing.T) {
 
 func TestBulkDocsChangeToRoleAccess(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccess)()
 
 	rtConfig := RestTesterConfig{SyncFn: `
 		function(doc) {
@@ -2076,7 +2076,7 @@ func TestAllDocsAccessControl(t *testing.T) {
 
 func TestChannelAccessChanges(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {access(doc.owner, doc._id);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2255,7 +2255,7 @@ func TestChannelAccessChanges(t *testing.T) {
 
 func TestAccessOnTombstone(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
 			 if (doc.owner) {
@@ -2702,7 +2702,7 @@ func TestUserJoiningPopulatedChannel(t *testing.T) {
 
 func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccess, base.KeyCRUD, base.KeyChanges)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -2748,7 +2748,7 @@ func TestRoleAssignmentBeforeUserExists(t *testing.T) {
 
 func TestRoleAccessChanges(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAccess, base.KeyCRUD, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAccess, base.KeyCRUD, base.KeyChanges)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc) {role(doc.user, doc.role);channel(doc.channel)}`}
 	rt := NewRestTester(t, &rtConfig)
@@ -3161,7 +3161,7 @@ func TestOldDocHandling(t *testing.T) {
 
 func TestStarAccess(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 
 	type allDocsRow struct {
 		ID    string `json:"id"`
@@ -4450,7 +4450,7 @@ func TestNonImportedDuplicateID(t *testing.T) {
 
 func TestChanCacheActiveRevsStat(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
@@ -4812,7 +4812,7 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 // TestWebhookWinningRevChangedEvent ensures the winning_rev_changed event is only fired for a winning revision change, and checks that document_changed is always fired.
 func TestWebhookWinningRevChangedEvent(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyEvents)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeyEvents)()
 
 	wg := sync.WaitGroup{}
 
@@ -5210,7 +5210,7 @@ func TestSessionFail(t *testing.T) {
 }
 
 func TestImportOnWriteMigration(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Test doesn't work with Walrus")
 	}
@@ -5475,7 +5475,7 @@ func TestTombstonedBulkDocsWithPriorPurge(t *testing.T) {
 		t.Skip("Test requires xattrs to be enabled")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc,oldDoc){
 			console.log("doc:"+JSON.stringify(doc))
@@ -5512,7 +5512,7 @@ func TestTombstonedBulkDocsWithExistingTombstone(t *testing.T) {
 		t.Skip("Test requires xattrs to be enabled")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	rt := NewRestTester(t, &RestTesterConfig{
 		SyncFn: `function(doc,oldDoc){
 			console.log("doc:"+JSON.stringify(doc))
@@ -5634,7 +5634,7 @@ func TestUserXattrAutoImport(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	docKey := t.Name()
 	xattrKey := "myXattr"
@@ -5754,7 +5754,7 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	docKey := t.Name()
 	xattrKey := "myXattr"
@@ -5852,7 +5852,7 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	docKey := t.Name()
 	xattrKey := "myXattr"
@@ -5937,7 +5937,7 @@ func TestRemovingUserXattr(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	testCases := []struct {
 		name          string
@@ -6052,7 +6052,7 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	docKey := t.Name()
 	xattrKey := "myXattr"
@@ -7763,7 +7763,7 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 		t.Skipf("test is EE only - user xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	xattrKey := "channelInfo"
 

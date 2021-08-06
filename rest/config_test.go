@@ -805,7 +805,7 @@ func TestValidateServerContext(t *testing.T) {
 		t.Skip("Skipping this test; requires Couchbase Bucket")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	tb1 := base.GetTestBucket(t)
 	defer tb1.Close()

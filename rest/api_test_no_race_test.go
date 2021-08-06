@@ -167,7 +167,7 @@ func TestSetupAndValidate(t *testing.T) {
 	if !base.UnitTestUrlIsWalrus() {
 		t.Skip("Skipping this test; it only works on Walrus bucket")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	t.Run("Run setupAndValidate with valid config", func(t *testing.T) {
 		configFile := createTempFile(t, []byte(`{
           "databases": {

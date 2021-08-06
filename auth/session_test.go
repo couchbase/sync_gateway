@@ -23,7 +23,7 @@ import (
 func TestCreateSession(t *testing.T) {
 	var username string = "Alice"
 	const invalidSessionTTLError = "400 Invalid session time-to-live"
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
@@ -62,7 +62,7 @@ func TestCreateSession(t *testing.T) {
 }
 
 func TestDeleteSession(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
 	var username string = "Alice"
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
@@ -89,7 +89,7 @@ func TestDeleteSession(t *testing.T) {
 // using the sessionID, username, expiration and TTL from LoginSession provided.
 // If nil is provided instead of valid login session, nil must be returned.
 func TestMakeSessionCookie(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 
@@ -148,7 +148,7 @@ func TestMakeSessionCookieProperties(t *testing.T) {
 // the request is unknown, Nil would be returned from DeleteSessionForCookie.
 func TestDeleteSessionForCookie(t *testing.T) {
 	const defaultEndpoint = "http://localhost/"
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
 	testBucket := base.GetTestBucket(t)
 	defer testBucket.Close()
 

@@ -19,7 +19,7 @@ import (
 )
 
 func TestInitRole(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
 	// Check initializing role with legal role name.
 	role := &roleImpl{}
 	assert.NoError(t, role.initRole("Music", channels.SetOf(t, "Spotify", "Youtube")))

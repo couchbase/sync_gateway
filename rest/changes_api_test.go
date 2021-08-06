@@ -768,7 +768,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 // TestChangesFromCompoundSinceViaDocGrant ensures that a changes feed with a compound since value returns the correct result after a dynamic channel grant.
 func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyChanges, base.KeyHTTP)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyHTTP)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
@@ -969,7 +969,7 @@ func TestChangesLoopingWhenLowSequence(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 
 	pendingMaxWait := uint32(5)
 	maxNum := 50
@@ -1061,7 +1061,7 @@ func TestChangesLoopingWhenLowSequenceOneShotUser(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -1195,7 +1195,7 @@ func TestChangesLoopingWhenLowSequenceOneShotAdmin(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 	pendingMaxWait := uint32(5)
 	maxNum := 50
 	skippedMaxWait := uint32(120000)
@@ -1325,7 +1325,7 @@ func TestChangesLoopingWhenLowSequenceLongpollUser(t *testing.T) {
 		t.Skip("This test cannot run in xattr mode until WriteDirect() is updated.  See https://github.com/couchbase/sync_gateway/issues/2666#issuecomment-311183219")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges)()
 
 	pendingMaxWait := uint32(5)
 	maxNum := 50
@@ -1435,7 +1435,7 @@ func TestUnusedSequences(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyHTTP)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyCRUD, base.KeyHTTP)()
 
 	// Only do 10 iterations if running against walrus.  If against a live couchbase server,
 	// just do single iteration.  (Takes approx 30s)
@@ -3581,7 +3581,7 @@ func TestChangesActiveOnlyWithLimitLowRevCache(t *testing.T) {
 // Test _changes returning conflicts
 func TestChangesIncludeConflicts(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyCRUD)()
 
 	rtConfig := RestTesterConfig{SyncFn: `function(doc,oldDoc) {
 			 channel(doc.channel)
@@ -3779,7 +3779,7 @@ func TestChangesAdminChannelGrantLongpollNotify(t *testing.T) {
 // Validate handling when a single channel cache is compacted while changes request is in wait mode
 func TestCacheCompactDuringChangesWait(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	numIndexReplicas := uint(0)
 	smallCacheSize := 100
@@ -3853,7 +3853,7 @@ func TestCacheCompactDuringChangesWait(t *testing.T) {
 }
 
 func TestTombstoneCompaction(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("Walrus does not support Xattrs")

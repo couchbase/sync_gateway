@@ -93,7 +93,7 @@ func TestActiveReplicatorBlipsync(t *testing.T) {
 
 // TestActiveReplicatorHeartbeats uses an ActiveReplicator with another RestTester instance to connect, and waits for several websocket ping/pongs.
 func TestActiveReplicatorHeartbeats(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyWebSocket, base.KeyWebSocketFrame)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyWebSocket, base.KeyWebSocketFrame)()
 
 	rt := NewRestTester(t, &RestTesterConfig{
 		DatabaseConfig: &DbConfig{
@@ -154,7 +154,7 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -250,7 +250,7 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -428,7 +428,7 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 
-			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 			// Disable sequence batching for multi-RT tests (pending CBG-1000)
 			defer db.SuspendSequenceBatching()()
@@ -737,7 +737,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	const (
 		changesBatchSize  = 10
@@ -898,7 +898,7 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyReplicate)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -993,7 +993,7 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -1084,7 +1084,7 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Active
 	tb1 := base.GetTestBucket(t)
@@ -1505,7 +1505,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -1602,7 +1602,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -2287,7 +2287,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
@@ -2366,7 +2366,7 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
@@ -2763,7 +2763,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
@@ -2920,7 +2920,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
@@ -3021,7 +3021,7 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket)()
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
@@ -3337,7 +3337,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 			for _, timeoutVal := range timeoutVals {
 				t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
 
-					defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+					defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 					// Passive
 					tb2 := base.GetTestBucket(t)
@@ -3845,7 +3845,7 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			if base.GTestBucketPool.NumUsableBuckets() < 2 {
 				t.Skipf("test requires at least 2 usable test buckets")
 			}
-			defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 			// Passive
 			tb2 := base.GetTestBucket(t)
@@ -4050,7 +4050,7 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 	for _, test := range tombstoneTests {
 
 		t.Run(test.name, func(t *testing.T) {
-			defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket, base.KeyReplicate)()
+			defer base.SetUpTestLogging(base.LevelInfo, base.KeyImport, base.KeyHTTP, base.KeySync, base.KeyChanges, base.KeyCRUD, base.KeyBucket, base.KeyReplicate)()
 
 			if test.sdkResurrect && !base.TestUseXattrs() {
 				t.Skip("SDK resurrect test cases require xattrs to be enabled")
@@ -4290,7 +4290,7 @@ func TestDefaultConflictResolverWithTombstoneLocal(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name             string   // A unique name to identify the unit test.
@@ -4444,7 +4444,7 @@ func TestDefaultConflictResolverWithTombstoneRemote(t *testing.T) {
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
 	}
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	defaultConflictResolverWithTombstoneTests := []struct {
 		name            string   // A unique name to identify the unit test.
@@ -5267,7 +5267,7 @@ func TestReplicatorRevocationsMultipleAlternateAccess(t *testing.T) {
 }
 
 func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
@@ -5514,7 +5514,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 }
 
 func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	defer db.SuspendSequenceBatching()()
 

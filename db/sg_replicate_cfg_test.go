@@ -230,7 +230,7 @@ func testReplicationCfg(id, assignedNode string) *ReplicationCfg {
 
 func TestRebalanceReplications(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
 
 	type rebalanceTest struct {
 		name                  string                     // Test name
@@ -417,7 +417,7 @@ func TestRebalanceReplications(t *testing.T) {
 
 func TestUpsertReplicationConfig(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyReplicate)()
 
 	type rebalanceTest struct {
 		name           string                   // Test name

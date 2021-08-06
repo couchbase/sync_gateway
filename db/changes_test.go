@@ -99,7 +99,7 @@ func TestChangesAfterChannelAdded(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges)()
 
 	db.ChannelMapper = channels.NewDefaultChannelMapper()
 

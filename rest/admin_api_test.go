@@ -1584,7 +1584,7 @@ func TestResyncRegenerateSequences(t *testing.T) {
 		}
 	}`
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	var testBucket *base.TestBucket
 
@@ -2618,7 +2618,7 @@ func TestConfigRedaction(t *testing.T) {
 
 // Reproduces panic seen in CBG-1053
 func TestAdhocReplicationStatus(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll, base.KeyReplicate)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll, base.KeyReplicate)()
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 

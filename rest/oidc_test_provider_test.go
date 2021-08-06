@@ -106,7 +106,7 @@ func TestCreateJWTToken(t *testing.T) {
 }
 
 func TestExtractSubjectFromRefreshToken(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAuth)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAuth)()
 	// Extract subject from invalid refresh token
 	sub, err := extractSubjectFromRefreshToken("invalid_refresh_token")
 	require.Error(t, err, "invalid refresh token error")

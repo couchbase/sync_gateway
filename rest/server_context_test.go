@@ -197,7 +197,7 @@ func TestGetOrAddDatabaseFromConfig(t *testing.T) {
 }
 
 func TestStatsLoggerStopped(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	sc := DefaultStartupConfig("")
 

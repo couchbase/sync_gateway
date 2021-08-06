@@ -20,7 +20,7 @@ import (
 
 // TestBlipSyncContextSetUseDeltas verifies all permutations of setUseDeltas()
 func TestBlipSyncContextSetUseDeltas(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeySync)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeySync)()
 
 	tests := []struct {
 		name string

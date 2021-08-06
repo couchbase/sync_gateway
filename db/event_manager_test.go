@@ -716,7 +716,7 @@ func TestWebhookTimeout(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	ts, wr := InitWebhookTest()
 	defer ts.Close()
 	url := ts.URL

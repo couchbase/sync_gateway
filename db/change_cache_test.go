@@ -544,7 +544,7 @@ func TestChannelCacheBufferingWithUserDoc(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyDCP)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyDCP)()
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -582,7 +582,7 @@ func TestChannelCacheBackfill(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges)()
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -747,7 +747,7 @@ func TestLowSequenceHandling(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyQuery)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyQuery)()
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -812,7 +812,7 @@ func TestLowSequenceHandlingAcrossChannels(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges, base.KeyQuery)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges, base.KeyQuery)()
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -869,7 +869,7 @@ func TestLowSequenceHandlingWithAccessGrant(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges, base.KeyQuery)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyQuery)()
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -1070,7 +1070,7 @@ func TestLowSequenceHandlingNoDuplicates(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyCache)()
 
 	db := setupTestDBWithCacheOptions(t, shortWaitCache())
 	defer db.Close()
@@ -1255,7 +1255,7 @@ func TestSkippedViewRetrieval(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	originalBatchSize := SkippedSeqCleanViewBatch
 	SkippedSeqCleanViewBatch = 4
@@ -1325,7 +1325,7 @@ func TestStopChangeCache(t *testing.T) {
 		t.Skip("skipping test in short mode")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges, base.KeyDCP)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyChanges, base.KeyDCP)()
 
 	if base.TestUseXattrs() {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
@@ -1367,7 +1367,7 @@ func TestChannelCacheSize(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache)()
 
 	options := DefaultCacheOptions()
 	options.ChannelCacheOptions.ChannelCacheMinLength = 600
@@ -1843,7 +1843,7 @@ func TestChangeCache_InsertPendingEntries(t *testing.T) {
 		t.Skip("This test does not work with XATTRs due to calling WriteDirect().  Skipping.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges)()
 
 	cacheOptions := DefaultCacheOptions()
 	cacheOptions.CachePendingSeqMaxWait = 100 * time.Millisecond

@@ -39,7 +39,7 @@ func tojson(obj interface{}) string {
 }
 
 func TestBackupOldRevisionWithAttachments(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	deltasEnabled := base.IsEnterpriseEdition()
 	xattrsEnabled := base.TestUseXattrs()
@@ -490,7 +490,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 }
 
 func TestGenerateProofOfAttachment(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	attData := []byte(`hello world`)
 
@@ -746,7 +746,7 @@ func TestMigrateBodyAttachments(t *testing.T) {
 		t.Skip("Test requires Couchbase Server bucket when using xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	const docKey = "TestAttachmentMigrate"
 
@@ -1026,7 +1026,7 @@ func TestMigrateBodyAttachmentsMerge(t *testing.T) {
 		t.Skip("Test requires Couchbase Server bucket when using xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	const docKey = "TestAttachmentMigrate"
 
@@ -1189,7 +1189,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 		t.Skip("Test requires Couchbase Server bucket when using xattrs")
 	}
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	const docKey = "TestAttachmentMigrate"
 
@@ -1361,7 +1361,7 @@ func TestMigrateBodyAttachmentsMergeConflicting(t *testing.T) {
 }
 
 func TestAllowedAttachments(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeySync)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeySync)()
 
 	var tests = []struct {
 		name              string

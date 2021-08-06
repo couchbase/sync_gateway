@@ -152,7 +152,7 @@ func assertHTTPError(t *testing.T, err error, status int) {
 
 func TestDatabase(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -868,7 +868,7 @@ func TestAllDocsOnly(t *testing.T) {
 // Unit test for bug #673
 func TestUpdatePrincipal(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCache, base.KeyChanges)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCache, base.KeyChanges)()
 
 	db := setupTestDB(t)
 	defer db.Close()
@@ -2025,7 +2025,7 @@ func TestSyncFnMutateBody(t *testing.T) {
 // Multiple clients are attempting to push the same new revision concurrently; first writer should be successful,
 // subsequent writers should fail on CAS, and then identify that revision already exists on retry.
 func TestConcurrentPushSameNewRevision(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 	var db *Database
 	var enableCallback bool
 	var revId string
@@ -2064,7 +2064,7 @@ func TestConcurrentPushSameNewRevision(t *testing.T) {
 // Multiple clients are attempting to push the same new, non-winning revision concurrently; non-winning is an
 // update to a non-winning branch that leaves the branch still non-winning (i.e. shorter) than the active branch
 func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 	var db *Database
 	var enableCallback bool
 
@@ -2119,7 +2119,7 @@ func TestConcurrentPushSameNewNonWinningRevision(t *testing.T) {
 // Multiple clients are attempting to push the same tombstone of the winning revision for a branched document
 // First writer should be successful, subsequent writers should fail on CAS, then identify rev already exists
 func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 	var db *Database
 	var enableCallback bool
 
@@ -2174,7 +2174,7 @@ func TestConcurrentPushSameTombstoneWinningRevision(t *testing.T) {
 // Multiple clients are attempting to push conflicting non-winning revisions; multiple clients pushing different
 // updates to non-winning branches that leave the branch(es) non-winning.
 func TestConcurrentPushDifferentUpdateNonWinningRevision(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelDebug, base.KeyCRUD)()
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyCRUD)()
 	var db *Database
 	var enableCallback bool
 
