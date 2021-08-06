@@ -97,7 +97,7 @@ type APIConfig struct {
 
 	AdminInterfaceAuthentication              *bool `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication            *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
-	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_admin_authentication_permissions_check" help:"Whether to enable the DP permissions check feature of admin auth"`
+	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp" help:"Whether to enable the DP permissions check feature of admin auth"`
 
 	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"maximum duration.Second before timing out read of the HTTP(S) request"`
 	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"maximum duration.Second before timing out write of the HTTP(S) response"`
