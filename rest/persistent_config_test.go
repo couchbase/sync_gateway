@@ -3,7 +3,6 @@ package rest
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -69,7 +68,8 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	assert.Equal(t, ":4445", writtenFileStartupConfig.API.AdminInterface)
 
 	backupFileName := ""
-	err = filepath.WalkDir(tmpDir, func(path string, d fs.DirEntry, err error) error {
+
+	err = filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
 		if strings.Contains(filepath.Base(path), "backup") {
 			backupFileName = path
 		}
