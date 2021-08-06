@@ -172,12 +172,12 @@ func (sc *ServerContext) Close() {
 
 	err := base.TerminateAndWaitForClose(sc.statsContext.terminator, sc.statsContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
-		base.Infof(base.KeyAll, "Couldn't stop stats logger:", err)
+		base.Infof(base.KeyAll, "Couldn't stop stats logger: %v", err)
 	}
 
 	err = base.TerminateAndWaitForClose(sc.bootstrapContext.terminator, sc.bootstrapContext.doneChan, serverContextStopMaxWait)
 	if err != nil {
-		base.Infof(base.KeyAll, "Couldn't stop background config update worker:", err)
+		base.Infof(base.KeyAll, "Couldn't stop background config update worker: %v", err)
 	}
 
 	for _, ctx := range sc.databases_ {
