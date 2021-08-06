@@ -1644,7 +1644,7 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport)()
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DbConfig{
@@ -1709,7 +1709,7 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 
 	SkipImportTestsIfNotEnabled(t)
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyImport)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport)()
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DbConfig{

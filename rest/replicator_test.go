@@ -737,7 +737,7 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	const (
 		changesBatchSize  = 10
@@ -1602,7 +1602,7 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -2763,7 +2763,7 @@ func TestActiveReplicatorRecoverFromRemoteRollback(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
@@ -2920,7 +2920,7 @@ func TestActiveReplicatorRecoverFromMismatchedRev(t *testing.T) {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyBucket, base.KeyReplicate, base.KeyHTTP, base.KeyHTTPResp, base.KeySync, base.KeySyncMsg)()
 
 	// Passive
 	rt2 := NewRestTester(t, &RestTesterConfig{
@@ -3337,7 +3337,7 @@ func TestActiveReplicatorReconnectOnStart(t *testing.T) {
 			for _, timeoutVal := range timeoutVals {
 				t.Run(test.name+" with timeout "+timeoutVal.String(), func(t *testing.T) {
 
-					defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+					defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 					// Passive
 					tb2 := base.GetTestBucket(t)
@@ -5514,7 +5514,7 @@ func TestReplicatorRevocationsFromZero(t *testing.T) {
 }
 
 func TestReplicatorSwitchPurgeNoReset(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	defer db.SuspendSequenceBatching()()
 

@@ -1960,7 +1960,7 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 		t.Skip("Enterprise-only test for delta sync")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DbConfig{
@@ -2180,7 +2180,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 // └──────────────┘           └───────────┘          └───────────┘
 func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyHTTP, base.KeyCache, base.KeySync, base.KeySyncMsg)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyCache, base.KeySync, base.KeySyncMsg)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
@@ -2364,7 +2364,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 		t.Skipf("Skipping enterprise-only delta sync test.")
 	}
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
@@ -2457,7 +2457,7 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 // and checks that full body replication is still supported in CE.
 func TestBlipDeltaSyncPush(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
 		DatabaseConfig: &DbConfig{
@@ -2723,7 +2723,7 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 // Reproduces CBG-617 (a client using activeOnly for the initial replication, and then still expecting to get subsequent tombstones afterwards)
 func TestActiveOnlyContinuous(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
@@ -2759,7 +2759,7 @@ func TestActiveOnlyContinuous(t *testing.T) {
 // Test that exercises Sync Gateway's norev handler
 func TestBlipNorev(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	rt := NewRestTester(t, &RestTesterConfig{guestEnabled: true})
 	defer rt.Close()
@@ -2791,7 +2791,7 @@ func TestBlipNorev(t *testing.T) {
 
 // TestBlipDeltaSyncPushAttachment tests updating a doc that has an attachment with a delta that doesn't modify the attachment.
 func TestBlipDeltaSyncPushAttachment(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	if !base.IsEnterpriseEdition() {
 		t.Skip("Delta test requires EE")
@@ -3000,7 +3000,7 @@ func TestUpdateExistingAttachment(t *testing.T) {
 }
 
 func TestRevocationMessage(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	revocationTester, rt := initScenario(t, nil)
 	defer rt.Close()
@@ -3193,7 +3193,7 @@ func TestRevocationNoRev(t *testing.T) {
 
 func TestRemovedMessageWithAlternateAccess(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	rt := NewRestTester(t, nil)
 	defer rt.Close()

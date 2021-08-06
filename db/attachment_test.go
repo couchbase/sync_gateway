@@ -490,7 +490,7 @@ func TestForEachStubAttachmentErrors(t *testing.T) {
 }
 
 func TestGenerateProofOfAttachment(t *testing.T) {
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyAll)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	attData := []byte(`hello world`)
 

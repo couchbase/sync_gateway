@@ -768,7 +768,7 @@ func TestPostChangesAdminChannelGrantRemovalWithLimit(t *testing.T) {
 // TestChangesFromCompoundSinceViaDocGrant ensures that a changes feed with a compound since value returns the correct result after a dynamic channel grant.
 func TestChangesFromCompoundSinceViaDocGrant(t *testing.T) {
 
-	defer base.SetUpTestLogging(base.LevelTrace, base.KeyChanges, base.KeyHTTP)()
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyChanges, base.KeyHTTP)()
 
 	// Disable sequence batching for multi-RT tests (pending CBG-1000)
 	defer db.SuspendSequenceBatching()()
