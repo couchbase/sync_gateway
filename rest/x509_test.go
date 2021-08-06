@@ -30,7 +30,7 @@ func TestX509RoundtripUsingIP(t *testing.T) {
 	defer tb.Close()
 	defer teardownFn()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 
 	// write a doc to ensure bucket ops work
@@ -51,7 +51,7 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 	defer tb.Close()
 	defer teardownFn()
 
-	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb})
+	rt := NewRestTester(t, &RestTesterConfig{TestBucket: tb, useTLSServer: true})
 	defer rt.Close()
 
 	// write a doc to ensure bucket ops work
