@@ -5630,6 +5630,10 @@ func TestUserXattrAutoImport(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	docKey := t.Name()
@@ -5746,6 +5750,10 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	docKey := t.Name()
@@ -5840,6 +5848,10 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 		t.Skip("This test only works with XATTRS enabled")
 	}
 
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	docKey := t.Name()
@@ -5919,6 +5931,10 @@ func TestRemovingUserXattr(t *testing.T) {
 
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
 	}
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
@@ -6030,6 +6046,10 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
 	}
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
@@ -7737,6 +7757,10 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 
 	if !base.TestUseXattrs() {
 		t.Skip("This test only works with XATTRS enabled")
+	}
+
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
 	}
 
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()

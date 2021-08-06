@@ -2653,6 +2653,10 @@ func TestUserXattrsRawGet(t *testing.T) {
 		t.Skip("Test requires xattrs to be enabled")
 	}
 
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("test is EE only - user xattrs")
+	}
+
 	docKey := t.Name()
 	xattrKey := "xattrKey"
 
