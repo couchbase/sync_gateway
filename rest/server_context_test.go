@@ -332,8 +332,6 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 
 // CBG-1518 - Test CA Certificate behaviour with and with Bootstrap.ServerTLSSkipVerify
 func TestTLSSkipVerifyCombinations(t *testing.T) {
-	// Force teardown due to setupServerContext setting up logging
-	defer base.SetUpTestLogging(base.LevelInfo, base.KeyNone)()
 	errorText := "cannot skip server TLS validation and use CA Cert"
 	testCases := []struct {
 		name                string
@@ -383,11 +381,10 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 				},
 			}
 
-			sc, err := setupServerContext(startupConfig, false)
+			err := startupConfig.validate()
 			if test.expectError {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), errorText)
-				assert.Empty(t, sc)
 			} else if err != nil {
 				// check if unrelated error
 				assert.NotContains(t, err.Error(), errorText)
