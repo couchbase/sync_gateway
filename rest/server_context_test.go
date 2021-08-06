@@ -376,14 +376,8 @@ func TestTLSSkipVerifyCombinations(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			startupConfig := &StartupConfig{
 				Bootstrap: BootstrapConfig{
-					Server:              base.UnitTestUrl(),
 					CACertPath:          test.caCert,
 					ServerTLSSkipVerify: test.serverTLSSkipVerify,
-				},
-				API: APIConfig{
-					HTTPS: HTTPSConfig{
-						UseTLSClient: base.BoolPtr(false),
-					},
 				},
 			}
 
