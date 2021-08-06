@@ -404,7 +404,6 @@ func TestActiveReplicatorPullMergeConflictingAttachments(t *testing.T) {
 			remoteConflictingRevBody: `{"source":"rt2","_attachments":{"initialAtt.txt":{"stub":true,"revpos":1}},"channels":["alice"]}`,
 			expectedAttachments:      1,
 		},
-
 		{
 			name:                     "preserve initial attachment with new local att",
 			initialRevBody:           `{"_attachments":{"initialAtt.txt":{"data":"aW5pdGlhbA=="}},"channels":["alice"]}`,
@@ -4662,7 +4661,6 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			remoteMutation: newRevisionState(4, "c", true, 0),
 			expectedResult: newRevisionState(5, "b", false, 0),
 		},
-
 		{
 			// simpleMutation includes an attachment prior to conflict, validates it's preserved
 			name:           "localAttachment",
@@ -4687,7 +4685,6 @@ func TestLocalWinsConflictResolution(t *testing.T) {
 			remoteMutation: newRevisionState(6, "c", false, 5),
 			expectedResult: newRevisionState(7, "b", false, 0),
 		},
-
 		{
 			// remoteAttachmentPostConflict adds the same attachment to local and remote conflicting branches
 			name:           "conflictingDocMatchingAttachmentPostConflict",
