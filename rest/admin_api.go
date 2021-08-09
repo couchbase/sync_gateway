@@ -101,6 +101,9 @@ func (h *handler) handleGetDbConfig() error {
 	includeJavascript, _ := h.getOptBoolQuery("include_javascript", true)
 	_ = includeJavascript
 
+	// force an async config update
+	h.server.bootstrapContext.dbUpdateChan <- h.db.Name
+
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
 		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Redacted()

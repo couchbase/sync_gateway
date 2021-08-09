@@ -56,9 +56,10 @@ type ServerContext struct {
 }
 
 type bootstrapContext struct {
-	connection base.BootstrapConnection
-	terminator chan struct{} // Used to stop the goroutine handling the stats logging
-	doneChan   chan struct{} // doneChan is closed when the stats logger goroutine finishes.
+	connection   base.BootstrapConnection
+	dbUpdateChan chan string   // dbUpdateChan receives database names to force a config update to happen.
+	terminator   chan struct{} // Used to stop the goroutine handling the stats logging
+	doneChan     chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
 
 type DatabaseConfig struct {
