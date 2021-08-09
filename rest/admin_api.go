@@ -143,6 +143,22 @@ func (h *handler) handlePutDbConfig() error {
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
+// GET database config sync function
+func (h *handler) handleGetDbConfigSync() error {
+	h.assertAdminOnly()
+	// TODO: STUB
+	h.writeJSONStatus(http.StatusOK, `function(doc, oldDoc) {
+	// this is a stub sync function
+}`)
+}
+
+// PUT a new database config sync function
+func (h *handler) handlePutDbConfigSync() error {
+	h.assertAdminOnly()
+	// TODO: STUB
+	return base.HTTPErrorf(http.StatusOK, "updated")
+}
+
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
