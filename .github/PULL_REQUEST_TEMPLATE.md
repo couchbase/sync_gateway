@@ -1,4 +1,4 @@
-CBG-????
+CBG-0000
 
 Describe your PR here...
 - Use bullet points if there's more than one thing changed
@@ -14,4 +14,3 @@ Describe your PR here...
 ## [Integration Tests](http://uberjenkins.sc.couchbase.com:8080/job/sync-gateway-integration/build?delay=0sec)
 - [ ] `xattrs=true ` http://uberjenkins.sc.couchbase.com:8080/job/sync-gateway-integration/???/
 - [ ] `xattrs=false` http://uberjenkins.sc.couchbase.com:8080/job/sync-gateway-integration/???/
-
