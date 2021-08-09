@@ -261,9 +261,9 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	dbr.Handle("/_config/sync",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handlePutDbConfigSync)).Methods("PUT")
 	dbr.Handle("/_config/import_filter",
-		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handleGetDbConfigImportFilter)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigImportFilter)).Methods("GET")
 	dbr.Handle("/_config/import_filter",
-		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handlePutDbConfigImportFilter)).Methods("PUT")
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigImportFilter)).Methods("PUT")
 
 	dbr.Handle("/_resync",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")
