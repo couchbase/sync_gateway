@@ -325,7 +325,20 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 		dbConfig.Sync = value.Sync
 	case h.permissionsResults[PermConfigureAuth.PermissionName]:
-		// TODO: DB Guest User
+		var value struct {
+			Guest *db.PrincipalConfig `json:"guest,omitempty"`
+		}
+		if err := h.readSanitizeJSON(&value); err != nil {
+			if errors.Cause(err) == base.ErrUnknownField {
+				return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
+			}
+			return err
+		}
+		if value.Guest == nil {
+			// noop
+			return nil
+		}
+		dbConfig.Guest = value.Guest
 	default:
 		return base.HTTPErrorf(http.StatusForbidden, "not authorized to update database")
 	}
