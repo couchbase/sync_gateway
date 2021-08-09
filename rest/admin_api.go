@@ -103,6 +103,10 @@ func (h *handler) handleGetDbConfig() error {
 
 	// force an async config update
 	h.server.bootstrapContext.dbUpdateChan <- h.db.Name
+	if !h.getBoolQuery("skip_update") {
+		// force an async config update
+		h.server.bootstrapContext.dbUpdateChan <- h.db.Name
+	}
 
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
