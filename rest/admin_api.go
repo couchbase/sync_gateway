@@ -95,6 +95,12 @@ func (h *handler) handleDbOffline() error {
 
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
+	// TODO: STUBS
+	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
+	_ = includeRuntime
+	includeJavascript, _ := h.getOptBoolQuery("include_javascript", true)
+	_ = includeJavascript
+
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
 		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Redacted()
@@ -110,6 +116,10 @@ func (h *handler) handleGetDbConfig() error {
 
 // Get admin config info
 func (h *handler) handleGetConfig() error {
+	// TODO: STUB
+	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
+	_ = includeRuntime
+
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
 		cfg, err := h.server.config.Redacted()
@@ -120,6 +130,12 @@ func (h *handler) handleGetConfig() error {
 	} else {
 		h.writeJSON(h.server.config)
 	}
+	return nil
+}
+
+// Put admin config info
+func (h *handler) handlePutConfig() error {
+	h.writeStatus(http.StatusOK, "updated")
 	return nil
 }
 
@@ -150,6 +166,7 @@ func (h *handler) handleGetDbConfigSync() error {
 	h.writeJSONStatus(http.StatusOK, `function(doc, oldDoc) {
 	// this is a stub sync function
 }`)
+	return nil
 }
 
 // PUT a new database config sync function
@@ -166,6 +183,7 @@ func (h *handler) handleGetDbConfigImportFilter() error {
 	h.writeJSONStatus(http.StatusOK, `function(doc) {
 	// this is a stub import filter function
 }`)
+	return nil
 }
 
 // PUT a new database config import filter function
