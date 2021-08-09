@@ -159,6 +159,22 @@ func (h *handler) handlePutDbConfigSync() error {
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
+// GET database config import filter function
+func (h *handler) handleGetDbConfigImportFilter() error {
+	h.assertAdminOnly()
+	// TODO: STUB
+	h.writeJSONStatus(http.StatusOK, `function(doc) {
+	// this is a stub import filter function
+}`)
+}
+
+// PUT a new database config import filter function
+func (h *handler) handlePutDbConfigImportFilter() error {
+	h.assertAdminOnly()
+	// TODO: STUB
+	return base.HTTPErrorf(http.StatusOK, "updated")
+}
+
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
