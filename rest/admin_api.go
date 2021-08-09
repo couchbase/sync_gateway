@@ -95,6 +95,12 @@ func (h *handler) handleDbOffline() error {
 
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
+	// TODO: STUBS
+	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
+	_ = includeRuntime
+	includeJavascript, _ := h.getOptBoolQuery("include_javascript", true)
+	_ = includeJavascript
+
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
 		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Redacted()
@@ -110,6 +116,10 @@ func (h *handler) handleGetDbConfig() error {
 
 // Get admin config info
 func (h *handler) handleGetConfig() error {
+	// TODO: STUB
+	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
+	_ = includeRuntime
+
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
 		cfg, err := h.server.config.Redacted()
@@ -120,6 +130,12 @@ func (h *handler) handleGetConfig() error {
 	} else {
 		h.writeJSON(h.server.config)
 	}
+	return nil
+}
+
+// Put admin config info
+func (h *handler) handlePutConfig() error {
+	h.writeStatus(http.StatusOK, "updated")
 	return nil
 }
 
@@ -141,6 +157,40 @@ func (h *handler) handlePutDbConfig() error {
 	h.server.dbConfigs[dbName] = &dbc
 
 	return base.HTTPErrorf(http.StatusCreated, "created")
+}
+
+// GET database config sync function
+func (h *handler) handleGetDbConfigSync() error {
+	h.assertAdminOnly()
+	// TODO: STUB
+	h.writeJSONStatus(http.StatusOK, `function(doc, oldDoc) {
+	// this is a stub sync function
+}`)
+	return nil
+}
+
+// PUT a new database config sync function
+func (h *handler) handlePutDbConfigSync() error {
+	h.assertAdminOnly()
+	// TODO: STUB
+	return base.HTTPErrorf(http.StatusOK, "updated")
+}
+
+// GET database config import filter function
+func (h *handler) handleGetDbConfigImportFilter() error {
+	h.assertAdminOnly()
+	// TODO: STUB
+	h.writeJSONStatus(http.StatusOK, `function(doc) {
+	// this is a stub import filter function
+}`)
+	return nil
+}
+
+// PUT a new database config import filter function
+func (h *handler) handlePutDbConfigImportFilter() error {
+	h.assertAdminOnly()
+	// TODO: STUB
+	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
 // "Delete" a database (it doesn't actually do anything to the underlying bucket)

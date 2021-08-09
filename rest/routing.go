@@ -211,6 +211,8 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 		makeHandler(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar)).Methods("GET")
 	r.Handle("/_config",
 		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetConfig)).Methods("GET")
+	r.Handle("/_config",
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePutConfig)).Methods("PUT")
 
 	r.Handle("/_status",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetStatus)).Methods("GET")
@@ -253,6 +255,16 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	// TODO: This config endpoint is being altered in @bbrks admin config PR
 	dbr.Handle("/_config",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, (*handler).handlePutDbConfig)).Methods("PUT")
+
+	dbr.Handle("/_config/sync",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handleGetDbConfigSync)).Methods("GET")
+	dbr.Handle("/_config/sync",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn}, nil, (*handler).handlePutDbConfigSync)).Methods("PUT")
+	dbr.Handle("/_config/import_filter",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfigImportFilter)).Methods("GET")
+	dbr.Handle("/_config/import_filter",
+		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handlePutDbConfigImportFilter)).Methods("PUT")
+
 	dbr.Handle("/_resync",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetResync)).Methods("GET")
 	dbr.Handle("/_resync",
