@@ -903,7 +903,6 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 		if sc.config.Bootstrap.ConfigUpdateFrequency.Value() > 0 {
 			sc.bootstrapContext.terminator = make(chan struct{})
 			sc.bootstrapContext.doneChan = make(chan struct{})
-			sc.bootstrapContext.dbUpdateChan = make(chan string)
 
 			base.Infof(base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
 			go func() {
@@ -915,12 +914,6 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 						base.Infof(base.KeyConfig, "Stopping background config polling loop")
 						t.Stop()
 						return
-					case dbName := <-sc.bootstrapContext.dbUpdateChan:
-						base.Infof(base.KeyConfig, "Forcing config update for db: %q", dbName)
-						_, err := sc.fetchAndLoadDatabase(dbName)
-						if err != nil {
-							base.Warnf("Couldn't load config for %q from bucket: %v", dbName, err)
-						}
 					case <-t.C:
 						count, err := sc.fetchAndLoadConfigs()
 						if err != nil {

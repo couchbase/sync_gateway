@@ -95,18 +95,18 @@ func (h *handler) handleDbOffline() error {
 
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
+	if h.getBoolQuery("refresh_config") {
+		_, err := h.server.fetchAndLoadDatabase(h.db.Name)
+		if err != nil {
+			return err
+		}
+	}
+
 	// TODO: STUBS
 	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
 	_ = includeRuntime
 	includeJavascript, _ := h.getOptBoolQuery("include_javascript", true)
 	_ = includeJavascript
-
-	// force an async config update
-	h.server.bootstrapContext.dbUpdateChan <- h.db.Name
-	if !h.getBoolQuery("skip_update") {
-		// force an async config update
-		h.server.bootstrapContext.dbUpdateChan <- h.db.Name
-	}
 
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
