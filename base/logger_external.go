@@ -51,10 +51,6 @@ var _ gocb.Logger = GoCBLogger{}
 //   Trace  -> SG Trace
 //   Others -> no-op
 func (GoCBLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
-	// FIXME: skip noisy logs when the gocb log key is not explicitly enabled
-	if level >= gocb.LogInfo && !consoleLogger.LogKeyMask.enabled(KeyGoCB, false) {
-		return nil
-	}
 	switch level {
 	case gocb.LogError:
 		logTo(context.TODO(), LevelError, KeyAll, KeyGoCB.String()+": "+format, v...)
@@ -107,16 +103,8 @@ func ClogCallback(level, format string, v ...interface{}) string {
 		//    routing to Info pending potential enhancements on cbgt side.
 		logTo(context.TODO(), LevelInfo, KeyDCP, format, v...)
 	case "DEBU":
-		// FIXME: skip noisy logs when the dcp log key is not explicitly enabled
-		if !consoleLogger.LogKeyMask.enabled(KeyDCP, false) {
-			return ""
-		}
 		logTo(context.TODO(), LevelDebug, KeyDCP, format, v...)
 	case "TRAC":
-		// FIXME: skip noisy logs when the dcp log key is not explicitly enabled
-		if !consoleLogger.LogKeyMask.enabled(KeyDCP, false) {
-			return ""
-		}
 		logTo(context.TODO(), LevelTrace, KeyDCP, format, v...)
 	}
 	return ""

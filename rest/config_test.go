@@ -1594,7 +1594,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {
@@ -1694,7 +1694,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {
@@ -1806,7 +1806,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {

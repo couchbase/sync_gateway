@@ -50,7 +50,7 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
 	} else {
-		// load database in-memory
+		// load database in-memory for non-persistent nodes
 		if _, err := h.server.AddDatabaseFromConfig(*config); err != nil {
 			return err
 		}
