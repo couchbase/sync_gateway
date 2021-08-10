@@ -37,10 +37,10 @@ const kMaxInlineAttachmentSize = 200
 // JSON bodies smaller than this won't be GZip-encoded.
 const kMinCompressedJSONSize = 300
 
-// ReadJSONFromMIMEWithErrorMessage parses a JSON MIME body, unmarshalling it into "into".
+// ReadJSONFromMIME parses a JSON MIME body, unmarshalling it into "into".
 // Closes the input io.ReadCloser once done.
-func ReadJSONFromMIMEWithErrorMessage(headers http.Header, input io.ReadCloser, into interface{}) error {
-	err := ReadJSONFromMIME(headers, input, into)
+func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}) error {
+	err := ReadJSONFromMIMERawErr(headers, input, into)
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
 		if errors.Cause(err) == base.ErrUnknownField {
@@ -49,11 +49,10 @@ func ReadJSONFromMIMEWithErrorMessage(headers http.Header, input io.ReadCloser, 
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
 		}
 	}
-	_ = input.Close()
 	return err
 }
 
-func ReadJSONFromMIME(headers http.Header, input io.ReadCloser, into interface{}) error {
+func ReadJSONFromMIMERawErr(headers http.Header, input io.ReadCloser, into interface{}) error {
 	input, err := processContentEncoding(headers, input)
 	if err != nil {
 		return err
@@ -222,7 +221,7 @@ func ReadMultipartDocument(reader *multipart.Reader) (db.Body, error) {
 		return nil, err
 	}
 	var body db.Body
-	err = ReadJSONFromMIMEWithErrorMessage(http.Header(mainPart.Header), mainPart, &body)
+	err = ReadJSONFromMIME(http.Header(mainPart.Header), mainPart, &body)
 	if err != nil {
 		return nil, err
 	}
