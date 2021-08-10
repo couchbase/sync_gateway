@@ -942,6 +942,9 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		if bh.clientType == BLIPClientTypeSGR2 {
 			return ErrAttachmentNotFound
 		}
+		if IsMissingDDocError(err) {
+			return ErrAttachmentNotFound
+		}
 		panic(fmt.Sprintf("error getting client attachment: %v", err))
 	}
 
@@ -1069,12 +1072,6 @@ func (bh *blipHandler) sendProveAttachment(sender *blip.Sender, docID, name, dig
 	if resp.Type() == blip.ErrorType &&
 		resp.Properties["Error-Domain"] == "HTTP" &&
 		resp.Properties["Error-Code"] == "404" {
-		return ErrAttachmentNotFound
-	}
-
-	if resp.Type() == blip.ErrorType &&
-		resp.Properties["Error-Domain"] == blip.BLIPErrorDomain &&
-		resp.Properties["Error-Code"] == "500" {
 		return ErrAttachmentNotFound
 	}
 
