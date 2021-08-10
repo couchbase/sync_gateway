@@ -59,7 +59,7 @@ var recoverableGocbV1Errors = map[string]struct{}{
 	gocbcore.ErrTmpFail.Error():  {},
 }
 
-// Implementation of sgbucket.Bucket that talks to a Couchbase server and useAsGocs gocb
+// Implementation of sgbucket.Bucket that talks to a Couchbase server and uses gocb v1
 type CouchbaseBucketGoCB struct {
 	*gocb.Bucket               // the underlying gocb bucket
 	Spec         BucketSpec    // keep a copy of the BucketSpec for DCP usage
