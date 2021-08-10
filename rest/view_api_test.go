@@ -534,7 +534,6 @@ func TestViewQueryWithIntKeys(t *testing.T) {
 }
 
 func TestAdminGroupLevelReduceSumQuery(t *testing.T) {
-	t.Skip("Disabling until gocbc-1140 is fixed")
 	rtConfig := RestTesterConfig{
 		SyncFn:       `function(doc) {channel(doc.channel)}`,
 		guestEnabled: true,
