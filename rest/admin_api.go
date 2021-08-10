@@ -9,7 +9,6 @@
 package rest
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"sync/atomic"
@@ -159,18 +158,11 @@ func (h *handler) handlePutConfig() error {
 		} `json:"logging"`
 	}
 
-	body, err := h.readBody()
-	if err != nil {
-		return err
-	}
-
 	var config ServerPutConfig
-	d := base.JSONDecoder(bytes.NewBuffer(body))
-	d.DisallowUnknownFields()
-	err = base.WrapJSONUnknownFieldErr(d.Decode(&config))
+	err := h.readJSONInto(&config)
 	if err != nil {
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
-			return base.HTTPErrorf(http.StatusBadRequest, "Unknown config field specified: %v", err)
+			return base.HTTPErrorf(http.StatusBadRequest, "Unable to configure given options at runtime: %v", err)
 		}
 		return err
 	}

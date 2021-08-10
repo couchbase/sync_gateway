@@ -3059,6 +3059,24 @@ func TestConfigEndpoint(t *testing.T) {
 			ExpectError:    true,
 		},
 		{
+			Name: "Set non-runtime configurable Fields",
+			Config: `
+			{
+				"logging": {
+					"console": {
+						"log_level": "info",
+						"log_keys": ["Config", "HTTP+"]
+					},
+				},
+				"bootstrap": {
+					"server": "couchbase://0.0.0.0"
+				}
+			}`,
+			ConsoleLevel:   base.LevelTrace,
+			ConsoleLogKeys: []string{"Config"},
+			ExpectError:    true,
+		},
+		{
 			Name: "Enable Error Logger",
 			Config: `
 			{
