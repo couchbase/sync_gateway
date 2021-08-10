@@ -4,7 +4,7 @@
 [![GoDoc](https://godoc.org/github.com/couchbase/sync_gateway?status.svg)](https://godoc.org/github.com/couchbase/sync_gateway)
 [![Go Report Card](https://goreportcard.com/badge/github.com/couchbase/sync_gateway)](https://goreportcard.com/report/github.com/couchbase/sync_gateway)
 [![Code Coverage](https://img.shields.io/coveralls/github/couchbase/sync_gateway.svg)](https://coveralls.io/github/couchbase/sync_gateway)
-[![License](https://img.shields.io/github/license/couchbase/sync_gateway.svg)](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-BSL%201.1-lightgrey)](https://github.com/couchbase/sync_gateway/blob/master/LICENSE)
 
 Sync Gateway is a horizontally scalable web server that securely manages the access control and
 synchronization of data between [Couchbase Lite][CB_LITE] and [Couchbase Server][CB_SERVER].
