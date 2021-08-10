@@ -942,7 +942,7 @@ func (bh *blipHandler) handleProveAttachment(rq *blip.Message) error {
 		if bh.clientType == BLIPClientTypeSGR2 {
 			return ErrAttachmentNotFound
 		}
-		if IsMissingDDocError(err) {
+		if base.IsKeyNotFoundError(bh.db.Bucket, err) {
 			return ErrAttachmentNotFound
 		}
 		panic(fmt.Sprintf("error getting client attachment: %v", err))
