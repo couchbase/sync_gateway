@@ -554,7 +554,7 @@ func TestSetupAndValidateLoggingWithLoggingConfig(t *testing.T) {
 	t.Skip("Skipping TestSetupAndValidateLoggingWithLoggingConfig")
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	logFilePath := "/var/log/sync_gateway"
-	sc := &StartupConfig{Logging: LoggingConfig{LogFilePath: logFilePath, RedactionLevel: base.RedactFull}}
+	sc := &StartupConfig{Logging: base.LoggingConfig{LogFilePath: logFilePath, RedactionLevel: base.RedactFull}}
 	err := sc.SetupAndValidateLogging()
 	assert.NoError(t, err, "Setup and validate logging should be successful")
 	assert.Equal(t, base.RedactFull, sc.Logging.RedactionLevel)

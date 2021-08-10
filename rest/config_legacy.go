@@ -121,7 +121,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			MetricsInterfaceAuthentication:            lc.MetricsInterfaceAuthentication,
 			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
 		},
-		Logging: LoggingConfig{},
+		Logging: base.LoggingConfig{},
 		Auth: AuthConfig{
 			BcryptCost: lc.BcryptCost,
 		},

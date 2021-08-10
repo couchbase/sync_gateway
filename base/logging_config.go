@@ -230,6 +230,35 @@ func StatsLoggerIsEnabled() bool {
 	return statsLogger.Enabled.IsTrue()
 }
 
+type LoggingConfig struct {
+	LogFilePath    string               `json:"log_file_path,omitempty"   help:"Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file"`
+	RedactionLevel RedactionLevel       `json:"redaction_level,omitempty" help:"Redaction level to apply to log output"`
+	Console        *ConsoleLoggerConfig `json:"console,omitempty"`
+	Error          *FileLoggerConfig    `json:"error,omitempty"`
+	Warn           *FileLoggerConfig    `json:"warn,omitempty"`
+	Info           *FileLoggerConfig    `json:"info,omitempty"`
+	Debug          *FileLoggerConfig    `json:"debug,omitempty"`
+	Trace          *FileLoggerConfig    `json:"trace,omitempty"`
+	Stats          *FileLoggerConfig    `json:"stats,omitempty"`
+}
+
+func BuildLoggingConfigFromLoggers(redactionLevel RedactionLevel, LogFilePath string) *LoggingConfig {
+	config := LoggingConfig{
+		RedactionLevel: redactionLevel,
+		LogFilePath:    LogFilePath,
+	}
+
+	config.Console = consoleLogger.getConsoleLoggerConfig()
+	config.Error = errorLogger.getFileLoggerConfig()
+	config.Warn = warnLogger.getFileLoggerConfig()
+	config.Info = infoLogger.getFileLoggerConfig()
+	config.Debug = debugLogger.getFileLoggerConfig()
+	config.Trace = traceLogger.getFileLoggerConfig()
+	config.Stats = statsLogger.getFileLoggerConfig()
+
+	return &config
+}
+
 // validateLogFilePath ensures the given path is created and is a directory.
 func validateLogFilePath(logFilePath string) error {
 	// Make full directory structure if it doesn't already exist
