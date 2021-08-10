@@ -349,7 +349,7 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 
 	spec.UseXattrs = config.UseXattrs()
 	if !spec.UseXattrs {
-		base.Warnf("Deprecation notice: the option to disable Shared Bucket Access is due to be deprecated. It is recommended that this is enabled.")
+		base.Warnf("Running Sync Gateway without shared bucket access is deprecated. Recommendation: set enable_shared_bucket_access=true")
 	}
 
 	if config.BucketOpTimeoutMs != nil {
