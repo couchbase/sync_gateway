@@ -1284,14 +1284,11 @@ func putDDocForTombstones(name string, payload []byte, capiEps []string, client 
 		return err
 	}
 
+	defer ensureBodyClosed(resp.Body)
 	if resp.StatusCode != 201 {
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			return err
-		}
-		err = resp.Body.Close()
-		if err != nil {
-			Warnf("Failed to close socket: %v", err)
 		}
 		return fmt.Errorf("Client error: %s", string(data))
 	}

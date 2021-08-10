@@ -142,5 +142,15 @@ func (c *Collection) IsErrNoResults(err error) bool {
 }
 
 func (c *Collection) getIndexes() (indexes []string, err error) {
-	return nil, errors.New("not implemented")
+
+	indexes = []string{}
+	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), nil)
+	if err != nil {
+		return indexes, err
+	}
+
+	for _, indexInfo := range indexInfo {
+		indexes = append(indexes, indexInfo.Name)
+	}
+	return indexes, nil
 }

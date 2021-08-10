@@ -569,3 +569,10 @@ func retrievePurgeInterval(bucket CouchbaseStore, uri string) (time.Duration, er
 	purgeIntervalHours := int(purgeResponse.PurgeInterval*24 + 0.5)
 	return time.Duration(purgeIntervalHours) * time.Hour, nil
 }
+
+func ensureBodyClosed(body io.ReadCloser) {
+	err := body.Close()
+	if err != nil {
+		Debugf(KeyBucket, "Failed to close socket: %v", err)
+	}
+}
