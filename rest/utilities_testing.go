@@ -149,18 +149,10 @@ func (rt *RestTester) Bucket() base.Bucket {
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
 
 	// Copy this startup config at this point into initial startup config
-	var initialStartupConfig StartupConfig
-	scBytes, err := base.JSONMarshal(sc)
+	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {
-		rt.tb.Fatalf("Unable to marshal initial startup config: %v", err)
+		rt.tb.Fatalf("Unable to copy initial startup config: %v", err)
 	}
-
-	err = json.Unmarshal(scBytes, &initialStartupConfig)
-	if err != nil {
-		rt.tb.Fatalf("Unable to unmarshal initial startup config: %v", err)
-	}
-
-	rt.RestTesterServerContext.initialStartupConfig = &initialStartupConfig
 
 	useXattrs := base.TestUseXattrs()
 

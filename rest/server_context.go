@@ -41,8 +41,8 @@ const KDefaultNumShards = 16
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config               *StartupConfig
-	initialStartupConfig *StartupConfig
+	config               *StartupConfig // The current runtime configuration of the node
+	initialStartupConfig *StartupConfig // The configuration at startup of the node. Built from config file + flags
 	persistentConfig     bool
 	bucketDbName         map[string]string              // bucketDbName is a map of bucket to database name
 	dbConfigs            map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
