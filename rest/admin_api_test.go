@@ -3204,6 +3204,8 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 }
 
 func TestInitialStartupConfig(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
 	rt := NewRestTester(t, nil)
 	defer rt.Close()
 
