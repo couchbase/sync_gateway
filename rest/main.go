@@ -193,7 +193,7 @@ func getInitialStartupConfig(sc *StartupConfig, flagStartupConfig *StartupConfig
 		return nil, err
 	}
 
-	return &initialStartupConfig, err
+	return &initialStartupConfig, nil
 }
 
 // automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to
