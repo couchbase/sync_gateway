@@ -95,7 +95,7 @@ func (h *handler) handleDbOffline() error {
 
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
-	if h.getBoolQuery("refresh_config") {
+	if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
 		_, err := h.server.fetchAndLoadDatabase(h.db.Name)
 		if err != nil {
 			return err
