@@ -124,19 +124,21 @@ func (h *handler) handleGetDbConfig() error {
 
 // Get admin config info
 func (h *handler) handleGetConfig() error {
-	// TODO: STUB
+	// TODO: Include runtime
+
 	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
 	_ = includeRuntime
 
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
-		cfg, err := h.server.config.Redacted()
+		cfg, err := h.server.initialStartupConfig.Redacted()
 		if err != nil {
 			return err
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.config)
+		h.writeJSON(h.server.initialStartupConfig)
+
 	}
 	return nil
 }

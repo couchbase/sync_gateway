@@ -106,8 +106,9 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 		return false, fmt.Errorf("%d startup configs defined. Must be at most one startup config: %v", len(configPath), configPath)
 	}
 
+	var fileStartupConfig *StartupConfig
 	if len(configPath) == 1 {
-		fileStartupConfig, err := LoadStartupConfigFromPath(configPath[0])
+		fileStartupConfig, err = LoadStartupConfigFromPath(configPath[0])
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
 			// If we have an unknown field error processing config its possible that the config is a 2.x config
 			// requiring automatic upgrade. We should attempt to perform this upgrade
@@ -170,7 +171,29 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 		return false, err
 	}
 
+	initialStartupConfig, err := getInitialStartupConfig(fileStartupConfig, flagStartupConfig)
+	if err != nil {
+		return false, err
+	}
+
+	ctx.initialStartupConfig = initialStartupConfig
+
 	return false, startServer(&sc, ctx)
+}
+
+func getInitialStartupConfig(sc *StartupConfig, flagStartupConfig *StartupConfig) (*StartupConfig, error) {
+	initialStartupConfig := StartupConfig{}
+	err := initialStartupConfig.Merge(sc)
+	if err != nil {
+		return nil, err
+	}
+
+	err = initialStartupConfig.Merge(flagStartupConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return &initialStartupConfig, err
 }
 
 // automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to

@@ -3202,3 +3202,45 @@ func TestLoggingDeprecationWarning(t *testing.T) {
 	assert.Equal(t, int64(1), warnCountAfter2-warnCountAfter)
 
 }
+
+func TestInitialStartupConfig(t *testing.T) {
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Get config
+	resp := rt.SendAdminRequest("GET", "/_config?redact=false", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	var initialStartupConfig StartupConfig
+	err := json.Unmarshal(resp.BodyBytes(), &initialStartupConfig)
+	require.NoError(t, err)
+
+	// Assert on a couple values to make sure they are set
+	assert.Equal(t, base.TestClusterUsername(), initialStartupConfig.Bootstrap.Username)
+	assert.Equal(t, base.TestClusterPassword(), initialStartupConfig.Bootstrap.Password)
+
+	// Get redacted / default config
+	resp = rt.SendAdminRequest("GET", "/_config", "")
+	assertStatus(t, resp, http.StatusOK)
+	err = json.Unmarshal(resp.BodyBytes(), &initialStartupConfig)
+	require.NoError(t, err)
+
+	// Assert value is redacted
+	assert.Equal(t, "xxxxx", initialStartupConfig.Bootstrap.Password)
+
+	// Assert error logging is nil
+	assert.Nil(t, initialStartupConfig.Logging.Error)
+
+	// Set logging running config
+	rt.ServerContext().config.Logging.Error = &base.FileLoggerConfig{}
+
+	// Get config
+	resp = rt.SendAdminRequest("GET", "/_config", "")
+	assertStatus(t, resp, http.StatusOK)
+	initialStartupConfig = StartupConfig{}
+	err = json.Unmarshal(resp.BodyBytes(), &initialStartupConfig)
+	require.NoError(t, err)
+
+	// Assert that error logging is still nil, that the above running config didn't change anything
+	assert.Nil(t, initialStartupConfig.Logging.Error)
+}
