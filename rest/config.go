@@ -961,7 +961,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 	for _, bucket := range buckets {
 		bucket := bucket
 		var cnf DatabaseConfig
-		cas, err := sc.bootstrapContext.connection.GetConfig(dbName, sc.config.Bootstrap.ConfigGroupID, &cnf)
+		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
 			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
@@ -974,6 +974,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 		if cnf.Name == "" {
 			cnf.Name = bucket
 		}
+
 		if cnf.Name != dbName {
 			base.Tracef(base.KeyConfig, "%q did not contain config in group %q for db %q", bucket, sc.config.Bootstrap.ConfigGroupID, dbName)
 			continue
@@ -995,8 +996,8 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 			cnf.CertPath = sc.config.Bootstrap.X509CertPath
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
-		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", dbName, cas)
-		sc.applyConfigs(map[string]*DatabaseConfig{dbName: &cnf})
+		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
+		sc.applyConfigs(map[string]*DatabaseConfig{bucket: &cnf})
 		return true, nil
 	}
 
@@ -1058,6 +1059,7 @@ func (sc *ServerContext) applyConfigs(fetchedConfigs map[string]*DatabaseConfig)
 		// skip if we already have this config loaded
 		foundDbName, ok := sc.bucketDbName[bucket]
 		if ok && sc.dbConfigs[foundDbName].cas >= cnf.cas {
+			base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, bucket)
 			continue
 		}
 
@@ -1065,7 +1067,7 @@ func (sc *ServerContext) applyConfigs(fetchedConfigs map[string]*DatabaseConfig)
 		if dbc := sc.databases_[cnf.Name]; dbc != nil {
 			runningBucket := dbc.Bucket.GetName()
 			if runningBucket != bucket {
-				base.Errorf("database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, bucket, cnf.Name, runningBucket)
+				base.Errorf("Database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, bucket, cnf.Name, runningBucket)
 				continue
 			}
 		}
@@ -1076,7 +1078,7 @@ func (sc *ServerContext) applyConfigs(fetchedConfigs map[string]*DatabaseConfig)
 
 		// TODO: Dynamic update instead of reload
 		if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
-			base.Errorf("couldn't reload database: %v", err)
+			base.Errorf("Couldn't reload database: %v", err)
 			continue
 		}
 		count++
