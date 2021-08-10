@@ -628,7 +628,7 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 	for {
 		results, err := bucket.ViewQuery(ddocName, viewName, opts)
 		if results != nil {
-			results.Close()
+			_ = results.Close()
 		}
 		if err == nil {
 			return nil
