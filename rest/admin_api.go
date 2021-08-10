@@ -159,7 +159,7 @@ func (h *handler) handlePutConfig() error {
 	}
 
 	var config ServerPutConfig
-	err := h.readJSONInto(&config)
+	err := base.WrapJSONUnknownFieldErr(ReadJSONFromMIME(h.rq.Header, h.requestBody, &config))
 	if err != nil {
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unable to configure given options at runtime: %v", err)

@@ -3066,7 +3066,7 @@ func TestConfigEndpoint(t *testing.T) {
 					"console": {
 						"log_level": "info",
 						"log_keys": ["Config", "HTTP+"]
-					},
+					}
 				},
 				"bootstrap": {
 					"server": "couchbase://0.0.0.0"
@@ -3161,6 +3161,7 @@ func TestConfigEndpoint(t *testing.T) {
 			resp := rt.SendAdminRequest("PUT", "/_config", testCase.Config)
 			if testCase.ExpectError {
 				assertStatus(t, resp, http.StatusBadRequest)
+				t.Logf("got response: %s", resp.BodyBytes())
 				return
 			}
 
