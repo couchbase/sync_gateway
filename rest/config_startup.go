@@ -96,8 +96,8 @@ type APIConfig struct {
 	MetricsInterfaceAuthentication            *bool `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 	EnableAdminAuthenticationPermissionsCheck *bool `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the DP permissions check feature of admin auth"`
 
-	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"maximum duration.Second before timing out read of the HTTP(S) request"`
-	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"maximum duration.Second before timing out write of the HTTP(S) response"`
+	ServerReadTimeout  *base.ConfigDuration `json:"server_read_timeout,omitempty"  help:"Maximum duration.Second before timing out read of the HTTP(S) request"`
+	ServerWriteTimeout *base.ConfigDuration `json:"server_write_timeout,omitempty" help:"Maximum duration.Second before timing out write of the HTTP(S) response"`
 	ReadHeaderTimeout  *base.ConfigDuration `json:"read_header_timeout,omitempty"  help:"The amount of time allowed to read request headers"`
 	IdleTimeout        *base.ConfigDuration `json:"idle_timeout,omitempty"         help:"The maximum amount of time to wait for the next request when keep-alives are enabled"`
 
@@ -172,6 +172,27 @@ func LoadStartupConfigFromPath(path string) (*StartupConfig, error) {
 	var sc StartupConfig
 	err = decodeAndSanitiseConfig(rc, &sc)
 	return &sc, err
+}
+
+// NewEmptyStartupConfig initialises an empty StartupConfig with all struct fields empty
+func NewEmptyStartupConfig() StartupConfig {
+	return StartupConfig{
+		API: APIConfig{
+			CORS: &CORSConfig{},
+		},
+		Logging: LoggingConfig{
+			Console: &base.ConsoleLoggerConfig{},
+			Error:   &base.FileLoggerConfig{},
+			Warn:    &base.FileLoggerConfig{},
+			Info:    &base.FileLoggerConfig{},
+			Debug:   &base.FileLoggerConfig{},
+			Trace:   &base.FileLoggerConfig{},
+			Stats:   &base.FileLoggerConfig{},
+		},
+		Unsupported: UnsupportedConfig{
+			HTTP2: &HTTP2Config{},
+		},
+	}
 }
 
 // setGlobalConfig will set global variables and other settings based on the given StartupConfig.
