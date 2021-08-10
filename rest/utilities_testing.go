@@ -132,9 +132,11 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	sc := DefaultStartupConfig("")
 
-	sc.Bootstrap.Server = base.UnitTestUrl()
-	sc.Bootstrap.Username = base.TestClusterUsername()
-	sc.Bootstrap.Password = base.TestClusterPassword()
+	username, password, _ := testBucket.BucketSpec.Auth.GetCredentials()
+
+	sc.Bootstrap.Server = testBucket.BucketSpec.Server
+	sc.Bootstrap.Username = username
+	sc.Bootstrap.Password = password
 	sc.API.AdminInterface = *adminInterface
 	sc.API.CORS = corsConfig
 	sc.API.HideProductVersion = base.BoolPtr(rt.RestTesterConfig.hideProductInfo)
@@ -168,10 +170,9 @@ func (rt *RestTester) Bucket() base.Bucket {
 		numReplicas := uint(0)
 		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
 
-		un, pw, _ := testBucket.BucketSpec.Auth.GetCredentials()
 		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
-		rt.DatabaseConfig.Username = un
-		rt.DatabaseConfig.Password = pw
+		rt.DatabaseConfig.Username = username
+		rt.DatabaseConfig.Password = password
 		rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
 		rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
 		rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath

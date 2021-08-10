@@ -2324,14 +2324,37 @@ func TestHandleDBConfig(t *testing.T) {
 	respBody = nil
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 
-	assert.Equal(t, bucket, respBody["bucket"].(string))
-	assert.Equal(t, bucket, respBody["name"].(string))
-	assert.Equal(t, username, respBody["username"].(string))
-	assert.Equal(t, password, respBody["password"].(string))
-	assert.Equal(t, certPath, respBody["certpath"].(string))
-	assert.Equal(t, keyPath, respBody["keypath"].(string))
-	assert.Equal(t, caCertPath, respBody["cacertpath"].(string))
-	assert.Equal(t, json.Number("443"), respBody["kv_tls_port"].(json.Number))
+	gotbucket, ok := respBody["bucket"].(string)
+	require.True(t, ok)
+	assert.Equal(t, bucket, gotbucket)
+
+	gotName, ok := respBody["name"].(string)
+	require.True(t, ok)
+	assert.Equal(t, bucket, gotName)
+
+	gotusername, ok := respBody["username"].(string)
+	require.True(t, ok)
+	assert.Equal(t, username, gotusername)
+
+	gotpassword, ok := respBody["password"].(string)
+	require.True(t, ok)
+	assert.Equal(t, password, gotpassword)
+
+	gotcertPath, ok := respBody["certpath"].(string)
+	require.True(t, ok)
+	assert.Equal(t, certPath, gotcertPath)
+
+	gotkeyPath, ok := respBody["keypath"].(string)
+	require.True(t, ok)
+	assert.Equal(t, keyPath, gotkeyPath)
+
+	gotcaCertPath, ok := respBody["cacertpath"].(string)
+	require.True(t, ok)
+	assert.Equal(t, caCertPath, gotcaCertPath)
+
+	gotKVTLSPort, ok := respBody["kv_tls_port"].(json.Number)
+	require.True(t, ok)
+	assert.Equal(t, json.Number("443"), gotKVTLSPort)
 }
 
 func TestHandleDeleteDB(t *testing.T) {

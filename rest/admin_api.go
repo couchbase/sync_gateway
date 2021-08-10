@@ -87,13 +87,14 @@ func (h *handler) handleDbOnline() error {
 	_ = base.JSONUnmarshal(body, &input)
 
 	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
-
-	timer := time.NewTimer(time.Duration(input.Delay) * time.Second)
-	go func() {
-		<-timer.C
-
+	if input.Delay > 0 {
+		go func() {
+			time.Sleep(time.Duration(input.Delay) * time.Second)
+			h.server.TakeDbOnline(h.db.DatabaseContext)
+		}()
+	} else {
 		h.server.TakeDbOnline(h.db.DatabaseContext)
-	}()
+	}
 
 	return nil
 }

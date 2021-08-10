@@ -113,9 +113,15 @@ func TestLegacyConfigXattrsDefault(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			lc := LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{EnableXattrs: test.xattrs}}}
-			_, dbcm, err := lc.ToStartupConfig()
+			_, dbs, err := lc.ToStartupConfig()
 			require.NoError(t, err)
-			assert.Equal(t, test.expectedXattrs, *dbcm["db"].EnableXattrs)
+
+			db, ok := dbs["db"]
+			require.True(t, ok)
+
+			dbc := db.ToDatabaseConfig()
+			require.NotNil(t, dbc.EnableXattrs)
+			assert.Equal(t, test.expectedXattrs, *dbc.EnableXattrs)
 		})
 	}
 }

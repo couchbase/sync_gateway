@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 )
 
@@ -61,17 +60,4 @@ func DefaultDatabaseConfig() DatabaseConfig {
 	return DatabaseConfig{
 		cas: 0,
 	}
-}
-
-func (dbc *DatabaseConfig) Redacted() (*DatabaseConfig, error) {
-	var config DatabaseConfig
-
-	err := base.DeepCopyInefficient(&config, dbc)
-	if err != nil {
-		return nil, err
-	}
-
-	config.Password = "xxxxx"
-
-	return &config, nil
 }
