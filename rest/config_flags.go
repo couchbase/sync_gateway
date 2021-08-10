@@ -51,6 +51,7 @@ func setConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]configFl
 		"api.https.tls_minimum_version": {&config.API.HTTPS.TLSMinimumVersion, fs.String("api.https.tls_minimum_version", "", "The minimum allowable TLS version for the REST APIs")},
 		"api.https.tls_cert_path":       {&config.API.HTTPS.TLSCertPath, fs.String("api.https.tls_cert_path", "", "The TLS cert file to use for the REST APIs")},
 		"api.https.tls_key_path":        {&config.API.HTTPS.TLSKeyPath, fs.String("api.https.tls_key_path", "", "The TLS key file to use for the REST APIs")},
+		"api.https.use_tls_client":      {&config.API.HTTPS.UseTLSClient, fs.Bool("api.https.use_tls_client", false, "Use TLS for the REST APIs")},
 
 		"api.cors.origin":       {&config.API.CORS.Origin, fs.String("api.cors.origin", "", "List of comma seperated allowed origins. Use '*' to allow access from everywhere")},
 		"api.cors.login_origin": {&config.API.CORS.LoginOrigin, fs.String("api.cors.login_origin", "", "List of comma seperated allowed login origins")},
