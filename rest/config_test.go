@@ -1203,36 +1203,36 @@ func TestSetupServerContext(t *testing.T) {
 	})
 }
 
-// CBG-1583 - config group IDs EE-only
-func TestConfigGroupIDsValidation(t *testing.T) {
+// CBG-1583 - config group ID EE-only
+func TestConfigGroupIDValidation(t *testing.T) {
 	error := "customization of config_group_id is only supported in enterprise edition"
 	testCases := []struct {
 		name        string
-		cfgGroupIDs string
+		cfgGroupID  string
 		eeMode      bool
 		expectError bool
 	}{
 		{
 			name:        "No change, CE mode",
-			cfgGroupIDs: persistentConfigDefaultGroupID,
+			cfgGroupID:  persistentConfigDefaultGroupID,
 			eeMode:      false,
 			expectError: false,
 		},
 		{
 			name:        "No change, EE mode",
-			cfgGroupIDs: persistentConfigDefaultGroupID,
+			cfgGroupID:  persistentConfigDefaultGroupID,
 			eeMode:      true,
 			expectError: false,
 		},
 		{
 			name:        "Changed, EE mode",
-			cfgGroupIDs: "testGroup",
+			cfgGroupID:  "testGroup",
 			eeMode:      true,
 			expectError: false,
 		},
 		{
 			name:        "Changed, CE mode",
-			cfgGroupIDs: "testGroup",
+			cfgGroupID:  "testGroup",
 			eeMode:      false,
 			expectError: true,
 		},
@@ -1246,7 +1246,7 @@ func TestConfigGroupIDsValidation(t *testing.T) {
 				t.Skip("CE mode only test case")
 			}
 
-			sc := StartupConfig{Bootstrap: BootstrapConfig{ConfigGroupID: test.cfgGroupIDs}}
+			sc := StartupConfig{Bootstrap: BootstrapConfig{ConfigGroupID: test.cfgGroupID}}
 			err := sc.validate()
 			if test.expectError {
 				require.Error(t, err)
