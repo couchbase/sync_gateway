@@ -197,6 +197,12 @@ func UnitTestUrlIsWalrus() bool {
 	return ServerIsWalrus(UnitTestUrl())
 }
 
+// ServerIsTLS returns true if the server URL is using an accepted secure protocol as it's prefix
+// Prefix checked: couchbases:
+func ServerIsTLS(server string) bool {
+	return strings.HasPrefix(server, "couchbases:")
+}
+
 // ServerIsWalrus returns true when the given server looks like a Walrus URI
 // Equivalent to the old regexp: `^(walrus:|file:|/|\.)`
 func ServerIsWalrus(server string) bool {

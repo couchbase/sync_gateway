@@ -481,16 +481,10 @@ func TestUseTLSServer(t *testing.T) {
 			expectedError: nil,
 		},
 		{
-			name:          "https mandatory",
+			name:          "Https not secure (due to unsupported)",
 			useTLSServer:  true,
 			server:        "https://localhost:1234",
-			expectedError: nil,
-		},
-		{
-			name:          "Secure https not allowed",
-			useTLSServer:  false,
-			server:        "https://localhost:1234",
-			expectedError: &errorAllowInsecureAndBeSecure,
+			expectedError: &errorMustBeSecure,
 		},
 		{
 			name:          "couchbases:",
@@ -507,31 +501,19 @@ func TestUseTLSServer(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			// Setup
-			config := DefaultStartupConfig("")
-			config.Bootstrap.UseTLSServer = &test.useTLSServer
+			sc := StartupConfig{Bootstrap: BootstrapConfig{Server: test.server, UseTLSServer: &test.useTLSServer}}
 
-			sc := NewServerContext(&config, false)
-			dbConfig := DbConfig{
-				BucketConfig: BucketConfig{
-					Server: &test.server,
-				},
-			}
-			spec, err := GetBucketSpec(&dbConfig, &config)
-			require.Nil(t, err)
-			// Run test
-			err = validateServerTLS(spec, &config)
+			err := sc.validate()
 
 			if test.expectedError != nil {
 				require.Error(t, err)
-				assert.Equal(t, fmt.Sprintf(*test.expectedError, test.server), err.Error())
+				assert.Contains(t, err.Error(), fmt.Sprintf(*test.expectedError, test.server))
 			} else if err != nil {
-				// Will still error due to no DB name, or not being able to connect to bucket
+				// May still error for other reasons (as multiple error messages are returned)
 				// So make sure it's not the 2 errors that can happen due to secure protocol
-				assert.NotEqual(t, fmt.Sprintf(errorMustBeSecure, test.server), err.Error())
-				assert.NotEqual(t, fmt.Sprintf(errorAllowInsecureAndBeSecure, test.server), err.Error())
+				assert.NotContains(t, err.Error(), fmt.Sprintf(errorMustBeSecure, test.server))
+				assert.NotContains(t, err.Error(), fmt.Sprintf(errorAllowInsecureAndBeSecure, test.server))
 			}
-			sc.Close()
 		})
 	}
 }
