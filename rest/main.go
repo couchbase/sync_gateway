@@ -200,9 +200,9 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 		return nil, false, err
 	}
 
-	if legacyServerConfig.DisablePersistentConfig != nil && *legacyServerConfig.DisablePersistentConfig {
-		return nil, true, nil
-	}
+	//if legacyServerConfig.DisablePersistentConfig != nil && *legacyServerConfig.DisablePersistentConfig {
+	//	return nil, true, nil
+	//}
 
 	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
 	if err != nil {

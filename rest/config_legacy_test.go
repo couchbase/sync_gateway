@@ -71,6 +71,12 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 			input:    LegacyServerConfig{},
 			expected: StartupConfig{API: APIConfig{AdminInterfaceAuthentication: base.BoolPtr(true)}},
 		},
+		{
+			name:     "http:// to couchbase://",
+			base:     StartupConfig{},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://http.couchbase.com")}}}},
+			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://http.couchbase.com"}},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

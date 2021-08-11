@@ -97,11 +97,16 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
 	bsc := &BootstrapConfig{}
 	for _, dbConfig := range lc.Databases {
-		if dbConfig.Server == nil || *dbConfig.Server == "" {
+		server := dbConfig.Server
+		if server == nil || *server == "" {
 			continue
 		}
+		if strings.HasPrefix(*server, "http://") {
+			*server = strings.Replace(*server, "http", "couchbase", 1)
+		}
+
 		bsc = &BootstrapConfig{
-			Server:              *dbConfig.Server,
+			Server:              *server,
 			Username:            dbConfig.Username,
 			Password:            dbConfig.Password,
 			CACertPath:          dbConfig.CACertPath,
