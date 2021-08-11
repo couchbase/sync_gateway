@@ -452,10 +452,10 @@ func (bsc *BlipSyncContext) sendRevisionWithProperties(sender *blip.Sender, docI
 	return nil
 }
 
-func (bsc *BlipSyncContext) isAttachmentAllowed(digest string) bool {
+func (bsc *BlipSyncContext) allowedAttachment(digest string) AllowedAttachment {
 	bsc.lock.Lock()
 	defer bsc.lock.Unlock()
-	return bsc.allowedAttachments[digest].counter > 0
+	return bsc.allowedAttachments[digest]
 }
 
 // setUseDeltas will set useDeltas on the BlipSyncContext as long as both sides of the connection have it enabled.
@@ -550,10 +550,12 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 	}
 
 	base.Tracef(base.KeySync, "sendRevision, rev attachments for %s/%s are %v", base.UD(docID), revID, base.UD(rev.Attachments))
+	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
 	var bodyBytes []byte
 	if base.IsEnterpriseEdition() {
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
+			DeleteAttachmentVersion(rev.Attachments)
 			bodyBytes, err = base.InjectJSONProperties(rev.BodyBytes, base.KVPair{Key: BodyAttachments, Val: rev.Attachments})
 			if err != nil {
 				return err
@@ -569,6 +571,7 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 		// Still need to stamp _attachments into BLIP messages
 		if len(rev.Attachments) > 0 {
+			DeleteAttachmentVersion(rev.Attachments)
 			body[BodyAttachments] = rev.Attachments
 		}
 
@@ -580,7 +583,6 @@ func (bsc *BlipSyncContext) sendRevision(sender *blip.Sender, docID, revID strin
 
 	history := toHistory(rev.History, knownRevs, maxHistory)
 	properties := blipRevMessageProperties(history, rev.Deleted, seq)
-	attachmentStorageMeta := ToAttachmentStorageMeta(rev.Attachments)
 	if base.LogDebugEnabled(base.KeySync) {
 		base.DebugfCtx(bsc.loggingCtx, base.KeySync, "Sending rev %q %s based on %d known, digests: %v", base.UD(docID), revID, len(knownRevs), digests(attachmentStorageMeta))
 	}
