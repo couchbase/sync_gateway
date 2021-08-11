@@ -38,12 +38,12 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 		}
 	}
 
-	ctx, err := setupServerContext(&sc, false)
+	initialStartupConfig, err := getInitialStartupConfig(migratedStartupConfig, flagStartupConfig)
 	if err != nil {
 		return err
 	}
 
-	initialStartupConfig, err := getInitialStartupConfig(migratedStartupConfig, flagStartupConfig)
+	ctx, err := setupServerContext(&sc, false)
 	if err != nil {
 		return err
 	}
