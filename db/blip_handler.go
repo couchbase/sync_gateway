@@ -984,6 +984,10 @@ func (bh *blipHandler) handleGetAttachment(rq *blip.Message) error {
 		return base.HTTPErrorf(http.StatusForbidden, "Attachment's doc not being synced")
 	}
 
+	if bh.blipContext.ActiveSubprotocol() == BlipCBMobileReplicationV2 {
+		docID = allowedAttachment.docID
+	}
+
 	attachmentKey := MakeAttachmentKey(allowedAttachment.version, docID, digest)
 	attachment, err := bh.db.GetAttachment(attachmentKey)
 	if err != nil {
@@ -1153,6 +1157,7 @@ func (bsc *BlipSyncContext) addAllowedAttachments(docID string, attMeta []Attach
 			bsc.allowedAttachments[key] = AllowedAttachment{
 				version: attachment.version,
 				counter: 1,
+				docID:   docID,
 			}
 		}
 	}
