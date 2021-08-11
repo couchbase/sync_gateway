@@ -127,7 +127,6 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config := DefaultStartupConfig("")
 
-	config.API.HTTPS.UseTLSClient = base.BoolPtr(false)
 	config.Bootstrap.UseTLSServer = base.BoolPtr(false)
 
 	config.Logging.Console.LogLevel.Set(base.LevelTrace)
