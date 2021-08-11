@@ -839,8 +839,15 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 		errorMessages = multierror.Append(errorMessages, fmt.Errorf("both TLS Key Path and TLS Cert Path must be provided when using client TLS. Disable client TLS by not providing either of these options"))
 	}
 
-	if !base.IsEnterpriseEdition() && sc.API.EnableAdminAuthenticationPermissionsCheck != nil && *sc.API.EnableAdminAuthenticationPermissionsCheck {
-		errorMessages = multierror.Append(errorMessages, fmt.Errorf("enable_advanced_auth_dp is only supported in enterprise edition"))
+	// EE only features
+	if !base.IsEnterpriseEdition() {
+		if sc.API.EnableAdminAuthenticationPermissionsCheck != nil && *sc.API.EnableAdminAuthenticationPermissionsCheck {
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("enable_advanced_auth_dp is only supported in enterprise edition"))
+		}
+
+		if sc.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("customization of config_group_id is only supported in enterprise edition"))
+		}
 	}
 
 	return errorMessages
