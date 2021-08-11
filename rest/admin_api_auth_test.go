@@ -714,13 +714,13 @@ func TestAdminAPIAuth(t *testing.T) {
 		{
 			"GET",
 			false,
-			"/_debug/pprof/profile",
+			"/_debug/pprof/profile?seconds=1",
 			false,
 		},
 		{
 			"GET",
 			false,
-			"/_debug/pprof/block",
+			"/_debug/pprof/block?seconds=1",
 			false,
 		},
 		{
@@ -732,7 +732,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		{
 			"GET",
 			false,
-			"/_debug/pprof/mutex",
+			"/_debug/pprof/mutex?seconds=1",
 			false,
 		},
 		{
@@ -744,7 +744,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		{
 			"GET",
 			false,
-			"/_debug/fgprof",
+			"/_debug/fgprof?seconds=1",
 			false,
 		},
 		{
