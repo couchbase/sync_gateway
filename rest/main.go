@@ -57,7 +57,6 @@ func serverMain(ctx context.Context, osArgs []string) error {
 	metricsInterfaceAuthFlag := fs.Bool("api.metrics_interface_authentication", true, "")
 
 	useTLSServer := fs.Bool("bootstrap.use_tls_server", true, "")
-	useTLSClient := fs.Bool("api.https.use_tls_client", true, "")
 
 	if err := fs.Parse(osArgs[1:]); err != nil {
 		// Return nil for ErrHelp so the shell exit code is 0
@@ -77,8 +76,6 @@ func serverMain(ctx context.Context, osArgs []string) error {
 			flagStartupConfig.API.MetricsInterfaceAuthentication = metricsInterfaceAuthFlag
 		case "bootstrap.use_tls_server":
 			flagStartupConfig.Bootstrap.UseTLSServer = useTLSServer
-		case "api.https.use_tls_client":
-			flagStartupConfig.API.HTTPS.UseTLSClient = useTLSClient
 		}
 	})
 

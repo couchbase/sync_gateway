@@ -35,7 +35,6 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			CompressResponses:  base.BoolPtr(true),
 			HTTPS: HTTPSConfig{
 				TLSMinimumVersion: "tlsv1.2",
-				UseTLSClient:      base.BoolPtr(true),
 			},
 			ReadHeaderTimeout:              base.NewConfigDuration(base.DefaultReadHeaderTimeout),
 			IdleTimeout:                    base.NewConfigDuration(base.DefaultIdleTimeout),
@@ -117,7 +116,6 @@ type HTTPSConfig struct {
 	TLSMinimumVersion string `json:"tls_minimum_version,omitempty" help:"The minimum allowable TLS version for the REST APIs"`
 	TLSCertPath       string `json:"tls_cert_path,omitempty"       help:"The TLS cert file to use for the REST APIs"`
 	TLSKeyPath        string `json:"tls_key_path,omitempty"        help:"The TLS key file to use for the REST APIs"`
-	UseTLSClient      *bool  `json:"use_tls_client,omitempty"      help:"Forces the REST APIs to use TLS/HTTPS"`
 }
 
 type CORSConfig struct {
