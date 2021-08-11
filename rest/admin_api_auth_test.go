@@ -2,6 +2,7 @@ package rest
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -28,6 +29,12 @@ func MakeUser(t *testing.T, serverURL, username, password string, roles []string
 
 	resp, err := httpClient.Do(req)
 	require.NoError(t, err)
+
+	if resp.StatusCode != http.StatusOK {
+		bodyResp, err := ioutil.ReadAll(resp.Body)
+		assert.NoError(t, err)
+		fmt.Println(string(bodyResp))
+	}
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -714,13 +721,13 @@ func TestAdminAPIAuth(t *testing.T) {
 		{
 			"GET",
 			false,
-			"/_debug/pprof/profile",
+			"/_debug/pprof/profile?seconds=1",
 			false,
 		},
 		{
 			"GET",
 			false,
-			"/_debug/pprof/block",
+			"/_debug/pprof/block?seconds=1",
 			false,
 		},
 		{
@@ -732,7 +739,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		{
 			"GET",
 			false,
-			"/_debug/pprof/mutex",
+			"/_debug/pprof/mutex?seconds=1",
 			false,
 		},
 		{
@@ -744,7 +751,7 @@ func TestAdminAPIAuth(t *testing.T) {
 		{
 			"GET",
 			false,
-			"/_debug/fgprof",
+			"/_debug/fgprof?seconds=1",
 			false,
 		},
 		{
@@ -1091,7 +1098,11 @@ func TestDisablePermissionCheck(t *testing.T) {
 			eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 			require.NoError(t, err)
 
-			MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s[%s]", testCase.CreateUserRole.RoleName, rt.Bucket().GetName())})
+			if testCase.CreateUserRole.DatabaseScoped {
+				MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s[%s]", testCase.CreateUserRole.RoleName, rt.Bucket().GetName())})
+			} else {
+				MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s", testCase.CreateUserRole.RoleName)})
+			}
 			defer DeleteUser(t, eps[0], testCase.CreateUser)
 
 			_, statusCode, err := checkAdminAuth(rt.Bucket().GetName(), testCase.CreateUser, "password", "", httpClient, eps, testCase.DoPermissionCheck, testCase.RequirePerms, nil)
@@ -1100,4 +1111,475 @@ func TestDisablePermissionCheck(t *testing.T) {
 			assert.Equal(t, testCase.ExpectedStatusCode, statusCode)
 		})
 	}
+}
+
+func TestNewlyCreateSGWPermissions(t *testing.T) {
+	t.Skip("Requires DP 7.0.1")
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	mobileSyncGateway := "mobile_sync_gateway"
+	syncGatewayDevOps := "sync_gateway_dev_ops"
+	syncGatewayApp := "sync_gateway_app"
+	syncGatewayAppRo := "sync_gateway_app_ro"
+	syncGatewayConfigurator := "sync_gateway_configurator"
+	syncGatewayReplicator := "sync_gateway_replicator"
+
+	rt := NewRestTester(t, &RestTesterConfig{
+		adminInterfaceAuthentication:    true,
+		enableAdminAuthPermissionsCheck: true,
+	})
+	defer rt.Close()
+
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	MakeUser(t, eps[0], mobileSyncGateway, "password", []string{fmt.Sprintf("%s[*]", mobileSyncGateway)})
+	defer DeleteUser(t, eps[0], mobileSyncGateway)
+	MakeUser(t, eps[0], syncGatewayDevOps, "password", []string{fmt.Sprintf("%s", syncGatewayDevOps)})
+	defer DeleteUser(t, eps[0], syncGatewayDevOps)
+	MakeUser(t, eps[0], syncGatewayApp, "password", []string{fmt.Sprintf("%s[*]", syncGatewayApp)})
+	defer DeleteUser(t, eps[0], syncGatewayApp)
+	MakeUser(t, eps[0], syncGatewayAppRo, "password", []string{fmt.Sprintf("%s[*]", syncGatewayAppRo)})
+	defer DeleteUser(t, eps[0], syncGatewayAppRo)
+	MakeUser(t, eps[0], syncGatewayConfigurator, "password", []string{fmt.Sprintf("%s[*]", syncGatewayConfigurator)})
+	defer DeleteUser(t, eps[0], syncGatewayConfigurator)
+	MakeUser(t, eps[0], syncGatewayReplicator, "password", []string{fmt.Sprintf("%s[*]", syncGatewayReplicator)})
+	defer DeleteUser(t, eps[0], syncGatewayReplicator)
+
+	testUsers := []string{syncGatewayDevOps, syncGatewayApp, syncGatewayAppRo, syncGatewayReplicator, syncGatewayConfigurator}
+
+	endPoints := []struct {
+		Method   string
+		Endpoint string
+		Users    []string
+	}{
+		{
+			Method:   "GET",
+			Endpoint: "/db/",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_all_docs",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_bulk_docs",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/bulk_get",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_changes",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_design/ddoc",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/_design/ddoc",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/_design/ddoc",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_design/ddoc/_view/view",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_ensure_full_commit",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_revs_diff",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_local/doc",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/_local/doc",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/_local/doc",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/doc",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/doc",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/doc",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/doc/attach",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/doc/attach",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_blipsync",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_session",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_session/session",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/_session/session",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/_session/session",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_raw/doc",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_revtree/doc",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_user/",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_user/",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_user/user",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/_user/user",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/_user/user",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/_user/user/_session",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/_user/user/_session/session",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_role/",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_role/",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_role/role",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/_role/role",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/_role/role",
+			Users:    []string{syncGatewayConfigurator, syncGatewayApp},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_replicationStatus/",
+			Users:    []string{syncGatewayReplicator},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_replicationStatus/repl",
+			Users:    []string{syncGatewayReplicator},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/_replicationStatus/repl",
+			Users:    []string{syncGatewayReplicator},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_logging",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/_logging",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_profile/profile",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_profile",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_heap",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_stats",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_expvar",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_status",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_sgcollect_info",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/_sgcollect_info",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_sgcollect_info",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/goroutine",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/cmdline",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/symbol",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/heap",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/profile?seconds=1",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/block?seconds=1",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/threadcreate",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/mutex?seconds=1",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/trace",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/fgprof?seconds=1",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_post_upgrade",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_config",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/_config",
+			Users:    []string{syncGatewayApp, syncGatewayConfigurator},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_resync",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_resync",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_purge",
+			Users:    []string{syncGatewayApp},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_flush",
+			Users:    []string{syncGatewayDevOps},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_offline",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_online",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_dump/view",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_view/view",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/db/_dumpchannel/channel",
+			Users:    []string{syncGatewayApp, syncGatewayAppRo},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_repair",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/db/",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/db/_compact",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/db/",
+			Users:    []string{syncGatewayConfigurator},
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_all_dbs",
+			Users:    []string{syncGatewayDevOps},
+		},
+	}
+
+	for _, endpoint := range endPoints {
+		endpoint.Users = append(endpoint.Users, mobileSyncGateway)
+
+		for _, testUser := range testUsers {
+			testName := fmt.Sprintf("%s-%s-%s", testUser, endpoint.Method, endpoint.Endpoint)
+			t.Run(testName, func(t *testing.T) {
+				isAllowedUser := false
+				for _, user := range endpoint.Users {
+					if user == testUser {
+						resp := rt.SendAdminRequestWithAuth(endpoint.Method, endpoint.Endpoint, "", user, "password")
+						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
+						isAllowedUser = true
+					}
+				}
+
+				if !isAllowedUser {
+					resp := rt.SendAdminRequestWithAuth(endpoint.Method, endpoint.Endpoint, "", testUser, "password")
+					assertStatus(t, resp, http.StatusForbidden)
+				}
+			})
+		}
+
+	}
+
 }
