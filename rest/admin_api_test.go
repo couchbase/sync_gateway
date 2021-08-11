@@ -2276,13 +2276,6 @@ func TestHandleDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	bucket := tb.GetName()
-
-	kvTLSPort := 443
-	certPath := "/etc/ssl/certs/client.cert"
-	keyPath := "/etc/ssl/certs/client.pem"
-	caCertPath := "/etc/ssl/certs/ca.cert"
-	username := "Alice"
-	password := "QWxpY2U="
 	resource := fmt.Sprintf("/%s/", bucket)
 
 	// Create a database with no config
@@ -2302,16 +2295,15 @@ func TestHandleDBConfig(t *testing.T) {
 	// Put database config
 	resource = fmt.Sprintf("/%v/_config?redact=false", bucket)
 
-	bucketConfig := BucketConfig{
-		Bucket:     &bucket,
-		Username:   username,
-		Password:   password,
-		CertPath:   certPath,
-		KeyPath:    keyPath,
-		CACertPath: caCertPath,
-		KvTLSPort:  kvTLSPort,
+	// change cache size so we can see the update being reflected in the API response
+	dbConfig := &DbConfig{
+		CacheConfig: &CacheConfig{
+			RevCacheConfig: &RevCacheConfig{
+				Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
+			},
+		},
+		SGReplicateEnabled: base.BoolPtr(false),
 	}
-	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
@@ -2324,6 +2316,24 @@ func TestHandleDBConfig(t *testing.T) {
 	respBody = nil
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 
+	gotcache, ok := respBody["cache"].(map[string]interface{})
+	require.True(t, ok)
+	assert.NotNil(t, gotcache)
+
+	gotRevcache, ok := gotcache["rev_cache"].(map[string]interface{})
+	require.True(t, ok)
+	gotRevcacheSize, ok := gotRevcache["size"].(json.Number)
+	require.True(t, ok)
+	gotRevcacheSizeInt, err := gotRevcacheSize.Int64()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1337), gotRevcacheSizeInt)
+
+	gotRevcacheNumShards, ok := gotRevcache["shard_count"].(json.Number)
+	require.True(t, ok)
+	gotRevcacheNumShardsInt, err := gotRevcacheNumShards.Int64()
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), gotRevcacheNumShardsInt)
+
 	gotbucket, ok := respBody["bucket"].(string)
 	require.True(t, ok)
 	assert.Equal(t, bucket, gotbucket)
@@ -2332,29 +2342,20 @@ func TestHandleDBConfig(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, bucket, gotName)
 
+	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
 	gotusername, ok := respBody["username"].(string)
 	require.True(t, ok)
-	assert.Equal(t, username, gotusername)
-
+	assert.Equal(t, un, gotusername)
 	gotpassword, ok := respBody["password"].(string)
 	require.True(t, ok)
-	assert.Equal(t, password, gotpassword)
+	assert.Equal(t, pw, gotpassword)
 
-	gotcertPath, ok := respBody["certpath"].(string)
-	require.True(t, ok)
-	assert.Equal(t, certPath, gotcertPath)
-
-	gotkeyPath, ok := respBody["keypath"].(string)
-	require.True(t, ok)
-	assert.Equal(t, keyPath, gotkeyPath)
-
-	gotcaCertPath, ok := respBody["cacertpath"].(string)
-	require.True(t, ok)
-	assert.Equal(t, caCertPath, gotcaCertPath)
-
-	gotKVTLSPort, ok := respBody["kv_tls_port"].(json.Number)
-	require.True(t, ok)
-	assert.Equal(t, json.Number("443"), gotKVTLSPort)
+	_, ok = respBody["certpath"]
+	require.False(t, ok)
+	_, ok = respBody["keypath"]
+	require.False(t, ok)
+	_, ok = respBody["cacertpath"]
+	require.False(t, ok)
 }
 
 func TestHandleDeleteDB(t *testing.T) {

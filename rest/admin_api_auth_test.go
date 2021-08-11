@@ -478,517 +478,419 @@ func TestAdminAPIAuth(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	endPoints := []struct {
-		Method          string
-		DBScoped        bool
-		Endpoint        string
-		SkipSuccessTest bool
-	}{
-		{
-			"POST",
-			true,
-			"/_session",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_session/id",
-			false,
-		},
-		{
-			"DELETE",
-			true,
-			"/_session/id",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_raw/doc",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_user/",
-			false,
-		}, {
-			"POST",
-			true,
-			"/_user/",
-			false,
-		}, {
-			"GET",
-			true,
-			"/_user/user",
-			false,
-		}, {
-			"PUT",
-			true,
-			"/_user/user",
-			false,
-		}, {
-			"DELETE",
-			true,
-			"/_user/user",
-			false,
-		}, {
-			"DELETE",
-			true,
-			"/_user/user/_session",
-			false,
-		}, {
-			"DELETE",
-			true,
-			"/_user/user/_session/id",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_role/",
-			false,
-		}, {
-			"POST",
-			true,
-			"/_role/",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_role/role",
-			false,
-		}, {
-			"PUT",
-			true,
-			"/_role/role",
-			false,
-		}, {
-			"DELETE",
-			true,
-			"/_role/role",
-			false,
-		}, {
-			"GET",
-			true,
-			"/_replication/",
-			false,
-		}, {
-			"POST",
-			true,
-			"/_replication/",
-			false,
-		}, {
-			"GET",
-			true,
-			"/_replication/id",
-			false,
-		},
-		{
-			"PUT",
-			true,
-			"/_replication/id",
-			false,
-		},
-		{
-			"DELETE",
-			true,
-			"/_replication/id",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_replicationStatus/",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_replicationStatus/id",
-			false,
-		},
-		{
-			"PUT",
-			true,
-			"/_replicationStatus/id",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_logging",
-			false,
-		},
-		{
-			"PUT",
-			false,
-			"/_logging",
-			false,
-		},
-		{
-			"POST",
-			false,
-			"/_logging",
-			false,
-		},
-		{
-			"POST",
-			false,
-			"/_profile/name",
-			false,
-		},
-		{
-			"POST",
-			false,
-			"/_profile",
-			false,
-		},
-		{
-			"POST",
-			false,
-			"/_heap",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_stats",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_expvar",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_config",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_status",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_sgcollect_info",
-			false,
-		},
-		{
-			"DELETE",
-			false,
-			"/_sgcollect_info",
-			false,
-		},
-		{
-			"POST",
-			false,
-			"/_sgcollect_info",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/goroutine",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/cmdline",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/symbol",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/heap",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/profile?seconds=1",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/block?seconds=1",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/threadcreate",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/mutex?seconds=1",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/pprof/trace",
-			false,
-		},
-		{
-			"GET",
-			false,
-			"/_debug/fgprof?seconds=1",
-			false,
-		},
-		{
-			"POST",
-			false,
-			"/_post_upgrade",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_config",
-			false,
-		},
-		{
-			"PUT",
-			true,
-			"/_config",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_resync",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_resync",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_purge",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_flush",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_offline",
-			true,
-		},
-		{
-			"POST",
-			true,
-			"/_online",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_dump/view",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_view/view",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_dumpchannel/channel",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_repair",
-			false,
-		},
-		{
-			"PUT",
-			true,
-			"/db",
-			false,
-		},
-		{
-			"DELETE",
-			true,
-			"/",
-			true,
-		},
-		{
-			"GET",
-			false,
-			"/_all_dbs",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_compact",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/",
-			true,
-		},
-		{
-			"POST",
-			true,
-			"/",
-			true,
-		},
-		{
-			"GET",
-			true,
-			"/_all_docs",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_bulk_docs",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_bulk_get",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_changes",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_design/ddoc",
-			false,
-		},
-		{
-			"PUT",
-			true,
-			"/_design/ddoc",
-			false,
-		},
-		{
-			"DELETE",
-			true,
-			"/_design/ddoc",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_design/ddoc/_view/view",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_ensure_full_commit",
-			false,
-		},
-		{
-			"POST",
-			true,
-			"/_revs_diff",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_local/docid",
-			false,
-		},
-		{
-			"PUT",
-			true,
-			"/_local/docid",
-			false,
-		},
-		{
-			"DELETE",
-			true,
-			"/_local/docid",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/docid",
-			false,
-		},
-		{
-			"PUT",
-			true,
-			"/docid",
-			false,
-		},
-		{
-			"DELETE",
-			true,
-			"/docid",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/docid/attachid",
-			false,
-		},
-		{
-			"PUT",
-			true,
-			"/docid/attachid",
-			false,
-		},
-		{
-			"GET",
-			true,
-			"/_blipsync",
-			false,
-		},
-	}
-
 	rt := NewRestTester(t, &RestTesterConfig{
 		adminInterfaceAuthentication:   true,
 		metricsInterfaceAuthentication: true,
 	})
 	defer rt.Close()
+
+	// init RT bucket so we can get the config
+	_ = rt.Bucket()
+	dbConfig := rt.DatabaseConfig
+	dbConfigRaw, err := base.JSONMarshal(dbConfig)
+	require.NoError(t, err)
+
+	endPoints := []struct {
+		Method          string
+		DBScoped        bool
+		Endpoint        string
+		SkipSuccessTest bool
+		body            string // The body to use in requests. Default: `{}`
+	}{
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_session",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_session/id",
+		},
+		{
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/_session/id",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_raw/doc",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_user/",
+		}, {
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_user/",
+		}, {
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_user/user",
+		}, {
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/_user/user",
+		}, {
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/_user/user",
+		}, {
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/_user/user/_session",
+		}, {
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/_user/user/_session/id",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_role/",
+		}, {
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_role/",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_role/role",
+		}, {
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/_role/role",
+		}, {
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/_role/role",
+		}, {
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_replication/",
+		}, {
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_replication/",
+		}, {
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_replication/id",
+		},
+		{
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/_replication/id",
+		},
+		{
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/_replication/id",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_replicationStatus/",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_replicationStatus/id",
+		},
+		{
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/_replicationStatus/id",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_logging",
+		},
+		{
+			Method:   "PUT",
+			Endpoint: "/_logging",
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_logging",
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_profile/name",
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_profile",
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_heap",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_stats",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_expvar",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_config",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_status",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_sgcollect_info",
+		},
+		{
+			Method:   "DELETE",
+			Endpoint: "/_sgcollect_info",
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_sgcollect_info",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/goroutine",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/cmdline",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/symbol",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/heap",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/profile?seconds=1",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/block?seconds=1",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/threadcreate",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/mutex?seconds=1",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/pprof/trace",
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_debug/fgprof?seconds=1",
+		},
+		{
+			Method:   "POST",
+			Endpoint: "/_post_upgrade",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_config",
+		},
+		{
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/_config",
+			body:     string(dbConfigRaw),
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_resync",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_resync",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_purge",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_flush",
+		},
+		{
+			Method:          "POST",
+			DBScoped:        true,
+			Endpoint:        "/_offline",
+			SkipSuccessTest: true,
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_online",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_dump/view",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_view/view",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_dumpchannel/channel",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_repair",
+		},
+		{
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/db",
+		},
+		{
+			Method:          "DELETE",
+			DBScoped:        true,
+			Endpoint:        "/",
+			SkipSuccessTest: true,
+		},
+		{
+			Method:   "GET",
+			Endpoint: "/_all_dbs",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_compact",
+		},
+		{
+			Method:          "GET",
+			DBScoped:        true,
+			Endpoint:        "/",
+			SkipSuccessTest: true,
+		},
+		{
+			Method:          "POST",
+			DBScoped:        true,
+			Endpoint:        "/",
+			SkipSuccessTest: true,
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_all_docs",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_bulk_docs",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_bulk_get",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_changes",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_design/ddoc",
+		},
+		{
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/_design/ddoc",
+		},
+		{
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/_design/ddoc",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_design/ddoc/_view/view",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_ensure_full_commit",
+		},
+		{
+			Method:   "POST",
+			DBScoped: true,
+			Endpoint: "/_revs_diff",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_local/docid",
+		},
+		{
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/_local/docid",
+		},
+		{
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/_local/docid",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/docid",
+		},
+		{
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/docid",
+		},
+		{
+			Method:   "DELETE",
+			DBScoped: true,
+			Endpoint: "/docid",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/docid/attachid",
+		},
+		{
+			Method:   "PUT",
+			DBScoped: true,
+			Endpoint: "/docid/attachid",
+		},
+		{
+			Method:   "GET",
+			DBScoped: true,
+			Endpoint: "/_blipsync",
+		},
+	}
 
 	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
@@ -1006,15 +908,19 @@ func TestAdminAPIAuth(t *testing.T) {
 	defer DeleteUser(t, eps[0], "ClusterAdminUser")
 
 	for _, endPoint := range endPoints {
-		t.Run(endPoint.Method+endPoint.Endpoint, func(t *testing.T) {
-			formattedEndpoint := endPoint.Endpoint
-			if endPoint.DBScoped {
-				formattedEndpoint = "/db" + formattedEndpoint
-			}
-			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, `{}`)
+		body := `{}`
+		if endPoint.body != "" {
+			body = endPoint.body
+		}
+		formattedEndpoint := endPoint.Endpoint
+		if endPoint.DBScoped {
+			formattedEndpoint = "/db" + formattedEndpoint
+		}
+		t.Run(endPoint.Method+formattedEndpoint, func(t *testing.T) {
+			resp := rt.SendAdminRequest(endPoint.Method, formattedEndpoint, body)
 			assertStatus(t, resp, http.StatusUnauthorized)
 
-			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "noaccess", "password")
+			resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "noaccess", "password")
 			assertStatus(t, resp, http.StatusForbidden)
 
 			if !endPoint.SkipSuccessTest {
@@ -1023,17 +929,17 @@ func TestAdminAPIAuth(t *testing.T) {
 				// bodies. Rather than doing a full test of the endpoint itself this will at least confirm that they pass
 				// the auth stage.
 				if endPoint.DBScoped {
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "MobileSyncGatewayUser", "password")
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "MobileSyncGatewayUser", "password")
 					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 				} else {
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "ROAdminUser", "password")
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ROAdminUser", "password")
 					if endPoint.Method == http.MethodPut || endPoint.Method == http.MethodPost {
 						assertStatus(t, resp, http.StatusForbidden)
 					} else {
 						assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 					}
 
-					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, `{}`, "ClusterAdminUser", "password")
+					resp = rt.SendAdminRequestWithAuth(endPoint.Method, formattedEndpoint, body, "ClusterAdminUser", "password")
 					assert.True(t, resp.Code != http.StatusUnauthorized && resp.Code != http.StatusForbidden)
 
 				}

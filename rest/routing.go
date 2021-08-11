@@ -253,7 +253,6 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	// Database-relative handlers:
 	dbr.Handle("/_config",
 		makeHandler(sc, adminPrivs, []Permission{PermUpdateDb}, nil, (*handler).handleGetDbConfig)).Methods("GET")
-	// TODO: This config endpoint is being altered in @bbrks admin config PR
 	dbr.Handle("/_config",
 		makeOfflineHandler(sc, adminPrivs, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, []Permission{PermUpdateDb, PermConfigureSyncFn, PermConfigureAuth}, (*handler).handlePutDbConfig)).Methods("PUT")
 
