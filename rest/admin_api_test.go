@@ -17,6 +17,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -3000,4 +3001,204 @@ func TestChannelNameSizeWarningDeleteChannel(t *testing.T) {
 		after := rt.ServerContext().Database("db").DbStats.Database().WarnChannelNameSizeCount.Value()
 		assert.Equal(t, before, after)
 	})
+}
+
+func TestConfigEndpoint(t *testing.T) {
+	testCases := []struct {
+		Name              string
+		Config            string
+		ConsoleLevel      base.LogLevel
+		ConsoleLogKeys    []string
+		ExpectError       bool
+		FileLoggerCheckFn func() bool
+	}{
+		{
+			Name: "Set LogLevel and LogKeys",
+			Config: `
+			{
+				"logging": {
+					"console": {
+						"log_level": "trace",
+						"log_keys": ["Config"]
+					}
+				}
+			}`,
+			ConsoleLevel:   base.LevelTrace,
+			ConsoleLogKeys: []string{"Config"},
+			ExpectError:    false,
+		},
+		{
+			Name: "Set LogLevel and multiple LogKeys",
+			Config: `
+			{
+				"logging": {
+					"console": {
+						"log_level": "info",
+						"log_keys": ["Config", "HTTP+"]
+					}
+				}
+			}`,
+			ConsoleLevel:   base.LevelInfo,
+			ConsoleLogKeys: []string{"Config", "HTTP"},
+			ExpectError:    false,
+		},
+		{
+			Name: "Set Invalid Fields",
+			Config: `
+			{
+				"logging": {
+					"console": {
+						"log_level": "info",
+						"log_keys": ["Config", "HTTP+"]
+					},
+					"fake": {}
+				}
+			}`,
+			ConsoleLevel:   base.LevelTrace,
+			ConsoleLogKeys: []string{"Config"},
+			ExpectError:    true,
+		},
+		{
+			Name: "Set non-runtime configurable Fields",
+			Config: `
+			{
+				"logging": {
+					"console": {
+						"log_level": "info",
+						"log_keys": ["Config", "HTTP+"]
+					}
+				},
+				"bootstrap": {
+					"server": "couchbase://0.0.0.0"
+				}
+			}`,
+			ConsoleLevel:   base.LevelTrace,
+			ConsoleLogKeys: []string{"Config"},
+			ExpectError:    true,
+		},
+		{
+			Name: "Enable Error Logger",
+			Config: `
+			{
+				"logging": {
+					"console": {
+						"log_level": "info",
+						"log_keys": ["Config", "HTTP+"]
+					},
+					"error": {
+						"enabled": true
+					}
+				}
+			}`,
+			ConsoleLevel:   base.LevelInfo,
+			ConsoleLogKeys: []string{"Config", "HTTP"},
+			ExpectError:    false,
+			FileLoggerCheckFn: func() bool {
+				return base.ErrorLoggerIsEnabled()
+			},
+		},
+		{
+			Name: "Enable All File Loggers",
+			Config: `
+			{
+				"logging": {
+					"console": {
+						"log_level": "info",
+						"log_keys": ["*"]
+					},
+					"error": {
+						"enabled": true
+					},
+					"warn": {
+						"enabled": true
+					},
+					"info": {
+						"enabled": true
+					},
+					"debug": {
+						"enabled": true
+					},
+					"trace": {
+						"enabled": true
+					},
+					"stats": {
+						"enabled": true
+					}
+				}
+			}`,
+			ConsoleLevel:   base.LevelInfo,
+			ConsoleLogKeys: []string{"*"},
+			ExpectError:    false,
+			FileLoggerCheckFn: func() bool {
+				return base.ErrorLoggerIsEnabled() && base.WarnLoggerIsEnabled() && base.InfoLoggerIsEnabled() &&
+					base.DebugLoggerIsEnabled() && base.TraceLoggerIsEnabled() && base.StatsLoggerIsEnabled()
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.Name, func(t *testing.T) {
+			defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+			base.InitializeMemoryLoggers()
+			tempDir := os.TempDir()
+			test := DefaultStartupConfig(tempDir)
+			err := test.SetupAndValidateLogging()
+			assert.NoError(t, err)
+
+			rt := NewRestTester(t, nil)
+			defer rt.Close()
+
+			// By default disable all loggers
+			base.EnableErrorLogger(false)
+			base.EnableWarnLogger(false)
+			base.EnableInfoLogger(false)
+			base.EnableDebugLogger(false)
+			base.EnableTraceLogger(false)
+			base.EnableStatsLogger(false)
+
+			// Request to _config
+			resp := rt.SendAdminRequest("PUT", "/_config", testCase.Config)
+			if testCase.ExpectError {
+				assertStatus(t, resp, http.StatusBadRequest)
+				t.Logf("got response: %s", resp.BodyBytes())
+				return
+			}
+
+			assertStatus(t, resp, http.StatusOK)
+
+			assert.Equal(t, testCase.ConsoleLevel, *base.ConsoleLogLevel())
+			assert.Equal(t, testCase.ConsoleLogKeys, base.ConsoleLogKey().EnabledLogKeys())
+
+			if testCase.FileLoggerCheckFn != nil {
+				assert.True(t, testCase.FileLoggerCheckFn())
+			}
+		})
+	}
+}
+
+func TestLoggingDeprecationWarning(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	// Create doc just to startup server and force any initial warnings
+	resp := rt.SendAdminRequest("PUT", "/db/doc", "{}")
+	assertStatus(t, resp, http.StatusCreated)
+
+	warnCountBefore := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+
+	resp = rt.SendAdminRequest("GET", "/_logging", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	warnCountAfter := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+	assert.Equal(t, int64(1), warnCountAfter-warnCountBefore)
+
+	resp = rt.SendAdminRequest("PUT", "/_logging", "{}")
+	assertStatus(t, resp, http.StatusOK)
+
+	warnCountAfter2 := base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().WarnCount.Value()
+	assert.Equal(t, int64(1), warnCountAfter2-warnCountAfter)
+
 }

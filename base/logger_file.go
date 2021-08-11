@@ -43,7 +43,7 @@ var (
 )
 
 type FileLogger struct {
-	Enabled bool
+	Enabled AtomicBool
 
 	// collateBuffer is used to store log entries to batch up multiple logs.
 	collateBuffer   chan string
@@ -84,12 +84,13 @@ func NewFileLogger(config *FileLoggerConfig, level LogLevel, name string, logFil
 	}
 
 	logger := &FileLogger{
-		Enabled: *config.Enabled,
+		Enabled: AtomicBool{},
 		level:   level,
 		name:    name,
 		output:  config.Output,
 		logger:  log.New(config.Output, "", 0),
 	}
+	logger.Enabled.Set(*config.Enabled)
 
 	if buffer != nil {
 		logger.buffer = *buffer
@@ -146,7 +147,7 @@ func (l *FileLogger) logf(format string, args ...interface{}) {
 func (l *FileLogger) shouldLog(logLevel LogLevel) bool {
 	return l != nil && l.logger != nil &&
 		// Check the log file is enabled
-		l.Enabled &&
+		l.Enabled.IsTrue() &&
 		// Check the log level is enabled
 		l.level >= logLevel
 }

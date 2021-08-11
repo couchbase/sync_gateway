@@ -210,7 +210,7 @@ func CreateAdminRouter(sc *ServerContext) *mux.Router {
 	r.Handle(kDebugURLPathPrefix,
 		makeHandler(sc, adminPrivs, []Permission{PermStatsExport}, nil, (*handler).handleExpvar)).Methods("GET")
 	r.Handle("/_config",
-		makeHandler(sc, adminPrivs, nil, nil, (*handler).handleGetConfig)).Methods("GET")
+		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handleGetConfig)).Methods("GET")
 	r.Handle("/_config",
 		makeHandler(sc, adminPrivs, []Permission{PermDevOps}, nil, (*handler).handlePutConfig)).Methods("PUT")
 

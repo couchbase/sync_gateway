@@ -23,7 +23,7 @@ import (
 )
 
 var fileShouldLogTests = []struct {
-	enabled     bool
+	enabled     int32
 	loggerLevel LogLevel
 	logToLevel  LogLevel
 	loggerKeys  []string
@@ -32,35 +32,35 @@ var fileShouldLogTests = []struct {
 }{
 	{
 		// Log with matching log level
-		enabled:     true,
+		enabled:     1,
 		loggerLevel: LevelInfo,
 		logToLevel:  LevelInfo,
 		expected:    true,
 	},
 	{
 		// Log with higher log level
-		enabled:     true,
+		enabled:     1,
 		loggerLevel: LevelInfo,
 		logToLevel:  LevelWarn,
 		expected:    true,
 	},
 	{
 		// Log with lower log level
-		enabled:     true,
+		enabled:     1,
 		loggerLevel: LevelWarn,
 		logToLevel:  LevelInfo,
 		expected:    false,
 	},
 	{
 		// Logger disabled (enabled = false)
-		enabled:     false,
+		enabled:     0,
 		loggerLevel: LevelNone,
 		logToLevel:  LevelError,
 		expected:    false,
 	},
 	{
 		// Logger disabled (LevelNone)
-		enabled:     true,
+		enabled:     1,
 		loggerLevel: LevelNone,
 		logToLevel:  LevelInfo,
 		expected:    false,
@@ -74,7 +74,7 @@ func TestFileShouldLog(t *testing.T) {
 			test.logToLevel.StringShort(), test.logToKey)
 
 		l := FileLogger{
-			Enabled: test.enabled,
+			Enabled: AtomicBool{test.enabled},
 			level:   test.loggerLevel,
 			output:  ioutil.Discard,
 			logger:  log.New(ioutil.Discard, "", 0),
@@ -94,7 +94,7 @@ func BenchmarkFileShouldLog(b *testing.B) {
 			test.logToLevel.StringShort(), test.logToKey)
 
 		l := FileLogger{
-			Enabled: test.enabled,
+			Enabled: AtomicBool{test.enabled},
 			level:   test.loggerLevel,
 			output:  ioutil.Discard,
 			logger:  log.New(ioutil.Discard, "", 0),
