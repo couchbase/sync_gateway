@@ -8,21 +8,13 @@ import (
 // Permission stores the name of a permission along whether it is database scoped. This is used to later obtain a
 // formatted permission string for checking.
 type Permission struct {
-	PermissionName     string
-	DatabaseScoped     bool
-	IsCollectionFormat bool
+	PermissionName string
+	DatabaseScoped bool
 }
 
 func (perm *Permission) FormattedName(bucketName string) string {
-	if perm.IsCollectionFormat {
-		if perm.DatabaseScoped {
-			return fmt.Sprintf("cluster.collection[%s:_default:_default]%s", bucketName, perm.PermissionName)
-		}
-		return fmt.Sprintf("cluster.collection[*:*:*]%s", perm.PermissionName)
-	}
-
 	if perm.DatabaseScoped {
-		return fmt.Sprintf("cluster.bucket[%s]%s", bucketName, perm.PermissionName)
+		return fmt.Sprintf("cluster.collection[%s:_default:_default]%s", bucketName, perm.PermissionName)
 	}
 	return fmt.Sprintf("cluster%s", perm.PermissionName)
 }
@@ -60,18 +52,18 @@ func GetPermissionNameFromFormattedStrings(formattedNames []string) (perms []str
 
 // Permissions to use with admin handlers
 var (
-	PermCreateDb             = Permission{".sgw.db!create", true, true}
-	PermDeleteDb             = Permission{".sgw.db!delete", true, true}
-	PermUpdateDb             = Permission{".sgw.db!update", true, true}
-	PermConfigureSyncFn      = Permission{".sgw.sync_function!configure", true, true}
-	PermConfigureAuth        = Permission{".sgw.auth!configure", true, true}
-	PermWritePrincipal       = Permission{".sgw.principal!write", true, true}
-	PermReadPrincipal        = Permission{".sgw.principal!read", true, true}
-	PermReadAppData          = Permission{".sgw.appdata!read", true, true}
-	PermReadPrincipalAppData = Permission{".sgw.principal_appdata!read", true, true}
-	PermWriteAppData         = Permission{".sgw.appdata!write", true, true}
-	PermWriteReplications    = Permission{".sgw.replications!write", true, true}
-	PermReadReplications     = Permission{".sgw.replications!read", true, true}
-	PermDevOps               = Permission{".sgw.dev_ops!all", false, false}
-	PermStatsExport          = Permission{".admin.stats_export!read", false, false}
+	PermCreateDb             = Permission{".sgw.db!create", true}
+	PermDeleteDb             = Permission{".sgw.db!delete", true}
+	PermUpdateDb             = Permission{".sgw.db!update", true}
+	PermConfigureSyncFn      = Permission{".sgw.sync_function!configure", true}
+	PermConfigureAuth        = Permission{".sgw.auth!configure", true}
+	PermWritePrincipal       = Permission{".sgw.principal!write", true}
+	PermReadPrincipal        = Permission{".sgw.principal!read", true}
+	PermReadAppData          = Permission{".sgw.appdata!read", true}
+	PermReadPrincipalAppData = Permission{".sgw.principal_appdata!read", true}
+	PermWriteAppData         = Permission{".sgw.appdata!write", true}
+	PermWriteReplications    = Permission{".sgw.replications!write", true}
+	PermReadReplications     = Permission{".sgw.replications!read", true}
+	PermDevOps               = Permission{".sgw.dev_ops!all", false}
+	PermStatsExport          = Permission{".admin.stats_export!read", false}
 )

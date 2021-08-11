@@ -57,8 +57,8 @@ func TestCheckPermissions(t *testing.T) {
 		t.Skip("Test requires Couchbase Server")
 	}
 
-	clusterAdminPermission := Permission{"!admin", false, false}
-	clusterReadOnlyAdminPermission := Permission{"!ro_admin", false, false}
+	clusterAdminPermission := Permission{"!admin", false}
+	clusterReadOnlyAdminPermission := Permission{"!ro_admin", false}
 
 	testCases := []struct {
 		Name                      string
@@ -186,7 +186,7 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	eps, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	assert.NoError(t, err)
 
-	statusCode, _, err := CheckPermissions(httpClient, eps, "", base.TestClusterUsername(), base.TestClusterPassword(), []Permission{Permission{"!admin", false, false}}, nil)
+	statusCode, _, err := CheckPermissions(httpClient, eps, "", base.TestClusterUsername(), base.TestClusterPassword(), []Permission{Permission{"!admin", false}}, nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, http.StatusOK, statusCode)
@@ -313,8 +313,8 @@ func TestAdminAuth(t *testing.T) {
 	defer rt.Close()
 
 	BucketFullAccessRoleTest := fmt.Sprintf("bucket_full_access[%s]", rt.Bucket().GetName())
-	clusterAdminPermission := Permission{"!admin", false, false}
-	bucketWritePermission := Permission{"!write", true, false}
+	clusterAdminPermission := Permission{"!admin", false}
+	bucketWritePermission := Permission{"!write", true}
 
 	testCases := []struct {
 		Name                string
@@ -465,7 +465,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	managementEndpoints, httpClient, err := ctx.ObtainManagementEndpointsAndHTTPClient()
 	require.NoError(t, err)
 
-	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), "", httpClient, managementEndpoints, true, []Permission{{"!admin", false, false}}, nil)
+	_, _, err = checkAdminAuth("", base.TestClusterUsername(), base.TestClusterPassword(), "", httpClient, managementEndpoints, true, []Permission{{"!admin", false}}, nil)
 	assert.NoError(t, err)
 }
 
@@ -1048,11 +1048,11 @@ func TestDisablePermissionCheck(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
-	clusterAdminPermission := Permission{"!admin", false, false}
+	clusterAdminPermission := Permission{"!admin", false}
 
 	// Some random role and perm
 	viewsAdminRole := RouteRole{RoleName: "views_admin", DatabaseScoped: true}
-	statsReadPermission := Permission{".stats!read", true, false}
+	statsReadPermission := Permission{".stats!read", true}
 
 	testCases := []struct {
 		Name               string
@@ -1098,7 +1098,11 @@ func TestDisablePermissionCheck(t *testing.T) {
 			eps, httpClient, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
 			require.NoError(t, err)
 
-			MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s[%s]", testCase.CreateUserRole.RoleName, rt.Bucket().GetName())})
+			if testCase.CreateUserRole.DatabaseScoped {
+				MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s[%s]", testCase.CreateUserRole.RoleName, rt.Bucket().GetName())})
+			} else {
+				MakeUser(t, eps[0], testCase.CreateUser, "password", []string{fmt.Sprintf("%s", testCase.CreateUserRole.RoleName)})
+			}
 			defer DeleteUser(t, eps[0], testCase.CreateUser)
 
 			_, statusCode, err := checkAdminAuth(rt.Bucket().GetName(), testCase.CreateUser, "password", "", httpClient, eps, testCase.DoPermissionCheck, testCase.RequirePerms, nil)
@@ -1110,7 +1114,7 @@ func TestDisablePermissionCheck(t *testing.T) {
 }
 
 func TestNewlyCreateSGWPermissions(t *testing.T) {
-	// t.Skip("Requires DP 7.0.1")
+	t.Skip("Requires DP 7.0.1")
 
 	if base.UnitTestUrlIsWalrus() {
 		t.Skip("This test only works against Couchbase Server")
