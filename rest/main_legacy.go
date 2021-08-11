@@ -38,10 +38,17 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 		}
 	}
 
+	initialStartupConfig, err := getInitialStartupConfig(migratedStartupConfig, flagStartupConfig)
+	if err != nil {
+		return err
+	}
+
 	ctx, err := setupServerContext(&sc, false)
 	if err != nil {
 		return err
 	}
+
+	ctx.initialStartupConfig = initialStartupConfig
 
 	err = ctx.CreateLocalDatabase(databases)
 	if err != nil {

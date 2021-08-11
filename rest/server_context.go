@@ -41,18 +41,19 @@ const KDefaultNumShards = 16
 // This struct is accessed from HTTP handlers running on multiple goroutines, so it needs to
 // be thread-safe.
 type ServerContext struct {
-	config            *StartupConfig
-	persistentConfig  bool
-	bucketDbName      map[string]string              // bucketDbName is a map of bucket to database name
-	dbConfigs         map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
-	databases_        map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
-	lock              sync.RWMutex
-	statsContext      *statsContext
-	bootstrapContext  *bootstrapContext
-	HTTPClient        *http.Client
-	cpuPprofFileMutex sync.Mutex     // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile      *os.File       // An open file descriptor holds the reference during CPU profiling
-	_httpServers      []*http.Server // A list of HTTP servers running under the ServerContext
+	config               *StartupConfig // The current runtime configuration of the node
+	initialStartupConfig *StartupConfig // The configuration at startup of the node. Built from config file + flags
+	persistentConfig     bool
+	bucketDbName         map[string]string              // bucketDbName is a map of bucket to database name
+	dbConfigs            map[string]*DatabaseConfig     // dbConfigs is a map of db name to DatabaseConfig
+	databases_           map[string]*db.DatabaseContext // databases_ is a map of dbname to db.DatabaseContext
+	lock                 sync.RWMutex
+	statsContext         *statsContext
+	bootstrapContext     *bootstrapContext
+	HTTPClient           *http.Client
+	cpuPprofFileMutex    sync.Mutex     // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile         *os.File       // An open file descriptor holds the reference during CPU profiling
+	_httpServers         []*http.Server // A list of HTTP servers running under the ServerContext
 }
 
 type bootstrapContext struct {

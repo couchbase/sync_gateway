@@ -148,6 +148,12 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
 
+	// Copy this startup config at this point into initial startup config
+	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
+	if err != nil {
+		rt.tb.Fatalf("Unable to copy initial startup config: %v", err)
+	}
+
 	useXattrs := base.TestUseXattrs()
 
 	if rt.DatabaseConfig == nil {
@@ -182,7 +188,7 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-	_, err := rt.RestTesterServerContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *rt.DatabaseConfig})
+	_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *rt.DatabaseConfig})
 	if err != nil {
 		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}

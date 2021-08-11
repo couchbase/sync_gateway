@@ -103,8 +103,9 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 		return false, fmt.Errorf("%d startup configs defined. Must be at most one startup config: %v", len(configPath), configPath)
 	}
 
+	var fileStartupConfig *StartupConfig
 	if len(configPath) == 1 {
-		fileStartupConfig, err := LoadStartupConfigFromPath(configPath[0])
+		fileStartupConfig, err = LoadStartupConfigFromPath(configPath[0])
 		if pkgerrors.Cause(err) == base.ErrUnknownField {
 			// If we have an unknown field error processing config its possible that the config is a 2.x config
 			// requiring automatic upgrade. We should attempt to perform this upgrade
@@ -161,13 +162,43 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	}
 	base.Tracef(base.KeyAll, "final config: %#v", redactedConfig)
 
+	initialStartupConfig, err := getInitialStartupConfig(fileStartupConfig, flagStartupConfig)
+	if err != nil {
+		return false, err
+	}
+
 	base.Infof(base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
 	ctx, err := setupServerContext(&sc, true)
 	if err != nil {
 		return false, err
 	}
 
+	ctx.initialStartupConfig = initialStartupConfig
+
 	return false, startServer(&sc, ctx)
+}
+
+func getInitialStartupConfig(sc *StartupConfig, flagStartupConfig *StartupConfig) (*StartupConfig, error) {
+	initialStartupConfigTemp := StartupConfig{}
+	err := initialStartupConfigTemp.Merge(sc)
+	if err != nil {
+		return nil, err
+	}
+
+	err = initialStartupConfigTemp.Merge(flagStartupConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	// Requires a deep copy of final input as passed in values are pointers. Need to ensure runtime changes don't
+	// affect this
+	var initialStartupConfig StartupConfig
+	err = base.DeepCopyInefficient(&initialStartupConfig, initialStartupConfigTemp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &initialStartupConfig, nil
 }
 
 // automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to
