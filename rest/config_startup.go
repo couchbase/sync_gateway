@@ -25,7 +25,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			ConfigGroupID:         persistentConfigDefaultGroupID,
 			ConfigUpdateFrequency: base.NewConfigDuration(persistentConfigDefaultUpdateFrequency),
 			ServerTLSSkipVerify:   base.BoolPtr(false),
-			UseTLSServer:          base.BoolPtr(true),
+			UseTLSServer:          base.BoolPtr(DefaultUseTLSServer),
 		},
 		API: APIConfig{
 			PublicInterface:    DefaultPublicInterface,

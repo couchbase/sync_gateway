@@ -56,6 +56,8 @@ const (
 
 	// Default number of index replicas
 	DefaultNumIndexReplicas = uint(1)
+
+	DefaultUseTLSServer = true
 )
 
 // Bucket configuration elements - used by db, index
@@ -832,13 +834,13 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	}
 
 	secureServer := base.ServerIsTLS(sc.Bootstrap.Server)
-	if base.BoolDefault(sc.Bootstrap.UseTLSServer, true) {
+	if base.BoolDefault(sc.Bootstrap.UseTLSServer, DefaultUseTLSServer) {
 		if !secureServer && !base.ServerIsWalrus(sc.Bootstrap.Server) {
-			return fmt.Errorf("Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %s", base.SD(sc.Bootstrap.Server))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Must use secure scheme in Couchbase Server URL, or opt out by setting bootstrap.use_tls_server to false. Current URL: %s", base.SD(sc.Bootstrap.Server)))
 		}
 	} else {
 		if secureServer {
-			return fmt.Errorf("Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %s", base.SD(sc.Bootstrap.Server))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("Couchbase server URL cannot use secure protocol when bootstrap.use_tls_server is false. Current URL: %s", base.SD(sc.Bootstrap.Server)))
 		}
 	}
 
