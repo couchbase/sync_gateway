@@ -55,7 +55,7 @@ type LegacyServerConfig struct {
 	DisablePersistentConfig                   *bool                          `json:"disable_persistent_config,omitempty" help:"Can be set to true to disable 3.0/persistent config handling."`
 	AdminInterfaceAuthentication              *bool                          `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication            *bool                          `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
-	EnableAdminAuthenticationPermissionsCheck *bool                          `json:"enable_advanced_auth_dp" help:"Whether to enable the permissions check feature of admin auth"`
+	EnableAdminAuthenticationPermissionsCheck *bool                          `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the permissions check feature of admin auth"`
 }
 
 type FacebookConfigLegacy struct {

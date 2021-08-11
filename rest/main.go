@@ -165,18 +165,24 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	}
 	base.Tracef(base.KeyAll, "final config: %#v", redactedConfig)
 
+	initialStartupConfigTemp, err := getInitialStartupConfig(fileStartupConfig, flagStartupConfig)
+	if err != nil {
+		return false, err
+	}
+
+	var initialStartupConfig StartupConfig
+	err = base.DeepCopyInefficient(&initialStartupConfig, initialStartupConfigTemp)
+	if err != nil {
+		return false, err
+	}
+
 	base.Infof(base.KeyAll, "Config: Starting in persistent mode using config group %q", sc.Bootstrap.ConfigGroupID)
 	ctx, err := setupServerContext(&sc, true)
 	if err != nil {
 		return false, err
 	}
 
-	initialStartupConfig, err := getInitialStartupConfig(fileStartupConfig, flagStartupConfig)
-	if err != nil {
-		return false, err
-	}
-
-	ctx.initialStartupConfig = initialStartupConfig
+	ctx.initialStartupConfig = &initialStartupConfig
 
 	return false, startServer(&sc, ctx)
 }
