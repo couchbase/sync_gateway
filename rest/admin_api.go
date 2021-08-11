@@ -382,11 +382,17 @@ func (h *handler) handlePutDbConfig() (err error) {
 		return err
 	}
 
-	if _, err := h.server.getOrAddDatabaseFromConfig(*updatedDbConfig, true); err != nil {
+	h.server.lock.Lock()
+	defer h.server.lock.Unlock()
+	h.server.bucketDbName[bucket] = dbName
+	h.server.dbConfigs[dbName] = updatedDbConfig
+
+	// TODO: Dynamic update instead of reload
+	if _, err := h.server._reloadDatabaseFromConfig(dbName); err != nil {
 		return err
 	}
 
-	return base.HTTPErrorf(http.StatusCreated, "created")
+	return base.HTTPErrorf(http.StatusCreated, "updated")
 }
 
 // GET database config sync function
