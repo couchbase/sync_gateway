@@ -1196,7 +1196,6 @@ func TestSetupServerContext(t *testing.T) {
 	t.Run("Create server context with a valid configuration", func(t *testing.T) {
 		config := DefaultStartupConfig("")
 		config.Bootstrap.Server = base.UnitTestUrl() // Valid config requires server to be explicitly defined
-		config.API.HTTPS.UseTLSClient = base.BoolPtr(false)
 		sc, err := setupServerContext(&config, false)
 		require.NoError(t, err)
 		require.NotNil(t, sc)
@@ -1204,72 +1203,40 @@ func TestSetupServerContext(t *testing.T) {
 	})
 }
 
-// CBG-1535 - Test api.http.UseTLSClient option
-func TestUseTLSClient(t *testing.T) {
+// CBG-1599
+func TestClientTLSMissing(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
-	errorTLSNotProvided := "Must supply a TLS key path and cert path, or opt out by setting api.https.use_tls_client to false"
-	errorTLSProvidedButInsecure := "Cannot use supplied TLS key or cert when api.https.use_tls_client is false"
+	errorTLSOneMissing := "both TLS Key Path and TLS Cert Path must be provided when using client TLS. Disable client TLS by not providing either of these options"
 	testCases := []struct {
-		name         string
-		tlsKey       bool
-		tlsCert      bool
-		useTLSClient bool
-		expectError  *string
+		name        string
+		tlsKey      bool
+		tlsCert     bool
+		expectError bool
 	}{
 		{
-			name:         "Nothing provided",
-			useTLSClient: true,
-			expectError:  &errorTLSNotProvided,
+			name:        "No TLS",
+			expectError: false,
 		},
 		{
-			name:         "No TLS provided, Allowing Insecure",
-			useTLSClient: false,
-			expectError:  nil,
+			name:        "TLS Key but no cert provided",
+			tlsKey:      true,
+			expectError: true,
 		},
 		{
-			name:         "TLS Key but no cert provided",
-			useTLSClient: true,
-			tlsKey:       true,
-			expectError:  &errorTLSNotProvided,
+			name:        "TLS Cert but no key provided",
+			tlsCert:     true,
+			expectError: true,
 		},
 		{
-			name:         "TLS Cert but no key provided",
-			useTLSClient: true,
-			tlsCert:      true,
-			expectError:  &errorTLSNotProvided,
-		},
-		{
-			name:         "TLS Cert and key provided",
-			useTLSClient: true,
-			tlsKey:       true,
-			tlsCert:      true,
-			expectError:  nil,
-		},
-		{
-			name:         "TLS Cert and key provided, and allowing insecure",
-			tlsKey:       true,
-			tlsCert:      true,
-			useTLSClient: false,
-			expectError:  &errorTLSProvidedButInsecure,
-		},
-		{
-			name:         "TLS Key but no cert provided, but allowing insecure",
-			tlsKey:       true,
-			useTLSClient: false,
-			expectError:  &errorTLSProvidedButInsecure,
-		},
-		{
-			name:         "TLS cert but no key provided, but allowing insecure",
-			tlsKey:       true,
-			useTLSClient: false,
-			expectError:  &errorTLSProvidedButInsecure,
+			name:        "TLS Cert and key provided",
+			tlsKey:      true,
+			tlsCert:     true,
+			expectError: false,
 		},
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			config := DefaultStartupConfig("")
-			config.API.HTTPS.UseTLSClient = &test.useTLSClient
-			config.Bootstrap.Server = base.UnitTestUrl()
+			config := StartupConfig{}
 			if test.tlsKey {
 				config.API.HTTPS.TLSKeyPath = "test.key"
 			}
@@ -1277,14 +1244,18 @@ func TestUseTLSClient(t *testing.T) {
 				config.API.HTTPS.TLSCertPath = "test.cert"
 			}
 			sc, err := setupServerContext(&config, false)
-			if test.expectError != nil {
+			if test.expectError {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), *test.expectError)
+				assert.Contains(t, err.Error(), errorTLSOneMissing)
 				require.Nil(t, sc)
 			} else {
-				assert.NoError(t, err)
-				require.NotNil(t, sc)
-				sc.Close()
+				if err != nil { // If validate fails, make sure it's not due to TLS
+					assert.NotContains(t, err.Error(), errorTLSOneMissing)
+					assert.Nil(t, sc)
+				} else {
+					require.NotNil(t, sc)
+					sc.Close()
+				}
 			}
 		})
 	}

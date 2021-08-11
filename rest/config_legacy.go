@@ -17,7 +17,6 @@ import (
 type LegacyServerConfig struct {
 	TLSMinVersion                             *string                        `json:"tls_minimum_version,omitempty"`    // Set TLS Version
 	UseTLSServer                              *bool                          `json:"use_tls_server,omitempty"`         // Use TLS for CBS <> SGW communications
-	UseTLSClient                              *bool                          `json:"use_tls_client,omitempty"`         // Use TLS for REST API
 	Interface                                 *string                        `json:",omitempty"`                       // Interface to bind REST API to, default ":4984"
 	ServerTLSSkipVerify                       *bool                          `json:"server_tls_skip_verify,omitempty"` // Allow empty server CA Cert Path without attempting to use system root pool
 	SSLCert                                   *string                        `json:",omitempty"`                       // Path to SSL cert file, or nil
@@ -121,9 +120,6 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			AdminInterfaceAuthentication:              lc.AdminInterfaceAuthentication,
 			MetricsInterfaceAuthentication:            lc.MetricsInterfaceAuthentication,
 			EnableAdminAuthenticationPermissionsCheck: lc.EnableAdminAuthenticationPermissionsCheck,
-			HTTPS: HTTPSConfig{
-				UseTLSClient: lc.UseTLSClient,
-			},
 		},
 		Logging: LoggingConfig{},
 		Auth: AuthConfig{
@@ -382,7 +378,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 	_ = flagSet.Bool("api.admin_interface_authentication", true, "")
 	_ = flagSet.Bool("api.metrics_interface_authentication", true, "")
 	_ = flagSet.Bool("bootstrap.use_tls_server", true, "")
-	_ = flagSet.Bool("api.https.use_tls_client", true, "")
 
 	addr := flagSet.String("interface", DefaultPublicInterface, "Address to bind to")
 	authAddr := flagSet.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
@@ -491,7 +486,6 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 
 		config = &LegacyServerConfig{
 			UseTLSServer:     base.BoolPtr(true),
-			UseTLSClient:     base.BoolPtr(true),
 			Interface:        addr,
 			AdminInterface:   authAddr,
 			ProfileInterface: profAddr,
