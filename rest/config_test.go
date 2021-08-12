@@ -1205,7 +1205,7 @@ func TestSetupServerContext(t *testing.T) {
 
 // CBG-1583 - config group ID EE-only
 func TestConfigGroupIDValidation(t *testing.T) {
-	error := "customization of config_group_id is only supported in enterprise edition"
+	error := "customization of group_id is only supported in enterprise edition"
 	testCases := []struct {
 		name        string
 		cfgGroupID  string
