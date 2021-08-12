@@ -5,7 +5,6 @@ import (
 
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -227,14 +226,15 @@ func WriteUpdateWithXattr(store SubdocXattrStore, k string, xattrKey string, use
 		deleteBody := value != nil
 		casOut, writeErr := WriteWithXattr(store, k, xattrKey, exp, cas, updatedValue, updatedXattrValue, isDelete, deleteBody)
 
-		switch pkgerrors.Cause(writeErr) {
-		case nil:
+		if writeErr == nil {
 			return casOut, nil
-		case gocb.ErrKeyExists, gocb.ErrNotStored:
+		}
+
+		if IsCasMismatch(writeErr) {
 			// Retry on cas failure.  ErrNotStored is returned in some concurrent insert races that appear to be related
 			// to the timing of concurrent xattr subdoc operations.  Treating as CAS failure as these will get the usual
 			// conflict/duplicate handling on retry.
-		default:
+		} else {
 			// WriteWithXattr already handles retry on recoverable errors, so fail on any errors other than ErrKeyExists
 			Warnf("Failed to update doc with xattr for key=%s, xattrKey=%s: %v", UD(k), UD(xattrKey), writeErr)
 			return emptyCas, writeErr

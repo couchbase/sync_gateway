@@ -275,7 +275,7 @@ var ViewsAndGSIBucketReadier base.TBPBucketReadierFunc = func(ctx context.Contex
 
 // ViewsAndGSIBucketInit is run synchronously only once per-bucket to do any initial setup. For non-integration Walrus buckets, this is run for each new Walrus bucket.
 var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b base.Bucket, tbp *base.TestBucketPool) error {
-	gocbBucket, ok := base.AsGoCBBucket(b)
+	n1qlStore, ok := base.AsN1QLStore(b)
 	if !ok {
 		// Check we're not running with an invalid combination of backing store and xattrs.
 		if base.TestUseXattrs() {
@@ -291,7 +291,7 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 		return nil
 	}
 
-	if empty, err := isIndexEmpty(gocbBucket, base.TestUseXattrs()); empty && err == nil {
+	if empty, err := isIndexEmpty(n1qlStore, base.TestUseXattrs()); empty && err == nil {
 		tbp.Logf(ctx, "indexes already created, and already empty - skipping")
 		return nil
 	} else {
@@ -299,17 +299,17 @@ var ViewsAndGSIBucketInit base.TBPBucketInitFunc = func(ctx context.Context, b b
 	}
 
 	tbp.Logf(ctx, "dropping existing bucket indexes")
-	if err := base.DropAllBucketIndexes(gocbBucket); err != nil {
+	if err := base.DropAllBucketIndexes(n1qlStore); err != nil {
 		tbp.Logf(ctx, "Failed to drop bucket indexes: %v", err)
 		return err
 	}
 
 	tbp.Logf(ctx, "creating SG bucket indexes")
-	if err := InitializeIndexes(gocbBucket, base.TestUseXattrs(), 0); err != nil {
+	if err := InitializeIndexes(n1qlStore, base.TestUseXattrs(), 0); err != nil {
 		return err
 	}
 
-	err := gocbBucket.CreatePrimaryIndex(base.PrimaryIndexName, nil)
+	err := n1qlStore.CreatePrimaryIndex(base.PrimaryIndexName, nil)
 	if err != nil {
 		return err
 	}

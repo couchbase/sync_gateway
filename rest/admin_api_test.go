@@ -2263,6 +2263,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 }
 
 func TestHandleDBConfig(t *testing.T) {
+	t.Skip("disabled pending CBG-1566")
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
@@ -2275,6 +2276,7 @@ func TestHandleDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	bucket := tb.GetName()
+
 	kvTLSPort := 443
 	certPath := "/etc/ssl/certs/client.cert"
 	keyPath := "/etc/ssl/certs/client.pem"
@@ -2669,7 +2671,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	})
 	defer rt.Close()
 
-	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
+	userXattrStore, ok := base.AsUserXattrStore(rt.Bucket())
 	if !ok {
 		t.Skip("Test requires Couchbase Bucket")
 	}
@@ -2679,7 +2681,7 @@ func TestUserXattrsRawGet(t *testing.T) {
 	_, err := rt.WaitForChanges(1, "/db/_changes", "", true)
 	assert.NoError(t, err)
 
-	_, err = gocbBucket.WriteUserXattr(docKey, xattrKey, "val")
+	_, err = userXattrStore.WriteUserXattr(docKey, xattrKey, "val")
 	assert.NoError(t, err)
 
 	err = rt.WaitForCondition(func() bool {

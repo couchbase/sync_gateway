@@ -35,6 +35,7 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 	var body Body
 	if isDelete {
 		body = Body{}
+		expiry = base.Uint32Ptr(0)
 	} else {
 		err := body.Unmarshal(value)
 		if err != nil {
@@ -50,10 +51,10 @@ func (db *Database) ImportDocRaw(docid string, value []byte, xattrValue []byte, 
 		return nil, base.ErrImportCancelledPurged
 	}
 
-	// Get the doc expiry if it wasn't passed in
+	// Get the doc expiry if it wasn't passed in, and this isn't a server tombstone
 	if expiry == nil {
-		gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
-		getExpiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+		cbStore, _ := base.AsCouchbaseStore(db.Bucket)
+		getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
 		if getExpiryErr != nil {
 			return nil, getExpiryErr
 		}
@@ -79,8 +80,8 @@ func (db *Database) ImportDoc(docid string, existingDoc *Document, isDelete bool
 
 	// Get the doc expiry if it wasn't passed in
 	if expiry == nil {
-		gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
-		getExpiry, getExpiryErr := gocbBucket.GetExpiry(docid)
+		cbStore, _ := base.AsCouchbaseStore(db.Bucket)
+		getExpiry, getExpiryErr := cbStore.GetExpiry(docid)
 		if getExpiryErr != nil {
 			return nil, getExpiryErr
 		}
@@ -161,8 +162,8 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 				}
 
 				// Reload the doc expiry
-				gocbBucket, _ := base.AsGoCBBucket(db.Bucket)
-				expiry, getExpiryErr := gocbBucket.GetExpiry(newDoc.ID)
+				cbStore, _ := base.AsCouchbaseStore(db.Bucket)
+				expiry, getExpiryErr := cbStore.GetExpiry(newDoc.ID)
 				if getExpiryErr != nil {
 					return nil, nil, false, nil, getExpiryErr
 				}

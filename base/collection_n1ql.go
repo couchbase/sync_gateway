@@ -140,3 +140,17 @@ func (c *Collection) executeStatement(statement string) error {
 func (c *Collection) IsErrNoResults(err error) bool {
 	return err == gocb.ErrNoResult
 }
+
+func (c *Collection) getIndexes() (indexes []string, err error) {
+
+	indexes = []string{}
+	indexInfo, err := c.cluster.QueryIndexes().GetAllIndexes(c.BucketName(), nil)
+	if err != nil {
+		return indexes, err
+	}
+
+	for _, indexInfo := range indexInfo {
+		indexes = append(indexes, indexInfo.Name)
+	}
+	return indexes, nil
+}

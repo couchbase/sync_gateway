@@ -40,6 +40,7 @@ const (
 	DefaultTestClusterUsername = DefaultCouchbaseAdministrator
 	envTestClusterPassword     = "SG_TEST_PASSWORD"
 	DefaultTestClusterPassword = DefaultCouchbasePassword
+	envTestClusterDriver       = "SG_TEST_DRIVER"
 
 	// Creates this many buckets in the backing store to be pooled for testing.
 	tbpDefaultBucketPoolSize = 3
@@ -243,6 +244,7 @@ func (tbp *TestBucketPool) GetTestBucketAndSpec(t testing.TB) (b Bucket, s Bucke
 
 	// Return a new Walrus bucket when tbp has not been initialized
 	if !tbp.integrationMode {
+		tbp.Logf(ctx, "Getting walrus test bucket - tbp.integrationMode is not set")
 		return tbp.GetWalrusTestBucket(t, kTestWalrusURL)
 	}
 
@@ -638,7 +640,7 @@ type tbpBucketName string
 
 var tbpDefaultBucketSpec = BucketSpec{
 	Server:          UnitTestUrl(),
-	CouchbaseDriver: GoCBCustomSGTranscoder,
+	CouchbaseDriver: TestClusterDriver(),
 	Auth: TestAuthenticator{
 		Username: TestClusterUsername(),
 		Password: TestClusterPassword(),
@@ -711,4 +713,12 @@ func TestClusterPassword() string {
 		password = envClusterPassword
 	}
 	return password
+}
+
+func TestClusterDriver() CouchbaseDriver {
+	driver := ChooseCouchbaseDriver(DataBucket)
+	if envClusterDriver := os.Getenv(envTestClusterDriver); envClusterDriver != "" {
+		driver = AsCouchbaseDriver(envClusterDriver)
+	}
+	return driver
 }

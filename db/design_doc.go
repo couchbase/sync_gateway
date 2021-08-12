@@ -626,7 +626,10 @@ func waitForViewIndexing(bucket base.Bucket, ddocName string, viewName string) e
 	retrySleep := float64(100)
 	maxRetry := 18
 	for {
-		_, err := bucket.ViewQuery(ddocName, viewName, opts)
+		results, err := bucket.ViewQuery(ddocName, viewName, opts)
+		if results != nil {
+			_ = results.Close()
+		}
 		if err == nil {
 			return nil
 		}

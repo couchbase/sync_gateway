@@ -45,8 +45,8 @@ licenses/APL2.txt.
   <project name="go-couchbase" path="godeps/src/github.com/couchbase/go-couchbase" remote="couchbase" revision="74908f5398d1b5e28a4c8873a7c8931076ad81e3"/>
 
   <!-- gocb v2 -->
-  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="476b7f38842457a34d0d8a69332d190223a82651" />
-  <project name="gocbcore" path="godeps/src/github.com/couchbase/gocbcore" remote="couchbase" revision="a5315eea8af138a600c2c3b8061fe13d956254b7"/>
+  <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="7edf8dda70989588940f2649d6ba72b9253aab12" />
+  <project name="gocbcore" path="godeps/src/github.com/couchbase/gocbcore" remote="couchbase" revision="e0632bbd0c3dabf618b8170eb3bffb0862b9ee9a"/>
   <project name="golang-snappy"  path="godeps/src/github.com/golang/snappy" remote="couchbasedeps" revision="723cc1e459b8eea2dea4583200fd60757d40097a" />
 
   <!-- gocb v1 -->
@@ -59,7 +59,7 @@ licenses/APL2.txt.
 
   <project name="gomemcached" path="godeps/src/github.com/couchbase/gomemcached" remote="couchbase" revision="4201f50df22f08f75a0491451fa6507387d41304"/>
 
-  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="7a9f15d95f07f7f30f567cf19919f554d14b12d5"/>
+  <project name="sg-bucket" path="godeps/src/github.com/couchbase/sg-bucket" remote="couchbase" revision="08f9bc2aa1cb5cb87b9a9bc0f803ddefbc73c5f8"/>
 
   <project name="go-bindata-assetfs" path="godeps/src/github.com/elazarl/go-bindata-assetfs" remote="couchbasedeps" revision="30f82fa23fd844bd5bb1e5f216db87fd77b5eb43"/>
 
