@@ -2486,7 +2486,7 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, `{"greetings":[{"hello":"world!"},{"hi":"alice"}]}`, string(data))
 
-	// create doc1 rev 2-abcxyz on client
+	// create doc1 rev 2-abc on client
 	newRev, err := client.PushRev("doc1", "1-0335a345b6ffed05707ccc4cbc1b67f4", []byte(`{"greetings":[{"hello":"world!"},{"hi":"alice"},{"howdy":"bob"}]}`))
 	assert.NoError(t, err)
 	assert.Equal(t, "2-abc", newRev)
@@ -2975,7 +2975,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
 	require.NoError(t, err)
-	assert.Equal(t, "2-abcxyz", revId)
+	assert.Equal(t, "2-abc", revId)
 
 	// Wait for the document to be replicated at SG
 	_, ok = btc.pushReplication.WaitForMessage(2)
@@ -2987,7 +2987,7 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, docId, respBody[db.BodyId])
-	assert.Equal(t, "2-abcxyz", respBody[db.BodyRev])
+	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
 	assert.Equal(t, map[string]interface{}{"hi": "bob"}, greetings[0])
@@ -3049,7 +3049,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":1,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
 	revId, err = btc.PushRev(docId, revId, []byte(bodyText))
 	require.NoError(t, err)
-	assert.Equal(t, "2-abcxyz", revId)
+	assert.Equal(t, "2-abc", revId)
 
 	// Wait for the document to be replicated at SG
 	_, ok = btc.pushReplication.WaitForMessage(2)
@@ -3061,7 +3061,7 @@ func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	assert.NoError(t, base.JSONUnmarshal(resp.Body.Bytes(), &respBody))
 
 	assert.Equal(t, docId, respBody[db.BodyId])
-	assert.Equal(t, "2-abcxyz", respBody[db.BodyRev])
+	assert.Equal(t, "2-abc", respBody[db.BodyRev])
 	greetings := respBody["greetings"].([]interface{})
 	assert.Len(t, greetings, 1)
 	assert.Equal(t, map[string]interface{}{"hi": "bob"}, greetings[0])
@@ -3454,7 +3454,11 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 
 	// CBL creates revisions 1-abc,2-abc on the client, with an attachment associated with rev 2.
 	bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	revId, err := btc.PushRevWithHistory(docId, "", []byte(bodyText), 2, 2, true)
+	err = btc.StoreRevOnClient(docId, "2-abc", []byte(bodyText))
+	require.NoError(t, err)
+
+	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+	revId, err := btc.PushRevWithHistory(docId, "", []byte(bodyText), 2, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "2-abc", revId)
 
@@ -3468,7 +3472,7 @@ func TestBlipPushPullNewAttachmentCommonAncestor(t *testing.T) {
 	// CBL updates the doc w/ two more revisions, 3-abc, 4-abc,
 	// these are sent to SG as 4-abc, history:[4-abc,3-abc,2-abc], the attachment has revpos=2
 	bodyText = `{"greetings":[{"hi":"bob"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
-	revId, err = btc.PushRevWithHistory(docId, revId, []byte(bodyText), 2, 0, true)
+	revId, err = btc.PushRevWithHistory(docId, revId, []byte(bodyText), 2, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "4-abc", revId)
 
@@ -3524,7 +3528,11 @@ func TestBlipPushPullNewAttachmentNoCommonAncestor(t *testing.T) {
 	// rev tree pruning on the CBL side, so 1-abc no longer exists.
 	// CBL replicates, sends to client as 4-abc history:[4-abc, 3-abc, 2-abc], attachment has revpos=2
 	bodyText := `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"data":"aGVsbG8gd29ybGQ="}}}`
-	revId, err := btc.PushRevWithHistory(docId, "2-abc", []byte(bodyText), 2, 2, true)
+	err = btc.StoreRevOnClient(docId, "2-abc", []byte(bodyText))
+	require.NoError(t, err)
+
+	bodyText = `{"greetings":[{"hi":"alice"}],"_attachments":{"hello.txt":{"revpos":2,"length":11,"stub":true,"digest":"sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0="}}}`
+	revId, err := btc.PushRevWithHistory(docId, "2-abc", []byte(bodyText), 2, 0)
 	require.NoError(t, err)
 	assert.Equal(t, "4-abc", revId)
 
