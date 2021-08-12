@@ -1299,18 +1299,13 @@ func TestClientTLSMissing(t *testing.T) {
 			if test.tlsCert {
 				config.API.HTTPS.TLSCertPath = "test.cert"
 			}
-			sc, err := setupServerContext(&config, false)
+			err := config.validate()
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errorTLSOneMissing)
-				require.Nil(t, sc)
 			} else {
 				if err != nil { // If validate fails, make sure it's not due to TLS
 					assert.NotContains(t, err.Error(), errorTLSOneMissing)
-					assert.Nil(t, sc)
-				} else {
-					require.NotNil(t, sc)
-					sc.Close()
 				}
 			}
 		})
