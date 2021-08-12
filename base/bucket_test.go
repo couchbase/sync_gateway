@@ -284,8 +284,10 @@ func TestIsTLS(t *testing.T) {
 	fakeBucketSpec.Server = "http://localhost:8091"
 	assert.False(t, fakeBucketSpec.IsTLS())
 	fakeBucketSpec.Server = "https://localhost:443"
-	assert.True(t, fakeBucketSpec.IsTLS())
-	fakeBucketSpec.Server = "couchbases"
+	assert.False(t, fakeBucketSpec.IsTLS())
+	fakeBucketSpec.Server = "couchbase://localhost"
+	assert.False(t, fakeBucketSpec.IsTLS())
+	fakeBucketSpec.Server = "couchbases://localhost"
 	assert.True(t, fakeBucketSpec.IsTLS())
 }
 

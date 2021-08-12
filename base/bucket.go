@@ -135,7 +135,7 @@ func (spec BucketSpec) IsWalrusBucket() bool {
 }
 
 func (spec BucketSpec) IsTLS() bool {
-	return strings.HasPrefix(spec.Server, "couchbases") || strings.HasPrefix(spec.Server, "https")
+	return ServerIsTLS(spec.Server)
 }
 
 func (spec BucketSpec) UseClientCert() bool {
