@@ -303,6 +303,7 @@ func TestStartAndStopHTTPServers(t *testing.T) {
 	config.API.MetricsInterface = "127.0.0.1:24986"
 
 	config.Bootstrap.Server = base.UnitTestUrl()
+	config.Bootstrap.UseTLSServer = base.BoolPtr(base.ServerIsTLS(base.UnitTestUrl()))
 	config.Bootstrap.Username = base.TestClusterUsername()
 	config.Bootstrap.Password = base.TestClusterPassword()
 
