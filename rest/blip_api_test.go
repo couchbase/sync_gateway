@@ -2939,9 +2939,11 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: base.BoolPtr(true),
+				},
 			},
 		},
 		guestEnabled: true,
@@ -3015,9 +3017,11 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: base.BoolPtr(true),
+				},
 			},
 		},
 		guestEnabled: true,
