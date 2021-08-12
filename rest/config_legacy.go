@@ -102,7 +102,8 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			continue
 		}
 		if strings.HasPrefix(*server, "http://") {
-			*server = strings.Replace(*server, "http", "couchbase", 1)
+			*server = strings.TrimPrefix(*server, "http://")
+			*server = fmt.Sprintf("couchbase://%s", *server)
 		}
 
 		bsc = &BootstrapConfig{
