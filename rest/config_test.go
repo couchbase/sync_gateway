@@ -1204,6 +1204,61 @@ func TestSetupServerContext(t *testing.T) {
 	})
 }
 
+// CBG-1583 - config group ID EE-only
+func TestConfigGroupIDValidation(t *testing.T) {
+	error := "customization of group_id is only supported in enterprise edition"
+	testCases := []struct {
+		name        string
+		cfgGroupID  string
+		eeMode      bool
+		expectError bool
+	}{
+		{
+			name:        "No change, CE mode",
+			cfgGroupID:  persistentConfigDefaultGroupID,
+			eeMode:      false,
+			expectError: false,
+		},
+		{
+			name:        "No change, EE mode",
+			cfgGroupID:  persistentConfigDefaultGroupID,
+			eeMode:      true,
+			expectError: false,
+		},
+		{
+			name:        "Changed, EE mode",
+			cfgGroupID:  "testGroup",
+			eeMode:      true,
+			expectError: false,
+		},
+		{
+			name:        "Changed, CE mode",
+			cfgGroupID:  "testGroup",
+			eeMode:      false,
+			expectError: true,
+		},
+	}
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			if test.eeMode && !base.IsEnterpriseEdition() {
+				t.Skip("EE mode only test case")
+			}
+			if !test.eeMode && base.IsEnterpriseEdition() {
+				t.Skip("CE mode only test case")
+			}
+
+			sc := StartupConfig{Bootstrap: BootstrapConfig{ConfigGroupID: test.cfgGroupID}}
+			err := sc.validate()
+			if test.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), error)
+			} else if err != nil {
+				assert.NotContains(t, err.Error(), error)
+			}
+		})
+	}
+}
+
 // CBG-1599
 func TestClientTLSMissing(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
