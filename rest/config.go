@@ -846,7 +846,7 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 		}
 
 		if sc.Bootstrap.ConfigGroupID != persistentConfigDefaultGroupID {
-			errorMessages = multierror.Append(errorMessages, fmt.Errorf("customization of config_group_id is only supported in enterprise edition"))
+			errorMessages = multierror.Append(errorMessages, fmt.Errorf("customization of group_id is only supported in enterprise edition"))
 		}
 	}
 
