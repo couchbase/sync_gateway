@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -66,6 +67,8 @@ type BlipTesterReplicator struct {
 
 	messagesLock sync.RWMutex                         // lock for messages map
 	messages     map[blip.MessageNumber]*blip.Message // Map of blip messages keyed by message number
+
+	replicationStats *db.BlipSyncStats // Stats of replications
 }
 
 func (btr *BlipTesterReplicator) Close() {
@@ -76,6 +79,10 @@ func (btr *BlipTesterReplicator) Close() {
 }
 
 func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
+	if btr.replicationStats == nil {
+		btr.replicationStats = db.NewBlipSyncStats()
+	}
+
 	btr.bt.blipContext.HandlerForProfile[db.MessageProveAttachment] = func(msg *blip.Message) {
 		btr.storeMessage(msg)
 
@@ -102,6 +109,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		resp := msg.Response()
 		resp.SetBody([]byte(proof))
+		btr.replicationStats.ProveAttachment.Add(1)
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageChanges] = func(msg *blip.Message) {
@@ -375,6 +383,7 @@ func (btr *BlipTesterReplicator) initHandlers(btc *BlipTesterClient) {
 
 		response := msg.Response()
 		response.SetBody(attachment)
+		btr.replicationStats.GetAttachment.Add(1)
 	}
 
 	btr.bt.blipContext.HandlerForProfile[db.MessageNoRev] = func(msg *blip.Message) {
@@ -573,64 +582,33 @@ func (btr *BlipTesterReplicator) sendMsg(msg *blip.Message) (err error) {
 }
 
 // PushRev creates a revision on the client, and immediately sends a changes request for it.
-// The rev ID is always: "N-abcxyz", where N is rev generation for predictability.
+// The rev ID is always: "N-abc", where N is rev generation for predictability.
 func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revID string, err error) {
+	return btc.PushRevWithHistory(docID, parentRev, body, 1, 0)
+}
 
-	// generate fake rev for gen+1
+// PushRevWithHistory creates a revision on the client with history, and immediately sends a changes request for it.
+func (btc *BlipTesterClient) PushRevWithHistory(docID, parentRev string, body []byte, revCount, prunedRevCount int) (revID string, err error) {
 	parentRevGen, _ := db.ParseRevID(parentRev)
+	revGen := parentRevGen + revCount + prunedRevCount
+
+	var revisionHistory []string
+	for i := revGen - 1; i > parentRevGen; i-- {
+		rev := fmt.Sprintf("%d-%s", i, "abc")
+		revisionHistory = append(revisionHistory, rev)
+	}
 
 	// Inline attachment processing
-	if bytes.Contains(body, []byte(db.BodyAttachments)) {
-		var newDocJSON map[string]interface{}
-		if err = base.JSONUnmarshal(body, &newDocJSON); err != nil {
-			return "", err
-		}
-		if attachments, ok := newDocJSON[db.BodyAttachments]; ok {
-			if attachmentMap, ok := attachments.(map[string]interface{}); ok {
-				for attachmentName, inlineAttachment := range attachmentMap {
-					inlineAttachmentMap := inlineAttachment.(map[string]interface{})
-					attachmentData, ok := inlineAttachmentMap["data"]
-					if !ok {
-						if isStub, _ := inlineAttachmentMap["stub"].(bool); isStub {
-							// push the stub as-is
-							continue
-						}
-						return "", fmt.Errorf("couldn't find data property for inline attachment")
-					}
-
-					// Transform inline attachment data into metadata
-					data, ok := attachmentData.(string)
-					if !ok {
-						return "", fmt.Errorf("inline attachment data was not a string")
-					}
-
-					contentType, _ := inlineAttachmentMap["content_type"].(string)
-
-					length, digest, err := btc.saveAttachment(contentType, data)
-					if err != nil {
-						return "", err
-					}
-
-					attachmentMap[attachmentName] = map[string]interface{}{
-						"content_type": contentType,
-						"digest":       digest,
-						"length":       length,
-						"revpos":       parentRevGen + 1,
-						"stub":         true,
-					}
-					newDocJSON[db.BodyAttachments] = attachmentMap
-				}
-			}
-			if body, err = base.JSONMarshal(newDocJSON); err != nil {
-				return "", err
-			}
-		}
+	body, err = btc.ProcessInlineAttachments(body, revGen)
+	if err != nil {
+		return "", err
 	}
 
 	var parentDocBody []byte
-	newRevID := fmt.Sprintf("%d-%s", parentRevGen+1, "abcxyz")
+	newRevID := fmt.Sprintf("%d-%s", revGen, "abc")
 	btc.docsLock.Lock()
 	if parentRev != "" {
+		revisionHistory = append(revisionHistory, parentRev)
 		if _, ok := btc.docs[docID]; ok {
 			// create new rev if doc and parent rev already exists
 			if parentDoc, okParent := btc.docs[docID][parentRev]; okParent {
@@ -647,8 +625,10 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 		}
 	} else {
 		// create new doc + rev
-		bodyMessagePair := &BodyMessagePair{body: body}
-		btc.docs[docID] = map[string]*BodyMessagePair{newRevID: bodyMessagePair}
+		if _, ok := btc.docs[docID]; !ok {
+			bodyMessagePair := &BodyMessagePair{body: body}
+			btc.docs[docID] = map[string]*BodyMessagePair{newRevID: bodyMessagePair}
+		}
 	}
 	btc.docsLock.Unlock()
 
@@ -671,7 +651,7 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 	revRequest.SetProfile(db.MessageRev)
 	revRequest.Properties[db.RevMessageId] = docID
 	revRequest.Properties[db.RevMessageRev] = newRevID
-	revRequest.Properties[db.RevMessageHistory] = parentRev
+	revRequest.Properties[db.RevMessageHistory] = strings.Join(revisionHistory, ",")
 
 	if btc.ClientDeltas && proposeChangesResponse.Properties[db.ProposeChangesResponseDeltas] == "true" {
 		base.Debugf(base.KeySync, "TEST: sending deltas from test client")
@@ -713,6 +693,69 @@ func (btc *BlipTesterClient) PushRev(docID, parentRev string, body []byte) (revI
 
 	btc.updateLastReplicatedRev(docID, newRevID)
 	return newRevID, nil
+}
+
+func (btc *BlipTesterClient) StoreRevOnClient(docID, revID string, body []byte) error {
+	revGen, _ := db.ParseRevID(revID)
+	newBody, err := btc.ProcessInlineAttachments(body, revGen)
+	if err != nil {
+		return err
+	}
+	bodyMessagePair := &BodyMessagePair{body: newBody}
+	btc.docs[docID] = map[string]*BodyMessagePair{revID: bodyMessagePair}
+	return nil
+}
+
+func (btc *BlipTesterClient) ProcessInlineAttachments(inputBody []byte, revGen int) (outputBody []byte, err error) {
+	if bytes.Contains(inputBody, []byte(db.BodyAttachments)) {
+		var newDocJSON map[string]interface{}
+		if err := base.JSONUnmarshal(inputBody, &newDocJSON); err != nil {
+			return nil, err
+		}
+		if attachments, ok := newDocJSON[db.BodyAttachments]; ok {
+			if attachmentMap, ok := attachments.(map[string]interface{}); ok {
+				for attachmentName, inlineAttachment := range attachmentMap {
+					inlineAttachmentMap := inlineAttachment.(map[string]interface{})
+					attachmentData, ok := inlineAttachmentMap["data"]
+					if !ok {
+						if isStub, _ := inlineAttachmentMap["stub"].(bool); isStub {
+							// push the stub as-is
+							continue
+						}
+						return nil, fmt.Errorf("couldn't find data property for inline attachment")
+					}
+
+					// Transform inline attachment data into metadata
+					data, ok := attachmentData.(string)
+					if !ok {
+						return nil, fmt.Errorf("inline attachment data was not a string")
+					}
+
+					contentType, _ := inlineAttachmentMap["content_type"].(string)
+
+					length, digest, err := btc.saveAttachment(contentType, data)
+					if err != nil {
+						return nil, err
+					}
+
+					attachmentMap[attachmentName] = map[string]interface{}{
+						"content_type": contentType,
+						"digest":       digest,
+						"length":       length,
+						"revpos":       revGen,
+						"stub":         true,
+					}
+					newDocJSON[db.BodyAttachments] = attachmentMap
+				}
+			}
+			var err error
+			if outputBody, err = base.JSONMarshal(newDocJSON); err != nil {
+				return nil, err
+			}
+			return outputBody, nil
+		}
+	}
+	return inputBody, nil
 }
 
 // GetRev returns the data stored in the Client under the given docID and revID
