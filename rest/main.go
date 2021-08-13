@@ -120,7 +120,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 				// the config is actually a 3.x config but with a genuine unknown field, therefore we should  return the
 				// original error from LoadStartupConfigFromPath.
 				if pkgerrors.Cause(upgradeError) == base.ErrUnknownField {
-					base.Errorf("automatic upgrade attempt failed %s not recognized as a legacy config err: %v", base.MD(configPath[0]), upgradeError)
+					base.Errorf("automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
 					return false, err
 				}
 
