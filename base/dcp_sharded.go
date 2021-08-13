@@ -223,7 +223,7 @@ func dcpSafeIndexName(c *CbgtContext, dbName string) (safeIndexName, previousUUI
 
 	// Otherwise, remove legacy if it exists, and return new format
 	if legacyIndexUUID != "" {
-		deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
+		_, deleteErr := c.Manager.DeleteIndexEx(legacyIndexName, "")
 		if deleteErr != nil {
 			Warnf("Error removing legacy import feed index: %v", deleteErr)
 		}
