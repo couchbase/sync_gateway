@@ -182,6 +182,10 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: res.Cas()})
 		if err != nil {
+			if errors.Is(err, gocb.ErrCasMismatch) {
+				// retry on cas failure
+				continue
+			}
 			return 0, err
 		}
 
