@@ -46,7 +46,7 @@ licenses/APL2.txt.
 
   <!-- gocb v2 -->
   <project name="gocb" path="godeps/src/github.com/couchbase/gocb" remote="couchbase" revision="7edf8dda70989588940f2649d6ba72b9253aab12" />
-  <project name="gocbcore" path="godeps/src/github.com/couchbase/gocbcore" remote="couchbase" revision="e0632bbd0c3dabf618b8170eb3bffb0862b9ee9a"/>
+  <project name="gocbcore" path="godeps/src/github.com/couchbase/gocbcore/v9" remote="couchbase" revision="e0632bbd0c3dabf618b8170eb3bffb0862b9ee9a"/>
   <project name="golang-snappy"  path="godeps/src/github.com/golang/snappy" remote="couchbasedeps" revision="723cc1e459b8eea2dea4583200fd60757d40097a" />
 
   <!-- gocb v1 -->
