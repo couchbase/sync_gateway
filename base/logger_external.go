@@ -15,8 +15,8 @@ import (
 	"os"
 
 	"github.com/couchbase/clog"
-	"github.com/couchbase/gocb"
-	"github.com/couchbase/gocbcore"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10"
 	"github.com/couchbase/goutils/logging"
 	gocbv1 "gopkg.in/couchbase/gocb.v1"
 	gocbcorev7 "gopkg.in/couchbase/gocbcore.v7"

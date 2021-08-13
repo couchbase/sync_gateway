@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/gocb"
-	"github.com/couchbase/gocbcore"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )

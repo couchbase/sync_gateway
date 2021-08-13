@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbase/gocb"
-	"github.com/couchbase/gocbcore/memd"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10/memd"
 )
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.

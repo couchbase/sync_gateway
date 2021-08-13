@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/couchbase/gocb"
-	"github.com/couchbase/gocbcore"
-	"github.com/couchbase/gocbcore/memd"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10"
+	"github.com/couchbase/gocbcore/v10/memd"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )

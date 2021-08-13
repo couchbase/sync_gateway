@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/couchbase/go-couchbase"
-	"github.com/couchbase/gocbcore/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"
