@@ -65,8 +65,8 @@ type bootstrapContext struct {
 
 func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
-		dbc := DatabaseConfig{DbConfig: *dbConfig}
-		_, err := sc._getOrAddDatabaseFromConfig(dbc, false)
+		dbc := dbConfig.ToDatabaseConfig()
+		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false)
 		if err != nil {
 			return err
 		}
