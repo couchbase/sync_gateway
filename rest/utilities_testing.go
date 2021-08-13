@@ -58,7 +58,6 @@ type RestTesterConfig struct {
 	enableAdminAuthPermissionsCheck bool
 	useTLSServer                    bool // If true, TLS will be required for communications with CBS. Default: false
 	persistentConfig                bool
-	skipDatabaseCreation            bool
 }
 
 type RestTester struct {
@@ -156,40 +155,38 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	useXattrs := base.TestUseXattrs()
 
-	if !rt.skipDatabaseCreation {
-		if rt.DatabaseConfig == nil {
-			// If no db config was passed in, create one
-			rt.DatabaseConfig = &DatabaseConfig{}
-		}
+	if rt.DatabaseConfig == nil {
+		// If no db config was passed in, create one
+		rt.DatabaseConfig = &DatabaseConfig{}
+	}
 
-		if base.TestsDisableGSI() {
-			rt.DatabaseConfig.UseViews = base.BoolPtr(true)
-		}
+	if base.TestsDisableGSI() {
+		rt.DatabaseConfig.UseViews = base.BoolPtr(true)
+	}
 
-		// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
-		numReplicas := uint(0)
-		rt.DatabaseConfig.NumIndexReplicas = &numReplicas
+	// numReplicas set to 0 for test buckets, since it should assume that there may only be one indexing node.
+	numReplicas := uint(0)
+	rt.DatabaseConfig.NumIndexReplicas = &numReplicas
 
-		rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
-		rt.DatabaseConfig.Username = username
-		rt.DatabaseConfig.Password = password
-		rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
-		rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
-		rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath
-		rt.DatabaseConfig.Name = "db"
-		rt.DatabaseConfig.Sync = &rt.SyncFn
-		rt.DatabaseConfig.EnableXattrs = &useXattrs
-		if rt.EnableNoConflictsMode {
-			boolVal := false
-			rt.DatabaseConfig.AllowConflicts = &boolVal
-		}
+	rt.DatabaseConfig.Bucket = &testBucket.BucketSpec.BucketName
+	rt.DatabaseConfig.Username = username
+	rt.DatabaseConfig.Password = password
+	rt.DatabaseConfig.CACertPath = testBucket.BucketSpec.CACertPath
+	rt.DatabaseConfig.CertPath = testBucket.BucketSpec.Certpath
+	rt.DatabaseConfig.KeyPath = testBucket.BucketSpec.Keypath
+	rt.DatabaseConfig.Name = "db"
+	rt.DatabaseConfig.Sync = &rt.SyncFn
+	rt.DatabaseConfig.EnableXattrs = &useXattrs
+	if rt.EnableNoConflictsMode {
+		boolVal := false
+		rt.DatabaseConfig.AllowConflicts = &boolVal
+	}
 
-		rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
+	rt.DatabaseConfig.SGReplicateEnabled = base.BoolPtr(rt.RestTesterConfig.sgReplicateEnabled)
 
-		_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
-		if err != nil {
-			rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
-		}
+	_, err = rt.RestTesterServerContext.AddDatabaseFromConfig(*rt.DatabaseConfig)
+	if err != nil {
+		rt.tb.Fatalf("Error from AddDatabaseFromConfig: %v", err)
 	}
 
 	// Update the testBucket Bucket to the one associated with the database context.  The new (dbContext) bucket

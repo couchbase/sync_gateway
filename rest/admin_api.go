@@ -39,6 +39,7 @@ func (h *handler) handleCreateDB() error {
 	}
 
 	if h.server.persistentConfig {
+		// Attempt to apply configuration to node first, to ensure successful before persisting config for other nodes.
 		_, err := h.server.applyConfig(*config)
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
@@ -87,14 +88,10 @@ func (h *handler) handleDbOnline() error {
 	_ = base.JSONUnmarshal(body, &input)
 
 	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
-	if input.Delay > 0 {
-		go func() {
-			time.Sleep(time.Duration(input.Delay) * time.Second)
-			h.server.TakeDbOnline(h.db.DatabaseContext)
-		}()
-	} else {
+	go func() {
+		time.Sleep(time.Duration(input.Delay) * time.Second)
 		h.server.TakeDbOnline(h.db.DatabaseContext)
-	}
+	}()
 
 	return nil
 }
@@ -297,52 +294,53 @@ func (h *handler) handlePutConfig() error {
 	return base.HTTPErrorf(http.StatusOK, "Updated")
 }
 
-// PUT a new database config
+// handlePutDbConfig Upserts a new database config
 func (h *handler) handlePutDbConfig() (err error) {
 	h.assertAdminOnly()
 
 	var dbConfig *DatabaseConfig
 
 	// TODO: Move to standalone permissions PR
-	switch true {
-	case h.permissionsResults[PermUpdateDb.PermissionName]:
+	if h.permissionsResults[PermUpdateDb.PermissionName] {
+		// can change everything
 		dbConfig, err = h.readSanitizeDbConfigJSON()
 		if err != nil {
 			return err
 		}
-	case h.permissionsResults[PermConfigureSyncFn.PermissionName]:
-		var value struct {
-			Sync *string `json:"sync,omitempty"`
-		}
-		if err := h.readSanitizeJSON(&value); err != nil {
-			if errors.Cause(err) == base.ErrUnknownField {
-				return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
-			}
-			return err
-		}
-		if value.Sync == nil {
-			// noop
-			return nil
-		}
-		dbConfig.Sync = value.Sync
-	case h.permissionsResults[PermConfigureAuth.PermissionName]:
-		var value struct {
-			Guest *db.PrincipalConfig `json:"guest,omitempty"`
-		}
-		if err := h.readSanitizeJSON(&value); err != nil {
-			if errors.Cause(err) == base.ErrUnknownField {
-				return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
-			}
-			return err
-		}
-		if value.Guest == nil {
-			// noop
-			return nil
-		}
-		dbConfig.Guest = value.Guest
-	default:
-		return base.HTTPErrorf(http.StatusForbidden, "not authorized to update database")
 	}
+
+	// TODO: Fine-grained permission checks for sync and guest.
+	//       Needs to support users that have BOTH permissions updating both fields, which the below code doesn't handle.
+	//
+	// if h.permissionsResults[PermConfigureSyncFn.PermissionName] {
+	// 	var allowedConfig struct {
+	// 		Sync *string `json:"sync,omitempty"`
+	// 	}
+	// 	if err := h.readSanitizeJSON(&allowedConfig); err != nil {
+	// 		if errors.Cause(err) == base.ErrUnknownField {
+	// 			return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
+	// 		}
+	// 		return err
+	// 	}
+	// 	if allowedConfig.Sync != nil {
+	// 		dbConfig.Sync = allowedConfig.Sync
+	// 	}
+	// }
+	//
+	// if h.permissionsResults[PermConfigureAuth.PermissionName] {
+	// 	var allowedConfig struct {
+	// 		Guest *db.PrincipalConfig `json:"guest,omitempty"`
+	// 	}
+	// 	if err := h.readSanitizeJSON(&allowedConfig); err != nil {
+	// 		if errors.Cause(err) == base.ErrUnknownField {
+	// 			return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
+	// 		}
+	// 		return err
+	// 	}
+	// 	if allowedConfig.Guest != nil {
+	// 		dbConfig.Guest = allowedConfig.Guest
+	// 	}
+	// }
 
 	bucket := h.db.Bucket.GetName()
 	if dbConfig.Bucket != nil {
@@ -359,11 +357,12 @@ func (h *handler) handlePutDbConfig() (err error) {
 					return nil, err
 				}
 
-				// TODO: Optimistic Concurrency Control/RevID check?
+				// TODO: CBG-1452 Optimistic Concurrency Control/RevID check
 				if err := base.ConfigMerge(&bucketDbConfig, dbConfig); err != nil {
 					return nil, err
 				}
 
+				// TODO: We're validating but we're not actually starting up the database before we persist the update!
 				if err := bucketDbConfig.validate(); err != nil {
 					return nil, err
 				}
