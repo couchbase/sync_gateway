@@ -144,6 +144,9 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	config.Bootstrap.Password = base.TestClusterPassword()
 
 	// avoid loading existing configs by choosing a non-default config group
+	if !base.IsEnterpriseEdition() {
+		t.Skipf("EE-ONLY: Skipping test %s due to requiring non-default Config Group ID", t.Name())
+	}
 	config.Bootstrap.ConfigGroupID = t.Name()
 
 	return config

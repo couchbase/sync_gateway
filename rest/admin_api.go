@@ -309,7 +309,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 		}
 	}
 
-	// TODO: Fine-grained permission checks for sync and guest.
+	// TODO: CBG-1561 Fine-grained permission checks for sync and guest.
 	//       Needs to support users that have BOTH permissions updating both fields, which the below code doesn't handle.
 	//
 	// if h.permissionsResults[PermConfigureSyncFn.PermissionName] {
