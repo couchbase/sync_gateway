@@ -1003,7 +1003,6 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 		// TODO: This code is mostly copied from fetchConfigs, move into shared function with DbConfig REST API work?
 
 		// inherit properties the bootstrap config
-		// cnf.Server = &sc.config.Bootstrap.Server
 		cnf.CACertPath = sc.config.Bootstrap.CACertPath
 
 		bucketCopy := bucket
@@ -1049,7 +1048,6 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig []DatabaseConfig
 		cnf.cas = cas
 
 		// inherit properties the bootstrap config
-		// cnf.Server = &sc.config.Bootstrap.Server
 		cnf.CACertPath = sc.config.Bootstrap.CACertPath
 
 		bucketCopy := bucket

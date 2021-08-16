@@ -2,7 +2,6 @@ package base
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
 	"time"
 
@@ -17,9 +16,9 @@ type BootstrapConnection interface {
 	GetConfigBuckets() ([]string, error)
 	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
 	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
-	// PutConfig saves a database config for a given bucket and config group ID, along with the CAS of the document.
-	PutConfig(bucket, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error)
-	// UpdateConfig updates a database config for a given bucket and config group ID.
+	// InsertConfig saves a new database config for a given bucket and config group ID.
+	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
+	// UpdateConfig updates an existing database config for a given bucket and config group ID.
 	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// Close closes the connection
 	Close() error
@@ -125,33 +124,22 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	return uint64(res.Cas()), nil
 }
 
-func (cc *CouchbaseCluster) PutConfig(location, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interface{}) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 	docID := PersistentConfigPrefix + groupID
 	collection := cc.c.Bucket(location).DefaultCollection()
 
-	if cas != nil {
-		if *cas == 0 {
-			res, err := collection.Insert(docID, value, nil)
-			if err != nil {
-
-				if isKVError(err, memd.StatusKeyExists) {
-					return 0, ErrAlreadyExists
-				}
-
-				return 0, err
-			}
-
-			return uint64(res.Cas()), nil
-		} else {
-			// TODO: CAS safe update?
-			return 0, fmt.Errorf("CAS safe update not implemented")
+	res, err := collection.Insert(docID, value, nil)
+	if err != nil {
+		if isKVError(err, memd.StatusKeyExists) {
+			return 0, ErrAlreadyExists
 		}
+		return 0, err
 	}
 
-	return 0, fmt.Errorf("Non-CAS safe put not implemented")
+	return uint64(res.Cas()), nil
 }
 
 func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte) (newConfig []byte, err error)) (newCAS uint64, err error) {

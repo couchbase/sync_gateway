@@ -44,10 +44,10 @@ func (h *handler) handleCreateDB() error {
 		if err != nil {
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
 		}
-		// Create DB only, don't update or overwrite
-		cas := base.Uint64Ptr(0)
-		config.cas, err = h.server.bootstrapContext.connection.PutConfig(*config.Bucket, h.server.config.Bootstrap.ConfigGroupID, cas, config)
+		config.cas, err = h.server.bootstrapContext.connection.InsertConfig(*config.Bucket, h.server.config.Bootstrap.ConfigGroupID, config)
 		if err != nil {
+			// remove database if we can't persist to avoid inconsistent cluster state
+			h.server.RemoveDatabase(dbName)
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
 	} else {

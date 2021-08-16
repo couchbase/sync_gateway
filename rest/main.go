@@ -237,7 +237,7 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 	// Write database configs to CBS with groupID "default"
 	for _, dbConfig := range dbConfigs {
 		dbc := dbConfig.ToDatabaseConfig()
-		_, err = cluster.PutConfig(*dbc.Bucket, persistentConfigDefaultGroupID, base.Uint64Ptr(0), dbc)
+		_, err = cluster.InsertConfig(*dbc.Bucket, persistentConfigDefaultGroupID, dbc)
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {
