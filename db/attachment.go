@@ -26,8 +26,13 @@ const (
 	AttVersion2 int = 2
 )
 
-// ErrAttachmentVersion is thrown in case of any error in parsing version from the attachment meta.
-var ErrAttachmentVersion = base.HTTPErrorf(http.StatusBadRequest, "invalid version found in attachment meta")
+var (
+	// ErrAttachmentVersion is thrown in case of any error in parsing version from the attachment meta.
+	ErrAttachmentVersion = base.HTTPErrorf(http.StatusBadRequest, "invalid version found in attachment meta")
+
+	// ErrAttachmentMeta returned when the document contains invalid _attachments metadata properties.
+	ErrAttachmentMeta = base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
+)
 
 // AttachmentData holds the attachment key and value bytes.
 type AttachmentData map[string][]byte
@@ -123,6 +128,53 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 		}
 	}
 	return newAttachmentData, nil
+}
+
+// retrieveObsoleteAttachments determines the list of attachments that are no longer being referenced from any document
+// and returns a slice of attachments keys for subsequent garbage collection.
+func (db *Database) retrieveObsoleteAttachments(doc *Document, docAttachments AttachmentsMeta, parentRev string, docHistory []string) (obsoleteAttachments []string, err error) {
+	parentAttachments := db.retrieveAncestorAttachments(doc, parentRev, docHistory)
+	if parentAttachments == nil {
+		return nil, nil
+	}
+	activeAttachments, err := retrieveActiveAttachments(doc.ID, docAttachments)
+	if err != nil {
+		return nil, err
+	}
+	for _, value := range parentAttachments {
+		meta, ok := value.(map[string]interface{})
+		if !ok {
+			return nil, ErrAttachmentMeta
+		}
+		digest, ok := meta["digest"].(string)
+		if !ok {
+			return nil, ErrAttachmentMeta
+		}
+		version, _ := GetAttachmentVersion(meta)
+		key := MakeAttachmentKey(version, doc.ID, digest)
+		if _, found := activeAttachments[key]; !found {
+			obsoleteAttachments = append(obsoleteAttachments, key)
+		}
+	}
+	return obsoleteAttachments, nil
+}
+
+func retrieveActiveAttachments(docID string, docAttachments AttachmentsMeta) (activeAttachments map[string]struct{}, err error) {
+	activeAttachments = make(map[string]struct{})
+	for _, value := range docAttachments {
+		meta, ok := value.(map[string]interface{})
+		if !ok {
+			return nil, ErrAttachmentMeta
+		}
+		digest, ok := meta["digest"].(string)
+		if !ok {
+			return nil, ErrAttachmentMeta
+		}
+		version, _ := GetAttachmentVersion(meta)
+		key := MakeAttachmentKey(version, docID, digest)
+		activeAttachments[key] = struct{}{}
+	}
+	return activeAttachments, nil
 }
 
 // Attempts to retrieve ancestor attachments for a document. First attempts to find and use a non-pruned ancestor.
