@@ -14,8 +14,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/couchbase/gocb"
-	"github.com/couchbase/gocbcore/memd"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10/memd"
 	"github.com/couchbase/gomemcached"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbaselabs/walrus"

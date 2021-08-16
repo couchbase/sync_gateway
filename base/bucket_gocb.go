@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/gocbcore/memd"
+	"github.com/couchbase/gocbcore/v10/memd"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 	"gopkg.in/couchbase/gocb.v1"

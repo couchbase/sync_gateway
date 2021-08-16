@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/couchbase/gocb"
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	pkgerrors "github.com/pkg/errors"
 )

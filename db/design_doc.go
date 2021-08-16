@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/couchbase/gocb"
+	"github.com/couchbase/gocb/v2"
 	sgbucket "github.com/couchbase/sg-bucket"
 	"github.com/couchbase/sync_gateway/auth"
 	"github.com/couchbase/sync_gateway/base"

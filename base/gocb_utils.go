@@ -7,8 +7,8 @@ import (
 	"io/ioutil"
 	"time"
 
-	"github.com/couchbase/gocb"
-	"github.com/couchbase/gocbcore"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v10"
 )
 
 // GoCBv2SecurityConfig returns a gocb.SecurityConfig to use when connecting given a CA Cert path.

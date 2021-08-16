@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/couchbase/gocb"
+	"github.com/couchbase/gocb/v2"
 	gocbv1 "gopkg.in/couchbase/gocb.v1"
 )
 
