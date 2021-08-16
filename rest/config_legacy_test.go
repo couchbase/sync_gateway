@@ -74,8 +74,14 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		{
 			name:     "http:// to couchbase://",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://http.couchbase.com")}}}},
-			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://http.couchbase.com"}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://http.couchbase.com:2929,host2,host1:22,[2001:db8::8811],[2001:db8::8822]:888")}}}},
+			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://http.couchbase.com,host2,host1,[2001:db8::8811],[2001:db8::8822]"}},
+		},
+		{
+			name:     "Username and password in server URL",
+			base:     StartupConfig{},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://foo:bar@[2001:db8::8811]:8091,host2:123")}}}},
+			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://[2001:db8::8811],host2", Username: "foo", Password: "bar"}},
 		},
 	}
 	for _, test := range tests {

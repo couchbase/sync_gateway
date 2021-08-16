@@ -4,8 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
+
+	"gopkg.in/couchbaselabs/gocbconnstr.v1"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -101,9 +104,35 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		if server == nil || *server == "" {
 			continue
 		}
-		if strings.HasPrefix(*server, "http://") {
-			*server = strings.TrimPrefix(*server, "http://")
-			*server = fmt.Sprintf("couchbase://%s", *server)
+
+		connSpec, err := gocbconnstr.Parse(*server)
+		if err != nil {
+			return nil, DbConfigMap{}, err
+		}
+
+		// support for username and password if not specified in username and password fields
+		splitServers := strings.Split(*server, ",")
+		// Only first URL is supported to have username and pass or else gocbconnstr.Parse does not work correctly
+		if strings.Contains(splitServers[0], "@") && dbConfig.Username == "" && dbConfig.Password == "" {
+			u, err := url.Parse(splitServers[0])
+			if err != nil {
+				return nil, DbConfigMap{}, err
+			}
+			username := u.User.Username()
+			password, passwordSet := u.User.Password()
+			if username != "" && passwordSet {
+				dbConfig.Username = username
+				dbConfig.Password = password
+			}
+		}
+
+		if connSpec.Scheme == "http" {
+			*server = "couchbase://"
+			for _, addr := range connSpec.Addresses {
+				*server = fmt.Sprintf("%s%s,", *server, addr.Host)
+			}
+			// Trailing , is valid but removed to make field neater
+			*server = strings.TrimSuffix(*server, ",")
 		}
 
 		bsc = &BootstrapConfig{
