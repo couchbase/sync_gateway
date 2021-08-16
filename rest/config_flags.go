@@ -17,9 +17,9 @@ type configFlag struct {
 	flagValue interface{}
 }
 
-// setConfigFlags holds a map of the flag values with the configFlag it goes with
+// registerConfigFlags holds a map of the flag values with the configFlag it goes with
 // (which stores the corresponding config field pointer and flag value).
-func setConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]configFlag {
+func registerConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]configFlag {
 	return map[string]configFlag{
 		"bootstrap.group_id":                {&config.Bootstrap.ConfigGroupID, fs.String("bootstrap.group_id", "", "The config group ID to use when discovering databases. Allows for non-homogenous configuration")},
 		"bootstrap.config_update_frequency": {&config.Bootstrap.ConfigUpdateFrequency, fs.String("bootstrap.config_update_frequency", persistentConfigDefaultUpdateFrequency.String(), "How often to poll Couchbase Server for new config changes")},
@@ -51,7 +51,6 @@ func setConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]configFl
 		"api.https.tls_minimum_version": {&config.API.HTTPS.TLSMinimumVersion, fs.String("api.https.tls_minimum_version", "", "The minimum allowable TLS version for the REST APIs")},
 		"api.https.tls_cert_path":       {&config.API.HTTPS.TLSCertPath, fs.String("api.https.tls_cert_path", "", "The TLS cert file to use for the REST APIs")},
 		"api.https.tls_key_path":        {&config.API.HTTPS.TLSKeyPath, fs.String("api.https.tls_key_path", "", "The TLS key file to use for the REST APIs")},
-		"api.https.use_tls_client":      {&config.API.HTTPS.UseTLSClient, fs.Bool("api.https.use_tls_client", false, "Use TLS for the REST APIs")},
 
 		"api.cors.origin":       {&config.API.CORS.Origin, fs.String("api.cors.origin", "", "List of comma seperated allowed origins. Use '*' to allow access from everywhere")},
 		"api.cors.login_origin": {&config.API.CORS.LoginOrigin, fs.String("api.cors.login_origin", "", "List of comma seperated allowed login origins")},
@@ -128,7 +127,7 @@ func setConfigFlags(config *StartupConfig, fs *flag.FlagSet) map[string]configFl
 	}
 }
 
-// fillConfigWithFlags fills in the config values from setConfigFlags if the user
+// fillConfigWithFlags fills in the config values from registerConfigFlags if the user
 // has explicitly set the flags
 func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMessages error) {
 	fs.Visit(func(f *flag.Flag) {
@@ -168,9 +167,9 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMe
 					return
 				}
 				if pointer {
-					rval.Set(reflect.ValueOf(&base.ConfigDuration{Duration: duration}))
+					rval.Set(reflect.ValueOf(&base.ConfigDuration{D: duration}))
 				} else {
-					*val.config.(*base.ConfigDuration) = base.ConfigDuration{Duration: duration}
+					*val.config.(*base.ConfigDuration) = base.ConfigDuration{D: duration}
 				}
 			case *base.RedactionLevel:
 				var rl base.RedactionLevel
@@ -191,7 +190,7 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMe
 				}
 				rval.Set(reflect.ValueOf(&ll))
 			default:
-				panic(fmt.Sprintf("Error: Unknown type %v for flag %v\n", rval.Type(), f.Name))
+				errorMessages = multierror.Append(errorMessages, fmt.Errorf("Unknown type %v for flag %v\n", rval.Type(), f.Name))
 			}
 		}
 	})

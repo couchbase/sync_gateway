@@ -32,8 +32,8 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		{
 			name:     "Override duration zero ServerReadTimeout",
 			base:     StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(time.Second * 10)}},
-			input:    LegacyServerConfig{ServerReadTimeout: base.IntPtr(0)},
-			expected: StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(0)}},
+			input:    LegacyServerConfig{ServerReadTimeout: base.IntPtr(1)},
+			expected: StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(time.Second)}},
 		},
 		{
 			name:     "Override duration non-zero ServerWriteTimeout",

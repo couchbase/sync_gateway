@@ -126,7 +126,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			BcryptCost: lc.BcryptCost,
 		},
 		Replicator: ReplicatorConfig{
-			MaxHeartbeat:    base.ConfigDuration{Duration: time.Second * time.Duration(lc.MaxHeartbeat)},
+			MaxHeartbeat:    base.ConfigDuration{D: time.Second * time.Duration(lc.MaxHeartbeat)},
 			BLIPCompression: lc.ReplicatorCompression,
 		},
 	}

@@ -221,7 +221,7 @@ func setGlobalConfig(sc *StartupConfig) error {
 	return nil
 }
 
-// Merge applies non-empty fields from new onto non-empty fields on sc.
+// Merge applies non-empty fields from new onto non-empty fields on sc
 func (sc *StartupConfig) Merge(new *StartupConfig) error {
 	return base.ConfigMerge(sc, new)
 }

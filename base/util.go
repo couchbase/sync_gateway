@@ -1535,24 +1535,34 @@ func IsConnectionRefusedError(err error) bool {
 }
 
 // ConfigDuration is a time.Duration that supports JSON marshalling/unmarshalling.
+// Underlying duration cannot be embedded due to requiring reflect access for mergo.
 type ConfigDuration struct {
-	time.Duration
+	D time.Duration
 }
+
+// Reimplement common time.Duration methods
+func (d ConfigDuration) String() string      { return d.D.String() }
+func (d ConfigDuration) Nanoseconds() int64  { return d.D.Nanoseconds() }
+func (d ConfigDuration) Microseconds() int64 { return d.D.Microseconds() }
+func (d ConfigDuration) Milliseconds() int64 { return d.D.Milliseconds() }
+func (d ConfigDuration) Seconds() float64    { return d.D.Seconds() }
+func (d ConfigDuration) Minutes() float64    { return d.D.Minutes() }
+func (d ConfigDuration) Hours() float64      { return d.D.Hours() }
 
 func (d *ConfigDuration) Value() time.Duration {
 	if d == nil {
 		return 0
 	}
-	return d.Duration
+	return d.D
 }
 
 // NewConfigDuration returns a *ConfigDuration from a time.Duration
 func NewConfigDuration(d time.Duration) *ConfigDuration {
-	return &ConfigDuration{Duration: d}
+	return &ConfigDuration{D: d}
 }
 
 func (d ConfigDuration) MarshalJSON() ([]byte, error) {
-	return json.Marshal(d.String())
+	return json.Marshal(d.D.String())
 }
 
 func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
@@ -1571,7 +1581,7 @@ func (d *ConfigDuration) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	*d = ConfigDuration{Duration: dur}
+	*d = ConfigDuration{D: dur}
 	return nil
 }
 
