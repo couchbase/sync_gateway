@@ -34,23 +34,32 @@ func (h *handler) handleCreateDB() error {
 	if err != nil {
 		return err
 	}
-	if err := config.setup(dbName, h.server.config.Bootstrap); err != nil {
-		return err
-	}
 
 	if h.server.persistentConfig {
-		// Attempt to apply configuration to node first, to ensure successful before persisting config for other nodes.
-		_, err := h.server.applyConfig(*config)
-		if err != nil {
-			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+		if err := config.validate(); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
+
 		config.cas, err = h.server.bootstrapContext.connection.InsertConfig(*config.Bucket, h.server.config.Bootstrap.ConfigGroupID, config)
 		if err != nil {
 			// remove database if we can't persist to avoid inconsistent cluster state
 			h.server.RemoveDatabase(dbName)
 			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
 		}
+
+		if err := config.setup(dbName, h.server.config.Bootstrap); err != nil {
+			return err
+		}
+
+		_, err := h.server.applyConfig(*config)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+		}
 	} else {
+		if err := config.setup(dbName, h.server.config.Bootstrap); err != nil {
+			return err
+		}
+
 		// load database in-memory for non-persistent nodes
 		if _, err := h.server.AddDatabaseFromConfig(*config); err != nil {
 			return err
@@ -300,9 +309,8 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 	var dbConfig *DatabaseConfig
 
-	// TODO: Move to standalone permissions PR
 	if h.permissionsResults[PermUpdateDb.PermissionName] {
-		// can change everything
+		// user authorized to change all fields
 		dbConfig, err = h.readSanitizeDbConfigJSON()
 		if err != nil {
 			return err
@@ -362,7 +370,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 					return nil, err
 				}
 
-				// TODO: We're validating but we're not actually starting up the database before we persist the update!
+				// TODO: CBG-1619 We're validating but we're not actually starting up the database before we persist the update!
 				if err := bucketDbConfig.validate(); err != nil {
 					return nil, err
 				}

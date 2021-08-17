@@ -403,7 +403,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 	profAddr := flagSet.String("profileInterface", "", "Address to bind profile interface to")
 	configServer := flagSet.String("configServer", "", "URL of server that can return database configs")
 	deploymentID := flagSet.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	couchbaseURL := flagSet.String("url", "walrus:", "Address of Couchbase server")
+	couchbaseURL := flagSet.String("url", "", "Address of Couchbase server")
 	dbName := flagSet.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
 	pretty := flagSet.Bool("pretty", false, "Pretty-print JSON responses")
 	verbose := flagSet.Bool("verbose", false, "Log more info about requests")

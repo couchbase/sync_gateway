@@ -2257,7 +2257,6 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	var respBody db.Body
 	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
-	assert.Equal(t, "backticks", respBody["name"].(string))
 	assert.Equal(t, "walrus:", respBody["server"].(string))
 	assert.Equal(t, syncFunc, respBody["sync"].(string))
 }
