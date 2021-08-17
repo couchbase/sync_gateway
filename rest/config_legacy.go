@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
-	"gopkg.in/couchbaselabs/gocbconnstr.v1"
+	"github.com/couchbase/gocbcore/v10/connstr"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -96,49 +97,28 @@ type UnsupportedServerConfigLegacy struct {
 // ToStartupConfig returns the given LegacyServerConfig as a StartupConfig and a set of DBConfigs.
 // The returned configs do not contain any default values - only a direct mapping of legacy config options as they were given.
 func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
-
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
 	bsc := &BootstrapConfig{}
 	for _, dbConfig := range lc.Databases {
-		server := dbConfig.Server
-		if server == nil || *server == "" {
+		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			continue
 		}
 
-		connSpec, err := gocbconnstr.Parse(*server)
+		server, username, password, err := gocbv1tov2AddressUpgrade(*dbConfig.Server)
 		if err != nil {
 			return nil, DbConfigMap{}, err
 		}
 
-		// support for username and password if not specified in username and password fields
-		splitServers := strings.Split(*server, ",")
-		// Only first URL is supported to have username and pass or else gocbconnstr.Parse does not work correctly
-		if strings.Contains(splitServers[0], "@") && dbConfig.Username == "" && dbConfig.Password == "" {
-			u, err := url.Parse(splitServers[0])
-			if err != nil {
-				return nil, DbConfigMap{}, err
-			}
-			username := u.User.Username()
-			password, passwordSet := u.User.Password()
-			if username != "" && passwordSet {
-				dbConfig.Username = username
-				dbConfig.Password = password
-			}
-		}
-
-		if connSpec.Scheme == "http" {
-			*server = "couchbase://"
-			for _, addr := range connSpec.Addresses {
-				*server = fmt.Sprintf("%s%s,", *server, addr.Host)
-			}
-			// Trailing , is valid but removed to make field neater
-			*server = strings.TrimSuffix(*server, ",")
+		// Prioritise config fields over credentials in host
+		if dbConfig.Username != "" && dbConfig.Password != "" {
+			username = dbConfig.Username
+			password = dbConfig.Password
 		}
 
 		bsc = &BootstrapConfig{
-			Server:              *server,
-			Username:            dbConfig.Username,
-			Password:            dbConfig.Password,
+			Server:              server,
+			Username:            username,
+			Password:            password,
 			CACertPath:          dbConfig.CACertPath,
 			X509CertPath:        dbConfig.CertPath,
 			X509KeyPath:         dbConfig.KeyPath,
@@ -279,6 +259,59 @@ func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
 		Guest:    dbc.Users[base.GuestUsername],
 		DbConfig: *dbc,
 	}
+}
+
+func gocbv1tov2AddressUpgrade(server string) (newServer, username, password string, err error) {
+	connSpec, err := connstr.Parse(server)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	splitServers := strings.Split(server, ",")
+	// Only first host is supported to have username and pass or else gocbconnstr.Parse does not work correctly
+	if strings.Contains(splitServers[0], "@") {
+		u, err := url.Parse(splitServers[0])
+		if err != nil {
+			return "", "", "", err
+		}
+		urlUsername := u.User.Username()
+		urlPassword, urlPasswordSet := u.User.Password()
+		if urlUsername != "" && urlPasswordSet {
+			username = urlUsername
+			password = urlPassword
+		}
+	}
+
+	var hosts string
+	for _, addr := range connSpec.Addresses {
+		var port string
+		if addr.Port != 8091 && addr.Port != -1 {
+			if connSpec.Scheme != "http" {
+				port = ":" + strconv.Itoa(addr.Port)
+			} else {
+				return "", "", "", fmt.Errorf("automatic connection string conversion does not support non-default host ports. " +
+					"Please change the server field to use the couchbase(s):// scheme")
+			}
+		}
+
+		hosts = hosts + addr.Host + port + ","
+	}
+
+	if connSpec.Scheme == "http" {
+		connSpec.Scheme = "couchbase"
+	}
+
+	server = connSpec.Scheme + "://" + hosts
+	// Trailing , is valid but removed to make field neater
+	server = strings.TrimSuffix(server, ",")
+
+	if len(connSpec.Options) > 0 {
+		// Append options as gocbconnspec.Parse only works if options at end
+		var params url.Values = connSpec.Options
+		server = server + "?" + params.Encode()
+	}
+
+	return server, username, password, nil
 }
 
 // Implementation of AuthHandler interface for ClusterConfigLegacy
