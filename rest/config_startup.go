@@ -85,7 +85,7 @@ type BootstrapConfig struct {
 	ServerTLSSkipVerify   *bool                `json:"server_tls_skip_verify,omitempty"  help:"Allow empty server CA Cert Path without attempting to use system root pool"`
 	X509CertPath          string               `json:"x509_cert_path,omitempty"          help:"Cert path (public key) for X.509 bucket auth"`
 	X509KeyPath           string               `json:"x509_key_path,omitempty"           help:"Key path (private key) for X.509 bucket auth"`
-	UseTLSServer          *bool                `json:"use_tls_server,omitempty"          help:"Forces the connection to Couchbase Server to use TLS"`
+	UseTLSServer          *bool                `json:"use_tls_server,omitempty"          help:"Enforces a secure or non-secure server scheme"`
 }
 
 type APIConfig struct {
