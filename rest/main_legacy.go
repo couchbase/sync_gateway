@@ -91,7 +91,7 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 			ProfileInterface: *profileInterface,
 			Pretty:           pretty,
 		},
-		Logging: LoggingConfig{
+		Logging: base.LoggingConfig{
 			LogFilePath: *logFilePath,
 			Console: &base.ConsoleLoggerConfig{
 				LogLevel: logLevel,

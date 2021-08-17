@@ -32,6 +32,9 @@ type ConsoleLogger struct {
 
 	// isStderr is true when the console logger is configured with no FileOutput
 	isStderr bool
+
+	// ConsoleLoggerConfig stores the initial config used to instantiate ConsoleLogger
+	config ConsoleLoggerConfig
 }
 
 type ConsoleLoggerConfig struct {
@@ -66,8 +69,10 @@ func NewConsoleLogger(shouldLogLocation bool, config *ConsoleLoggerConfig) (*Con
 		FileLogger: FileLogger{
 			Enabled: AtomicBool{},
 			logger:  log.New(config.Output, "", 0),
+			config:  config.FileLoggerConfig,
 		},
 		isStderr: isStderr,
+		config:   *config,
 	}
 	logger.Enabled.Set(*config.Enabled)
 
@@ -124,6 +129,16 @@ func (l *ConsoleLogger) shouldLog(logLevel LogLevel, logKey LogKey) bool {
 
 	// Finally, check the specific log key is enabled
 	return l.LogKeyMask.Enabled(logKey)
+}
+
+func (l *ConsoleLogger) getConsoleLoggerConfig() *ConsoleLoggerConfig {
+	// Copy config struct to avoid mutating running config
+	c := l.config
+	c.FileLoggerConfig = *l.getFileLoggerConfig()
+	c.LogLevel = l.LogLevel
+	c.LogKeys = l.LogKeyMask.EnabledLogKeys()
+
+	return &c
 }
 
 // init validates and sets any defaults for the given ConsoleLoggerConfig

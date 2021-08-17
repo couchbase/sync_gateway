@@ -122,14 +122,76 @@ func (h *handler) handleGetDbConfig() error {
 	return nil
 }
 
+type RunTimeServerConfigResponse struct {
+	*StartupConfig
+	Databases map[string]*DbConfig `json:"databases"`
+}
+
 // Get admin config info
 func (h *handler) handleGetConfig() error {
-	// TODO: Include runtime
-
 	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
-	_ = includeRuntime
-
 	redact, _ := h.getOptBoolQuery("redact", true)
+
+	if includeRuntime {
+		cfg := RunTimeServerConfigResponse{}
+		var err error
+
+		allDbNames := h.server.AllDatabaseNames()
+		databaseMap := make(map[string]*DbConfig, len(allDbNames))
+		if redact {
+			cfg.StartupConfig, err = h.server.config.Redacted()
+			if err != nil {
+				return err
+			}
+
+			for _, dbName := range allDbNames {
+				databaseMap[dbName], err = h.server.GetDatabaseConfig(dbName).Redacted()
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			cfg.StartupConfig = h.server.config
+			for _, dbName := range allDbNames {
+				// Copying struct here to avoid mutating the running dbconfig later on
+				var dbConfigCopy DbConfig
+				err = base.DeepCopyInefficient(&dbConfigCopy, h.server.GetDatabaseConfig(dbName).DbConfig)
+				if err != nil {
+					return err
+				}
+				databaseMap[dbName] = &dbConfigCopy
+			}
+		}
+
+		for dbName, dbConfig := range databaseMap {
+			database, err := h.server.GetDatabase(dbName)
+			if err != nil {
+				return err
+			}
+
+			replications, err := database.SGReplicateMgr.GetReplications()
+			if err != nil {
+				return err
+			}
+
+			dbConfig.Replications = make(map[string]*db.ReplicationConfig, len(replications))
+
+			for replicationName, replicationConfig := range replications {
+				if redact {
+					dbConfig.Replications[replicationName] = replicationConfig.ReplicationConfig.Redacted()
+				} else {
+					dbConfig.Replications[replicationName] = &replicationConfig.ReplicationConfig
+				}
+			}
+		}
+
+		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.config.Logging.RedactionLevel, h.server.config.Logging.LogFilePath)
+		cfg.Databases = databaseMap
+
+		h.writeJSON(cfg)
+		return nil
+	}
+
 	if redact {
 		cfg, err := h.server.initialStartupConfig.Redacted()
 		if err != nil {

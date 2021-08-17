@@ -3248,3 +3248,100 @@ func TestInitialStartupConfig(t *testing.T) {
 	// Assert that error logging is still nil, that the above running config didn't change anything
 	assert.Nil(t, initialStartupConfig.Logging.Error)
 }
+
+func TestIncludeRuntimeStartupConfig(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
+
+	base.InitializeMemoryLoggers()
+	tempDir := os.TempDir()
+	test := DefaultStartupConfig(tempDir)
+	err := test.SetupAndValidateLogging()
+	assert.NoError(t, err)
+
+	rt := NewRestTester(t, nil)
+	defer rt.Close()
+
+	base.EnableErrorLogger(false)
+	base.EnableWarnLogger(false)
+	base.EnableInfoLogger(false)
+	base.EnableDebugLogger(false)
+	base.EnableTraceLogger(false)
+	base.EnableStatsLogger(false)
+
+	// Get config
+	resp := rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=false", "")
+	assertStatus(t, resp, http.StatusOK)
+
+	var runtimeServerConfigResponse RunTimeServerConfigResponse
+	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
+	require.NoError(t, err)
+
+	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	assert.Equal(t, base.UnitTestUrl(), runtimeServerConfigResponse.Bootstrap.Server)
+	assert.Equal(t, base.TestClusterUsername(), runtimeServerConfigResponse.Bootstrap.Username)
+	assert.Equal(t, base.TestClusterPassword(), runtimeServerConfigResponse.Bootstrap.Password)
+
+	// Make request to enable error logger
+	resp = rt.SendAdminRequest("PUT", "/_config", `
+	{
+		"logging": {
+			"console": {
+				"log_level": "debug",
+				"log_keys": ["*"]
+			},
+			"error": {
+				"enabled": true
+			}
+		}
+	}
+	`)
+	assertStatus(t, resp, http.StatusOK)
+
+	// Update revs limit too so we can check db config
+	dbConfig := rt.ServerContext().GetDatabaseConfig("db")
+	dbConfig.RevsLimit = base.Uint32Ptr(100)
+
+	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=false", "")
+	assertStatus(t, resp, http.StatusOK)
+	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
+	require.NoError(t, err)
+
+	// Check that db revs limit is there now and error logging config
+	assert.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	assert.Equal(t, base.Uint32Ptr(100), runtimeServerConfigResponse.Databases["db"].RevsLimit)
+
+	assert.NotNil(t, runtimeServerConfigResponse.Logging.Error)
+	assert.Equal(t, "debug", runtimeServerConfigResponse.Logging.Console.LogLevel.String())
+
+	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=true", "")
+	assertStatus(t, resp, http.StatusOK)
+	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
+	require.NoError(t, err)
+
+	assert.Equal(t, "xxxxx", runtimeServerConfigResponse.Bootstrap.Password)
+
+	// Setup replication to ensure it is visible in returned config
+	replicationConfig := `{
+		"replication_id": "repl",
+		"remote": "http://remote:4985/db",
+		"direction":"` + db.ActiveReplicatorTypePushAndPull + `",
+		"conflict_resolution_type":"default",
+		"max_backoff":100
+	}`
+
+	response := rt.SendAdminRequest("PUT", "/db/_replication/repl", string(replicationConfig))
+	assertStatus(t, response, http.StatusCreated)
+
+	resp = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=false", "")
+	assertStatus(t, resp, http.StatusOK)
+	err = json.Unmarshal(resp.BodyBytes(), &runtimeServerConfigResponse)
+	require.NoError(t, err)
+
+	require.Contains(t, runtimeServerConfigResponse.Databases, "db")
+	require.Contains(t, runtimeServerConfigResponse.Databases["db"].Replications, "repl")
+	replCfg := runtimeServerConfigResponse.Databases["db"].Replications["repl"]
+	assert.Equal(t, "repl", replCfg.ID)
+	assert.Equal(t, "http://remote:4985/db", replCfg.Remote)
+	assert.Equal(t, db.ActiveReplicatorTypePushAndPull, replCfg.Direction)
+
+}

@@ -43,7 +43,7 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 			// Post-DP this should be set to base.IsEnterpriseEdition as default
 			EnableAdminAuthenticationPermissionsCheck: base.BoolPtr(false),
 		},
-		Logging: LoggingConfig{
+		Logging: base.LoggingConfig{
 			LogFilePath:    defaultLogFilePath,
 			RedactionLevel: base.DefaultRedactionLevel,
 			Console: &base.ConsoleLoggerConfig{
@@ -62,12 +62,12 @@ func DefaultStartupConfig(defaultLogFilePath string) StartupConfig {
 
 // StartupConfig is the config file used by Sync Gateway in 3.0+ to start up with node-specific settings, and then bootstrap databases via Couchbase Server.
 type StartupConfig struct {
-	Bootstrap   BootstrapConfig   `json:"bootstrap,omitempty"`
-	API         APIConfig         `json:"api,omitempty"`
-	Logging     LoggingConfig     `json:"logging,omitempty"`
-	Auth        AuthConfig        `json:"auth,omitempty"`
-	Replicator  ReplicatorConfig  `json:"replicator,omitempty"`
-	Unsupported UnsupportedConfig `json:"unsupported,omitempty"`
+	Bootstrap   BootstrapConfig    `json:"bootstrap,omitempty"`
+	API         APIConfig          `json:"api,omitempty"`
+	Logging     base.LoggingConfig `json:"logging,omitempty"`
+	Auth        AuthConfig         `json:"auth,omitempty"`
+	Replicator  ReplicatorConfig   `json:"replicator,omitempty"`
+	Unsupported UnsupportedConfig  `json:"unsupported,omitempty"`
 
 	MaxFileDescriptors uint64 `json:"max_file_descriptors,omitempty" help:"Max # of open file descriptors (RLIMIT_NOFILE)"`
 
@@ -123,18 +123,6 @@ type CORSConfig struct {
 	LoginOrigin []string `json:"login_origin,omitempty" help:"List of allowed login origins"`
 	Headers     []string `json:"headers,omitempty"      help:"List of allowed headers"`
 	MaxAge      int      `json:"max_age,omitempty"      help:"Maximum age of the CORS Options request"`
-}
-
-type LoggingConfig struct {
-	LogFilePath    string                    `json:"log_file_path,omitempty"   help:"Absolute or relative path on the filesystem to the log file directory. A relative path is from the directory that contains the Sync Gateway executable file"`
-	RedactionLevel base.RedactionLevel       `json:"redaction_level,omitempty" help:"Redaction level to apply to log output"`
-	Console        *base.ConsoleLoggerConfig `json:"console,omitempty"`
-	Error          *base.FileLoggerConfig    `json:"error,omitempty"`
-	Warn           *base.FileLoggerConfig    `json:"warn,omitempty"`
-	Info           *base.FileLoggerConfig    `json:"info,omitempty"`
-	Debug          *base.FileLoggerConfig    `json:"debug,omitempty"`
-	Trace          *base.FileLoggerConfig    `json:"trace,omitempty"`
-	Stats          *base.FileLoggerConfig    `json:"stats,omitempty"`
 }
 
 type AuthConfig struct {

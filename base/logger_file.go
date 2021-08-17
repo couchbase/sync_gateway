@@ -54,6 +54,9 @@ type FileLogger struct {
 	output          io.Writer
 	logger          *log.Logger
 	buffer          strings.Builder
+
+	// FileLoggerConfig stores the initial config used to instantiate FileLogger
+	config FileLoggerConfig
 }
 
 type FileLoggerConfig struct {
@@ -89,6 +92,7 @@ func NewFileLogger(config *FileLoggerConfig, level LogLevel, name string, logFil
 		name:    name,
 		output:  config.Output,
 		logger:  log.New(config.Output, "", 0),
+		config:  *config,
 	}
 	logger.Enabled.Set(*config.Enabled)
 
@@ -150,6 +154,13 @@ func (l *FileLogger) shouldLog(logLevel LogLevel) bool {
 		l.Enabled.IsTrue() &&
 		// Check the log level is enabled
 		l.level >= logLevel
+}
+
+func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
+	// Copy config struct to avoid mutating running config
+	fileLoggerConfig := l.config
+	fileLoggerConfig.Enabled = BoolPtr(l.Enabled.IsTrue())
+	return &fileLoggerConfig
 }
 
 func (lfc *FileLoggerConfig) init(level LogLevel, name string, logFilePath string, minAge int) error {
