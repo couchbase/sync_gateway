@@ -74,13 +74,13 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		{
 			name:     "http:// to couchbase://",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://http.couchbase.com,host2,host1:8091,[2001:db8::8811],[2001:db8::8822]")}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://http.couchbase.com:8091,host2:8091,host1:8091,[2001:db8::8811]:8091,[2001:db8::8822]:8091")}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://http.couchbase.com,host2,host1,[2001:db8::8811],[2001:db8::8822]"}},
 		},
 		{
 			name:     "Username and password in server URL",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://foo:bar@[2001:db8::8811]:8091,host2")}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://foo:bar@[2001:db8::8811]:8091,host2:8091")}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://[2001:db8::8811],host2", Username: "foo", Password: "bar"}},
 		},
 		{
@@ -98,7 +98,7 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		{
 			name:     "http:// to couchbase:// with args",
 			base:     StartupConfig{},
-			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://host1,host2:8091?p1=v1&p2=v2;p3=v3")}}}},
+			input:    LegacyServerConfig{Databases: DbConfigMap{"db": &DbConfig{BucketConfig: BucketConfig{Server: base.StringPtr("http://host1:8091,host2:8091?p1=v1&p2=v2;p3=v3")}}}},
 			expected: StartupConfig{Bootstrap: BootstrapConfig{Server: "couchbase://host1,host2?p1=v1&p2=v2&p3=v3"}},
 		},
 	}
@@ -136,9 +136,14 @@ func TestGocbv1tov2AddressUpgrade(t *testing.T) {
 		},
 		{
 			name:           "Convert, do not keep trailing comma",
-			server:         "http://localhost,127.0.0.2,",
+			server:         "http://localhost:8091,127.0.0.2:8091,",
 			expectError:    false,
 			expectedServer: "couchbase://localhost,127.0.0.2",
+		},
+		{
+			name:        "No HTTP port",
+			server:      "http://localhost,127.0.0.2:8091,",
+			expectError: true,
 		},
 		{
 			name:           "Do not keep trailing comma, couchbases://",
@@ -148,7 +153,7 @@ func TestGocbv1tov2AddressUpgrade(t *testing.T) {
 		},
 		{
 			name:             "Convert, strip ports, parse username and password, keep query params",
-			server:           "http://foo:bar@localhost:8091,127.0.0.2?network=true",
+			server:           "http://foo:bar@localhost:8091,127.0.0.2:8091?network=true",
 			expectError:      false,
 			expectedServer:   "couchbase://localhost,127.0.0.2?network=true",
 			expectedUsername: "foo",
@@ -156,7 +161,7 @@ func TestGocbv1tov2AddressUpgrade(t *testing.T) {
 		},
 		{
 			name:             "Couchbase:// with username and password",
-			server:           "http://foo:bar@localhost",
+			server:           "http://foo:bar@localhost:8091",
 			expectError:      false,
 			expectedServer:   "couchbase://localhost",
 			expectedUsername: "foo",
@@ -164,7 +169,7 @@ func TestGocbv1tov2AddressUpgrade(t *testing.T) {
 		},
 		{
 			name:             "Couchbase:// with username but no password (invalid for CBS)",
-			server:           "http://foo@localhost",
+			server:           "http://foo@localhost:8091",
 			expectError:      false,
 			expectedServer:   "couchbase://localhost",
 			expectedUsername: "",
@@ -172,7 +177,7 @@ func TestGocbv1tov2AddressUpgrade(t *testing.T) {
 		},
 		{
 			name:             "Couchbase:// with password but no username (invalid for CBS)",
-			server:           "http://:foo@localhost",
+			server:           "http://:foo@localhost:8091",
 			expectError:      false,
 			expectedServer:   "couchbase://localhost",
 			expectedUsername: "",
@@ -180,19 +185,16 @@ func TestGocbv1tov2AddressUpgrade(t *testing.T) {
 		},
 		{
 			name:             "Multi params with & and ; separators, alphabetical order",
-			server:           "http://foo:bar@localhost:8091,127.0.0.2?c=3;a=1&b=2",
+			server:           "http://foo:bar@localhost:8091,127.0.0.2:8091?c=3;a=1&b=2",
 			expectError:      false,
 			expectedServer:   "couchbase://localhost,127.0.0.2?a=1&b=2&c=3",
 			expectedUsername: "foo",
 			expectedPassword: "bar",
 		},
 		{
-			name:             "Error due to unknown port",
-			server:           "http://foo:bar@localhost:8091,127.0.0.2:1234?network=true",
-			expectError:      true,
-			expectedServer:   "",
-			expectedUsername: "",
-			expectedPassword: "",
+			name:        "Error due to unknown port",
+			server:      "http://foo:bar@localhost:8091,127.0.0.2:1234?network=true",
+			expectError: true,
 		},
 		{
 			name:        "Gocbstr bad scheme error",

@@ -284,13 +284,16 @@ func gocbv1tov2AddressUpgrade(server string) (newServer, username, password stri
 
 	var hosts string
 	for _, addr := range connSpec.Addresses {
-		if addr.Port != -1 && addr.Port != 8091 && connSpec.Scheme == "http" {
-			return "", "", "", fmt.Errorf("automatic connection string conversion does not support non-default host ports. " +
-				"Please change the server field to use the couchbase(s):// scheme")
+		if connSpec.Scheme == "http" {
+			if addr.Port != 8091 {
+				return "", "", "", fmt.Errorf("automatic connection string conversion does not support non-default host ports. " +
+					"Please change the server field to use the couchbase(s):// scheme")
+			}
+			addr.Port = -1
 		}
 
 		var port string
-		if addr.Port != -1 && connSpec.Scheme != "http" {
+		if addr.Port != -1 {
 			port = ":" + strconv.Itoa(addr.Port)
 		}
 
