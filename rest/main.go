@@ -178,23 +178,25 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 	return false, startServer(&sc, ctx)
 }
 
-func getInitialStartupConfig(sc *StartupConfig, flagStartupConfig *StartupConfig) (*StartupConfig, error) {
+func getInitialStartupConfig(fileStartupConfig *StartupConfig, flagStartupConfig *StartupConfig) (*StartupConfig, error) {
 	initialStartupConfigTemp := StartupConfig{}
-	err := initialStartupConfigTemp.Merge(sc)
-	if err != nil {
-		return nil, err
+
+	if fileStartupConfig != nil {
+		if err := initialStartupConfigTemp.Merge(fileStartupConfig); err != nil {
+			return nil, err
+		}
 	}
 
-	err = initialStartupConfigTemp.Merge(flagStartupConfig)
-	if err != nil {
-		return nil, err
+	if flagStartupConfig != nil {
+		if err := initialStartupConfigTemp.Merge(flagStartupConfig); err != nil {
+			return nil, err
+		}
 	}
 
-	// Requires a deep copy of final input as passed in values are pointers. Need to ensure runtime changes don't
-	// affect this
+	// Requires a deep copy of final input as passed in values are pointers.
+	// Need to ensure runtime changes don't affect initialStartupConfig.
 	var initialStartupConfig StartupConfig
-	err = base.DeepCopyInefficient(&initialStartupConfig, initialStartupConfigTemp)
-	if err != nil {
+	if err := base.DeepCopyInefficient(&initialStartupConfig, initialStartupConfigTemp); err != nil {
 		return nil, err
 	}
 
