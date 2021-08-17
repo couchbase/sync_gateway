@@ -995,9 +995,19 @@ func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 // fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
 // but then fall back to searching through configs in each bucket to try and find a config.
 func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err error) {
+	found, dbConfig, err := sc.fetchDatabase(dbName)
+	if err != nil || !found {
+		return false, err
+	}
+	sc.applyConfigs([]DatabaseConfig{*dbConfig})
+
+	return true, err
+}
+
+func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
 	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
-		return false, fmt.Errorf("couldn't get buckets from cluster: %w", err)
+		return false, nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
 
 	// move bucket matching dbName to the front so it's searched first
@@ -1046,11 +1056,11 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
-		sc.applyConfigs([]DatabaseConfig{cnf})
-		return true, nil
+
+		return true, &cnf, nil
 	}
 
-	return false, nil
+	return false, nil, nil
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.

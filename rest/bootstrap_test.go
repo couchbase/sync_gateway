@@ -165,6 +165,23 @@ func adminRequest(t *testing.T, method, path, body string) *http.Response {
 	return resp
 }
 
+func adminRequestWithHeaders(t *testing.T, method, path, body string, headers map[string]string) *http.Response {
+	url := "http://localhost:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10) + path
+
+	buf := bytes.NewBufferString(body)
+	req, err := http.NewRequest(method, url, buf)
+	require.NoError(t, err)
+
+	for headerName, headerVal := range headers {
+		req.Header.Set(headerName, headerVal)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	return resp
+}
+
 func assertResp(t *testing.T, resp *http.Response, status int, body string) {
 	assert.Equal(t, status, resp.StatusCode)
 	b, _ := ioutil.ReadAll(resp.Body)
