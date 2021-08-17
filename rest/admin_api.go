@@ -153,7 +153,13 @@ func (h *handler) handleGetConfig() error {
 		} else {
 			cfg.StartupConfig = h.server.config
 			for _, dbName := range allDbNames {
-				databaseMap[dbName] = &h.server.GetDatabaseConfig(dbName).DbConfig
+				// Copying struct here to avoid mutating the running dbconfig later on
+				var dbConfigCopy DbConfig
+				err = base.DeepCopyInefficient(&dbConfigCopy, h.server.GetDatabaseConfig(dbName).DbConfig)
+				if err != nil {
+					return err
+				}
+				databaseMap[dbName] = &dbConfigCopy
 			}
 		}
 
@@ -179,8 +185,7 @@ func (h *handler) handleGetConfig() error {
 			}
 		}
 
-		loggingStuff := *base.BuildLoggingConfigFromLoggers(h.server.config.Logging.RedactionLevel, h.server.config.Logging.LogFilePath)
-		cfg.Logging = loggingStuff
+		cfg.Logging = *base.BuildLoggingConfigFromLoggers(h.server.config.Logging.RedactionLevel, h.server.config.Logging.LogFilePath)
 		cfg.Databases = databaseMap
 
 		h.writeJSON(cfg)
@@ -272,8 +277,6 @@ func (h *handler) handlePutConfig() error {
 	if config.Logging.Stats.Enabled != nil {
 		base.EnableStatsLogger(*config.Logging.Stats.Enabled)
 	}
-
-	h.server.config.Logging = *base.BuildLoggingConfigFromLoggers(h.server.config.Logging.RedactionLevel, h.server.config.Logging.LogFilePath)
 
 	return base.HTTPErrorf(http.StatusOK, "Updated")
 }

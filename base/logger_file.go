@@ -157,6 +157,7 @@ func (l *FileLogger) shouldLog(logLevel LogLevel) bool {
 }
 
 func (l *FileLogger) getFileLoggerConfig() *FileLoggerConfig {
+	// Copy config struct to avoid mutating running config
 	fileLoggerConfig := l.config
 	fileLoggerConfig.Enabled = BoolPtr(l.Enabled.IsTrue())
 	return &fileLoggerConfig

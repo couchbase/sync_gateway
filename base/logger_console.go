@@ -132,6 +132,7 @@ func (l *ConsoleLogger) shouldLog(logLevel LogLevel, logKey LogKey) bool {
 }
 
 func (l *ConsoleLogger) getConsoleLoggerConfig() *ConsoleLoggerConfig {
+	// Copy config struct to avoid mutating running config
 	c := l.config
 	c.FileLoggerConfig = *l.getFileLoggerConfig()
 	c.LogLevel = l.LogLevel
