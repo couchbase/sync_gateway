@@ -110,7 +110,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 		}
 
 		// Prioritise config fields over credentials in host
-		if dbConfig.Username != "" && dbConfig.Password != "" {
+		if dbConfig.Username != "" || dbConfig.Password != "" {
 			username = dbConfig.Username
 			password = dbConfig.Password
 		}
@@ -284,14 +284,14 @@ func gocbv1tov2AddressUpgrade(server string) (newServer, username, password stri
 
 	var hosts string
 	for _, addr := range connSpec.Addresses {
+		if addr.Port != -1 && addr.Port != 8091 && connSpec.Scheme == "http" {
+			return "", "", "", fmt.Errorf("automatic connection string conversion does not support non-default host ports. " +
+				"Please change the server field to use the couchbase(s):// scheme")
+		}
+
 		var port string
-		if addr.Port != 8091 && addr.Port != -1 {
-			if connSpec.Scheme != "http" {
-				port = ":" + strconv.Itoa(addr.Port)
-			} else {
-				return "", "", "", fmt.Errorf("automatic connection string conversion does not support non-default host ports. " +
-					"Please change the server field to use the couchbase(s):// scheme")
-			}
+		if addr.Port != -1 && connSpec.Scheme != "http" {
+			port = ":" + strconv.Itoa(addr.Port)
 		}
 
 		hosts = hosts + addr.Host + port + ","

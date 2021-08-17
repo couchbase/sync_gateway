@@ -127,10 +127,10 @@ func TestGocbv1tov2AddressUpgrade(t *testing.T) {
 		expectedPassword string
 	}{
 		{
-			name:             "Keep couchbase ports unless 8091",
+			name:             "Keep couchbase ports",
 			server:           "couchbase://localhost:8091,localhosttwo:1234?network=true",
 			expectError:      false,
-			expectedServer:   "couchbase://localhost,localhosttwo:1234?network=true",
+			expectedServer:   "couchbase://localhost:8091,localhosttwo:1234?network=true",
 			expectedUsername: "",
 			expectedPassword: "",
 		},
