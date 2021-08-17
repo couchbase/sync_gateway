@@ -3376,6 +3376,8 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 		t.Skip("This test only works against Couchbase Server")
 	}
 
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
 	// Start SG with no databases in bucket(s)
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
