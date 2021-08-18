@@ -274,8 +274,7 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 }
 
 // validate / sanitize db configs
-// - remove servers
-// - remove users
+// - remove fields no longer valid for persisted db configs
 // - ensure servers are the same
 func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 	var databaseServerAddress string
@@ -297,7 +296,13 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 
 		dbConfig.Name = dbName
 
+		// strip now disallowed options (these are inherited from the bootstrap config on db load)
 		dbConfig.Server = nil
+		dbConfig.Username = ""
+		dbConfig.Password = ""
+		dbConfig.CertPath = ""
+		dbConfig.KeyPath = ""
+		dbConfig.CACertPath = ""
 		dbConfig.Users = nil
 		dbConfig.Roles = nil
 

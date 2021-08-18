@@ -437,6 +437,36 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 	return false, fmt.Errorf("Unrecognized value for import_docs: %#v. Valid values are true and false.", dbConfig.AutoImport)
 }
 
+const dbConfigFieldNotAllowedErrorMsg = "Persisted database config does not support customization of the %q field"
+
+func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
+	if dbConfig.Server != nil {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "server"))
+	}
+	if dbConfig.Username != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "username"))
+	}
+	if dbConfig.Password != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "password"))
+	}
+	if dbConfig.CertPath != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "certpath"))
+	}
+	if dbConfig.KeyPath != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "keypath"))
+	}
+	if dbConfig.CACertPath != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "cacertpath"))
+	}
+	if dbConfig.Users != nil {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "users"))
+	}
+	if dbConfig.Roles != nil {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "roles"))
+	}
+	return errorMessages
+}
+
 func (dbConfig *DbConfig) validate() error {
 	return dbConfig.validateVersion(base.IsEnterpriseEdition())
 }

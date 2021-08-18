@@ -36,6 +36,10 @@ func (h *handler) handleCreateDB() error {
 	}
 
 	if h.server.persistentConfig {
+		if err := config.validatePersistentDbConfig(); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+
 		if err := config.validate(); err != nil {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
@@ -371,8 +375,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 				}
 
 				// TODO: CBG-1619 We're validating but we're not actually starting up the database before we persist the update!
+				if err := dbConfig.validatePersistentDbConfig(); err != nil {
+					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+				}
 				if err := bucketDbConfig.validate(); err != nil {
-					return nil, err
+					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
 				}
 
 				updatedDbConfig = &bucketDbConfig
