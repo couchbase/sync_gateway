@@ -167,9 +167,9 @@ func fillConfigWithFlags(fs *flag.FlagSet, flags map[string]configFlag) (errorMe
 					return
 				}
 				if pointer {
-					rval.Set(reflect.ValueOf(&base.ConfigDuration{D: duration}))
+					rval.Set(reflect.ValueOf(&base.ConfigDuration{D: &duration}))
 				} else {
-					*val.config.(*base.ConfigDuration) = base.ConfigDuration{D: duration}
+					*val.config.(*base.ConfigDuration) = base.ConfigDuration{D: &duration}
 				}
 			case *base.RedactionLevel:
 				var rl base.RedactionLevel

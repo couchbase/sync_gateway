@@ -32,8 +32,8 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 		{
 			name:     "Override duration zero ServerReadTimeout",
 			base:     StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(time.Second * 10)}},
-			input:    LegacyServerConfig{ServerReadTimeout: base.IntPtr(1)},
-			expected: StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(time.Second)}},
+			input:    LegacyServerConfig{ServerReadTimeout: base.IntPtr(0)},
+			expected: StartupConfig{API: APIConfig{ServerReadTimeout: base.NewConfigDuration(0)}},
 		},
 		{
 			name:     "Override duration non-zero ServerWriteTimeout",
@@ -77,6 +77,11 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 			lc := &test.input
 
 			migratedStartupConfig, _, err := lc.ToStartupConfig()
+
+			// lc.MaxHeartbeat is (uint)0 if not set causing Replicator.MaxHeartbeat to always be 0 when migrating
+			if lc.MaxHeartbeat == 0 {
+				test.expected.Replicator.MaxHeartbeat = base.NewConfigDuration(0)
+			}
 
 			config := test.base
 			err = config.Merge(migratedStartupConfig)
