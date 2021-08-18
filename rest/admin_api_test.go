@@ -2245,7 +2245,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	// Create database with valid JSON config that contains sync function enclosed in backticks.
 	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
 	reqBodyWithBackticks := `{
-    	"bucket": "backticks",
+    	"bucket": "` + rt.Bucket().GetName() + `",
         "sync": ` + "`" + syncFunc + "`" + `
 	}`
 	resp = rt.SendAdminRequest(http.MethodPut, "/backticks/", reqBodyWithBackticks)
