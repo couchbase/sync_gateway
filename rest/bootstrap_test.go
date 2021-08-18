@@ -131,7 +131,7 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 
 	config.Bootstrap.UseTLSServer = base.BoolPtr(false)
 
-	config.Logging.Console.LogLevel.Set(base.LevelTrace)
+	config.Logging.Console.LogLevel.Set(base.LevelInfo)
 	config.Logging.Console.LogKeys = []string{"*"}
 	config.API.AdminInterfaceAuthentication = base.BoolPtr(false)
 
