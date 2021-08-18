@@ -146,11 +146,11 @@ func (h *handler) handleGetDbConfig() error {
 			return err
 		}
 
-		h.response.Header().Set("ETag", dbConfig.Version)
-
 		if !found {
 			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 		}
+
+		h.response.Header().Set("ETag", dbConfig.Version)
 	}
 
 	redact, _ := h.getOptBoolQuery("redact", true)
@@ -161,7 +161,7 @@ func (h *handler) handleGetDbConfig() error {
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
+		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name).DbConfig)
 	}
 
 	return nil
@@ -376,6 +376,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 	bucket := h.db.Bucket.GetName()
 	if dbConfig.Bucket != nil {
 		bucket = *dbConfig.Bucket
+	}
+
+	if dbConfig.Version != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "version cannot be specified in the config body. If "+
+			"concurrency protection is required use the If-Match header to supply config version")
 	}
 
 	updatedDbConfig := dbConfig
