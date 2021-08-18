@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,4 +118,28 @@ func TestFillConfigWithFlagsInvalidVals(t *testing.T) {
 	assert.Contains(t, err.Error(), "replicator.max_heartbeat")
 
 	assert.NotContains(t, err.Error(), "bootstrap.server")
+}
+
+// Make sure the number of config options and number of flags match
+func TestAllConfigOptionsAsFlags(t *testing.T) {
+	cfg := NewEmptyStartupConfig()
+	cfgFieldsNum := countFields(cfg)
+	flagsNum := registerConfigFlags(&cfg, flag.NewFlagSet("test", flag.ContinueOnError))
+	assert.Equal(t, len(flagsNum), cfgFieldsNum)
+}
+func countFields(cfg interface{}) (fields int) {
+	rField := reflect.ValueOf(cfg)
+	if rField.Kind() == reflect.Ptr {
+		rField = rField.Elem()
+	}
+	if rField.Kind() != reflect.Struct {
+		return 1
+	}
+	for i := 0; i < rField.NumField(); i++ {
+		jsonTag := reflect.TypeOf(rField.Interface()).Field(i).Tag.Get("json")
+		if !strings.HasPrefix(jsonTag, "-") { // could be -,omitempty therefore prefix check
+			fields += countFields(rField.Field(i).Interface())
+		}
+	}
+	return fields
 }
