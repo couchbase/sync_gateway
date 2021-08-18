@@ -444,7 +444,7 @@ func (tbp *TestBucketPool) createTestBuckets(numBuckets int, bucketQuotaMB int, 
 				FatalfCtx(ctx, "Couldn't create test bucket: %v", err)
 			}
 
-			b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 5*numBuckets)
+			b, err := tbp.cluster.openTestBucket(tbpBucketName(bucketName), 10*numBuckets)
 			if err != nil {
 				FatalfCtx(ctx, "Timed out trying to open new bucket: %v", err)
 			}
