@@ -3394,23 +3394,24 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := adminRequest(t, http.MethodPut, "/db/",
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
 		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
 	// Get config
-	resp = adminRequest(t, "GET", "/db/_config?redact=false", "")
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false", "")
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	eTag := resp.Header.Get("ETag")
+	assert.NotEqual(t, "", eTag)
 
-	resp = adminRequestWithHeaders(t, "PUT", "/db/_config", "{}", map[string]string{"If-Match": eTag})
+	resp = bootstrapAdminRequestWithHeaders(t, "PUT", "/db/_config", "{}", map[string]string{"If-Match": eTag})
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	resp = adminRequest(t, "PUT", "/db/_config", "{}")
+	resp = bootstrapAdminRequest(t, "PUT", "/db/_config", "{}")
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	resp = adminRequestWithHeaders(t, "PUT", "/db/_config", "{}", map[string]string{"If-Match": "x"})
+	resp = bootstrapAdminRequestWithHeaders(t, "PUT", "/db/_config", "{}", map[string]string{"If-Match": "x"})
 	assert.Equal(t, http.StatusConflict, resp.StatusCode)
 }

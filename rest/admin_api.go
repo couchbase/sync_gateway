@@ -390,7 +390,7 @@ func (h *handler) handlePutDbConfig() (err error) {
 
 				headerVersion := h.rq.Header.Get("If-Match")
 				if headerVersion != "" && headerVersion != bucketDbConfig.Version {
-					return nil, base.HTTPErrorf(http.StatusConflict, "Provided If-Match header does not match current config version")
+					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
 				}
 
 				if err := base.ConfigMerge(&bucketDbConfig, dbConfig); err != nil {

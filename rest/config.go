@@ -1001,7 +1001,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 	}
 	sc.applyConfigs([]DatabaseConfig{*dbConfig})
 
-	return true, err
+	return true, nil
 }
 
 func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *DatabaseConfig, err error) {
