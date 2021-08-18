@@ -13,7 +13,7 @@ type DatabaseConfig struct {
 
 	Guest *db.PrincipalConfig `json:"guest,omitempty"`
 
-	Version string `json:"version"`
+	Version string `json:"version,omitempty"`
 	DbConfig
 }
 

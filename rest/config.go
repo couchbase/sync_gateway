@@ -1142,6 +1142,10 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err err
 		}
 	}
 
+	// Strip out version as we have no use for this locally and we want to prevent it being stored and being returned
+	// by any output
+	cnf.Version = ""
+
 	base.Infof(base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
 	sc.bucketDbName[*cnf.Bucket] = cnf.Name
 	sc.dbConfigs[cnf.Name] = &cnf
