@@ -711,6 +711,13 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 		return nil, err
 	}
 
+	err = config.redactInPlace()
+	return &config, err
+}
+
+// redactInPlace modifies the given config to redact the fields inside it.
+func (config *DbConfig) redactInPlace() error {
+
 	config.Password = "xxxxx"
 
 	for i := range config.Users {
@@ -721,7 +728,7 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 		config.Replications[i] = config.Replications[i].Redacted()
 	}
 
-	return &config, nil
+	return nil
 }
 
 // decodeAndSanitiseConfig will sanitise a config from an io.Reader and unmarshal it into the given config parameter.
@@ -1063,7 +1070,6 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
-
 		return true, &cnf, nil
 	}
 

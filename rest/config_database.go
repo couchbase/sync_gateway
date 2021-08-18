@@ -17,6 +17,26 @@ type DatabaseConfig struct {
 	DbConfig
 }
 
+func (dbc *DatabaseConfig) Redacted() (*DatabaseConfig, error) {
+	var config DatabaseConfig
+
+	err := base.DeepCopyInefficient(&config, dbc)
+	if err != nil {
+		return nil, err
+	}
+
+	err = config.DbConfig.redactInPlace()
+	if err != nil {
+		return nil, err
+	}
+
+	if config.Guest != nil {
+		config.Guest.Password = base.StringPtr("xxxxx")
+	}
+
+	return &config, nil
+}
+
 func GenerateDatabaseConfigVersionID(previousRevID string, databaseConfig *DatabaseConfig) (string, error) {
 	databaseConfig.Version = ""
 
