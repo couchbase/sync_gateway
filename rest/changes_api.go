@@ -133,16 +133,12 @@ func (h *handler) updateChangesOptionsFromQuery(feed *string, options *db.Change
 	}
 
 	if _, ok := values["heartbeat"]; ok {
-		maxHeartbeat := h.server.config.Replicator.MaxHeartbeat
-		if h.server.config.Replicator.MaxHeartbeat == nil {
-			maxHeartbeat = base.NewConfigDuration(0)
-		}
 		options.HeartbeatMs = base.GetRestrictedIntQuery(
 			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
 			kMinHeartbeatMS,
-			uint64(maxHeartbeat.Milliseconds()),
+			uint64(h.server.config.Replicator.MaxHeartbeat.Value().Milliseconds()),
 			true,
 		)
 	}
@@ -203,16 +199,12 @@ func (h *handler) handleChanges() error {
 				docIdsArray = strings.Split(docidsParam, ",")
 			}
 		}
-		maxHeartbeat := h.server.config.Replicator.MaxHeartbeat
-		if h.server.config.Replicator.MaxHeartbeat == nil {
-			maxHeartbeat = base.NewConfigDuration(0)
-		}
 		options.HeartbeatMs = base.GetRestrictedIntQuery(
 			h.getQueryValues(),
 			"heartbeat",
 			kDefaultHeartbeatMS,
 			kMinHeartbeatMS,
-			uint64(maxHeartbeat.Milliseconds()),
+			uint64(h.server.config.Replicator.MaxHeartbeat.Value().Milliseconds()),
 			true,
 		)
 		options.TimeoutMs = base.GetRestrictedIntQuery(
@@ -603,15 +595,11 @@ func (h *handler) readChangesOptionsFromJSON(jsonData []byte) (feed string, opti
 	}
 
 	docIdsArray = input.DocIds
-	maxHeartbeat := h.server.config.Replicator.MaxHeartbeat
-	if h.server.config.Replicator.MaxHeartbeat == nil {
-		maxHeartbeat = base.NewConfigDuration(0)
-	}
 	options.HeartbeatMs = base.GetRestrictedInt(
 		input.HeartbeatMs,
 		kDefaultHeartbeatMS,
 		kMinHeartbeatMS,
-		uint64(maxHeartbeat.Milliseconds()),
+		uint64(h.server.config.Replicator.MaxHeartbeat.Value().Milliseconds()),
 		true,
 	)
 

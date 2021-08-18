@@ -952,7 +952,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 			sc.bootstrapContext.terminator = make(chan struct{})
 			sc.bootstrapContext.doneChan = make(chan struct{})
 
-			base.Infof(base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.String())
+			base.Infof(base.KeyConfig, "Starting background polling for new configs/buckets: %s", sc.config.Bootstrap.ConfigUpdateFrequency.Value().String())
 			go func() {
 				defer close(sc.bootstrapContext.doneChan)
 				t := time.NewTicker(sc.config.Bootstrap.ConfigUpdateFrequency.Value())

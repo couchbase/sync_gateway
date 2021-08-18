@@ -78,11 +78,6 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 
 			migratedStartupConfig, _, err := lc.ToStartupConfig()
 
-			// lc.MaxHeartbeat is (uint)0 if not set causing Replicator.MaxHeartbeat to always be 0 when migrating
-			if lc.MaxHeartbeat == 0 {
-				test.expected.Replicator.MaxHeartbeat = base.NewConfigDuration(0)
-			}
-
 			config := test.base
 			err = config.Merge(migratedStartupConfig)
 			require.NoError(t, err)

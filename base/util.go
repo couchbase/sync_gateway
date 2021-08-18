@@ -1540,17 +1540,8 @@ type ConfigDuration struct {
 	D *time.Duration
 }
 
-// Reimplement common time.Duration methods
-func (d ConfigDuration) String() string      { return d.D.String() }
-func (d ConfigDuration) Nanoseconds() int64  { return d.D.Nanoseconds() }
-func (d ConfigDuration) Microseconds() int64 { return d.D.Microseconds() }
-func (d ConfigDuration) Milliseconds() int64 { return d.D.Milliseconds() }
-func (d ConfigDuration) Seconds() float64    { return d.D.Seconds() }
-func (d ConfigDuration) Minutes() float64    { return d.D.Minutes() }
-func (d ConfigDuration) Hours() float64      { return d.D.Hours() }
-
 func (d *ConfigDuration) Value() time.Duration {
-	if d == nil {
+	if d == nil || d.D == nil {
 		return 0
 	}
 	return *d.D
