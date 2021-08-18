@@ -180,7 +180,7 @@ func NewEmptyStartupConfig() StartupConfig {
 		API: APIConfig{
 			CORS: &CORSConfig{},
 		},
-		Logging: LoggingConfig{
+		Logging: base.LoggingConfig{
 			Console: &base.ConsoleLoggerConfig{},
 			Error:   &base.FileLoggerConfig{},
 			Warn:    &base.FileLoggerConfig{},
