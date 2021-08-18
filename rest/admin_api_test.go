@@ -1187,7 +1187,7 @@ func TestDBGetConfigNames(t *testing.T) {
 		},
 	}}
 
-	response := rt.SendAdminRequest("GET", "/db/_config", "")
+	response := rt.SendAdminRequest("GET", "/db/_config?include_runtime=true", "")
 	var body DbConfig
 	require.NoError(t, base.JSONUnmarshal(response.Body.Bytes(), &body))
 
@@ -2245,7 +2245,6 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	// Create database with valid JSON config that contains sync function enclosed in backticks.
 	syncFunc := `function(doc, oldDoc) { console.log("foo");}`
 	reqBodyWithBackticks := `{
-    	"server": "walrus:",
     	"bucket": "backticks",
         "sync": ` + "`" + syncFunc + "`" + `
 	}`
@@ -2253,7 +2252,7 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 
 	// Get database config after putting config.
-	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config", "")
+	resp = rt.SendAdminRequest(http.MethodGet, "/backticks/_config?include_runtime=true", "")
 	assertStatus(t, resp, http.StatusOK)
 	var respBody db.Body
 	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
@@ -2610,7 +2609,7 @@ func TestConfigRedaction(t *testing.T) {
 
 	// Test default db config redaction
 	var unmarshaledConfig DbConfig
-	response := rt.SendAdminRequest("GET", "/db/_config", "")
+	response := rt.SendAdminRequest("GET", "/db/_config?include_runtime=true", "")
 	err := json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
@@ -2618,7 +2617,7 @@ func TestConfigRedaction(t *testing.T) {
 	assert.Equal(t, "xxxxx", *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default db config redaction when redaction disabled
-	response = rt.SendAdminRequest("GET", "/db/_config?redact=false", "")
+	response = rt.SendAdminRequest("GET", "/db/_config?include_runtime=true&redact=false", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
@@ -2627,7 +2626,7 @@ func TestConfigRedaction(t *testing.T) {
 
 	// Test default server config redaction
 	var unmarshaledServerConfig StartupConfig
-	response = rt.SendAdminRequest("GET", "/_config", "")
+	response = rt.SendAdminRequest("GET", "/_config?include_runtime=true", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
@@ -2635,7 +2634,7 @@ func TestConfigRedaction(t *testing.T) {
 
 	// Test default server config redaction when redaction disabled
 	unmarshaledServerConfig = StartupConfig{}
-	response = rt.SendAdminRequest("GET", "/_config?redact=false", "")
+	response = rt.SendAdminRequest("GET", "/_config?include_runtime=true&redact=false", "")
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledServerConfig)
 	require.NoError(t, err)
 
