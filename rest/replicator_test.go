@@ -5323,10 +5323,14 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 
 	require.NoError(t, ar.Start())
-	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 
-	pulledDocCount := base.SyncGatewayStats.DbStats[t.Name()].DBReplicatorStats(ar.ID).PulledCount.Value()
-	assert.Equal(t, int64(1), pulledDocCount)
+	val, found := base.WaitForStat(func() int64 {
+		return base.SyncGatewayStats.DbStats[t.Name()].DBReplicatorStats(ar.ID).PulledCount.Value()
+	}, 1)
+	assert.True(t, found)
+	assert.Equal(t, int64(1), val)
+
+	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 }
 
 func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
