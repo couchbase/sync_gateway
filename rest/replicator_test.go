@@ -5318,9 +5318,11 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 
 	resp := rt2.SendAdminRequest("PUT", "/db/doc", "{}")
 	assertStatus(t, resp, http.StatusCreated)
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	resp = rt1.SendAdminRequest("PUT", "/db/doc", `{"some_val": "val"}`)
 	assertStatus(t, resp, http.StatusCreated)
+	require.NoError(t, rt1.WaitForPendingChanges())
 
 	require.NoError(t, ar.Start())
 
