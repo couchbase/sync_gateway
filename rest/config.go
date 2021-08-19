@@ -718,10 +718,14 @@ func (dbConfig *DbConfig) Redacted() (*DbConfig, error) {
 // redactInPlace modifies the given config to redact the fields inside it.
 func (config *DbConfig) redactInPlace() error {
 
-	config.Password = "xxxxx"
+	if config.Password != "" {
+		config.Password = "xxxxx"
+	}
 
 	for i := range config.Users {
-		config.Users[i].Password = base.StringPtr("xxxxx")
+		if config.Users[i].Password != nil && *config.Users[i].Password != "" {
+			config.Users[i].Password = base.StringPtr("xxxxx")
+		}
 	}
 
 	for i, _ := range config.Replications {

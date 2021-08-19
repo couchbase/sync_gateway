@@ -30,7 +30,7 @@ func (dbc *DatabaseConfig) Redacted() (*DatabaseConfig, error) {
 		return nil, err
 	}
 
-	if config.Guest != nil {
+	if config.Guest != nil && config.Guest.Password != nil && *config.Guest.Password != "" {
 		config.Guest.Password = base.StringPtr("xxxxx")
 	}
 
