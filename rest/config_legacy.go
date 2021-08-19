@@ -44,7 +44,7 @@ type LegacyServerConfig struct {
 	MaxFileDescriptors                        *uint64                        `json:",omitempty"`                       // Max # of open file descriptors (RLIMIT_NOFILE)
 	CompressResponses                         *bool                          `json:",omitempty"`                       // If false, disables compression of HTTP responses
 	Databases                                 DbConfigMap                    `json:",omitempty"`                       // Pre-configured databases, mapped by name
-	MaxHeartbeat                              uint64                         `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
+	MaxHeartbeat                              *uint64                        `json:",omitempty"`                       // Max heartbeat value for _changes request (seconds)
 	ClusterConfig                             *ClusterConfigLegacy           `json:"cluster_config,omitempty"`         // Bucket and other config related to CBGT
 	Unsupported                               *UnsupportedServerConfigLegacy `json:"unsupported,omitempty"`            // Config for unsupported features
 	ReplicatorCompression                     *int                           `json:"replicator_compression,omitempty"` // BLIP data compression level (0-9)
@@ -126,7 +126,6 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			BcryptCost: lc.BcryptCost,
 		},
 		Replicator: ReplicatorConfig{
-			MaxHeartbeat:    base.ConfigDuration{Duration: time.Second * time.Duration(lc.MaxHeartbeat)},
 			BLIPCompression: lc.ReplicatorCompression,
 		},
 	}
@@ -152,6 +151,10 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 				Enabled: lc.Unsupported.Http2Config.Enabled,
 			}
 		}
+	}
+
+	if lc.MaxHeartbeat != nil {
+		sc.Replicator.MaxHeartbeat = base.NewConfigDuration(time.Second * time.Duration(*lc.MaxHeartbeat))
 	}
 
 	if lc.Logging != nil {

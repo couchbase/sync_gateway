@@ -68,10 +68,10 @@ type FileLoggerConfig struct {
 }
 
 type logRotationConfig struct {
-	MaxSize              *int `json:"max_size,omitempty"`                // The maximum size in MB of the log file before it gets rotated.
-	MaxAge               *int `json:"max_age,omitempty"`                 // The maximum number of days to retain old log files.
-	LocalTime            bool `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
-	RotatedLogsSizeLimit *int `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
+	MaxSize              *int  `json:"max_size,omitempty"`                // The maximum size in MB of the log file before it gets rotated.
+	MaxAge               *int  `json:"max_age,omitempty"`                 // The maximum number of days to retain old log files.
+	LocalTime            *bool `json:"localtime,omitempty"`               // If true, it uses the computer's local time to format the backup timestamp.
+	RotatedLogsSizeLimit *int  `json:"rotated_logs_size_limit,omitempty"` // Max Size of log files before deletion
 }
 
 // NewFileLogger returns a new FileLogger from a config.

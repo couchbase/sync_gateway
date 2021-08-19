@@ -41,22 +41,16 @@ func serverMain(ctx context.Context, osArgs []string) error {
 
 	disablePersistentConfigFlag := fs.Bool("disable_persistent_config", false, "Can be set to false to disable persistent config handling, and read all configuration from a legacy config file.")
 
-	// TODO: CBG-1542 Merge legacyFlagStartupConfig onto default config before merging others.
-	legacyFlagStartupConfig := registerLegacyFlags(fs)
-	_ = legacyFlagStartupConfig
-
 	// register config property flags
-	var flagStartupConfig StartupConfig
-	// TODO: CBG-1542 Revisit config cli flags after initial persistent config implementation
-	// if err := clistruct.RegisterJSONFlags(fs, &flagStartupConfig); err != nil {
-	// 	return err
-	// }
+	flagStartupConfig := NewEmptyStartupConfig()
 
-	// TODO: Be removed in a future commit once flags are sorted
-	adminInterfaceAuthFlag := fs.Bool("api.admin_interface_authentication", true, "")
-	metricsInterfaceAuthFlag := fs.Bool("api.metrics_interface_authentication", true, "")
+	legacyFlagStartupConfig := registerLegacyFlags(fs)
+	err := flagStartupConfig.Merge(legacyFlagStartupConfig)
+	if err != nil {
+		return fmt.Errorf("error merging legacy flags on to config: %w", err)
+	}
 
-	useTLSServer := fs.Bool("bootstrap.use_tls_server", true, "")
+	configFlags := registerConfigFlags(&flagStartupConfig, fs)
 
 	if err := fs.Parse(osArgs[1:]); err != nil {
 		// Return nil for ErrHelp so the shell exit code is 0
@@ -66,18 +60,10 @@ func serverMain(ctx context.Context, osArgs []string) error {
 		return err
 	}
 
-	// TODO: Be removed in a future commit once flags are sorted
-	// Only override config value if user explicitly set flag
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "api.admin_interface_authentication":
-			flagStartupConfig.API.AdminInterfaceAuthentication = adminInterfaceAuthFlag
-		case "api.metrics_interface_authentication":
-			flagStartupConfig.API.MetricsInterfaceAuthentication = metricsInterfaceAuthFlag
-		case "bootstrap.use_tls_server":
-			flagStartupConfig.Bootstrap.UseTLSServer = useTLSServer
-		}
-	})
+	err = fillConfigWithFlags(fs, configFlags)
+	if err != nil {
+		return err
+	}
 
 	if *disablePersistentConfigFlag {
 		return legacyServerMain(osArgs, &flagStartupConfig)
