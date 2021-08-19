@@ -105,7 +105,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 
 		server, username, password, err := legacyServerAddressUpgrade(*dbConfig.Server)
 		if err != nil {
-			return nil, DbConfigMap{}, err
+			return nil, nil, err
 		}
 
 		// Prioritise config fields over credentials in host
