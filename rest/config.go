@@ -927,6 +927,13 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 	}
 
 	sc := NewServerContext(config, persistentConfig)
+	if !base.ServerIsWalrus(config.Bootstrap.Server) {
+		goCBAgent, err := sc.initializeGoCBAgent()
+		if err != nil {
+			return nil, err
+		}
+		sc.GoCBAgent = goCBAgent
+	}
 
 	// Fetch database configs from bucket and start polling for new buckets and config updates.
 	if sc.persistentConfig {

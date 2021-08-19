@@ -117,6 +117,7 @@ type DatabaseContext struct {
 	SGReplicateMgr               *sgReplicateManager // Manages interactions with sg-replicate replications
 	Heartbeater                  base.Heartbeater    // Node heartbeater for SG cluster awareness
 	ServeInsecureAttachmentTypes bool                // Attachment content type will bypass the content-disposition handling, default false
+	GoCBHttpClient               *http.Client
 }
 
 type DatabaseContextOptions struct {
@@ -1414,6 +1415,16 @@ func (context *DatabaseContext) ObtainManagementEndpoints() ([]string, error) {
 	return base.GoCBBucketMgmtEndpoints(cbStore)
 }
 
+func (context *DatabaseContext) InitializeGoCBHttpClient() (*http.Client, error) {
+	cbStore, ok := base.AsCouchbaseStore(context.Bucket)
+	if !ok {
+		base.Warnf("Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
+		return nil, nil
+	}
+
+	return cbStore.HttpClient(), nil
+}
+
 func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
 	cbStore, ok := base.AsCouchbaseStore(context.Bucket)
 	if !ok {
@@ -1421,19 +1432,18 @@ func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]stri
 		return nil, nil, nil
 	}
 
+	// This shouldn't happen as the only place we don't initialize this is in the case where we're not using a Couchbase
+	// Bucket. This means the above check should catch it but check just to be safe.
+	if context.GoCBHttpClient == nil {
+		return nil, nil, fmt.Errorf("unable to obtain http client")
+	}
+
 	endpoints, err := base.GoCBBucketMgmtEndpoints(cbStore)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Clone HTTP transport for use in our httpClient
-	transport := cbStore.HttpClient().Transport.(*http.Transport).Clone()
-
-	httpClient := &http.Client{
-		Transport: transport,
-	}
-
-	return endpoints, httpClient, nil
+	return endpoints, context.GoCBHttpClient, nil
 }
 
 func (context *DatabaseContext) GetUserViewsEnabled() bool {

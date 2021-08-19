@@ -162,7 +162,8 @@ func newTestClusterV2(server string, logger clusterLogFunc) *tbpClusterV2 {
 // tbpCluster returns an authenticated gocb Cluster for the given server URL.
 func initV2Cluster(server string) *gocb.Cluster {
 	spec := BucketSpec{
-		Server: server,
+		Server:        server,
+		TLSSkipVerify: true,
 	}
 
 	connStr, err := spec.GetGoCBConnString()

@@ -52,9 +52,10 @@ type ServerContext struct {
 	statsContext         *statsContext
 	bootstrapContext     *bootstrapContext
 	HTTPClient           *http.Client
-	cpuPprofFileMutex    sync.Mutex     // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
-	cpuPprofFile         *os.File       // An open file descriptor holds the reference during CPU profiling
-	_httpServers         []*http.Server // A list of HTTP servers running under the ServerContext
+	cpuPprofFileMutex    sync.Mutex      // Protect cpuPprofFile from concurrent Start and Stop CPU profiling requests
+	cpuPprofFile         *os.File        // An open file descriptor holds the reference during CPU profiling
+	_httpServers         []*http.Server  // A list of HTTP servers running under the ServerContext
+	GoCBAgent            *gocbcore.Agent // GoCB Agent to use when obtaining management endpoints
 }
 
 type bootstrapContext struct {
@@ -201,6 +202,11 @@ func (sc *ServerContext) Close() {
 		}
 	}
 
+	if agent := sc.GoCBAgent; agent != nil {
+		if err := agent.Close(); err != nil {
+			base.Warnf("Error closing agent connection: %v", err)
+		}
+	}
 }
 
 // Returns the DatabaseContext with the given name
@@ -491,6 +497,14 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 		return nil, err
 	}
 	dbcontext.BucketSpec = spec
+
+	if !dbcontext.BucketSpec.IsWalrusBucket() {
+		gocbHttpClient, err := dbcontext.InitializeGoCBHttpClient()
+		if err != nil {
+			return nil, err
+		}
+		dbcontext.GoCBHttpClient = gocbHttpClient
+	}
 
 	syncFn := ""
 	if config.Sync != nil {
@@ -1117,27 +1131,25 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	return agent, nil
 }
 
-func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
+// initializeGoCBAgent Obtains a gocb agent from the current server connection. Requires the agent to be closed after use
+func (sc *ServerContext) initializeGoCBAgent() (*gocbcore.Agent, error) {
 	agent, err := initClusterAgent(
 		sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
 		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify,
 		sc.config.API.ServerReadTimeout.Value())
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	managementEndpoints := agent.MgmtEps()
+	return agent, nil
+}
 
-	httpClient := &http.Client{
-		Transport: agent.HTTPClient().Transport,
+func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
+	if sc.GoCBAgent == nil {
+		return nil, nil, fmt.Errorf("unable to obtain agent")
 	}
 
-	err = agent.Close()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return managementEndpoints, httpClient, nil
+	return sc.GoCBAgent.MgmtEps(), sc.GoCBAgent.HTTPClient(), nil
 }
 
 // CheckPermissions is used for Admin authentication to check a CBS RBAC user.

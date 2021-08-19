@@ -147,6 +147,19 @@ func (rt *RestTester) Bucket() base.Bucket {
 
 	rt.RestTesterServerContext = NewServerContext(&sc, false)
 
+	if !base.UnitTestUrlIsWalrus() {
+		// Copy any testbucket cert info into boostrap server config
+		// Required as present for X509 tests there is no way to pass this info to the bootstrap server context with a
+		// RestTester directly - Should hopefully be alleviated by CBG-1460
+		sc.Bootstrap.CACertPath = testBucket.BucketSpec.CACertPath
+		sc.Bootstrap.X509CertPath = testBucket.BucketSpec.Certpath
+		sc.Bootstrap.X509KeyPath = testBucket.BucketSpec.Keypath
+
+		gocbAgent, err := rt.RestTesterServerContext.initializeGoCBAgent()
+		require.NoError(rt.tb, err)
+		rt.RestTesterServerContext.GoCBAgent = gocbAgent
+	}
+
 	// Copy this startup config at this point into initial startup config
 	err := base.DeepCopyInefficient(&rt.RestTesterServerContext.initialStartupConfig, &sc)
 	if err != nil {
