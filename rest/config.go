@@ -1144,9 +1144,9 @@ func (sc *ServerContext) applyConfigs(fetchedConfigs []DatabaseConfig) (count in
 }
 
 func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err error) {
-	// skip if we already have this config loaded
+	// skip if we already have this config loaded, and we've got a cas value to compare with
 	foundDbName, ok := sc.bucketDbName[*cnf.Bucket]
-	if ok && sc.dbConfigs[foundDbName].cas >= cnf.cas {
+	if ok && cnf.cas != 0 && sc.dbConfigs[foundDbName].cas >= cnf.cas {
 		base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
 		return false, nil
 	}
