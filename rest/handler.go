@@ -602,7 +602,7 @@ func (h *handler) readJSONInto(into interface{}) error {
 // Expands environment variables (if any) referenced in the config.
 func (h *handler) readSanitizeJSON(val interface{}) error {
 	// Performs the Content-Type validation and Content-Encoding check.
-	input, err := processContentEncoding(h.rq.Header, h.requestBody)
+	input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/json")
 	if err != nil {
 		return err
 	}
@@ -636,6 +636,23 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 		}
 	}
 	return err
+}
+
+// readJavascript reads a javascript function from a request body.
+func (h *handler) readJavascript() (string, error) {
+	// Performs the Content-Type validation and Content-Encoding check.
+	input, err := processContentEncoding(h.rq.Header, h.requestBody, "text/javascript")
+	if err != nil {
+		return "", err
+	}
+
+	defer func() { _ = input.Close() }()
+	jsBytes, err := ioutil.ReadAll(input)
+	if err != nil {
+		return "", err
+	}
+
+	return string(jsBytes), nil
 }
 
 // readSanitizeJSONInto reads and sanitizes a JSON request body and returns DatabaseConfig.

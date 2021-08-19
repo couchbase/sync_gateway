@@ -474,7 +474,61 @@ func (h *handler) handleGetDbConfigSync() error {
 // PUT a new database config sync function
 func (h *handler) handlePutDbConfigSync() error {
 	h.assertAdminOnly()
-	// TODO: STUB
+
+	if !h.server.persistentConfig {
+		return base.HTTPErrorf(http.StatusBadRequest, "endpoint only supports persistent config mode")
+	}
+
+	js, err := h.readJavascript()
+	if err != nil {
+		return err
+	}
+
+	bucket := h.db.Bucket.GetName()
+
+	var updatedDbConfig *DatabaseConfig
+	cas, err := h.server.bootstrapContext.connection.UpdateConfig(
+		bucket, h.server.config.Bootstrap.ConfigGroupID,
+		func(rawBucketConfig []byte) (newConfig []byte, err error) {
+			var bucketDbConfig DatabaseConfig
+			if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
+				return nil, err
+			}
+
+			headerVersion := h.rq.Header.Get("If-Match")
+			if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+				return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+			}
+
+			bucketDbConfig.Sync = &js
+			bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig)
+			if err != nil {
+				return nil, err
+			}
+
+			updatedDbConfig = &bucketDbConfig
+			return base.JSONMarshal(bucketDbConfig)
+		})
+	if err != nil {
+		return err
+	}
+	updatedDbConfig.cas = cas
+
+	dbName := h.db.Name
+	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap); err != nil {
+		return err
+	}
+
+	h.server.lock.Lock()
+	defer h.server.lock.Unlock()
+	h.server.bucketDbName[bucket] = dbName
+	h.server.dbConfigs[dbName] = updatedDbConfig
+
+	// TODO: Dynamic update instead of reload
+	if _, err := h.server._reloadDatabaseFromConfig(dbName); err != nil {
+		return err
+	}
+
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
