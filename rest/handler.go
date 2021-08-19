@@ -783,6 +783,19 @@ func (h *handler) writeJSON(value interface{}) {
 	h.writeJSONStatus(http.StatusOK, value)
 }
 
+func (h *handler) writeJavascript(js string) {
+	if !h.requestAccepts("text/plain") {
+		base.Warnf("Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
+		h.writeStatus(http.StatusNotAcceptable, "only text/plain available")
+		return
+	}
+
+	h.setHeader("Content-Type", "text/javascript charset=utf-8")
+	h.setHeader("Content-Length", fmt.Sprintf("%d", len(js)))
+	h.response.WriteHeader(http.StatusOK)
+	h.response.Write([]byte(js))
+}
+
 // Writes an object to the response in JSON format.
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {

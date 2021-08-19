@@ -445,10 +445,29 @@ func (h *handler) handlePutDbConfig() (err error) {
 // GET database config sync function
 func (h *handler) handleGetDbConfigSync() error {
 	h.assertAdminOnly()
-	// TODO: STUB
-	h.writeJSONStatus(http.StatusOK, `function(doc, oldDoc) {
-	// this is a stub sync function
-}`)
+	var (
+		etagVersion  string
+		syncFunction string
+	)
+
+	if h.server.bootstrapContext.connection != nil {
+		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		if err != nil {
+			return err
+		}
+
+		if !found {
+			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
+		}
+
+		etagVersion = dbConfig.Version
+		if dbConfig.Sync != nil {
+			syncFunction = *dbConfig.Sync
+		}
+	}
+
+	h.response.Header().Set("ETag", etagVersion)
+	h.writeJavascript(syncFunction)
 	return nil
 }
 
