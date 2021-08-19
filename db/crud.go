@@ -1614,7 +1614,7 @@ func (db *Database) IsIllegalConflict(doc *Document, parentRevID string, deleted
 	return true
 }
 
-func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
+func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImport bool, previousDocSequenceIn uint64, unusedSequences []uint64, callback updateAndReturnDocCallback, expiry uint32) (retSyncFuncExpiry *uint32, retNewRevID string, retStoredDoc *Document, obsoleteAttachments []string, retOldBodyJSON string, retUnusedSequences []uint64, changedAccessPrincipals []string, changedRoleAccessUsers []string, createNewRevIDSkipped bool, err error) {
 
 	err = db.validateExistingDoc(doc, allowImport, docExists)
 	if err != nil {
@@ -1707,20 +1707,8 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 		return
 	}
 
-	// Delete obsolete attachments from the bucket.
-	if len(obsoleteAttachments) > 0 {
-		base.DebugfCtx(db.Ctx, base.KeyCRUD, "Deleting obsolete attachments (keys: %v, doc: %q)", obsoleteAttachments, base.UD(doc.ID))
-		for _, key := range obsoleteAttachments {
-			err = db.Bucket.Delete(key)
-			if err != nil {
-				base.DebugfCtx(db.Ctx, base.KeyCRUD, "Error deleting obsolete attachment %q of doc %q, Error: %v", key, base.UD(doc.ID), err)
-				return
-			}
-		}
-	}
-
 	doc.TimeSaved = time.Now()
-	return updatedExpiry, newRevID, newDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
+	return updatedExpiry, newRevID, newDoc, obsoleteAttachments, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err
 }
 
 // Function type for the callback passed into updateAndReturnDoc
@@ -1744,6 +1732,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	var unusedSequences []uint64                                 // Must be scoped outside callback, used over multiple iterations
 	var oldBodyJSON string                                       // Stores previous revision body for use by DocumentChangeEvent
 	var createNewRevIDSkipped bool
+	var obsoleteAttachments []string
 
 	// Update the document
 	inConflict := false
@@ -1759,7 +1748,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			}
 			prevCurrentRev = doc.CurrentRev
 			docExists := currentValue != nil
-			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, newRevID, storedDoc, obsoleteAttachments, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -1799,7 +1788,7 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			}
 
 			docExists := currentValue != nil
-			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
+			syncFuncExpiry, newRevID, storedDoc, obsoleteAttachments, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
 			}
@@ -1930,6 +1919,17 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
+
+	// Delete obsolete attachments from the bucket.
+	if len(obsoleteAttachments) > 0 {
+		base.DebugfCtx(db.Ctx, base.KeyCRUD, "Deleting obsolete attachments (keys: %v, doc: %q)", obsoleteAttachments, base.UD(doc.ID))
+		for _, key := range obsoleteAttachments {
+			err = db.Bucket.Delete(key)
+			if err != nil {
+				base.ErrorfCtx(db.Ctx, "Error deleting obsolete attachment %q of doc %q, Error: %v", key, base.UD(doc.ID), err)
+			}
+		}
+	}
 
 	// Remove any obsolete non-winning revision bodies
 	doc.deleteRemovedRevisionBodies(db.Bucket)

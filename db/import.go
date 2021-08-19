@@ -315,9 +315,32 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			newDoc._rawBody = rawBodyForRevID
 		}
 
+		// Identify the obsolete attachments if the import is a delete-mutation.
+		if doc.Deleted {
+			obsoleteAttachments, err = func() (obsoleteAttachments []string, err error) {
+				for _, value := range doc.SyncData.Attachments {
+					meta, ok := value.(map[string]interface{})
+					if !ok {
+						return nil, ErrAttachmentMeta
+					}
+					digest, ok := meta["digest"].(string)
+					if !ok {
+						return nil, ErrAttachmentMeta
+					}
+					version, _ := GetAttachmentVersion(meta)
+					key := MakeAttachmentKey(version, doc.ID, digest)
+					obsoleteAttachments = append(obsoleteAttachments, key)
+				}
+				return obsoleteAttachments, nil
+			}()
+			if err != nil {
+				return nil, nil, nil, false, nil, err
+			}
+		}
+
 		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
 
-		return newDoc, nil, nil, !shouldGenerateNewRev, updatedExpiry, nil
+		return newDoc, nil, obsoleteAttachments, !shouldGenerateNewRev, updatedExpiry, nil
 	})
 
 	switch err {

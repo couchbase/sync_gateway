@@ -8588,4 +8588,44 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Perform cleanup after the test ends.
 		rt.purgeDoc(docID)
 	})
+
+	t.Run("attachment removal upon document delete via SDK", func(t *testing.T) {
+		// Create a document with inline attachment.
+		docID := "foo10"
+		attName := "foo.txt"
+		attBody := "this is the body of attachment foo.txt"
+		attBodyEncoded := base64.StdEncoding.EncodeToString([]byte(attBody))
+		body := fmt.Sprintf(`{"prop": true, "_attachments": {"%s": {"data":"%s"}}}`, attName, attBodyEncoded)
+		putResponse := rt.putDoc(docID, body)
+		revID := putResponse.Rev
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+
+		// Retrieve the attachment added to the document.
+		actualAttBody := retrieveAttachment(docID, attName)
+		require.Equal(t, attBody, actualAttBody)
+
+		// Get the document and check the attachment metadata.
+		attachments := retrieveAttachmentMeta(docID)
+		require.Len(t, attachments, 1)
+		meta, ok := attachments[attName].(map[string]interface{})
+		require.True(t, ok)
+		assert.True(t, meta["stub"].(bool))
+		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
+		assert.Equal(t, float64(38), meta["length"].(float64))
+		assert.Equal(t, float64(1), meta["revpos"].(float64))
+		assert.Equal(t, float64(2), meta["ver"].(float64))
+
+		// Retrieve the key used for internal attachment storage and retrieval.
+		attKey := retrieveAttachmentKey(docID, attName)
+		require.NotEmpty(t, attKey)
+
+		// Delete/tombstone the document via SDK.
+		err := rt.Bucket().Delete(docID)
+		require.NoError(t, err, "Unable to delete doc %q", docID)
+		rt.requireDocNotFound(docID)
+
+		// Check whether the attachment is removed from the underlying storage.
+		requireAttachmentNotFound(docID, attName)
+		rt.requireDocNotFound(attKey)
+	})
 }
