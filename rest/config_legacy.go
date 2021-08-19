@@ -4,9 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/couchbase/gocbcore/v10/connstr"
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/hashicorp/go-multierror"
@@ -93,17 +95,29 @@ type UnsupportedServerConfigLegacy struct {
 // ToStartupConfig returns the given LegacyServerConfig as a StartupConfig and a set of DBConfigs.
 // The returned configs do not contain any default values - only a direct mapping of legacy config options as they were given.
 func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, error) {
-
 	// find a database's credentials for bootstrap (this isn't the first database config entry due to map iteration)
 	bsc := &BootstrapConfig{}
 	for _, dbConfig := range lc.Databases {
 		if dbConfig.Server == nil || *dbConfig.Server == "" {
 			continue
 		}
+
+		server, username, password, err := legacyServerAddressUpgrade(*dbConfig.Server)
+		if err != nil {
+			server = *dbConfig.Server
+			base.Errorf("Error upgrading server address: %v", err)
+		}
+
+		// Prioritise config fields over credentials in host
+		if dbConfig.Username != "" || dbConfig.Password != "" {
+			username = dbConfig.Username
+			password = dbConfig.Password
+		}
+
 		bsc = &BootstrapConfig{
-			Server:              *dbConfig.Server,
-			Username:            dbConfig.Username,
-			Password:            dbConfig.Password,
+			Server:              server,
+			Username:            username,
+			Password:            password,
 			CACertPath:          dbConfig.CACertPath,
 			X509CertPath:        dbConfig.CertPath,
 			X509KeyPath:         dbConfig.KeyPath,
@@ -244,6 +258,41 @@ func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
 		Guest:    dbc.Users[base.GuestUsername],
 		DbConfig: *dbc,
 	}
+}
+
+func legacyServerAddressUpgrade(server string) (newServer, username, password string, err error) {
+	connSpec, err := connstr.Parse(server)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	// Get credentials from first host (if exists)
+	splitServers := strings.Split(server, ",")
+	u, err := url.Parse(splitServers[0])
+	if err != nil {
+		return "", "", "", err
+	}
+	if u.User != nil {
+		urlUsername := u.User.Username()
+		urlPassword, urlPasswordSet := u.User.Password()
+		if urlUsername != "" && urlPasswordSet {
+			username = urlUsername
+			password = urlPassword
+		}
+	}
+
+	if connSpec.Scheme == "http" {
+		connSpec.Scheme = "couchbase"
+		for i, addr := range connSpec.Addresses {
+			if addr.Port != 8091 && addr.Port > 0 {
+				return "", "", "", fmt.Errorf("automatic migration of connection string from http:// to couchbase:// scheme doesn't support non-default ports. " +
+					"Please change the server field to use the couchbase(s):// scheme")
+			}
+			connSpec.Addresses[i].Port = -1
+		}
+	}
+
+	return connSpec.String(), username, password, nil
 }
 
 // Implementation of AuthHandler interface for ClusterConfigLegacy
