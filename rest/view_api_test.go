@@ -670,9 +670,9 @@ func TestViewQueryWithXattrAndNonXattr(t *testing.T) {
 
 	rtConfig := &RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()

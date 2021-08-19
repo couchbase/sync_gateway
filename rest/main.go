@@ -238,16 +238,17 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 
 	// Write database configs to CBS with groupID "default"
 	for _, dbConfig := range dbConfigs {
-		_, err = cluster.PutConfig(*dbConfig.Bucket, persistentConfigDefaultGroupID, base.Uint64Ptr(0), dbConfig)
+		dbc := dbConfig.ToDatabaseConfig()
+		_, err = cluster.InsertConfig(*dbc.Bucket, persistentConfigDefaultGroupID, dbc)
 		if err != nil {
 			// If key already exists just continue
 			if errors.Is(err, base.ErrAlreadyExists) {
-				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for %s. Already exists.", base.UD(dbConfig.Name))
+				base.Infof(base.KeyAll, "Skipping Couchbase Server persistence for %s. Already exists.", base.UD(dbc.Name))
 				continue
 			}
 			return nil, false, err
 		}
-		base.Infof(base.KeyAll, "Persisted database %s config to Couchbase Server bucket: %s", base.UD(dbConfig.Name), base.MD(*dbConfig.Bucket))
+		base.Infof(base.KeyAll, "Persisted database %s config to Couchbase Server bucket: %s", base.UD(dbc.Name), base.MD(*dbc.Bucket))
 	}
 
 	// Attempt to backup current config
@@ -275,8 +276,7 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 }
 
 // validate / sanitize db configs
-// - remove servers
-// - remove users
+// - remove fields no longer valid for persisted db configs
 // - ensure servers are the same
 func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 	var databaseServerAddress string
@@ -298,7 +298,13 @@ func sanitizeDbConfigs(configMap DbConfigMap) (DbConfigMap, error) {
 
 		dbConfig.Name = dbName
 
+		// strip now disallowed options (these are inherited from the bootstrap config on db load)
 		dbConfig.Server = nil
+		dbConfig.Username = ""
+		dbConfig.Password = ""
+		dbConfig.CertPath = ""
+		dbConfig.KeyPath = ""
+		dbConfig.CACertPath = ""
 		dbConfig.Users = nil
 		dbConfig.Roles = nil
 

@@ -129,7 +129,7 @@ func GetCouchbaseBucketGoCBFromAuthenticatedCluster(cluster *gocb.Cluster, spec 
 	nodesMetadata, err := cluster.Manager(user, pass).Internal().GetNodesMetadata()
 	if err != nil || len(nodesMetadata) == 0 {
 		_ = goCBBucket.Close()
-		return nil, pkgerrors.Wrapf(err, "Unable to get server cluster compatibility for %d nodes", len(nodesMetadata))
+		return nil, fmt.Errorf("Unable to get server cluster compatibility for %d nodes: %w", len(nodesMetadata), err)
 	}
 	// Safe to get first node as there will always be at least one node in the list and cluster compat is uniform across all nodes.
 	clusterCompatMajor, clusterCompatMinor := decodeClusterVersion(nodesMetadata[0].ClusterCompatibility)

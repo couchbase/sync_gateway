@@ -1883,11 +1883,11 @@ func TestBlipDeltaSyncPull(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: &sgUseDeltas,
 			},
-		},
+		}},
 		guestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -1963,11 +1963,11 @@ func TestBlipDeltaSyncPullResend(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: base.BoolPtr(true),
 			},
-		},
+		}},
 		guestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -2033,7 +2033,7 @@ func TestBlipDeltaSyncPullRemoved(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2088,7 +2088,7 @@ func TestBlipDeltaSyncPullTombstoned(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2183,7 +2183,7 @@ func TestBlipDeltaSyncPullTombstonedStarChan(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyHTTP, base.KeyCache, base.KeySync, base.KeySyncMsg)()
 
 	sgUseDeltas := base.IsEnterpriseEdition()
-	rtConfig := RestTesterConfig{DatabaseConfig: &DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}
+	rtConfig := RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{DeltaSync: &DeltaSyncConfig{Enabled: &sgUseDeltas}}}}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
 
@@ -2317,11 +2317,11 @@ func TestBlipPullRevMessageHistory(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: &sgUseDeltas,
 			},
-		},
+		}},
 		guestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -2368,11 +2368,11 @@ func TestBlipDeltaSyncPullRevCache(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: &sgUseDeltas,
 			},
-		},
+		}},
 		guestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -2460,11 +2460,11 @@ func TestBlipDeltaSyncPush(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: &sgUseDeltas,
 			},
-		},
+		}},
 		guestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -2571,11 +2571,11 @@ func TestBlipNonDeltaSyncPush(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: &sgUseDeltas,
 			},
-		},
+		}},
 		guestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -2626,11 +2626,11 @@ func TestBlipDeltaSyncNewAttachmentPull(t *testing.T) {
 
 	sgUseDeltas := base.IsEnterpriseEdition()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: &sgUseDeltas,
 			},
-		},
+		}},
 		guestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -2799,11 +2799,11 @@ func TestBlipDeltaSyncPushAttachment(t *testing.T) {
 	const docID = "pushAttachmentDoc"
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: base.BoolPtr(true),
 			},
-		},
+		}},
 		guestEnabled: true,
 	})
 	defer rt.Close()
@@ -2860,11 +2860,11 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 		t.Skip("Delta test requires EE")
 	}
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			DeltaSync: &DeltaSyncConfig{
 				Enabled: base.BoolPtr(true),
 			},
-		},
+		}},
 		guestEnabled: true,
 	}
 	rt := NewRestTester(t, &rtConfig)
@@ -2939,9 +2939,11 @@ func TestBlipDeltaSyncPushPullNewAttachment(t *testing.T) {
 func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: base.BoolPtr(true),
+				},
 			},
 		},
 		guestEnabled: true,
@@ -3015,9 +3017,11 @@ func TestBlipPushPullV2AttachmentV2Client(t *testing.T) {
 func TestBlipPushPullV2AttachmentV3Client(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelInfo, base.KeyAll)()
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			DeltaSync: &DeltaSyncConfig{
-				Enabled: base.BoolPtr(true),
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				DeltaSync: &DeltaSyncConfig{
+					Enabled: base.BoolPtr(true),
+				},
 			},
 		},
 		guestEnabled: true,

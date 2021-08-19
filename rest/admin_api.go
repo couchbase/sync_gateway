@@ -19,7 +19,7 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
-	pkgerrors "github.com/pkg/errors"
+	"github.com/pkg/errors"
 )
 
 const kDefaultDBOnlineDelay = 0
@@ -30,17 +30,46 @@ const kDefaultDBOnlineDelay = 0
 func (h *handler) handleCreateDB() error {
 	h.assertAdminOnly()
 	dbName := h.PathVar("newdb")
-	config, err := h.readSanitizeConfigJSON()
+	config, err := h.readSanitizeDbConfigJSON()
 	if err != nil {
 		return err
 	}
-	config.inheritFromBootstrap(h.server.config.Bootstrap)
-	if err := config.setup(dbName); err != nil {
-		return err
+
+	if h.server.persistentConfig {
+		if err := config.validatePersistentDbConfig(); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+
+		if err := config.validate(); err != nil {
+			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
+		}
+
+		config.cas, err = h.server.bootstrapContext.connection.InsertConfig(*config.Bucket, h.server.config.Bootstrap.ConfigGroupID, config)
+		if err != nil {
+			// remove database if we can't persist to avoid inconsistent cluster state
+			h.server.RemoveDatabase(dbName)
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't save database config: %v", err)
+		}
+
+		if err := config.setup(dbName, h.server.config.Bootstrap); err != nil {
+			return err
+		}
+
+		_, err := h.server.applyConfig(*config)
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't load database: %v", err)
+		}
+	} else {
+		if err := config.setup(dbName, h.server.config.Bootstrap); err != nil {
+			return err
+		}
+
+		// load database in-memory for non-persistent nodes
+		if _, err := h.server.AddDatabaseFromConfig(*config); err != nil {
+			return err
+		}
 	}
-	if _, err := h.server.AddDatabaseFromConfig(DatabaseConfig{DbConfig: *config}); err != nil {
-		return err
-	}
+
 	return base.HTTPErrorf(http.StatusCreated, "created")
 }
 
@@ -72,11 +101,8 @@ func (h *handler) handleDbOnline() error {
 	_ = base.JSONUnmarshal(body, &input)
 
 	base.Infof(base.KeyCRUD, "Taking Database : %v, online in %v seconds", base.MD(h.db.Name), input.Delay)
-
-	timer := time.NewTimer(time.Duration(input.Delay) * time.Second)
 	go func() {
-		<-timer.C
-
+		time.Sleep(time.Duration(input.Delay) * time.Second)
 		h.server.TakeDbOnline(h.db.DatabaseContext)
 	}()
 
@@ -117,7 +143,7 @@ func (h *handler) handleGetDbConfig() error {
 		}
 		h.writeJSON(cfg)
 	} else {
-		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name).DbConfig)
+		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
 	}
 	return nil
 }
@@ -232,7 +258,7 @@ func (h *handler) handlePutConfig() error {
 	var config ServerPutConfig
 	err := base.WrapJSONUnknownFieldErr(ReadJSONFromMIMERawErr(h.rq.Header, h.requestBody, &config))
 	if err != nil {
-		if pkgerrors.Cause(err) == base.ErrUnknownField {
+		if errors.Cause(err) == base.ErrUnknownField {
 			return base.HTTPErrorf(http.StatusBadRequest, "Unable to configure given options at runtime: %v", err)
 		}
 		return err
@@ -281,24 +307,106 @@ func (h *handler) handlePutConfig() error {
 	return base.HTTPErrorf(http.StatusOK, "Updated")
 }
 
-// PUT a new database config
-func (h *handler) handlePutDbConfig() error {
+// handlePutDbConfig Upserts a new database config
+func (h *handler) handlePutDbConfig() (err error) {
 	h.assertAdminOnly()
+
+	var dbConfig *DatabaseConfig
+
+	if h.permissionsResults[PermUpdateDb.PermissionName] {
+		// user authorized to change all fields
+		dbConfig, err = h.readSanitizeDbConfigJSON()
+		if err != nil {
+			return err
+		}
+	}
+
+	// TODO: CBG-1561 Fine-grained permission checks for sync and guest.
+	//       Needs to support users that have BOTH permissions updating both fields, which the below code doesn't handle.
+	//
+	// if h.permissionsResults[PermConfigureSyncFn.PermissionName] {
+	// 	var allowedConfig struct {
+	// 		Sync *string `json:"sync,omitempty"`
+	// 	}
+	// 	if err := h.readSanitizeJSON(&allowedConfig); err != nil {
+	// 		if errors.Cause(err) == base.ErrUnknownField {
+	// 			return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
+	// 		}
+	// 		return err
+	// 	}
+	// 	if allowedConfig.Sync != nil {
+	// 		dbConfig.Sync = allowedConfig.Sync
+	// 	}
+	// }
+	//
+	// if h.permissionsResults[PermConfigureAuth.PermissionName] {
+	// 	var allowedConfig struct {
+	// 		Guest *db.PrincipalConfig `json:"guest,omitempty"`
+	// 	}
+	// 	if err := h.readSanitizeJSON(&allowedConfig); err != nil {
+	// 		if errors.Cause(err) == base.ErrUnknownField {
+	// 			return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
+	// 		}
+	// 		return err
+	// 	}
+	// 	if allowedConfig.Guest != nil {
+	// 		dbConfig.Guest = allowedConfig.Guest
+	// 	}
+	// }
+
+	bucket := h.db.Bucket.GetName()
+	if dbConfig.Bucket != nil {
+		bucket = *dbConfig.Bucket
+	}
+
+	updatedDbConfig := dbConfig
+	if h.server.persistentConfig {
+		cas, err := h.server.bootstrapContext.connection.UpdateConfig(
+			bucket, h.server.config.Bootstrap.ConfigGroupID,
+			func(rawBucketConfig []byte) (newConfig []byte, err error) {
+				var bucketDbConfig DatabaseConfig
+				if err := base.JSONUnmarshal(rawBucketConfig, &bucketDbConfig); err != nil {
+					return nil, err
+				}
+
+				// TODO: CBG-1452 Optimistic Concurrency Control/RevID check
+				if err := base.ConfigMerge(&bucketDbConfig, dbConfig); err != nil {
+					return nil, err
+				}
+
+				// TODO: CBG-1619 We're validating but we're not actually starting up the database before we persist the update!
+				if err := dbConfig.validatePersistentDbConfig(); err != nil {
+					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+				}
+				if err := bucketDbConfig.validate(); err != nil {
+					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+				}
+
+				updatedDbConfig = &bucketDbConfig
+				return base.JSONMarshal(bucketDbConfig)
+			})
+		if err != nil {
+			return err
+		}
+		updatedDbConfig.cas = cas
+	}
+
 	dbName := h.db.Name
-	config, err := h.readSanitizeConfigJSON()
-	if err != nil {
+	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap); err != nil {
 		return err
 	}
-	config.inheritFromBootstrap(h.server.config.Bootstrap)
-	if err := config.setup(dbName); err != nil {
-		return err
-	}
+
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
-	dbc := DatabaseConfig{DbConfig: *config}
-	h.server.dbConfigs[dbName] = &dbc
+	h.server.bucketDbName[bucket] = dbName
+	h.server.dbConfigs[dbName] = updatedDbConfig
 
-	return base.HTTPErrorf(http.StatusCreated, "created")
+	// TODO: Dynamic update instead of reload
+	if _, err := h.server._reloadDatabaseFromConfig(dbName); err != nil {
+		return err
+	}
+
+	return base.HTTPErrorf(http.StatusCreated, "updated")
 }
 
 // GET database config sync function

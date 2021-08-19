@@ -796,7 +796,7 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
 }
 
-func TestValidateServerContext(t *testing.T) {
+func TestValidateServerContextSharedBuckets(t *testing.T) {
 	if base.GTestBucketPool.NumUsableBuckets() < 2 {
 		t.Skipf("test requires at least 2 usable test buckets")
 	}
@@ -856,7 +856,7 @@ func TestValidateServerContext(t *testing.T) {
 		},
 	}
 
-	require.Nil(t, databases.SetupAndValidate(), "Unexpected error while validating databases")
+	require.Nil(t, setupAndValidateDatabases(databases), "Unexpected error while validating databases")
 
 	sc := NewServerContext(config, false)
 	defer sc.Close()
@@ -1299,18 +1299,13 @@ func TestClientTLSMissing(t *testing.T) {
 			if test.tlsCert {
 				config.API.HTTPS.TLSCertPath = "test.cert"
 			}
-			sc, err := setupServerContext(&config, false)
+			err := config.validate()
 			if test.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), errorTLSOneMissing)
-				require.Nil(t, sc)
 			} else {
 				if err != nil { // If validate fails, make sure it's not due to TLS
 					assert.NotContains(t, err.Error(), errorTLSOneMissing)
-					assert.Nil(t, sc)
-				} else {
-					require.NotNil(t, sc)
-					sc.Close()
 				}
 			}
 		})
@@ -1594,7 +1589,7 @@ func TestSetupDbConfigWithSyncFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {
@@ -1694,7 +1689,7 @@ func TestSetupDbConfigWithImportFilterFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {
@@ -1806,7 +1801,7 @@ func TestSetupDbConfigWithConflictResolutionFunction(t *testing.T) {
 					Err:        test.errExpected,
 				}
 			}
-			err := dbConfig.setup(dbConfig.Name)
+			err := dbConfig.setup(dbConfig.Name, BootstrapConfig{})
 			if test.errExpected != nil {
 				require.True(t, errors.As(err, &test.errExpected))
 			} else {

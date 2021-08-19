@@ -10,6 +10,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,28 +63,10 @@ type bootstrapContext struct {
 	doneChan   chan struct{} // doneChan is closed when the stats logger goroutine finishes.
 }
 
-type DatabaseConfig struct {
-	// TODO: Copy non-legacy properties into this struct?
-	cas uint64
-	DbConfig
-}
-
-func (dbs DbConfigMap) SetupAndValidate() error {
-	for name, dbConfig := range dbs {
-		if err := dbConfig.setup(name); err != nil {
-			return err
-		}
-		if err := dbConfig.validateSgDbConfig(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (sc *ServerContext) CreateLocalDatabase(dbs DbConfigMap) error {
 	for _, dbConfig := range dbs {
-		dbc := DatabaseConfig{DbConfig: *dbConfig}
-		_, err := sc._getOrAddDatabaseFromConfig(dbc, false)
+		dbc := dbConfig.ToDatabaseConfig()
+		_, err := sc._getOrAddDatabaseFromConfig(*dbc, false)
 		if err != nil {
 			return err
 		}
@@ -144,16 +127,33 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 	return sc
 }
 
+func (sc *ServerContext) waitForRESTAPIs(timeout time.Duration) error {
+	interval := time.Millisecond * 100
+	numAttempts := int(timeout / interval)
+	timeoutCtx, cancelFn := context.WithTimeout(context.Background(), timeout)
+	defer cancelFn()
+	err, _ := base.RetryLoopCtx("Wait for REST APIs", func() (shouldRetry bool, err error, value interface{}) {
+		sc.lock.RLock()
+		defer sc.lock.RUnlock()
+		if len(sc._httpServers) == 3 {
+			return false, nil, nil
+		}
+		return true, nil, nil
+	}, base.CreateSleeperFunc(numAttempts, int(interval.Milliseconds())), timeoutCtx)
+	return err
+}
+
 // PostStartup runs anything that relies on SG being fully started (i.e. sgreplicate)
 func (sc *ServerContext) PostStartup() {
 	// Start sg-replicate2 replications per-database.  sg-replicate2 replications aren't
 	// started until at least 5 seconds after SG node start, to avoid replication reassignment churn
 	// when a Sync Gateway Cluster is being initialized
+	// TODO: Consider sc.waitForRESTAPIs for faster startup
 	time.Sleep(5 * time.Second)
 
 	sc.lock.RLock()
-	for _, dbContext := range sc.databases_ {
-		base.Infof(base.KeyReplicate, "Starting sg-replicate replications...")
+	for dbName, dbContext := range sc.databases_ {
+		base.Infof(base.KeyReplicate, "Starting Inter-Sync Gateway Replications for database %q", dbName)
 		err := dbContext.SGReplicateMgr.StartReplications()
 		if err != nil {
 			base.Errorf("Error starting sg-replicate replications: %v", err)
@@ -328,7 +328,7 @@ func (sc *ServerContext) getOrAddDatabaseFromConfig(config DatabaseConfig, useEx
 	return dbContext, err
 }
 
-func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
+func GetBucketSpec(config *DatabaseConfig, serverConfig *StartupConfig) (spec base.BucketSpec, err error) {
 
 	spec = config.MakeBucketSpec()
 
@@ -366,7 +366,7 @@ func GetBucketSpec(config *DbConfig, serverConfig *StartupConfig) (spec base.Buc
 func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useExisting bool) (context *db.DatabaseContext, err error) {
 
 	// Generate bucket spec and validate whether db already exists
-	spec, err := GetBucketSpec(&config.DbConfig, sc.config)
+	spec, err := GetBucketSpec(&config, sc.config)
 	if err != nil {
 		return nil, err
 	}
@@ -374,6 +374,9 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	dbName := config.Name
 	if dbName == "" {
 		dbName = spec.BucketName
+	}
+	if spec.Server == "" {
+		spec.Server = sc.config.Bootstrap.Server
 	}
 
 	if sc.databases_[dbName] != nil {

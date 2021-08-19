@@ -229,27 +229,30 @@ func GetTLSVersionFromString(stringV *string) uint16 {
 }
 
 // inheritFromBootstrap sets any empty Couchbase Server values from the given bootstrap config.
-func (dbConfig *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
-	if dbConfig.Server == nil {
-		dbConfig.Server = &b.Server
+func (dbc *DbConfig) inheritFromBootstrap(b BootstrapConfig) {
+	if dbc.Username == "" {
+		dbc.Username = b.Username
 	}
-	if dbConfig.Username == "" {
-		dbConfig.Username = b.Username
+	if dbc.Password == "" {
+		dbc.Password = b.Password
 	}
-	if dbConfig.Password == "" {
-		dbConfig.Password = b.Password
+	if dbc.CertPath == "" {
+		dbc.CertPath = b.X509CertPath
 	}
-	if dbConfig.CertPath == "" {
-		dbConfig.CertPath = b.X509CertPath
+	if dbc.KeyPath == "" {
+		dbc.KeyPath = b.X509KeyPath
 	}
-	if dbConfig.KeyPath == "" {
-		dbConfig.KeyPath = b.X509KeyPath
+	if dbc.Server == nil || *dbc.Server == "" {
+		dbc.Server = &b.Server
 	}
 }
 
-func (dbConfig *DbConfig) setup(name string) error {
+// setup populates fields in the dbConfig
+func (dbConfig *DbConfig) setup(dbName string, bootstrapConfig BootstrapConfig) error {
 
-	dbConfig.Name = name
+	dbConfig.inheritFromBootstrap(bootstrapConfig)
+
+	dbConfig.Name = dbName
 	if dbConfig.Bucket == nil {
 		dbConfig.Bucket = &dbConfig.Name
 	}
@@ -432,6 +435,36 @@ func (dbConfig *DbConfig) AutoImportEnabled() (bool, error) {
 	}
 
 	return false, fmt.Errorf("Unrecognized value for import_docs: %#v. Valid values are true and false.", dbConfig.AutoImport)
+}
+
+const dbConfigFieldNotAllowedErrorMsg = "Persisted database config does not support customization of the %q field"
+
+func (dbConfig *DbConfig) validatePersistentDbConfig() (errorMessages error) {
+	if dbConfig.Server != nil {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "server"))
+	}
+	if dbConfig.Username != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "username"))
+	}
+	if dbConfig.Password != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "password"))
+	}
+	if dbConfig.CertPath != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "certpath"))
+	}
+	if dbConfig.KeyPath != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "keypath"))
+	}
+	if dbConfig.CACertPath != "" {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "cacertpath"))
+	}
+	if dbConfig.Users != nil {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "users"))
+	}
+	if dbConfig.Roles != nil {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf(dbConfigFieldNotAllowedErrorMsg, "roles"))
+	}
+	return errorMessages
 }
 
 func (dbConfig *DbConfig) validate() error {
@@ -867,7 +900,7 @@ func (sc *StartupConfig) validate() (errorMessages error) {
 	return errorMessages
 }
 
-// ServerContext creates a new ServerContext given its configuration and performs the context validation.
+// setupServerContext creates a new ServerContext given its configuration and performs the context validation.
 func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerContext, error) {
 	// Logging config will now have been loaded from command line
 	// or from a sync_gateway config file so we can validate the
@@ -930,6 +963,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 						t.Stop()
 						return
 					case <-t.C:
+						base.Debugf(base.KeyConfig, "Fetching configs from buckets in cluster for group %q", sc.config.Bootstrap.ConfigGroupID)
 						count, err := sc.fetchAndLoadConfigs()
 						if err != nil {
 							base.Warnf("Couldn't load configs from bucket when polled: %v", err)
@@ -974,7 +1008,6 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 	}
 
 	for _, bucket := range buckets {
-		bucket := bucket
 		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
@@ -1000,9 +1033,10 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 		// TODO: This code is mostly copied from fetchConfigs, move into shared function with DbConfig REST API work?
 
 		// inherit properties the bootstrap config
-		cnf.Server = &sc.config.Bootstrap.Server
 		cnf.CACertPath = sc.config.Bootstrap.CACertPath
-		cnf.Bucket = &bucket
+
+		bucketCopy := bucket
+		cnf.Bucket = &bucketCopy
 
 		// any authentication fields defined on the dbconfig take precedence over any in the bootstrap config
 		if cnf.Username == "" && cnf.Password == "" && cnf.CertPath == "" && cnf.KeyPath == "" {
@@ -1012,7 +1046,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
-		sc.applyConfigs(map[string]*DatabaseConfig{bucket: &cnf})
+		sc.applyConfigs([]DatabaseConfig{cnf})
 		return true, nil
 	}
 
@@ -1020,32 +1054,32 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*DatabaseConfig, err error) {
+func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig []DatabaseConfig, err error) {
 	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
 
-	fetchedConfigs := make(map[string]*DatabaseConfig, len(buckets))
+	fetchedConfigs := make([]DatabaseConfig, 0, len(buckets))
 
-	// phase 1: fetch configs from buckets, and hold in memory
 	for _, bucket := range buckets {
-		base.Tracef(base.KeyConfig, "Checking %q for Sync Gateway config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
-		var cnf DbConfig
+		base.Tracef(base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
+		var cnf DatabaseConfig
 		cas, err := sc.bootstrapContext.connection.GetConfig(bucket, sc.config.Bootstrap.ConfigGroupID, &cnf)
 		if err == base.ErrNotFound {
-			base.Debugf(base.KeyConfig, "%q did not contain config in group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
+			base.Tracef(base.KeyConfig, "bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			continue
 		}
 		if err != nil {
-			base.Errorf("couldn't fetch config in group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
+			base.Errorf("couldn't fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
 			continue
 		}
 
+		cnf.cas = cas
+
 		// inherit properties the bootstrap config
-		cnf.Server = &sc.config.Bootstrap.Server
 		cnf.CACertPath = sc.config.Bootstrap.CACertPath
-		// copy loop variable
+
 		bucketCopy := bucket
 		cnf.Bucket = &bucketCopy
 
@@ -1057,49 +1091,64 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig map[string]*Data
 			cnf.KeyPath = sc.config.Bootstrap.X509KeyPath
 		}
 
-		base.Tracef(base.KeyConfig, "Got config for bucket %q with cas %d", bucket, cas)
-		fetchedConfigs[bucket] = &DatabaseConfig{cas: cas, DbConfig: cnf}
+		base.Debugf(base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
+		fetchedConfigs = append(fetchedConfigs, cnf)
 	}
 
 	return fetchedConfigs, nil
 }
 
 // applyConfigs takes a map of bucket->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) applyConfigs(fetchedConfigs map[string]*DatabaseConfig) (count int) {
-	// phase 2: apply the configs to the server context
+func (sc *ServerContext) applyConfigs(fetchedConfigs []DatabaseConfig) (count int) {
 	sc.lock.Lock()
 	defer sc.lock.Unlock()
-	for bucket, cnf := range fetchedConfigs {
-
-		// skip if we already have this config loaded
-		foundDbName, ok := sc.bucketDbName[bucket]
-		if ok && sc.dbConfigs[foundDbName].cas >= cnf.cas {
-			base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, bucket)
+	for _, cnf := range fetchedConfigs {
+		applied, err := sc._applyConfig(cnf)
+		if err != nil {
+			base.Errorf("%s", err)
 			continue
 		}
-
-		// ensure we're not loading a database from multiple buckets
-		if dbc := sc.databases_[cnf.Name]; dbc != nil {
-			runningBucket := dbc.Bucket.GetName()
-			if runningBucket != bucket {
-				base.Errorf("Database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, bucket, cnf.Name, runningBucket)
-				continue
-			}
+		if applied {
+			count++
 		}
-
-		base.Infof(base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, bucket)
-		sc.bucketDbName[bucket] = cnf.Name
-		sc.dbConfigs[cnf.Name] = cnf
-
-		// TODO: Dynamic update instead of reload
-		if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
-			base.Errorf("Couldn't reload database: %v", err)
-			continue
-		}
-		count++
 	}
 
 	return count
+}
+
+func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err error) {
+	// skip if we already have this config loaded
+	foundDbName, ok := sc.bucketDbName[*cnf.Bucket]
+	if ok && sc.dbConfigs[foundDbName].cas >= cnf.cas {
+		base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
+		return false, nil
+	}
+
+	// ensure we're not loading a database from multiple buckets
+	if dbc := sc.databases_[cnf.Name]; dbc != nil {
+		runningBucket := dbc.Bucket.GetName()
+		if runningBucket != *cnf.Bucket {
+			return false, fmt.Errorf("database %q bucket %q cannot be added - already running %q using bucket %q", cnf.Name, *cnf.Bucket, cnf.Name, runningBucket)
+		}
+	}
+
+	base.Infof(base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
+	sc.bucketDbName[*cnf.Bucket] = cnf.Name
+	sc.dbConfigs[cnf.Name] = &cnf
+
+	// TODO: Dynamic update instead of reload
+	if _, err := sc._reloadDatabaseFromConfig(cnf.Name); err != nil {
+		return false, fmt.Errorf("couldn't reload database: %w", err)
+	}
+
+	return true, nil
+}
+
+// applyConfigs takes a map of bucket->DatabaseConfig and loads them into the ServerContext where necessary.
+func (sc *ServerContext) applyConfig(cnf DatabaseConfig) (applied bool, err error) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	return sc._applyConfig(cnf)
 }
 
 // startServer starts and runs the server with the given configuration. (This function never returns.)

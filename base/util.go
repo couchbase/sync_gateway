@@ -798,6 +798,11 @@ func StringPtr(value string) *string {
 	return &value
 }
 
+// Uint16Ptr returns a pointer to the given uint16 literal.
+func Uint16Ptr(u uint16) *uint16 {
+	return &u
+}
+
 // Uint32Ptr returns a pointer to the given uint32 literal.
 func Uint32Ptr(u uint32) *uint32 {
 	return &u

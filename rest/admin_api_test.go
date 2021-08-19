@@ -325,7 +325,7 @@ func TestUserPasswordValidation(t *testing.T) {
 func TestUserAllowEmptyPassword(t *testing.T) {
 
 	// PUT a user
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AllowEmptyPassword: base.BoolPtr(true)}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AllowEmptyPassword: base.BoolPtr(true)}}})
 	defer rt.Close()
 
 	response := rt.SendAdminRequest("PUT", "/db/_user/snej", `{"email":"jens@couchbase.com", "password":"letmein", "admin_channels":["foo", "bar"]}`)
@@ -1180,12 +1180,12 @@ func TestDBGetConfigNames(t *testing.T) {
 
 	p := "password"
 
-	rt.DatabaseConfig = &DbConfig{
+	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
 		Users: map[string]*db.PrincipalConfig{
 			"alice": &db.PrincipalConfig{Password: &p},
 			"bob":   &db.PrincipalConfig{Password: &p},
 		},
-	}
+	}}
 
 	response := rt.SendAdminRequest("GET", "/db/_config", "")
 	var body DbConfig
@@ -1327,9 +1327,9 @@ func TestResync(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			rt := NewRestTester(t,
 				&RestTesterConfig{
-					DatabaseConfig: &DbConfig{
+					DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 						QueryPaginationLimit: &testCase.queryLimit,
-					},
+					}},
 					SyncFn: syncFn,
 				},
 			)
@@ -1501,9 +1501,9 @@ func TestResyncStop(t *testing.T) {
 	rt := NewRestTester(t,
 		&RestTesterConfig{
 			SyncFn: syncFn,
-			DatabaseConfig: &DbConfig{
+			DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 				QueryPaginationLimit: base.IntPtr(10),
-			},
+			}},
 			TestBucket: leakyTestBucket,
 		},
 	)
@@ -2257,7 +2257,6 @@ func TestHandlePutDbConfigWithBackticks(t *testing.T) {
 	assertStatus(t, resp, http.StatusOK)
 	var respBody db.Body
 	require.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
-	assert.Equal(t, "backticks", respBody["name"].(string))
 	assert.Equal(t, "walrus:", respBody["server"].(string))
 	assert.Equal(t, syncFunc, respBody["sync"].(string))
 }
@@ -2276,13 +2275,6 @@ func TestHandleDBConfig(t *testing.T) {
 	defer rt.Close()
 
 	bucket := tb.GetName()
-
-	kvTLSPort := 443
-	certPath := "/etc/ssl/certs/client.cert"
-	keyPath := "/etc/ssl/certs/client.pem"
-	caCertPath := "/etc/ssl/certs/ca.cert"
-	username := "Alice"
-	password := "QWxpY2U="
 	resource := fmt.Sprintf("/%s/", bucket)
 
 	// Create a database with no config
@@ -2302,16 +2294,15 @@ func TestHandleDBConfig(t *testing.T) {
 	// Put database config
 	resource = fmt.Sprintf("/%v/_config?redact=false", bucket)
 
-	bucketConfig := BucketConfig{
-		Bucket:     &bucket,
-		Username:   username,
-		Password:   password,
-		CertPath:   certPath,
-		KeyPath:    keyPath,
-		CACertPath: caCertPath,
-		KvTLSPort:  kvTLSPort,
+	// change cache size so we can see the update being reflected in the API response
+	dbConfig := &DbConfig{
+		CacheConfig: &CacheConfig{
+			RevCacheConfig: &RevCacheConfig{
+				Size: base.Uint32Ptr(1337), ShardCount: base.Uint16Ptr(7),
+			},
+		},
+		SGReplicateEnabled: base.BoolPtr(false),
 	}
-	dbConfig := &DbConfig{BucketConfig: bucketConfig, SGReplicateEnabled: base.BoolPtr(false)}
 	reqBody, err := base.JSONMarshal(dbConfig)
 	assert.NoError(t, err, "Error unmarshalling changes response")
 	resp = rt.SendAdminRequest(http.MethodPut, resource, string(reqBody))
@@ -2324,14 +2315,46 @@ func TestHandleDBConfig(t *testing.T) {
 	respBody = nil
 	assert.NoError(t, respBody.Unmarshal([]byte(resp.Body.String())))
 
-	assert.Equal(t, bucket, respBody["bucket"].(string))
-	assert.Equal(t, bucket, respBody["name"].(string))
-	assert.Equal(t, username, respBody["username"].(string))
-	assert.Equal(t, password, respBody["password"].(string))
-	assert.Equal(t, certPath, respBody["certpath"].(string))
-	assert.Equal(t, keyPath, respBody["keypath"].(string))
-	assert.Equal(t, caCertPath, respBody["cacertpath"].(string))
-	assert.Equal(t, json.Number("443"), respBody["kv_tls_port"].(json.Number))
+	gotcache, ok := respBody["cache"].(map[string]interface{})
+	require.True(t, ok)
+	assert.NotNil(t, gotcache)
+
+	gotRevcache, ok := gotcache["rev_cache"].(map[string]interface{})
+	require.True(t, ok)
+	gotRevcacheSize, ok := gotRevcache["size"].(json.Number)
+	require.True(t, ok)
+	gotRevcacheSizeInt, err := gotRevcacheSize.Int64()
+	require.NoError(t, err)
+	assert.Equal(t, int64(1337), gotRevcacheSizeInt)
+
+	gotRevcacheNumShards, ok := gotRevcache["shard_count"].(json.Number)
+	require.True(t, ok)
+	gotRevcacheNumShardsInt, err := gotRevcacheNumShards.Int64()
+	require.NoError(t, err)
+	assert.Equal(t, int64(7), gotRevcacheNumShardsInt)
+
+	gotbucket, ok := respBody["bucket"].(string)
+	require.True(t, ok)
+	assert.Equal(t, bucket, gotbucket)
+
+	gotName, ok := respBody["name"].(string)
+	require.True(t, ok)
+	assert.Equal(t, bucket, gotName)
+
+	un, pw, _ := tb.BucketSpec.Auth.GetCredentials()
+	gotusername, ok := respBody["username"].(string)
+	require.True(t, ok)
+	assert.Equal(t, un, gotusername)
+	gotpassword, ok := respBody["password"].(string)
+	require.True(t, ok)
+	assert.Equal(t, pw, gotpassword)
+
+	_, ok = respBody["certpath"]
+	require.False(t, ok)
+	_, ok = respBody["keypath"]
+	require.False(t, ok)
+	_, ok = respBody["cacertpath"]
+	require.False(t, ok)
 }
 
 func TestHandleDeleteDB(t *testing.T) {
@@ -2582,7 +2605,7 @@ func TestUserAndRoleResponseContentType(t *testing.T) {
 }
 
 func TestConfigRedaction(t *testing.T) {
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{Users: map[string]*db.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{Users: map[string]*db.PrincipalConfig{"alice": {Password: base.StringPtr("password")}}}}})
 	defer rt.Close()
 
 	// Test default db config redaction
@@ -2664,9 +2687,11 @@ func TestUserXattrsRawGet(t *testing.T) {
 	xattrKey := "xattrKey"
 
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			AutoImport:   true,
-			UserXattrKey: xattrKey,
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport:   true,
+				UserXattrKey: xattrKey,
+			},
 		},
 	})
 	defer rt.Close()
@@ -2913,10 +2938,10 @@ func TestChannelNameSizeWarningBoundaries(t *testing.T) {
 			}
 			rt = NewRestTester(t, &RestTesterConfig{
 				SyncFn: syncFn,
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					Unsupported: db.UnsupportedOptions{
 						WarningThresholds: thresholdConfig,
-					},
+					}},
 				},
 			})
 			defer rt.Close()

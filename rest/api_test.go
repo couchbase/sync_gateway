@@ -1814,10 +1814,10 @@ func TestCustomCookieName(t *testing.T) {
 	defer rt.Close()
 
 	customCookieName := "TestCustomCookieName"
-	rt.DatabaseConfig = &DbConfig{
+	rt.DatabaseConfig = &DatabaseConfig{DbConfig: DbConfig{
 		Name:              "db",
 		SessionCookieName: customCookieName,
-	}
+	}}
 
 	// Disable guest user
 	a := auth.NewAuthenticator(rt.Bucket(), nil, auth.DefaultAuthenticatorOptions())
@@ -4593,11 +4593,13 @@ func TestWebhookProperties(t *testing.T) {
 	defer s.Close()
 
 	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			AutoImport: true,
-			EventHandlers: &EventHandlerConfig{
-				DocumentChanged: []*EventConfig{
-					{Url: s.URL, Filter: "function(doc){return true;}", HandlerType: "webhook"},
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport: true,
+				EventHandlers: &EventHandlerConfig{
+					DocumentChanged: []*EventConfig{
+						{Url: s.URL, Filter: "function(doc){return true;}", HandlerType: "webhook"},
+					},
 				},
 			},
 		},
@@ -4796,11 +4798,13 @@ func TestWebhookSpecialProperties(t *testing.T) {
 	defer s.Close()
 
 	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
-			AutoImport: true,
-			EventHandlers: &EventHandlerConfig{
-				DocumentChanged: []*EventConfig{
-					{Url: s.URL, Filter: "function(doc){return true;}", HandlerType: "webhook"},
+		DatabaseConfig: &DatabaseConfig{
+			DbConfig: DbConfig{
+				AutoImport: true,
+				EventHandlers: &EventHandlerConfig{
+					DocumentChanged: []*EventConfig{
+						{Url: s.URL, Filter: "function(doc){return true;}", HandlerType: "webhook"},
+					},
 				},
 			},
 		},
@@ -4847,7 +4851,7 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 	defer s.Close()
 
 	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: true,
 			EventHandlers: &EventHandlerConfig{
 				DocumentChanged: []*EventConfig{
@@ -4855,7 +4859,7 @@ func TestWebhookPropsWithAttachments(t *testing.T) {
 				},
 			},
 		},
-	}
+		}}
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
@@ -4918,7 +4922,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 	defer s.Close()
 
 	rtConfig := &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			EventHandlers: &EventHandlerConfig{
 				DocumentChanged: []*EventConfig{
 					{Url: s.URL + "?event=DocumentChanged", Filter: "function(doc){return true;}", HandlerType: "webhook"},
@@ -4928,7 +4932,7 @@ func TestWebhookWinningRevChangedEvent(t *testing.T) {
 				},
 			},
 		},
-	}
+		}}
 	rt := NewRestTester(t, rtConfig)
 	defer rt.Close()
 
@@ -5650,7 +5654,7 @@ func TestPutTombstoneWithoutCreateAsDeletedFlagCasFailure(t *testing.T) {
 		t.Skip("Couchbase buckets only")
 	}
 
-	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DbConfig{AutoImport: true}})
+	rt := NewRestTester(t, &RestTesterConfig{DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{AutoImport: true}}})
 	defer rt.Close()
 
 	gocbBucket, ok := base.AsGoCBBucket(rt.Bucket())
@@ -5718,10 +5722,10 @@ func TestUserXattrAutoImport(t *testing.T) {
 
 	// Sync function to set channel access to whatever xattr is
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   true,
 			UserXattrKey: xattrKey,
-		},
+		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
 				if (meta.xattrs.myXattr !== undefined){
@@ -5840,10 +5844,10 @@ func TestUserXattrOnDemandImportGET(t *testing.T) {
 
 	// Sync function to set channel access to whatever xattr is
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   false,
 			UserXattrKey: xattrKey,
-		},
+		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
 				if (meta.xattrs.myXattr !== undefined){
@@ -5940,10 +5944,10 @@ func TestUserXattrOnDemandImportWrite(t *testing.T) {
 
 	// Sync function to set channel access to whatever xattr is
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   false,
 			UserXattrKey: xattrKey,
-		},
+		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
 				if (meta.xattrs.myXattr !== undefined){
@@ -6059,10 +6063,10 @@ func TestRemovingUserXattr(t *testing.T) {
 
 			// Sync function to set channel access to whatever xattr is
 			rt := NewRestTester(t, &RestTesterConfig{
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					AutoImport:   testCase.autoImport,
 					UserXattrKey: xattrKey,
-				},
+				}},
 				SyncFn: `
 			function (doc, oldDoc, meta){
 				if (meta.xattrs.myXattr !== undefined){
@@ -6144,10 +6148,10 @@ func TestUserXattrAvoidRevisionIDGeneration(t *testing.T) {
 
 	// Sync function to set channel access to whatever xattr is
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   true,
 			UserXattrKey: xattrKey,
-		},
+		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
 				if (meta.xattrs.myXattr !== undefined){
@@ -7480,7 +7484,7 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
 	revocationTester, rt := initScenario(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
@@ -7490,7 +7494,7 @@ func TestRevocationsWithQueryLimit(t *testing.T) {
 					MaxNumber: base.IntPtr(0),
 				},
 			},
-		},
+		}},
 	})
 	defer rt.Close()
 
@@ -7529,7 +7533,7 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 	defer db.SuspendSequenceBatching()()
 
 	revocationTester, rt := initScenario(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
@@ -7539,7 +7543,7 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 					MaxNumber: base.IntPtr(0),
 				},
 			},
-		},
+		}},
 	})
 	defer rt.Close()
 
@@ -7579,7 +7583,7 @@ func TestRevocationsWithQueryLimitChangesLimit(t *testing.T) {
 
 func TestUserHasDocAccessDocNotFound(t *testing.T) {
 	rt := NewRestTester(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
@@ -7589,7 +7593,7 @@ func TestUserHasDocAccessDocNotFound(t *testing.T) {
 					MaxNumber: base.IntPtr(0),
 				},
 			},
-		},
+		}},
 	})
 	defer rt.Close()
 
@@ -7618,7 +7622,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 	}
 
 	revocationTester, rt := initScenario(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			QueryPaginationLimit: base.IntPtr(2),
 			CacheConfig: &CacheConfig{
 				RevCacheConfig: &RevCacheConfig{
@@ -7628,7 +7632,7 @@ func TestRevocationUserHasDocAccessDocNotFound(t *testing.T) {
 					MaxNumber: base.IntPtr(0),
 				},
 			},
-		},
+		}},
 	})
 	defer rt.Close()
 
@@ -7856,10 +7860,10 @@ func TestRevocationWithUserXattrs(t *testing.T) {
 	xattrKey := "channelInfo"
 
 	revocationTester, rt := initScenario(t, &RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   true,
 			UserXattrKey: xattrKey,
-		},
+		}},
 		SyncFn: `
 			function (doc, oldDoc, meta){
 				if (doc._id === 'accessDoc' && meta.xattrs.channelInfo !== undefined){

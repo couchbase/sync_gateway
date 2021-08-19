@@ -2,11 +2,12 @@ package base
 
 import (
 	"errors"
-	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v10/memd"
+	"github.com/imdario/mergo"
 )
 
 // BootstrapConnection is the interface that can be used to bootstrap Sync Gateway against a Couchbase Server cluster.
@@ -15,8 +16,10 @@ type BootstrapConnection interface {
 	GetConfigBuckets() ([]string, error)
 	// GetConfig fetches a database config for a given bucket and config group ID, along with the CAS of the config document.
 	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
-	// PutConfig saves a database config for a given bucket and config group ID, along with the CAS of the document.
-	PutConfig(bucket, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error)
+	// InsertConfig saves a new database config for a given bucket and config group ID.
+	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
+	// UpdateConfig updates an existing database config for a given bucket and config group ID.
+	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// Close closes the connection
 	Close() error
 }
@@ -63,6 +66,7 @@ func NewCouchbaseCluster(server, username, password,
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
 	})
 	if err != nil {
+		_ = cluster.Close(nil)
 		return nil, err
 	}
 
@@ -120,28 +124,62 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 	return uint64(res.Cas()), nil
 }
 
-func (cc *CouchbaseCluster) PutConfig(location, groupID string, cas *uint64, value interface{}) (newCAS uint64, err error) {
+func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interface{}) (newCAS uint64, err error) {
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 	docID := PersistentConfigPrefix + groupID
 	collection := cc.c.Bucket(location).DefaultCollection()
 
-	if cas != nil && *cas == 0 {
-		res, err := collection.Insert(docID, value, nil)
+	res, err := collection.Insert(docID, value, nil)
+	if err != nil {
+		if isKVError(err, memd.StatusKeyExists) {
+			return 0, ErrAlreadyExists
+		}
+		return 0, err
+	}
+
+	return uint64(res.Cas()), nil
+}
+
+func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallback func(bucketConfig []byte) (newConfig []byte, err error)) (newCAS uint64, err error) {
+	if cc == nil {
+		return 0, errors.New("nil CouchbaseCluster")
+	}
+	docID := PersistentConfigPrefix + groupID
+	collection := cc.c.Bucket(location).DefaultCollection()
+
+	for {
+		res, err := collection.Get(docID, &gocb.GetOptions{
+			Transcoder: gocb.NewRawJSONTranscoder(),
+		})
 		if err != nil {
-
-			if isKVError(err, memd.StatusKeyExists) {
-				return 0, ErrAlreadyExists
-			}
-
 			return 0, err
 		}
 
-		return uint64(res.Cas()), nil
+		var bucketValue []byte
+		err = res.Content(&bucketValue)
+		if err != nil {
+			return 0, err
+		}
+
+		newConfig, err := updateCallback(bucketValue)
+		if err != nil {
+			return 0, err
+		}
+
+		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: res.Cas()})
+		if err != nil {
+			if errors.Is(err, gocb.ErrCasMismatch) {
+				// retry on cas failure
+				continue
+			}
+			return 0, err
+		}
+
+		return uint64(replaceRes.Cas()), nil
 	}
 
-	return 0, fmt.Errorf("Not implemented")
 }
 
 func (cc *CouchbaseCluster) Close() error {
@@ -149,4 +187,26 @@ func (cc *CouchbaseCluster) Close() error {
 		return nil
 	}
 	return cc.c.Close(&gocb.ClusterCloseOptions{})
+}
+
+// ConfigMerge applies non-empty fields from b onto non-empty fields on a
+func ConfigMerge(a, b interface{}) error {
+	return mergo.Merge(a, b, mergo.WithTransformers(&mergoNilTransformer{}), mergo.WithOverride)
+}
+
+// mergoNilTransformer is a mergo.Transformers implementation that treats non-nil zero values as non-empty when merging.
+type mergoNilTransformer struct{}
+
+var _ mergo.Transformers = &mergoNilTransformer{}
+
+func (t *mergoNilTransformer) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
+	if typ.Kind() == reflect.Ptr {
+		return func(dst, src reflect.Value) error {
+			if dst.CanSet() && !src.IsNil() {
+				dst.Set(src)
+			}
+			return nil
+		}
+	}
+	return nil
 }

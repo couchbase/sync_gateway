@@ -95,8 +95,8 @@ func TestAutomaticConfigUpgrade(t *testing.T) {
 	assert.Equal(t, "db", dbConfig.Name)
 	assert.Equal(t, tb.GetName(), *dbConfig.Bucket)
 	assert.Nil(t, dbConfig.Server)
-	assert.Equal(t, base.TestClusterUsername(), dbConfig.Username)
-	assert.Equal(t, base.TestClusterPassword(), dbConfig.Password)
+	assert.Equal(t, "", dbConfig.Username)
+	assert.Equal(t, "", dbConfig.Password)
 }
 
 func TestAutomaticConfigUpgradeError(t *testing.T) {

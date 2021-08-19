@@ -598,26 +598,26 @@ func (h *handler) readJSONInto(into interface{}) error {
 	return ReadJSONFromMIME(h.rq.Header, h.requestBody, into)
 }
 
-// readSanitizeJSONInto reads and sanitizes a JSON request body and returns DbConfig.
+// readSanitizeJSONInto reads and sanitizes a JSON request body and returns DatabaseConfig.
 // Expands environment variables (if any) referenced in the config.
-func (h *handler) readSanitizeConfigJSON() (*DbConfig, error) {
+func (h *handler) readSanitizeJSON(val interface{}) error {
 	// Performs the Content-Type validation and Content-Encoding check.
 	input, err := processContentEncoding(h.rq.Header, h.requestBody)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Read body bytes to sanitize the content and substitute environment variables.
 	defer func() { _ = input.Close() }()
 	content, err := ioutil.ReadAll(input)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Expand environment variables.
 	content, err = expandEnv(content)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// Convert the back quotes into double-quotes, escapes literal
 	// backslashes, newlines or double-quotes with backslashes.
@@ -627,15 +627,25 @@ func (h *handler) readSanitizeConfigJSON() (*DbConfig, error) {
 	decoder := base.JSONDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
-	var config DbConfig
-	err = decoder.Decode(&config)
+	err = decoder.Decode(&val)
 
 	if err != nil {
 		err = base.WrapJSONUnknownFieldErr(err)
-		if errors.Cause(err) == base.ErrUnknownField {
-			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
-		} else {
+		if errors.Cause(err) != base.ErrUnknownField {
 			err = base.HTTPErrorf(http.StatusBadRequest, "Bad JSON: %s", err.Error())
+		}
+	}
+	return err
+}
+
+// readSanitizeJSONInto reads and sanitizes a JSON request body and returns DatabaseConfig.
+// Expands environment variables (if any) referenced in the config.
+func (h *handler) readSanitizeDbConfigJSON() (*DatabaseConfig, error) {
+	var config DatabaseConfig
+	err := h.readSanitizeJSON(&config)
+	if err != nil {
+		if errors.Cause(base.WrapJSONUnknownFieldErr(err)) == base.ErrUnknownField {
+			err = base.HTTPErrorf(http.StatusBadRequest, "JSON Unknown Field: %s", err.Error())
 		}
 	}
 	return &config, err

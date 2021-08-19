@@ -64,9 +64,9 @@ func TestXattrImportOldDoc(t *testing.T) {
 				channel("docDeleted")
 			}
 		}`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -297,9 +297,9 @@ func TestXattrResurrectViaSDK(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -362,9 +362,9 @@ func TestXattrDoubleDelete(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -411,9 +411,9 @@ func TestViewQueryTombstoneRetrieval(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -486,10 +486,10 @@ func TestXattrImportFilterOptIn(t *testing.T) {
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   false,
 			ImportFilter: &importFilter,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -536,10 +536,10 @@ func TestImportFilterLogging(t *testing.T) {
 	importFilter := `function (doc) { console.error("Error"); return doc.type == "mobile"; }`
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			ImportFilter: &importFilter,
 			AutoImport:   false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -578,9 +578,9 @@ func TestXattrImportMultipleActorOnDemandGet(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -634,9 +634,9 @@ func TestXattrImportMultipleActorOnDemandPut(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -692,9 +692,9 @@ func TestXattrImportMultipleActorOnDemandFeed(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: true,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -765,9 +765,9 @@ func TestXattrImportLargeNumbers(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -814,9 +814,9 @@ func TestMigrateLargeInlineRevisions(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -883,9 +883,9 @@ func TestMigrateTombstone(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -952,9 +952,9 @@ func TestMigrateWithExternalRevisions(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1028,9 +1028,9 @@ func TestCheckForUpgradeOnRead(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1107,9 +1107,9 @@ func TestCheckForUpgradeOnWrite(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1252,9 +1252,9 @@ func TestXattrFeedBasedImportPreservesExpiry(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: true,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1310,9 +1310,9 @@ func TestFeedBasedMigrateWithExpiry(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: true,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1360,9 +1360,9 @@ func TestOnDemandWriteImportReplacingNullDoc(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1432,9 +1432,9 @@ func TestXattrOnDemandImportPreservesExpiry(t *testing.T) {
 
 			rtConfig := RestTesterConfig{
 				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					AutoImport: false,
-				},
+				}},
 			}
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
@@ -1517,9 +1517,9 @@ func TestOnDemandMigrateWithExpiry(t *testing.T) {
 
 			rtConfig := RestTesterConfig{
 				SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-				DatabaseConfig: &DbConfig{
+				DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 					AutoImport: false,
-				},
+				}},
 			}
 			rt := NewRestTester(t, &rtConfig)
 			defer rt.Close()
@@ -1560,10 +1560,10 @@ func TestXattrSGWriteOfNonImportedDoc(t *testing.T) {
 	importFilter := `function (doc) { return doc.type == "mobile"}`
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport:   false,
 			ImportFilter: &importFilter,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1609,9 +1609,9 @@ func TestImportBinaryDoc(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1640,9 +1640,9 @@ func TestImportZeroValueDecimalPlaces(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport)()
 
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: true,
-		},
+		}},
 	}
 
 	rt := NewRestTester(t, &rtConfig)
@@ -1705,9 +1705,9 @@ func TestImportZeroValueDecimalPlacesScientificNotation(t *testing.T) {
 	defer base.SetUpTestLogging(base.LevelDebug, base.KeyImport)()
 
 	rtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: true,
-		},
+		}},
 	}
 
 	rt := NewRestTester(t, &rtConfig)
@@ -1766,10 +1766,10 @@ func TestImportRevisionCopy(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			ImportBackupOldRev: base.BoolPtr(true),
 			AutoImport:         false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1823,10 +1823,10 @@ func TestImportRevisionCopyUnavailable(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			ImportBackupOldRev: base.BoolPtr(true),
 			AutoImport:         false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1885,9 +1885,9 @@ func TestImportRevisionCopyDisabled(t *testing.T) {
 	// ImportBackupOldRev not set in config, defaults to false
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -1966,9 +1966,9 @@ func TestDcpBackfill(t *testing.T) {
 
 	// Create a new context, with import docs enabled, to process backfill
 	newRtConfig := RestTesterConfig{
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: true,
-		},
+		}},
 	}
 	newRt := NewRestTester(t, &newRtConfig)
 	defer newRt.Close()
@@ -2003,9 +2003,9 @@ func TestUnexpectedBodyOnTombstone(t *testing.T) {
 
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc, oldDoc) { channel(doc.channels) }`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
@@ -2140,7 +2140,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 	SkipImportTestsIfNotEnabled(t)
 	rtConfig := RestTesterConfig{
 		SyncFn: `function(doc) {console.log("Doc in Sync Fn:" + JSON.stringify(doc))}`,
-		DatabaseConfig: &DbConfig{
+		DatabaseConfig: &DatabaseConfig{DbConfig: DbConfig{
 			AutoImport: false,
 			ImportFilter: base.StringPtr(`function (doc) {
 				console.log("Doc in Import Filter:" + JSON.stringify(doc));
@@ -2149,7 +2149,7 @@ func TestDeletedDocumentImportWithImportFilter(t *testing.T) {
 				}
 				return false
 			}`),
-		},
+		}},
 	}
 	rt := NewRestTester(t, &rtConfig)
 	defer rt.Close()
