@@ -9,8 +9,11 @@
 package rest
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -338,40 +341,38 @@ func (h *handler) handlePutDbConfig() (err error) {
 		if err != nil {
 			return err
 		}
-	}
+	} else {
+		hasAuthPerm := h.permissionsResults[PermConfigureAuth.PermissionName]
+		hasSyncPerm := h.permissionsResults[PermConfigureSyncFn.PermissionName]
 
-	// TODO: CBG-1561 Fine-grained permission checks for sync and guest.
-	//       Needs to support users that have BOTH permissions updating both fields, which the below code doesn't handle.
-	//
-	// if h.permissionsResults[PermConfigureSyncFn.PermissionName] {
-	// 	var allowedConfig struct {
-	// 		Sync *string `json:"sync,omitempty"`
-	// 	}
-	// 	if err := h.readSanitizeJSON(&allowedConfig); err != nil {
-	// 		if errors.Cause(err) == base.ErrUnknownField {
-	// 			return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
-	// 		}
-	// 		return err
-	// 	}
-	// 	if allowedConfig.Sync != nil {
-	// 		dbConfig.Sync = allowedConfig.Sync
-	// 	}
-	// }
-	//
-	// if h.permissionsResults[PermConfigureAuth.PermissionName] {
-	// 	var allowedConfig struct {
-	// 		Guest *db.PrincipalConfig `json:"guest,omitempty"`
-	// 	}
-	// 	if err := h.readSanitizeJSON(&allowedConfig); err != nil {
-	// 		if errors.Cause(err) == base.ErrUnknownField {
-	// 			return base.HTTPErrorf(http.StatusForbidden, "only authorized to update sync function")
-	// 		}
-	// 		return err
-	// 	}
-	// 	if allowedConfig.Guest != nil {
-	// 		dbConfig.Guest = allowedConfig.Guest
-	// 	}
-	// }
+		bodyContents, err := ioutil.ReadAll(h.requestBody)
+		if err != nil {
+			return err
+		}
+
+		var mapDbConfig map[string]interface{}
+		err = ReadJSONFromMIMERawErr(h.rq.Header, ioutil.NopCloser(bytes.NewReader(bodyContents)), &mapDbConfig)
+		if err != nil {
+			return err
+		}
+
+		unknownFileKeys := make([]string, 0)
+		for key, _ := range mapDbConfig {
+			if key == "sync" && hasSyncPerm || key == "guest" && hasAuthPerm {
+				continue
+			}
+			unknownFileKeys = append(unknownFileKeys, key)
+		}
+
+		if len(unknownFileKeys) > 0 {
+			return base.HTTPErrorf(http.StatusForbidden, "not authorized to update field: %s", strings.Join(unknownFileKeys, ","))
+		}
+
+		err = ReadJSONFromMIMERawErr(h.rq.Header, ioutil.NopCloser(bytes.NewReader(bodyContents)), &dbConfig)
+		if err != nil {
+			return err
+		}
+	}
 
 	bucket := h.db.Bucket.GetName()
 	if dbConfig.Bucket != nil {
