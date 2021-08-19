@@ -44,6 +44,11 @@ func (h *handler) handleCreateDB() error {
 			return base.HTTPErrorf(http.StatusBadRequest, err.Error())
 		}
 
+		config.Version, err = GenerateDatabaseConfigVersionID("", config)
+		if err != nil {
+			return err
+		}
+
 		config.cas, err = h.server.bootstrapContext.connection.InsertConfig(*config.Bucket, h.server.config.Bootstrap.ConfigGroupID, config)
 		if err != nil {
 			// remove database if we can't persist to avoid inconsistent cluster state
@@ -135,6 +140,19 @@ func (h *handler) handleGetDbConfig() error {
 	includeJavascript, _ := h.getOptBoolQuery("include_javascript", true)
 	_ = includeJavascript
 
+	if h.server.bootstrapContext.connection != nil {
+		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		if err != nil {
+			return err
+		}
+
+		if !found {
+			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
+		}
+
+		h.response.Header().Set("ETag", dbConfig.Version)
+	}
+
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
 		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Redacted()
@@ -145,6 +163,7 @@ func (h *handler) handleGetDbConfig() error {
 	} else {
 		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
 	}
+
 	return nil
 }
 
@@ -359,6 +378,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 		bucket = *dbConfig.Bucket
 	}
 
+	if dbConfig.Version != "" {
+		return base.HTTPErrorf(http.StatusBadRequest, "version cannot be specified in the config body. If "+
+			"concurrency protection is required use the If-Match header to supply config version")
+	}
+
 	updatedDbConfig := dbConfig
 	if h.server.persistentConfig {
 		cas, err := h.server.bootstrapContext.connection.UpdateConfig(
@@ -369,7 +393,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 					return nil, err
 				}
 
-				// TODO: CBG-1452 Optimistic Concurrency Control/RevID check
+				headerVersion := h.rq.Header.Get("If-Match")
+				if headerVersion != "" && headerVersion != bucketDbConfig.Version {
+					return nil, base.HTTPErrorf(http.StatusPreconditionFailed, "Provided If-Match header does not match current config version")
+				}
+
 				if err := base.ConfigMerge(&bucketDbConfig, dbConfig); err != nil {
 					return nil, err
 				}
@@ -380,6 +408,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 				}
 				if err := bucketDbConfig.validate(); err != nil {
 					return nil, base.HTTPErrorf(http.StatusBadRequest, err.Error())
+				}
+
+				bucketDbConfig.Version, err = GenerateDatabaseConfigVersionID(bucketDbConfig.Version, &bucketDbConfig)
+				if err != nil {
+					return nil, err
 				}
 
 				updatedDbConfig = &bucketDbConfig

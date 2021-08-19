@@ -3370,3 +3370,48 @@ func TestIncludeRuntimeStartupConfig(t *testing.T) {
 	assert.Equal(t, db.ActiveReplicatorTypePushAndPull, replCfg.Direction)
 
 }
+
+func TestPersistentConfigConcurrency(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs(time.Second*5))
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	// Get config
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	eTag := resp.Header.Get("ETag")
+	assert.NotEqual(t, "", eTag)
+
+	resp = bootstrapAdminRequestWithHeaders(t, "PUT", "/db/_config", "{}", map[string]string{"If-Match": eTag})
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	resp = bootstrapAdminRequest(t, "PUT", "/db/_config", "{}")
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	resp = bootstrapAdminRequestWithHeaders(t, "PUT", "/db/_config", "{}", map[string]string{"If-Match": "x"})
+	assert.Equal(t, http.StatusConflict, resp.StatusCode)
+}

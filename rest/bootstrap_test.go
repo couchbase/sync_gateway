@@ -47,12 +47,12 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 		fmt.Println("closing test bucket")
 		tb.Close()
 	}()
-	resp := adminRequest(t, http.MethodPut, "/db1/",
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db1/",
 		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
 	)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	resp = adminRequest(t, http.MethodGet, "/db1/", ``)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	var dbRootResp DatabaseRoot
 	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbRootResp))
@@ -61,7 +61,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assert.Equal(t, db.RunStateString[db.DBOnline], dbRootResp.State)
 
 	// Inspect the config
-	resp = adminRequest(t, http.MethodGet, "/db1/_config?redact=false", ``)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config?redact=false", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	var dbConfigResp DatabaseConfig
 	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigResp))
@@ -76,9 +76,9 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	require.Nil(t, dbConfigResp.Sync)
 
 	// Sanity check to use the database
-	resp = adminRequest(t, http.MethodPut, "/db1/doc1", `{"foo":"bar"}`)
+	resp = bootstrapAdminRequest(t, http.MethodPut, "/db1/doc1", `{"foo":"bar"}`)
 	assertResp(t, resp, http.StatusCreated, `{"id":"doc1","ok":true,"rev":"1-cd809becc169215072fd567eebd8b8de"}`)
-	resp = adminRequest(t, http.MethodGet, "/db1/doc1", ``)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/doc1", ``)
 	assertResp(t, resp, http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
 
 	// Restart Sync Gateway
@@ -98,7 +98,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	}()
 
 	// Ensure the database was bootstrapped on startup
-	resp = adminRequest(t, http.MethodGet, "/db1/", ``)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	dbRootResp = DatabaseRoot{}
 	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbRootResp))
@@ -107,7 +107,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assert.Equal(t, db.RunStateString[db.DBOnline], dbRootResp.State)
 
 	// Inspect config again, and ensure no changes since bootstrap
-	resp = adminRequest(t, http.MethodGet, "/db1/_config?redact=false", ``)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/_config?redact=false", ``)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	dbConfigResp = DatabaseConfig{}
 	require.NoError(t, base.JSONDecoder(resp.Body).Decode(&dbConfigResp))
@@ -122,7 +122,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	require.Nil(t, dbConfigResp.Sync)
 
 	// Ensure it's _actually_ the same bucket
-	resp = adminRequest(t, http.MethodGet, "/db1/doc1", ``)
+	resp = bootstrapAdminRequest(t, http.MethodGet, "/db1/doc1", ``)
 	assertResp(t, resp, http.StatusOK, `{"_id":"doc1","_rev":"1-cd809becc169215072fd567eebd8b8de","foo":"bar"}`)
 }
 
@@ -152,12 +152,29 @@ func bootstrapStartupConfigForTest(t *testing.T) StartupConfig {
 	return config
 }
 
-func adminRequest(t *testing.T, method, path, body string) *http.Response {
+func bootstrapAdminRequest(t *testing.T, method, path, body string) *http.Response {
 	url := "http://localhost:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10) + path
 
 	buf := bytes.NewBufferString(body)
 	req, err := http.NewRequest(method, url, buf)
 	require.NoError(t, err)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+
+	return resp
+}
+
+func bootstrapAdminRequestWithHeaders(t *testing.T, method, path, body string, headers map[string]string) *http.Response {
+	url := "http://localhost:" + strconv.FormatInt(4985+bootstrapTestPortOffset, 10) + path
+
+	buf := bytes.NewBufferString(body)
+	req, err := http.NewRequest(method, url, buf)
+	require.NoError(t, err)
+
+	for headerName, headerVal := range headers {
+		req.Header.Set(headerName, headerVal)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
