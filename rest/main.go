@@ -120,7 +120,9 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 				// the config is actually a 3.x config but with a genuine unknown field, therefore we should  return the
 				// original error from LoadStartupConfigFromPath.
 				if pkgerrors.Cause(upgradeError) == base.ErrUnknownField {
-					return false, err
+					base.Warnf("Automatic upgrade attempt failed, %s not recognized as legacy config format: %v", base.MD(configPath[0]), upgradeError)
+					base.Warnf("Provided config %s not recognized as bootstrap config format: %v", base.MD(configPath[0]), err)
+					return false, fmt.Errorf("unknown config fields supplied. Unable to continue")
 				}
 
 				return false, upgradeError
