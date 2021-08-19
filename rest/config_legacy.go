@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -104,7 +103,7 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 			continue
 		}
 
-		server, username, password, err := gocbv1tov2AddressUpgrade(*dbConfig.Server)
+		server, username, password, err := legacyServerAddressUpgrade(*dbConfig.Server)
 		if err != nil {
 			return nil, DbConfigMap{}, err
 		}
@@ -261,19 +260,19 @@ func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
 	}
 }
 
-func gocbv1tov2AddressUpgrade(server string) (newServer, username, password string, err error) {
+func legacyServerAddressUpgrade(server string) (newServer, username, password string, err error) {
 	connSpec, err := connstr.Parse(server)
 	if err != nil {
 		return "", "", "", err
 	}
 
+	// Get credentials from first host (if exists)
 	splitServers := strings.Split(server, ",")
-	// Only first host is supported to have username and pass or else gocbconnstr.Parse does not work correctly
-	if strings.Contains(splitServers[0], "@") {
-		u, err := url.Parse(splitServers[0])
-		if err != nil {
-			return "", "", "", err
-		}
+	u, err := url.Parse(splitServers[0])
+	if err != nil {
+		return "", "", "", err
+	}
+	if u.User != nil {
 		urlUsername := u.User.Username()
 		urlPassword, urlPasswordSet := u.User.Password()
 		if urlUsername != "" && urlPasswordSet {
@@ -282,39 +281,18 @@ func gocbv1tov2AddressUpgrade(server string) (newServer, username, password stri
 		}
 	}
 
-	var hosts string
-	for _, addr := range connSpec.Addresses {
-		if connSpec.Scheme == "http" {
-			if addr.Port != 8091 {
-				return "", "", "", fmt.Errorf("automatic connection string conversion does not support non-default host ports. " +
-					"Please change the server field to use the couchbase(s):// scheme")
-			}
-			addr.Port = -1
-		}
-
-		var port string
-		if addr.Port != -1 {
-			port = ":" + strconv.Itoa(addr.Port)
-		}
-
-		hosts = hosts + addr.Host + port + ","
-	}
-
 	if connSpec.Scheme == "http" {
 		connSpec.Scheme = "couchbase"
+		for i, addr := range connSpec.Addresses {
+			if addr.Port != 8091 {
+				return "", "", "", fmt.Errorf("automatic migration of connection string from http:// to couchbase:// scheme doesn't support non-default ports. " +
+					"Please change the server field to use the couchbase(s):// scheme")
+			}
+			connSpec.Addresses[i].Port = -1
+		}
 	}
 
-	server = connSpec.Scheme + "://" + hosts
-	// Trailing , is valid but removed to make field neater
-	server = strings.TrimSuffix(server, ",")
-
-	if len(connSpec.Options) > 0 {
-		// Append options as gocbconnspec.Parse only works if options at end
-		var params url.Values = connSpec.Options
-		server = server + "?" + params.Encode()
-	}
-
-	return server, username, password, nil
+	return connSpec.String(), username, password, nil
 }
 
 // Implementation of AuthHandler interface for ClusterConfigLegacy

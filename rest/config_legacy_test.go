@@ -117,7 +117,7 @@ func TestLegacyConfigToStartupConfig(t *testing.T) {
 	}
 }
 
-func TestGocbv1tov2AddressUpgrade(t *testing.T) {
+func TestLegacyServerAddressUpgrade(t *testing.T) {
 	testCases := []struct {
 		name             string
 		server           string
@@ -204,7 +204,7 @@ func TestGocbv1tov2AddressUpgrade(t *testing.T) {
 	}
 	for _, test := range testCases {
 		t.Run(test.name, func(t *testing.T) {
-			s, u, p, err := gocbv1tov2AddressUpgrade(test.server)
+			s, u, p, err := legacyServerAddressUpgrade(test.server)
 			assert.Equal(t, test.expectedServer, s)
 			assert.Equal(t, test.expectedUsername, u)
 			assert.Equal(t, test.expectedPassword, p)
