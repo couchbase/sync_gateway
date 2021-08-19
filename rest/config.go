@@ -928,7 +928,7 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 
 	sc := NewServerContext(config, persistentConfig)
 	if !base.ServerIsWalrus(config.Bootstrap.Server) {
-		goCBAgent, err := sc.initializeGoCBHttpClient()
+		goCBAgent, err := sc.initializeGoCBAgent()
 		if err != nil {
 			return nil, err
 		}

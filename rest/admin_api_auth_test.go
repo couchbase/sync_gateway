@@ -183,7 +183,7 @@ func TestCheckPermissionsWithX509(t *testing.T) {
 	}, false)
 	defer ctx.Close()
 
-	goCBAgent, err := ctx.initializeGoCBHttpClient()
+	goCBAgent, err := ctx.initializeGoCBAgent()
 	require.NoError(t, err)
 	ctx.GoCBAgent = goCBAgent
 
@@ -466,7 +466,7 @@ func TestAdminAuthWithX509(t *testing.T) {
 	}, false)
 	defer ctx.Close()
 
-	goCBAgent, err := ctx.initializeGoCBHttpClient()
+	goCBAgent, err := ctx.initializeGoCBAgent()
 	require.NoError(t, err)
 	ctx.GoCBAgent = goCBAgent
 
