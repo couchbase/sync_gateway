@@ -39,7 +39,7 @@ type CbgtContext struct {
 // dbName is used to define a unique path name for local file storage of pindex files
 func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bucket Bucket, spec BucketSpec, numPartitions uint16, cfg cbgt.Cfg) (*CbgtContext, error) {
 
-	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid)
+	cbgtContext, err := initCBGTManager(bucket, spec, cfg, uuid, dbName)
 	if err != nil {
 		return nil, err
 	}
@@ -68,30 +68,6 @@ func StartShardedDCPFeed(dbName string, uuid string, heartbeater Heartbeater, bu
 	return cbgtContext, nil
 }
 
-// cbgtFeedParams returns marshalled cbgt.DCPFeedParams as string, to be passed as feedparams during cbgt.Manager init.
-// Used to pass basic auth credentials and xattr flag to cbgt.
-func cbgtFeedParams(spec BucketSpec) (string, error) {
-	feedParams := cbgt.NewDCPFeedParams()
-
-	// check for basic auth
-	if spec.Certpath == "" && spec.Auth != nil {
-		username, password, _ := spec.Auth.GetCredentials()
-		feedParams.AuthUser = username
-		feedParams.AuthPassword = password
-	}
-
-	if spec.UseXattrs {
-		// TODO: This is always being set in NewGocbDCPFeed, review whether we actually need ability to run w/ false
-		feedParams.IncludeXAttrs = true
-	}
-
-	paramBytes, err := JSONMarshal(feedParams)
-	if err != nil {
-		return "", err
-	}
-	return string(paramBytes), nil
-}
-
 // Given a dbName, generate a unique and length-constrained index name for CBGT to use as part of their DCP name.
 func GenerateIndexName(dbName string) string {
 	// Index names *must* start with a letter, so we'll prepend 'db' before the per-database checksum (which starts with '0x')
@@ -107,24 +83,16 @@ func GenerateLegacyIndexName(dbName string) string {
 // to the manager's cbgt cfg.  Nodes that have registered for this indexType with the manager via
 // RegisterPIndexImplType (see importListener.RegisterImportPindexImpl)
 // will receive PIndexImpl callbacks (New, Open) for assigned PIndex to initiate DCP processing.
-// TODO: If the index definition already exists in the cfg, it appears like this step can be bypassed,
-//       as we don't currently have a scenario where we want to update an existing index def.  Needs
-//       additional testing to validate.
 func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSpec, numPartitions uint16) error {
 
-	// sourceType is based on cbgt.source_gocouchbase non-public constant.
-	// TODO: Request that cbgt make this and source_gocb public.
-	sourceType := "gocb"
-	if feedType == cbgtFeedType_cbdatasource {
-		sourceType = "couchbase"
-	}
+	sourceType := SOURCE_GOCOUCHBASE_DCP_SG
 
 	bucketUUID, err := bucket.UUID()
 	if err != nil {
 		return err
 	}
 
-	sourceParams, err := cbgtFeedParams(spec)
+	sourceParams, err := cbgtFeedParams(spec, dbName)
 	if err != nil {
 		return err
 	}
@@ -250,7 +218,7 @@ func getCBGTIndexUUID(manager *cbgt.Manager, indexName string) (exists bool, pre
 // createCBGTManager creates a new manager for a given bucket and bucketSpec
 // Inline comments below provide additional detail on how cbgt uses each manager
 // parameter, and the implications for SG
-func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string) (*CbgtContext, error) {
+func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID string, dbName string) (*CbgtContext, error) {
 
 	// uuid: Unique identifier for the node. Used to identify the node in the config.
 	//       Without UUID persistence across SG restarts, a restarted SG node relies on heartbeater to remove
@@ -343,6 +311,12 @@ func initCBGTManager(bucket Bucket, spec BucketSpec, cfgSG cbgt.Cfg, dbUUID stri
 		Manager: mgr,
 		Cfg:     cfgSG,
 	}
+
+	if spec.Auth != nil && spec.Certpath == "" {
+		username, password, _ := spec.Auth.GetCredentials()
+		addCbgtCredentials(dbName, username, password)
+	}
+
 	return cbgtContext, nil
 }
 
@@ -377,6 +351,10 @@ func (c *CbgtContext) StopHeartbeatListener() {
 		c.heartbeater.UnregisterListener(c.heartbeatListener.Name())
 		c.heartbeatListener.Stop()
 	}
+}
+
+func (c *CbgtContext) RemoveFeedCredentials(dbName string) {
+	removeCbgtCredentials(dbName)
 }
 
 func initCfgCB(bucket Bucket, spec BucketSpec) (*cbgt.CfgCB, error) {
