@@ -1432,7 +1432,8 @@ func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]stri
 		return nil, nil, nil
 	}
 
-	// Fairly sure this shouldn't happen as the only place we don't init
+	// This shouldn't happen as the only place we don't initialize this is in the case where we're not using a Couchbase
+	// Bucket. This means the above check should catch it but check just to be safe.
 	if context.GoCBHttpClient == nil {
 		return nil, nil, fmt.Errorf("unable to obtain http client")
 	}
