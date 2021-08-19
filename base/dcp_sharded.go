@@ -144,7 +144,16 @@ func createCBGTIndex(c *CbgtContext, dbName string, bucket Bucket, spec BucketSp
 				return spec.TLSConfig()
 			}
 		}
-		options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(c.loggingCtx, spec.IsTLS(), connSpec.Addresses)
+
+		networkType := getNetworkTypeFromConnSpec(connSpec)
+		Infof(KeyDCP, "Using network type: %s", networkType)
+
+		// default (aka internal) networking is handled by cbdatasource, so we can avoid the shims altogether in this case, for all other cases we need shims to remap hosts.
+		if networkType != clusterNetworkDefault {
+			// A lookup of host dest to external alternate address hostnames
+			options.ConnectBucket, options.Connect, options.ConnectTLS = alternateAddressShims(c.loggingCtx, spec.IsTLS(), connSpec.Addresses, networkType)
+		}
+
 		return options
 	})
 
