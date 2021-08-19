@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocbcore/v10/connstr"
-
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
 	"github.com/hashicorp/go-multierror"
@@ -105,7 +104,8 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 
 		server, username, password, err := legacyServerAddressUpgrade(*dbConfig.Server)
 		if err != nil {
-			return nil, nil, err
+			server = *dbConfig.Server
+			base.Errorf("Error upgrading server address: %v", err)
 		}
 
 		// Prioritise config fields over credentials in host
@@ -284,7 +284,7 @@ func legacyServerAddressUpgrade(server string) (newServer, username, password st
 	if connSpec.Scheme == "http" {
 		connSpec.Scheme = "couchbase"
 		for i, addr := range connSpec.Addresses {
-			if addr.Port != 8091 {
+			if addr.Port != 8091 && addr.Port > 0 {
 				return "", "", "", fmt.Errorf("automatic migration of connection string from http:// to couchbase:// scheme doesn't support non-default ports. " +
 					"Please change the server field to use the couchbase(s):// scheme")
 			}
