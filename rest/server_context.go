@@ -56,8 +56,7 @@ type ServerContext struct {
 	cpuPprofFile         *os.File       // An open file descriptor holds the reference during CPU profiling
 	_httpServers         []*http.Server // A list of HTTP servers running under the ServerContext
 
-	GoCBHttpClient *http.Client
-	GoCBAgent      *gocbcore.Agent
+	GoCBAgent *gocbcore.Agent
 }
 
 type bootstrapContext struct {
@@ -204,6 +203,11 @@ func (sc *ServerContext) Close() {
 		}
 	}
 
+	if agent := sc.GoCBAgent; agent != nil {
+		if err := agent.Close(); err != nil {
+			base.Warnf("Error closing agent connection: %v", err)
+		}
+	}
 }
 
 // Returns the DatabaseContext with the given name
@@ -1129,7 +1133,7 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 }
 
 // Obtains a gocb agent from the current server connection. Requires the agent to be closed after use
-func (sc *ServerContext) obtainGoCBAgent() (*gocbcore.Agent, error) {
+func (sc *ServerContext) initializeGoCBHttpClient() (*gocbcore.Agent, error) {
 	agent, err := initClusterAgent(
 		sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
 		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify,
@@ -1141,25 +1145,12 @@ func (sc *ServerContext) obtainGoCBAgent() (*gocbcore.Agent, error) {
 	return agent, nil
 }
 
-func (sc *ServerContext) initializeGoCBHttpClient() (*gocbcore.Agent, *http.Client, error) {
-	agent, err := sc.obtainGoCBAgent()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	httpClient := &http.Client{
-		Transport: agent.HTTPClient().Transport,
-	}
-
-	return agent, httpClient, nil
-}
-
 func (sc *ServerContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
-	if sc.GoCBAgent == nil || sc.GoCBHttpClient == nil {
-		return nil, nil, fmt.Errorf("unable to obtain agent or http client. Running with Walrus? ")
+	if sc.GoCBAgent == nil {
+		return nil, nil, fmt.Errorf("unable to obtain agent. Running with Walrus? ")
 	}
 
-	return sc.GoCBAgent.MgmtEps(), sc.GoCBHttpClient, nil
+	return sc.GoCBAgent.MgmtEps(), sc.GoCBAgent.HTTPClient(), nil
 }
 
 // CheckPermissions is used for Admin authentication to check a CBS RBAC user.

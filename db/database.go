@@ -1421,13 +1421,8 @@ func (context *DatabaseContext) InitializeGoCBHttpClient() (*http.Client, error)
 		base.Warnf("Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
 		return nil, nil
 	}
-	transport := cbStore.HttpClient().Transport.(*http.Transport).Clone()
 
-	httpClient := &http.Client{
-		Transport: transport,
-	}
-
-	return httpClient, nil
+	return cbStore.HttpClient(), nil
 }
 
 func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]string, *http.Client, error) {
@@ -1435,6 +1430,11 @@ func (context *DatabaseContext) ObtainManagementEndpointsAndHTTPClient() ([]stri
 	if !ok {
 		base.Warnf("Database %v: Unable to get server management endpoints. Underlying bucket type was not GoCBBucket.", base.MD(context.Name))
 		return nil, nil, nil
+	}
+
+	// Fairly sure this shouldn't happen as the only place we don't init
+	if context.GoCBHttpClient == nil {
+		return nil, nil, fmt.Errorf("unable to obtain http client")
 	}
 
 	endpoints, err := base.GoCBBucketMgmtEndpoints(cbStore)
