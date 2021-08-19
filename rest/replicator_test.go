@@ -5329,6 +5329,8 @@ func TestConflictResolveMergeWithMutatedRev(t *testing.T) {
 	}, 1)
 	assert.True(t, found)
 	assert.Equal(t, int64(1), val)
+
+	rt1.waitForReplicationStatus(t.Name(), db.ReplicationStateStopped)
 }
 
 func TestReplicatorRevocationsWithTombstoneResurrection(t *testing.T) {
