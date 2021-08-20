@@ -287,11 +287,20 @@ func CreateProperty(size int) (result string) {
 	return string(resultBytes)
 }
 
-// SetUpGlobalTestHeapProfiling will cause a packages tests to periodically write a heap profile to the package's directory.
-func SetUpGlobalTestHeapProfiling(m *testing.M) (teardownFn func()) {
+// SetUpGlobalTestProfiling will cause a packages tests to periodically write a profiles to the package's directory.
+func SetUpGlobalTestProfiling(m *testing.M) (teardownFn func()) {
 	freq := os.Getenv("SG_TEST_PROFILE_FREQUENCY")
 	if freq == "" {
 		return func() {}
+	}
+
+	profiles := []string{
+		"goroutine",
+		// "threadcreate",
+		"heap",
+		// "allocs",
+		// "block",
+		// "mutex",
 	}
 
 	d, err := time.ParseDuration(freq)
@@ -299,26 +308,30 @@ func SetUpGlobalTestHeapProfiling(m *testing.M) (teardownFn func()) {
 		log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
 	}
 
+	log.Printf("profiling test with frequency: %v", freq)
+
 	t := time.NewTicker(d)
 
 	go func() {
 		for {
 			select {
 			case <-t.C:
-				filename := fmt.Sprintf("test-pprof-heap-%d.pb.gz", time.Now().Unix())
-				f, err := os.Create(filename)
-				if err != nil {
-					log.Fatalf("couldn't open pprof heap file: %v", err)
+				for _, profile := range profiles {
+					filename := fmt.Sprintf("test-pprof-%s-%d.pb.gz", profile, time.Now().Unix())
+					f, err := os.Create(filename)
+					if err != nil {
+						log.Fatalf("couldn't open pprof %s file: %v", profile, err)
+					}
+					err = pprof.Lookup(profile).WriteTo(f, 0)
+					if err != nil {
+						log.Fatalf("couldn't write pprof %s file: %v", profile, err)
+					}
+					err = f.Close()
+					if err != nil {
+						log.Fatalf("couldn't close pprof %s file: %v", profile, err)
+					}
+					log.Printf("test %s profile written to: %v", profile, filename)
 				}
-				err = pprof.WriteHeapProfile(f)
-				if err != nil {
-					log.Fatalf("couldn't write pprof heap file: %v", err)
-				}
-				err = f.Close()
-				if err != nil {
-					log.Fatalf("couldn't close pprof heap file: %v", err)
-				}
-				log.Printf("test heap profile written to: %v", filename)
 			}
 		}
 	}()
