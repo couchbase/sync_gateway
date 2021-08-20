@@ -19,7 +19,7 @@ import (
 
 func TestMain(m *testing.M) {
 	defer base.SetUpGlobalTestLogging(m)()
-	defer base.SetUpGlobalTestHeapProfiling(m)()
+	defer base.SetUpGlobalTestProfiling(m)()
 
 	base.SkipPrometheusStatsRegistration = true
 
