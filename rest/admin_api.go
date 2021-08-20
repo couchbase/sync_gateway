@@ -136,21 +136,16 @@ func (h *handler) handleDbOffline() error {
 
 // Get admin database info
 func (h *handler) handleGetDbConfig() error {
-	if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
-		_, err := h.server.fetchAndLoadDatabase(h.db.Name)
-		if err != nil {
-			return err
-		}
-	}
 
-	// TODO: STUBS
-	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
-	_ = includeRuntime
-	includeJavascript, _ := h.getOptBoolQuery("include_javascript", true)
-	_ = includeJavascript
-
+	// load config from bucket once for:
+	// - Populate an up to date ETag header
+	// - Applying if refresh_config is set
+	// - Returning if include_runtime=false
+	var bucketDbConfig *DatabaseConfig
 	if h.server.bootstrapContext.connection != nil {
-		found, dbConfig, err := h.server.fetchDatabase(h.db.Name)
+		var found bool
+		var err error
+		found, bucketDbConfig, err = h.server.fetchDatabase(h.db.Name)
 		if err != nil {
 			return err
 		}
@@ -159,20 +154,49 @@ func (h *handler) handleGetDbConfig() error {
 			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 		}
 
-		h.response.Header().Set("ETag", dbConfig.Version)
+		h.response.Header().Set("ETag", bucketDbConfig.Version)
 	}
 
+	// refresh_config=true forces the config loaded out of the bucket to be applied on the node
+	if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
+		// set cas=0 to force a refresh
+		bucketDbConfig.cas = 0
+		h.server.applyConfigs([]DatabaseConfig{*bucketDbConfig})
+	}
+
+	// include_runtime controls whether to return the raw bucketDbConfig, or the runtime version populated with default values, etc.
+	var responseConfig *DatabaseConfig
+	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
+	if includeRuntime {
+		responseConfig = h.server.GetDatabaseConfig(h.db.Name)
+	} else {
+		responseConfig = bucketDbConfig
+	}
+
+	// redaction to sensitive config fields
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
-		cfg, err := h.server.GetDatabaseConfig(h.db.Name).Redacted()
+		var err error
+		responseConfig, err = responseConfig.Redacted()
 		if err != nil {
 			return err
 		}
-		h.writeJSON(cfg)
-	} else {
-		h.writeJSON(h.server.GetDatabaseConfig(h.db.Name))
 	}
 
+	// include_javascript=false omits config fields that contain javascript code
+	includeJavascript, _ := h.getOptBoolQuery("include_javascript", true)
+	if !includeJavascript {
+		responseConfig.Sync = nil
+		responseConfig.ImportFilter = nil
+		for _, evt := range responseConfig.EventHandlers.DBStateChanged {
+			evt.Filter = ""
+		}
+		for _, evt := range responseConfig.EventHandlers.DBStateChanged {
+			evt.Filter = ""
+		}
+	}
+
+	h.writeJSON(responseConfig)
 	return nil
 }
 
@@ -199,7 +223,7 @@ func (h *handler) handleGetConfig() error {
 			}
 
 			for _, dbName := range allDbNames {
-				databaseMap[dbName], err = h.server.GetDatabaseConfig(dbName).Redacted()
+				databaseMap[dbName], err = h.server.GetDatabaseConfig(dbName).DbConfig.Redacted()
 				if err != nil {
 					return err
 				}
