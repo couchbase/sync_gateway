@@ -438,9 +438,8 @@ func (h *handler) checkAuth(context *db.DatabaseContext) (err error) {
 }
 
 func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, attemptedHTTPOperation string, httpClient *http.Client, managementEndpoints []string, shouldCheckPermissions bool, accessPermissions []Permission, responsePermissions []Permission) (responsePermissionResults map[string]bool, statusCode int, err error) {
-
 	anyResponsePermFailed := false
-	statusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, bucketName, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
+	permissionStatusCode, permResults, err := CheckPermissions(httpClient, managementEndpoints, bucketName, basicAuthUsername, basicAuthPassword, accessPermissions, responsePermissions)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
@@ -455,22 +454,22 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, att
 	}
 
 	// If the user has not logged in correctly we shouldn't continue to do any more work and return
-	if statusCode == http.StatusUnauthorized {
-		return nil, statusCode, nil
+	if permissionStatusCode == http.StatusUnauthorized {
+		return nil, permissionStatusCode, nil
 	}
 
 	if shouldCheckPermissions {
 		// If user has required accessPerms and all response perms return with statusOK
 		// Otherwise we need to fall through to continue as the user may have access to responsePermissions through roles.
-		if statusCode == http.StatusOK && !anyResponsePermFailed {
+		if permissionStatusCode == http.StatusOK && !anyResponsePermFailed {
 			return responsePermissionResults, http.StatusOK, nil
 		}
 
-		// If status code was not 'ok' or 'forbidden' return an error
-		// If forbidden user has authenticated correctly but is not authorized via permissions. We'll fall through to try
+		// If status code was not 'ok' or 'forbidden' return
+		// If user has authenticated correctly but is not authorized with all permissions. We'll fall through to try
 		// with roles.
-		if statusCode != http.StatusForbidden {
-			return nil, statusCode, nil
+		if permissionStatusCode != http.StatusOK && permissionStatusCode != http.StatusForbidden {
+			return responsePermissionResults, permissionStatusCode, nil
 		}
 	}
 
@@ -485,22 +484,36 @@ func checkAdminAuth(bucketName, basicAuthUsername, basicAuthPassword string, att
 		}
 	}
 
-	statusCode, err = CheckRoles(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)
+	rolesStatusCode, err := CheckRoles(httpClient, managementEndpoints, basicAuthUsername, basicAuthPassword, requestRoles, bucketName)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
 
 	// If a user has access through roles we're going to use this to mean they have access to all of the
 	// responsePermissions too so we'll iterate over these and set them to true.
-	if statusCode == http.StatusOK {
+	if rolesStatusCode == http.StatusOK {
 		responsePermissionResults = make(map[string]bool)
 		for _, responsePerm := range responsePermissions {
 			responsePermissionResults[responsePerm.PermissionName] = true
 		}
-		return responsePermissionResults, statusCode, nil
+		return responsePermissionResults, rolesStatusCode, nil
 	}
 
-	return permResults, statusCode, nil
+	// We want to select the most 'optimistic' status code here.
+	// If we got a status code 200 in the permissions check case but decided to check roles too (in the case where we
+	// didn't have access to all the responsePermissions) and ended up getting a 403 for the role check we want to
+	// return the 200 to allow the user handler access.
+
+	// Start with role status code
+	resultStatusCode := rolesStatusCode
+
+	// If resultStatus code is not okay (role check did 401, 403 or 500) and we're supposed to be allowing users in
+	// based on permissions we will select the code from the permission result as that may allow more access.
+	if resultStatusCode != http.StatusOK && shouldCheckPermissions {
+		resultStatusCode = permissionStatusCode
+	}
+
+	return permResults, resultStatusCode, nil
 }
 
 func (h *handler) assertAdminOnly() {
