@@ -182,6 +182,8 @@ func TestActiveReplicatorPullBasic(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
+	require.NoError(t, rt2.WaitForPendingChanges())
+
 	remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
@@ -274,6 +276,8 @@ func TestActiveReplicatorPullAttachments(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -602,6 +606,8 @@ func TestActiveReplicatorPullFromCheckpoint(t *testing.T) {
 		assertStatus(t, resp, http.StatusCreated)
 	}
 
+	require.NoError(t, rt2.WaitForPendingChanges())
+
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -781,6 +787,9 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
 
+	require.NoError(t, rt1.WaitForPendingChanges())
+	require.NoError(t, rt2.WaitForPendingChanges())
+
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -861,6 +870,9 @@ func TestActiveReplicatorPullFromCheckpointIgnored(t *testing.T) {
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
 
+	require.NoError(t, rt1.WaitForPendingChanges())
+	require.NoError(t, rt2.WaitForPendingChanges())
+
 	// Create a new replicator using the same config, which should use the checkpoint set from the first.
 	ar = db.NewActiveReplicator(&arConfig)
 	defer func() { assert.NoError(t, ar.Stop()) }()
@@ -922,6 +934,8 @@ func TestActiveReplicatorPullOneshot(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
@@ -1026,6 +1040,8 @@ func TestActiveReplicatorPushBasic(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
+	require.NoError(t, rt1.WaitForPendingChanges())
+
 	localDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
@@ -1116,6 +1132,8 @@ func TestActiveReplicatorPushAttachments(t *testing.T) {
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","doc_num":1,`+attachment+`,"channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
+
+	require.NoError(t, rt1.WaitForPendingChanges())
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -1222,6 +1240,8 @@ func TestActiveReplicatorPushFromCheckpoint(t *testing.T) {
 		resp := rt1.SendAdminRequest(http.MethodPut, fmt.Sprintf("/db/%s%d", docIDPrefix, i), `{"source":"rt1","channels":["alice"]}`)
 		assertStatus(t, resp, http.StatusCreated)
 	}
+
+	require.NoError(t, rt1.WaitForPendingChanges())
 
 	// Passive
 	tb2 := base.GetTestBucket(t)
@@ -1409,6 +1429,9 @@ func TestActiveReplicatorPushFromCheckpointIgnored(t *testing.T) {
 		require.Equal(t, rt1RevID, rt2RevID)
 	}
 
+	require.NoError(t, rt1.WaitForPendingChanges())
+	require.NoError(t, rt2.WaitForPendingChanges())
+
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -1540,6 +1563,8 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
+	require.NoError(t, rt1.WaitForPendingChanges())
+
 	localDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
 	assert.NoError(t, err)
 
@@ -1583,7 +1608,7 @@ func TestActiveReplicatorPushOneshot(t *testing.T) {
 	assert.True(t, replicationStopped, "One-shot replication status should go to stopped on completion")
 
 	doc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalAll)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, revID, doc.SyncData.CurrentRev)
 
@@ -1628,6 +1653,8 @@ func TestActiveReplicatorPullTombstone(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -1730,6 +1757,8 @@ func TestActiveReplicatorPullPurgeOnRemoval(t *testing.T) {
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt2","channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -1912,6 +1941,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			rt2revID := respRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
+			require.NoError(t, rt2.WaitForPendingChanges())
+
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 			srv := httptest.NewServer(rt2.TestPublicHandler())
 			defer srv.Close()
@@ -1936,6 +1967,8 @@ func TestActiveReplicatorPullConflict(t *testing.T) {
 			assertStatus(t, resp, http.StatusCreated)
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
+
+			require.NoError(t, rt1.WaitForPendingChanges())
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
@@ -2137,6 +2170,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 			rt2revID := respRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
+			require.NoError(t, rt2.WaitForPendingChanges())
+
 			remoteDoc, err := rt2.GetDatabase().GetDocument(docID, db.DocUnmarshalSync)
 			require.NoError(t, err)
 
@@ -2173,6 +2208,8 @@ func TestActiveReplicatorPushAndPullConflict(t *testing.T) {
 
 			localDoc, err := rt1.GetDatabase().GetDocument(docID, db.DocUnmarshalSync)
 			require.NoError(t, err)
+
+			require.NoError(t, rt1.WaitForPendingChanges())
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
@@ -2318,6 +2355,8 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyEnabled(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	revID := respRevID(t, resp)
 
+	require.NoError(t, rt1.WaitForPendingChanges())
+
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -2395,6 +2434,8 @@ func TestActiveReplicatorPushBasicWithInsecureSkipVerifyDisabled(t *testing.T) {
 	docID := t.Name() + "rt1doc1"
 	resp := rt1.SendAdminRequest(http.MethodPut, "/db/"+docID, `{"source":"rt1","channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, rt1.WaitForPendingChanges())
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewTLSServer(rt2.TestPublicHandler())
@@ -3057,6 +3098,8 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	assertStatus(t, resp, http.StatusCreated)
 	rt1revID := respRevID(t, resp)
 
+	require.NoError(t, rt1.WaitForPendingChanges())
+
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 	srv := httptest.NewServer(rt2.TestPublicHandler())
 	defer srv.Close()
@@ -3105,6 +3148,8 @@ func TestActiveReplicatorIgnoreNoConflicts(t *testing.T) {
 	resp = rt2.SendAdminRequest(http.MethodPut, "/db/"+rt2docID, `{"source":"rt2","channels":["alice"]}`)
 	assertStatus(t, resp, http.StatusCreated)
 	rt2revID := respRevID(t, resp)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	// ... and wait to arrive at rt1
 	changesResults, err = rt1.WaitForChanges(2, "/db/_changes?since=0", "", true)
@@ -3164,6 +3209,8 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
 		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
 	}
+
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1
 	srv := httptest.NewServer(rt2.TestPublicHandler())
@@ -3244,6 +3291,8 @@ func TestActiveReplicatorPullModifiedHash(t *testing.T) {
 		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan1", i), `{"source":"rt2","channels":["chan1"]}`)
 		rt2.putDoc(fmt.Sprintf("%s_%s_%d", docIDPrefix, "chan2", i), `{"source":"rt2","channels":["chan2"]}`)
 	}
+
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	// Create a new replicator using the same replicationID but different channel filter, which should reset the checkpoint
 	arConfig.FilterChannels = []string{"chan2"}
@@ -3503,6 +3552,8 @@ func TestActiveReplicatorReconnectOnStartEventualSuccess(t *testing.T) {
 
 	resp := rt2.SendAdminRequest(http.MethodPut, "/db/_user/alice", `{"password":"pass"}`)
 	assertStatus(t, resp, http.StatusCreated)
+
+	require.NoError(t, rt2.WaitForPendingChanges())
 
 	waitAndRequireCondition(t, func() bool {
 		state, _ := ar.State()
@@ -3880,6 +3931,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			rt2revID := respRevID(t, resp)
 			assert.Equal(t, test.remoteRevID, rt2revID)
 
+			require.NoError(t, rt2.WaitForPendingChanges())
+
 			// Make rt2 listen on an actual HTTP port, so it can receive the blipsync request from rt1.
 			srv := httptest.NewServer(rt2.TestPublicHandler())
 			defer srv.Close()
@@ -3908,6 +3961,8 @@ func TestActiveReplicatorPullConflictReadWriteIntlProps(t *testing.T) {
 			assertStatus(t, resp, http.StatusCreated)
 			rt1revID := respRevID(t, resp)
 			assert.Equal(t, test.localRevID, rt1revID)
+
+			require.NoError(t, rt1.WaitForPendingChanges())
 
 			customConflictResolver, err := db.NewCustomConflictResolver(test.conflictResolver)
 			require.NoError(t, err)
@@ -4103,6 +4158,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 			resp = localActiveRT.SendAdminRequest("POST", "/db/_bulk_docs", `{"docs":[{"_id": "docid2", "_rev": "1-abc"}, {"_id": "docid2", "_rev": "2-abc", "_revisions": {"start": 2, "ids": ["abc", "abc"]}}, {"_id": "docid2", "_rev": "3-abc", "val":"test", "_revisions": {"start": 3, "ids": ["abc", "abc", "abc"]}}], "new_edits":false}`)
 			assertStatus(t, resp, http.StatusCreated)
 
+			require.NoError(t, localActiveRT.WaitForPendingChanges())
+
 			// Start the replication
 			err := localActiveRT.GetDatabase().SGReplicateMgr.StartReplications()
 			assert.NoError(t, err)
@@ -4146,6 +4203,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				resp = remotePassiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
 				assertStatus(t, resp, http.StatusCreated)
 
+				require.NoError(t, remotePassiveRT.WaitForPendingChanges())
+
 				// Validate document revision created to prevent race conditions
 				err = remotePassiveRT.WaitForCondition(func() bool {
 					doc, err := remotePassiveRT.GetDatabase().GetDocument("docid2", db.DocUnmarshalSync)
@@ -4170,6 +4229,8 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 				// Delete doc on localActiveRT (active / local)
 				resp = localActiveRT.SendAdminRequest("PUT", "/db/docid2?rev=3-abc", `{"_deleted": true}`)
 				assertStatus(t, resp, http.StatusCreated)
+
+				require.NoError(t, localActiveRT.WaitForPendingChanges())
 
 				// Validate document revision created to prevent race conditions
 				err = localActiveRT.WaitForCondition(func() bool {
@@ -4251,6 +4312,9 @@ func TestSGR2TombstoneConflictHandling(t *testing.T) {
 					assertStatus(t, resp, http.StatusCreated)
 				}
 			}
+
+			require.NoError(t, localActiveRT.WaitForPendingChanges())
+			require.NoError(t, remotePassiveRT.WaitForPendingChanges())
 
 			// For SG resurrect, rev history is preserved, expect rev 6-...
 			expectedRevID := "6-bf187e11c1f8913769dca26e56621036"
@@ -4876,6 +4940,8 @@ func TestSendChangesToNoConflictPreHydrogenTarget(t *testing.T) {
 
 	response := rt1.SendAdminRequest("PUT", "/db/doc1", "{}")
 	assertStatus(t, response, http.StatusCreated)
+
+	require.NoError(t, rt1.WaitForPendingChanges())
 
 	err = rt2.WaitForCondition(func() bool {
 		if base.SyncGatewayStats.GlobalStats.ResourceUtilizationStats().ErrorCount.Value() == errorCountBefore+1 {
