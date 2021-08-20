@@ -72,7 +72,7 @@ func ReadJSONFromMIMERawErr(headers http.Header, input io.ReadCloser, into inter
 func processContentEncoding(headers http.Header, input io.ReadCloser, expectedContentTypeMime string) (io.ReadCloser, error) {
 	contentType := headers.Get("Content-Type")
 	if contentType != "" && !strings.HasPrefix(contentType, expectedContentTypeMime) {
-		return input, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s", contentType)
+		return input, base.HTTPErrorf(http.StatusUnsupportedMediaType, "Invalid content type %s - expected %s", contentType, expectedContentTypeMime)
 	}
 	switch headers.Get("Content-Encoding") {
 	case "gzip":

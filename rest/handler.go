@@ -641,7 +641,7 @@ func (h *handler) readSanitizeJSON(val interface{}) error {
 // readJavascript reads a javascript function from a request body.
 func (h *handler) readJavascript() (string, error) {
 	// Performs the Content-Type validation and Content-Encoding check.
-	input, err := processContentEncoding(h.rq.Header, h.requestBody, "text/javascript")
+	input, err := processContentEncoding(h.rq.Header, h.requestBody, "application/javascript")
 	if err != nil {
 		return "", err
 	}
@@ -800,19 +800,6 @@ func (h *handler) writeJSON(value interface{}) {
 	h.writeJSONStatus(http.StatusOK, value)
 }
 
-func (h *handler) writeJavascript(js string) {
-	if !h.requestAccepts("text/plain") {
-		base.Warnf("Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
-		h.writeStatus(http.StatusNotAcceptable, "only text/plain available")
-		return
-	}
-
-	h.setHeader("Content-Type", "text/javascript charset=utf-8")
-	h.setHeader("Content-Length", fmt.Sprintf("%d", len(js)))
-	h.response.WriteHeader(http.StatusOK)
-	h.response.Write([]byte(js))
-}
-
 // Writes an object to the response in JSON format.
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeJSONStatus(status int, value interface{}) {
@@ -862,13 +849,23 @@ func (h *handler) writeText(value []byte) {
 // writeTextStatus writes the given bytes as a plaintext response.
 // If status is nonzero, the header will be written with that status.
 func (h *handler) writeTextStatus(status int, value []byte) {
-	if !h.requestAccepts("text/plain") {
-		base.Warnf("Client won't accept text/plain, only %s", h.rq.Header.Get("Accept"))
-		h.writeStatus(http.StatusNotAcceptable, "only text/plain available")
+	h.writeWithMimetypeStatus(status, value, "text/plain")
+}
+
+func (h *handler) writeJavascript(js string) {
+	h.writeWithMimetypeStatus(http.StatusOK, []byte(js), "application/javascript")
+}
+
+// writeTextStatus writes the given bytes as a plaintext response.
+// If status is nonzero, the header will be written with that status.
+func (h *handler) writeWithMimetypeStatus(status int, value []byte, mimetype string) {
+	if !h.requestAccepts(mimetype) {
+		base.Warnf("Client won't accept %s, only %s", mimetype, h.rq.Header.Get("Accept"))
+		h.writeStatus(http.StatusNotAcceptable, fmt.Sprintf("only %s available", mimetype))
 		return
 	}
 
-	h.setHeader("Content-Type", "text/plain charset=utf-8")
+	h.setHeader("Content-Type", mimetype+"; charset=UTF-8")
 	h.setHeader("Content-Length", fmt.Sprintf("%d", len(value)))
 	if status > 0 {
 		h.response.WriteHeader(status)
