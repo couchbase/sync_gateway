@@ -159,6 +159,8 @@ func (h *handler) handleGetDbConfig() error {
 
 	// refresh_config=true forces the config loaded out of the bucket to be applied on the node
 	if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
+		// set cas=0 to force a refresh
+		bucketDbConfig.cas = 0
 		h.server.applyConfigs([]DatabaseConfig{*bucketDbConfig})
 	}
 

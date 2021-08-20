@@ -1146,9 +1146,17 @@ func (sc *ServerContext) applyConfigs(fetchedConfigs []DatabaseConfig) (count in
 func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err error) {
 	// skip if we already have this config loaded, and we've got a cas value to compare with
 	foundDbName, ok := sc.bucketDbName[*cnf.Bucket]
-	if ok && cnf.cas != 0 && sc.dbConfigs[foundDbName].cas >= cnf.cas {
-		base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
-		return false, nil
+	if ok {
+		if cnf.cas == 0 {
+			// force an update when the new config's cas was set to zero prior to load
+			base.Infof(base.KeyConfig, "Forcing update of config for database %q bucket %q", cnf.Name, *cnf.Bucket)
+		} else {
+			if sc.dbConfigs[foundDbName].cas >= cnf.cas {
+				base.Debugf(base.KeyConfig, "Database %q bucket %q config has not changed since last update", cnf.Name, *cnf.Bucket)
+				return false, nil
+			}
+			base.Infof(base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
+		}
 	}
 
 	// ensure we're not loading a database from multiple buckets
@@ -1163,7 +1171,6 @@ func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err err
 	// by any output
 	cnf.Version = ""
 
-	base.Infof(base.KeyConfig, "Updating database %q for bucket %q with new config from bucket", cnf.Name, *cnf.Bucket)
 	sc.bucketDbName[*cnf.Bucket] = cnf.Name
 	sc.dbConfigs[cnf.Name] = &cnf
 
