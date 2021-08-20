@@ -26,8 +26,13 @@ const (
 	AttVersion2 int = 2
 )
 
-// ErrAttachmentVersion is thrown in case of any error in parsing version from the attachment meta.
-var ErrAttachmentVersion = base.HTTPErrorf(http.StatusBadRequest, "invalid version found in attachment meta")
+var (
+	// ErrAttachmentVersion is thrown in case of any error in parsing version from the attachment meta.
+	ErrAttachmentVersion = base.HTTPErrorf(http.StatusBadRequest, "invalid version found in attachment meta")
+
+	// ErrAttachmentMeta returned when the document contains invalid _attachments metadata properties.
+	ErrAttachmentMeta = base.HTTPErrorf(http.StatusBadRequest, "Invalid _attachments")
+)
 
 // AttachmentData holds the attachment key and value bytes.
 type AttachmentData map[string][]byte
@@ -123,6 +128,29 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 		}
 	}
 	return newAttachmentData, nil
+}
+
+// retrieveV2AttachmentKeys returns the list of V2 attachment keys from the attachment metadata that can be used for
+// identifying obsolete attachments and triggering subsequent removal of those attachments to reclaim the storage.
+func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (attachments map[string]struct{}, err error) {
+	attachments = make(map[string]struct{})
+	for _, value := range docAttachments {
+		meta, ok := value.(map[string]interface{})
+		if !ok {
+			return nil, ErrAttachmentMeta
+		}
+		digest, ok := meta["digest"].(string)
+		if !ok {
+			return nil, ErrAttachmentMeta
+		}
+		version, _ := GetAttachmentVersion(meta)
+		if version != AttVersion2 {
+			continue
+		}
+		key := MakeAttachmentKey(version, docID, digest)
+		attachments[key] = struct{}{}
+	}
+	return attachments, nil
 }
 
 // Attempts to retrieve ancestor attachments for a document. First attempts to find and use a non-pruned ancestor.

@@ -1722,12 +1722,15 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	var unusedSequences []uint64                                 // Must be scoped outside callback, used over multiple iterations
 	var oldBodyJSON string                                       // Stores previous revision body for use by DocumentChangeEvent
 	var createNewRevIDSkipped bool
+	var previousAttachments, currentAttachments map[string]struct{}
 
 	// Update the document
 	inConflict := false
 	upgradeInProgress := false
 	docBytes := 0   // Track size of document written, for write stats
 	xattrBytes := 0 // Track size of xattr written, for write stats
+	skipObsoleteAttachmentsRemoval := false
+
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
 		_, err = db.Bucket.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
@@ -1735,11 +1738,24 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
 			}
+			previousAttachments, err = retrieveV2AttachmentKeys(docid, doc.SyncData.Attachments)
+			if err != nil {
+				skipObsoleteAttachmentsRemoval = true
+				base.ErrorfCtx(db.Ctx, "Error retrieving previous attachments of doc: %s, Error: %v", base.UD(docid), err)
+			}
 			prevCurrentRev = doc.CurrentRev
 			docExists := currentValue != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
 				return
+			}
+
+			if !skipObsoleteAttachmentsRemoval {
+				currentAttachments, err = retrieveV2AttachmentKeys(docid, doc.SyncData.Attachments)
+				if err != nil {
+					skipObsoleteAttachmentsRemoval = true
+					base.ErrorfCtx(db.Ctx, "Error retrieving current attachments of doc: %s, Error: %v", base.UD(docid), err)
+				}
 			}
 
 			docSequence = doc.Sequence
@@ -1776,6 +1792,12 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				doc.inlineSyncData = true
 			}
 
+			previousAttachments, err = retrieveV2AttachmentKeys(docid, doc.SyncData.Attachments)
+			if err != nil {
+				skipObsoleteAttachmentsRemoval = true
+				base.ErrorfCtx(db.Ctx, "Error retrieving previous attachments of doc: %s, Error: %v", base.UD(docid), err)
+			}
+
 			docExists := currentValue != nil
 			syncFuncExpiry, newRevID, storedDoc, oldBodyJSON, unusedSequences, changedAccessPrincipals, changedRoleAccessUsers, createNewRevIDSkipped, err = db.documentUpdateFunc(docExists, doc, allowImport, docSequence, unusedSequences, callback, expiry)
 			if err != nil {
@@ -1783,6 +1805,14 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			}
 			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
+
+			if !skipObsoleteAttachmentsRemoval {
+				currentAttachments, err = retrieveV2AttachmentKeys(docid, doc.SyncData.Attachments)
+				if err != nil {
+					skipObsoleteAttachmentsRemoval = true
+					base.ErrorfCtx(db.Ctx, "Error retrieving current attachments of doc: %s, Error: %v", base.UD(docid), err)
+				}
+			}
 
 			currentRevFromHistory, ok := doc.History[doc.CurrentRev]
 			if !ok {
@@ -1908,6 +1938,25 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 
 	// Now that the document has successfully been stored, we can make other db changes:
 	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
+
+	// Delete obsolete attachments from the bucket.
+	// TODO: CBG-1627 Consider v2 attachments on conflicting revisions when removing.
+	if !inConflict && !skipObsoleteAttachmentsRemoval {
+		var obsoleteAttachments []string
+		for key, _ := range previousAttachments {
+			if _, found := currentAttachments[key]; !found {
+				err = db.Bucket.Delete(key)
+				if err != nil {
+					base.ErrorfCtx(db.Ctx, "Error deleting obsolete attachment %q of doc %q, Error: %v", key, base.UD(doc.ID), err)
+				} else {
+					obsoleteAttachments = append(obsoleteAttachments, key)
+				}
+			}
+		}
+		if len(obsoleteAttachments) > 0 {
+			base.DebugfCtx(db.Ctx, base.KeyCRUD, "Deleted obsolete attachments (key: %v, doc: %q)", obsoleteAttachments, base.UD(doc.ID))
+		}
+	}
 
 	// Remove any obsolete non-winning revision bodies
 	doc.deleteRemovedRevisionBodies(db.Bucket)

@@ -32,9 +32,24 @@ func (rt *RestTester) getDoc(docID string) (body db.Body) {
 	return body
 }
 
+func (rt *RestTester) requireDocNotFound(docID string) {
+	rawResponse := rt.SendAdminRequest(http.MethodGet, "/db/"+docID, "")
+	assertStatus(rt.tb, rawResponse, http.StatusNotFound)
+}
+
 func (rt *RestTester) putDoc(docID string, body string) (response putDocResponse) {
 	rawResponse := rt.SendAdminRequest("PUT", "/db/"+docID, body)
 	assertStatus(rt.tb, rawResponse, 201)
+	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
+	require.True(rt.tb, response.Ok)
+	require.NotEmpty(rt.tb, response.Rev)
+	return response
+}
+
+func (rt *RestTester) updateDoc(docID, revID, body string) (response putDocResponse) {
+	resource := fmt.Sprintf("/db/%s?rev=%s", docID, revID)
+	rawResponse := rt.SendAdminRequest(http.MethodPut, resource, body)
+	assertStatus(rt.tb, rawResponse, http.StatusCreated)
 	require.NoError(rt.tb, base.JSONUnmarshal(rawResponse.Body.Bytes(), &response))
 	require.True(rt.tb, response.Ok)
 	require.NotEmpty(rt.tb, response.Rev)
@@ -68,6 +83,15 @@ func (rt *RestTester) upsertDoc(docID string, body string) (response putDocRespo
 func (rt *RestTester) deleteDoc(docID, revID string) {
 	assertStatus(rt.tb, rt.SendAdminRequest(http.MethodDelete,
 		fmt.Sprintf("/db/%s?rev=%s", docID, revID), ""), http.StatusOK)
+}
+
+// prugeDoc removes all the revisions (active and tombstones) of the specified document.
+func (rt *RestTester) purgeDoc(docID string) {
+	response := rt.SendAdminRequest(http.MethodPost, "/db/_purge", fmt.Sprintf(`{"%s":["*"]}`, docID))
+	assertStatus(rt.tb, response, http.StatusOK)
+	var body map[string]interface{}
+	require.NoError(rt.tb, base.JSONUnmarshal(response.Body.Bytes(), &body))
+	require.Equal(rt.tb, body, map[string]interface{}{"purged": map[string]interface{}{docID: []interface{}{"*"}}})
 }
 
 // PutDocumentWithRevID builds a new_edits=false style put to create a revision with the specified revID.
