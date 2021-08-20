@@ -1,6 +1,6 @@
 {
-  "bucket": "db",
   "name": "db",
+  "bucket": "default",
   "event_handlers": {
     "max_processes": 500,
     "wait_for_process": "100",

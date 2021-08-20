@@ -1,6 +1,6 @@
 {
-  "bucket": "db",
   "name": "db",
+  "bucket": "default",
   "delta_sync": {
     "enabled": true,
     "rev_max_age_seconds": 86400

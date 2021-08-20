@@ -25,7 +25,7 @@ sync-function.json | Uses a custom Sync Function.
 ## Using the example configurations
 From Sync Gateway 3.0, the configuration file used to start Sync Gateway does not contain database information. Instead, database information is passed through using the REST API endpoints. This means example startup configurations and database configurations can be mixed and matched with each other.
 
-All the example startup configurations and endpoint URLs default values for username and password (which is `username` and `password` respectively) and the database name (which is `db`). These may need to be changed to your Couchbase Server credentials and database name before Sync Gateway can successfully start.
+All the example startup configurations and endpoint URLs have default values for username and password (which is `username` and `password` respectively) and for the bucket name (which is `default`). These may need to be changed to match your Couchbase Server and bucket setup before Sync Gateway can successfully start.
 
 The example startup configurations contain console logging set to the `info` level meaning the console will print out information about what Sync Gateway is doing as well as anything on above levels (such as warning and errors). This can be changed to make Sync Gateway less verbose. See the [Sync Gateway documentation](https://docs.couchbase.com/sync-gateway/current/authentication-users.html) on how to change this.
 

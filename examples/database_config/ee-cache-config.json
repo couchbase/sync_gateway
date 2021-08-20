@@ -1,6 +1,6 @@
 {
-  "bucket": "db",
   "name": "db",
+  "bucket": "default",
   "cache": {
     "rev_cache": {
       "size": 5000,

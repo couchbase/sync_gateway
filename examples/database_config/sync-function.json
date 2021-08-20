@@ -1,6 +1,6 @@
 {
-  "bucket": "db",
   "name": "db",
+  "bucket": "default",
   "sync": 
   `
     function(doc, oldDoc) {

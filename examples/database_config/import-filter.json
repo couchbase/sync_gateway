@@ -1,6 +1,6 @@
 {
-  "bucket": "db",
   "name": "db",
+  "bucket": "default",
   "import_docs": true,
   "import_filter": 
   `
