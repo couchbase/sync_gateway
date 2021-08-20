@@ -17,6 +17,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -284,6 +285,47 @@ func CreateProperty(size int) (result string) {
 		resultBytes[i] = alphaNumeric[i%len(alphaNumeric)]
 	}
 	return string(resultBytes)
+}
+
+// SetUpGlobalTestHeapProfiling will cause a packages tests to periodically write a heap profile to the package's directory.
+func SetUpGlobalTestHeapProfiling(m *testing.M) (teardownFn func()) {
+	freq := os.Getenv("SG_TEST_PROFILE_FREQUENCY")
+	if freq == "" {
+		return func() {}
+	}
+
+	d, err := time.ParseDuration(freq)
+	if err != nil {
+		log.Fatalf("profile frequency %q was not a valid duration: %v", freq, err)
+	}
+
+	t := time.NewTicker(d)
+
+	go func() {
+		for {
+			select {
+			case <-t.C:
+				filename := fmt.Sprintf("test-pprof-heap-%d.pb.gz", time.Now().Unix())
+				f, err := os.Create(filename)
+				if err != nil {
+					log.Fatalf("couldn't open pprof heap file: %v", err)
+				}
+				err = pprof.WriteHeapProfile(f)
+				if err != nil {
+					log.Fatalf("couldn't write pprof heap file: %v", err)
+				}
+				err = f.Close()
+				if err != nil {
+					log.Fatalf("couldn't close pprof heap file: %v", err)
+				}
+				log.Printf("test heap profile written to: %v", filename)
+			}
+		}
+	}()
+
+	return func() {
+		t.Stop()
+	}
 }
 
 var GlobalTestLoggingSet = AtomicBool{}
