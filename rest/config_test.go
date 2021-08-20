@@ -298,9 +298,9 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 	}
 }
 
-// TestLoadServerConfigExamples will run LoadServerConfig for configs found under the examples directory.
+// TestLoadServerConfigExamples will run LoadServerConfig for configs found under the legacy examples directory.
 func TestLoadServerConfigExamples(t *testing.T) {
-	const exampleLogDirectory = "../examples/"
+	const exampleLogDirectory = "../examples/legacy"
 	const configSuffix = ".json"
 
 	const enterpriseConfigPrefix = "ee_"
