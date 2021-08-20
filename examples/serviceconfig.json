@@ -1,4 +1,5 @@
 {
+  "disable_persistent_config": true,
   "adminInterface": "127.0.0.1:4985",
   "interface": "0.0.0.0:4984",
   "databases": {

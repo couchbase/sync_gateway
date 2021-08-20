@@ -2,14 +2,14 @@
 
 This directory contains a self-signed SSL certificate (`cert.pem`, `privkey.pem`) for testing purposes. It's certainly not secure, since we've given away the private key!
 
-There's also a simple Sync Gateway configuration file (`ssl.json`) that shows how to use the certificate. You just need to add two top-level keys:
+There's also a simple Sync Gateway configuration file (`ssl.json`) that shows how to use the certificate. You just need to add two keys under `api.https`:
 
-    "SSLCert": "examples/ssl/cert.pem",
-    "SSLKey":  "examples/ssl/privkey.pem",
+    "tls_cert_path": "examples/ssl/cert.pem",
+    "tls_key_path":  "examples/ssl/privkey.pem"
 
-Note that the Sync Gateway serves _only_ SSL when this is configured. If you want to support both SSL and plaintext connections, you'll need to run two instances of Sync Gateway, one with the SSL keys in its configuration and one without, and listening on different ports.
+Note that the Sync Gateway serves _only_ TLS when this is configured. If you want to support both TLS and plaintext connections, you'll need to run two instances of Sync Gateway, one with the TLS keys in its configuration and one without, and listening on different ports.
 
-## How to make your own self-signed SSL cert
+## How to make your own self-signed TLS cert
 
 You probably don't want a self-signed certificate for public use, because clients can't verify its authenticity. Instead you should get a cert from a reputable Certificate Authority, which will be signed by that authority.
 
@@ -25,6 +25,6 @@ The second command is interactive and will ask you for information like country 
 You should now have two files:
 
 * `privkey.pem`: the private key. **This needs to be kept secure** -- anyone who has this data can impersonate your server.
-* `cert.pem`: the public certificate. You'll want to embed a copy of this in an application that connects to your server, so it can verify that it's actually connecting to your server and not some other server that also has a cert with the same hostname. The SSL client API you're using should have a function to either register a trusted 'root certificate', or to check whether two certificates have the same key.
+* `cert.pem`: the public certificate. You'll want to embed a copy of this in an application that connects to your server, so it can verify that it's actually connecting to your server and not some other server that also has a cert with the same hostname. The TLS client API you're using should have a function to either register a trusted 'root certificate', or to check whether two certificates have the same key.
 
-Then just add the `"SSLCert"` and `"SSLKey"` properties to your Sync Gateway configuration file, as shown up above.
+Then just add the `tls_cert_path` and `tls_key_path` properties to your Sync Gateway configuration file, as shown up above.

@@ -11,11 +11,5 @@
       "log_level": "info",
       "log_keys": ["*"]
     }
-  },
-  "api": {
-    "https": {
-      "tls_cert_path": "examples/ssl/cert.pem",
-      "tls_key_path": "examples/ssl/privkey.pem"
-    }
-  }
+  } 
 }

@@ -1,8 +1,5 @@
 {
-  "ServerReadTimeout": 200,
-  "ServerWriteTimeout": 200,
-  "ReadHeaderTimeout": 120,
-  "IdleTimeout": 180,
+  "disable_persistent_config": true,
   "logging": {
     "console": {
       "log_keys": ["*"]
@@ -16,7 +13,8 @@
       "bucket": "default",
       "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
       "allow_conflicts": false,
-      "revs_limit": 20
+      "revs_limit": 20,
+      "num_index_replicas": 0
     }
   }
 }

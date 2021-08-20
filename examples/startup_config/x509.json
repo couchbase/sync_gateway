@@ -1,0 +1,15 @@
+{
+  "bootstrap": {
+    "server": "couchbases://localhost",
+    "ca_cert_path": "path/to/ca-cert",
+    "x509_cert_path": "path/to/cert",
+    "x509_key_path": "path/to/key"
+  },
+  "logging": {
+    "console": {
+      "enabled": true,
+      "log_level": "info",
+      "log_keys": ["*"]
+    }
+  }
+}

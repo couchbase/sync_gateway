@@ -1,7 +1,14 @@
 {
+  "bootstrap": {
+    "server": "couchbases://localhost",
+    "server_tls_skip_verify": true,
+    "username": "username",
+    "password": "password"
+  },
   "logging": {
     "log_file_path": "/var/tmp/sglogs",
     "console": {
+      "enabled": true,
       "log_level": "debug",
       "log_keys": ["*"]
     },
@@ -24,17 +31,6 @@
     },
     "debug": {
       "enabled": false
-    }
-  },
-  "databases": {
-    "db": {
-      "server": "couchbase://localhost",
-      "username": "username",
-      "password": "password",
-      "bucket": "default",
-      "users": {"GUEST": {"disabled": false,"admin_channels": ["*"]}},
-      "allow_conflicts": false,
-      "revs_limit": 20
     }
   }
 }

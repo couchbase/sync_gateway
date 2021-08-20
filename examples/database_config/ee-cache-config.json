@@ -1,0 +1,25 @@
+{
+  "name": "db",
+  "bucket": "default",
+  "cache": {
+    "rev_cache": {
+      "size": 5000,
+      "shard_count": 8
+    },
+    "channel_cache": {
+      "max_number": 50000,
+      "compact_high_watermark_pct": 80,
+      "compact_low_watermark_pct": 60,
+      "max_wait_pending": 5,
+      "max_num_pending": 10000,
+      "max_wait_skipped": 60,
+      "enable_star_channel": true,
+      "max_length": 500,
+      "min_length": 50,
+      "expiry_seconds": 60
+    }
+  },
+  "revs_limit": 20,
+  "allow_conflicts": false,
+  "num_index_replicas": 0
+}

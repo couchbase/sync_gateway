@@ -1,9 +1,11 @@
 {
+  "disable_persistent_config": true,
   "logging": {
     "console": {
       "log_keys": ["*"]
     }
   },
+  "configServer": "http://localhost:8001/",
   "databases": {
     "db": {
       "server": "couchbase://localhost",
@@ -12,8 +14,7 @@
       "bucket": "default",
       "users": { "GUEST": { "disabled": false, "admin_channels": ["*"] } },
       "allow_conflicts": false,
-      "revs_limit": 20,
-      "num_index_replicas": 0
+      "revs_limit": 20
     }
   }
 }

@@ -1,14 +1,13 @@
 {
+  "disable_persistent_config": true,
+  "ServerReadTimeout": 200,
+  "ServerWriteTimeout": 200,
+  "ReadHeaderTimeout": 120,
+  "IdleTimeout": 180,
   "logging": {
     "console": {
       "log_keys": ["*"]
     }
-  },
-  "CORS": {
-    "Origin":["http://localhost:8000"],
-    "LoginOrigin":["http://localhost:8000"],
-    "Headers":["Content-Type"],
-    "MaxAge": 1728000
   },
   "databases": {
     "db": {

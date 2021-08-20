@@ -1,0 +1,17 @@
+{
+  "name": "db",
+  "bucket": "default",
+  "import_docs": true,
+  "import_filter": 
+  `
+    function(doc) {
+      if (doc.type != "mobile") {
+        return false
+      }
+      return true
+    } 
+  `,
+  "revs_limit": 20,
+  "allow_conflicts": false,
+  "num_index_replicas": 0
+}

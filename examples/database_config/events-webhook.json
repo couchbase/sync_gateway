@@ -1,0 +1,26 @@
+{
+  "name": "db",
+  "bucket": "default",
+  "event_handlers": {
+    "max_processes": 500,
+    "wait_for_process": "100",
+    "document_changed": [
+      {
+        "handler": "webhook",
+        "url": "http://localhost:8081/my_webhook_target",
+        "filter": 
+        `
+          function(doc) {
+            if (doc._id.indexOf('webhooktest') >= 0) {
+              return true;
+            }
+            return false;
+          }
+        `
+      }
+    ]
+  },
+  "revs_limit": 20,
+  "allow_conflicts": false,
+  "num_index_replicas": 0
+}
