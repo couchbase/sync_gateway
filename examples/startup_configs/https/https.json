@@ -1,0 +1,21 @@
+{
+  "bootstrap": {
+    "server": "couchbases://localhost",
+    "server_tls_skip_verify": true,
+    "username": "username",
+    "password": "password"
+  },
+  "logging": {
+    "console": {
+      "enabled": true,
+      "log_level": "info",
+      "log_keys": ["*"]
+    }
+  },
+  "api": {
+    "https": {
+      "tls_cert_path": "examples/startup_configs/https/cert.pem",
+      "tls_key_path": "examples/startup_configs/https/privkey.pem"
+    }
+  }
+}

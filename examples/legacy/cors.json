@@ -1,10 +1,16 @@
 {
+  "disable_persistent_config": true,
   "logging": {
     "console": {
       "log_keys": ["*"]
     }
   },
-  "configServer": "http://localhost:8001/",
+  "CORS": {
+    "Origin":["http://localhost:8000"],
+    "LoginOrigin":["http://localhost:8000"],
+    "Headers":["Content-Type"],
+    "MaxAge": 1728000
+  },
   "databases": {
     "db": {
       "server": "couchbase://localhost",

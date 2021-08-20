@@ -1,0 +1,15 @@
+{
+  "bootstrap": {
+    "server": "couchbases://localhost",
+    "server_tls_skip_verify": true,
+    "username": "username",
+    "password": "password"
+  },
+  "logging": {
+    "console": {
+      "enabled": true,
+      "log_level": "info",
+      "log_keys": ["*"]
+    }
+  } 
+}

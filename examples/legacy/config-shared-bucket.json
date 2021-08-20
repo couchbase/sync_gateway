@@ -1,4 +1,5 @@
 {
+  "disable_persistent_config": true,
   "databases": {
     "db": {
       "server": "couchbase://localhost",
