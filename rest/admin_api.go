@@ -50,7 +50,12 @@ func (h *handler) handleCreateDB() error {
 			return err
 		}
 
-		config.cas, err = h.server.bootstrapContext.connection.InsertConfig(*config.Bucket, h.server.config.Bootstrap.ConfigGroupID, config)
+		bucket := dbName
+		if config.Bucket != nil {
+			bucket = *config.Bucket
+		}
+
+		config.cas, err = h.server.bootstrapContext.connection.InsertConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, config)
 		if err != nil {
 			// remove database if we can't persist to avoid inconsistent cluster state
 			h.server.RemoveDatabase(dbName)
