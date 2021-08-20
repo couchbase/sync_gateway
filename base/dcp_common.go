@@ -583,6 +583,10 @@ func GenerateDcpStreamName(feedID string) (string, error) {
 
 // getExternalAlternateAddress returns a external alternate address for a given dest
 func getExternalAlternateAddress(loggingCtx context.Context, alternateAddressMap map[string]string, dest string) (string, error) {
+	if len(alternateAddressMap) == 0 {
+		// early exit if we know we've got nothing to find
+		return dest, nil
+	}
 
 	destHost, destPort, err := SplitHostPort(dest)
 	if err != nil {
@@ -606,8 +610,31 @@ func getExternalAlternateAddress(loggingCtx context.Context, alternateAddressMap
 	return dest, nil
 }
 
+type clusterNetworkType string
+
+const (
+	// clusterNetworkAuto applies a heuristic to determine which network to use (based on bootstrap hosts)
+	clusterNetworkAuto clusterNetworkType = "auto"
+	// clusterNetworkDefault uses the default (internal) network
+	clusterNetworkDefault clusterNetworkType = "default"
+	// clusterNetworkExternal will use the external network
+	clusterNetworkExternal clusterNetworkType = "external"
+)
+
+// getNetworkTypeFromConnSpec returns the configured network type, or clusterNetworkAuto if nothing is defined.
+func getNetworkTypeFromConnSpec(spec gocbconnstr.ConnSpec) clusterNetworkType {
+	networkType := clusterNetworkAuto
+	if networkOpt, ok := spec.Options["network"]; ok && len(networkOpt) > 0 {
+		if len(networkOpt) > 1 {
+			Warnf("multiple 'network' options found in connection string - using first one: %q", networkOpt[0])
+		}
+		networkType = clusterNetworkType(networkOpt[0])
+	}
+	return networkType
+}
+
 // alternateAddressShims returns the 3 functions that wrap around ConnectBucket/Connect/ConnectTLS to provide alternate address support.
-func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connSpecAddresses []gocbconnstr.Address) (
+func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connSpecAddresses []gocbconnstr.Address, networkType clusterNetworkType) (
 	connectBucketShim func(serverURL, poolName, bucketName string, auth couchbase.AuthHandler) (cbdatasource.Bucket, error),
 	connectShim func(protocol, dest string) (*memcached.Client, error),
 	connectTLSShim func(protocol, dest string, tlsConfig *tls.Config) (*memcached.Client, error),
@@ -649,39 +676,47 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 		externalAlternateAddresses = make(map[string]string, len(poolServices.NodesExt))
 		for _, node := range poolServices.NodesExt {
 
-			if _, ok := connSpecAddressesHostMap[node.Hostname]; ok {
-				// Found default hostname in connSpec - abort all alternate address behaviour.
-				// The client MUST use the default/internal network.
-				externalAlternateAddresses = nil
-				break
+			// apply heuristic if auto to select between "default" and "external"
+			if networkType == clusterNetworkAuto {
+				if _, ok := connSpecAddressesHostMap[node.Hostname]; ok {
+					DebugfCtx(loggingCtx, KeyDCP, "Matched host %s in connection string - using default/internal networking.", MD(node.Hostname))
+					// Found default hostname in connSpec - abort all alternate address behaviour.
+					// The client MUST use the default/internal network.
+					externalAlternateAddresses = nil
+					break
+				}
+				// select external network now heuristic failed
+				networkType = clusterNetworkExternal
 			}
 
-			// only try to map external alternate addresses if a hostname is present
-			if external, ok := node.AlternateNames["external"]; ok && external.Hostname != "" {
+			DebugfCtx(loggingCtx, KeyDCP, "Finding alternate addresses for network %s", networkType)
+
+			// only try to map alternate addresses if an alternate hostname is present
+			if alt, ok := node.AlternateNames[string(networkType)]; ok && alt.Hostname != "" {
 				var port string
 				if bucketSpecTLS {
-					extPort, ok := external.Ports["kvSSL"]
+					extPort, ok := alt.Ports["kvSSL"]
 					if !ok {
-						TracefCtx(loggingCtx, KeyDCP, "kvSSL port was not exposed for external alternate address. Don't remap this node.")
+						TracefCtx(loggingCtx, KeyDCP, "kvSSL port was not exposed for %s alternate address. Skipping remapping of this node.", networkType)
 						continue
 					}
 
 					// found exposed kvSSL port, use when connecting
 					port = ":" + strconv.Itoa(extPort)
-					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kvSSL: %s => %s", MD(node.Hostname), MD(external.Hostname+port))
+					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kvSSL: %s => %s", MD(node.Hostname), MD(alt.Hostname+port))
 				} else {
-					extPort, ok := external.Ports["kv"]
+					extPort, ok := alt.Ports["kv"]
 					if !ok {
-						TracefCtx(loggingCtx, KeyDCP, "kv port was not exposed for external alternate address. Skipping remapping of this node.")
+						TracefCtx(loggingCtx, KeyDCP, "kv port was not exposed for %s alternate address. Skipping remapping of this node.", networkType)
 						continue
 					}
 
 					// found exposed kv port, use when connecting
 					port = ":" + strconv.Itoa(extPort)
-					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kv: %s => %s", MD(node.Hostname), MD(external.Hostname+port))
+					DebugfCtx(loggingCtx, KeyDCP, "Storing alternate address for kv: %s => %s", MD(node.Hostname), MD(alt.Hostname+port))
 				}
 
-				externalAlternateAddresses[node.Hostname] = external.Hostname + port
+				externalAlternateAddresses[node.Hostname] = alt.Hostname + port
 			}
 		}
 
@@ -703,7 +738,7 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 		return bucket, nil
 	}
 
-	// Copy of cbdatasource's default Connect function, which swaps the given destination, with external addresses we found in ConnectBucket.
+	// Copy of cbdatasource's default Connect function, which swaps the given destination, with alternate addresses we found in ConnectBucket.
 	connectShim = func(protocol, dest string) (client *memcached.Client, err error) {
 		TracefCtx(loggingCtx, KeyDCP, "Connect callback: %s %s", protocol, MD(dest))
 
@@ -715,16 +750,20 @@ func alternateAddressShims(loggingCtx context.Context, bucketSpecTLS bool, connS
 		return memcached.Connect(protocol, dest)
 	}
 
-	// Copy of cbdatasource's default ConnectTLS function, which swaps the given destination, with external addresses we found in ConnectBucket.
+	// Copy of cbdatasource's default ConnectTLS function, which swaps the given destination, with alternate addresses we found in ConnectBucket.
 	connectTLSShim = func(protocol, dest string, tlsConfig *tls.Config) (client *memcached.Client, err error) {
 		TracefCtx(loggingCtx, KeyDCP, "ConnectTLS callback: %s %s", protocol, MD(dest))
 
-		dest, err = getExternalAlternateAddress(loggingCtx, externalAlternateAddresses, dest)
+		newDest, err := getExternalAlternateAddress(loggingCtx, externalAlternateAddresses, dest)
 		if err != nil {
 			return nil, err
 		}
+		if newDest == dest {
+			// skip unnecessary tls reconfiguration if no alternate was found
+			return memcached.ConnectTLS(protocol, dest, tlsConfig)
+		}
 
-		// extract the host being connected to and insert into the tlsConfig
+		// extract the new host and insert into the tlsConfig
 		host, _, err := SplitHostPort(dest)
 		if err != nil {
 			return nil, err
