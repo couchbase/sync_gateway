@@ -1,5 +1,5 @@
 ## Example Startup Configurations
-Here are a list of example Sync Gateway Startup configurations found in `examples/startup_configs`:
+Here are a list of example Sync Gateway Startup configurations found in `examples/startup_config`:
 
 File  | Description
 ------------- | -------------
@@ -7,11 +7,11 @@ basic.json | Start a connection with Couchbase Server.
 cors.json | Enable CORS support.
 logging-with-rotation.json | Shows log rotation option usage.
 logging-without-redaction.json | Shows disabling log redaction.
-https/https.json | Require TLS certificates to connect to Sync Gateway (by both the REST API and Couchbase Lite).
+../ssl/ssl.json | Require TLS certificates to connect to Sync Gateway (by both the REST API and Couchbase Lite).
 x509.json | Start a secure connection with Couchbase Server.
 
 ## Example Database Configurations
-Here are a list of example Sync Gateway Database configurations found in `examples/database_configs`:
+Here are a list of example Sync Gateway Database configurations found in `examples/database_config`:
 
 File  | Description
 ------------- | -------------
@@ -31,12 +31,12 @@ The example startup configurations contain console logging set to the `info` lev
 
 To start Sync Gateway with a startup configuration, run the binary with the configuration file as an argument. For example, to run the `basic.json` example configuration run:
 ```
-./bin/sync_gateway examples/StartupConfigs/basic.json
+./bin/sync_gateway examples/startup_config/basic.json
 ```
 
 A database with it's configuration can be added using the `PUT /{db}/` endpoint. For example, to add an import filter to Sync Gateway on Unix based systems, run:
 ```
-curl -X PUT username:password@localhost:4985/db/ -H "Content-Type: application/json" --data-binary "@examples/DatabaseConfigs/import-filter.json"
+curl -X PUT username:password@localhost:4985/db/ -H "Content-Type: application/json" --data-binary "@examples/database_config/import-filter.json"
 ```
 
 None of the database configuration files enable the guest account or create a user for use with the Public REST API. To enable the guest account so the Public REST API can be interacted with unauthenticated, run:
@@ -46,7 +46,7 @@ curl -X PUT username:password@localhost:4985/db/_config -H "Content-Type: applic
 More information on user authentication can be found in the [Sync Gateway documentation](https://docs.couchbase.com/sync-gateway/current/authentication-users.html).
 
 ## Legacy Configurations
-**Use of legacy configurations are not recommended nor supported.** Here are a list of example Sync Gateway legacy configurations found in `examples/legacy`:
+**Use of legacy configurations are not recommended nor supported.** Here are a list of example Sync Gateway legacy configurations found in `examples/legacy_config`:
 
 File  | Description
 ------------- | -------------
@@ -65,5 +65,6 @@ logging-with-rotation.json | Shows log rotation option usage.
 openid-connect.json | Utilizes the openID connect function to authenticate users.
 read-write-timeouts.json  | Demonstrates how to set timeouts on reads/writes.
 replications-in-config.json | Shows Inter-Sync Gateway replication use.
-serviceconfig.json | The default config used for service startup. Should be avoided when building a suitable config as Walrus is not supported.
+../serviceconfig.json | The default config used for service startup. Should be avoided when building a suitable config as Walrus is not supported.
+ssl.json | Require TLS certificates to connect to Sync Gateway (by both the REST API and Couchbase Lite).
 users-roles.json  | Statically define users and roles.  (They can also be defined via the REST API)

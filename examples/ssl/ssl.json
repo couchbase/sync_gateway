@@ -14,8 +14,8 @@
   },
   "api": {
     "https": {
-      "tls_cert_path": "examples/startup_configs/https/cert.pem",
-      "tls_key_path": "examples/startup_configs/https/privkey.pem"
+      "tls_cert_path": "examples/ssl/cert.pem",
+      "tls_key_path": "examples/ssl/privkey.pem"
     }
   }
 }

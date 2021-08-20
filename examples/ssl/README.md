@@ -1,11 +1,11 @@
-# examples/startup_configs/tls
+# examples/ssl
 
 This directory contains a self-signed SSL certificate (`cert.pem`, `privkey.pem`) for testing purposes. It's certainly not secure, since we've given away the private key!
 
-There's also a simple Sync Gateway configuration file (`https.json`) that shows how to use the certificate. You just need to add two keys under `api.https`:
+There's also a simple Sync Gateway configuration file (`ssl.json`) that shows how to use the certificate. You just need to add two keys under `api.https`:
 
-    "tls_cert_path": "examples/startup_configs/https/cert.pem",
-    "tls_key_path":  "examples/startup_configs/https/privkey.pem"
+    "tls_cert_path": "examples/ssl/cert.pem",
+    "tls_key_path":  "examples/ssl/privkey.pem"
 
 Note that the Sync Gateway serves _only_ TLS when this is configured. If you want to support both TLS and plaintext connections, you'll need to run two instances of Sync Gateway, one with the TLS keys in its configuration and one without, and listening on different ports.
 

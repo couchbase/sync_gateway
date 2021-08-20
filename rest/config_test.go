@@ -300,7 +300,7 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 
 // TestLoadServerConfigExamples will run LoadServerConfig for configs found under the legacy examples directory.
 func TestLoadServerConfigExamples(t *testing.T) {
-	const exampleLogDirectory = "../examples/legacy"
+	const exampleLogDirectory = "../examples/legacy_config"
 	const configSuffix = ".json"
 
 	const enterpriseConfigPrefix = "ee_"
