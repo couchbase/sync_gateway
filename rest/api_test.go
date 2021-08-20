@@ -8792,6 +8792,10 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentNotFound(docID, att2Name)
 		rt.requireDocNotFound(att2Key)
 
+		// Verify that att1Name is still found in the bucket.
+		actualAttBody = retrieveAttachment(docID, att1Name)
+		require.Equal(t, att1Body, actualAttBody)
+
 		// Perform cleanup after the test ends.
 		rt.purgeDoc(docID)
 	})
