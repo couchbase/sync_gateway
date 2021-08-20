@@ -315,11 +315,11 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 			newDoc._rawBody = rawBodyForRevID
 		}
 
-		// Note - no attachments processing is done during ImportDoc.  We don't (currently) support writing attachments through anything but SG.
-
-		// If this import is a "delete" mutation, move attachments to determine obsolete attachments for subsequent removal.
+		// Existing attachments are preserved while importing an updated body - we don't (currently) support changing
+		// attachments through anything but SG. When importing a "delete" mutation, existing attachments are removed
+		// to ensure obsolete attachments are removed from the bucket.
 		if isDelete {
-			doc.SyncData.Attachments = newDoc.DocAttachments
+			doc.SyncData.Attachments = nil
 		}
 
 		return newDoc, nil, !shouldGenerateNewRev, updatedExpiry, nil

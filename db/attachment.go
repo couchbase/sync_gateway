@@ -130,9 +130,9 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 	return newAttachmentData, nil
 }
 
-// retrieveAttachments returns the list of keys from the attachment metadata that can be used for identifying obsolete
-// attachments and triggering subsequent removal of those attachments to reclaim the storage.
-func retrieveAttachments(docID string, docAttachments AttachmentsMeta) (attachments map[string]struct{}, err error) {
+// retrieveV2AttachmentKeys returns the list of V2 attachment keys from the attachment metadata that can be used for
+// identifying obsolete attachments and triggering subsequent removal of those attachments to reclaim the storage.
+func retrieveV2AttachmentKeys(docID string, docAttachments AttachmentsMeta) (attachments map[string]struct{}, err error) {
 	attachments = make(map[string]struct{})
 	for _, value := range docAttachments {
 		meta, ok := value.(map[string]interface{})

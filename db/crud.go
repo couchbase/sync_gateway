@@ -1729,6 +1729,8 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	upgradeInProgress := false
 	docBytes := 0   // Track size of document written, for write stats
 	xattrBytes := 0 // Track size of xattr written, for write stats
+	skipObsoleteAttachmentsRemoval := false
+
 	if !db.UseXattrs() {
 		// Update the document, storing metadata in _sync property
 		_, err = db.Bucket.Update(key, expiry, func(currentValue []byte) (raw []byte, syncFuncExpiry *uint32, isDelete bool, err error) {
@@ -1736,8 +1738,9 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			if doc, err = unmarshalDocument(docid, currentValue); err != nil {
 				return
 			}
-			previousAttachments, err = retrieveAttachments(docid, doc.SyncData.Attachments)
+			previousAttachments, err = retrieveV2AttachmentKeys(docid, doc.SyncData.Attachments)
 			if err != nil {
+				skipObsoleteAttachmentsRemoval = true
 				base.ErrorfCtx(db.Ctx, "Error retrieving previous attachments of doc: %s, Error: %v", base.UD(docid), err)
 			}
 			prevCurrentRev = doc.CurrentRev
@@ -1747,10 +1750,14 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				return
 			}
 
-			currentAttachments, err = retrieveAttachments(docid, doc.SyncData.Attachments)
-			if err != nil {
-				base.ErrorfCtx(db.Ctx, "Error retrieving current attachments of doc: %s, Error: %v", base.UD(docid), err)
+			if !skipObsoleteAttachmentsRemoval {
+				currentAttachments, err = retrieveV2AttachmentKeys(docid, doc.SyncData.Attachments)
+				if err != nil {
+					skipObsoleteAttachmentsRemoval = true
+					base.ErrorfCtx(db.Ctx, "Error retrieving current attachments of doc: %s, Error: %v", base.UD(docid), err)
+				}
 			}
+
 			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
 			// Return the new raw document value for the bucket to store.
@@ -1785,8 +1792,9 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 				doc.inlineSyncData = true
 			}
 
-			previousAttachments, err = retrieveAttachments(docid, doc.SyncData.Attachments)
+			previousAttachments, err = retrieveV2AttachmentKeys(docid, doc.SyncData.Attachments)
 			if err != nil {
+				skipObsoleteAttachmentsRemoval = true
 				base.ErrorfCtx(db.Ctx, "Error retrieving previous attachments of doc: %s, Error: %v", base.UD(docid), err)
 			}
 
@@ -1798,9 +1806,12 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 			docSequence = doc.Sequence
 			inConflict = doc.hasFlag(channels.Conflict)
 
-			currentAttachments, err = retrieveAttachments(docid, doc.SyncData.Attachments)
-			if err != nil {
-				base.ErrorfCtx(db.Ctx, "Error retrieving current attachments of doc: %s, Error: %v", base.UD(docid), err)
+			if !skipObsoleteAttachmentsRemoval {
+				currentAttachments, err = retrieveV2AttachmentKeys(docid, doc.SyncData.Attachments)
+				if err != nil {
+					skipObsoleteAttachmentsRemoval = true
+					base.ErrorfCtx(db.Ctx, "Error retrieving current attachments of doc: %s, Error: %v", base.UD(docid), err)
+				}
 			}
 
 			currentRevFromHistory, ok := doc.History[doc.CurrentRev]
@@ -1929,7 +1940,8 @@ func (db *Database) updateAndReturnDoc(docid string, allowImport bool, expiry ui
 	base.DebugfCtx(db.Ctx, base.KeyCRUD, "Stored doc %q / %q as #%v", base.UD(docid), newRevID, doc.Sequence)
 
 	// Delete obsolete attachments from the bucket.
-	if !inConflict {
+	// TODO: CBG-1627 Consider v2 attachments on conflicting revisions when removing.
+	if !inConflict && !skipObsoleteAttachmentsRemoval {
 		var obsoleteAttachments []string
 		for key, _ := range previousAttachments {
 			if _, found := currentAttachments[key]; !found {

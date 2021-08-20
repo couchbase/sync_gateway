@@ -8636,4 +8636,163 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		requireAttachmentNotFound(docID, attName)
 		rt.requireDocNotFound(attKey)
 	})
+
+	t.Run("skip attachment removal upon document update via SDK", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() {
+			t.Skip("This import test won't work under walrus")
+		}
+		// Create a document with inline attachment.
+		docID := "foo11"
+		attName := "foo.txt"
+		attBody := "this is the body of attachment foo.txt"
+		attBodyEncoded := base64.StdEncoding.EncodeToString([]byte(attBody))
+		body := fmt.Sprintf(`{"prop": true, "_attachments": {"%s": {"data":"%s"}}}`, attName, attBodyEncoded)
+		putResponse := rt.putDoc(docID, body)
+		revID := putResponse.Rev
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+
+		// Retrieve the attachment added to the document.
+		actualAttBody := retrieveAttachment(docID, attName)
+		require.Equal(t, attBody, actualAttBody)
+
+		// Get the document and check the attachment metadata.
+		attachments := retrieveAttachmentMeta(docID)
+		require.Len(t, attachments, 1)
+		meta, ok := attachments[attName].(map[string]interface{})
+		require.True(t, ok)
+		assert.True(t, meta["stub"].(bool))
+		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
+		assert.Equal(t, float64(38), meta["length"].(float64))
+		assert.Equal(t, float64(1), meta["revpos"].(float64))
+		assert.Equal(t, float64(2), meta["ver"].(float64))
+
+		// Retrieve the key used for internal attachment storage and retrieval.
+		attKey := retrieveAttachmentKey(docID, attName)
+		require.NotEmpty(t, attKey)
+
+		// Update the document via SDK.
+		err := rt.Bucket().Set(docID, 0, []byte(`{"prop": false}`))
+		require.NoError(t, err, "Error updating the document")
+
+		// Wait until the "update" mutation appears on the changes feed.
+		changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+		assert.NoError(t, err, "Error waiting for changes")
+		log.Printf("changes: %+v", changes)
+
+		// Verify that the attachment is not removed.
+		actualAttBody = retrieveAttachment(docID, attName)
+		require.Equal(t, attBody, actualAttBody)
+
+		// Get the document and check doc body and attachment metadata.
+		updatedBody := rt.getDoc(docID)
+		require.False(t, updatedBody["prop"].(bool))
+		revID, ok = updatedBody["_rev"].(string)
+		require.True(t, ok)
+		require.Equal(t, "2-7ae7c29fb73baf11cd0459ca3c5a6ac4", revID)
+		attachments, ok = updatedBody["_attachments"].(map[string]interface{})
+		require.True(t, ok)
+		require.Len(t, attachments, 1)
+		meta, ok = attachments[attName].(map[string]interface{})
+		require.True(t, ok)
+		assert.True(t, meta["stub"].(bool))
+		assert.Equal(t, "sha1-CTJaowVFZ4ozgmvBageTH9w+OKU=", meta["digest"].(string))
+		assert.Equal(t, float64(38), meta["length"].(float64))
+		assert.Equal(t, float64(1), meta["revpos"].(float64))
+		assert.Equal(t, float64(2), meta["ver"].(float64))
+	})
+
+	t.Run("doc with multiple attachments and removal of a single one upon document update", func(t *testing.T) {
+		// Create a document.
+		docID := "foo12"
+		revID := rt.createDoc(t, docID)
+		require.Equal(t, "1-45ca73d819d5b1c9b8eea95290e79004", revID)
+
+		// Add an attachment to the document.
+		att1Name := "alice.txt"
+		att1Body := "this is the body of attachment alice.txt"
+		revID = storeAttachment(docID, revID, att1Name, att1Body)
+		require.Equal(t, "2-abe7339f42c9218acb7b906f5977adcf", revID)
+
+		// Retrieve the attachment added to the document.
+		actualAttBody := retrieveAttachment(docID, att1Name)
+		require.Equal(t, att1Body, actualAttBody)
+
+		// Get the document and check the attachment metadata.
+		attachments := retrieveAttachmentMeta(docID)
+		require.Len(t, attachments, 1)
+		meta, ok := attachments[att1Name].(map[string]interface{})
+		require.True(t, ok)
+		assert.True(t, meta["stub"].(bool))
+		assert.Equal(t, "content/type", meta["content_type"].(string))
+		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
+		assert.Equal(t, float64(40), meta["length"].(float64))
+		assert.Equal(t, float64(2), meta["revpos"].(float64))
+		assert.Equal(t, float64(2), meta["ver"].(float64))
+
+		// Retrieve the key used for internal attachment storage and retrieval.
+		att1Key := retrieveAttachmentKey(docID, att1Name)
+		require.NotEmpty(t, att1Key)
+
+		// Add another attachment to the same document.
+		att2Name := "bob.txt"
+		att2Body := "this is the body of attachment bob.txt"
+		revID = storeAttachment(docID, revID, att2Name, att2Body)
+		require.Equal(t, "3-9d8d0bf2e87982d97356a181a693291b", revID)
+
+		// Retrieve the second attachment added to the document.
+		actualAtt2Body := retrieveAttachment(docID, att2Name)
+		require.Equal(t, att2Body, actualAtt2Body)
+
+		// Get the document and check the attachment metadata.
+		attachments = retrieveAttachmentMeta(docID)
+		require.Len(t, attachments, 2)
+
+		meta, ok = attachments[att1Name].(map[string]interface{})
+		require.True(t, ok)
+		assert.True(t, meta["stub"].(bool))
+		assert.Equal(t, "content/type", meta["content_type"].(string))
+		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
+		assert.Equal(t, float64(40), meta["length"].(float64))
+		assert.Equal(t, float64(2), meta["revpos"].(float64))
+		assert.Equal(t, float64(2), meta["ver"].(float64))
+
+		meta, ok = attachments[att2Name].(map[string]interface{})
+		require.True(t, ok)
+		assert.True(t, meta["stub"].(bool))
+		assert.Equal(t, "content/type", meta["content_type"].(string))
+		assert.Equal(t, "sha1-3oMVZvHjOQkkEK7K/xp0tqkuj1Q=", meta["digest"].(string))
+		assert.Equal(t, float64(38), meta["length"].(float64))
+		assert.Equal(t, float64(3), meta["revpos"].(float64))
+		assert.Equal(t, float64(2), meta["ver"].(float64))
+
+		// Retrieve the key used for internal attachment storage and retrieval.
+		att2Key := retrieveAttachmentKey(docID, att2Name)
+		require.NotEmpty(t, att2Key)
+		require.NotEqual(t, att1Key, att2Key)
+
+		// Remove one of the attachment from the bucket via document update.
+		response := rt.updateDoc(docID, revID, `{"prop":true, "_attachments": {"alice.txt": {"stub": true, "revpos": 2}}}`)
+		require.NotEmpty(t, response.Rev)
+
+		// Get the document and check the attachment metadata.
+		attachments = retrieveAttachmentMeta(docID)
+		require.Len(t, attachments, 1)
+		meta, ok = attachments[att2Name].(map[string]interface{})
+		require.False(t, ok)
+		meta, ok = attachments[att1Name].(map[string]interface{})
+		require.True(t, ok)
+		assert.True(t, meta["stub"].(bool))
+		assert.Equal(t, "content/type", meta["content_type"].(string))
+		assert.Equal(t, "sha1-5vJRip1gGo8YsI9yEJmmv6DabXk=", meta["digest"].(string))
+		assert.Equal(t, float64(40), meta["length"].(float64))
+		assert.Equal(t, float64(2), meta["revpos"].(float64))
+		assert.Equal(t, float64(2), meta["ver"].(float64))
+
+		// Check whether removed attachment is also removed from the underlying storage.
+		requireAttachmentNotFound(docID, att2Name)
+		rt.requireDocNotFound(att2Key)
+
+		// Perform cleanup after the test ends.
+		rt.purgeDoc(docID)
+	})
 }
