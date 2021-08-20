@@ -8590,6 +8590,9 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 	})
 
 	t.Run("attachment removal upon document delete via SDK", func(t *testing.T) {
+		if base.UnitTestUrlIsWalrus() {
+			t.Skip("This import test won't work under walrus")
+		}
 		// Create a document with inline attachment.
 		docID := "foo10"
 		attName := "foo.txt"
@@ -8622,6 +8625,11 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		// Delete/tombstone the document via SDK.
 		err := rt.Bucket().Delete(docID)
 		require.NoError(t, err, "Unable to delete doc %q", docID)
+
+		// Wait until the "delete" mutation appears on the changes feed.
+		changes, err := rt.WaitForChanges(1, "/db/_changes", "", true)
+		assert.NoError(t, err, "Error waiting for changes")
+		log.Printf("changes: %+v", changes)
 		rt.requireDocNotFound(docID)
 
 		// Check whether the attachment is removed from the underlying storage.

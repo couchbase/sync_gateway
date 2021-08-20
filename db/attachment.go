@@ -130,37 +130,10 @@ func (db *Database) storeAttachments(doc *Document, newAttachmentsMeta Attachmen
 	return newAttachmentData, nil
 }
 
-// retrieveObsoleteAttachments determines the list of attachments that are no longer being referenced from any document
-// and returns a slice of attachments keys for subsequent garbage collection.
-func (db *Database) retrieveObsoleteAttachments(doc *Document, docAttachments AttachmentsMeta, parentRev string, docHistory []string) (obsoleteAttachments []string, err error) {
-	parentAttachments := db.retrieveAncestorAttachments(doc, parentRev, docHistory)
-	if parentAttachments == nil {
-		return nil, nil
-	}
-	activeAttachments, err := retrieveActiveAttachments(doc.ID, docAttachments)
-	if err != nil {
-		return nil, err
-	}
-	for _, value := range parentAttachments {
-		meta, ok := value.(map[string]interface{})
-		if !ok {
-			return nil, ErrAttachmentMeta
-		}
-		digest, ok := meta["digest"].(string)
-		if !ok {
-			return nil, ErrAttachmentMeta
-		}
-		version, _ := GetAttachmentVersion(meta)
-		key := MakeAttachmentKey(version, doc.ID, digest)
-		if _, found := activeAttachments[key]; !found {
-			obsoleteAttachments = append(obsoleteAttachments, key)
-		}
-	}
-	return obsoleteAttachments, nil
-}
-
-func retrieveActiveAttachments(docID string, docAttachments AttachmentsMeta) (activeAttachments map[string]struct{}, err error) {
-	activeAttachments = make(map[string]struct{})
+// retrieveAttachments returns the list of keys from the attachment metadata that can be used for identifying obsolete
+// attachments and triggering subsequent removal of those attachments to reclaim the storage.
+func retrieveAttachments(docID string, docAttachments AttachmentsMeta) (attachments map[string]struct{}, err error) {
+	attachments = make(map[string]struct{})
 	for _, value := range docAttachments {
 		meta, ok := value.(map[string]interface{})
 		if !ok {
@@ -171,10 +144,13 @@ func retrieveActiveAttachments(docID string, docAttachments AttachmentsMeta) (ac
 			return nil, ErrAttachmentMeta
 		}
 		version, _ := GetAttachmentVersion(meta)
+		if version != AttVersion2 {
+			continue
+		}
 		key := MakeAttachmentKey(version, docID, digest)
-		activeAttachments[key] = struct{}{}
+		attachments[key] = struct{}{}
 	}
-	return activeAttachments, nil
+	return attachments, nil
 }
 
 // Attempts to retrieve ancestor attachments for a document. First attempts to find and use a non-pruned ancestor.
