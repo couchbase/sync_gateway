@@ -34,6 +34,7 @@ func (h *handler) handleCreateDB() error {
 	if err != nil {
 		return err
 	}
+	config.Name = dbName
 
 	if h.server.persistentConfig {
 		if err := config.validatePersistentDbConfig(); err != nil {
@@ -383,6 +384,10 @@ func (h *handler) handlePutDbConfig() (err error) {
 			"concurrency protection is required use the If-Match header to supply config version")
 	}
 
+	// Set dbName based on path value (since db doesn't necessarily exist), and update in incoming config in case of insert
+	dbName := h.PathVar("db")
+	dbConfig.Name = dbName
+
 	updatedDbConfig := dbConfig
 	if h.server.persistentConfig {
 		cas, err := h.server.bootstrapContext.connection.UpdateConfig(
@@ -424,10 +429,11 @@ func (h *handler) handlePutDbConfig() (err error) {
 		updatedDbConfig.cas = cas
 	}
 
-	dbName := h.db.Name
 	if err := updatedDbConfig.setup(dbName, h.server.config.Bootstrap); err != nil {
 		return err
 	}
+
+	h.response.Header().Set("ETag", updatedDbConfig.Version)
 
 	h.server.lock.Lock()
 	defer h.server.lock.Unlock()
