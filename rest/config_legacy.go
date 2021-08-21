@@ -582,7 +582,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 					},
 					Users: map[string]*db.PrincipalConfig{
 						base.GuestUsername: {
-							Disabled:         false,
+							Disabled:         base.BoolPtr(false),
 							ExplicitChannels: base.SetFromArray([]string{"*"}),
 						},
 					},
