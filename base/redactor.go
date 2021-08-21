@@ -11,7 +11,6 @@ licenses/APL2.txt.
 package base
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -128,10 +127,7 @@ func (l RedactionLevel) String() string {
 }
 
 // MarshalText marshals the RedactionLevel to text.
-func (l *RedactionLevel) MarshalText() ([]byte, error) {
-	if l == nil {
-		return nil, errors.New("can't marshal a nil *RedactionLevel to text")
-	}
+func (l RedactionLevel) MarshalText() ([]byte, error) {
 	return []byte(l.String()), nil
 }
 
