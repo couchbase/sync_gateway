@@ -356,7 +356,7 @@ func establishCouchbaseClusterConnection(config *StartupConfig) (*base.Couchbase
 		}
 
 		return false, nil, cluster
-	}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitForReady timeout and 1 second interval
+	}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitUntilReady timeout and 1 second interval
 	if err != nil {
 		return nil, err
 	}
