@@ -173,6 +173,9 @@ func (h *handler) handleGetDbConfig() error {
 		responseConfig = bucketDbConfig
 	}
 
+	// FIXME: CBG-1630 Use better approach for this (like wrapping in a PersistedDatabaseConfig struct)
+	responseConfig.Version = ""
+
 	// redaction to sensitive config fields
 	redact, _ := h.getOptBoolQuery("redact", true)
 	if redact {
