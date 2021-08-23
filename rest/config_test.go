@@ -792,7 +792,8 @@ func TestParseCommandLineWithConfigContent(t *testing.T) {
 	assert.Equal(t, "/etc/ssl/certs/key.pem", db1.BucketConfig.KeyPath)
 
 	guest := db1.Users["GUEST"]
-	assert.False(t, guest.Disabled)
+	require.NotNil(t, guest.Disabled)
+	assert.False(t, *guest.Disabled)
 	assert.Equal(t, base.SetFromArray([]string{"*"}), guest.ExplicitChannels)
 }
 

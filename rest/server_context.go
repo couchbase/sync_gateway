@@ -541,8 +541,16 @@ func (sc *ServerContext) _getOrAddDatabaseFromConfig(config DatabaseConfig, useE
 	// Create default users & roles:
 	if err := sc.installPrincipals(dbcontext, config.Roles, "role"); err != nil {
 		return nil, err
-	} else if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
+	}
+	if err := sc.installPrincipals(dbcontext, config.Users, "user"); err != nil {
 		return nil, err
+	}
+
+	if config.Guest != nil {
+		guest := map[string]*db.PrincipalConfig{base.GuestUsername: config.Guest}
+		if err := sc.installPrincipals(dbcontext, guest, "user"); err != nil {
+			return nil, err
+		}
 	}
 
 	// Initialize event handlers

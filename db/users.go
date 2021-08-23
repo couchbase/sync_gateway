@@ -28,7 +28,7 @@ type PrincipalConfig struct {
 	Channels         base.Set `json:"all_channels,omitempty"`
 	// Fields below only apply to Users, not Roles:
 	Email             string   `json:"email,omitempty"`
-	Disabled          bool     `json:"disabled,omitempty"`
+	Disabled          *bool    `json:"disabled,omitempty"`
 	Password          *string  `json:"password,omitempty"`
 	ExplicitRoleNames []string `json:"admin_roles,omitempty"`
 	RoleNames         []string `json:"roles,omitempty"`
@@ -84,7 +84,7 @@ func (dbc *DatabaseContext) GetPrincipal(name string, isUser bool) (info *Princi
 	if user, ok := princ.(auth.User); ok {
 		info.Channels = user.InheritedChannels().AsSet()
 		info.Email = user.Email()
-		info.Disabled = user.Disabled()
+		info.Disabled = base.BoolPtr(user.Disabled())
 		info.ExplicitRoleNames = user.ExplicitRoles().AllKeys()
 		info.RoleNames = user.RoleNames().AllKeys()
 	} else {
@@ -185,8 +185,8 @@ func (dbc *DatabaseContext) UpdatePrincipal(newInfo PrincipalConfig, isUser bool
 				user.SetPassword(*newInfo.Password)
 				changed = true
 			}
-			if newInfo.Disabled != user.Disabled() {
-				user.SetDisabled(newInfo.Disabled)
+			if newInfo.Disabled != nil && *newInfo.Disabled != user.Disabled() {
+				user.SetDisabled(*newInfo.Disabled)
 				changed = true
 			}
 
