@@ -155,10 +155,10 @@ func (h *handler) handleGetDbConfig() error {
 		h.response.Header().Set("ETag", responseConfig.Version)
 
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
-		if h.getBoolQuery("refresh_config") {
+		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
 			// set cas=0 to force a refresh
 			responseConfig.cas = 0
-			h.server.applyConfigs([]DatabaseConfig{*responseConfig})
+			h.server.applyConfigs(map[string]DatabaseConfig{h.db.Name: *responseConfig})
 		}
 	} else {
 		// non-persistent mode just returns running database config
@@ -768,9 +768,21 @@ func (h *handler) handlePutDbConfigImportFilter() error {
 	return base.HTTPErrorf(http.StatusOK, "updated")
 }
 
-// "Delete" a database (it doesn't actually do anything to the underlying bucket)
+// handleDeleteDB when running in persistent config mode, deletes a database config from the bucket and removes it from the current node.
+// In non-persistent mode, the endpoint just removes the database from the node.
 func (h *handler) handleDeleteDB() error {
 	h.assertAdminOnly()
+
+	if h.server.persistentConfig {
+		bucket := h.db.Bucket.GetName()
+		_, err := h.server.bootstrapContext.connection.UpdateConfig(bucket, h.server.config.Bootstrap.ConfigGroupID, func(rawBucketConfig []byte) (updatedConfig []byte, err error) {
+			return nil, nil
+		})
+		if err != nil {
+			return base.HTTPErrorf(http.StatusInternalServerError, "couldn't remove database %q from bucket %q: %s", base.MD(h.db.Name), base.MD(bucket), err.Error())
+		}
+	}
+
 	if !h.server.RemoveDatabase(h.db.Name) {
 		return base.HTTPErrorf(http.StatusNotFound, "missing")
 	}

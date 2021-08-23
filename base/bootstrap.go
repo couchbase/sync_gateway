@@ -18,7 +18,7 @@ type BootstrapConnection interface {
 	GetConfig(bucket, groupID string, valuePtr interface{}) (cas uint64, err error)
 	// InsertConfig saves a new database config for a given bucket and config group ID.
 	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
-	// UpdateConfig updates an existing database config for a given bucket and config group ID.
+	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
 	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
 	// Close closes the connection
 	Close() error
@@ -166,6 +166,19 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 		newConfig, err := updateCallback(bucketValue)
 		if err != nil {
 			return 0, err
+		}
+
+		// handle delete when updateCallback returns nil
+		if newConfig == nil {
+			deleteRes, err := collection.Remove(docID, &gocb.RemoveOptions{Cas: res.Cas()})
+			if err != nil {
+				// retry on cas failure
+				if errors.Is(err, gocb.ErrCasMismatch) {
+					continue
+				}
+				return 0, err
+			}
+			return uint64(deleteRes.Cas()), nil
 		}
 
 		replaceRes, err := collection.Replace(docID, newConfig, &gocb.ReplaceOptions{Transcoder: gocb.NewRawJSONTranscoder(), Cas: res.Cas()})
