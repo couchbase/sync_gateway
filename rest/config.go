@@ -1108,6 +1108,7 @@ func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig
 		if err == base.ErrNotFound {
 			base.Tracef(base.KeyConfig, "bucket %q did not contain config for group %q", bucket, sc.config.Bootstrap.ConfigGroupID)
 			bucketsNoConfig = append(bucketsNoConfig, bucket)
+			continue
 		}
 		if err != nil {
 			base.Errorf("couldn't fetch config for group %q from bucket %q: %v", sc.config.Bootstrap.ConfigGroupID, bucket, err)
