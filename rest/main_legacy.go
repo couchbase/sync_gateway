@@ -86,10 +86,7 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 			X509KeyPath:  *keyPath,
 		},
 		API: APIConfig{
-			PublicInterface:  *publicInterface,
-			AdminInterface:   *adminInterface,
 			ProfileInterface: *profileInterface,
-			Pretty:           pretty,
 		},
 		Logging: base.LoggingConfig{
 			LogFilePath: *logFilePath,
@@ -98,6 +95,17 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 				LogKeys:  strings.Split(*log, ","),
 			},
 		},
+	}
+
+	// Set if user modified default value. fs.Set could be used in future.
+	if *publicInterface != DefaultPublicInterface {
+		sc.API.PublicInterface = *publicInterface
+	}
+	if *adminInterface != DefaultAdminInterface {
+		sc.API.AdminInterface = *adminInterface
+	}
+	if !*pretty {
+		sc.API.Pretty = pretty
 	}
 
 	// removed options
