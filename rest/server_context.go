@@ -926,14 +926,20 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 }
 
 func (sc *ServerContext) _removeDatabase(dbName string) bool {
-
-	context := sc.databases_[dbName]
-	if context == nil {
+	dbCtx := sc.databases_[dbName]
+	if dbCtx == nil {
 		return false
 	}
-	base.Infof(base.KeyAll, "Closing db /%s (bucket %q)", base.MD(context.Name), base.MD(context.Bucket.GetName()))
-	context.Close()
+
+	base.Infof(base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
+	bucket := dbCtx.Bucket.GetName()
+
+	dbCtx.Close()
+
 	delete(sc.databases_, dbName)
+	delete(sc.dbConfigs, dbName)
+	delete(sc.bucketDbName, bucket)
+
 	return true
 }
 
