@@ -1105,7 +1105,7 @@ func (sc *ServerContext) updateCalculatedStats() {
 
 }
 
-func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, tlsSkipVerify *bool, timeout time.Duration) (*gocbcore.Agent, error) {
+func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPath, caCertPath string, tlsSkipVerify *bool) (*gocbcore.Agent, error) {
 	authenticator, err := base.GoCBCoreAuthConfig(clusterUser, clusterPass, certPath, keyPath)
 	if err != nil {
 		return nil, err
@@ -1133,15 +1133,25 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 		return nil, err
 	}
 
-	agentWaitUntilReadyTimeout := 5 * time.Second
-	if timeout != 0 {
-		agentWaitUntilReadyTimeout = timeout
-	}
+	shouldCloseAgent := true
+	defer func() {
+		if shouldCloseAgent {
+			if err := agent.Close(); err != nil {
+				base.Warnf("unable to close gocb agent: %v", err)
+			}
+		}
+	}()
 
 	agentReadyErr := make(chan error)
-	_, err = agent.WaitUntilReady(time.Now().Add(agentWaitUntilReadyTimeout), gocbcore.WaitUntilReadyOptions{ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService}}, func(result *gocbcore.WaitUntilReadyResult, err error) {
-		agentReadyErr <- err
-	})
+	_, err = agent.WaitUntilReady(
+		time.Now().Add(5*time.Second),
+		gocbcore.WaitUntilReadyOptions{
+			ServiceTypes: []gocbcore.ServiceType{gocbcore.MgmtService},
+		},
+		func(result *gocbcore.WaitUntilReadyResult, err error) {
+			agentReadyErr <- err
+		},
+	)
 
 	if err != nil {
 		return nil, err
@@ -1151,19 +1161,30 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 		return nil, err
 	}
 
+	shouldCloseAgent = false
 	return agent, nil
 }
 
-// initializeGoCBAgent Obtains a gocb agent from the current server connection. Requires the agent to be closed after use
+// initializeGoCBAgent Obtains a gocb agent from the current server connection. Requires the agent to be closed after use.
+// Uses retry loop
 func (sc *ServerContext) initializeGoCBAgent() (*gocbcore.Agent, error) {
-	agent, err := initClusterAgent(
-		sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
-		sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify,
-		sc.config.API.ServerReadTimeout.Value())
+	err, a := base.RetryLoop("Initialize Cluster Agent", func() (shouldRetry bool, err error, value interface{}) {
+		agent, err := initClusterAgent(
+			sc.config.Bootstrap.Server, sc.config.Bootstrap.Username, sc.config.Bootstrap.Password,
+			sc.config.Bootstrap.X509CertPath, sc.config.Bootstrap.X509KeyPath, sc.config.Bootstrap.CACertPath, sc.config.Bootstrap.ServerTLSSkipVerify)
+		if err != nil {
+			base.Infof(base.KeyConfig, "Couldn't initialize cluster agent: %v - will retry...", err)
+			return true, err, nil
+		}
+
+		return false, nil, agent
+	}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitUntilReady timeout and 1 second interval
 	if err != nil {
 		return nil, err
 	}
 
+	base.Infof(base.KeyConfig, "Successfully initialized cluster agent")
+	agent := a.(*gocbcore.Agent)
 	return agent, nil
 }
 
