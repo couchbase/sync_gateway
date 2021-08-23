@@ -73,11 +73,6 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 	log := fs.String("log", "", "Log keys, comma separated")
 	logFilePath := fs.String("logFilePath", "", "Path to log files")
 
-	var logLevel *base.LogLevel
-	if *verbose {
-		logLevel = base.LogLevelPtr(base.LevelInfo)
-	}
-
 	sc := StartupConfig{
 		Bootstrap: BootstrapConfig{
 			Server:       *url,
@@ -90,10 +85,7 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 		},
 		Logging: base.LoggingConfig{
 			LogFilePath: *logFilePath,
-			Console: &base.ConsoleLoggerConfig{
-				LogLevel: logLevel,
-				LogKeys:  strings.Split(*log, ","),
-			},
+			Console:     &base.ConsoleLoggerConfig{},
 		},
 	}
 
@@ -106,6 +98,12 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 	}
 	if !*pretty {
 		sc.API.Pretty = pretty
+	}
+	if *verbose {
+		sc.Logging.Console.LogLevel = base.LogLevelPtr(base.LevelInfo)
+	}
+	if *log != "" {
+		sc.Logging.Console.LogKeys = strings.Split(*log, ",")
 	}
 
 	// removed options
