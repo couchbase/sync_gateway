@@ -139,11 +139,11 @@ func (h *handler) handleGetDbConfig() error {
 	// - Populate an up to date ETag header
 	// - Applying if refresh_config is set
 	// - Returning if include_runtime=false
-	var bucketDbConfig *DatabaseConfig
+	var responseConfig *DatabaseConfig
 	if h.server.bootstrapContext.connection != nil {
 		var found bool
 		var err error
-		found, bucketDbConfig, err = h.server.fetchDatabase(h.db.Name)
+		found, responseConfig, err = h.server.fetchDatabase(h.db.Name)
 		if err != nil {
 			return err
 		}
@@ -152,23 +152,23 @@ func (h *handler) handleGetDbConfig() error {
 			return base.HTTPErrorf(http.StatusNotFound, "database config not found")
 		}
 
-		h.response.Header().Set("ETag", bucketDbConfig.Version)
-	}
+		h.response.Header().Set("ETag", responseConfig.Version)
 
-	// refresh_config=true forces the config loaded out of the bucket to be applied on the node
-	if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
-		// set cas=0 to force a refresh
-		bucketDbConfig.cas = 0
-		h.server.applyConfigs([]DatabaseConfig{*bucketDbConfig})
+		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
+		if h.getBoolQuery("refresh_config") {
+			// set cas=0 to force a refresh
+			responseConfig.cas = 0
+			h.server.applyConfigs([]DatabaseConfig{*responseConfig})
+		}
+	} else {
+		// non-persistent mode just returns running database config
+		responseConfig = h.server.GetDatabaseConfig(h.db.Name)
 	}
 
 	// include_runtime controls whether to return the raw bucketDbConfig, or the runtime version populated with default values, etc.
-	var responseConfig *DatabaseConfig
 	includeRuntime, _ := h.getOptBoolQuery("include_runtime", false)
 	if includeRuntime {
 		responseConfig = h.server.GetDatabaseConfig(h.db.Name)
-	} else {
-		responseConfig = bucketDbConfig
 	}
 
 	// FIXME: CBG-1630 Use better approach for this (like wrapping in a PersistedDatabaseConfig struct)
