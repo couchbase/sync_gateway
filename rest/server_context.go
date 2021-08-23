@@ -307,7 +307,7 @@ func (sc *ServerContext) PostUpgrade(preview bool) (postUpgradeResults PostUpgra
 
 // Removes and re-adds a database to the ServerContext.
 func (sc *ServerContext) _reloadDatabaseFromConfig(reloadDbName string) (*db.DatabaseContext, error) {
-	sc._removeDatabase(reloadDbName)
+	sc._unloadDatabase(reloadDbName)
 	config := sc.dbConfigs[reloadDbName]
 	return sc._getOrAddDatabaseFromConfig(*config, true)
 }
@@ -925,21 +925,29 @@ func (sc *ServerContext) RemoveDatabase(dbName string) bool {
 	return sc._removeDatabase(dbName)
 }
 
+// _unloadDatabase unloads and stops the database, but does not remove the in-memory config.
+func (sc *ServerContext) _unloadDatabase(dbName string) bool {
+	dbCtx := sc.databases_[dbName]
+	if dbCtx == nil {
+		return false
+	}
+	base.Infof(base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
+	dbCtx.Close()
+	delete(sc.databases_, dbName)
+	return true
+}
+
+// _removeDatabase unloads and removes all references to the given database.
 func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	dbCtx := sc.databases_[dbName]
 	if dbCtx == nil {
 		return false
 	}
-
-	base.Infof(base.KeyAll, "Closing db /%s (bucket %q)", base.MD(dbCtx.Name), base.MD(dbCtx.Bucket.GetName()))
-	bucket := dbCtx.Bucket.GetName()
-
-	dbCtx.Close()
-
-	delete(sc.databases_, dbName)
+	if ok := sc._unloadDatabase(dbName); !ok {
+		return ok
+	}
 	delete(sc.dbConfigs, dbName)
-	delete(sc.bucketDbName, bucket)
-
+	delete(sc.bucketDbName, dbCtx.Bucket.GetName())
 	return true
 }
 
