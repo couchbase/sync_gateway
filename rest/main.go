@@ -71,7 +71,6 @@ func serverMain(ctx context.Context, osArgs []string) error {
 
 	disablePersistentConfigFallback, err := serverMainPersistentConfig(fs, &flagStartupConfig)
 	if disablePersistentConfigFallback {
-		base.Infof(base.KeyAll, "Falling back to disabled persistent config...")
 		return legacyServerMain(osArgs, &flagStartupConfig)
 	}
 
@@ -96,7 +95,7 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			// If we have an unknown field error processing config its possible that the config is a 2.x config
 			// requiring automatic upgrade. We should attempt to perform this upgrade
 
-			base.Infof(base.KeyAll, "Found unknown fields in startup config. Attempting automatic config upgrade.")
+			base.Infof(base.KeyAll, "Found unknown fields in startup config. Attempting to read as legacy config.")
 
 			var upgradeError error
 			fileStartupConfig, disablePersistentConfigFallback, upgradeError = automaticConfigUpgrade(configPath[0])
@@ -115,7 +114,6 @@ func serverMainPersistentConfig(fs *flag.FlagSet, flagStartupConfig *StartupConf
 			}
 
 			if disablePersistentConfigFallback {
-				base.Infof(base.KeyAll, "Startup config specified disable_persistent_config. Falling back to legacy config.")
 				return true, nil
 			}
 
@@ -194,7 +192,7 @@ func getInitialStartupConfig(fileStartupConfig *StartupConfig, flagStartupConfig
 // automaticConfigUpgrade takes the config path of the current 2.x config and attempts to perform the update steps to
 // update it to a 3.x config
 // Returns the new startup config, a bool of whether to fallback to legacy config and an error
-func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
+func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersistentConfig bool, err error) {
 	legacyServerConfig, err := LoadServerConfig(configPath)
 	if err != nil {
 		return nil, false, err
@@ -203,6 +201,8 @@ func automaticConfigUpgrade(configPath string) (*StartupConfig, bool, error) {
 	if legacyServerConfig.DisablePersistentConfig != nil && *legacyServerConfig.DisablePersistentConfig {
 		return nil, true, nil
 	}
+
+	base.Infof(base.KeyAll, "Config is a legacy config, and disable_persistent_config was not requested. Attempting automatic config upgrade.")
 
 	startupConfig, dbConfigs, err := legacyServerConfig.ToStartupConfig()
 	if err != nil {
