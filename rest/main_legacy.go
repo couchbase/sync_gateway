@@ -97,7 +97,7 @@ func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
 		},
 	}
 
-	// Set if user modified default value. fs.Set could be used in future.
+	// Set if user modified default value
 	if *publicInterface != DefaultPublicInterface {
 		sc.API.PublicInterface = *publicInterface
 	}
