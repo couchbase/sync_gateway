@@ -943,11 +943,12 @@ func (sc *ServerContext) _removeDatabase(dbName string) bool {
 	if dbCtx == nil {
 		return false
 	}
+	bucket := dbCtx.Bucket.GetName()
 	if ok := sc._unloadDatabase(dbName); !ok {
 		return ok
 	}
 	delete(sc.dbConfigs, dbName)
-	delete(sc.bucketDbName, dbCtx.Bucket.GetName())
+	delete(sc.bucketDbName, bucket)
 	return true
 }
 

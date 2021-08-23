@@ -1000,14 +1000,28 @@ func setupServerContext(config *StartupConfig, persistentConfig bool) (*ServerCo
 	return sc, nil
 }
 
-// fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
+// fetchAndLoadConfigs retrieves all database configs from the ServerContext's bootstrapConnection, and loads them into the ServerContext.
+// It will remove any databases currently running that are not found in the bucket.
 func (sc *ServerContext) fetchAndLoadConfigs() (count int, err error) {
 	fetchedConfigs, err := sc.fetchConfigs()
 	if err != nil {
 		return 0, err
 	}
 
-	return sc.applyConfigs(fetchedConfigs), nil
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	var toRemove []string
+	for dbName, _ := range sc.databases_ {
+		if _, ok := fetchedConfigs[dbName]; !ok {
+			toRemove = append(toRemove, dbName)
+		}
+	}
+	for _, dbName := range toRemove {
+		base.Infof(base.KeyConfig, "database %q was running on this node, but config was not found on the server - removing database", base.MD(dbName))
+		sc._removeDatabase(dbName)
+	}
+
+	return sc._applyConfigs(fetchedConfigs), nil
 }
 
 // fetchAndLoadDatabase will attempt to find the given database name first in a matching bucket name,
@@ -1017,7 +1031,7 @@ func (sc *ServerContext) fetchAndLoadDatabase(dbName string) (found bool, err er
 	if err != nil || !found {
 		return false, err
 	}
-	sc.applyConfigs([]DatabaseConfig{*dbConfig})
+	sc.applyConfigs(map[string]DatabaseConfig{dbName: *dbConfig})
 
 	return true, nil
 }
@@ -1081,13 +1095,13 @@ func (sc *ServerContext) fetchDatabase(dbName string) (found bool, dbConfig *Dat
 }
 
 // fetchConfigs retrieves all database configs from the ServerContext's bootstrapConnection.
-func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig []DatabaseConfig, err error) {
+func (sc *ServerContext) fetchConfigs() (dbNameConfigs map[string]DatabaseConfig, err error) {
 	buckets, err := sc.bootstrapContext.connection.GetConfigBuckets()
 	if err != nil {
 		return nil, fmt.Errorf("couldn't get buckets from cluster: %w", err)
 	}
 
-	fetchedConfigs := make([]DatabaseConfig, 0, len(buckets))
+	fetchedConfigs := make(map[string]DatabaseConfig, len(buckets))
 
 	for _, bucket := range buckets {
 		base.Tracef(base.KeyConfig, "Checking for config for group %q from bucket %q", sc.config.Bootstrap.ConfigGroupID, bucket)
@@ -1119,20 +1133,18 @@ func (sc *ServerContext) fetchConfigs() (bucketToDatabaseConfig []DatabaseConfig
 		}
 
 		base.Debugf(base.KeyConfig, "Got config for group %q from bucket %q with cas %d", sc.config.Bootstrap.ConfigGroupID, bucket, cas)
-		fetchedConfigs = append(fetchedConfigs, cnf)
+		fetchedConfigs[cnf.Name] = cnf
 	}
 
 	return fetchedConfigs, nil
 }
 
-// applyConfigs takes a map of bucket->DatabaseConfig and loads them into the ServerContext where necessary.
-func (sc *ServerContext) applyConfigs(fetchedConfigs []DatabaseConfig) (count int) {
-	sc.lock.Lock()
-	defer sc.lock.Unlock()
-	for _, cnf := range fetchedConfigs {
+// _applyConfigs takes a map of dbName->DatabaseConfig and loads them into the ServerContext where necessary.
+func (sc *ServerContext) _applyConfigs(dbNameConfigs map[string]DatabaseConfig) (count int) {
+	for dbName, cnf := range dbNameConfigs {
 		applied, err := sc._applyConfig(cnf)
 		if err != nil {
-			base.Errorf("%s", err)
+			base.Errorf("Couldn't apply config for database %q: %v", base.MD(dbName), err)
 			continue
 		}
 		if applied {
@@ -1141,6 +1153,12 @@ func (sc *ServerContext) applyConfigs(fetchedConfigs []DatabaseConfig) (count in
 	}
 
 	return count
+}
+
+func (sc *ServerContext) applyConfigs(dbNameConfigs map[string]DatabaseConfig) (count int) {
+	sc.lock.Lock()
+	defer sc.lock.Unlock()
+	return sc._applyConfigs(dbNameConfigs)
 }
 
 func (sc *ServerContext) _applyConfig(cnf DatabaseConfig) (applied bool, err error) {

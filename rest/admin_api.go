@@ -155,10 +155,10 @@ func (h *handler) handleGetDbConfig() error {
 		h.response.Header().Set("ETag", responseConfig.Version)
 
 		// refresh_config=true forces the config loaded out of the bucket to be applied on the node
-		if h.getBoolQuery("refresh_config") {
+		if h.getBoolQuery("refresh_config") && h.server.bootstrapContext.connection != nil {
 			// set cas=0 to force a refresh
 			responseConfig.cas = 0
-			h.server.applyConfigs([]DatabaseConfig{*responseConfig})
+			h.server.applyConfigs(map[string]DatabaseConfig{h.db.Name: *responseConfig})
 		}
 	} else {
 		// non-persistent mode just returns running database config
