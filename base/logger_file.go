@@ -117,10 +117,12 @@ func (l *FileLogger) FlushBufferToLog() {
 	// Need to clear hanging new line to avoid empty line
 	logString := strings.TrimSuffix(l.buffer.String(), "\n")
 
+	// Clear buffer as we no longer need it
+	l.buffer.Reset()
+
 	if l.Enabled.IsTrue() {
 		l.logf(logString)
 	}
-
 }
 
 // Rotate will rotate the active log file.
