@@ -96,12 +96,7 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b := cc.c.Bucket(location)
-	err = b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
-		DesiredState:  gocb.ClusterStateOnline,
-		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
-		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
-	})
+	b, err := cc.getBucket(location)
 	if err != nil {
 		return 0, err
 	}
@@ -128,10 +123,14 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
-	docID := PersistentConfigPrefix + groupID
-	collection := cc.c.Bucket(location).DefaultCollection()
 
-	res, err := collection.Insert(docID, value, nil)
+	b, err := cc.getBucket(location)
+	if err != nil {
+		return 0, err
+	}
+
+	docID := PersistentConfigPrefix + groupID
+	res, err := b.DefaultCollection().Insert(docID, value, nil)
 	if err != nil {
 		if isKVError(err, memd.StatusKeyExists) {
 			return 0, ErrAlreadyExists
@@ -146,9 +145,15 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 	if cc == nil {
 		return 0, errors.New("nil CouchbaseCluster")
 	}
-	docID := PersistentConfigPrefix + groupID
-	collection := cc.c.Bucket(location).DefaultCollection()
 
+	b, err := cc.getBucket(location)
+	if err != nil {
+		return 0, err
+	}
+
+	collection := b.DefaultCollection()
+
+	docID := PersistentConfigPrefix + groupID
 	for {
 		res, err := collection.Get(docID, &gocb.GetOptions{
 			Transcoder: gocb.NewRawJSONTranscoder(),
@@ -200,6 +205,20 @@ func (cc *CouchbaseCluster) Close() error {
 		return nil
 	}
 	return cc.c.Close(&gocb.ClusterCloseOptions{})
+}
+
+// getBucket returns the bucket after waiting for it to be ready.
+func (cc *CouchbaseCluster) getBucket(bucketName string) (*gocb.Bucket, error) {
+	b := cc.c.Bucket(bucketName)
+	err := b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
+		DesiredState:  gocb.ClusterStateOnline,
+		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 // ConfigMerge applies non-empty fields from b onto non-empty fields on a
