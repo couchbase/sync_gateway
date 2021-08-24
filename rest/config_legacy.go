@@ -243,19 +243,25 @@ func (lc *LegacyServerConfig) ToStartupConfig() (*StartupConfig, DbConfigMap, er
 	return &sc, lc.Databases, nil
 }
 
+// ToDatabaseConfig "upgrades" a DbConfig to be compatible with 3.x
 func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
 	if dbc == nil {
 		return nil
 	}
 
-	// Backwards compatibility: Continue defaulting to xattrs=false for 2.x configs (3.0+ default xattrs=true)
+	// Backwards compatibility: Continue defaulting to xattrs=false for upgraded 2.x configs (3.0+ default xattrs=true)
 	if dbc.EnableXattrs == nil {
 		dbc.EnableXattrs = base.BoolPtr(false)
 	}
 
+	// Move guest out of the Users section and into its own promoted field
+	if guest, ok := dbc.Users[base.GuestUsername]; ok {
+		dbc.Guest = guest
+		delete(dbc.Users, base.GuestUsername)
+	}
+
 	return &DatabaseConfig{
 		cas:      0,
-		Guest:    dbc.Users[base.GuestUsername],
 		DbConfig: *dbc,
 	}
 }

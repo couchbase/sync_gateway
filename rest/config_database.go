@@ -5,17 +5,17 @@ import (
 	"github.com/couchbase/sync_gateway/db"
 )
 
-// DatabaseConfig is a 3.x/persisted database config.
-// TODO: Review whether DatabaseConfig should maintain its own list of valid config options, or should just continue inheriting them from DbConfig
+// DatabaseConfig is a 3.x/persisted database config that represents a config stored in the bucket.
 type DatabaseConfig struct {
 	// cas is the Couchbase Server CAS of the database config in the bucket
-	// value is used to skip applying configs to SG nodes that already have
-	// an up to date config. This value can be explicitly set to 0 before applyConfig to force a reload.
+	// used to skip applying configs to SG nodes that already have an up-to-date config.
+	// This value can be explicitly set to 0 before applyConfig to force reload.
 	cas uint64
 
-	Guest *db.PrincipalConfig `json:"guest,omitempty"`
-
+	// Version is a generated Rev ID used for optimistic concurrency control using ETags/If-Match headers.
 	Version string `json:"version,omitempty"`
+
+	// DbConfig embeds database config properties
 	DbConfig
 }
 
