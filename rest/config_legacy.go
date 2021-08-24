@@ -261,6 +261,10 @@ func (dbc *DbConfig) ToDatabaseConfig() *DatabaseConfig {
 }
 
 func legacyServerAddressUpgrade(server string) (newServer, username, password string, err error) {
+	if base.ServerIsWalrus(server) {
+		return server, "", "", nil
+	}
+
 	connSpec, err := connstr.Parse(server)
 	if err != nil {
 		return "", "", "", err
