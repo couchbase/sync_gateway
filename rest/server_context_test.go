@@ -602,8 +602,8 @@ func TestLogFlush(t *testing.T) {
 			// Flush memory loggers
 			base.FlushLoggerBuffers()
 
-			// Add a minor sleep to allow the files to complete writing
-			time.Sleep(1 * time.Second)
+			// Flush collation buffers to ensure the files that will be built do get written
+			base.FlushLogBuffers()
 
 			// Check that the expected number of log files are created
 			worker := func() (shouldRetry bool, err error, value interface{}) {
