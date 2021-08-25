@@ -146,7 +146,6 @@ func (c *tbpClusterV1) close() error {
 
 // tbpClusterV2 implements the tbpCluster interface for a gocb v2 cluster
 type tbpClusterV2 struct {
-	//cluster *gocb.Cluster
 	logger clusterLogFunc
 	server string
 }
@@ -155,13 +154,12 @@ var _ tbpCluster = &tbpClusterV2{}
 
 func newTestClusterV2(server string, logger clusterLogFunc) *tbpClusterV2 {
 	tbpCluster := &tbpClusterV2{}
-	//tbpCluster.cluster = initV2Cluster(server)
 	tbpCluster.logger = logger
 	tbpCluster.server = server
 	return tbpCluster
 }
 
-// tbpCluster validates cluster connectivity
+// getCluster makes cluster connection.  Callers must close.
 func getCluster(server string) *gocb.Cluster {
 	spec := BucketSpec{
 		Server:        server,
@@ -269,14 +267,6 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 }
 
 func (c *tbpClusterV2) close() error {
-	/*
-		if c.cluster != nil {
-			if err := c.cluster.Close(nil); err != nil {
-				c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
-				return err
-			}
-		}
-
-	*/
+	// no close operations needed
 	return nil
 }
