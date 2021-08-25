@@ -146,21 +146,23 @@ func (c *tbpClusterV1) close() error {
 
 // tbpClusterV2 implements the tbpCluster interface for a gocb v2 cluster
 type tbpClusterV2 struct {
-	cluster *gocb.Cluster
-	logger  clusterLogFunc
+	//cluster *gocb.Cluster
+	logger clusterLogFunc
+	server string
 }
 
 var _ tbpCluster = &tbpClusterV2{}
 
 func newTestClusterV2(server string, logger clusterLogFunc) *tbpClusterV2 {
 	tbpCluster := &tbpClusterV2{}
-	tbpCluster.cluster = initV2Cluster(server)
+	//tbpCluster.cluster = initV2Cluster(server)
 	tbpCluster.logger = logger
+	tbpCluster.server = server
 	return tbpCluster
 }
 
-// tbpCluster returns an authenticated gocb Cluster for the given server URL.
-func initV2Cluster(server string) *gocb.Cluster {
+// tbpCluster validates cluster connectivity
+func getCluster(server string) *gocb.Cluster {
 	spec := BucketSpec{
 		Server:        server,
 		TLSSkipVerify: true,
@@ -202,7 +204,11 @@ func initV2Cluster(server string) *gocb.Cluster {
 }
 
 func (c *tbpClusterV2) getBucketNames() ([]string, error) {
-	manager := c.cluster.Buckets()
+
+	cluster := getCluster(c.server)
+	defer cluster.Close(nil)
+
+	manager := cluster.Buckets()
 
 	bucketSettings, err := manager.GetAllBuckets(nil)
 	if err != nil {
@@ -219,6 +225,8 @@ func (c *tbpClusterV2) getBucketNames() ([]string, error) {
 
 func (c *tbpClusterV2) insertBucket(name string, quotaMB int) error {
 
+	cluster := getCluster(c.server)
+	defer cluster.Close(nil)
 	settings := gocb.CreateBucketSettings{
 		BucketSettings: gocb.BucketSettings{
 			Name:         name,
@@ -228,17 +236,23 @@ func (c *tbpClusterV2) insertBucket(name string, quotaMB int) error {
 			NumReplicas:  0,
 		},
 	}
-	return c.cluster.Buckets().CreateBucket(settings, nil)
+	return cluster.Buckets().CreateBucket(settings, nil)
 }
 
 func (c *tbpClusterV2) removeBucket(name string) error {
-	return c.cluster.Buckets().DropBucket(name, nil)
+	cluster := getCluster(c.server)
+	defer cluster.Close(nil)
+
+	return cluster.Buckets().DropBucket(name, nil)
 }
 
 // openTestBucket opens the bucket of the given name for the gocb cluster in the given TestBucketPool.
 func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilReadySeconds int) (Bucket, error) {
+
+	cluster := getCluster(c.server)
+
 	bucketSpec := getBucketSpec(testBucketName)
-	bucket := c.cluster.Bucket(bucketSpec.BucketName)
+	bucket := cluster.Bucket(bucketSpec.BucketName)
 	err := bucket.WaitUntilReady(time.Duration(waitUntilReadySeconds)*time.Second, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Error waiting for bucket to be ready: %w", err)
@@ -246,7 +260,7 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 
 	collection := &Collection{
 		Collection: bucket.DefaultCollection(),
-		cluster:    c.cluster,
+		cluster:    cluster,
 		viewOps:    make(chan struct{}, MaxConcurrentQueryOps),
 		Spec:       bucketSpec,
 	}
@@ -255,11 +269,14 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 }
 
 func (c *tbpClusterV2) close() error {
-	if c.cluster != nil {
-		if err := c.cluster.Close(nil); err != nil {
-			c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
-			return err
+	/*
+		if c.cluster != nil {
+			if err := c.cluster.Close(nil); err != nil {
+				c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
+				return err
+			}
 		}
-	}
+
+	*/
 	return nil
 }
