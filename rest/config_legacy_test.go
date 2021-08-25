@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -249,4 +250,21 @@ func TestLegacyConfigXattrsDefault(t *testing.T) {
 			assert.Equal(t, test.expectedXattrs, *dbc.EnableXattrs)
 		})
 	}
+}
+
+func TestSGReplicateValidation(t *testing.T) {
+	errText := "cannot use SG replicate as it has been removed. Please use Inter-Sync Gateway Replication instead"
+	configReader := strings.NewReader(`{
+			"replications": [
+				{
+					"source": "db",
+					"target": "db-copy"
+				}
+			]
+		}`)
+
+	config, err := readServerConfig(configReader)
+	assert.Nil(t, config)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), errText)
 }

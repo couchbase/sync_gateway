@@ -57,6 +57,7 @@ type LegacyServerConfig struct {
 	AdminInterfaceAuthentication              *bool                          `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication            *bool                          `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 	EnableAdminAuthenticationPermissionsCheck *bool                          `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the permissions check feature of admin auth"`
+	Replications                              interface{}                    `json:"replications,omitempty"` // Functionality removed. Used to log message to user to switch to ISGR
 }
 
 type FacebookConfigLegacy struct {
@@ -318,6 +319,15 @@ func LoadServerConfig(path string) (config *LegacyServerConfig, err error) {
 // readServerConfig returns a validated LegacyServerConfig from an io.Reader
 func readServerConfig(r io.Reader) (config *LegacyServerConfig, err error) {
 	err = decodeAndSanitiseConfig(r, &config)
+	if err != nil {
+		return nil, err
+	}
+
+	err = config.validate()
+	if err != nil {
+		return nil, err
+	}
+
 	return config, err
 }
 
@@ -380,6 +390,11 @@ func (config *LegacyServerConfig) validate() (errorMessages error) {
 				"unsupported.stats_log_freq_secs", 10))
 		}
 	}
+
+	if config.Replications != nil {
+		errorMessages = multierror.Append(errorMessages, fmt.Errorf("cannot use SG replicate as it has been removed. Please use Inter-Sync Gateway Replication instead"))
+	}
+
 	return errorMessages
 }
 
