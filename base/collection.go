@@ -131,7 +131,9 @@ func (c *Collection) UUID() (string, error) {
 
 func (c *Collection) Close() {
 	if c.cluster != nil {
-		c.cluster.Close(nil)
+		if err := c.cluster.Close(nil); err != nil {
+			Warnf("Error closing collection cluster: %v", err)
+		}
 	}
 	return
 }
