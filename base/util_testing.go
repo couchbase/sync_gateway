@@ -131,7 +131,6 @@ func GetTestBucketForDriver(t testing.TB, driver CouchbaseDriver) *TestBucket {
 	// If the spec being used by the test bucket pool matches the requested, use that
 	if spec.CouchbaseDriver == driver {
 		closeAll := func() {
-			bucket.Close()
 			closeFn()
 		}
 		return &TestBucket{
@@ -528,6 +527,7 @@ func ForAllDataStores(t *testing.T, testCallback func(*testing.T, sgbucket.DataS
 			driver: GoCBv2,
 		})
 	}
+
 	dataStores = append(dataStores, dataStore{
 		name:   "gocb.v1",
 		driver: GoCBCustomSGTranscoder,
