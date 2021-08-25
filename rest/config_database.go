@@ -39,10 +39,8 @@ func (dbc *DatabaseConfig) Redacted() (*DatabaseConfig, error) {
 	return &config, nil
 }
 
-func GenerateDatabaseConfigVersionID(previousRevID string, databaseConfig *DatabaseConfig) (string, error) {
-	databaseConfig.Version = ""
-
-	encodedBody, err := base.JSONMarshalCanonical(databaseConfig)
+func GenerateDatabaseConfigVersionID(previousRevID string, dbConfig *DbConfig) (string, error) {
+	encodedBody, err := base.JSONMarshalCanonical(dbConfig)
 	if err != nil {
 		return "", err
 	}

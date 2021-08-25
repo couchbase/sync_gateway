@@ -228,7 +228,7 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	for _, dbConfig := range dbConfigs {
 		dbc := dbConfig.ToDatabaseConfig()
 
-		dbc.Version, err = GenerateDatabaseConfigVersionID("", dbc)
+		dbc.Version, err = GenerateDatabaseConfigVersionID("", &dbc.DbConfig)
 		if err != nil {
 			return nil, false, err
 		}

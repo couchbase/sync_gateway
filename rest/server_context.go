@@ -239,6 +239,13 @@ func (sc *ServerContext) GetDatabase(name string) (*db.DatabaseContext, error) {
 	return nil, base.HTTPErrorf(http.StatusNotFound, "no such database %q", name)
 }
 
+func (sc *ServerContext) GetDbConfig(name string) *DbConfig {
+	if dbConfig := sc.GetDatabaseConfig(name); dbConfig != nil {
+		return &dbConfig.DbConfig
+	}
+	return nil
+}
+
 func (sc *ServerContext) GetDatabaseConfig(name string) *DatabaseConfig {
 	sc.lock.RLock()
 	config, ok := sc.dbConfigs[name]

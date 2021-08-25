@@ -668,10 +668,10 @@ func (h *handler) readJavascript() (string, error) {
 	return string(jsBytes), nil
 }
 
-// readSanitizeJSONInto reads and sanitizes a JSON request body and returns DatabaseConfig.
+// readSanitizeJSONInto reads and sanitizes a JSON request body and returns DbConfig.
 // Expands environment variables (if any) referenced in the config.
-func (h *handler) readSanitizeDbConfigJSON() (*DatabaseConfig, error) {
-	var config DatabaseConfig
+func (h *handler) readSanitizeDbConfigJSON() (*DbConfig, error) {
+	var config DbConfig
 	err := h.readSanitizeJSON(&config)
 	if err != nil {
 		if errors.Cause(base.WrapJSONUnknownFieldErr(err)) == base.ErrUnknownField {
