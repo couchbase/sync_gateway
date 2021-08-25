@@ -204,7 +204,7 @@ func getCluster(server string) *gocb.Cluster {
 func (c *tbpClusterV2) getBucketNames() ([]string, error) {
 
 	cluster := getCluster(c.server)
-	defer cluster.Close(nil)
+	defer c.closeCluster(cluster)
 
 	manager := cluster.Buckets()
 
@@ -224,7 +224,7 @@ func (c *tbpClusterV2) getBucketNames() ([]string, error) {
 func (c *tbpClusterV2) insertBucket(name string, quotaMB int) error {
 
 	cluster := getCluster(c.server)
-	defer cluster.Close(nil)
+	defer c.closeCluster(cluster)
 	settings := gocb.CreateBucketSettings{
 		BucketSettings: gocb.BucketSettings{
 			Name:         name,
@@ -239,7 +239,7 @@ func (c *tbpClusterV2) insertBucket(name string, quotaMB int) error {
 
 func (c *tbpClusterV2) removeBucket(name string) error {
 	cluster := getCluster(c.server)
-	defer cluster.Close(nil)
+	defer c.closeCluster(cluster)
 
 	return cluster.Buckets().DropBucket(name, nil)
 }
@@ -269,4 +269,10 @@ func (c *tbpClusterV2) openTestBucket(testBucketName tbpBucketName, waitUntilRea
 func (c *tbpClusterV2) close() error {
 	// no close operations needed
 	return nil
+}
+
+func (c *tbpClusterV2) closeCluster(cluster *gocb.Cluster) {
+	if err := cluster.Close(nil); err != nil {
+		c.logger(context.Background(), "Couldn't close cluster connection: %v", err)
+	}
 }
