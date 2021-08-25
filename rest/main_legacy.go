@@ -2,10 +2,16 @@ package rest
 
 import (
 	"flag"
+	"fmt"
+	"reflect"
 	"strings"
+
+	"github.com/hashicorp/go-multierror"
 
 	"github.com/couchbase/sync_gateway/base"
 )
+
+const flagDeprecated = `Flag "%s" is deprecated. Please use "%s" in future.`
 
 // legacyServerMain runs the pre-3.0 Sync Gateway server.
 func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
@@ -58,67 +64,67 @@ func legacyServerMain(osArgs []string, flagStartupConfig *StartupConfig) error {
 	return startServer(&sc, ctx)
 }
 
-func registerLegacyFlags(fs *flag.FlagSet) *StartupConfig {
-	publicInterface := fs.String("interface", DefaultPublicInterface, "Address to bind to")
-	adminInterface := fs.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")
-	profileInterface := fs.String("profileInterface", "", "Address to bind profile interface to")
-	pretty := fs.Bool("pretty", false, "Pretty-print JSON responses")
-	verbose := fs.Bool("verbose", false, "Log more info about requests")
+type legacyConfigFlag struct {
+	config         interface{}
+	supersededFlag string
+	flagValue      interface{}
+}
 
-	url := fs.String("url", "", "Address of Couchbase server")
-	certPath := fs.String("certpath", "", "Client certificate path")
-	keyPath := fs.String("keypath", "", "Client certificate key path")
-	caCertPath := fs.String("cacertpath", "", "Root CA certificate path")
+func registerLegacyFlags(config *StartupConfig, fs *flag.FlagSet) map[string]legacyConfigFlag {
+	return map[string]legacyConfigFlag{
+		"interface":        {&config.API.PublicInterface, "api.public_interface", fs.String("interface", DefaultPublicInterface, "Address to bind to")},
+		"adminInterface":   {&config.API.AdminInterface, "api.admin_interface", fs.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")},
+		"profileInterface": {&config.API.ProfileInterface, "api.profile_interface", fs.String("profileInterface", "", "Address to bind profile interface to")},
+		"pretty":           {&config.API.Pretty, "api.pretty", fs.Bool("pretty", false, "Pretty-print JSON responses")},
+		"verbose":          {&config.Logging.Console.LogLevel, "", fs.Bool("verbose", false, "Log more info about requests")},
+		"url":              {&config.Bootstrap.Server, "bootstrap.server", fs.String("url", "", "Address of Couchbase server")},
+		"certpath":         {&config.API.HTTPS.TLSCertPath, "api.https.tls_cert_path", fs.String("certpath", "", "Client certificate path")},
+		"keypath":          {&config.API.HTTPS.TLSKeyPath, "api.https.tls_key_path", fs.String("keypath", "", "Client certificate key path")},
+		"cacertpath":       {&config.Bootstrap.CACertPath, "bootstrap.ca_cert_path", fs.String("cacertpath", "", "Root CA certificate path")},
+		"log":              {&config.Logging.Console.LogKeys, "logging.console.log_keys", fs.String("log", "", "Log keys, comma separated")},
+		"logFilePath":      {&config.Logging.LogFilePath, "logging.log_file_path", fs.String("logFilePath", "", "Path to log files")},
 
-	log := fs.String("log", "", "Log keys, comma separated")
-	logFilePath := fs.String("logFilePath", "", "Path to log files")
+		// Removed options
+		"dbname":       {nil, "", fs.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")},
+		"configServer": {nil, "", fs.String("configServer", "", "URL of server that can return database configs")},
+		"deploymentID": {nil, "", fs.String("deploymentID", "", "Customer/project identifier for stats reporting")},
+	}
+}
 
-	sc := StartupConfig{
-		Bootstrap: BootstrapConfig{
-			Server:       *url,
-			CACertPath:   *caCertPath,
-			X509CertPath: *certPath,
-			X509KeyPath:  *keyPath,
-		},
-		API: APIConfig{
-			ProfileInterface: *profileInterface,
-		},
-		Logging: base.LoggingConfig{
-			LogFilePath: *logFilePath,
-			Console:     &base.ConsoleLoggerConfig{},
-		},
-	}
-
-	// Set if user modified default value
-	if *publicInterface != DefaultPublicInterface {
-		sc.API.PublicInterface = *publicInterface
-	}
-	if *adminInterface != DefaultAdminInterface {
-		sc.API.AdminInterface = *adminInterface
-	}
-	if !*pretty {
-		sc.API.Pretty = pretty
-	}
-	if *verbose {
-		sc.Logging.Console.LogLevel = base.LogLevelPtr(base.LevelInfo)
-	}
-	if *log != "" {
-		sc.Logging.Console.LogKeys = strings.Split(*log, ",")
-	}
-
-	// removed options
-	dbname := fs.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")
-	if *dbname != "" {
-		//
-	}
-	configServer := fs.String("configServer", "", "URL of server that can return database configs")
-	if *configServer != "" {
-		//
-	}
-	deploymentID := fs.String("deploymentID", "", "Customer/project identifier for stats reporting")
-	if *deploymentID != "" {
-		//
-	}
-
-	return &sc
+func fillConfigWithLegacyFlags(flags map[string]legacyConfigFlag, fs *flag.FlagSet, consoleLogLevelSet bool) (errorMessages error) {
+	fs.Visit(func(f *flag.Flag) {
+		cfgFlag, legacyFlag := flags[f.Name]
+		if !legacyFlag {
+			return
+		}
+		switch f.Name {
+		case "interface", "adminInterface", "profileInterface", "url", "certpath", "keypath", "cacertpath", "logFilePath":
+			*cfgFlag.config.(*string) = *cfgFlag.flagValue.(*string)
+			base.Warnf(flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+		case "pretty":
+			rCfg := reflect.ValueOf(cfgFlag.config).Elem()
+			rFlag := reflect.ValueOf(cfgFlag.flagValue)
+			rCfg.Set(rFlag)
+			base.Warnf(flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+		case "verbose":
+			if *cfgFlag.flagValue.(*bool) {
+				if consoleLogLevelSet {
+					base.Warnf(`Cannot use deprecated flag "-verbose" with flag "-logging.console.log_level". To set Sync Gateway to be verbose, please use flag "-logging.console.log_level info". Ignoring flag...`)
+				} else {
+					*cfgFlag.config.(**base.LogLevel) = base.LogLevelPtr(base.LevelInfo)
+					base.Warnf(flagDeprecated, "-"+f.Name, "-logging.console.log_level info")
+				}
+			}
+		case "log":
+			list := strings.Split(*cfgFlag.flagValue.(*string), ",")
+			*cfgFlag.config.(*[]string) = list
+			base.Warnf(flagDeprecated, "-"+f.Name, "-"+cfgFlag.supersededFlag)
+		case "configServer":
+			err := fmt.Errorf(`flag "-%s" is no longer supported and has been removed`, f.Name)
+			errorMessages = multierror.Append(errorMessages, err)
+		case "dbname", "deploymentID":
+			base.Warnf(`Flag "-%s" is no longer supported and has been removed.`, f.Name)
+		}
+	})
+	return errorMessages
 }
