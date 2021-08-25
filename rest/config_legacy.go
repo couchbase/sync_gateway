@@ -320,14 +320,10 @@ func LoadServerConfig(path string) (config *LegacyServerConfig, err error) {
 func readServerConfig(r io.Reader) (config *LegacyServerConfig, err error) {
 	err = decodeAndSanitiseConfig(r, &config)
 	if err != nil {
-		return nil, err
+		return config, err
 	}
 
 	err = config.validate()
-	if err != nil {
-		return nil, err
-	}
-
 	return config, err
 }
 

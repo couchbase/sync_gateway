@@ -263,8 +263,7 @@ func TestSGReplicateValidation(t *testing.T) {
 			]
 		}`)
 
-	config, err := readServerConfig(configReader)
-	assert.Nil(t, config)
+	_, err := readServerConfig(configReader)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), errText)
 }
