@@ -11,6 +11,7 @@ package rest
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1158,6 +1159,10 @@ func initClusterAgent(clusterAddress, clusterUser, clusterPass, certPath, keyPat
 	}
 
 	if err := <-agentReadyErr; err != nil {
+		if _, ok := err.(x509.UnknownAuthorityError); ok {
+			err = fmt.Errorf("%w - Provide a CA cert, or set tls_skip_verify to true in config", err)
+		}
+
 		return nil, err
 	}
 

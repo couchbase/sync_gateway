@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/couchbase/sync_gateway/base"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,6 +62,30 @@ func TestX509RoundtripUsingDomain(t *testing.T) {
 	// wait for doc to come back over DCP
 	err := rt.WaitForDoc(t.Name())
 	require.NoError(t, err, "error waiting for doc over DCP")
+}
+
+func TestX509UnknownAuthorityWrap(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	tb, teardownFn, _, _, _ := setupX509Tests(t, true)
+	defer tb.Close()
+	defer teardownFn()
+
+	tb.BucketSpec.CACertPath = ""
+
+	sc := DefaultStartupConfig("")
+
+	username, password, _ := tb.BucketSpec.Auth.GetCredentials()
+
+	sc.Bootstrap.Server = tb.BucketSpec.Server
+	sc.Bootstrap.Username = username
+	sc.Bootstrap.Password = password
+
+	_, err := initClusterAgent(sc.Bootstrap.Server, sc.Bootstrap.Username, sc.Bootstrap.Password,
+		sc.Bootstrap.X509CertPath, sc.Bootstrap.X509KeyPath, sc.Bootstrap.CACertPath, sc.Bootstrap.ServerTLSSkipVerify)
+	assert.Error(t, err)
+
+	assert.Contains(t, err.Error(), "Provide a CA cert, or set tls_skip_verify to true in config")
 }
 
 func setupX509Tests(t *testing.T, useIPAddress bool) (testBucket *base.TestBucket, teardownFunc func(), caCertPath string, certPath string, keyPath string) {
