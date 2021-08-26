@@ -57,6 +57,7 @@ type LegacyServerConfig struct {
 	AdminInterfaceAuthentication              *bool                          `json:"admin_interface_authentication,omitempty" help:"Whether the admin API requires authentication"`
 	MetricsInterfaceAuthentication            *bool                          `json:"metrics_interface_authentication,omitempty" help:"Whether the metrics API requires authentication"`
 	EnableAdminAuthenticationPermissionsCheck *bool                          `json:"enable_advanced_auth_dp,omitempty" help:"Whether to enable the permissions check feature of admin auth"`
+	Replications                              interface{}                    `json:"replications,omitempty"` // Functionality removed. Used to log message to user to switch to ISGR
 }
 
 type FacebookConfigLegacy struct {
@@ -304,20 +305,27 @@ func (clusterConfig *ClusterConfigLegacy) GetCredentials() (string, string, stri
 	return base.TransformBucketCredentials(clusterConfig.Username, clusterConfig.Password, *clusterConfig.Bucket)
 }
 
-// LoadServerConfig loads a LegacyServerConfig from either a JSON file or from a URL
-func LoadServerConfig(path string) (config *LegacyServerConfig, err error) {
+// LoadLegacyServerConfig loads a LegacyServerConfig from either a JSON file or from a URL
+func LoadLegacyServerConfig(path string) (config *LegacyServerConfig, err error) {
 	rc, err := readFromPath(path, false)
 	if err != nil {
 		return nil, err
 	}
 
 	defer func() { _ = rc.Close() }()
-	return readServerConfig(rc)
+	return readLegacyServerConfig(rc)
 }
 
-// readServerConfig returns a validated LegacyServerConfig from an io.Reader
-func readServerConfig(r io.Reader) (config *LegacyServerConfig, err error) {
+// readLegacyServerConfig returns a validated LegacyServerConfig from an io.Reader
+func readLegacyServerConfig(r io.Reader) (config *LegacyServerConfig, err error) {
 	err = decodeAndSanitiseConfig(r, &config)
+	if err != nil {
+		return config, err
+	}
+
+	if config.Replications != nil {
+		return config, fmt.Errorf("cannot use SG replicate as it has been removed. Please use Inter-Sync Gateway Replication instead")
+	}
 	return config, err
 }
 
@@ -380,6 +388,7 @@ func (config *LegacyServerConfig) validate() (errorMessages error) {
 				"unsupported.stats_log_freq_secs", 10))
 		}
 	}
+
 	return errorMessages
 }
 
@@ -483,7 +492,7 @@ func ParseCommandLine(args []string, handling flag.ErrorHandling) (*LegacyServer
 	if flagSet.NArg() > 0 {
 		// Read the configuration file(s), if any:
 		for _, filename := range flagSet.Args() {
-			newConfig, newConfigErr := LoadServerConfig(filename)
+			newConfig, newConfigErr := LoadLegacyServerConfig(filename)
 
 			if pkgerrors.Cause(newConfigErr) == base.ErrUnknownField {
 				// Delay returning this error so we can continue with other setup

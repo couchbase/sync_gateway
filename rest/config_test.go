@@ -82,7 +82,7 @@ func TestReadServerConfig(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(tt *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			_, err := readServerConfig(buf)
+			_, err := readLegacyServerConfig(buf)
 
 			// stdlib/CE specific error checking
 			expectedErr := test.errStdlib
@@ -128,7 +128,7 @@ func TestConfigValidation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			config, err := readServerConfig(buf)
+			config, err := readLegacyServerConfig(buf)
 			assert.NoError(t, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
@@ -148,7 +148,7 @@ func TestConfigValidationDeltaSync(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"delta_sync": {"enabled": true}}}}`
 
 	buf := bytes.NewBufferString(jsonConfig)
-	config, err := readServerConfig(buf)
+	config, err := readLegacyServerConfig(buf)
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
@@ -169,7 +169,7 @@ func TestConfigValidationCache(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"cache": {"rev_cache": {"size": 0}, "channel_cache": {"max_number": 100, "compact_high_watermark_pct": 95, "compact_low_watermark_pct": 25}}}}}`
 
 	buf := bytes.NewBufferString(jsonConfig)
-	config, err := readServerConfig(buf)
+	config, err := readLegacyServerConfig(buf)
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
@@ -217,7 +217,7 @@ func TestConfigValidationImport(t *testing.T) {
 	jsonConfig := `{"databases": {"db": {"enable_shared_bucket_access":true, "import_docs": true, "import_partitions": 32}}}`
 
 	buf := bytes.NewBufferString(jsonConfig)
-	config, err := readServerConfig(buf)
+	config, err := readLegacyServerConfig(buf)
 	assert.NoError(t, err)
 
 	errorMessages := config.setupAndValidateDatabases()
@@ -282,7 +282,7 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			buf := bytes.NewBufferString(test.config)
-			config, err := readServerConfig(buf)
+			config, err := readLegacyServerConfig(buf)
 			assert.NoError(t, err)
 			errorMessages := config.setupAndValidateDatabases()
 			if test.err != "" {
@@ -298,7 +298,7 @@ func TestConfigValidationImportPartitions(t *testing.T) {
 	}
 }
 
-// TestLoadServerConfigExamples will run LoadServerConfig for configs found under the legacy examples directory.
+// TestLoadServerConfigExamples will run LoadLegacyServerConfig for configs found under the legacy examples directory.
 func TestLoadServerConfigExamples(t *testing.T) {
 	const exampleLogDirectory = "../examples/legacy_config"
 	const configSuffix = ".json"
@@ -319,7 +319,7 @@ func TestLoadServerConfigExamples(t *testing.T) {
 		}
 
 		t.Run(configPath, func(tt *testing.T) {
-			_, err := LoadServerConfig(configPath)
+			_, err := LoadLegacyServerConfig(configPath)
 			assert.NoError(tt, err, "unexpected error validating example config")
 		})
 
