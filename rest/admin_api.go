@@ -189,11 +189,10 @@ func (h *handler) handleGetDbConfig() error {
 	if !includeJavascript {
 		responseConfig.Sync = nil
 		responseConfig.ImportFilter = nil
-		for _, evt := range responseConfig.EventHandlers.DBStateChanged {
-			evt.Filter = ""
-		}
-		for _, evt := range responseConfig.EventHandlers.DBStateChanged {
-			evt.Filter = ""
+		if responseConfig.EventHandlers != nil && responseConfig.EventHandlers.DBStateChanged != nil {
+			for _, evt := range responseConfig.EventHandlers.DBStateChanged {
+				evt.Filter = ""
+			}
 		}
 	}
 
