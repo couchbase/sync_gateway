@@ -72,22 +72,22 @@ type legacyConfigFlag struct {
 
 func registerLegacyFlags(config *StartupConfig, fs *flag.FlagSet) map[string]legacyConfigFlag {
 	return map[string]legacyConfigFlag{
-		"interface":        {&config.API.PublicInterface, "api.public_interface", fs.String("interface", DefaultPublicInterface, "Address to bind to")},
-		"adminInterface":   {&config.API.AdminInterface, "api.admin_interface", fs.String("adminInterface", DefaultAdminInterface, "Address to bind admin interface to")},
-		"profileInterface": {&config.API.ProfileInterface, "api.profile_interface", fs.String("profileInterface", "", "Address to bind profile interface to")},
-		"pretty":           {&config.API.Pretty, "api.pretty", fs.Bool("pretty", false, "Pretty-print JSON responses")},
-		"verbose":          {&config.Logging.Console.LogLevel, "", fs.Bool("verbose", false, "Log more info about requests")},
-		"url":              {&config.Bootstrap.Server, "bootstrap.server", fs.String("url", "", "Address of Couchbase server")},
-		"certpath":         {&config.API.HTTPS.TLSCertPath, "api.https.tls_cert_path", fs.String("certpath", "", "Client certificate path")},
-		"keypath":          {&config.API.HTTPS.TLSKeyPath, "api.https.tls_key_path", fs.String("keypath", "", "Client certificate key path")},
-		"cacertpath":       {&config.Bootstrap.CACertPath, "bootstrap.ca_cert_path", fs.String("cacertpath", "", "Root CA certificate path")},
-		"log":              {&config.Logging.Console.LogKeys, "logging.console.log_keys", fs.String("log", "", "Log keys, comma separated")},
-		"logFilePath":      {&config.Logging.LogFilePath, "logging.log_file_path", fs.String("logFilePath", "", "Path to log files")},
+		"interface":        {&config.API.PublicInterface, "api.public_interface", fs.String("interface", DefaultPublicInterface, "DEPRECATED: Address to bind to")},
+		"adminInterface":   {&config.API.AdminInterface, "api.admin_interface", fs.String("adminInterface", DefaultAdminInterface, "DEPRECATED: Address to bind admin interface to")},
+		"profileInterface": {&config.API.ProfileInterface, "api.profile_interface", fs.String("profileInterface", "", "DEPRECATED: Address to bind profile interface to")},
+		"pretty":           {&config.API.Pretty, "api.pretty", fs.Bool("pretty", false, "DEPRECATED: Pretty-print JSON responses")},
+		"verbose":          {&config.Logging.Console.LogLevel, "", fs.Bool("verbose", false, "DEPRECATED: Log more info about requests")},
+		"url":              {&config.Bootstrap.Server, "bootstrap.server", fs.String("url", "", "DEPRECATED: Address of Couchbase server")},
+		"certpath":         {&config.API.HTTPS.TLSCertPath, "api.https.tls_cert_path", fs.String("certpath", "", "DEPRECATED: Client certificate path")},
+		"keypath":          {&config.API.HTTPS.TLSKeyPath, "api.https.tls_key_path", fs.String("keypath", "", "DEPRECATED: Client certificate key path")},
+		"cacertpath":       {&config.Bootstrap.CACertPath, "bootstrap.ca_cert_path", fs.String("cacertpath", "", "DEPRECATED: Root CA certificate path")},
+		"log":              {&config.Logging.Console.LogKeys, "logging.console.log_keys", fs.String("log", "", "DEPRECATED: Log keys, comma separated")},
+		"logFilePath":      {&config.Logging.LogFilePath, "logging.log_file_path", fs.String("logFilePath", "", "DEPRECATED: Path to log files")},
 
 		// Removed options
-		"dbname":       {nil, "", fs.String("dbname", "", "Name of Couchbase Server database (defaults to name of bucket)")},
-		"configServer": {nil, "", fs.String("configServer", "", "URL of server that can return database configs")},
-		"deploymentID": {nil, "", fs.String("deploymentID", "", "Customer/project identifier for stats reporting")},
+		"dbname":       {nil, "", fs.String("dbname", "", "REMOVED: Name of Couchbase Server database (defaults to name of bucket)")},
+		"configServer": {nil, "", fs.String("configServer", "", "REMOVED: URL of server that can return database configs")},
+		"deploymentID": {nil, "", fs.String("deploymentID", "", "REMOVED: Customer/project identifier for stats reporting")},
 	}
 }
 
