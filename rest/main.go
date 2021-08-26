@@ -193,7 +193,7 @@ func getInitialStartupConfig(fileStartupConfig *StartupConfig, flagStartupConfig
 // update it to a 3.x config
 // Returns the new startup config, a bool of whether to fallback to legacy config and an error
 func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersistentConfig bool, err error) {
-	legacyServerConfig, err := LoadServerConfig(configPath)
+	legacyServerConfig, err := LoadLegacyServerConfig(configPath)
 	if err != nil {
 		return nil, false, err
 	}

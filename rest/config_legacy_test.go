@@ -263,7 +263,7 @@ func TestSGReplicateValidation(t *testing.T) {
 			]
 		}`)
 
-	_, err := readServerConfig(configReader)
+	_, err := readLegacyServerConfig(configReader)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), errText)
 }
