@@ -440,7 +440,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact):
                                  log_file="sync_gateway.log",
                                  content_postprocessors=server_config_postprocessors)
     collect_config_tasks.append(runtime_config_task)
-
+# Get persisted dbconfigs
     dbs = get_db_list(sg_url)
     for db in dbs:
         db_config_url = "{0}/{1}/_config".format(sg_url, db)
