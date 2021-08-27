@@ -103,11 +103,12 @@ type DatabaseContext struct {
 	AccessLock         sync.RWMutex            // Allows DB offline to block until synchronous calls have completed
 	State              uint32                  // The runtime state of the DB from a service perspective
 	ResyncManager      ResyncManager
-	ExitChanges        chan struct{}            // Active _changes feeds on the DB will close when this channel is closed
-	OIDCProviders      auth.OIDCProviderMap     // OIDC clients
-	PurgeInterval      time.Duration            // Metadata purge interval
-	serverUUID         string                   // UUID of the server, if available
-	DbStats            *base.DbStats            // stats that correspond to this database context
+	ExitChanges        chan struct{}        // Active _changes feeds on the DB will close when this channel is closed
+	OIDCProviders      auth.OIDCProviderMap // OIDC clients
+	PurgeInterval      time.Duration        // Metadata purge interval
+	serverUUID         string               // UUID of the server, if available
+	DbStats            *base.DbStats        // stats that correspond to this database context
+	Compactor          DatabaseCompactor
 	CompactState       uint32                   // Status of database compaction
 	terminator         chan bool                // Signal termination of background goroutines
 	backgroundTasks    []BackgroundTask         // List of background tasks that are initiated.
@@ -502,7 +503,7 @@ func NewDatabaseContext(dbName string, bucket base.Bucket, autoImport bool, opti
 			if autoImport {
 				db := Database{DatabaseContext: dbContext}
 				bgt, err := NewBackgroundTask("Compact", dbContext.Name, func(ctx context.Context) error {
-					_, err := db.Compact()
+					_, err := db.Compact(false)
 					if err != nil {
 						base.WarnfCtx(ctx, "Error trying to compact tombstoned documents for %q with error: %v", dbContext.Name, err)
 					}
@@ -991,8 +992,8 @@ func (db *DatabaseContext) DeleteUserSessions(userName string) error {
 // When compact is run, Sync Gateway initiates a normal delete operation for the document and xattr (a Sync Gateway purge).  This triggers
 // removal of the document from the index.  In the event that the document has already been purged by server, we need to recreate and delete
 // the document to accomplish the same result.
-func (db *Database) Compact() (int, error) {
-	if !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
+func (db *Database) Compact(skipRunningStateCheck bool) (int, error) {
+	if !skipRunningStateCheck && !atomic.CompareAndSwapUint32(&db.CompactState, DBCompactNotRunning, DBCompactRunning) {
 		return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Compaction already running")
 	}
 
@@ -1003,11 +1004,18 @@ func (db *Database) Compact() (int, error) {
 		return 0, nil
 	}
 
+	// Reset these values now that a new run has begun
+	db.Compactor.ResetTombstoneCompactStatus()
+	db.Compactor.RecordTombstoneCompactStartTime()
+
 	// Trigger view compaction for all tombstoned documents older than the purge interval
 	startTime := time.Now()
 	purgeOlderThan := startTime.Add(-db.PurgeInterval)
-
 	purgedDocCount := 0
+
+	defer func() {
+		db.Compactor.SetTombstonesCompacted(purgedDocCount)
+	}()
 
 	ctx := db.Ctx
 
@@ -1022,6 +1030,15 @@ func (db *Database) Compact() (int, error) {
 		var tombstonesRow QueryIdRow
 		var resultCount int
 		for results.Next(&tombstonesRow) {
+			// time.Sleep(1 * time.Second)
+			if db.Compactor.ShouldStopTombstoneCompact() {
+				base.Infof(base.KeyAll, "Compaction was stopped before the operation could be completed. Total Tombstones Compacted: %d", purgedDocCount)
+				closeErr := results.Close()
+				if closeErr != nil {
+					return 0, closeErr
+				}
+				return purgedDocCount, nil
+			}
 			resultCount++
 			base.DebugfCtx(ctx, base.KeyCRUD, "\tDeleting %q", tombstonesRow.Id)
 			// First, attempt to purge.
@@ -1046,6 +1063,7 @@ func (db *Database) Compact() (int, error) {
 			} else {
 				base.WarnfCtx(ctx, "Error compacting key %s (purge) - tombstone will not be compacted.  %v", base.UD(tombstonesRow.Id), purgeErr)
 			}
+			db.Compactor.SetTombstonesCompacted(len(purgedDocs))
 		}
 
 		// Now purge them from all channel caches
@@ -1065,6 +1083,11 @@ func (db *Database) Compact() (int, error) {
 	base.InfofCtx(ctx, base.KeyAll, "Finished compaction of purged tombstones for %s... Total Tombstones Compacted: %d", base.MD(db.Name), purgedDocCount)
 
 	return purgedDocCount, nil
+}
+
+func (db *Database) CompactAttachments() (int, error) {
+	// TODO: Implement compaction of obsolete legacy attachments.
+	return 0, base.HTTPErrorf(http.StatusServiceUnavailable, "Not implemented")
 }
 
 //////// SYNC FUNCTION:

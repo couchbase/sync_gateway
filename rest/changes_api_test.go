@@ -3888,7 +3888,19 @@ func TestTombstoneCompaction(t *testing.T) {
 			assert.Equal(t, 200, response.Code)
 		}
 
-		rt.SendAdminRequest("POST", "/db/_compact", "")
+		// Trigger compaction.
+		response := rt.SendAdminRequest(http.MethodPost, "/db/_compact?type=tombstone&action=start", "")
+		assertStatus(t, response, http.StatusOK)
+
+		// Wait for compaction to complete.
+		err := rt.WaitForCondition(func() bool {
+			response := rt.SendAdminRequest(http.MethodGet, "/db/_compact?type=tombstone", "")
+			var status db.TombstoneCompactStatus
+			err := json.Unmarshal(response.BodyBytes(), &status)
+			require.NoError(t, err)
+			return status.Status == db.CompactStateStopped
+		})
+		require.NoError(t, err)
 
 		compactionTotal += numDocs
 		assert.Equal(t, compactionTotal, int(rt.GetDatabase().DbStats.Database().NumTombstonesCompacted.Value()))

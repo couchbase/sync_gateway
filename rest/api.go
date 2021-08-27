@@ -71,12 +71,85 @@ func (h *handler) handleAllDbs() error {
 }
 
 func (h *handler) handleCompact() error {
-	revsDeleted, err := h.db.Compact()
+	revsDeleted, err := h.db.Compact(true)
 	if err != nil {
 		return err
 	}
 
 	h.writeRawJSON([]byte(`{"revs":` + strconv.Itoa(revsDeleted) + `}`))
+	return nil
+}
+
+var (
+	ErrInvalidCompactType   = base.HTTPErrorf(http.StatusBadRequest, "An illegal value was found for 'type' parameter. It must either be attachment, or tombstone")
+	ErrInvalidCompactAction = base.HTTPErrorf(http.StatusBadRequest, "An illegal value was found for 'action' parameter. It must either be start, or stop")
+)
+
+func (h *handler) handleGetCompact() error {
+	compactType := h.getQuery("type")
+	if compactType != db.CompactTypeAttachment && compactType != db.CompactTypeTombstone {
+		return ErrInvalidCompactType
+	}
+	h.writeJSON(h.db.Compactor.GetStatus(compactType))
+	return nil
+}
+
+func (h *handler) handlePostCompact() error {
+	compactType := h.getQuery("type")
+	if compactType != db.CompactTypeAttachment && compactType != db.CompactTypeTombstone {
+		return ErrInvalidCompactType
+	}
+
+	action := h.getQuery("action")
+	if action != "" && action != db.CompactActionStart && action != db.CompactActionStop {
+		return ErrInvalidCompactAction
+	}
+
+	if action == "" {
+		action = db.CompactActionStart
+	}
+
+	if compactType == db.CompactTypeTombstone && action == db.CompactActionStart {
+		if atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactNotRunning, db.DBCompactRunning) {
+			h.db.Compactor.SetTombstoneCompactStatus(db.CompactStateRunning)
+			h.writeJSON(h.db.Compactor.GetStatus(compactType))
+			go func() {
+				defer atomic.CompareAndSwapUint32(&h.db.CompactState, db.DBCompactRunning, db.DBCompactNotRunning)
+				defer h.db.Compactor.SetTombstoneCompactStatus(db.CompactStateStopped)
+				_, err := h.db.Compact(true)
+				if err != nil {
+					base.Errorf("Error running compact operation: %v", err)
+					h.db.Compactor.SetTombstoneCompactError(err)
+				}
+			}()
+		} else {
+			compactState := atomic.LoadUint32(&h.db.CompactState)
+			if compactState == db.DBCompactRunning {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Database compact is already in progress")
+			}
+
+			if compactState != db.DBCompactNotRunning {
+				return base.HTTPErrorf(http.StatusServiceUnavailable, "Running database compaction must be stopped")
+			}
+		}
+
+	} else if compactType == db.CompactTypeTombstone && action == db.CompactActionStop {
+		compactState := atomic.LoadUint32(&h.db.CompactState)
+		if compactState != db.DBCompactRunning {
+			return base.HTTPErrorf(http.StatusBadRequest, "Database compaction is not running")
+		}
+
+		status := h.db.Compactor.StopTombstoneCompact()
+		h.writeJSON(status)
+
+	} else if compactType == db.CompactTypeAttachment && action == db.CompactActionStart {
+		// TODO: implement starting attachment compaction
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Attachment compaction is not yet implemented")
+	} else if compactType == db.CompactTypeAttachment && action == db.CompactActionStop {
+		// TODO: implement stopping attachment compaction
+		return base.HTTPErrorf(http.StatusServiceUnavailable, "Attachment compaction is not yet implemented")
+	}
+
 	return nil
 }
 

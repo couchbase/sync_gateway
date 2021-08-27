@@ -9090,3 +9090,116 @@ func TestBasicAttachmentRemoval(t *testing.T) {
 		rt.purgeDoc(attKey)
 	})
 }
+
+func TestTombstonesCompaction(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Walrus does not support Xattrs")
+	}
+
+	if !base.TestUseXattrs() {
+		t.Skip("Compact is no-op when running without xattrs")
+	}
+
+	rt := NewRestTester(t, nil)
+	rt.GetDatabase().PurgeInterval = 0
+	defer rt.Close()
+
+	createTombstonesForCompaction := func(numDocs int) {
+		for count := 0; count < numDocs; count++ {
+			response := rt.SendAdminRequest(http.MethodPost, "/db/", `{"foo":"bar"}`)
+			require.Equal(t, http.StatusOK, response.Code)
+
+			var body db.Body
+			err := base.JSONUnmarshal(response.Body.Bytes(), &body)
+			require.NoError(t, err)
+			revId := body["rev"].(string)
+			docId := body["id"].(string)
+
+			response = rt.SendAdminRequest(http.MethodDelete, fmt.Sprintf("/db/%s?rev=%s", docId, revId), "")
+			require.Equal(t, http.StatusOK, response.Code)
+		}
+	}
+
+	// Wait for compaction to complete.
+	waitForTombstonesCompaction := func() {
+		err := rt.WaitForCondition(func() bool {
+			response := rt.SendAdminRequest(http.MethodGet, "/db/_compact?type=tombstone", "")
+			var status db.TombstoneCompactStatus
+			err := json.Unmarshal(response.BodyBytes(), &status)
+			require.NoError(t, err)
+			return status.Status == db.CompactStateStopped
+		})
+		require.NoError(t, err)
+	}
+
+	tests := []struct {
+		name            string
+		inputCompactURL string
+	}{
+		{
+			name:            "start tombstone compaction via implicit start action",
+			inputCompactURL: "/db/_compact?type=tombstone",
+		},
+		{
+			name:            "start tombstone compaction via explicit start action",
+			inputCompactURL: "/db/_compact?type=tombstone&action=start",
+		},
+		{
+			name:            "start tombstone compaction via explicit empty action",
+			inputCompactURL: "/db/_compact?type=tombstone&action=",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			createTombstonesForCompaction(2)
+			startTime := time.Now()
+			response := rt.SendAdminRequest(http.MethodPost, tc.inputCompactURL, "")
+			assertStatus(t, response, http.StatusOK)
+			waitForTombstonesCompaction()
+			stopTime := time.Now()
+
+			response = rt.SendAdminRequest(http.MethodGet, "/db/_compact?type=tombstone", "")
+			assertStatus(t, response, http.StatusOK)
+			var status db.TombstoneCompactStatus
+			err := json.Unmarshal(response.BodyBytes(), &status)
+			require.NoError(t, err)
+			assert.Equal(t, db.CompactTypeTombstone, status.Type)
+			assert.Equal(t, 2, status.TombstonesCompacted)
+			assert.Empty(t, status.Error)
+			assert.NotNil(t, status.StartTime)
+			assert.True(t, status.Duration <= stopTime.Sub(startTime))
+		})
+	}
+
+	tests = []struct {
+		name            string
+		inputCompactURL string
+	}{
+		{
+			name:            "start compaction without type",
+			inputCompactURL: "/db/_compact",
+		},
+		{
+			name:            "start tombstone compaction with unknown type",
+			inputCompactURL: "/db/_compact?type=unknown&action=start",
+		},
+		{
+			name:            "start tombstone compaction with empty type",
+			inputCompactURL: "/db/_compact?type=&action=start",
+		},
+		{
+			name:            "start tombstone compaction via unknown action",
+			inputCompactURL: "/db/_compact?type=tombstone&action=unknown",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			response := rt.SendAdminRequest(http.MethodPost, tc.inputCompactURL, "")
+			assertStatus(t, response, http.StatusBadRequest)
+		})
+	}
+}
