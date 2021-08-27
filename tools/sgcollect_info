@@ -423,7 +423,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact):
 
     # Get server config
     server_config_url = "{0}/_config".format(sg_url)
-    config_task = make_curl_task(name="Running server config",
+    config_task = make_curl_task(name="Collect server config",
                                  user="",
                                  password="",
                                  url=server_config_url,
@@ -431,6 +431,28 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, should_redact):
                                  content_postprocessors=server_config_postprocessors)
     collect_config_tasks.append(config_task)
 
+    # Get server config with runtime defaults and runtime dbconfigs
+    server_runtime_config_url = "{0}/_config?include_runtime=true".format(sg_url)
+    runtime_config_task = make_curl_task(name="Collect runtime config",
+                                 user="",
+                                 password="",
+                                 url=server_runtime_config_url,
+                                 log_file="sync_gateway.log",
+                                 content_postprocessors=server_config_postprocessors)
+    collect_config_tasks.append(runtime_config_task)
+    
+    # Get persisted dbconfigs
+    dbs = get_db_list(sg_url)
+    for db in dbs:
+        db_config_url = "{0}/{1}/_config".format(sg_url, db)
+        db_config_task = make_curl_task(name="Collect {0} database config".format(db),
+                                 user="",
+                                 password="",
+                                 url=db_config_url,
+                                 log_file="sync_gateway.log",
+                                 content_postprocessors=db_config_postprocessors)
+        collect_config_tasks.append(db_config_task)
+    
     return collect_config_tasks
 
 
