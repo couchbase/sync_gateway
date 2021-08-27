@@ -199,6 +199,13 @@ func (h *handler) handleGetDbConfig() error {
 		}
 	}
 
+	// Strip out credentials that are stamped into the config
+	responseConfig.Username = ""
+	responseConfig.Password = ""
+	responseConfig.CACertPath = ""
+	responseConfig.KeyPath = ""
+	responseConfig.CertPath = ""
+
 	h.writeJSON(responseConfig)
 	return nil
 }

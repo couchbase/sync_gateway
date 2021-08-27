@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -2614,7 +2615,7 @@ func TestConfigRedaction(t *testing.T) {
 	err := json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, "xxxxx", unmarshaledConfig.Password)
+	assert.Equal(t, "", unmarshaledConfig.Password)
 	assert.Equal(t, "xxxxx", *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default db config redaction when redaction disabled
@@ -2622,7 +2623,7 @@ func TestConfigRedaction(t *testing.T) {
 	err = json.Unmarshal(response.BodyBytes(), &unmarshaledConfig)
 	require.NoError(t, err)
 
-	assert.Equal(t, base.TestClusterPassword(), unmarshaledConfig.Password)
+	assert.Equal(t, "", unmarshaledConfig.Password)
 	assert.Equal(t, "password", *unmarshaledConfig.Users["alice"].Password)
 
 	// Test default server config redaction
@@ -3421,4 +3422,66 @@ func TestPersistentConfigConcurrency(t *testing.T) {
 
 	resp = bootstrapAdminRequestWithHeaders(t, "PUT", "/db/_config", "{}", map[string]string{"If-Match": "x"})
 	assert.Equal(t, http.StatusPreconditionFailed, resp.StatusCode)
+}
+
+func TestDbConfigDoesNotIncludeCredentials(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("This test only works against Couchbase Server")
+	}
+
+	defer base.SetUpTestLogging(base.LevelInfo, base.KeyHTTP)()
+
+	// Start SG with no databases in bucket(s)
+	config := bootstrapStartupConfigForTest(t)
+	sc, err := setupServerContext(&config, true)
+	require.NoError(t, err)
+	serverErr := make(chan error, 0)
+	go func() {
+		serverErr <- startServer(&config, sc)
+	}()
+	require.NoError(t, sc.waitForRESTAPIs(time.Second*5))
+
+	// Get a test bucket, and use it to create the database.
+	tb := base.GetTestBucket(t)
+	defer func() {
+		fmt.Println("closing test bucket")
+		tb.Close()
+	}()
+	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/",
+		`{"bucket": "`+tb.GetName()+`", "num_index_replicas": 0}`,
+	)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	var dbConfig DatabaseConfig
+
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
+
+	err = base.JSONUnmarshal(body, &dbConfig)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "", dbConfig.Username)
+	assert.Equal(t, "", dbConfig.Password)
+	assert.Equal(t, "", dbConfig.CACertPath)
+	assert.Equal(t, "", dbConfig.CertPath)
+	assert.Equal(t, "", dbConfig.KeyPath)
+
+	resp = bootstrapAdminRequest(t, "GET", "/db/_config?redact=false&include_runtime=true", "")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err = ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+	assert.NoError(t, resp.Body.Close())
+
+	err = base.JSONUnmarshal(body, &dbConfig)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "", dbConfig.Username)
+	assert.Equal(t, "", dbConfig.Password)
+	assert.Equal(t, "", dbConfig.CACertPath)
+	assert.Equal(t, "", dbConfig.CertPath)
+	assert.Equal(t, "", dbConfig.KeyPath)
+
 }
