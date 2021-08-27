@@ -246,9 +246,12 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	}
 
 	// Attempt to backup current config
+	// If we are able to write the config continue with the upgrade process writing
+	// Otherwise continue with startup but don't attempt to write migrated config and log warning
 	backupLocation, err := backupCurrentConfigFile(configPath)
 	if err != nil {
-		return nil, false, err
+		base.Warnf("Unable to write config file backup: %v. Won't write backup or updated config but will continue with startup.", err)
+		return startupConfig, false, nil
 	}
 
 	base.Infof(base.KeyAll, "Current config backed up to %s", base.MD(backupLocation))
@@ -259,13 +262,16 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 		return nil, false, err
 	}
 
+	// Attempt to write over the old config with the new migrated config
+	// If we are able to write the config log success and continue
+	// Otherwise continue with startup but log warning
 	err = ioutil.WriteFile(configPath, jsonStartupConfig, 0644)
 	if err != nil {
-		return nil, false, err
+		base.Warnf("Unable to write updated config file: %v -  but will continue with startup.", err)
+		return startupConfig, false, nil
 	}
 
 	base.Infof(base.KeyAll, "Current config file overwritten by upgraded config at %s", base.MD(configPath))
-
 	return startupConfig, false, nil
 }
 
