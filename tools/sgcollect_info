@@ -457,7 +457,7 @@ def make_config_tasks(zip_dir, sg_config_path, sg_url, sg_username, sg_password,
     collect_config_tasks.append(runtime_config_task)
     
     # Get persisted dbconfigs
-    dbs = get_db_list(sg_url)
+    dbs = get_db_list(sg_url, sg_username, sg_password)
     for db in dbs:
         db_config_url = "{0}/{1}/_config".format(sg_url, db)
         db_config_task = make_curl_task(name="Collect {0} database config".format(db),
