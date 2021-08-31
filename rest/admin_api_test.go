@@ -3595,3 +3595,26 @@ func TestPutDbConfigChangeName(t *testing.T) {
 	resp = bootstrapAdminRequest(t, http.MethodPut, "/db/_config", `{"name": "test"}`)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
+
+func TestNotExistentDBRequest(t *testing.T) {
+	if base.UnitTestUrlIsWalrus() {
+		t.Skip("Test requires Couchbase Server")
+	}
+
+	rt := NewRestTester(t, &RestTesterConfig{adminInterfaceAuthentication: true})
+	defer rt.Close()
+
+	eps, _, err := rt.ServerContext().ObtainManagementEndpointsAndHTTPClient()
+	require.NoError(t, err)
+
+	MakeUser(t, eps[0], "random", "password", nil)
+	defer DeleteUser(t, eps[0], "random")
+
+	// Request to non-existent db with valid credentials
+	resp := rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "password")
+	assertStatus(t, resp, http.StatusForbidden)
+
+	// Request to non-existent db with invalid credentials
+	resp = rt.SendAdminRequestWithAuth("PUT", "/dbx/_config", "", "random", "passwordx")
+	assertStatus(t, resp, http.StatusUnauthorized)
+}
