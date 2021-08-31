@@ -625,6 +625,11 @@ def main():
         sg_url_http = "http://" + root_url
         print("Trying Sync Gateway URL: {0}".format(sg_url_http))
 
+        # Set sg_url to sg_url_http at this point
+        # If we're unable to determine which URL to use this is our best
+        # attempt. Avoids having this is 'None' later
+        sg_url = sg_url_http
+
         try:
             response = urllib.request.urlopen(sg_url_http)
             json.load(response)
@@ -641,8 +646,6 @@ def main():
                       "Will attempt to continue anyway.".format(e))
             else:
                 sg_url = sg_url_https
-        else:
-            sg_url = sg_url_http
 
     # Build path to zip directory, make sure it exists
     zip_filename = args[0]
