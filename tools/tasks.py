@@ -457,10 +457,14 @@ def make_curl_task(name, url, user="", password="", content_postprocessors=[],
     """
     def python_curl_task():
         r = urllib.request.Request(url=url)
-        if len(user) > 0:
-            base64string = base64.encodestring('%s:%s' % (user, password)).replace('\n', '')
-            r.add_header("Authorization", "Basic %s" % base64string)
-        response_file_handle = urllib.request.urlopen(r, timeout=timeout)
+        if user and len(user) > 0:
+            base64string = base64.b64encode(bytes('%s:%s' % (user, password),'utf-8'))
+            r.add_header("Authorization", "Basic %s" % base64string.decode('utf-8'))
+        try:
+            response_file_handle = urllib.request.urlopen(r, timeout=timeout)
+        except urllib.error.URLError as e:
+            print("WARNING: Error connecting to url {0}: {1}".format(url, e))
+
         response_string = response_file_handle.read()
         for content_postprocessor in content_postprocessors:
             response_string = content_postprocessor(response_string)
