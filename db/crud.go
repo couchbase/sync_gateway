@@ -1339,7 +1339,7 @@ func (doc *Document) updateWinningRevAndSetDocFlags() {
 	}
 }
 
-func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCurrentRev string, newRevID string, newDoc *Document) {
+func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCurrentRev string, newRevID string, newDoc *Document, newDocIncludeV2Att bool) {
 	if doc.HasBody() && doc.CurrentRev != prevCurrentRev && prevCurrentRev != "" {
 		// Store the doc's previous body into the revision tree:
 		oldBodyJson, marshalErr := doc.BodyBytes()
@@ -1348,6 +1348,7 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 		}
 
 		var kvPairs []base.KVPair
+		oldDocIncludeV2Att := false
 
 		// Stamp _attachments into the old body we're about to backup
 		// We need to do a revpos check here because doc actually contains the new attachments
@@ -1365,6 +1366,11 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 					if attRevposInt <= prevCurrentRevGen {
 						bodyAtts[attName] = attMeta
 					}
+
+					version, _ := GetAttachmentVersion(attMetaMap)
+					if version == AttVersion2 {
+						oldDocIncludeV2Att = true
+					}
 				}
 			}
 			if len(bodyAtts) > 0 {
@@ -1381,10 +1387,10 @@ func (db *Database) storeOldBodyInRevTreeAndUpdateCurrent(doc *Document, prevCur
 		if marshalErr != nil {
 			base.WarnfCtx(db.Ctx, "Unable to marshal document body properties for storage in rev tree: %v", marshalErr)
 		}
-		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage())
+		doc.setNonWinningRevisionBody(prevCurrentRev, oldBodyJson, db.AllowExternalRevBodyStorage(), oldDocIncludeV2Att)
 	}
 	// Store the new revision body into the doc:
-	doc.setRevisionBody(newRevID, newDoc, db.AllowExternalRevBodyStorage())
+	doc.setRevisionBody(newRevID, newDoc, db.AllowExternalRevBodyStorage(), newDocIncludeV2Att)
 
 	if doc.CurrentRev == newRevID {
 		doc.NewestRev = ""
@@ -1637,7 +1643,8 @@ func (db *Database) documentUpdateFunc(docExists bool, doc *Document, allowImpor
 	newRevID := newDoc.RevID
 	prevCurrentRev := doc.CurrentRev
 	doc.updateWinningRevAndSetDocFlags()
-	db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, newDoc)
+	newDocIncludeV2Att := len(newAttachments) > 0
+	db.storeOldBodyInRevTreeAndUpdateCurrent(doc, prevCurrentRev, newRevID, newDoc, newDocIncludeV2Att)
 
 	syncFnBody[BodyId] = doc.ID
 	syncFnBody[BodyRev] = newRevID

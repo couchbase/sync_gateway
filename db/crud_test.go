@@ -102,6 +102,71 @@ func TestRevisionCacheLoad(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestIncludeV2Att(t *testing.T) {
+	defer base.SetUpTestLogging(base.LevelDebug, base.KeyAll)()
+	db := setupTestDB(t)
+	defer db.Close()
+
+	base.TestExternalRevStorage = true
+	prop_1000_bytes := base.CreateProperty(1000)
+
+	// Create rev 1-a
+	log.Printf("Create rev 1-a")
+	body := Body{"key1": "value1", "version": "1a"}
+	_, _, err := db.PutExistingRevWithBody("doc1", body, []string{"1-a"}, false)
+	assert.NoError(t, err, "add 1-a")
+
+	// Create rev 2-a
+	// 1-a
+	//  |
+	// 2-a
+	log.Printf("Create rev 2-a with a large body")
+	rev2a_body := unjson(`{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	rev2a_body["key1"] = prop_1000_bytes
+	rev2a_body["version"] = "2a"
+	doc, newRev, err := db.PutExistingRevWithBody("doc1", rev2a_body, []string{"2-a", "1-a"}, false)
+	rev2a_body[BodyId] = doc.ID
+	rev2a_body[BodyRev] = newRev
+	assert.NoError(t, err, "add 2-a")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc 2-a...")
+	gotbody, err := db.Get1xBody("doc1")
+	assert.NoError(t, err, "Couldn't get document")
+	rev2a_body["_attachments"] = AttachmentsMeta{"hello.txt": map[string]interface{}{
+		"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", "length": 11, "revpos": 2, "stub": true, "ver": 2}}
+	assert.Equal(t, rev2a_body, gotbody)
+
+	// Create rev 2-b
+	//    1-a
+	//   /  \
+	// 2-a  2-b
+	log.Printf("Create rev 2-b with a large body")
+	rev2b_body := unjson(`{"_attachments": {"hello.txt": {"data":"aGVsbG8gd29ybGQ="}}}`)
+	rev2b_body["key1"] = prop_1000_bytes
+	rev2b_body["version"] = "2b"
+	doc, newRev, err = db.PutExistingRevWithBody("doc1", rev2b_body, []string{"2-b", "1-a"}, false)
+	rev2b_body[BodyId] = doc.ID
+	rev2b_body[BodyRev] = newRev
+	assert.NoError(t, err, "add 2-b")
+
+	// Retrieve the document:
+	log.Printf("Retrieve doc, verify rev 2-b")
+	gotbody, err = db.Get1xBody("doc1")
+	assert.NoError(t, err, "Couldn't get document")
+	rev2b_body["_attachments"] = AttachmentsMeta{"hello.txt": map[string]interface{}{
+		"digest": "sha1-Kq5sNclPz7QV2+lfQIuc6R7oRu0=", "length": 11, "revpos": 2, "stub": true, "ver": 2}}
+	assert.Equal(t, rev2b_body, gotbody)
+
+	// Retrieve the raw document, and verify 2-a isn't stored inline
+	log.Printf("Retrieve doc, verify rev 2-a not inline")
+	revTree, err := getRevTreeList(db.Bucket, "doc1", db.UseXattrs())
+	assert.NoError(t, err, "Couldn't get revtree for raw document")
+	assert.Equal(t, 0, len(revTree.BodyMap))
+	assert.Equal(t, 1, len(revTree.BodyKeyMap))
+	assert.Equal(t, 1, len(revTree.Attachments))
+}
+
 // TestRevisionStorageConflictAndTombstones
 // Tests permutations of inline and external storage of conflicts and tombstones
 func TestRevisionStorageConflictAndTombstones(t *testing.T) {
