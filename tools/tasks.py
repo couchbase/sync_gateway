@@ -593,7 +593,7 @@ def make_os_tasks(processes):
         UnixTask("ntp time",
                  "ntpdate -q pool.ntp.org || "
                  "nc time.nist.gov 13 || "
-                 "netcat time.nist.gov 13"),
+                 "netcat time.nist.gov 13", timeout=60),
         UnixTask("ntp peers", "ntpq -p"),
         UnixTask("raw /etc/sysconfig/clock", "cat /etc/sysconfig/clock"),
         UnixTask("raw /etc/timezone", "cat /etc/timezone"),
