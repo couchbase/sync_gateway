@@ -68,10 +68,9 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assert.Equal(t, "db1", dbConfigResp.Name)
 	require.NotNil(t, dbConfigResp.Bucket)
 	assert.Equal(t, tb.GetName(), *dbConfigResp.Bucket)
-	require.NotNil(t, dbConfigResp.Server)
-	assert.Equal(t, base.UnitTestUrl(), *dbConfigResp.Server)
-	assert.Equal(t, base.TestClusterUsername(), dbConfigResp.Username)
-	assert.Equal(t, base.TestClusterPassword(), dbConfigResp.Password)
+	assert.Nil(t, dbConfigResp.Server)
+	assert.Empty(t, dbConfigResp.Username)
+	assert.Empty(t, dbConfigResp.Password)
 	require.Nil(t, dbConfigResp.Sync)
 
 	// Sanity check to use the database
@@ -114,10 +113,9 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	assert.Equal(t, "db1", dbConfigResp.Name)
 	require.NotNil(t, dbConfigResp.Bucket)
 	assert.Equal(t, tb.GetName(), *dbConfigResp.Bucket)
-	require.NotNil(t, dbConfigResp.Server)
-	assert.Equal(t, base.UnitTestUrl(), *dbConfigResp.Server)
-	assert.Equal(t, base.TestClusterUsername(), dbConfigResp.Username)
-	assert.Equal(t, base.TestClusterPassword(), dbConfigResp.Password)
+	assert.Nil(t, dbConfigResp.Server)
+	assert.Empty(t, dbConfigResp.Username)
+	assert.Empty(t, dbConfigResp.Password)
 	require.Nil(t, dbConfigResp.Sync)
 
 	// Ensure it's _actually_ the same bucket
