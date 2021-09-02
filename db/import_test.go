@@ -58,6 +58,7 @@ func TestMigrateMetadata(t *testing.T) {
 
 	// Get the existing bucket doc
 	_, existingBucketDoc, err := db.GetDocWithXattr(key, DocUnmarshalAll)
+	log.Printf("existingBucketDoc: %v", existingBucketDoc)
 
 	// Set the expiry value to a stale value (it's about to be stale, since below it will get updated to a later value)
 	existingBucketDoc.Expiry = uint32(syncMetaExpiry.Unix())
@@ -79,7 +80,7 @@ func TestMigrateMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	// Call migrateMeta with stale args that have old stale expiry
-	_, _, err = db.migrateMetadata(
+	_, _, err = db.MigrateMetadata(
 		key,
 		body,
 		existingBucketDoc,

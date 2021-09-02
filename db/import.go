@@ -190,7 +190,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 		// If the existing doc is a legacy SG write (_sync in body), check for migrate instead of import.
 		_, ok := body[base.SyncPropertyName]
 		if ok || doc.inlineSyncData {
-			migratedDoc, requiresImport, migrateErr := db.migrateMetadata(newDoc.ID, body, existingDoc)
+			migratedDoc, requiresImport, migrateErr := db.MigrateMetadata(newDoc.ID, body, existingDoc)
 			if migrateErr != nil {
 				return nil, nil, false, updatedExpiry, migrateErr
 			}
@@ -358,7 +358,7 @@ func (db *Database) importDoc(docid string, body Body, isDelete bool, existingDo
 
 // Migrates document metadata from document body to system xattr.  On CAS failure, retrieves current doc body and retries
 // migration if _sync property exists.  If _sync property is not found, returns doc and sets requiresImport to true
-func (db *Database) migrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *Document, requiresImport bool, err error) {
+func (db *Database) MigrateMetadata(docid string, body Body, existingDoc *sgbucket.BucketDocument) (docOut *Document, requiresImport bool, err error) {
 
 	// Unmarshal the existing doc in legacy SG format
 	doc, unmarshalErr := unmarshalDocument(docid, existingDoc.Body)
