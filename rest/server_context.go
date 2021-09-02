@@ -129,7 +129,8 @@ func NewServerContext(config *StartupConfig, persistentConfig bool) *ServerConte
 	return sc
 }
 
-func (sc *ServerContext) waitForRESTAPIs(timeout time.Duration) error {
+func (sc *ServerContext) waitForRESTAPIs() error {
+	timeout := 30 * time.Second
 	interval := time.Millisecond * 100
 	numAttempts := int(timeout / interval)
 	timeoutCtx, cancelFn := context.WithTimeout(context.Background(), timeout)

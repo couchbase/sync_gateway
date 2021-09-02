@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/couchbase/sync_gateway/base"
 	"github.com/couchbase/sync_gateway/db"
@@ -39,7 +38,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs(time.Second*5))
+	require.NoError(t, sc.waitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
@@ -91,7 +90,7 @@ func TestBootstrapRESTAPISetup(t *testing.T) {
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs(time.Second*5))
+	require.NoError(t, sc.waitForRESTAPIs())
 	defer func() {
 		sc.Close()
 		require.NoError(t, <-serverErr)
