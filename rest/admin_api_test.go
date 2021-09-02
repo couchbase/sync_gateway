@@ -3499,11 +3499,13 @@ func TestInvalidDBConfig(t *testing.T) {
 	config := bootstrapStartupConfigForTest(t)
 	sc, err := setupServerContext(&config, true)
 	require.NoError(t, err)
+	defer sc.Close()
+
 	serverErr := make(chan error, 0)
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs(time.Second*5))
+	require.NoError(t, sc.waitForRESTAPIs())
 
 	// Get a test bucket, and use it to create the database.
 	tb := base.GetTestBucket(t)
