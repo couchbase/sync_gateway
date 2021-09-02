@@ -227,11 +227,16 @@ func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardo
 	b = connection.Bucket(bucketName)
 	err = b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
-		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
+		RetryStrategy: &goCBv2FailFastRetryStrategy{},
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
 	})
 	if err != nil {
 		_ = connection.Close(&gocb.ClusterCloseOptions{})
+
+		if errors.Is(err, gocb.ErrAuthenticationFailure) {
+			return nil, nil, ErrAuthError
+		}
+
 		return nil, nil, err
 	}
 
