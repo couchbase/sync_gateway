@@ -3506,7 +3506,7 @@ func TestCreateDbOnNonExistentBucket(t *testing.T) {
 	go func() {
 		serverErr <- startServer(&config, sc)
 	}()
-	require.NoError(t, sc.waitForRESTAPIs(time.Second*30))
+	require.NoError(t, sc.waitForRESTAPIs())
 
 	resp := bootstrapAdminRequest(t, http.MethodPut, "/db/", `{"bucket": "nonExistentBucket"}`)
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
