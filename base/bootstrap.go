@@ -20,13 +20,12 @@ type BootstrapConnection interface {
 	InsertConfig(bucket, groupID string, value interface{}) (newCAS uint64, err error)
 	// UpdateConfig updates an existing database config for a given bucket and config group ID. updateCallback can return nil to remove the config.
 	UpdateConfig(bucket, groupID string, updateCallback func(rawBucketConfig []byte) (updatedConfig []byte, err error)) (newCAS uint64, err error)
-	// Close closes the connection
-	Close() error
 }
 
 // CouchbaseCluster is a GoCBv2 implementation of BootstrapConnection
 type CouchbaseCluster struct {
-	c *gocb.Cluster
+	server         string
+	clusterOptions gocb.ClusterOptions
 }
 
 var _ BootstrapConnection = &CouchbaseCluster{}
@@ -55,12 +54,17 @@ func NewCouchbaseCluster(server, username, password,
 		RetryStrategy:  &goCBv2FailFastRetryStrategy{},
 	}
 
-	cluster, err := gocb.Connect(server, clusterOptions)
+	return &CouchbaseCluster{server: server, clusterOptions: clusterOptions}, nil
+}
+
+// connect attempts to open a gocb.Cluster connection. Callers will be responsible for closing the connection.
+func (cc *CouchbaseCluster) connect() (*gocb.Cluster, error) {
+	cluster, err := gocb.Connect(cc.server, cc.clusterOptions)
 	if err != nil {
 		return nil, err
 	}
 
-	err = cluster.WaitUntilReady(time.Second*5, &gocb.WaitUntilReadyOptions{
+	err = cluster.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeManagement},
 		RetryStrategy: &goCBv2FailFastRetryStrategy{},
@@ -70,7 +74,7 @@ func NewCouchbaseCluster(server, username, password,
 		return nil, err
 	}
 
-	return &CouchbaseCluster{c: cluster}, nil
+	return cluster, nil
 }
 
 func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
@@ -78,7 +82,16 @@ func (cc *CouchbaseCluster) GetConfigBuckets() ([]string, error) {
 		return nil, errors.New("nil CouchbaseCluster")
 	}
 
-	buckets, err := cc.c.Buckets().GetAllBuckets(nil)
+	connection, err := cc.connect()
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		_ = connection.Close(&gocb.ClusterCloseOptions{})
+	}()
+
+	buckets, err := connection.Buckets().GetAllBuckets(nil)
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +109,12 @@ func (cc *CouchbaseCluster) GetConfig(location, groupID string, valuePtr interfa
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(location)
 	if err != nil {
 		return 0, err
 	}
+
+	defer teardown()
 
 	res, err := b.DefaultCollection().Get(PersistentConfigPrefix+groupID, &gocb.GetOptions{
 		Timeout:       time.Second * 10,
@@ -124,10 +139,11 @@ func (cc *CouchbaseCluster) InsertConfig(location, groupID string, value interfa
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(location)
 	if err != nil {
 		return 0, err
 	}
+	defer teardown()
 
 	docID := PersistentConfigPrefix + groupID
 	res, err := b.DefaultCollection().Insert(docID, value, nil)
@@ -146,10 +162,11 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 		return 0, errors.New("nil CouchbaseCluster")
 	}
 
-	b, err := cc.getBucket(location)
+	b, teardown, err := cc.getBucket(location)
 	if err != nil {
 		return 0, err
 	}
+	defer teardown()
 
 	collection := b.DefaultCollection()
 
@@ -200,25 +217,32 @@ func (cc *CouchbaseCluster) UpdateConfig(location, groupID string, updateCallbac
 
 }
 
-func (cc *CouchbaseCluster) Close() error {
-	if cc.c == nil {
-		return nil
-	}
-	return cc.c.Close(&gocb.ClusterCloseOptions{})
-}
-
 // getBucket returns the bucket after waiting for it to be ready.
-func (cc *CouchbaseCluster) getBucket(bucketName string) (*gocb.Bucket, error) {
-	b := cc.c.Bucket(bucketName)
-	err := b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
+func (cc *CouchbaseCluster) getBucket(bucketName string) (b *gocb.Bucket, teardownFn func(), err error) {
+	connection, err := cc.connect()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	b = connection.Bucket(bucketName)
+	err = b.WaitUntilReady(time.Second*10, &gocb.WaitUntilReadyOptions{
 		DesiredState:  gocb.ClusterStateOnline,
 		RetryStrategy: gocb.NewBestEffortRetryStrategy(nil),
 		ServiceTypes:  []gocb.ServiceType{gocb.ServiceTypeKeyValue},
 	})
 	if err != nil {
-		return nil, err
+		_ = connection.Close(&gocb.ClusterCloseOptions{})
+		return nil, nil, err
 	}
-	return b, nil
+
+	teardownFn = func() {
+		err := connection.Close(&gocb.ClusterCloseOptions{})
+		if err != nil {
+			Warnf("Failed to close cluster connection: %v", err)
+		}
+	}
+
+	return b, teardownFn, nil
 }
 
 // ConfigMerge applies non-empty fields from b onto non-empty fields on a

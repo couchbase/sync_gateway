@@ -93,6 +93,7 @@ func GetCouchbaseCollection(spec BucketSpec) (*Collection, error) {
 	// TODO: identify required services and add to WaitUntilReadyOptions
 	err = bucket.WaitUntilReady(30*time.Second, nil)
 	if err != nil {
+		_ = cluster.Close(&gocb.ClusterCloseOptions{})
 		Warnf("Error waiting for bucket to be ready: %v", err)
 		return nil, err
 	}

@@ -215,14 +215,10 @@ func automaticConfigUpgrade(configPath string) (sc *StartupConfig, disablePersis
 	}
 
 	// Attempt to establish connection to server
-	cluster, err := establishCouchbaseClusterConnection(startupConfig)
+	cluster, err := createCouchbaseClusterFromStartupConfig(startupConfig)
 	if err != nil {
 		return nil, false, err
 	}
-
-	defer func() {
-		_ = cluster.Close()
-	}()
 
 	// Write database configs to CBS with groupID "default"
 	for _, dbConfig := range dbConfigs {
@@ -351,24 +347,14 @@ func backupCurrentConfigFile(sourcePath string) (string, error) {
 	return backupPath, nil
 }
 
-func establishCouchbaseClusterConnection(config *StartupConfig) (*base.CouchbaseCluster, error) {
-	err, c := base.RetryLoop("Cluster Bootstrap", func() (shouldRetry bool, err error, value interface{}) {
-		cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username,
-			config.Bootstrap.Password, config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath,
-			config.Bootstrap.CACertPath, config.Bootstrap.ServerTLSSkipVerify)
-		if err != nil {
-			base.Infof(base.KeyConfig, "Couldn't connect to bootstrap cluster: %v - will retry...", err)
-			return true, err, nil
-		}
-
-		return false, nil, cluster
-	}, base.CreateSleeperFunc(27, 1000)) // ~2 mins total - 5 second gocb WaitUntilReady timeout and 1 second interval
+func createCouchbaseClusterFromStartupConfig(config *StartupConfig) (*base.CouchbaseCluster, error) {
+	cluster, err := base.NewCouchbaseCluster(config.Bootstrap.Server, config.Bootstrap.Username,
+		config.Bootstrap.Password, config.Bootstrap.X509CertPath, config.Bootstrap.X509KeyPath,
+		config.Bootstrap.CACertPath, config.Bootstrap.ServerTLSSkipVerify)
 	if err != nil {
+		base.Infof(base.KeyConfig, "Couldn't create couchbase cluster instance: %v", err)
 		return nil, err
 	}
 
-	base.Infof(base.KeyConfig, "Successfully connected to cluster")
-	clusterConnection := c.(*base.CouchbaseCluster)
-
-	return clusterConnection, nil
+	return cluster, nil
 }

@@ -198,12 +198,6 @@ func (sc *ServerContext) Close() {
 	}
 	sc._httpServers = nil
 
-	if c := sc.bootstrapContext.connection; c != nil {
-		if err := c.Close(); err != nil {
-			base.Warnf("Error closing bootstrap cluster connection: %v", err)
-		}
-	}
-
 	if agent := sc.GoCBAgent; agent != nil {
 		if err := agent.Close(); err != nil {
 			base.Warnf("Error closing agent connection: %v", err)
